@@ -1,0 +1,17 @@
+# 忽略编译生成的二进制文件
+*.exe
+*.o
+*.obj
+/build/
+
+# 忽略 CFD 计算产生的中间数据和结果
+*.dat
+*.vtk
+*.plt
+*.out
+*.cas
+*.msh
+*.log
+
+# 忽略 VS Code 配置
+.vscode/
