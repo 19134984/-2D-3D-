@@ -48,7 +48,7 @@
         real(kind=8), parameter :: lengthUnit=dble(ny)     !无量纲长度
         real(kind=8), parameter :: pi = acos(-1.0d0)
 
-        real(kind=8), parameter :: Rayleigh=1e6        
+        real(kind=8), parameter :: Rayleigh=1.0d6        
         real(kind=8), parameter :: Prandtl=0.71d0       
         real(kind=8), parameter :: Mach=0.1d0
         real(kind=8), parameter :: Thot=0.5d0, Tcold=-0.5d0
@@ -92,7 +92,7 @@
 
         integer(kind=4), parameter :: backupInterval=1000  ! 备份间隔（自由落体时间单位），为了停电情况下，可以继续计算
         
-        real(kind=8), parameter :: epsU=1e-7, epsT=1e-7    ! 稳态收敛阈值   
+        real(kind=8), parameter :: epsU=1.0d-7, epsT=1.0d-7    ! 稳态收敛阈值   
 
         integer(kind=4), parameter :: outputBinFile=0   ! 是否输出 bin 文件：0=不输出，1=输出
         integer(kind=4), parameter :: outputPltFile=0   ! 是否输出 plt 文件：0=不输出，1=输出
@@ -264,10 +264,10 @@
      
 
     open(unit=00,file="SimulationSettings.txt",status='unknown',position='append')        !在这个txt文件后面继续写（追加模式）
-    write(00,*) "Time (CPU) = ", real(timeEnd-timeStart), "s"                             !当前进程累计消耗的 CPU 时间,包括并行
-    write(00,*) "MLUPS = ", real( dble(nx)*dble(ny)*dble(itc)/(timeEnd-timeStart)/1e6 )   !百万格点更新/秒
-    write(00,*) "Time (OMP) = ", real(timeEnd2-timeStart2), "s"                           !墙钟时间
-    write(00,*) "MLUPS (OMP) = ", real( dble(nx)*dble(ny)*dble(itc)/(timeEnd2-timeStart2)/1e6 )   !百万格点更新/秒
+    write(00,*) "Time (CPU) = ", real(timeEnd-timeStart,kind=8), "s"                             !当前进程累计消耗的 CPU 时间,包括并行
+    write(00,*) "MLUPS = ", real( dble(nx)*dble(ny)*dble(itc)/(timeEnd-timeStart)/1.0d6,kind=8 )   !百万格点更新/秒
+    write(00,*) "Time (OMP) = ", real(timeEnd2-timeStart2,kind=8), "s"                           !墙钟时间
+    write(00,*) "MLUPS (OMP) = ", real( dble(nx)*dble(ny)*dble(itc)/(timeEnd2-timeStart2)/1.0d6,kind=8 )   !百万格点更新/秒
     write(00,*) "Nu_global =", Nu_global
     write(00,*) "Nu_hot    =", Nu_hot
     write(00,*) "Nu_cold   =", Nu_cold
@@ -351,15 +351,15 @@
 
     write(00,*)"-------------------------------------------------------------------------------"
     write(00,*) 'Mesh:',nx,ny
-    write(00,*) 'Rayleigh=',real(Rayleigh), '; Prandtl =',real(Prandtl), '; Mach =',real(Mach)
-    write(00,*) "Length unit: L0 =", real(lengthUnit)
-    write(00,*) "Time unit: Sqrt(L0/(gBeta*DeltaT)) =", real(timeUnit)
-    write(00,*) "Velocity unit: Sqrt(gBeta*L0*DeltaT) =", real(velocityUnit)
+    write(00,*) 'Rayleigh=',real(Rayleigh,kind=8), '; Prandtl =',real(Prandtl,kind=8), '; Mach =',real(Mach,kind=8)
+    write(00,*) "Length unit: L0 =", real(lengthUnit,kind=8)
+    write(00,*) "Time unit: Sqrt(L0/(gBeta*DeltaT)) =", real(timeUnit,kind=8)
+    write(00,*) "Velocity unit: Sqrt(gBeta*L0*DeltaT) =", real(velocityUnit,kind=8)
     write(00,*) "   "
-    write(00,*) 'tauf=',real(tauf)
-    write(00,*) 'taug=',real(taug)
-    write(00,*) "viscosity =",real(viscosity), "; diffusivity =",real(diffusivity)
-    write(00,*) "outputFrequency =", real(outputFrequency), "tf"
+    write(00,*) 'tauf=',real(tauf,kind=8)
+    write(00,*) 'taug=',real(taug,kind=8)
+    write(00,*) "viscosity =",real(viscosity,kind=8), "; diffusivity =",real(diffusivity,kind=8)
+    write(00,*) "outputFrequency =", real(outputFrequency,kind=8), "tf"
     write(00,*) "......................  or ",  int(outputFrequency*timeUnit), "in itc units"
     write(00,*) "backupInterval =", backupInterval, " free-fall time units"
     write(00,*) ".................... or ", int(backupInterval/outputFrequency)*int(outputFrequency*timeUnit), "itc units"
@@ -367,7 +367,7 @@
         write(00,*) "reloadDimensionlessTime=", reloadDimensionlessTime
     endif
     write(00,*) "itc_max =",itc_max
-    write(00,*) "default epsU =", real(epsU),"; epsT =", real(epsT)
+    write(00,*) "default epsU =", real(epsU,kind=8),"; epsT =", real(epsT,kind=8)
     write(00,*) "useG =", useG
     write(00,*) "    "
 
@@ -588,7 +588,7 @@
                 dev = dev+g(0,i,j)+g(1,i,j)+g(2,i,j)+g(3,i,j)+g(4,i,j)-T(i,j)                                   !计算温度一致性偏差
             enddo
         enddo
-        write(00,*) "RELOAD: Deviation in temperature: ", real(dev)
+        write(00,*) "RELOAD: Deviation in temperature: ", real(dev,kind=8)
         if(dev.GT.1.0d0) then
             write(00,*) "Error: too large Deviation when reload data!"                                          !输出偏差并做“粗阈值”判错
             stop
@@ -1375,6 +1375,16 @@ end subroutine append_convergence_master_tecplot
     real(kind=8) :: NuVolAvg_temp    !体平均 Nu
     real(kind=8) :: ReVolAvg_temp    !体平均 Re
     
+    ! 原代码：
+    ! dimensionlessTime = dimensionlessTime+1   !每隔 outputFrequency 个自由落体时间调用一次calNuRe
+    if (dimensionlessTime.GE.dimensionlessTimeMax) then
+        write(*,*) "Error: dimensionlessTime exceeds dimensionlessTimeMax, please enlarge dimensionlessTimeMax"
+        open(unit=00,file="SimulationSettings.txt",status="unknown",position="append")
+        write(00,*) "Error: dimensionlessTime exceeds dimensionlessTimeMax, please enlarge dimensionlessTimeMax"
+        close(00)
+        stop
+    endif
+
     dimensionlessTime = dimensionlessTime+1   !每隔 outputFrequency 个自由落体时间调用一次calNuRe
     
     NuVolAvg_temp = 0.0d0    
@@ -1388,7 +1398,7 @@ end subroutine append_convergence_master_tecplot
     NuVolAvg(dimensionlessTime) = NuVolAvg_temp/dble(nx*ny)*lengthUnit/diffusivity+1.0d0    !!体平均 Nusselt 数 = 1 + (常数系数) × 体平均对流热通量
 
     open(unit=01,file="Nu_VolAvg.dat",status='unknown',position='append')
-    write(01,*) real(reloadDimensionlessTime+dimensionlessTime*outputFrequency), NuVolAvg(dimensionlessTime)   !以自由落体时间来写入
+    write(01,*) real(reloadDimensionlessTime+dimensionlessTime*outputFrequency,kind=8), NuVolAvg(dimensionlessTime)   !以自由落体时间来写入
     close(01)
 
     ReVolAvg_temp = 0.0d0
@@ -1403,7 +1413,7 @@ end subroutine append_convergence_master_tecplot
 
 
     open(unit=02,file="Re_VolAvg.dat",status='unknown',position='append')
-    write(02,*) real(reloadDimensionlessTime+dimensionlessTime*outputFrequency), ReVolAvg(dimensionlessTime)  !!for print purpose only
+    write(02,*) real(reloadDimensionlessTime+dimensionlessTime*outputFrequency,kind=8), ReVolAvg(dimensionlessTime)  !!for print purpose only
     close(02)
     write(*,*)  ReVolAvg(dimensionlessTime)
     return
@@ -1990,7 +2000,9 @@ subroutine RBcalc_Nu_wall_avg()
   real(kind=8) :: xk(5), fk(5)
   real(kind=8) :: fstar, xstar
 
-  dx     = 1.0d0 / nx
+  ! 原代码：
+  ! dx     = 1.0d0 / nx
+  dx     = 1.0d0 / lengthUnit
   dy     = 1.0d0 / lengthUnit
   deltaT = Thot - Tcold
 
@@ -2270,7 +2282,9 @@ subroutine calc_psi_vort_and_output()
   ! for fine-grid max(|psi|)  10001*10001
   real(kind=8) :: psi_abs_max, x_at_max, y_at_max
 
-  dx   = 1.0d0 / nx
+  ! 原代码：
+  ! dx   = 1.0d0 / nx
+  dx   = 1.0d0 / lengthUnit
   dy   = 1.0d0 / lengthUnit
   coef = lengthUnit / diffusivity   ! L/kappa，对应文献标度
 
@@ -2481,15 +2495,21 @@ subroutine calc_psi_absmax_fine_spline(psi, psi_abs_max, x_at_max, y_at_max)
   ! ---- 为了能在 x=0/1 与 y=0/1 上插值，物理边界 psi=常数（可取0）补两个端点
   nXExt = nx + 2
   nYExt = ny + 2
-  allocate(xExt(nYExt), yExt(nYExt))
+  ! 原代码：
+  ! allocate(xExt(nYExt), yExt(nYExt))
+  allocate(xExt(nXExt), yExt(nYExt))
   xExt(1)    = 0.0d0
-  xExt(nX)   = 1.0d0
+  ! 原代码：
+  ! xExt(nX)   = 1.0d0
+  xExt(nXExt)= 1.0d0
   do i = 1, nx
     xExt(i+1) = xp(i)         !xExt = [0, xp(1),...,xp(nx), 1]
   end do
 
   yExt(1)    = 0.0d0
-  yExt(nY)   = 1.0d0
+  ! 原代码：
+  ! yExt(nY)   = 1.0d0
+  yExt(nYExt)= 1.0d0
   do j = 1, ny
     yExt(j+1) = yp(j)        !yExt = [0, yp(1),...,yp(ny), 1]
   end do
