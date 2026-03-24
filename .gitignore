@@ -3,6 +3,8 @@
 *.o
 *.obj
 /build/
+/2DRB/build/
+/2DRB/build_islbm/
 
 # 忽略 CFD 计算产生的中间数据和结果
 *.dat
@@ -12,6 +14,7 @@
 *.cas
 *.msh
 *.log
+SimulationSettings.txt
 
 # 忽略 VS Code 配置
 .vscode/
