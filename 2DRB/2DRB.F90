@@ -45,7 +45,11 @@
         !-----------------------------------------------------------------------------------------------
         ! 无量纲参数
         integer(kind=4), parameter :: nx=22, ny=22     !格子网格
-        real(kind=8), parameter :: lengthUnit=dble(ny)     !无量纲长度
+#ifdef SideHeatedCell
+        real(kind=8), parameter :: lengthUnit=dble(nx)     !侧壁差温：特征长度取 x 方向长度
+#else
+        real(kind=8), parameter :: lengthUnit=dble(ny)     !上下差温：特征长度取 y 方向长度
+#endif
         real(kind=8), parameter :: pi = acos(-1.0d0)
 
         real(kind=8), parameter :: Rayleigh=1.0d6        
@@ -393,9 +397,9 @@
     xp(0) = 0.0d0
     xp(nx+1) = dble(nx)
     do i=1,nx
-        xp(i) = dble(i)-0.5d0      ! 0 | 0.5 1.5 2.5 3.5 | 4   ，包含边界点
+        xp(i) = dble(i)-0.5d0
     enddo
-    xp = xp / lengthUnit           !用单位长度无量纲化
+    xp = xp / lengthUnit
 
     yp(0) = 0.0d0
     yp(ny+1) = dble(ny)
@@ -1540,7 +1544,7 @@ end subroutine append_convergence_master_tecplot
     yfit(3) = yp(ny-1);  Tfit(3) = T(1,ny-1)
     yfit(4) = yp(ny  );  Tfit(4) = T(1,ny  )
 
-    call fit_adiabatic_wall_T4(1.0d0, yfit, Tfit, T_wt)   ! 得到 T(y=1) = T_wt
+    call fit_adiabatic_wall_T4(yp(ny+1), yfit, Tfit, T_wt)   ! 得到顶壁温度 T(y=yp(ny+1))
 
     Nu_left_ext(ny+1) = ( 2.0d0 * (Thot-T_wt) / dx ) / deltaT  ! 角点局部 Nu
 
@@ -1579,7 +1583,7 @@ end subroutine append_convergence_master_tecplot
     endif
 
     do k = 1, 5
-      yk(k) = yp(jj(k))            ! yp(0)=0, yp(ny+1)=1 已经存在
+      yk(k) = yp(jj(k))            ! yp(0)=0, yp(ny+1)=ny/lengthUnit 已经存在
       fk(k) = Nu_left_ext(jj(k))
     enddo
 
@@ -2032,7 +2036,7 @@ subroutine RBcalc_Nu_wall_avg()
   xfit(2)=xp(nx-2);  Tfit(2)=T(nx-2,1)
   xfit(3)=xp(nx-1);  Tfit(3)=T(nx-1,1)
   xfit(4)=xp(nx  );  Tfit(4)=T(nx  ,1)
-  call fit_adiabatic_wall_T4(1.0d0, xfit, Tfit, T_wr)   ! 估计 T(x=1, y=dy/2)
+  call fit_adiabatic_wall_T4(xp(nx+1), xfit, Tfit, T_wr)   ! 估计 T(x=xp(nx+1), y=dy/2)
 
   ! 组装扩展数组：角点只用于找 max/min 与拟合
   Nu_bot_ext(1:nx) = Nu_bot(1:nx)
@@ -2068,7 +2072,7 @@ subroutine RBcalc_Nu_wall_avg()
   endif
 
   do k = 1, 5
-    xk(k) = xp(ii(k))            ! xp(0)=0, xp(nx+1)=1
+    xk(k) = xp(ii(k))            ! xp(0)=0, xp(nx+1)=nx/lengthUnit
     fk(k) = Nu_bot_ext(ii(k))
   enddo
 
@@ -2500,16 +2504,16 @@ subroutine calc_psi_absmax_fine_spline(psi, psi_abs_max, x_at_max, y_at_max)
   allocate(xExt(nXExt), yExt(nYExt))
   xExt(1)    = 0.0d0
   ! 原代码：
-  ! xExt(nX)   = 1.0d0
-  xExt(nXExt)= 1.0d0
+  ! xExt(nX)   = xp(nx+1)
+  xExt(nXExt)= xp(nx+1)
   do i = 1, nx
     xExt(i+1) = xp(i)         !xExt = [0, xp(1),...,xp(nx), 1]
   end do
 
   yExt(1)    = 0.0d0
   ! 原代码：
-  ! yExt(nY)   = 1.0d0
-  yExt(nYExt)= 1.0d0
+  ! yExt(nY)   = yp(ny+1)
+  yExt(nYExt)= yp(ny+1)
   do j = 1, ny
     yExt(j+1) = yp(j)        !yExt = [0, yp(1),...,yp(ny), 1]
   end do
@@ -2689,4 +2693,3 @@ subroutine output_psi_center_abs(psi)
 
   return
 end subroutine output_psi_center_abs
-

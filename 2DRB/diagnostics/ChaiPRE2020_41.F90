@@ -22,7 +22,7 @@ module commondata
     real(kind=8), parameter :: cs2Flow = 1.0d0 / 3.0d0
     real(kind=8), parameter :: cs4Flow = cs2Flow * cs2Flow
     real(kind=8), parameter :: cs2Temp = 1.0d0 / 3.0d0
-    real(kind=8), parameter :: lengthUnit = dble(ny)
+    real(kind=8), parameter :: lengthUnit = dble(nx)
 
     real(kind=8), parameter :: Rayleigh = 1.0d3
     real(kind=8), parameter :: Prandtl = 0.71d0
@@ -302,13 +302,13 @@ subroutine initial()
     allocate(NuVolAvg(0:itc_max / checkInterval + 5), ReVolAvg(0:itc_max / checkInterval + 5))
 
     xp(0) = 0.0d0
-    xp(nx+1) = 1.0d0
+    xp(nx+1) = dble(nx) / lengthUnit
     do i = 1, nx
         xp(i) = (dble(i) - 0.5d0) / lengthUnit
     end do
 
     yp(0) = 0.0d0
-    yp(ny+1) = 1.0d0
+    yp(ny+1) = dble(ny) / lengthUnit
     do j = 1, ny
         yp(j) = (dble(j) - 0.5d0) / lengthUnit
     end do
@@ -1019,7 +1019,7 @@ subroutine SideHeatedcalc_Nu_wall_avg()
     yfit(2) = yp(ny-2); Tfit(2) = T(1,ny-2)
     yfit(3) = yp(ny-1); Tfit(3) = T(1,ny-1)
     yfit(4) = yp(ny);   Tfit(4) = T(1,ny)
-    call fit_adiabatic_wall_T4(1.0d0, yfit, Tfit, T_wt)
+    call fit_adiabatic_wall_T4(yp(ny+1), yfit, Tfit, T_wt)
     Nu_left_ext(ny+1) = (2.0d0 * (Thot - T_wt) / dx) / deltaT
 
     jmax = 0

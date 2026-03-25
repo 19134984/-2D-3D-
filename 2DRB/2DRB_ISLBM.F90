@@ -343,6 +343,7 @@
 
     call build_mesh_coordinates()
     call setup_runtime_parameters()
+    call scale_mesh_coordinates()
     call build_quadrature_weights()
     call prepare_streaming_stencils()
     call interpolation_self_check()
@@ -389,11 +390,19 @@
     use commondata
     implicit none
 
+#ifdef SideHeatedCell
+    if (meshMode == meshModeErf) then
+      lengthUnit = 1.0d0 / xp(1) - 1.0d0
+    else
+      lengthUnit = dble(nx)
+    endif
+#else
     if (meshMode == meshModeErf) then
       lengthUnit = 1.0d0 / yp(1) - 1.0d0
     else
       lengthUnit = dble(ny)
     endif
+#endif
 
     uniformShift = 1.0d0 / lengthUnit
     tauf = 0.5d0 + Mach*lengthUnit*dsqrt(3.0d0*Prandtl/Rayleigh)
@@ -416,6 +425,17 @@
 
     return
   end subroutine setup_runtime_parameters
+
+
+  subroutine scale_mesh_coordinates()
+    use commondata
+    implicit none
+
+    xp = xp * ( dble(nx) / lengthUnit )
+    yp = yp * ( dble(ny) / lengthUnit )
+
+    return
+  end subroutine scale_mesh_coordinates
 
 
   subroutine build_quadrature_weights()
@@ -442,8 +462,8 @@
     quadSumX = sum(wx)
     quadSumY = sum(wy)
     quadSumArea = quadSumX * quadSumY
-    Lx_eff = 1.0d0 - xp(1)
-    Ly_eff = 1.0d0 - yp(1)
+    Lx_eff = xp(nx+1) - xp(1)
+    Ly_eff = yp(ny+1) - yp(1)
 
     maxStretchRatioX = 1.0d0
     do i = 1, nx-1
@@ -461,12 +481,12 @@
 
     symmetryErrorX = 0.0d0
     do i = 1, nx
-      symmetryErrorX = max(symmetryErrorX, dabs(xp(i) + xp(nx+1-i) - 1.0d0))
+      symmetryErrorX = max(symmetryErrorX, dabs(xp(i) + xp(nx+1-i) - xp(nx+1)))
     enddo
 
     symmetryErrorY = 0.0d0
     do j = 1, ny
-      symmetryErrorY = max(symmetryErrorY, dabs(yp(j) + yp(ny+1-j) - 1.0d0))
+      symmetryErrorY = max(symmetryErrorY, dabs(yp(j) + yp(ny+1-j) - yp(ny+1)))
     enddo
 
     maxAspectRatio = 1.0d0
@@ -853,7 +873,7 @@
     real(kind=8), intent(in) :: tnm1, tn, twall
     real(kind=8) :: dx1, dx2, q
 
-    dx1 = 1.0d0 - xp(nx)
+    dx1 = xp(nx+1) - xp(nx)
     dx2 = xp(nx) - xp(nx-1)
     q = dx2 / dx1
     wall_derivative_x_right = ( 4.0d0*q*(q+1.0d0)*twall - (2.0d0*q+1.0d0)**2*tn + tnm1 ) / &
@@ -885,7 +905,7 @@
     real(kind=8), intent(in) :: tnm1, tn, twall
     real(kind=8) :: dy1, dy2, q
 
-    dy1 = 1.0d0 - yp(ny)
+    dy1 = yp(ny+1) - yp(ny)
     dy2 = yp(ny) - yp(ny-1)
     q = dy2 / dy1
     wall_derivative_y_top = ( 4.0d0*q*(q+1.0d0)*twall - (2.0d0*q+1.0d0)**2*tn + tnm1 ) / &
@@ -1022,6 +1042,7 @@
     allocate (Fy(nx,ny))
     allocate (Bx_prev(nx,ny), By_prev(nx,ny)) 
     call build_mesh_coordinates()
+    call scale_mesh_coordinates()
     call build_quadrature_weights()
     call prepare_streaming_stencils()
     !-----------------------------------------------------------------------------------------------
@@ -3073,16 +3094,16 @@ subroutine calc_psi_absmax_fine_spline(psi, psi_abs_max, x_at_max, y_at_max)
   allocate(xExt(nXExt), yExt(nYExt))
   xExt(1)    = 0.0d0
   ! 鍘熶唬鐮侊細
-  ! xExt(nX)   = 1.0d0
-  xExt(nXExt)= 1.0d0
+  ! xExt(nX)   = xp(nx+1)
+  xExt(nXExt)= xp(nx+1)
   do i = 1, nx
     xExt(i+1) = xp(i)         !xExt = [0, xp(1),...,xp(nx), 1]
   end do
 
   yExt(1)    = 0.0d0
   ! 鍘熶唬鐮侊細
-  ! yExt(nY)   = 1.0d0
-  yExt(nYExt)= 1.0d0
+  ! yExt(nY)   = yp(ny+1)
+  yExt(nYExt)= yp(ny+1)
   do j = 1, ny
     yExt(j+1) = yp(j)        !yExt = [0, yp(1),...,yp(ny), 1]
   end do
