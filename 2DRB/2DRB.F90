@@ -13,21 +13,24 @@
 
 !   速度边界，包括水平垂直边界无滑移，还有垂直边界速度周期
 #define HorizontalWallsNoslip
-#define VerticalWallsNoslip
-!~#define VerticalWallsPeriodicalU
+!#define VerticalWallsNoslip
+#define VerticalWallsPeriodicalU
 
 !   温度边界(for Rayleigh Benard Cell)，包括水平边界恒温，垂直边界温度不可穿透以及周期
-!#define RayleighBenardCell
-!#define HorizontalWallsConstT
+#define RayleighBenardCell
+#define HorizontalWallsConstT
 !#define VerticalWallsAdiabatic
-!~#define VerticalWallsPeriodicalT
+#define VerticalWallsPeriodicalT
+!RB 小 Ra 初始温度扰动开关；仅对 RayleighBenardCell 且 Rayleigh<=1e4 生效
 
 
 !   温度边界(for Side Heated Cell)，包括水平边界温度不可穿透，垂直边界恒温,侧壁加热加磁场
-#define SideHeatedCell
-#define HorizontalWallsAdiabatic
-#define VerticalWallsConstT
+!#define SideHeatedCell
+!#define HorizontalWallsAdiabatic
+!#define VerticalWallsConstT
 !#define SideHeatedHa          
+!#define EnableUseG            
+!启用 M1G 修正；注释掉则不使用 useG 相关修正
 !~~temperature B.C.~~
 
 !   自定义宏结束
@@ -49,7 +52,7 @@
 
         !===============================================================================================
         ! 无量纲参数
-        integer(kind=4), parameter :: nx=22, ny=22     !格子网格
+        integer(kind=4), parameter :: nx=80, ny=40     !格子网格
 #ifdef SideHeatedCell
         real(kind=8), parameter :: lengthUnit=dble(nx)     !侧壁差温：特征长度取 x 方向长度
 #else
@@ -57,7 +60,7 @@
 #endif
         real(kind=8), parameter :: pi = acos(-1.0d0)
 
-        real(kind=8), parameter :: Rayleigh=1.0d6        
+        real(kind=8), parameter :: Rayleigh=2.0d3        
         real(kind=8), parameter :: Prandtl=0.71d0       
         real(kind=8), parameter :: Mach=0.1d0
         real(kind=8), parameter :: Thot=0.5d0, Tcold=-0.5d0
@@ -153,7 +156,11 @@
         real(kind=8), allocatable :: Bx_prev(:,:), By_prev(:,:)
         integer(kind=4) :: itc
         integer(kind=4), parameter :: itc_max=20000000 !格子时间步长
+#ifdef EnableUseG
         logical, parameter :: useG = .true.            !M1G 开关
+#else
+        logical, parameter :: useG = .false.           !M1G 开关
+#endif
         real(kind=8) :: Nu_global, Nu_hot, Nu_cold, Nu_middle    !平均Nu，全场，侧壁以及中线
         real(kind=8) :: Nu_hot_max, Nu_hot_min, Nu_hot_max_position, Nu_hot_min_position    !左侧壁面的最大最小Nu，以及对应的位置
         
@@ -232,7 +239,7 @@
         if(MOD(itc,2000).EQ.0) call check()
 #endif
         
-         if( MOD(itc, int(outputFrequency*timeUnit)).EQ.0 ) then  ! 达到一个输出间隔outputFrequency，就执行一次计算体平均Nu,是对流通量，不是全场平均Nu
+         if( MOD(itc, int(outputFrequency*timeUnit)).EQ.0 ) then  ! 达到一个输出间隔outputFrequency，就执行一次计算体平均Nu，是瞬时全场平均Nu
 
              call calNuRe()
             
@@ -284,7 +291,7 @@
 
     call calc_psi_vort_and_output()  !输出腔体中心的abs(psi),以及最大的abs(psi)max以及位置（采用细网格插值出来）
 
-
+    call calNuRe()
 
 
 
@@ -349,6 +356,7 @@
     integer(kind=4) :: alpha
     real(kind=8) :: un(0:8)
     real(kind=8) :: us2, Bx, By
+    real(kind=8) :: xLen, yLen, rbInitPerturbAmp
     character(len=100) :: reloadFileName
     
 
@@ -507,7 +515,7 @@
 #endif
 
 #ifdef VerticalWallsConstT
-    do j = 1, ny                                   !在不加载文件的情况下，初始化温度是分层的，其实这个有点问题，边界才是精确的Thot和Tcold
+    do j = 1, ny                                   !在不加载文件的情况下，初始化温度是分层的，xp(0)和xp(nx+1)分别是左侧和右侧边界的坐标，xp(i)是内部节点的坐标，线性插值出每个节点的初始温度
         do i = 1, nx
             T(i,j) = Thot + (xp(i)-xp(0)) / (xp(nx+1)-xp(0)) * (Tcold-Thot)
         enddo
@@ -521,6 +529,21 @@
             T(i,j) = Thot + (yp(j)-yp(0)) / (yp(ny+1)-yp(0)) * (Tcold-Thot)
         enddo
     enddo
+#ifdef RayleighBenardCell
+    if (Rayleigh.LE.1.0d4) then
+        xLen = xp(nx+1)
+        yLen = yp(ny+1)
+        rbInitPerturbAmp = 1.0d-3*(Thot-Tcold)
+        do i = 1, nx
+            do j = 1, ny
+                T(i,j) = T(i,j) + rbInitPerturbAmp * dsin(2.0d0*pi*xp(i)/xLen) * dsin(pi*yp(j)/yLen)
+            enddo
+        enddo
+        write(00,'(a,1x,es12.4)') "RB initial T perturbation amplitude =", rbInitPerturbAmp
+    else
+        write(00,*) "RB initial T perturbation skipped because Rayleigh > 1.0d4"
+    endif
+#endif
     write(00,*) "Temperature B.C. for horizontal walls are:===Hot/cold wall==="
 #endif
 
@@ -867,13 +890,13 @@ close(00)
             Bx = u(i,j) * T(i,j)
             By = v(i,j) * T(i,j)
 
-            if (useG) then
-              dBx = Bx - Bx_prev(i,j)
-              dBy = By - By_prev(i,j)
-            else
-              dBx = 0.0d0
-              dBy = 0.0d0
-            end if
+#ifdef EnableUseG
+            dBx = Bx - Bx_prev(i,j)
+            dBy = By - By_prev(i,j)
+#else
+            dBx = 0.0d0
+            dBy = 0.0d0
+#endif
 
             Bx_prev(i,j) = Bx
             By_prev(i,j) = By
@@ -1175,8 +1198,8 @@ close(00)
 
     call append_convergence_tecplot('convergence.plt', itc, errorU, errorT)
 
-    !write(caseTag,'("nx=",I0,",ny=",I0,",useG=",L1)') nx, ny, useG         !输出收敛曲线的对比
-    write(caseTag,'("Ra=",ES10.3E2,",nx=",I0,",ny=",I0,",useG=",L1)') Rayleigh, nx, ny, useG     
+    
+    write(caseTag,'("Ra=",ES10.3E2,",nx=",I0,",ny=",I0,",useG=",L1)') Rayleigh, nx, ny, useG      !输出收敛曲线的对比
     call append_convergence_master_tecplot('convergence_all.plt', caseTag, itc, errorU, errorT)
 
     write(*,'(I12,1X,ES24.16,1X,ES24.16)') itc, errorU, errorT
@@ -1550,8 +1573,21 @@ end subroutine append_convergence_master_tecplot
     endif
 
     dimensionlessTime = dimensionlessTime+1   !每隔 outputFrequency 个自由落体时间调用一次calNuRe
+
+
     
     NuVolAvg_temp = 0.0d0    
+#ifdef SideHeatedCell  
+    !$omp parallel do default(none) shared(u,T) private(i,j) reduction(+:NuVolAvg_temp)
+    do j = 1, ny
+        do i = 1, nx
+            NuVolAvg_temp = NuVolAvg_temp+u(i,j)*T(i,j)     !对流热通量
+        enddo
+    enddo
+    !$omp end parallel do
+#endif
+
+#ifdef RayleighBenardCell  
     !$omp parallel do default(none) shared(v,T) private(i,j) reduction(+:NuVolAvg_temp)
     do j = 1, ny
         do i = 1, nx
@@ -1559,6 +1595,9 @@ end subroutine append_convergence_master_tecplot
         enddo
     enddo
     !$omp end parallel do
+#endif
+
+
     NuVolAvg(dimensionlessTime) = NuVolAvg_temp/dble(nx*ny)*lengthUnit/diffusivity+1.0d0    !!体平均 Nusselt 数 = 1 + (常数系数) × 体平均对流热通量
 
     open(unit=01,file="Nu_VolAvg.dat",status='unknown',position='append')
@@ -1579,7 +1618,8 @@ end subroutine append_convergence_master_tecplot
     open(unit=02,file="Re_VolAvg.dat",status='unknown',position='append')
     write(02,*) real(reloadDimensionlessTime+dimensionlessTime*outputFrequency,kind=8), ReVolAvg(dimensionlessTime)  !!for print purpose only
     close(02)
-    write(*,*)  ReVolAvg(dimensionlessTime)
+    write(*,'(a,1x,es16.8)') "NuVolAvg =", NuVolAvg(dimensionlessTime)
+    write(*,'(a,1x,es16.8)') "ReVolAvg =", ReVolAvg(dimensionlessTime)
     return
   end subroutine calNuRe
 !===================================================================================================
@@ -2387,130 +2427,60 @@ end subroutine RBcalc_Nu_wall_avg
 
 !===================================================================================================
 ! 子程序: RBcalc_umid_max
-! 作用: 计算 Rayleigh-Benard 工况下中心线速度极值及位置。
+! 作用: 计算 Rayleigh-Benard 工况下 x=1/2 处最大水平速度 umax 及其 y 位置。
 ! 用途: 在 RayleighBenardCell 工况结束后的后处理中调用。
 !===================================================================================================
 subroutine RBcalc_umid_max()
-  use commondata
-  implicit none
-  integer(kind=4) :: i, k
-  integer(kind=4) :: jMid, jB, jT
-  integer(kind=4) :: i0
-  integer(kind=4) :: ii(5)
-  real(kind=8) :: uline(1:nx)
-  real(kind=8) :: xk(5), fk(5)
-  real(kind=8) :: umax_fit, x_fit
-  real(kind=8) :: coef, ymid
-  real(kind=8) :: umax_grid
-
-  coef = velocityScaleCompare
-
-  ! ---- (1) 取 y=1/2 中线剖面 u(x_i, y=1/2) ----
-  if (mod(ny,2) == 1) then
-    jMid = (ny + 1)/2
-    ymid = yp(jMid)
-    do i = 1, nx
-      uline(i) = u(i,jMid)
-    enddo
-  else
-    jB = ny/2
-    jT = jB + 1
-    ymid = 0.5d0*(yp(jB) + yp(jT))
-    do i = 1, nx
-      uline(i) = 0.5d0*(u(i,jB) + u(i,jT))
-    enddo
-  endif
-
-  ! ---- (2) 找峰值所在网格点 i0----------------
-  i0 = 1
-  umax_grid = uline(1)
-  do i = 2, nx
-    if (uline(i) > umax_grid) then
-      umax_grid = uline(i)
-      i0 = i
-    endif
-  enddo
-
-  ! ---- (3) 取 5 点（尽量对称；靠近端点时偏侧）----
-  if (i0 <= 2) then
-    ii = (/ 1, 2, 3, 4, 5 /)
-  elseif (i0 >= nx-1) then
-    ii = (/ nx-4, nx-3, nx-2, nx-1, nx /)
-  else
-    ii = (/ i0-2, i0-1, i0, i0+1, i0+2 /)
-  endif
-
-  do k = 1, 5
-    xk(k) = xp(ii(k))
-    fk(k) = uline(ii(k))   
-  enddo
-
-  call fit_parabola_ls5(xk, fk, +1, umax_fit, x_fit)
-  
-
-  write(*,'(A,1X,ES16.8,2X,A,1X,ES16.8,2X,A,1X,ES16.8)') &
-       'u_mid_max* =', umax_fit*coef, 'x =', x_fit, 'y_mid =', ymid
-
-  open(unit=00,file="SimulationSettings.txt",status="unknown",position="append")
-  write(00,'(A,1X,ES16.8,2X,A,1X,ES16.8,2X,A,1X,ES16.8)') &
-       'u_mid_max* =', umax_fit*coef, 'x =', x_fit, 'y_mid =', ymid
-  close(00)
-
-  return
-end subroutine RBcalc_umid_max
-!===================================================================================================
-! RBcalc_umid_max 结束: 计算 Rayleigh-Benard 工况下中心线速度极值及位置。
-!===================================================================================================
-
-
-!===================================================================================================
-! 子程序: RBcalc_vmid_max
-! 作用: 计算 Rayleigh-Benard 工况下另一方向中心线速度极值及位置。
-! 用途: 在 RayleighBenardCell 工况结束后的后处理中调用。
-!===================================================================================================
-subroutine RBcalc_vmid_max()
   use commondata
   implicit none
   integer(kind=4) :: j, k
   integer(kind=4) :: iMid, iL, iR
   integer(kind=4) :: j0
   integer(kind=4) :: jj(5)
-  real(kind=8) :: vline(1:ny)
+  real(kind=8) :: uline(1:ny)
   real(kind=8) :: yk(5), fk(5)
-  real(kind=8) :: vmax_fit, y_fit
-  real(kind=8) :: coef, xmid
-  real(kind=8) :: vmax_grid
+  real(kind=8) :: umax_fit, y_fit
+  real(kind=8) :: coef, xmid, targetX, w
+  real(kind=8) :: umax_grid, yLen
 
   coef = velocityScaleCompare
 
-  ! ---- (1) 取 x=1/2 中线剖面 v(x=1/2, y_j) ----
-  if (mod(nx,2) == 1) then
-    iMid = (nx + 1)/2
-    xmid = xp(iMid)
+  ! ---- (1) 取论文定义的 x=1/2 竖线剖面 u(x=0.5, y_j) ----
+  targetX = 0.5d0
+  xmid = targetX
+
+  iL = 1
+  do while (iL < nx .and. xp(iL+1) < targetX)
+    iL = iL + 1
+  enddo
+  iR = min(iL + 1, nx)
+
+  if (dabs(xp(iL) - targetX) <= 1.0d-14) then
     do j = 1, ny
-      vline(j) = v(iMid,j)
+      uline(j) = u(iL,j)
+    enddo
+  elseif (iR == iL) then
+    do j = 1, ny
+      uline(j) = u(iL,j)
     enddo
   else
-    iL = nx/2
-    iR = iL + 1
-    xmid = 0.5d0*(xp(iL) + xp(iR))
+    w = (targetX - xp(iL)) / (xp(iR) - xp(iL))
     do j = 1, ny
-      vline(j) = 0.5d0*(v(iL,j) + v(iR,j))
+      uline(j) = (1.0d0 - w) * u(iL,j) + w * u(iR,j)
     enddo
   endif
 
   ! ---- (2) 找峰值所在网格点 j0 ----
   j0 = 1
-  vmax_grid = vline(1)
+  umax_grid = uline(1)
   do j = 2, ny
-    if (vline(j) > vmax_grid) then
-      vmax_grid = vline(j)
+    if (uline(j) > umax_grid) then
+      umax_grid = uline(j)
       j0 = j
     endif
   enddo
 
-
-  ! ---- (3) 取 5 点并拟合 ----
+  ! ---- (3) 取 5 点（尽量对称；靠近端点时偏侧）----
   if (j0 <= 2) then
     jj = (/ 1, 2, 3, 4, 5 /)
   elseif (j0 >= ny-1) then
@@ -2521,17 +2491,100 @@ subroutine RBcalc_vmid_max()
 
   do k = 1, 5
     yk(k) = yp(jj(k))
-    fk(k) = vline(jj(k))
+    fk(k) = uline(jj(k))
   enddo
 
-  call fit_parabola_ls5(yk, fk, +1, vmax_fit, y_fit)
+  call fit_parabola_ls5(yk, fk, +1, umax_fit, y_fit)
+
+  ! 对称支路下，上下半区的 y 位置等价；统一折回下半区便于与 benchmark 对照。
+  yLen = yp(ny+1)
+  if (y_fit > 0.5d0*yLen) y_fit = yLen - y_fit
+  
 
   write(*,'(A,1X,ES16.8,2X,A,1X,ES16.8,2X,A,1X,ES16.8)') &
-       'v_mid_max* =', vmax_fit*coef, 'y =', y_fit, 'x_mid =', xmid
+       'u_mid_max* =', umax_fit*coef, 'y =', y_fit, 'x_mid =', xmid
 
   open(unit=00,file="SimulationSettings.txt",status="unknown",position="append")
   write(00,'(A,1X,ES16.8,2X,A,1X,ES16.8,2X,A,1X,ES16.8)') &
-       'v_mid_max* =', vmax_fit*coef, 'y =', y_fit, 'x_mid =', xmid
+       'u_mid_max* =', umax_fit*coef, 'y =', y_fit, 'x_mid =', xmid
+  close(00)
+
+  return
+end subroutine RBcalc_umid_max
+!===================================================================================================
+! RBcalc_umid_max 结束: 计算 Rayleigh-Benard 工况下 x=1/2 处最大水平速度及其位置。
+!===================================================================================================
+
+
+!===================================================================================================
+! 子程序: RBcalc_vmid_max
+! 作用: 计算 Rayleigh-Benard 工况下 y=1/2 处最大垂直速度 vmax 及其 x 位置。
+! 用途: 在 RayleighBenardCell 工况结束后的后处理中调用。
+!===================================================================================================
+subroutine RBcalc_vmid_max()
+  use commondata
+  implicit none
+  integer(kind=4) :: i, k
+  integer(kind=4) :: jMid, jB, jT
+  integer(kind=4) :: i0
+  integer(kind=4) :: ii(5)
+  real(kind=8) :: vline(1:nx)
+  real(kind=8) :: xk(5), fk(5)
+  real(kind=8) :: vmax_fit, x_fit
+  real(kind=8) :: coef, ymid
+  real(kind=8) :: vmax_grid
+
+  coef = velocityScaleCompare
+
+  ! ---- (1) 取 y=1/2 中线剖面 v(x_i, y=1/2) ----
+  if (mod(ny,2) == 1) then
+    jMid = (ny + 1)/2
+    ymid = yp(jMid)
+    do i = 1, nx
+      vline(i) = v(i,jMid)
+    enddo
+  else
+    jB = ny/2
+    jT = jB + 1
+    ymid = 0.5d0*(yp(jB) + yp(jT))
+    do i = 1, nx
+      vline(i) = 0.5d0*(v(i,jB) + v(i,jT))
+    enddo
+  endif
+
+  ! ---- (2) 找峰值所在网格点 i0 ----
+  i0 = 1
+  vmax_grid = vline(1)
+  do i = 2, nx
+    if (vline(i) > vmax_grid) then
+      vmax_grid = vline(i)
+      i0 = i
+    endif
+  enddo
+
+
+  ! ---- (3) 取 5 点并拟合 ----
+  if (i0 <= 2) then
+    ii = (/ 1, 2, 3, 4, 5 /)
+  elseif (i0 >= nx-1) then
+    ii = (/ nx-4, nx-3, nx-2, nx-1, nx /)
+  else
+    ii = (/ i0-2, i0-1, i0, i0+1, i0+2 /)
+  endif
+
+  do k = 1, 5
+    xk(k) = xp(ii(k))
+    fk(k) = vline(ii(k))
+  enddo
+
+  call fit_parabola_ls5(xk, fk, +1, vmax_fit, x_fit)
+
+  write(*,'(A,1X,ES16.8,2X,A,1X,ES16.8,2X,A,1X,ES16.8)') &
+       'v_mid_max* =', vmax_fit*coef, 'x =', x_fit, 'y_mid =', ymid
+
+  open(unit=00,file="SimulationSettings.txt",status="unknown",position="append")
+  write(00,'(A,1X,ES16.8,2X,A,1X,ES16.8,2X,A,1X,ES16.8)') &
+       'v_mid_max* =', vmax_fit*coef, 'x =', x_fit, 'y_mid =', ymid
   close(00)
 
   return

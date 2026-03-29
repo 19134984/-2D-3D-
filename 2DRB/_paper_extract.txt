@@ -1,0 +1,1563 @@
+                                              Computers and Mathematics with Applications 65 (2013) 262–286
+
+
+
+                                                  Contents lists available at SciVerse ScienceDirect
+
+
+                              Computers and Mathematics with Applications
+                                               journal homepage: www.elsevier.com/locate/camwa
+
+
+
+
+Lattice Boltzmann simulations of thermal convective flows in
+two dimensions
+Jia Wang a , Donghai Wang a , Pierre Lallemand b , Li-Shi Luo c,b,∗
+a
+    State Key Laboratory of Severe Weather, Chinese Academy of Meteorological Sciences, Beijing 100081, China
+b
+    Beijing Computational Science Research Center, Beijing, 100084, China
+c
+    Department of Mathematics & Statistics and Center for Computational Sciences, Old Dominion University, Norfolk, VA 23529, USA
+
+
+
+
+article                 info                            abstract
+Keywords:                                               In this paper we study the lattice Boltzmann equation (LBE) with multiple-relaxation-time
+MRT lattice Boltzmann model for
+                                                        (MRT) collision model for incompressible thermo-hydrodynamics with the Boussinesq
+  thermo-hydrodynamics in 2D
+                                                        approximation. We use the MRT thermal LBE (TLBE) to simulate the following two flows
+Square cavity with differentially heated
+  vertical walls                                        in two dimensions: the square cavity with differentially heated vertical walls and the
+Rayleigh–Bénard convection                              Rayleigh–Bénard convection in a rectangle heated from below. For the square cavity, the
+Boundary conditions for thermal flows                   flow parameters in this study are the Rayleigh number Ra = 103 –106 , and the Prandtl
+                                                        number Pr = 0.71; and for the Rayleigh–Bénard convection in a rectangle, Ra = 2 · 103 ,
+                                                        104 and 5 · 104 , and Pr = 0.71 and 7.0.
+                                                                                                          © 2012 Elsevier Ltd. All rights reserved.
+
+
+1. Introduction
+
+    The lattice Boltzmann (LB) modeling of thermo-hydrodynamic flows has been an active area of research since the creation
+of the lattice Boltzmann equation (LBE) (cf., e.g., reviews [1,2] and references therein). The initial effort of thermo-LBE
+(TLBE) was focused on the energy-conserving LB models [3–7]. However, the energy-conserving LB models suffer severe
+numerical instability [6], which is due to spurious coupling in the energy-conserving LB models and cannot be completely
+removed [8].
+    To overcome the numerical instability inherent to the energy-conserving TLBE models [8], the approach to treat the
+temperature as a passive scalar was proposed [9]. In this approach the temperature is independently modeled by an
+advection–diffusion equation which is equivalent to the Boussinesq approximation valid for incompressible flows. The
+passive-scalar TLBE uses two sets of distribution functions—one for mass and momentum and the other for temperature.
+Similar to the LBE for only the mass and momentum conservations [10,11], the passive-scalar TLBE can be directly derived
+from the continuous Boltzmann equation [12–14]. A slightly different approach of passive-scalar TLBE is the hybrid
+approach which solves the temperature equation by finite difference scheme [8,15]. We note that most previous TLBE
+schemes [9,12–14] are based on the lattice Bhatnagar–Gross–Krook (BGK) model with one relaxation time which tunes
+all transport coefficients and higher-order dissipation in the LBE [16,8]. The single-relaxation-time (SRT) collision model
+directly results in two inherent defects of the lattice BGK (LBGK) model: its numerical instability and inaccurate boundary
+conditions [16,17,8,18].
+    The passive-scalar TLBE used in this work is based on the framework of the LBE with multiple-relaxation-time (MRT)
+model due to d’Humières [19] and the LB model for the advection–diffusion equation due to Ginzburg [20–23] and Ginzburg
+
+
+ ∗ Corresponding author at: Department of Mathematics & Statistics and Center for Computational Sciences, Old Dominion University, Norfolk, VA 23529,
+USA. Tel.: +1 757 683 5295.
+   E-mail address: lluo@odu.edu (L.-S. Luo).
+
+0898-1221/$ – see front matter © 2012 Elsevier Ltd. All rights reserved.
+doi:10.1016/j.camwa.2012.07.001
+                                           J. Wang et al. / Computers and Mathematics with Applications 65 (2013) 262–286          263
+
+
+and d’Humières [24]. It has been unequivocally demonstrated that the MRT-LB models are superior over their LBGK
+counterparts in terms of accuracy, numerical stability, and computational efficiency [16,17,8,18]. In addition, the MRT
+formalism is imperative to accurately treat boundary conditions in the LBE simulations [25,17,26,18] and inaccuracy of
+boundary conditions is one of the most severe defects inherent to the LBGK model [27,17,1,28,18].
+    To demonstrate the efficacy of the MRT-TLBE scheme, we will simulate the two following thermal flows in two
+dimensions. The first one is the square cavity with differentially heated vertical walls; and the parameters for this flow are
+the Rayleigh number Ra = 103 –106 and the Prandtl number Pr = 0.71. The second one is the Rayleigh–Bénard convection in
+a rectangle heated from below and subject to gravity; and the flow parameters are Ra = 2 · 103 , 104 and 5 · 104 , and Pr = 0.71
+and 7.0. Both these flows have been studied previously. In this paper we intend to systematically investigate the convergence
+behavior, the effect of the Mach number and the influence of different boundary conditions, and the computational speed
+of the MRT-TLBE. We also intend to provide benchmark quality results which can be compared with the existing data.
+    The remainder of this paper is organized as follows. Section 2 succinctly describes the MRT-TLBE scheme in two-
+dimensions, its boundary conditions, as well as its implementations. Sections 3 and 4 present the numerical results for
+the square cavity with differentially heated vertical walls and the Rayleigh–Bénard convection in a rectangle heated from
+below, respectively. Finally, Section 5 concludes the paper.
+
+
+2. MRT-LB model
+
+   We consider the lattice Boltzmann (LB) model for thermal fluids in two dimensions (2D). The discrete velocity set is that
+of D2Q9 model:
+
+          (0, 0),                                                                i = 0,
+          
+
+      ci = (1, 0)c , (0, 1)c , (−1, 0)c , (0, −1)c ,                              i = 1–4,                                         (1)
+            (1, 1)c , (−1, 1)c , (−1, −1)c , (1, −1)c ,                           i = 5–8,
+          
+
+where c := δ x/δ t, and δ x and δ t are the lattice spacing and discrete time step size, respectively. The thermo-LB (TLB) model
+consists of two sets evolution equations: one for the mass and momentum conservation, and the other for the temperature.
+   The evolution equation for the mass and momentum conservations can be succinctly written as the following:
+
+      f(xj + c δ t , tn + δ t ) = f(xj , tn ) + Q(xj , tn ) + F(xj , tn ),                                                        (2a)
+
+      Q = −M−1 · S · m(xj , tn ) − m(eq) (xj , tn ) ,
+                                                                     
+                                                                                                                                  (2b)
+
+where the following convenient notations have been used:
+
+      f(xj , tn ) := (f0 (xj , tn ), f1 (xj , tn ), . . . , f8 (xj , tn ))Ď ,
+
+      f(xj + c δ t , tn + δ t ) := (f0 (xj , tn + δ t ), f1 (xj + c1 δ t , tn + δ t ), . . . , f8 (xj + c8 δ t , tn + δ t ))Ď ,
+
+      m(xj , tn ) := (m0 (xj , tn ), m1 (xj , tn ), . . . , m8 (xj , tn ))Ď ,
+                                  (eq)
+      m(eq) (xj , tn ) := (m0            (xj , tn ), m1(eq) (xj , tn ), . . . , m(8eq) (xj , tn ))Ď ,
+
+      F := (0, F1 , F2 , . . . , F8 )Ď ,
+                                                                                                                        (eq)
+in which Ď denotes transpose, fi is the distribution function corresponding to ci , mi and mi    are (velocity) moments and
+their equilibrium functions, respectively, and Fi is the component of the forcing projected to the direction of ci . The forcing
+term F in the LBE (2a) is implemented by using a splitting scheme [8,29], of which the details will be described later in
+Section 2.2.
+   The transformation matrix M transforms the distributions {fi } to their (velocity) moments {mi }. To determine the
+transformation matrix M, the ordering of the moments must be prescribed first. The ordering of the moments we use
+here is:
+
+      m = (m0 , m1 , m2 , m3 , m4 , m5 , m6 , m7 , m8 )Ď
+
+          = (ρ, jx , jy , e, pxx , pxy , qx , qy , ε)Ď ,                                                                           (3)
+
+where ρ is the mass density, j := (jx , jy ) = ρ(u, v) := ρ u is the flow momentum and u is flow velocity, e, pxx and pxy are
+the second-order moments corresponding to energy and two off-diagonal components of the stress tensor, respectively,
+qx and qy are the third-order moments corresponding to x and y components of the energy flux, respectively, and ε is the
+fourth-order moment of energy square. With the ordering of the moments specified as the above, the transform matrix can
+264                                        J. Wang et al. / Computers and Mathematics with Applications 65 (2013) 262–286
+
+
+be easily constructed:
+            1              1         1         1        1           1         1    1    1
+            0              1         0        −1        0           1        −1   −1    1
+            0
+                           0         1         0       −1           1         1   −1   −1
+                                                                                          
+            −4            −1        −1        −1       −1           2         2    2    2
+         M= 0              1        −1         1       −1           0         0    0    0 .                                                (4)
+                                                                                         
+            0
+                           0         0         0        0           1        −1    1   −1
+                                                                                          
+            0
+                          −2         0         2        0           1        −1   −1    1
+                                                                                          
+                      0     0        −2         0        2           1         1   −1   −1
+                      4    −2        −2        −2       −2           1         1    1    1
+Note that the product of M and its transpose MĎ , M · MĎ , is a diagonal matrix, thus M−1 can be trivially obtained. The elements
+of the second and third rows of M correspond to the x and y components {ci }, respectively, it thus uniquely determines the
+ordering of the discrete velocity set {ci }.
+    There are three conserved quantities in this model: the mass density ρ and the two components of the momentum
+j = ρ u. Since we are only interested in incompressible fluids in this work, we will use the following approximations:
+                                                        8
+                                                        
+         ρ = ρ0 + δρ,              ρ0 = 1, δρ =                    fi ,                                                                    (5a)
+                                                        i=0
+
+                                                     8
+                                                     
+         j = ρ0 u = ρ0 (u, v),            ρ0 u =               ci fi .                                                                     (5b)
+                                                        i=0
+
+That is, we shall only consider fluctuations of ρ and u about ρ0 = 1 and u = 0, respectively. This helps to significantly reduce
+round-off errors in simulations, especially with single-precision arithmetic on graphic processing units (GPUs). Accordingly,
+the equilibrium moments are then defined as:
+           (eq)
+         m3       = −2δρ + 3ρ0 u · u,                                                                                                      (6a)
+           (eq)                                  (eq)
+         m4       = ρ0 (u2 − v 2 ),            m5        = ρ0 uv                                                                           (6b)
+           (eq)                         (eq)
+         m6       = −ρ0 u,           m7        = −ρ0 v,                                                                                     (6c)
+           (eq)
+         m8       = δρ − 3ρ0 u · u.                                                                                                        (6d)
+                                                                                                    (eq)           (eq)     (eq)
+Note that the equilibria of the conserved moments are themselves, thus m0 = δρ , m1 = ρ0 u, and m2                                 = ρ0 v . With
+the above choice of the equilibria, the speed of sound waves in the unit of c := δ x/δ t = 1 is
+               1
+         cs = √ .                                                                                                                            (7)
+                3
+      With the ordering of {mi } given in Eqs. (3), the diagonal relaxation matrix is given by:
+         S = diag(0, 1, 1, se , sν , sν , sq , sq , sε ),                                                                                    (8)
+where si ∈ (0, 2) for non-conserved modes, and specifically [30,26],
+                      2         (2 − sν )
+         sν =              ,        sq = 8.                                                                                                  (9)
+            6ν + 1              (8 − sν )
+The shear viscosity ν and bulk viscosity ζ in the model are
+                                              
+           1 1       1              1 1        1
+      ν=          −      ,    ζ =           −      .                                                                                       (10)
+                  3   sν       2                    3         se          2
+Unless stated otherwise, we will use se = sε = sν , i.e., the two-relaxation-time (TRT) model [20,31,32].
+  The temperature T is modeled by the following evolution equation
+
+         g (xj + c δ t , tn + δ t ) = g (xj , tn ) − N−1 · Q · n(xj , tn ) − n(eq) (xj , tn ) ,
+                                                                                               
+                                                                                                                                           (11)
+where the notations are similar to the evolution Eq. (2) for {fi }, but with only five discrete velocities: {ci |i = 0, 1, . . . , 4} and
+corresponding distribution functions {gi |i = 0, 1, . . . , 4}. The transformation matrix N is given by
+                                                        
+              1            1        1      1         1
+            0             1        0     −1         0
+         N= 0             0        1      0        −1 .                                                                                  (12)
+                                                     
+            −4            1        1      1         1
+              0            1       −1      1        −1
+                                                           J. Wang et al. / Computers and Mathematics with Applications 65 (2013) 262–286     265
+
+
+The temperature T is the only conserved quantity in the system of {gi } and is computed by
+                 4
+                 
+      T =              gi .                                                                                                                  (13)
+                 i=0
+                                                       (eq)
+The equilibrium moments {ni                                   |i = 0, 1, . . . , 4} corresponding to {gi |i = 0, 1, . . . , 4} are
+        (eq)                          (eq)                               (eq)             (eq)               (eq)
+      n0         = T,             n1           = uT ,                   n2      = vT ,   n3      = aT ,    n4       = 0,                     (14)
+where the velocity field (u, v) = u is obtained from the evolution Eq. (2) of {fi } and a is a constant to be determined later.
+  The diagonal relaxation matrix Q in Eq. (11) is given by
+      Q = diag(0, σκ , σκ , σe , σν ).                                                                                                       (15)
+The relaxation rate σκ determines the heat diffusivity κ :
+                 ( 4 + a)
+                                                      
+                                      1            1
+      κ=                                   −                .                                                                                (16)
+                      10              σκ           2
+To attain the isotropy for the fourth-order (error) term resulting from Eq. (11), σκ and σν must satisfy the following
+relationship similar to Eq. (9) between sq and sν :
+                                                    
+            1          1          1                1            1
+                 −                         −               =        .                                                                        (17)
+            σν         2          σκ               2            6
+In addition, there exists a relationship between σe and σκ . If we fix σκ as
+                              √
+       1          1               3
+             −         =              ,                                                                                                      (18)
+       σκ         2           6
+then additional constraints can be obtained:
+                                                       √
+       1          1           1            1                3
+            −          =         .−            =                                                                         (19)
+       σe         2 σν     2   3
+The above values of σe and σν will be used throughout the present work. The stability of the D2D5 model has been studied by
+Ginzburg et al. [33,34] and Ginzburg [35]. To avoid ‘‘checkerboard’’ type instability along the diagonal directions (±1, ±1),
+we must maintain a < 1. This limits the value of κ and thus one has to release previous conditions on the relaxation rates
+to simulate low Prandtl number fluids. With the above choice of σκ , the thermal diffusivity κ is given by
+           √
+              3 ( 4 + a)
+      κ=                 .                                                                                               (20)
+                        60
+
+2.1. Macroscopic equations
+
+   In this work, we will study the 2D Rayleigh–Bénard (RB) convection of fluids in a rectangular box which is driven by
+buoyancy effect in the vertical direction. As usual, fluids are assumed to be incompressible thus the pressure influence
+on the density variation is neglected. The density variation due to temperature T is approximated by the following linear
+relationship
+                                                                                1 ∂ρ 
+                                                                                    
+      ρ = ρ0 [1 + α(T − T0 )],                                      α :=            ,                                                       (21)
+                                                                             ρ0 ∂ T p
+where ρ0 and T0 are reference density and temperature, respectively, and α is the thermal expansion coefficient.
+Furthermore, the transport coefficients in the system, i.e., the shear viscosity ν and the thermal diffusivity κ , and the thermal
+expansion coefficient α are treated as constants. Consequently we only consider the effect of density difference in the
+buoyancy term, and neglect the viscous heat dissipation and compression work due to the pressure, that is, the Boussinesq
+approximation.
+   In the thermal lattice Boltzmann equation described in the previous section, the temperature T is treated as a passive
+scalar which is transported by the velocity field but does not affect the velocity field except through the buoyancy force.
+Thus, the macroscopic equations derived from the TLBE are:
+                                               1
+      ∂t u + u · ∇ u = −                           ∇ p + ν∇ 2 u + α(T − T0 )g ,                                                             (22a)
+                                           ρ0
+      ∇ · u = 0,                                                                                                                            (22b)
+      ∂t T + u · ∇ T = κ∇ T .                  2
+                                                                                                                                            (22c)
+266                                            J. Wang et al. / Computers and Mathematics with Applications 65 (2013) 262–286
+
+
+In the coordinate system we use, the buoyancy force is given by
+
+       F = ρ0 α(T − T0 )g = −ρ0 α(T − T0 )g ŷ ,                                                                                       (23)
+where g is the gravity, g = 9.81 (m s ), and ŷ is the unit vector in vertical direction or y axis. Thus the projection of the
+                                                          −2
+
+force F onto the velocity space, Fi , in Eq. (2a) is given by Luo [36]:
+
+                       ci · F                                      ci · ŷ
+       Fi = −3wi                     = 3wi ρ0 α(T − T0 )g                    ,                                                         (24)
+                           c2                                       c2
+where w0 = 0, w1,2,3,4 = 1/9 and w5,6,7,8 = 1/36.
+   Two dimensionless numbers characterize the system of thermo-hydrodynamic equations (2): the Prandtl number, Pr,
+and the Rayleigh number, Ra, which are defined as
+
+               ν                                                   α g ∆TL3
+       Pr =      ,          Ra = Gr · Pr,                 Gr =              ,                                                          (25)
+               κ                                                       ν2
+where Gr is the Grashof number, and ∆T and L are the characteristic temperature and length in the system, respectively.
+With the following scalings,
+               x                      tκ                  uL                      pL2                ( T − T0 )
+       x→          ,       t →             ,         u→        ,         p→               ,   θ :=
+               L                      L2                   κ                     ρ0 κ 2                  ∆T
+the thermo-hydrodynamic equations (2) can be written in dimensionless form,
+
+       ∂t u + u · ∇ u = −∇ p + Pr ∇ 2 u + Ra Pr θ ĝ ,                                                                               (26a)
+       ∇ · u = 0,                                                                                                                    (26b)
+       ∂t θ + u · ∇θ = ∇ θ ,          2
+                                                                                                                                      (26c)
+
+where ĝ is unit vector in the direction of the gravitation. The speed of sound cs has to be rescaled, i.e., cs → cs L/κ . However,
+the Mach number Ma remains the same.
+   The shear viscosity ν and thermal diffusivity κ are determined in terms of Pr and Ra and other parameters in simulations:
+                                                              
+                   Pr α g ∆TL3                        ν            α g ∆TL3
+       ν=                             ,        κ=         =                 .                                                          (27)
+                       Ra                            Pr            Pr · Ra
+In a given system, Pr, Ra, ∆T , and L are specified, therefore the above equations lead to two equations for α g depending on the
+                                                                           (eq)
+relaxation rate sν (through ν ) and parameter a in the equilibrium of n3 in Eq. (14) (through κ ), respectively. Consideration
+of numerical stability affects the choices of the value of sν . Once the value sν , so is the value of α g, and in turn the value of the
+parameter a. In this way the values of all the necessary parameters in the TLBE system are fully determined so simulations
+can be carried out.
+    The characteristic velocity in thermal convective flows is
+
+                                          Ra ν
+                                     
+       U = α g ∆TL =                             .
+          
+                                                                                                                                       (28)
+                                          Pr L
+The Mach number based on U should be small in order to comply with incompressible approximation of the flow and also
+the stability criterion on ν . Suppose that U /cs < Ma∗ for some critical Mach number Ma∗ (usually Ma∗ < 0.3), then the
+viscosity ν has the following upper bound
+                       
+              Ma∗          Pr
+       ν< √                     L,                                                                                                     (29)
+                   3       Ra
+where the length L is measured in the lattice unit δ x = 1.
+
+2.2. Implementation of TLBE and its boundary conditions
+
+   In the TLBE model boundary conditions are needed for both velocity u and temperature T . For the velocity field, we use
+no-slip boundary conditions which can be accurately realized by the bounce-back (BB) boundary conditions (BCs). For an
+impenetrable rigid wall aligned with a grid line and at the rest, the BB-BCs are:
+
+       fı̄ (xf , tn + δ t ) = fi∗ (xf , tn ),                                                                                          (30)
+where xf is a fluid node adjacent to a boundary, fı̄ corresponds to cı̄ = −ci , fi (xf , tn ) denotes post-collision value of fi (xf , tn ),
+                                                                                                           ∗
+
+and cı̄ is not parallel to the wall. Thus, the incoming distribution function (from domain outside of the wall) fı̄ (xf , tn + δ t ) is
+equal to the outgoing distribution function (from the fluid domain) fi∗ (xf , tn ).
+                                         J. Wang et al. / Computers and Mathematics with Applications 65 (2013) 262–286        267
+
+
+     As for the temperature field, two types of boundary conditions are needed: constant temperature and adiabatic, i.e.,
+n̂ · ∇θ = 0, where n̂ is unit vector out-normal to the wall. For a wall with the (dimensionless) temperature θw , the following
+‘‘anti-bounce-back’’ boundary conditions for gi are used:
+                                                    ( 4 + a)
+      gı̄ (xf , tn + δ t ) = −gi∗ (xf , tn ) +                 θw
+                                                      10
+                                                    √
+                               = −gi∗ (xf , tn ) + 2 3κθw ,                                                                   (31)
+where Eq. (16) has been substituted and, again, and cı̄ is not parallel to the wall. An adiabatic wall, which is the Neumann
+boundary condition, can be realized with the bounce-back boundary conditions:
+      gı̄ (xf , tn + δ t ) = gi∗ (xf , tn ).                                                                                  (32)
+Periodic boundary conditions in the horizontal direction can also be used. We will study the effects due to different boundary
+conditions.
+   We would like to emphasize that it is imperative to use the MRT-TLBE in the simulations. With the bounce-back boundary
+conditions, we must use the relationships between the relaxation rates, that is sq (sν ) of Eq. (9) and σν (σκ ) of Eq. (17). These
+relationships ensure that the imposed boundary conditions for u and T are satisfied coincidentally at the location δ x/2
+beyond the last fluid node, and the location of the boundary conditions is independent of the transport coefficients. For the
+single-relaxation-time or lattice Bhatnagar–Gross–Krook (LBGK) models, the boundary location depends on the relaxation
+time τ , which is a significant source of error in the LBGK model.
+   The MRT-TLBE including the forcing term in Eq. (2) is implemented as follows:
+1. Advection of {fi } and {gi };
+2. Compute conserved quantities δρ and u from {fi }, T from {gi }, and other moments of {fi } and {gi };
+3. Compute u∗ = u + a(T )δ t /2, where a(T ) := F (T )/ρ0 , and F is given by Eq. (23);
+4. Compute equilibrium moments {m(eq) } using δρ and u∗ , and {n(eq) } using T ;
+5. Relax the moments {mi } and {ni };
+6. Update u∗∗ = u∗ + a(T )δ t /2 = u + a(T )δ t;
+7. Map moments {mi } (which include u∗∗ ) and {ni } to distribution functions {fi } and {gi }, respectively;
+8. Compute the post-collision distributions.
+    Two remarks are in order here. First, the relaxation rate for the momentum ρ0 u is unity in the MRT-LBE implementation
+regardless the values of the other relaxation rates, as implied S of Eq. (8), consequently there is no need to correct the
+artifacts in the LBGK model due to the inadvertent yet inevitable factor τ −1 in the forcing term [37], which affects the stress
+in the following time step. And second, the splitting of the forcing in two halves is similar to Strang splitting which ensures
+the second-order accuracy of the LBE scheme [29].
+    The flow domain used in this work is a rectangle of size L × H. The mesh is a uniform Cartesian grid of size (Nx + 2) ×
+(Ny + 2), so that 0 ≤ i ≤ (Nx + 1) and 0 ≤ j ≤ (Ny + 1). The fluid nodes are those of 1 ≤ i ≤ Nx and 1 ≤ j ≤ Ny . Thus
+we have Lx,y = Nx,y δ x in lattice units. The external nodes of the mesh, i.e., i = 0, i = (Nx + 1), j = 0, and j = (Ny + 1), are
+used as storage cells for the outgoing distribution functions during the advection step. Because the boundary conditions are
+satisfied at the location δ x/2 beyond the last fluid nodes.
+
+3. Square cavity with differentially heated vertical walls
+
+3.1. Flow configurations and conditions
+
+    The first case to be simulated by the MRT-TLBE is the natural convection in a two-dimensional square cavity heated
+differentially on the vertical side walls. The flow configuration is illustrated in Fig. 1 and detailed as the following. The flow
+domain is a square of unit dimensions, i.e., (x, y) ∈ [0, 1] × [0, 1]. The direction of gravity is vertical and downward. The
+left and right vertical boundaries are maintained at a constant high temperature θ = +0.5 and a constant low temperature
+θ = −0.5, respectively; and the top and bottom boundaries are adiabatic, ∂y θ = 0. All boundaries are impenetrable, rigid
+and no-slip. Thus, for {gi }, the BCs for constant-temperature and adiabatic walls are applied to the vertical and horizontal
+walls, respectively; and for {fi }, the bounce-back boundary conditions are applied to all walls.
+    The initial state of the flow is quiescent and isothermal, i.e., u = 0, δρ = 0, and θ = 0. The criteria of attaining a steady
+state are:
+              ∥u(i, j, tn+1000 ) − u(i, j, tn )∥2
+       
+       i,j
+                                                     < 10−12 ,                                                               (33a)
+                         ∥u(i, j, tn+1000 )∥2
+                 
+                  i ,j
+
+       max |θ (i, j, tn+1000 ) − θ (i, j, tn )| < 10−6 ,                                                                     (33b)
+        i,j
+
+where ∥ · ∥2 denotes the L2 norm.
+268                                       J. Wang et al. / Computers and Mathematics with Applications 65 (2013) 262–286
+
+
+
+
+                         Fig. 1. Illustration of the flow domain for the square cavity (H = L) with differentially heated side walls.
+
+
+      Unless otherwise stated, the parameter a in κ of Eq. (16) and the viscosity ν are determined by the following formulas:
+
+                                                    3.6
+                                                
+              20MaNx
+         a= √      − 4,                  ν=               c δ x,                                                                         (34)
+             Ra Pr                                  Ra
+where the formula of a is derived from Eq. (27) for κ , and the formula for ν is obtained based on the following considerations.
+To ensure the stability with the smallest mesh size N = 41 in our simulations, we use Pr = 0.71 and a reasonable value of
+the Mach number in Eq. (29) to obtain the above upper-bound for ν .
+
+3.2. Quantities under study
+
+    This flow has been extensively studied as a bench-mark flow [38] with various numerical methods including finite-
+difference (FD) [39,40], finite-element (FE) [41], finite-volume (FV) [42,43], and pseudo-spectral (PS) [44–46], spectral-
+element (SE) [47], and other methods [38]. The paper by De Vahl Davis [39] is a comprehensive review of this flow, which
+provides a guide to our work. We will compute some quantities of interest and compare our results with existing data. We
+will use Pr = 0.71 (for air) and Ra = 103 , 104 , 105 , and 106 . The quantities to be computed include averaged and local
+Nusselt numbers. The local heat flux in the horizontal (x) direction is
+         qx = uθ − ∂x θ ,                                                                                                                (35)
+which will be used to compute Nusselt numbers. The first is the volume average Nusselt number ⟨Nu⟩,
+                              L         H                         Nx ,Ny
+                     1                                         1     
+         ⟨Nu⟩ =                    dx         dy qx ≈                        qx (i, j),                                                  (36)
+                  LH ∆θ       0          0                 Nx Ny ∆θ i,j=1
+
+where ∆θ = 1. The second and third ones are the average Nusselt numbers along the hot wall at x = 0 and the vertical
+mid-plane of the cavity at x = 1/2:
+                             Ny
+                     1       
+         ⟨Nu⟩0 ≈                    qx (i, j)|x=0 ,                                                                                     (37a)
+                   Ny ∆θ j=1
+
+                                  Ny
+                         1        
+         ⟨Nu⟩1/2 ≈                      qx (i, j)|x=1/2 .                                                                               (37b)
+                     Ny ∆θ j=1
+
+In addition, we also identify the maximum and minimum local Nusselt number, Numax and Numin , at the left wall (x = 0)
+and their (normalized) vertical coordinates y. Note that in Eq. (37a), x = 0 is the location of the left vertical wall, which is
+located at δ x/2 beyond the last fluid nodes, {i = 1, Nx |1 ≤ j ≤ Ny } and {j = 1, Ny |1 ≤ i ≤ Nx }, as discussed previously.
+The derivative ∂x θ needed for the Nusselt numbers is approximated by the finite difference formula involving nine points
+including (i, j), (i ± 1, j), (i, j ± 1), and (i ± 1, j ± 1).
+    The values of some hydrodynamic variables and their locations are of interest, too; they include the maximum horizontal
+velocity umax on the vertical mid-plane of the cavity and its y coordinate, the maximum vertical velocity vmax on the
+horizontal mid-plane and its x coordinate, the maximum absolute value of the stream function and its location, |ψ|max ,
+and the absolute value of the stream function in the center of the cavity, |ψmid |. In the ensuing simulations, the velocity field
+u is normalized by κ/Ly .
+                                    J. Wang et al. / Computers and Mathematics with Applications 65 (2013) 262–286         269
+
+
+                              Table 1
+                              Ra dependence of L2 -normed grid convergence of flow fields. Pr = 0.71 and Ma = 0.01.
+
+                               Ra         103                 104                 105                106
+
+                               N2         ∥δ u∥2
+                               412        2.523 · 10−3        4.359 · 10−3        1.341 · 10−2       4.580 · 10−2
+                               812        6.378 · 10−4        1.118 · 10−3        3.483 · 10−3       1.178 · 10−2
+                               1612       1.317 · 10−4        2.329 · 10−4        7.334 · 10−4       2.494 · 10−3
+                               n          2.1589              2.1420              2.1246             2.1278
+                                          ∥δ p∥2
+                               412        3.111 · 10−3        2.832 · 10−3        4.329 · 10−3       9.929 · 10−3
+                               812        8.615 · 10−4        8.214 · 10−4        1.164 · 10−3       2.859 · 10−3
+                               1612       1.949 · 10−4        1.919 · 10−4        2.579 · 10−4       6.000 · 10−4
+                               n          2.0254              1.9681              2.0621             2.0520
+                                          ∥δθ∥2
+                               412        3.590 · 10−4        1.158 · 10−3        4.831 · 10−3       1.564 · 10−2
+                               812        8.555 · 10−5        2.785 · 10−4        1.154 · 10−3       3.819 · 10−3
+                               1612       1.713 · 10−5        5.603 · 10−5        2.312 · 10−4       7.709 · 10−4
+                               n          2.2247              2.2144              2.2224             2.2008
+
+
+3.3. Grid convergence of flow fields
+
+    We use a uniform mesh of size Nx × Ny = N 2 with N 2 between 412 and 3212 to investigate the convergence behavior
+of the MRT-TLBE. The grid spacing h is then 1/N. Another parameter considered here is the Mach number Ma, which is
+effectively equivalent to the Courant–Friedrichs–Lewy (CFL) number as far as the time step size is concerned [18]. Of course,
+the Mach number is also directly related to the compressibility error in the LBE [48–50,18]. We first study the convergence
+behavior of the MRT-TLBE with a fixed Mach number Ma = 0.01. The error in the velocity field is computed as follows,
+                      ∥u(xj ) − u∗ (xj )∥2
+                  
+                  j
+      ∥δ u∥2 :=                              ,                                                                            (38)
+                            ∥u∗ (xj )∥2
+                       
+                        j
+
+where u∗ (xj ) is the reference solution of the velocity field. The errors for the pressure p and temperature θ are similarly
+defined. We use the solutions obtained with N 2 = 3212 as the reference solutions. It should be noted that, because the
+boundary conditions are satisfied h/2 beyond the last fluid nodes, the meshes of different size N 2 have no overlapping grid
+points. Thus, the flow fields obtained with the largest mesh size N 2 = 3212 are interpolated to coarser meshes with a
+second-order interpolation in both x and y direction to compute the differences of flow fields.
+   In Table 1 we tabulate the L2 -normed errors of the velocity u, pressure p, and (normalized) temperature θ , as well as the
+rates (n) of convergence of these flow fields. The rates of convergence for the flow fields are all about 2.0. However, if we
+do not interpolate the flow fields and simply compute the difference of the flow fields with different meshes on the closest
+grid points, the rates of convergence would be between 1.3 and 1.4. We also notice that the errors of the flow fields depend
+on the Rayleigh number Ra. With a fixed resolution N, the errors in the velocity u, the pressure p, and the temperature θ
+increase with Ra except for the case of ∥δ p∥2 with Ra = 104 .
+
+3.4. Convergence of Nusselt numbers
+
+    We study convergence behaviors of the local and averaged Nusselt numbers. For various Nusselt numbers, we need to
+compute the heat flux qx of Eq. (35) at boundaries, which are located at δ x/2 beyond the last fluid nodes. Since the vertical
+walls are no-slip ones, the Nusselt number Nu at the left wall is given by −∂x θ ; the temperature gradient ∂x θ along each
+horizontal lattice line is evaluated at x = 0 with the temperature θ at x = 0, and i = 1 and 2. The temperature θ at the
+horizontal walls is unknown and is obtained by fitting the first four points next to the walls along each vertical lattice line
+with a second-order polynomial a + b(y − y0 )2 , where y0 is the vertical position of a horizontal wall.
+    Fig. 3 shows the Nusselt number averaged over vertical grid lines, ⟨Nu⟩y , and the local Nusselt number at the left (hot)
+wall x = 0, with Ra = 106 . Note that the average Nusselt number ⟨Nu⟩y is symmetric about the vertical center line of the
+cavity x = 1/2, we only show ⟨Nu⟩y in the interval of 0 ≤ x ≤ 1/2. We can see that ⟨Nu⟩y oscillates severely near the wall
+when the mesh size N 2 is small. With the largest mesh size N 2 = 3212 , ⟨Nu⟩y converges to a constant. However a small
+oscillation remains near the wall. The Nusselt number Nu at the hot wall should have a minimum at the top left corner
+(x, y) = (0, 1). It can be seen that Nu oscillates slightly near the top left corner when the mesh size is small.
+    We tabulate average and local Nusselt numbers and their locations depending on the Rayleigh number Ra and mesh
+size N 2 in Table 2. The value of Numax is found by using the least-square fit of five points about Numax with a third-order
+270                                  J. Wang et al. / Computers and Mathematics with Applications 65 (2013) 262–286
+
+
+Table 2
+Convergence behavior of the Nusselt numbers with Pr = 0.71 and Ma = 0.01. The asymptotic values of the Nusselt numbers obtained by Eq. (39) and
+order of convergence are given in the rows with ∞ and n, respectively. The data marked with ‘‘∗’’ are not used in the calculations of the corresponding
+asymptotic values.
+ Ra               N2               ⟨Nu⟩                 Nu0                 Nu1/2                Numax                y                      Numin
+                  412              1.1172               1.1177              1.1176                1.5099∗             0.09381∗               0.6905
+                  572              1.1175               1.1177              1.1177                1.5082              0.09036                0.6910
+                  812              1.1176               1.1178              1.1177                1.5072              0.08922                0.6911
+ 103              1132             1.1177               1.1178              1.1178                1.5068              0.08877                0.6912
+                  1612             1.1178               1.1178              1.1178                1.5065              0.08858                0.6912
+                  2252             1.1178               1.1178              1.1178                1.5064              0.08850                0.6912
+                  3212             1.1178               1.1178              1.1178                1.5064              0.08846                0.6912
+                  ∞                1.1178               1.1178              1.1178                1.5063              0.08843                0.6912
+                  n                1.9907               1.8058              1.9440                2.0086              2.4485                 2.7541
+                  412              2.2407               2.2476              2.2393                3.5857              0.1395                 0.5869
+                  572              2.2427               2.2460              2.2419                3.5583              0.1414                 0.5863
+                  812              2.2437               2.2453              2.2434                3.5441              0.1428                 0.5858
+ 104              1132             2.2443               2.2450              2.2440                3.5375              0.1435                 0.5854
+                  1612             2.2445               2.2449              2.2444                3.5342              0.1439                 0.5852
+                  2252             2.2447               2.2449              2.2446                3.5326              0.1440                 0.5851
+                  3212             2.2447               2.2448              2.2447                3.5318              0.1441                 0.5850
+                  ∞                2.2448               2.2448              2.2448                3.5310              0.1443                 0.5849
+                  n                1.9739               2.3282              2.0193                2.0369              1.7297                 1.6019
+                  412              4.5051               4.5511              4.5063                8.2585              0.07487                0.7853
+                  572              4.5128               4.5348              4.5135                8.0027              0.07495                0.7601
+                  812              4.5171               4.5270              4.5175                7.8549              0.07738                0.7449
+ 105              1132             4.5193               4.5239              4.5195                7.7861              0.07952                0.7375
+                  1612             4.5205               4.5226              4.5206                7.7512              0.08082                0.7325
+                  2252             4.5210               4.5220              4.5211                7.7355              0.08146                0.7302
+                  3212             4.5213               4.5218              4.5214                7.7275              0.08179                0.7290
+                  ∞                4.5216               4.5214              4.5216                7.7161              0.08238                0.7279
+                  n                1.9424               2.1385              1.9620                1.9106              1.3529                 1.9237
+                  412              8.8106               9.0356              8.8600               21.1647∗             0.04086∗               1.0019∗
+                  572              8.8138               8.9487              8.8400               20.0506∗             0.03738∗               1.1912∗
+                  812              8.8183               8.8840              8.8317               18.9821∗             0.03747∗               1.1227
+ 106              1132             8.8213               8.8518              8.8283               18.3065              0.03539                1.0582
+                  1612             8.8232               8.8362              8.8267               17.9028              0.03650                1.0182
+                  2252             8.8241               8.8299              8.8259               17.7147              0.03769                0.9988
+                  3212             8.8247               8.8272              8.8256               17.6196              0.03846                0.9886
+                  ∞                8.8253               8.8192              8.8254               17.5274              0.03952                0.9769
+                  n                1.5421               1.6861              2.5344                2.0471              1.3224                 1.8474
+
+
+
+polynomial of y locally. The value of Numin is always located at 2–3 grid spacings away from the top left corner, thus we may
+assume the location converges to y = 1 and do not list it in Table 2. In Table 2 we also give the asymptotic values of Nusselt
+numbers, which are obtained by the least-square fit with the following third-order polynomial:
+
+       f (h) = a0 + a2 h2 + a3 h3 ,                                                                                                              (39)
+where h := 1/N is the (normalized) grid spacing, and a0 is the asymptotic value of f (h) in the limit of h → 0 (or N → ∞).
+The asymptotic values of the Nusselt numbers are then used to compute the rates of convergence n. It should be noted that
+for both Numax and Numin , the rates of convergence are measured with L∞ norm.
+    As shown in Table 2, all the average and local Nusselt numbers exhibit monotonic behavior as the mesh size N 2 increases.
+This monotonicity is preserved by the polynomial of Eq. (39) in the relevant range of h. In the case of the lowest Rayleigh
+number, Ra = 103 , it can be seen clearly that the Nusselt numbers quickly reach their asymptotic values independent of
+grid-size h. In some cases the data obtained with the coarsest meshes do not fit well with the polynomial (39), thus these
+data are excluded in the least-square fitting. We observe that in most cases, a second-order convergence is achieved for the
+Nusselt numbers. The worst rate of convergence corresponds to the vertical location y of Numax with Ra = 105 and 106 . Also,
+the convergence rates for ⟨Nu⟩ and Nu0 with Ra = 106 are less than 2.0.
+
+3.5. Convergence of hydrodynamic quantities
+
+   In Table 3 we tabulate the value of the stream-function at the center of the cavity, |ψmid |, and the maximum value of
+the stream-function, |ψ|max , and its location, the maximum x velocity on the vertical center line x = 1/2, umax , and its y
+coordinate, and the maximum y velocity on the horizontal center line y = 1/2, vmax , and its x coordinate, as well as the
+asymptotic values of |ψmid |, |ψ|max , umax , and vmax , and the corresponding rates of convergence n. The asymptotic values
+                                    J. Wang et al. / Computers and Mathematics with Applications 65 (2013) 262–286                               271
+
+
+Table 3
+Convergence behavior of the hydrodynamic variables with Pr = 0.71 and Ma = 0.01. The data marked with ‘‘∗’’ are not used in the calculations of the
+corresponding asymptotic values.
+ Ra          N2          |ψmid |          |ψ|max            (x, y)                    umax              y            vmax               x
+             412           1.1702         –                 –                          3.6439           0.8133          3.6935          0.1788
+             572           1.1724         –                 –                          3.6466           0.8133          3.6954          0.1786
+             812           1.1735         –                 –                          3.6480           0.8132          3.6964          0.1784
+ 103         1132          1.1741         –                 –                          3.6487           0.8132          3.6969          0.1784
+             1612          1.1744         –                 –                          3.6491           0.8132          3.6972          0.1784
+             2252          1.1745         –                 –                          3.6493           0.8132          3.6973          0.1783
+             3212          1.1746         –                 –                          3.6494           0.8132          3.6974          0.1783
+             ∞             1.1746         –                 –                          3.6494           0.8132          3.6974          0.1783
+             n             2.0140         –                 –                          1.9833           1.9180          1.9587          1.9183
+             412           5.0590         –                 –                         16.1848           0.8231         19.6052          0.1195
+             572           5.0662         –                 –                         16.1839           0.8232         19.6160          0.1192
+             812           5.0701         –                 –                         16.1836           0.8232         19.6221          0.1190
+ 104         1132          5.0718         –                 –                         16.1835           0.8232         19.6250          0.1190
+             1612          5.0728         –                 –                         16.1834           0.8232         19.6266          0.1189
+             2252          5.0732         –                 –                         16.1834           0.8232         19.6274          0.1189
+             3212          5.0735         –                 –                         16.1834           0.8232         19.6278          0.1189
+             ∞             5.0737         –                 –                         16.1833           0.8232         19.6282          0.1189
+             n             2.0269         –                 –                          3.0339           1.6742          1.9684          1.9594
+             412           9.0598          9.5781           (0.2970, 0.5962)          34.9560∗          0.8525∗        68.4396          0.06708
+             572           9.0876          9.5900           (0.2919, 0.5988)          34.7997∗          0.8531∗        68.5277          0.06648
+             812           9.1022          9.6019           (0.2881, 0.6001)          34.7837           0.8539         68.5819          0.06618
+ 105         1132          9.1089          9.6094           (0.2864, 0.6008)          34.7586           0.8542         68.6070          0.06602
+             1612          9.1123          9.6136           (0.2854, 0.6012)          34.7495           0.8544         68.6212          0.06594
+             2252          9.1139          9.6151           (0.2850, 0.6013)          34.7456           0.8545         68.6280          0.06590
+             3212          9.1148          9.6160           (0.2847, 0.6014)          34.7430           0.8546         68.6318          0.06588
+             ∞            9.1157           9.6179           (0.2843, 0.6015)          34.7424           0.8546        68.6358           0.06586
+             n            2.0328           1.5571           (1.7293, 1.9795)           2.8793           1.7545         1.8989           2.0363
+             412         16.2422          16.6153∗          (0.1779, 0.5455)∗         64.4482           0.8421       218.1669∗          0.04161∗
+             572         16.3184          16.7160∗          (0.1636, 0.5473)∗         64.6332           0.8459       220.4276∗          0.03916∗
+             812         16.3553          16.7254           (0.1587, 0.5453)          64.7319           0.8481       220.4059           0.03843
+ 106         1132        16.3716          16.7614           (0.1548, 0.5457)          64.7810           0.8490       220.4684           0.03807
+             1612        16.3797          16.7885           (0.1525, 0.5462)          64.8077           0.8495       220.5105           0.03791
+             2252        16.3832          16.8012           (0.1514, 0.5466)          64.8206           0.8497       220.5363           0.03783
+             3212        16.3849          16.8057           (0.1509, 0.5466)          64.8277           0.8498       220.5506           0.03779
+             ∞           16.3868          16.8149           (0.1503, 0.5468)          64.8336           0.8499       220.5658           0.03776
+             n            2.1299           1.7145           (1.9074, 1.4639)           2.0167           1.9639         1.7157           2.2580
+
+
+
+are obtained by the least-square fitting with the third-order polynomial of Eq. (39), similar to what we did with the data
+in Table 2. Note that when Ra = 103 and 104 , the position of |ψmid | coincides with that of |ψ|max , as exhibited by the
+corresponding streamlines in Fig. 2.
+   The values of both |ψmid | and |ψ|max increase monotonically as the mesh size N 2 increases. The rate of convergence for
+|ψmid | is about 2.0, while that for |ψ|max and its coordinates are lower. As for umax and vmax as well as their locations, the
+rates of convergence are about 2.0 in most cases. The data in Tables 1–3 clearly indicate that the MRT-TLBE scheme has a
+second-order rate of convergence.
+
+3.6. Mach-number effect
+
+    The LBE is based on small-Mach-number expansions of the Maxwellian equilibrium [10,11] and the errors in flow fields
+depend on the Mach number Ma indicating the presence of compressibility effect [48–50,18]. We will study the effect of the
+Mach number Ma on the flow fields and other quantities under study. We will fix Ra = 106 and Pr = 0.71 in what follows
+unless otherwise stated.
+    First, we use the flow fields obtained with the smallest Mach number Ma = 0.01 and the largest mesh size N 2 = 3212
+as the reference fields to compute the errors in the velocity u, pressure p, and temperature θ , i.e., the reference field u∗ in
+Eq. (38) is the one obtained with Ma = 0.01 and N 2 = 3212 . The results are tabulated in Table 4. We observe that the errors
+in u, p, and θ are independent of Ma for N 2 < 3212 , and the rates of convergence for all flow fields are about 2.0, clearly
+indicating a second-order convergence.
+    To further investigate the effect of Ma on the flow fields, we compute the relative flow field differences with respect to
+their solutions obtained with Ma = 0.01 and a fixed mesh size N 2 . That is, with a fixed mesh size N 2 , we compute the flow
+fields depending on Ma, then compute the flow field differences with the same resolution with respect to the solutions of
+Ma = 0.01. The results are tabulated in Table 5. As can be seen clearly, the flow field differences with an equal resolution
+272                                   J. Wang et al. / Computers and Mathematics with Applications 65 (2013) 262–286
+
+
+
+
+Fig. 2. Flow fields in the square cavity with differentially heated vertical walls and Pr = 0.71: the streamlines ψ (left), isotherms (middle), and pressure p
+(right). From top to bottom: Ra = 103 , 104 , 105 , and 106 . Mesh sizes: N 2 = 1612 for Ra = 103 and N 2 = 3212 for Ra ≥ 104 . Solid (red) lines: Ma = 0.01,
+and dashed (black) lines: Ma = 0.02 for Ra = 103 , Ma = 0.05 for Ra = 104 , and Ma = 0.15 for Ra ≥ 105 . (For interpretation of the references to colour
+in this figure legend, the reader is referred to the web version of this article.)
+
+
+
+N and different Mach number Ma are rather weak—they all remain in the order of 10−7 or smaller. It can also be seen that
+except for the case of ∥δ u∥ with N 2 = 412 , the differences between flow fields increase when both N and Ma increase,
+although the effect of Ma on the temperature field θ seems to be weaker.
+   In Table 6 we show the effect of Mach number Ma on local hydrodynamic quantities umax and vmax as well as the local
+Nusselt number Numax . The Mach number Ma has very little, if any, effect on these quantities. With a fixed mesh size N 2 , the
+effect of Ma on umax appears in the seventh significant digit, and that on vmax and Numax appears in the eighth significant
+digit. This clearly suggests that Mach number effects on these quantities are insignificant and negligible. We observe that
+the rates of convergence for both umax and Numax are about 2.0, while that for vmax is only about 1.7. We also notice that
+the magnitude of vmax is the largest among umax , vmax , and Numax . Because the Mach number in the LBE is effectively the
+CFL number [18], which affects the time step size thus the computational speed, one should use as large a Mach number as
+possible to enhance computational efficiency, so long as both accuracy and stability are maintained.
+                                       J. Wang et al. / Computers and Mathematics with Applications 65 (2013) 262–286                                   273
+
+
+                       a                                                       b
+
+
+
+
+Fig. 3. (a) Distribution of the Nusselt number ⟨Nu⟩y averaged over y as a function of x. ⟨Nu⟩y is symmetric about x = 1/2. (b) Distribution of the heat flux
+qx (y) on the left (hot) wall x = 0. Ra = 106 and Ma = 0.01.
+
+
+Table 4
+Mach-number dependence of the errors in flow fields u, p, θ with L2 -norm. Ra = 106 and Pr = 0.71. The flow fields with N 2 = 3212 and Ma = 0.01 are
+used as the reference solutions to compute the errors.
+ Ma                 0.01                         0.02                        0.05                         0.10                         0.15
+
+ N2                 ∥δ u∥2
+ 412                4.5799504 · 10−2             4.5799509 · 10−2            4.5799515 · 10−2             4.5799514 · 10−2             4.5799513 · 10−2
+ 812                1.1777526 · 10−2             1.1777518 · 10−2            1.1777514 · 10−2             1.1777512 · 10−2             1.1777509 · 10−2
+ 1612               2.4943359 · 10−3             2.4943174 · 10−3            2.4943087 · 10−3             2.4943045 · 10−3             2.4942981 · 10−3
+ 3212               –                            1.7684115 · 10−7            2.6032163 · 10−7             3.0046556 · 10−7             3.6062902 · 10−7
+ n                  2.1278332                    2.1278387                   2.1278414                    2.1278426                    2.1278445
+                    ∥δ p∥2
+ 412                9.9289858 · 10−3             9.9289837 · 10−3            9.9289814 · 10−3             9.9289817 · 10−3             9.9289821 · 10−3
+ 812                2.8593464 · 10−3             2.8593493 · 10−3            2.8593507 · 10−3             2.8593514 · 10−3             2.8593525 · 10−3
+ 1612               5.9995930 · 10−4             5.9996560 · 10−4            5.9996862 · 10−4             5.9997015 · 10−4             5.9997277 · 10−4
+ 3212               –                            6.2892469 · 10−8            1.0319561 · 10−7             1.2599556 · 10−7             1.3729586 · 10−7
+ n                  2.0520076                    2.0519997                   2.0519959                    2.0519940                    2.0519909
+                    ∥δθ ∥2
+ 412                1.5640836 · 10−2             1.5640836 · 10−2            1.5640835 · 10−2             1.5640836 · 10−2             1.5640836 · 10−2
+ 812                3.8188514 · 10−3             3.8188519 · 10−3            3.8188522 · 10−3             3.8188524 · 10−3             3.8188525 · 10−3
+ 1612               7.7092667 · 10−4             7.7092763 · 10−4            7.7092821 · 10−4             7.7092843 · 10−4             7.7092888 · 10−4
+ 3212               –                            2.8141413 · 10−8            4.7069431 · 10−8             5.6457606 · 10−8             6.1130623 · 10−8
+ n                  2.2007881                    2.2007872                   2.2007866                    2.2007864                    2.2007860
+
+
+
+    Clearly, the Mach number has little effect on the accuracy of the MRT-TLBE simulations for incompressible thermal flows
+with the Boussinesq approximation. This is in sharp contrast to athermal flows (cf., e.g., [48,18]) in which the errors are of the
+order of Mach number square. The reason for this insensitivity of thermal flows to the Mach number is that, in thermal flows,
+the buoyancy force due to the temperature is driving flow, while the buoyancy force is realized through density variation,
+it is inherently different from the density fluctuations which are responsible for acoustic waves in athermal flows.
+
+
+3.7. Computational efficiency
+
+   Our code is written in Fortran with MPI and runs on an IBM p5 575 system with nodes of 16 duo-core 1.9 GHz processors.
+With a mesh size N 2 = 3212 , the speed of our code on one processor is about 7.3 · 106 and 9.9 · 106 sites update per second
+with or without MPI.
+   Since the Mach number Ma has very little quantitative effect on the flow fields and hydrodynamic quantities under
+study, as shown in the previous section, the only concern is the numerical stability for computational efficiency. Because
+Mach number Ma is equivalent to the CFL number [18], thus the greater the Mach number, the larger the time step size, and
+hence the faster the computational speed. In Table 7 we show the number of iterations to achieve the steady state criteria
+given by Eqs. (33) depending on the Mach number Ma and the mesh size N 2 . Clearly, with the Rayleigh number Ra fixed, the
+number of iterations Nt is proportional to the mesh size N and to Ma−1 .
+274                                  J. Wang et al. / Computers and Mathematics with Applications 65 (2013) 262–286
+
+
+                           Table 5
+                           The Mach-number dependence of L2 -norm differences in flow fields with equal mesh size
+                           N 2 . The flow fields obtained with Ma = 0.01 are used as the reference solutions.
+                            Ma             0.02                0.05                0.10               0.15
+
+                            N2             ∥δ u(Ma)∥2 · 107
+                            412            0.20222368          0.43706473          0.41168471         0.39348873
+                            812            0.36606726          0.54019218          0.62654639         0.74492363
+                            1612           0.82486307          1.21813015          1.40795718         1.68678479
+                            3212           1.76841156          2.60321632          3.00465563         3.60629020
+
+                                           ∥δ p(Ma)∥2 · 107
+                                 2
+                            41             0.15852664          0.29812073          0.34574955         0.36421706
+                            812            0.23645841          0.39160877          0.48417119         0.51853590
+                            1612           0.38663073          0.63573719          0.78335873         0.84284211
+                            3212           0.62892469          1.03195616          1.25995569         1.37295864
+
+                                           ∥δθ(Ma)∥2 · 107
+                            412            0.07039132          0.13246378          0.15329471         0.16184793
+                            812            0.10665124          0.17819453          0.21795092         0.23075655
+                            1612           0.17341850          0.28760317          0.35006790         0.37356528
+                            3212           0.28141413          0.47069431          0.56457606         0.61130623
+
+
+
+                 Table 6
+                 The Mach-number dependence of the convergence of umax , vmax and Numax for Ra = 106 and Pr = 0.71.
+                   Ma        0.01                    0.02                0.05                0.10                0.15
+
+                   N2        umax
+
+                   412        64.44819215             64.44819357         64.44819531         64.44819498         64.44819462
+                   572        64.63320164             64.63319843         64.63319472         64.63319509         64.63319567
+                   812        64.73194665             64.73194324         64.73194161         64.73194074         64.73193963
+                   1132       64.78099738             64.78100152         64.78100338         64.78100584         64.78100465
+                   1612       64.80770630             64.80769867         64.80769502         64.80769316         64.80769061
+                   2252       64.82063061             64.82063999         64.82064420         64.82064625         64.82064975
+                   3212       64.82765313             64.82763694         64.82762932         64.82762546         64.82762006
+                   ∞          64.83357823             64.83357433         64.83357298         64.83357185         64.83356989
+                   n           2.01669407              2.01623400          2.01598194          2.01588233          2.01578058
+                             vmax
+                   412       218.16693306            218.16693330        218.16693370        218.16693342        218.16693314
+                   572       220.42757268            220.42757111        220.42756935        220.42756928        220.42756945
+                   812       220.40585471            220.40585314        220.40585235        220.40585184        220.40585132
+                   1132      220.46842291            220.46842364        220.46842381        220.46842431        220.46842382
+                   1612      220.51054480            220.51054158        220.51053998        220.51053903        220.51053799
+                   2252      220.53629632            220.53629845        220.53629905        220.53629937        220.53630051
+                   3212      220.55058072            220.55057425        220.55057119        220.55056936        220.55056729
+                   ∞         220.56575230            220.56574691        220.56574425        220.56574241        220.56574132
+                   n           1.71573997              1.71573860          1.71573946          1.71574888          1.71572896
+                             Numax
+
+                   412        21.16471995             21.16471988         21.16471980         21.16471979         21.16471978
+                   572        20.05064995             20.05064990         20.05064986         20.05064983         20.05064981
+                   812        18.98214565             18.98214559         18.98214555         18.98214552         18.98214552
+                   1132       18.30649044             18.30649032         18.30649025         18.30649017         18.30649017
+                   1612       17.90277648             17.90277642         17.90277636         17.90277632         17.90277632
+                   2252       17.71471420             17.71471401         17.71471390         17.71471383         17.71471378
+                   3212       17.61963289             17.61963284         17.61963277         17.61963273         17.61963273
+                   ∞          17.52743014             17.52743005         17.52742996         17.52742990         17.52742990
+                   n           2.04712483              2.04712463          2.04712448          2.04712430          2.04712430
+
+
+
+   Next we consider the Rayleigh-number dependence of the number of iterations to achieve steady state. The Mach number
+Ma is fixed at 0.01 and the results are given in Table 8. Clearly, with the resolution N and the Mach number Ma fixed, the
+number of iterations Nt doubles approximately as Ra increases ten fold. Hence, asymptotically the number of iterations to
+reach steady state depends approximately on N, Ra and Ma as follows:
+
+      Nt ∝ N · Ralg 2 · Ma−1 .                                                                                                  (40)
+                                 J. Wang et al. / Computers and Mathematics with Applications 65 (2013) 262–286                 275
+
+
+                  Table 7
+                  The Mach-number dependence of the number of iterations to achieve steady state. Ra = 106 and Pr = 0.71.
+                   N2            Ma = 0.01            Ma = 0.02          Ma = 0.05         Ma = 0.10          Ma = 0.15
+
+                   412            1,489,000             778,000            332,000           173,000          120,000
+                   572            2,061,000           1,056,000            450,000           235,000          160,000
+                   812            2,859,000           1,495,000            626,000           326,000          222,000
+                   1132           3,891,000           2,038,000            853,000           445,000          309,000
+                   1612           5,412,000           2,837,000          1,189,000           621,000          431,000
+                   2252           7,377,000           3,871,000          1,623,000           849,000          590,000
+                   3212          10,267,000           5,394,000          2,312,000         1,209,000          824,000
+
+
+                                       Table 8
+                                       The Rayleigh-number dependence of the number of iterations to
+                                       achieve steady state. Ma = 0.01 and Pr = 0.71.
+
+                                         N2       Ra = 103      Ra = 104     Ra = 105      Ra = 106
+                                              2
+                                         41       153,000         344,000      712,000      1,489,000
+                                         572      204,000         461,000      985,000      2,061,000
+                                         812      277,000         629,000    1,341,000      2,859,000
+                                         1132     370,000         845,000    1,863,000      3,891,000
+                                         1612     502,000       1,149,000    2,528,000      5,412,000
+                                         2252     668,000       1,550,000    3,522,000      7,377,000
+                                         3212     915,000       2,116,000    4,796,000     10,267,000
+
+
+
+3.8. Benchmark solutions
+
+   We now compare our results for the square cavity with differentially heated vertical walls in 2D with existing data. The
+results of de Vahl Davis [39] were obtained by using the finite-difference method with uniform meshes of rather modest
+sizes up to 812 . The local results of de Vahl Davis [39] were fitted with polynomials and extrapolated asymptotically thus
+they still remain to be among the most comprehensive and accurate benchmark results. The results of Hortmann et al. [42]
+were obtained by using the finite-volume method accelerated with multi-grid method on non-uniform meshes up to the
+size of 6402 , and grid-independent results were obtained by extrapolations. Mayne et al. [41] used h-adaptive finite-element
+method which relies on error-estimation to refine mesh adaptively and very fine mesh was used near boundaries. Le Quéré
+and de Roquefort [44] and Le Quéré [45] used the Chebyshev pseudo-spectral method up to 1282 spectral resolution, which
+also yields very accurate results.
+   In Table 9, we compile our results of the Nusselt numbers, which are extracted from Table 2 unless otherwise stated, and
+existing data obtained by using finite difference (FD) [39,40], finite-element (FE) [41], finite-volume (FV) [42], and pseudo-
+spectral (PS) [44,45] methods. In Table 9, our results of the Nusselt numbers are the asymptotic values fixed with the third-
+order polynomial of Eq. (39). We also include in Table 9 some recent results obtained by using the LB method. Guo et al. [13]
+used the LBGK model with double-distributions and a relatively coarse mesh of size 1282 . Mezrhab et al. [51] used the hybrid
+MRT-LBE [8,15], which solves the temperature equation with finite-difference technique, and a fine mesh of size 4112 .
+   As shown in Table 9, our results of average Nusselt numbers, i.e., ⟨Nu⟩, ⟨Nu⟩0 , and ⟨Nu⟩1/2 , agree with the best existing
+data to at least three significant digits. Our results of local Nusselt numbers, i.e., Numax and Numin , as well as their positions,
+agree with the most accurate results to at least two or three significant figures. Our results are also consistent with the
+previous results obtained by using the LB methods [13,51].
+   In Table 10 we compile the results of the local values of hydrodynamic variables including |ψmid |, |ψ|max , umax , and vmax , as
+well as their positions. For the hydrodynamic variables, our results agree with the best existing data at least three significant
+figures. As for the positions, our results agree with the existing data to at least two significant figures.
+   The data in Tables 9 and 10 show that, with a reasonable resolution, our results agree very well with the most accurate
+data and the MRT-TLBE can yield very accurate benchmark quality results.
+
+
+4. Rayleigh–Bénard convection in a rectangular cavity heated from below
+
+
+4.1. Flow configuration and parameters
+
+   The flow domain is a rectangle of an aspect ratio L/H = 2, i.e., (x, y) ∈ [0, 2] × [0, 1], as illustrated in Fig. 4. The
+temperatures at the bottom and top walls are θ = +0.5 and θ = −0.5, respectively, thus ∆θ = 1. The left and right
+vertical walls are stress free. The boundary conditions (bounce-back for {fi } and ‘‘anti-bounce-back’’ for {gi }) are applied for
+the top and bottom horizontal walls, while periodic boundary conditions are applied in the x direction. The parameters for
+the convective flow are: Ra = 2 · 103 , 104 , and 5 · 104 ; Pr = 0.71 and 7.0. We will also investigate the effects of the Mach
+number Ma and the boundary conditions for the vertical side walls.
+276                                  J. Wang et al. / Computers and Mathematics with Applications 65 (2013) 262–286
+
+
+Table 9
+Benchmark solutions of the Nusselt numbers.
+ Ra              Method               ⟨Nu⟩                    ⟨Nu⟩0                ⟨Nu⟩1/2         Numax              y              Numin
+
+                 Present              1.1178                  1.1178               1.1178            1.5063           0.08843        0.6912
+                 PS [44]              –                       1.1178               1.1178            1.506            0.088          0.691
+                 FD [40]              –                       1.1178               –                 1.5064           –              0.6912
+ 103
+                 FD [39]              1.118                   1.117                1.118             1.505            0.092          0.692
+                 FE [41]              –                       1.1149               –                 1.5062           0.08956        0.6913
+                 LB [13]              –                       1.1168               –                 1.5004           0.09375        –
+                 Present              2.2448                  2.2448               2.2448            3.5310           0.1443         0.5849
+                 PS [44]              –                       2.245                2.245             3.531            0.144          0.585
+                 FD [40]              –                       2.2449               –                 3.5313           –              0.5850
+ 104             FD [39]              2.243                   2.238                2.243             3.528            0.143          0.586
+                 FE [41]              –                       2.2593               –                 3.5305           0.1426         0.5850
+                 FV [42]              2.24475                 –                    –                 3.53087          0.14601        –
+                 LB [13]              –                       2.2477               –                 3.5715           0.1406         –
+                 Present              4.5216                  4.5214               4.5216            7.7161           0.08238        0.7279
+                 PS [44]              –                       4.522                4.523             7.720            0.082          0.728
+                 FD [40]              –                       4.5214               –                 7.7216           –              0.7280
+                 FD [39]              4.519                   4.509                4.519             7.717            0.081          0.729
+ 105
+                 FE [41]              –                       4.4832               –                 7.7084           0.08353        0.7282
+                 FV [42]              4.52164                 –                    –                 7.72013          0.08233        –
+                 LB [13]              –                       4.5345               –                 7.7951           0.0781         –
+                 LB [51]              4.521                   –                    –               –                  –              –
+                 Present              8.8253                  8.8192               8.8254          17.5274            0.03952        0.9769
+                 PS [45]              8.8252                  –                    8.8244          17.5343            0.039          0.97948
+                 SE [47]              8.825                   8.824                8.825           17.539             0.039          0.9796
+                 FD [40]              8.8091                  –                    –               17.4752            –              0.9798
+ 106             FD [39]              8.800                   8.817                8.799           17.925             0.0378         0.989
+                 FE [41]              –                       8.8811               –               17.5308            0.03768        0.9845
+                 FV [42]              8.82513                 –                    –               17.536             0.03902        –
+                 LB [13]              –                       8.7775               –               17.4836            0.0312         –
+                 LB [51]              8.824                   –                    –               –                  –              –
+
+
+Table 10
+Benchmark solutions of the hydrodynamic variables.
+ Ra             Method           |ψmid |             |ψ|max           (x , y )           umax           y                 vmax       x
+
+                Present           1.1746             –                –                   3.6494        0.8132              3.6974   0.1783
+                PS [44]           1.1746             –                –                   3.6494        0.813               3.6974   0.178
+ 103            FD [39]           1.174              –                –                   3.649         0.813               3.697    0.178
+                FE [41]          –                   –                –                   3.6493        0.8125              3.6962   0.1790
+                LB [13]          –                   –                –                   3.6554        0.8125              3.6985   0.1797
+                Present           5.0737             –                –                  16.1833        0.8232             19.6282   0.1189
+                PS [44]           5.0736             –                –                  16.183         0.823              19.629    0.119
+ 104            FD [39]           5.071              –                –                  16.178         0.823              19.617    0.119
+                FV [42]          –                   –                –                  16.1802        0.82551            19.6295   0.12009
+                LB [13]          –                   –                –                  16.0761        0.8203             19.6368   0.1172
+                Present           9.1157             9.6179           (0.2843, 0.6015)   34.7424        0.8546             68.6358   0.06586
+                PS [44]           9.119              9.619            (0.285, 0.601)     34.75          0.855              68.64     0.066
+                FD [39]           9.111              9.612            (0.285, 0.601)     34.73          0.855              68.59     0.066
+ 105
+                FV [42]          –                   –                –                  34.7399        0.85535            68.6396   0.06719
+                LB [13]          –                   –                –                  34.8343        0.8594             68.2671   0.0625
+                LB [51]          –                   –                –                  34.74          –                  68.73     –
+                Present          16.3868             16.8149          (0.1503, 0.5468)   64.8336        0.8499            220.5658   0.03776
+                PS [45]          16.386              16.811           (0.150, 0.547)     64.83          0.850             220.6      0.038
+                FD [39]          16.32               16.750           (0.151, 0.547)     64.63          0.850             219.36     0.0379
+ 106
+                FV [42]          –                   –                –                  64.8367        0.85036           220.461    0.03887
+                LB [13]          –                   –                –                  65.3606        0.8516            216.415    0.0391
+                LB [51]          –                   –                –                  64.86          –                 220.3      –
+
+
+      The volume average Nusselt number ⟨Nu⟩ is defined as follows
+                      ⟨vθ ⟩H
+         ⟨Nu⟩ = 1 +          .                                                                                                           (41)
+                       κ ∆θ
+The heat flux in the vertical direction is
+         qy = vθ − ∂y θ .                                                                                                                (42)
+                                    J. Wang et al. / Computers and Mathematics with Applications 65 (2013) 262–286                               277
+
+
+
+
+               Fig. 4. Illustration of the flow domain for the Rayleigh–Bénard convection in the rectangle (L = 2H) heated from below.
+
+
+                      a                                                     b
+
+
+
+
+Fig. 5. The Rayleigh–Bénard convection with Ra = 5 · 104 , Pr = 0.71 and Ma = 0.01. (a) Distribution of the Nusselt number ⟨Nu⟩x averaged over x as a
+function of y. ⟨Nu⟩x is symmetric about y = 1/2. (b) Distribution of the heat flux qy (x) at the hot bottom wall x = 0.
+
+
+We compute the volume average Nusselt number ⟨Nu⟩, the Nusselt number at the bottom boundary, Nu0 , and the Nusselt
+number Nu1/2 at the horizontal center line y = 1/2, and the maximum and minimum Nusselt numbers, Numax and Numin ,
+at the bottom. We also compute some hydrodynamic quantities in the flow including the maximum value of the stream-
+function, |ψ|max , the maximum horizontal velocity umax at x = 1/2 and its position, and the maximum vertical velocity vmax
+at y = 1/2. In addition, we compute the critical Rayleigh number Rac .
+
+4.2. Grid convergence of flow fields
+
+    We use the following mesh sizes to study the convergence behavior of the Rayleigh–Bénard convection flow: 82 ×
+41, 162 × 81, 322 × 161, and 642 × 321. The solution with the largest mesh size of 642 × 321 is used as the reference
+solution to compute errors in flow fields. The flow fields on the finest mesh (642 × 321) are interpolated to the grid points
+of a coarser mesh with a second-order interpolation in two dimensions to compute errors in the flow fields.
+    Table 11 compiles the errors of flow fields u, p, and θ with L2 -norm, for Pr = 0.71 and 7.0. The Mach number is fixed
+at 0.01. The data in Table 11 show that the convergence rates n for all flow fields are 2.0, indicating that the MRT-TLBE
+scheme is second-order accurate for all flow fields. If the flow fields are not interpolated to the same grid points, the rates
+of convergence for all flow fields are about 1.4, similar to the previous case.
+
+4.3. Convergence of the Nusselt numbers
+
+    In Fig. 5 we show the convergence behaviors of the Nusselt number averaged over horizontal grid lines, ⟨Nu⟩x , and the
+heat flux qy at the hot bottom wall for the case of Ra = 5 · 104 and Pr = 0.71. We use a second-order polynomial to fit
+the temperature θ along each vertical grid line, which is used in turn to compute its derivative ∂y θ in qy . We observe that
+with coarse mesh sizes, ⟨Nu⟩x oscillates near the boundary y = 0. The heat flux at the hot bottom wall seems to converge
+to grid-size independent results quicker than ⟨Nu⟩x .
+    Table 12 compiles the results concerning the convergence behaviors of Nusselt numbers depending on Ra and Pr, with
+a fixed Ma = 0.01. The average Nusselt numbers, ⟨Nu⟩, Nu0 , and Nu1/2 , agree with each other for at least two significant
+digits even in the case of the smallest mesh size 82 × 41, and in most cases they agree with each other for three or more
+significant digits. Note that, without interpolations, the value of Numax is always located at the first fluid node at the bottom
+278                               J. Wang et al. / Computers and Mathematics with Applications 65 (2013) 262–286
+
+
+                         Table 11
+                         Convergence of flow fields u, p, and θ with L2 -norm. Ma = 0.01.
+                           Ra                        2 · 103               104                   5 · 104
+                           Pr       Nx × Ny          ∥δ u∥2
+                                    82 × 41          1.8235123 · 10−3      1.6662503 · 10−3      2.4985370 · 10−3
+                                    162 × 81         4.5477030 · 10−4      4.1009633 · 10−4      6.0755183 · 10−4
+                                    322 × 161        9.3105636 · 10−5      8.3432755 · 10−5      1.2313076 · 10−4
+                                    n                2.1750164             2.1892687             2.2009012
+                                                     ∥δ p∥2
+                                    82 × 41          7.8884782 · 10−4      1.6097741 · 10−3      3.1967885 · 10−3
+                           0.71
+                                    162 × 81         1.9080679 · 10−4      3.9130467 · 10−4      7.7196536 · 10−4
+                                    322 × 161        3.8460740 · 10−5      7.9254493 · 10−5      1.5638540 · 10−4
+                                    n                2.2087398             2.2016116             2.2062784
+                                                     ∥δθ ∥2
+                                    82 × 41          7.0435664 · 10−4      2.0207005 · 10−3      5.4430297 · 10−3
+                                    162 × 81         1.7118507 · 10−4      4.7893200 · 10−4      1.2717761 · 10−3
+                                    322 × 161        3.4601087 · 10−5      9.5578827 · 10−5      2.5148566 · 10−4
+                                    n                2.2032327             2.2308896             2.2480329
+                                                     ∥δ u∥2
+                                    82 × 41          1.9122279 · 10−3      1.9493835 · 10−3      3.4416128 · 10−3
+                                    162 × 81         4.7629506 · 10−4      4.7715646 · 10−4      8.3752414 · 10−4
+                                    322 × 161        9.7572924 · 10−5      9.6257877 · 10−5      1.6955373 · 10−4
+                                    n                2.1754817             2.1994687             2.2011312
+                                                     ∥δ p∥2
+                           7.0      82 × 41          6.8784479 · 10−4      1.3773027 · 10−3      3.4770364 · 10−3
+                                    162 × 81         1.6637820 · 10−4      3.3417353 · 10−4      8.4000603 · 10−4
+                                    322 × 161        3.3555042 · 10−5      6.7236855 · 10−5      1.6946493 · 10−4
+                                    n                2.2083303             2.2078132             2.2089964
+                                                     ∥δθ ∥2
+                                    82 × 41          7.3461000 · 10−4      2.0946577 · 10−3      5.1380574 · 10−3
+                                    162 × 81         1.7842903 · 10−4      4.9466298 · 10−4      1.1923695 · 10−3
+                                    322 × 161        3.6105038 · 10−5      9.8327861 · 10−5      2.3523463 · 10−4
+                                    n                2.2028709             2.2364387             2.2547114
+
+
+boundary, i.e., (i, j) = (1, 1/2), where j = 1/2 means δ x/2 beyond the last fluid node at j = 1 while Numin is always located
+at the mesh center, i.e., (i, j) = (Nx /2, 1/2). As mesh size Nx × Ny goes to infinity, the locations of Numax and Numin will go to
+(x, y) = (0, 0) and (x, y) = (1, 0), respectively. Except for the case of Numin , the rate of convergence n is about 2.0. It should
+be noted that for both Numax and Numin , the norm is L∞ which is the most stringent.
+    Table 13 compiles the results concerning the convergence behaviors of the hydrodynamic quantities under study,
+depending on Ra and Pr, with Ma = 0.01. These hydrodynamic quantities include the maximum of the absolute value
+of the stream function, |ψ|max , which is always located at (x, y) = (1/2, 1/2), the maximum x-velocity at the vertical line
+x = 1/2, and the maximum y-velocity at the horizontal center line y = 1/2, which is always located at the center of the
+line x = 1. In all cases, the results have agreement of at least two significant digits with the smallest mesh size of 82 × 41,
+indicating that mesh-size independent results have been obtained. Overall the results show the MRT-TLBE scheme is of
+second-order convergence.
+    The asymptotic values of the Nusselt numbers in Table 12 and those hydrodynamic quantities in Table 13 are obtained by
+using the least-square fit to the third-order polynomial of Eq. (39). We should mention that in some cases the data obtained
+with the coarsest mesh of 82 × 41 are excluded in the least-square fitting. These cases for which the data are excluded from
+the fitting are marked with ‘‘∗’’ in both tables.
+    Table 14 shows the convergence behavior of the average Nusselt number ⟨Nu⟩ depending on the Mach number Ma. The
+data clearly show that the Mach number has no effect at all on the Nusselt number ⟨Nu⟩. This observation indicates that the
+Mach number is equivalent to the CFL number for the incompressible TLBE with Boussinesq approximation, thus varying
+Ma amounts to changing the time-step size, which has no effect on the accuracy of the steady flows studied in this work.
+
+4.4. Flow fields
+
+   Fig. 6 illustrates the streamlines, isotherms, and pressure contours for the Rayleigh–Bénard convection with Pr = 0.71,
+and Ra = 2 · 103 , 104 , and 5 · 104 . When the Rayleigh number is below the critical value of Rac ≈ 1707.762 [52],
+the temperature has no horizontal gradient—the only heat transfer mechanism is thermal conduction. Consequently the
+isotherms are straight horizontal lines. The values of Ra we use are all greater than the critical value Rac ≈ 1707.762,
+thus convection takes place as a heat transfer mechanism in addition to conduction. The convective motion due to two
+counter-rotating vortexes can be clearly seen in the flow patterns shown in Fig. 6. The horizontal temperature gradient
+                                    J. Wang et al. / Computers and Mathematics with Applications 65 (2013) 262–286                                  279
+
+
+Table 12
+Convergence behaviors of Nusselt numbers. Ma = 0.01.The data marked with ‘‘∗’’ are excluded from the least-square fitting to obtain asymptotic values.
+ Pr             Ra              Nx × Ny            ⟨Nu⟩                Nu0                  Nu1/2                Numax                Numin
+                                82 × 41            1.2113916           1.2115122            1.2131327            1.7762356            0.62197443
+                                162 × 81           1.2107538           1.2107701            1.2111999            1.7721196            0.62278374
+                2 · 103
+                                322 × 161          1.2105862           1.2105883            1.2106991            1.7711165            0.62296531
+                                642 × 321          1.2105431           1.2105434            1.2105715            1.7708707            0.62300764
+                                ∞                  1.2105286           1.2105285            1.2105286            1.7707886            0.62302137
+                                n                  1.9850927           2.0358459            1.9950204            2.0389039            2.1056930
+                                82 × 41            2.6621453           2.6646292            2.6644154            4.4128023            0.79251933∗
+                     4          162 × 81           2.6569340           2.6572746            2.6575124            4.3536217            0.79270573
+                10
+ 0.71                           322 × 161          2.6555886           2.6556329            2.6557349            4.3395338            0.79258856
+                                642 × 321          2.6552461           2.6552517            2.6552830            4.3361637            0.79253953
+                                ∞                  2.6551312           2.6551282            2.6551316            4.3350273            0.79251930
+                                n                  1.9979442           2.1098972            1.9998832            2.0544574            1.6131396
+                                82 × 41            4.1890216           4.2054264            4.1886300            7.9635650            0.96295756∗
+                         4      162 × 81           4.1708705           4.1732783            4.1707507            7.6086004            0.96283936
+                5 · 10
+                                322 × 161          4.1662151           4.1665341            4.1661836            7.5225797            0.96250197
+                                642 × 321          4.1650342           4.1650752            4.1650262            7.5024015            0.96238446
+                                ∞                  4.1646388           4.1645918            4.1646398            7.4952083            0.96233878
+                                n                  2.0026672           2.1581222            2.0058891            2.0332152            1.7386379
+                                82 × 41            1.2138056           1.2139259            1.2155964            1.7637933            0.61674958
+                                162 × 81           1.2131324           1.2131487            1.2135912            1.7600144            0.61782582
+                2 · 103
+                                322 × 161          1.2129558           1.2129578            1.2130719            1.7590917            0.61807162
+                                642 × 321          1.2129103           1.2129105            1.2129397            1.7588648            0.61812938
+                                ∞                  1.2128951           1.2128949            1.2128952            1.7587893            0.61814835
+                                n                  1.9866559           2.0349335            1.9954716            2.0381289            2.0898421
+                                82 × 41            2.6170260           2.6189246            2.6197594            3.9213957            0.84034065
+                                162 × 81           2.6115803           2.6118381            2.6122784            3.8847917            0.84648953
+                104
+ 7.0                            322 × 161          2.6101782           2.6102127            2.6103540            3.8760752            0.84773176
+                                642 × 321          2.6098247           2.6098272            2.6098706            3.8739729            0.84799025
+                                ∞                  2.6097046           2.6097018            2.6097055            3.8732735            0.84807592
+                                n                  1.9979049           2.0880535            1.9977474            2.0562383            2.1916472
+                                82 × 41            3.8836213           3.8928928            3.8825115            6.4560756            1.0908378
+                                162 × 81           3.8652480           3.8665374            3.8649553            6.2703465            1.1260297
+                5 · 104
+                                322 × 161          3.8605636           3.8607326            3.8604890            6.2267504            1.1337171
+                                642 × 321          3.8593770           3.8593986            3.8593582            6.2164291            1.1353876
+                                ∞                  3.8589814           3.8589675            3.8589819            6.2129528            1.1359736
+                                n                  2.0074310           2.1210690            2.0091889            2.0650939            2.1156290
+
+
+
+increases with Ra, as indicated by the increasing steepness of the isotherms around the vertical centerline of the rectangle,
+x = 1. When Ra = 5 · 104 , the isotherms near x = 1 are almost vertical, indicating that the convection is the dominant
+heat transfer mechanism. Also, as Ra increases, the streamlines become more and more asymmetric with respect to the
+horizontal centerline y = 1/2. In Fig. 6 we also show the flow fields obtained by using different Mach numbers, which
+indicates the fact that the Mach number has little effect on the flow fields.
+    Fig. 7 shows the flow fields for Pr = 7.0, and Ra = 2 · 103 , 104 , and 5 · 104 . The viscous effect for Pr = 7.0 is about 10
+times of that for Pr = 0.71. Consequently, the convection is considerably weaker when Pr = 7.0. With Ra = 2 · 103 , the
+average Nusselt numbers with Pr = 7.0 are slightly larger than their counterparts with Pr = 0.71, while the differences
+(Numax − Numin ) are slightly larger in the case of Pr = 0.71, as shown by the data in Table 12. However, in the cases of
+Ra = 104 and 5 · 104 , the Nusselt numbers with Pr = 0.71 not only are larger than their counterparts with Pr = 7.0,
+but also increase faster with Ra. Nevertheless, the isotherms for both cases of Pr = 7.0 and 0.71 are rather similar to each
+other qualitatively, although the isotherms with Pr = 0.71 do show larger curvatures in the case of the largest Rayleigh
+number Ra = 5 · 104 . We also observe that as Ra increases, the streamlines in the cases of Pr = 7.0 maintain the symmetry
+with respect to the horizontal centerline y = 1/2 relatively better than the corresponding cases of Pr = 0.71. Also, as Ra
+increases, the vortexes become more square than circular, and the streamlines are more conformed to two square boxes
+defined by the boundaries of flow domain and the vertical centerline x = 1.
+    The temperature fields for Pr = 0.71 and 7.0 with equal Rayleigh number Ra, as shown in Figs. 6 and 7, respectively,
+do not exhibit a significant difference. This is further illustrated in Fig. 8 which compares the temperatures for Ra = 104
+and Pr = 0.71 and 7.0 at two different horizontal lines y = 1/4 and 3/4. Clearly, in most places the magnitude of the
+temperature for Pr = 0.71 is larger than that for Pr = 7.0, but not significantly. Overall, the temperature for Pr = 7.0 is
+slightly flatter than that for Pr = 0.71.
+    Fig. 9 shows the contours of the vertical (y) velocity v(x, y) for Ra = 104 and Pr = 0.71 and 7.0. Clearly, the v(x, y) for
+Pr = 7.0 is more symmetric with respect to the horizontal centerline y = 1/2 than that for Pr = 0.71. The contours of
+v(x, y) = 0 for Pr = 0.71 converge from the bottom to the top, while those for Pr = 7.0 diverge only slightly.
+280                                    J. Wang et al. / Computers and Mathematics with Applications 65 (2013) 262–286
+
+
+
+
+Fig. 6. Contours of flow fields of the Rayleigh–Bénard convection in the rectangle. Pr = 0.71. From left to right: the stream-function, the isotherms, and
+the pressure. From top to bottom: Ra = 2 · 103 , 104 , and 5 · 104 . Solid (black) lines: Nx × Ny = 642 × 321 and Ma = 0.01. Dashed (red) lines: for Ra = 2 · 103 ,
+Nx × Ny = 322 × 161 and Ma = 0.05; and for Ra = 104 and 5 · 104 , Nx × Ny = 642 × 321, and Ma = 0.05 and 0.1, respectively. (For interpretation of the
+references to colour in this figure legend, the reader is referred to the web version of this article.)
+
+
+
+
+Fig. 7. Similar to Fig. 6. Pr = 7.0 and Nx × Ny = 642 × 321. Solid (black) lines: Ma = 0.01. Dashed (red) lines: for Ra = 2 · 103 , Ma = 0.05; and for
+Ra = 104 and 5 · 104 , Ma = 0.1. (For interpretation of the references to colour in this figure legend, the reader is referred to the web version of this article.)
+
+
+
+
+                                              Fig. 8. θ(x, y) at two horizontal lines y = 1/4 and 3/4. Ra = 104 .
+                                      J. Wang et al. / Computers and Mathematics with Applications 65 (2013) 262–286                              281
+
+
+Table 13
+Convergence behaviors of hydrodynamic variables. Ma = 0.01. The data marked with ‘‘∗’’ are excluded from the least-square fitting to obtain asymptotic
+values.
+  Pr             Ra                Nx × Ny              |ψ|max                  umax                      y                           vmax
+                                       82 × 41                  1.5645398∗             4.8255910              0.20699909               4.9130905
+                            3          162 × 81                 1.5643061              4.8212220              0.20701752               4.9058434
+                   2 · 10
+                                       322 × 161                1.5642185              4.8200616              0.20702374               4.9039308
+                                       642 × 321                1.5641924              4.8197615              0.20702504               4.9034388
+                                       ∞                        1.5641829              4.8196603              0.20702578               4.9032726
+                                       n                        1.8605040              1.9784776              1.7726971                1.9821850
+                                       82 × 41                  9.0975682∗           29.185548∗               0.17607948∗             30.630719
+                                       162 × 81                 9.0976171            29.163358                0.17603327              30.608401
+                   104
+ 0.71                                  322 × 161                9.0975174            29.157681                0.17602864              30.602512
+                                       642 × 321                9.0974752            29.156237                0.17602823              30.601000
+                                       ∞                        9.0974577            29.155754                0.17602759              30.600488
+                                       n                        1.6053941             2.0021411               1.5778553                1.9818841
+                                       82 × 41              23.385572                83.727706                0.13425853              88.734612
+                                       162 × 81             23.378048                83.606805                0.13401480              88.816569
+                   5 · 104
+                                       322 × 161            23.375886                83.575881                0.13397970              88.838675
+                                       642 × 321            23.375285                83.568009                0.13397128              88.844345
+                                       ∞                    23.375091                83.565397                0.13397089              88.846228
+                                       n                     1.9351737                2.0059524               3.1176058                1.9481354
+                                       82 × 41               1.5744575                4.8509071               0.20816094               4.9776755
+                                       162 × 81              1.5740952                4.8461445               0.20818166               4.9699493
+                   2 · 103
+                                       322 × 161             1.5739747                4.8448840               0.20818824               4.9679132
+                                       642 × 321             1.5739400                4.8445576               0.20818966               4.9673891
+                                       ∞                        1.5739280              4.8444482              0.20819041               4.9672126
+                                       n                        1.8418261              1.9815514              1.8129577                1.9836670
+                                       82 × 41                  8.9356742            27.805819                0.19771741              34.217912
+                        4              162 × 81                 8.9323398            27.776768                0.19774395              34.186997
+                   10
+ 7.0                                   322 × 161                8.9313824            27.769307                0.19775255              34.178852
+                                       642 × 321                8.9311334            27.767434                0.19775580              34.176790
+                                       ∞                        8.9310434            27.766794                0.19775646              34.176076
+                                       n                        1.9188748             1.9988445               1.9562843                1.9798167
+                                       82 × 41              21.600066                68.686006∗               0.17721526∗            117.11480
+                                       162 × 81             21.569192                68.547241                0.17721600             117.03686
+                   5 · 104
+                                       322 × 161            21.561009                68.512220                0.17722439             117.01454
+                                       642 × 321            21.558896                68.503380                0.17722749             117.00868
+                                       ∞                    21.558184                68.500417                0.17722872             117.00660
+                                       n                     1.9796398                2.0044751               1.6954514                1.9234752
+
+
+
+
+                                Table 14
+                                Dependence of convergence behavior of ⟨Nu⟩ on the Mach number Ma. Ra = 5 · 104 .
+                                  Ma                     0.01                 0.05                  0.10
+                                  Nx × Ny                Pr = 0.71
+                                  82 × 41                4.1890216            4.1890216             4.1890216
+                                  162 × 81               4.1708704            4.1708704             4.1708704
+                                  322 × 161              4.1662151            4.1662151             4.1662151
+                                  642 × 321              4.1650342            4.1650342             4.1650342
+                                  ∞                      4.1646387            4.1646387             4.1646387
+                                  n                      2.0026672            2.0026661             2.0026661
+                                                         Pr = 7.0
+                                  82 × 41                3.8836213            3.8836213             3.8836213
+                                  162 × 81               3.8652479            3.8652479             3.8652479
+                                  322 × 161              3.8605635            3.8605635             3.8605635
+                                  642 × 321              3.8593769            3.8593769             3.8593769
+                                  ∞                      3.8589814            3.8589814             3.8589814
+                                  n                      2.0074310            2.0074324             2.0074324
+
+
+
+
+   Fig. 10 shows the vertical velocity v(x, y) at three horizontal lines: y = 1/4, 1/2, and 3/4. Clearly, the maximum value
+of v(x, y) for Pr = 0.71 is about one order of magnitude larger than that for Pr = 7.0, as expected.
+282                                         J. Wang et al. / Computers and Mathematics with Applications 65 (2013) 262–286
+
+
+
+
+Fig. 9. The contours of the y-velocity v(x, y). Ra = 104 and Nx × Ny = 642 × 321. Pr = 0.71 (left) and 7.0 (right). Thin solid, dashed, and thick solid lines
+correspond to positive, negative, and zero values of v(x, y), respectively.
+
+
+
+
+                             Fig. 10. Vertical (y) velocity v(x, y) at y = 1/4, 1/2, and 3/4. Ra = 104 , Pr = 0.71 (left) and 7.0 (right).
+
+
+4.5. The critical Rayleigh number for the case of Pr = 0.71
+
+    We use the MRT-TLBE scheme to determine the critical Rayleigh number Rac , beyond which the Rayleigh–Bénard
+convection occurs. The procedure to determine the onset of the convection is the following. The initial velocity and density
+fields are quiescent, i.e., u0 = 0 and δρ0 = 0, and the initial temperature is uniform in the x-direction and has a linear profile
+in the y-direction:
+
+                     1       (2j − 1)
+        θ (i, j) =       −              ,      1 ≤ i ≤ Nx , 1 ≤ j ≤ Ny ,                                                                               (43)
+                     2          2Ny
+so θ ∈ [−0.5, +0.5] and it satisfies the boundary conditions. The linear profile of θ is close to its steady state solution when
+Ra < Rac . We measure the evolution of the maximum y-velocity in the system vmax (t ) for a given Ra. The magnitude of
+vmax (t ) will decay if Ra < Rac and will grow if Ra > Rac . After an initial equilibration, vmax will grow or decay exponentially
+in a period of time before it is saturated, depending on Ra. We compute the grow rate γ of vmax (t ) as a function of Ra. The
+critical Rayleigh number, Rac , is determined by γ (Rac ) = 0 by linearly fitting γ (Ra) with the least-square method. Note
+that the growth rate γ is computed with the dimensionless time tn κ/Ny2 .
+    In Fig. 11 (left) we show the evolution of vmax (t ) after the initial equilibration in semi-log scale for Pr = 0.71, Ra = 1685,
+1700, 1715, and 1730, and Nx × Ny = 642 × 321; we also show the growth rates γ (Ra) computed from vmax (t ) in Fig. 11
+(right). It seems clear that lg [vmax (tn )] varies linearly in time. We compute the growth rate γ versus the rescaled time tn κ/Ny2
+as a function of Ra, which also fits a linear function of Ra very well, as shown in Fig. 11 (right).
+    We compute the critical Rayleigh number Rac as a function of the mesh size Nx × Ny and the results are tabulated in
+Table 15. The asymptotic value of Rac is obtained by using the least-square fit with the third-order polynomial of h = 1/Ny
+of Eq. (39). For the 2D Rayleigh–Bénard convection considered here, the exact value of Rac based on the linear stability theory
+is about 1707.762 [52]. Our results agree with the exact value of Rac for 4 significant digits except for the case of the coarsest
+mesh size Nx × Ny = 22 × 11. The asymptotic value of Rac differs from its theoretical value by about 0.012%.
+
+
+4.6. Effects of boundary conditions
+
+   We use the periodic boundary conditions to represent the stress-free boundary conditions in the lateral direction. Other
+boundary conditions for the vertical walls are the rigid walls with the adiabatic boundary condition. We will study the effects
+due to different boundary conditions.
+   We consider the case of Pr = 0.71 and Ra = 104 . The rigid adiabatic lateral walls are represented by the bounce-back
+boundary conditions for both distributions {fi } and {gi }, corresponding to the mass density and the temperature, respectively.
+The contours of the flow fields are shown in Fig. 12.
+                                     J. Wang et al. / Computers and Mathematics with Applications 65 (2013) 262–286                                 283
+
+
+
+
+Fig. 11. Determination of the critical Rayleigh number Rac . The dependence of the evolution of vmax (tn ) on the Rayleigh number Ra (left) and the
+corresponding Ra-dependence of the growth rate γ (Ra) of vmax (tn ) (right). The symbols are the computed values of γ and the solid straight line is the
+least-square fit of the computed data. The x-coordinate of the intersection of the solid and dashed lines is the value of Rac .
+
+
+
+
+Fig. 12. The Rayleigh–Bénard convection in the 2D rectangle with rigid adiabatic vertical walls. Pr = 0.71, Ra = 104 , Nx × Ny = 642 × 321. From left to
+right: streamlines (left), isotherms (middle), and pressure contours (right).
+
+
+                        Table 15
+                        The dependence of the critical Rayleigh number Rac on the mesh size Nx × Ny . Pr = 0.71. The asymptotic
+                        value of Rac is obtained by using the least-square fit with the third-order polynomial of 1/Ny of Eq. (39).
+                        The data marked with ‘‘∗’’ are excluded from the least-square fitting to obtain asymptotic values.
+                          Nx × Ny                                              Rac
+
+                          22 × 11                                              1708.272437 ± 13.7155∗
+                          42 × 21                                              1707.463181 ± 1.04389
+                          82 × 41                                              1707.786862 ± 0.466368
+                          162 × 81                                             1707.918852 ± 0.426070
+                          322 × 161                                            1707.957846 ± 0.389717
+                          642 × 321                                            1707.966558 ± 0.386651
+                          ∞                                                    1707.968375 ± 0.379130
+                          n                                                    2.068206673
+                          Theory [52]                                          1707.762
+
+
+
+    In contrast with the flow fields with the same Ra and Pr but with the stress-free boundary conditions shown in the middle
+row of Fig. 6, the flow fields are not affected by the boundary conditions significantly, however, the streamlines do exhibit
+an observable difference due to different boundary conditions. The streamlines with the rigid adiabatic boundary conditions
+are more symmetric with respect to the horizontal centerline y = 1/2 than the streamlines with the stress-free boundary
+conditions.
+    To quantify the effects due to the boundary conditions, we show in Fig. 13 the comparison of temperature profiles θ (x)
+at two horizontal lines y = 1/4 and 3/4 with different boundary conditions. The temperature profiles θ (x, y) at different
+horizontal lines with the rigid adiabatic vertical walls are similar to those with the stress-free vertical walls, except in the
+regions near the two lower corners bounded by the rigid adiabatic vertical walls and the hot bottom wall. This is clearly
+shown in the temperature profile θ (x) at y = 1/4.
+    We compare the contours of the vertical (y) velocity v(x, y) in Fig. 14. Clearly, the rigid vertical walls force the contours
+of v(x, y) = 0 to be more parallel to the vertical walls thus make the contours of v(x, y) more symmetric with respect to
+the horizontal centerline y = 1/2. The overall effect of the rigid adiabatic walls is flow confinement which inhibits heat
+convection—the maximum magnitude of the stream-function, |ψ|max , with the stress-free vertical walls is larger than that
+with the rigid-adiabatic vertical walls and the average Nusselt numbers ⟨Nu⟩ corresponding to the stress-free and the rigid-
+adiabatic vertical walls are 2.6551 and 2.4049, respectively.
+284                                 J. Wang et al. / Computers and Mathematics with Applications 65 (2013) 262–286
+
+
+
+
+Fig. 13. The effect the boundary conditions on the temperature θ(x, y) at two horizontal lines y = 1/4 and 3/4 for the Rayleigh–Bénard convection with
+Ra = 104 , Pr = 0.71, and Nx × Ny = 642 × 321.
+
+
+
+
+Fig. 14. The effect the boundary conditions on the vertical (y) velocity v(x, y) for the Rayleigh–Bénard convection with Ra = 104 , Pr = 0.71, and
+Nx × Ny = 642 × 321. Left: the rigid adiabatic vertical walls with the bounce-back boundary conditions. Right: the stress-free vertical walls with the
+periodic boundary conditions.
+
+
+Table 16
+Benchmark solutions of the Nusselt numbers for the Rayleigh–Bénard convection in a 2D rectangle.
+ Pr             Ra               Method            ⟨Nu⟩                 Nu0                   Nu1/2                  Numax ,            Numin
+
+                                 Present           1.2105286            1.2105285             1.2105286              1.7707886          0.62302137
+                2 · 103
+                                 SP [53]           1.212
+ 0.71                            Present           2.6551312            2.6551282             2.6551316              4.3350273          0.79251930
+                104
+                                 SP [53]           2.661
+                                 Present           4.1646388            4.1645918             4.1646398              7.4952083          0.96233878
+                5 · 104
+                                 SP [53]           4.245
+                                 Present           1.2128951            1.2128949             1.2128952              1.7587893          0.61814835
+                2 · 103
+                                 SP [53]           1.214
+ 7.0                             Present           2.6097046            2.6097018             2.6097055              3.8732735          0.84807592
+                104
+                                 SP [53]           2.618
+                                 Present           3.8589814            3.8589675             3.8589819              6.2129528          1.1359736
+                5 · 104
+                                 SP [53]           3.894
+
+
+
+4.7. Benchmark solutions
+
+    Although the Rayleigh–Bénard convection in a 2D rectangle is a well studied case, unlike the previous case of the
+differentially heated square, there exist scarcely any benchmark results. The only data we could find are the average Nusselt
+numbers obtained by Clever and Busse by using pseudo-spectral method [53]. We thus compile the results of Clever and
+Busse [53] and ours in Table 16. Our results in Table 16 are the asymptotic values of the Nusselt numbers given in Table 12.
+    With the Prandtl number of Pr = 0.71, our result of the average Nusselt number ⟨Nu⟩ agrees with the SP one in three
+significant digits when Ra = 2 · 103 , and the relative difference is about 0.12%. The relative difference increases to ca. 0.22%
+and 1.9% for Ra = 104 and 5 · 104 , respectively. With the Prandtl number of Pr = 7.0, the relative differences between the
+values of ⟨Nu⟩ obtained by the LB and SP methods are 0.091%, 0.32%, and 0.90%, corresponding to Ra = 2 · 103 , 104 , and
+5 · 104 , respectively. The data in Table 16 clearly show that the LB method systematically under-predicts the average Nusselt
+number ⟨Nu⟩. This is understandable because the LBE is a second-order method and is more dissipative than the SP method.
+    We tabulate the hydrodynamic quantities in Table 17. Table 17 only has data obtained by using the LB method in the
+present work because we have not been able to find other data available in the literature. The data in Table 17 are the
+asymptotic values in Table 13. The data in Table 17 have at least four significant digits accuracy, as clearly shown in Table 13.
+                                      J. Wang et al. / Computers and Mathematics with Applications 65 (2013) 262–286                                    285
+
+
+                                    Table 17
+                                    Benchmark solutions for the hydrodynamics variables.
+                                      Pr       Ra        |ψ|max         umax           y               vmax
+                                                    3
+                                               2·10       1.5641829      4.8196603     0.20702578        4.9032726
+                                      0.71     104        9.0974577     29.155754      0.17602759       30.600488
+                                               5·104     23.375091      83.565397      0.13397089       88.846228
+
+                                               2·103      1.5739280      4.8444482     0.20819041        4.9672126
+                                      7.0      104        8.9310434     27.766794      0.19775646       34.176076
+                                               5·104     21.558184      68.500417      0.17722872      117.00660
+
+
+5. Conclusions
+
+    In this work we employ the lattice Boltzmann equation with multiple-relaxation-time collision model to simulate
+thermo-hydrodynamics in two dimensions. The MRT-TLBE consists of two sets of distributions: one with nine
+velocities (D2Q9) for the mass and momentum conservation equations, and other with five velocities (D2Q5) for the
+advection–diffusion equation for the temperature. This approach is valid under the Boussinesq approximation. The
+MRT-TLBE model is used to simulate the following two flows. The first is the square cavity with differentially heated
+vertical walls for Rayleigh number Ra = 103 , 104 , 105 and 106 , and Prandtl number Pr = 0.71. The second case is the
+Rayleigh–Bénard convection in a rectangle heated from below and under the influence of gravity for Ra = 2 · 103 , 104 and
+5 · 104 , and Pr = 0.71 and 7.0.
+    We systematically study the convergence behavior of the MRT-TLBE scheme, the effect of the Mach number, and the
+effects due to the stress-free and rigid-adiabatic wall boundary conditions. We compute various Nusselt numbers and
+hydrodynamic quantities and compare them with existing benchmark data. The results show that the MRT-TLBE scheme
+can yield benchmark quality results.
+    Our results demonstrate that the MRT-TLBE scheme is second-order accurate for incompressible thermo-hydrodynamic
+flows with the Boussinesq approximation. We also find that the Mach number, which is equivalent to the CFL number, has
+little effect on the accuracy of the MRT-TLBE simulations. This significantly differs from the incompressible athermal flows
+without the advection–diffusion equation for the temperature, for which the error is of second-order in Mach number. The
+MRT-TLBE scheme is stable so long as the Mach number is kept below a certain critical value, and the larger the Mach
+number, the larger the effective time step size, hence the more efficient computationally. We note that it is imperative to
+use the MRT-TLBE scheme so the boundary conditions for the velocity and temperature fields can be accurately realized,
+which is impossible for the LBGK-type of scheme with a single relaxation time to achieve.
+    We also investigate the effects of the relaxation rates se and sε to the MRT-TLBE simulations and find that they have little
+effect. We thus use the two-relaxation-time (TRT) model, because, unlike the athermal flows, the stability is not severely
+affected by the acoustic waves in the system.
+
+Acknowledgments
+
+    JW and DHW are supported by the State Key Basic Research Development Program (2012CB417204), the National Natural
+Science Foundation (grant No. 41175064), and the R&D Special Fund for Public Welfare Industry (Meteorology) by the
+Ministry of Finance and the Ministry of Science and Technology (grant Nos. GYHY200806007 and GYHY201006014). LSL is
+supported by the National Science Foundation (NSF) of the United States through Grant No. DMS-0807983 and the Richard
+F. Barry Jr. Endowment at the Old Dominion University.
+
+References
+
+ [1] D. Yu, R. Mei, L.-S. Luo, W. Shyy, Viscous flow computations with the method of lattice Boltzmann equation, Prog. Aerospace Sci. 39 (5) (2003) 329–367.
+ [2] L.-S. Luo, M. Krafczyk, W. Shyy, Lattice Boltzmann method for computational fluid dynamics, in: R. Blockley, W. Shyy (Eds.), Encyclopedia of Aerospace
+     Engineering, Wiley, New York, 2010, pp. 651–660 (Chapter 56).
+ [3] F. Alexander, S. Chen, J. Sterling, Lattice Boltzmann thermohydrodynamics, Phys. Rev. E 47 (4) (1993) R2249–R2252.
+ [4] G. McNamara, B. Alder, Analysis of the lattice Boltzmann treatment of hydrodynamics, Physica A 194 (1993) 218–228.
+ [5] Y. Chen, H. Ohashi, M. Akiyama, Heat-transfer in lattice BGK modeled fluid, J. Stat. Phys. 81 (1–2) (1995) 71–85.
+ [6] G. McNamara, A. Garcia, B. Alder, Stabilization of thermal lattice Boltzmann models, J. Stat. Phys. 81 (1/2) (1995) 395–408.
+ [7] G. McNamara, A. Garcia, B. Alder, A hydrodynamically correct thermal lattice Boltzmann model, J. Stat. Phys. 87 (5/6) (1997) 1111–1121.
+ [8] P. Lallemand, L.-S. Luo, Theory of the lattice Boltzmann method: acoustic and thermal properties in two and three dimensions, Phys. Rev. E 68 (3)
+     (2003) 036706.
+ [9] J. Eggels, J. Somers, Numerical-simulation of free convective flow using the lattice-Boltzmann scheme, Int. J. Heat Fluid Flow 16 (5) (1995) 357–364.
+[10] X. He, L.-S. Luo, A priori derivation of the lattice Boltzmann equation, Phys. Rev. E 55 (6) (1997) R6333–R6336.
+[11] X. He, L.-S. Luo, Theory of lattice Boltzmann method: from the Boltzmann equation to the lattice Boltzmann equation, Phys. Rev. E 56 (6) (1997)
+     6811–6817.
+[12] X. He, S. Chen, G. Doolen, A novel thermal model for the lattice Boltzmann method in incompressible limit, J. Comput. Phys. 146 (1) (1998) 282–300.
+[13] Z. Guo, B. Shi, C. Zheng, A coupled lattice BGK model for the Boussinesq equations, Int. J. Numer. Meth. Fluids 39 (4) (2002) 325–342.
+[14] Z. Guo, C. Zheng, B. Shi, T. Zhao, Thermal lattice Boltzmann equation for low Mach number flows: decoupling model, Phys. Rev. E 75 (2007) 036704.
+[15] P. Lallemand, L.-S. Luo, Hybrid finite-difference thermal lattice Boltzmann equation, Int. J. Mod. Phys. B 17 (1/2) (2003) 41–47.
+286                                    J. Wang et al. / Computers and Mathematics with Applications 65 (2013) 262–286
+
+
+[16] P. Lallemand, L.-S. Luo, Theory of the lattice Boltzmann method: dispersion, dissipation, isotropy, Galilean invariance, and stability, Phys. Rev. E 61 (6)
+     (2000) 6546–6562.
+[17] D. d’Humières, I. Ginzburg, M. Krafczyk, P. Lallemand, L.-S. Luo, Multiple-relaxation-time lattice Boltzmann models in three-dimensions, Philos. Trans.
+     R. Soc. Lond. A 360 (1792) (2002) 437–451.
+[18] L.-S. Luo, W. Liao, X. Chen, Y. Peng, W. Zhang, Numerics of the lattice Boltzmann method: effects of collision models on the lattice Boltzmann
+     simulations, Phys. Rev. E 83 (5) (2011) 056710.
+[19] D. d’Humières, Generalized lattice-Boltzmann equations, in: B.D. Shizgal, D.P. Weave (Eds.), Rarefied Gas Dynamics: Theory and Simulations, in: Prog.
+     Astronaut. Aeronaut., Vol. 159, AIAA, Washington, DC, 1992, pp. 450–458.
+[20] I. Ginzburg, Equilibrium-type and link-type lattice Boltzmann models for generic advection and anisotropic-dispersion equation, Adv. Water Res. 28
+     (11) (2005) 1171–1195.
+[21] I. Ginzburg, Generic boundary conditions for lattice Boltzmann models and their application to advection and anisotropic dispersion equations, Adv.
+     Water Res. 28 (11) (2005) 1196–1216.
+[22] I. Ginzburg, Variably saturated flow described with the anisotropic lattice Boltzmann methods, Comput. Fluids 35 (8–9) (2006) 831–848.
+[23] I. Ginzburg, Lattice Boltzmann modeling with discontinuous collision components: hydrodynamic and advection–diffusion equations, J. Stat. Phys.
+     126 (1) (2007) 157–206.
+[24] I. Ginzburg, D. d’Humières, Lattice Boltzmann and analytical modeling of flow processes in anisotropic and heterogeneous stratified aquifers, Adv.
+     Water Res. 30 (11) (2007) 2202–2234.
+[25] I. Ginzbourg, D. d’Humières, Local second-order boundary methods for lattice Boltzmann models, J. Stat. Phys. 84 (5/6) (1996) 927–971.
+[26] I. Ginzburg, D. d’Humières, Multireflection boundary conditions for lattice Boltzmann models, Phys. Rev. E 68 (6) (2003) 066614.
+[27] D.P. Lockard, L.-S. Luo, S.D. Milder, B.A. Singer, Evaluation of PowerFLOW for aerodynamic applications, J. Stat. Phys. 107 (2002) 423–478.
+[28] C. Pan, L.-S. Luo, C. Miller, An evaluation of lattice Boltzmann schemes for porous medium flow simulation, Comput. Fluids 35 (8/9) (2006) 898–909.
+[29] P. Dellar, An interpretation and derivation of the lattice Boltzmann method using Strang splitting, Comput. Math. Appl. (2011) published online
+     (http://dx.doi.org/10.1016/j.camwa.2011.08.047).
+[30] I. Ginzbourg, P.M. Adler, Boundary flow condition analysis for the three-dimensional lattice Boltzmann model, J. Phys. II 4 (2) (1994) 191–214.
+[31] I. Ginzburg, F. Verhaeghe, D. d’Humières, Two-relaxation-time lattice Boltzmann scheme: about parametrization, velocity, pressure and mixed
+     boundary conditions, Commun. Comput. Phys. 3 (2008) 427–478.
+[32] I. Ginzburg, F. Verhaeghe, D. d’Humières, Study of simple hydrodynamic solutions with the two-relaxation-times lattice Boltzmann scheme, Commun.
+     Comput. Phys. 3 (3) (2008) 519–581.
+[33] I. Ginzburg, D. d’Humières, A. Kuzmin, Optimal stability of advection–diffusion lattice Boltzmann models with two relaxation times for
+     positive/negative equilibrium, J. Stat. Phys. 139 (6) (2010) 1090–1143.
+[34] A. Kuzmin, I. Ginzburg, A. Mohamad, The role of the kinetic parameter in the stability of two-relaxation-time advection–diffusion lattice Boltzmann
+     schemes, Comput. Math. Appl. 61 (12) (2011) 3417–3442.
+[35] I. Ginzburg, Truncation errors, exact and heuristic stability analysis of two-relaxation-times lattice Boltzmann schemes for anisotropic
+     advection–diffusion equation, Commun. Comput. Phys. 11 (5) (2012) 1439–1502.
+[36] L.-S. Luo, Unified theory of the lattice Boltzmann models for nonideal gases, Phys. Rev. Lett. 81 (1998) 1618–1621.
+[37] Z. Guo, C. Zheng, B. Shi, Discrete lattice effects on the forcing term in the lattice Boltzmann method, Phys. Rev. E 65 (2002) 046308.
+[38] G. de Vahl Davis, I.P. Jones, Natural-convection in a square cavity: a comparison exercise, Int. J. Numer. Meth. Fluids 3 (3) (1983) 227–248.
+[39] G. de Vahl Davis, Natural-convection of air in a square cavity: a bench-mark numerical-solution, Int. J. Numer. Meth. Fluids 3 (3) (1983) 249–264.
+[40] P.X. Yu, Z.F. Tian, Compact computations based on a stream-function-velocity formulation of two-dimensional steady laminar natural convection in
+     a square cavity, Phys. Rev. E 85 (2012) 036703.
+[41] D. Mayne, A.S. Usmani, M. Crapper, h-adaptive finite element solution of high Rayleigh number thermally driven cavity problem, Int. J. Numer. Meth.
+     Heat Fluid Flow 10 (5–6) (2000) 598–615.
+[42] M. Hortmann, M. Perić, G. Scheuerer, Finite volume multigrid prediction of laminar natural-convection: bench-mark solutions, Int. J. Numer. Meth.
+     Fluids 11 (2) (1990) 189–207.
+[43] G. Croce, G. Comini, W. Shyy, Incompressible flow and heat transfer computations using a continuous pressure equation and nonstaggered grids,
+     Numer. Heat Transfer B 38 (3) (2000) 291–307.
+[44] P. Le Quéré, T.A. de Roquefort, Computation of natural convection in two-dimensional cavities with Chebyshev polynomials, J. Comput. Phys. 57 (2)
+     (1985) 210–228.
+[45] P. Le Quéré, Accurate solutions to the square thermally driven cavity at high Rayleigh number, Comput. Fluids 20 (1) (1991) 29–41.
+[46] A.Y. Gelfgat, Implementation of arbitrary inner product in the global Galerkin method for incompressible Navier–Stokes equations, J. Comput. Phys.
+     211 (2) (2006) 513–530.
+[47] T. Giesdal, C.E. Wasberg, B.A.P. Reif, Spectral element benchmark simulations of natural convection in two-dimensional cavities, Int. J. Numer. Meth.
+     Fluids 50 (11) (2006) 1297–1319.
+[48] S.L. Hou, Q. Zou, S. Chen, G.D. Doolen, A.C. Cogley, Simulation of cavity flow by the lattice Boltzmann method, J. Comput. Phys. 118 (1995) 329–347.
+[49] P.J. Dellar, Bulk and shear viscosities in lattice Boltzmann equations, Phys. Rev. E 64 (3) (2001) 031203.
+[50] P. Dellar, Incompressible limits of lattice Boltzmann equations using multiple relaxation times, J. Comput. Phys. 190 (2) (2003) 351–370.
+[51] A. Mezrhab, M. Bouzidi, P. Lallemand, Hybrid lattice-Boltzmann finite-difference simulation of convective flows, Comput. Fluids 33 (4) (2004) 623–641.
+[52] W.H. Reid, D.L. Harris, Some further results on the Bénard problem, Phys. Fluids 1 (2) (1958) 102–110.
+[53] R.M. Clever, F.H. Busse, Transition to time-dependent convection, J. Fluid Mech. 65 (1974) 625–645. (Part 4).
+
