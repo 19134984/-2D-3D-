@@ -1,0 +1,1232 @@
+                                                     Lattice Boltzmann simulations of three-dimensional
+                                                     thermal convective flows at high Rayleigh number
+
+                                                                             Ao Xua,∗, Le Shib , Heng-Dong Xia
+arXiv:1903.08882v2 [physics.flu-dyn] 6 Jun 2019
+
+
+
+
+                                                     a School of Aeronautics, Northwestern Polytechnical University, Xi’an 710072, China
+                                                      b State Key Laboratory of Electrical Insulation and Power Equipment, Center of
+
+                                                    Nanomaterials for Renewable Energy, School of Electrical Engineering, Xi’an Jiaotong
+                                                                             University, Xi’an 710049, China
+
+
+
+
+                                                  Abstract
+
+                                                  We present numerical simulations of three-dimensional thermal convective flows
+                                                  in a cubic cell at high Rayleigh number using thermal lattice Boltzmann (LB)
+                                                  method. The thermal LB model is based on double distribution function ap-
+                                                  proach, which consists of a D3Q19 model for the Navier-Stokes equations to
+                                                  simulate fluid flows and a D3Q7 model for the convection-diffusion equation
+                                                  to simulate heat transfer. Relaxation parameters are adjusted to achieve the
+                                                  isotropy of the fourth-order error term in the thermal LB model. Two types of
+                                                  thermal convective flows are considered: one is laminar thermal convection in
+                                                  side-heated convection cell, which is heated from one vertical side and cooled
+                                                  from the other vertical side; while the other is turbulent thermal convection in
+                                                  Rayleigh-Bénard convection cell, which is heated from the bottom and cooled
+                                                  from the top. In side-heated convection cell, steady results of hydrodynamic
+                                                  quantities and Nusselt numbers are presented at Rayleigh numbers of 106 and
+                                                  107 , and Prandtl number of 0.71, where the mesh sizes are up to 2573 ; in
+                                                  Rayleigh-Bénard convection cell, statistical averaged results of Reynolds and
+                                                  Nusselt numbers, as well as kinetic and thermal energy dissipation rates are
+                                                  presented at Rayleigh numbers of 106 , 3 × 106 , and 107 , and Prandtl numbers of
+
+                                                    ∗ Corresponding author
+
+                                                      Email address: axu@nwpu.edu.cn (Ao Xu)
+                                                      DOI: 10.1016/j.ijheatmasstransfer.2019.06.002
+                                                       c 2019. This manuscript version is made available under the CC-BY-NC-ND 4.0 license
+                                                  http://creativecommons.org/licenses/by-nc-nd/4.0/
+
+
+
+                                                  Preprint submitted to International Journal of Heat and Mass Transfer       June 7, 2019
+0.7 and 7, where the nodes within thermal boundary layer are around 8. Com-
+pared with existing benchmark data obtained by other methods, the present LB
+model can give consistent results.
+Keywords: Lattice Boltzmann method, Thermal convective flows, Three
+dimension, High Rayleigh number
+
+
+1. Introduction
+
+   Thermal convective flows occur ubiquitously in nature and has wide appli-
+cations in industry [1, 2]. An in-depth understanding of the complex trans-
+port mechanism in thermal convective flows requires powerful experimental
+and computational tools. Over the past three decades, the lattice Boltzmann
+(LB) method has attracted broad interest in computational fluid dynamics and
+numerical heat transfer communities due to its ability to simulate complex
+flows, as well as easy implementation on various parallel programming plat-
+forms [3, 4, 5, 6].
+   The early effort to construct LB model for thermal convective flows focused
+on energy-conserving LB models, where fluid density, velocity, and tempera-
+ture are obtained from various moments of the distribution function fi [7, 8].
+Compared with the LB model for isothermal flows, a larger set of discrete ve-
+locities was adopted to obtain the evolution equation of temperature. However,
+due to the spurious coupling between shear and energy modes, it was observed
+that the energy-conserving LB models suffer severe numerical instability issue
+[9]. To avoid this issue, an alternative approach is to treat the temperature
+as a scalar when the viscous heat dissipation and compression work done by
+the pressure are negligible. As a result, the temperature field is governed by a
+convection diffusion equation (CDE), and one may either use a hybrid scheme
+or a double distribution function (DDF) scheme to obtain the temperature.
+In both schemes, conventional isothermal LB model is adopted to solve fluid
+flows, which is essentially governed by the Navier-Stokes equations at macro-
+scopic level. The difference between the hybrid scheme and the DDF scheme
+
+
+                                       2
+is that, the finite difference (FD) method is adopted to solve the target tem-
+perature CDE in the hybrid scheme, while an additional distribution function
+for the temperature field is introduced in the DDF scheme. In the LB-FD hy-
+brid scheme, implementing temperature boundary condition is nontrivial, since
+boundary nodes will not overlap for flow and temperature fields. Specifically,
+the FD method requires implementing temperature boundary condition at the
+fluid-solid interface, while the LB model adopts popular half-way bounce-back
+scheme to mimic no-slip velocity boundary and it requires implementing velocity
+boundary condition half-lattice off the fluid-solid interface [10].
+   For the above reasons, the DDF scheme based LB models have been widely
+adopted to simulate thermal convective flows. The early work of Shan [11] em-
+ployed a two-component LB model where one component represents the motion
+of the fluid and the other component simulates a passive temperature field.
+Guo et al. [12] constructed a thermal LB model based on incompressible LB
+model to reduce compressibility errors. Through Chapman-Enskog analysis,
+the incompressible Navier-Stokes equations under the Boussinesq assumption
+as well as the CDE for temperature can be obtained. Recently, Chai and Zhao
+[13] modified equilibrium distribution function and used an additional source
+term to recover the CDE. Huang and Wu [14] proposed to remove the deviation
+term in the corresponding macroscopic CDE via treating the divergence-free
+velocity field as a source term in the LB equation. In addition to isotropic diffu-
+sion problems, efforts have been taken to solve anisotropic CDEs via adopting
+the two-relaxation-time (TRT) collision operator (e.g., the previous work of
+Ginzburg [15]) and multiple-relaxation-time (MRT) collision operator (e.g., the
+previous work of Rasin et al. [16], Yoshida and Nagaoka [17], Huang and Wu
+[18]). By adjusting the relaxation rates in the MRT relaxation matrix, isotropy
+for the fourth-order error term in corresponding macroscopic CDE can be at-
+tained [19, 20]. Wang et al. [21] simulated the incompressible thermal flows in
+two-dimensional (2D) square cavity under the Boussinesq approximation. Con-
+trino et al. [22] then used the same approach to simulate thermally driven 2D
+square cavity at high Rayleigh number, and they provided results of benchmark
+
+
+                                         3
+qualities.
+   In this work, we proposed a three-dimensional (3D) double distribution func-
+tion (DDF) based LB model to simulate thermal convective flows. A D3Q19
+model for the Navier-Stokes equations to simulate fluid flows and a D3Q7 model
+for the convection-diffusion equation to simulate heat transfer were adopted. To
+ensure the stability of the numerical model, relaxation parameters were adjusted
+to enforce fourth-order accuracy of the thermal model [19, 20]. With this ther-
+mal LB model, we simulated the following two types of thermal flows: one is
+thermal flows in a cubic cell with differentially heated vertical walls, the other
+is Rayleigh-Bénard convection in a cubic cell heated from the below and cooled
+from the above. It should be noted that both flow configurations have been
+adopted as canonic flow systems for studying thermal flows. Here we aim to
+provide benchmark quality results for thermal convective flows in the cubic cell.
+The rest of the paper is organized as follows: In Section 2, we first present the
+3D double-distribution multiple-relaxation-time LB model for simulating fluid
+flows and heat transfer. In Section 3, laminar thermal convection in side-heated
+convection cell at Rayleigh numbers of Ra = 106 and 107 , and Prandtl num-
+ber of Pr = 0.71 are simulated. The convergence behavior of steady results is
+obtained with grid up to 2573 . In Section 4, turbulent thermal convection in
+Rayleigh-Bénard convection cell are simulated at Ra = 106 , 3 × 106 and 107 ; Pr
+is fixed as 0.7 and 7, which corresponds to the working fluids of air and water at
+20◦ C, respectively. The statistically averaged flow and temperature quantities,
+as well as energy dissipation rates are provided.
+
+
+2. Numerical method
+
+2.1. Mathematical model for incompressible thermal flows
+
+   In incompressible thermal flows, temperature variation will cause density
+variation, thus resulting in buoyancy effect. Following the Boussinesq approx-
+imation, the temperature can be treated as an active scalar and its influence
+to the velocity field is realized through the buoyancy term. The viscous heat
+
+
+                                        4
+dissipation and compression work due to pressure are therefore neglected. All
+the transport coefficients are assumed to be constants. Then, the governing
+equations can be written as
+
+                ∇·u=0                                                            (1a)
+                 ∂u             1
+                    + u · ∇u = − ∇p + ν∇2 u + gβT (T − T0 )ẑ                    (1b)
+                 ∂t             ρ0
+                 ∂T
+                    + u · ∇T = κ∇2 T                                             (1c)
+                 ∂t
+
+where u, p, and T are the fluid velocity, pressure and temperature, respectively.
+ρ0 and T0 are reference density and temperature, respectively. ν, βT and κ are
+the kinematic viscosity, thermal expansion coefficient and thermal diffusivity,
+respectively. g is the gravity value, and ẑ is unit vector in the vertical direction.
+   With the scalings
+                           p                       p
+          x/L0 → x∗ , t/    L0 /(gβT ∆T ) → t∗ , u/ gβT L0 ∆T → u∗ ,
+                                                                                  (2)
+          p/(ρ0 gβT ∆T L0 ) → p∗ , (T − T0 )/∆T → T ∗
+
+Then, Eq. 1 can be rewritten in dimensionless form as
+
+                  ∇ · u∗ = 0                                                     (3a)
+                                                r
+                  ∂u∗                         Pr 2 ∗
+                       + u∗ · ∇u∗ = −∇p∗ +      ∇ u + T ∗ z̃                     (3b)
+                   ∂t                        Ra
+                                    r
+                  ∂T ∗    ∗     ∗       1
+                       + u · ∇T =          ∇2 T                                  (3c)
+                   ∂t                 PrRa
+
+where the dimensionless numbers characterizing the system are Rayleigh and
+Prandtl numbers, defined as
+
+                                   gβT ∆T L30        ν
+                            Ra =              , Pr =                              (4)
+                                      νκ             κ
+
+2.2. The LB model for fluid flows
+
+   In the LB method, to solve Eqs. 1a and 1b, the evolution equation of density
+distribution function is written as
+                                                  h                     i      0
+                                                                (eq)
+ fi (x + ei δt , t + δt ) − fi (x, t) = −(M−1 S)ij mj (x, t) − mj (x, t) + δt Fi (5)
+
+
+                                          5
+where fi is the density distribution function. x is the fluid parcel position, t is
+the time, δt is the time step. ei is the discrete velocity along the ith direction.
+For the three-dimensional D3Q19 discrete velocity model, ei can be given as
+                                                                                                      
+  e0 , e1 , e2 , e3 , e4 , e5 , e6 , e7 , e8 , e9 , e10 , e11 , e12 , e13 , e14 , e15 , e16 , e17 , e18 =
+                                                                                                       
+    0 1 −1 0 0 0 0 1 −1 1 −1 1 −1 1 −1 0 0 0 0
+                                                                                                        (6)
+ c 0 0 0 1 −1 0 0 1 1 −1 −1 0 0 0 0 1 −1 1 −1
+                                                                                                       
+                                                                                                       
+    0 0 0 0 0 1 −1 0 0 0 0 1 1 −1 −1 1 1 −1 −1
+
+In the above, c = δx /δt is the lattice constant. For simplicity, we adopt c =
+δx = δt = 1. M is a 19 × 19 orthogonal transformation matrix, and it is given
+
+
+
+
+                                                     6
+by
+   
+                       21    53 2
+M = h1|, h19e2 − 30|, h e4 −    e + 12|, hex |, h(5e2 − 9)ex |, hey |, h(5e2 − 9)ey |, hez |,
+                       2      2
+     h(5e2 − 9)ez |, h3e2x − e2 |, h(3e2 − 5)(3e2x − e2 )|, he2y − e2z |, h(3e2 − 5)(e2y − e2z )|,
+                                                                                          T
+     hex ey |, hey ez |, hex ez |, h(e2y − e2z )ex |, h(e2z − e2x )ey |, h(e2x − e2y )ez | =
+                                                                                                  
+  1    1      1     1     1      1      1   1 1 1 1 1 1 1 1 1 1 1 1
+                                                                                                  
+−30 −11 −11 −11 −11 −11 −11 8 8 8 8 8 8 8 8 8 8 8 8 
+                                                                                                  
+                                                                                                  
+                                                                                                  
+ 12 −4 −4 −4 −4 −4 −4 1 1 1 1 1 1 1 1 1 1 1 1 
+                                                                                                  
+                                                                                                  
+ 0
+      1 −1 0             0      0      0   1 −1 1 −1 1 −1 1 −1 0 0 0 0                           
+                                                                                                  
+ 0 −4 4            0     0      0      0   1 −1 1 −1 1 −1 1 −1 0 0 0 0 
+                                                                                                  
+                                                                                                  
+ 0
+      0      0     1    −1      0      0   1     1   −1   −1    0    0    0    0    1   −1  1  −1 
+                                                                                                   
+                                                                                                  
+ 0
+      0      0    −4     4      0      0   1     1   −1   −1    0    0    0    0    1   −1  1  −1 
+                                                                                                   
+                                                                                                  
+ 0
+      0      0     0     0      1    −1    0     0    0    0    1    1   −1   −1    1    1  −1 −1 
+                                                                                                   
+                                                                                                  
+ 0
+      0      0     0     0     −4      4   0     0    0    0    1    1   −1   −1    1    1  −1 −1 
+                                                                                                   
+                                                                                                  
+ 0
+      2      2    −1    −1     −1    −1    1     1    1    1    1    1    1    1   −2   −2  −2 −2 
+                                                                                                   
+                                                                                                  
+ 0 −4 −4 2               2      2      2   1     1    1    1    1    1    1    1   −2   −2  −2 −2 
+                                                                                                  
+                                                                                                  
+ 0
+      0      0     1     1     −1    −1    1     1    1    1  −1   −1    −1   −1    0    0   0  0 
+                                                                                                   
+                                                                                                  
+ 0
+      0      0    −2    −2      2      2   1     1    1    1  −1   −1    −1   −1    0    0   0  0 
+                                                                                                   
+                                                                                                  
+ 0
+      0      0     0     0      0      0   1 −1 −1 1 0 0 0 0 0 0 0 0                             
+                                                                                                  
+ 0    0      0     0     0      0      0   0 0 0 0 0 0 0 0 1 −1 −1 1 
+                                                                                                  
+                                                                                                  
+ 0    0      0     0     0      0      0   0 0 0 0 1 −1 −1 1 0 0 0 0 
+                                                                                                  
+                                                                                                  
+ 0    0      0     0     0      0      0   1 −1 1 −1 −1 1 −1 1 0 0 0 0 
+                                                                                                  
+                                                                                                  
+ 0    0      0     0     0      0      0 −1 −1 1 1 0 0 0 0 1 −1 1 −1
+                                                                                                  
+                                                                                                  
+   0   0      0     0     0      0      0   0 0 0 0 1 1 −1 −1 −1 −1 1 1
+                                                                                                (7)
+                                                                          h                    2      2
+                                                                                                        i
+                                                                                          i ·u)
+                                                                                                 − |u|
+                                                            (eq)
+Choose the equilibrium distribution function as fi                 = ωi ρ 1 + eci 2·u + (e2c 4     2c 2  ,
+                                                                                  s         s          s
+
+where the weights are ω0 = 1/3, ω1−6 = 1/18, ω7−18 = 1/36. Then, the equi-
+
+
+
+
+                                               7
+librium moments m(eq) are
+                
+                                      11          2          2
+       m(eq) = ρ 1, −11 + 19|u|2 , 3 − |u|2 , u, − u, v, − v, w,
+                                       2          3          3
+                    2                    1
+                  − w, 2u2 − v 2 − w2 , − (2u2 − v 2 − w2 ), v 2 − w2 ,                                 (8)
+                    3                    2
+                                                    T
+                    1 2     2
+                  − (v − w ), uv, vw, uw, 0, 0, 0
+                    2
+The diagonal relaxation matrix S is given as
+
+  S = diag(sρ , se , sε , sj , sq , sj , sq , sj , sq , sν , sπ , sν , sπ , sν , sν , sν , sm , sm , sm ) (9)
+
+To ensure accurate flow boundary conditions as well as adequate numerical
+stability, relaxation parameters si are choosen as sρ = sj = 0, se = sε = sν =
+sπ = 1/τf , sq = sm = 8(2τf − 1)/(8τf − 1). Here, τf is determined by the
+                                                                       √
+kinematic viscosity of the fluids as ν = c2s (τf − 0.5)δt , and cs = 1/ 3c is the
+                                                0
+speed of sound. The forcing term Fi in the right-hand side of Eq. 5 is given by
+                                             
+                             0
+                                  −1       S
+                           F =M        I−       MF̃                         (10)
+                                            2
+
+and the term MF̃ is [23, 24]
+        
+                                   2           2           2
+ MF̄ = 0, 38u · F, −11u · F, Fx , − Fx , Fy , − Fy , Fz , − Fz ,
+                                   3           3           3
+             4uFx − 2vFy − 2wFz , −2uFx + vFy + wFz , 2vFy − 2wFz ,                                    (11)
+                                                                                                 T
+              − vFy + wFz , uFy + vFx , vFz + wFy , uFz + wFx , 0, 0, 0
+
+where F = ρgβT (T − T0 )ẑ. The macroscopic density ρ and velocity u are
+obtained from                                                               !
+                                  18                     18
+                                  X         1            X          1
+                            ρ=     fi , u =                  ei fi + F                                 (12)
+                               i=0
+                                            ρ            i=0
+                                                                    2
+   The no-slip velocity boundary conditions at the wall can be realized by the
+half-way bounce-back boundary scheme as
+
+                                    fī (xf , t + δt ) = fi+ (xf , t)                                  (13)
+
+where fi+ (xf , t) is the post collision value of the distribution function, fī (xf , t)
+is the distribution function associated with the velocity eī = −ei .
+
+
+                                                     8
+2.3. The LB model for heat transfer
+
+   To solve Eq. 1c, the evolution equation of temperature distribution function
+is written as
+                                                      h                      i
+                                                                    (eq)
+     gi (x + ei δt , t + δt ) − gi (x, t) = −(N−1 Q)ij nj (x, t) − nj (x, t)         (14)
+
+where gi is the temperature distribution function. For the three-dimensional
+D3Q7 discrete velocity model, ei can be given as
+                                                                 
+                                                   0 1 −1 0 0 0 0
+                                                               
+             e0 , e1 , e2 , e3 , e4 , e5 , e6 = c 0 0 0 1 −1 0 0                   (15)
+                                                                 
+                                                                 
+                                                   0 0 0 0 0 1 −1
+
+N is a 7 × 7 orthogonal transformation matrix, and it is given by
+                                                            
+                          h1|          1 1 1 1 1 1 1
+                                                            
+                    hex |   0 1 −1 0 0 0 0 
+                                                            
+                                                            
+                    hey |   0 0 0 1 −1 0 0 
+                                                            
+                                                            
+              N =  hez |  =  0 0 0 0 0 −1 −1                                     (16)
+                                                            
+                                                            
+                   h−6 + 7e2 | −6 1 1 1 1 1 1 
+                                                            
+                                                            
+                    h3e2x − e2 |   0 2 2 −1 −1 −1 −1
+                                                            
+                                                            
+                      he2y − e2z |     0 0 0 1 1 −1 −1
+                                                                       h              i
+                                                          (eq)                7 ei ·u
+Choose the equilibrium distribution function as gi               = ωi T 1 + 6+a T c
+                                                                                   2    ,
+                                                                                     s
+
+where the weights are ω0 = (1 − aT )/7, ω1−6 = (6 + aT )/42. Then, the equilib-
+rium moments n(eq) are
+
+                                                                  T
+                       n(eq) = [T, uT, vT, wT, aT T, 0, 0]                           (17)
+
+where aT is a constant. The relaxation matrix is given by Q = diag(0, qκ , qκ , qκ , qe , qν , qν ).
+The thermal diffusivity κ is determined from the relaxation parameter qκ as
+                                                
+                                 6 + aT    1   1
+                             κ=              −                            (18)
+                                   21     qκ   2
+
+To achieve the isotropy of the fourth-order error term, Dubois et al. [19] pro-
+posed the following relationships for the relaxation parameters in D3Q7 model:
+
+
+                                            9
+                                                       
+                                 1   1        1    1              1
+                                   −             −            =                          (19)
+                                qκ   2        qe   2              6
+
+                                                                                −1
+            1   1  aT + 6            1   1            4 + 3aT              1   1
+               − =                     −         −                           −           (20)
+            qν  2  1 − aT           qκ   2           12(1 − aT )          qκ   2
+From Eq. 20, we have
+
+                                  6(1 − aT )(2 − qκ )qκ
+                    qν =                                                                 (21)
+                           (11 + 3aT )(qκ − 6)qκ + 12(aT + 6)
+
+If and only if we take a special value of qκ as
+                                             √
+                                   1    1      3
+                                     − =                                                 (22)
+                                  qκ    2     6
+
+then qν in Eq. 21 becomes a constant independent of aT , which is
+                                         √
+                                1    1     3
+                                  − =                                                    (23)
+                               qν    2    3
+
+With Eq. 23, we can determine qe from Eq. 19 as
+                                        √
+                               1    1     3
+                                  − =                               (24)
+                               qe   2    3
+                          √              √                 √
+In short, we have qκ = 3 − 3, qe = qν = 4 3 − 6 and aT = 42 3κ − 6. The
+macroscopic temperature T is obtained from
+                                             6
+                                             X
+                                      T =            gi                                  (25)
+                                              i=0
+
+   The Dirichlet boundary conditions for constant temperature can be realized
+by the half-way anti-bounce-back boundary scheme as [25]
+
+                                                              6 + aT
+                    gī (xf , t + δt ) = −gi+ (xf , t) +             Tw                  (26)
+                                                                21
+
+where Tw is the wall temperature. The Neumann boundary conditions for adi-
+abatic temperature can be realized by the half-way bounce-back scheme as
+
+                             gī (xf , t + δt ) = gi+ (xf , t)                           (27)
+
+
+
+
+                                             10
+3. Laminar thermal convection in side-heated convection cell
+
+   The flow configuration for the side-heated convection cell is shown in Fig. 1.
+The left and right vertical walls are kept at constant hot and cold temperature,
+respectively; the other four walls are adiabatic. All six walls impose no-slip
+velocity boundary condition. The dimension of the cell is L × D × H, and
+we set L = D = H in this work. Simulation results are provided at Rayleigh
+numbers of 106 and 107 ; the Prandtl number is fixed as 0.71. In addition,
+we need another dimensionless parameter, the Mach number that is defined as
+      √
+Ma = gβT L0 ∆T /cs , to fully determine the parameters in the system. Here, we
+fix Ma = 0.1 as a compromise to approximate the incompressibility condition as
+well as to enhance the computational efficiency. With the above parameters in
+side-heated convection cell, steady state can be achieved for which the criterion
+is given as
+                   P
+                               t + 2000δt ) − u(xi , t)k2
+                      i ku(xi ,P
+                                                               < 10−9 ,
+                                  i ku(xi , t)k2
+                   P                                                         (28)
+                                 t + 2000δt ) − T (xi , t)|1
+                      i |T (xi , P                                    −9
+                                                               < 10
+                                  i |T (xi , t)|1
+
+where kuk2 denotes L2 norm of u, and |T |1 denotes L1 norm of T .
+
+
+
+
+                Figure 1: Illustration of the side-heated convection cell.
+
+
+   Figure 2 shows the temperature fields obtained on grid Nx × Ny × Nz =
+
+
+                                            11
+2573 at Ra = 106 and 107 . The left-hand side is the isothermal surface in
+the whole cell, while the right-hand side is the temperature cross section along
+the x = 0.5 plane. At these two high Rayleigh numbers, thin boundary layers
+exist near isothermal walls; while the temperature stratification is near-linear
+in the interior region. In addition, the temperature profiles in the x = 0.5 plane
+generally agrees with prior 2D simulations (see Fig. 10 in our previous work
+[26]); while 3D variations of temperature isothermal surface can be observed
+near the x = 0 and x = 1 end walls.
+
+
+
+
+Figure 2: Temperature fields in side-heated convection at (a-b) Ra = 106 , (c-d) Ra = 107 ; (a,
+c) isothermal surface in the whole cell, (b, d) cross section at the x = 0.5 plane.
+
+
+                                              12
+   To provide quantitative results, we first measure some hydrodynamic quan-
+tities, including the maximum horizontal velocity vmax at the vertical centerline
+of the midplane (e.g., y = 0.5 line at x = 0.5 plane), and its corresponding
+location z; the maximum vertical velocity wmax at the horizontal centerline of
+the midplane (e.g., z = 0.5 line at x = 0.5 plane), and its corresponding location
+y. In addition, we calculate the average kinetic energy E of the system as
+                          1
+                            R        2       1
+                                               P            2
+                          2 Ω ku(x)k   dx    2    i ku(xi )k
+                    E=         R          =                                (29)
+                                Ω
+                                  dx            Nx Ny Nz
+
+where Ω is the entire flow domain. The convergence behaviors of these hydro-
+dynamic quantities are tabulated in Table 1. We also provide existing data as
+comparison, such as Fusegi et al. [27] using control-volume based finite different
+method with strongly implicit scheme to accelerate convergence; Tric et al. [28]
+using pseudo-spectral Chebyshev algorithm based on the projection-diffusion
+method; Wang et al. [29] using discrete unified gas-kinetic scheme; Chen et al.
+[30] using high-order simplified thermal lattice Boltzmann method. It should
+be noted that in the work of Tric [28], the velocity is normalized by κ/L0 , as
+           √
+opposed to gβT L0 ∆T adopted in the present work, thus values of velocity u in
+                               √
+their work have been divided by Ra · Pr for the convenience of direct compar-
+ison. In addition, in the work of Fusegi et al. [27], Wang et al. [29], and Chen
+et al. [30], the hot and cold walls are set at x = 1 and x = 0 planes, respec-
+tively; in the work of Tric et al. [28], the hot and cold walls are set at y = 0.5
+and y = −0.5 planes, respectively. These geometry settings are not identical
+with present work, where the hot and cold walls are set at y = 0 and y = 1,
+respectively. Thus, the values of the velocity components and its corresponding
+position have also gone through coordinate transformation.
+
+
+
+
+                                       13
+             Table 1: Convergence behaviors of hydrodynamic quantities.
+ Ra       Ref.           Mesh size            vmax        z       wmax       y        E × 103
+ 106   Fusegi [27]         623               0.08416   0.8557     0.2588   0.0331          -
+        Tric [28]          813               0.08096   0.8536    0.25821   0.0331          -
+                              3
+       Wang [29]           50                0.0816    0.8597     0.2556   0.0347          -
+        Chen [30]     101 × 51 × 101          0.080     0.860     0.257    0.040           -
+         Present           813               0.08056   0.8580    0.25437   0.0432     3.3346
+         Present           1293              0.08091   0.8566    0.25753   0.0349     3.3280
+         Present           1613              0.08099   0.8540    0.25729   0.0404     3.3265
+         Present           2573              0.08107   0.8541    0.25836   0.0370     3.3248
+ 107    Tric [28]          1113              0.05813   0.8716    0.25994   0.0194          -
+       Wang [29]           2003              0.0558    0.8831     0.2590   0.0233          -
+        Chen [30]     121 × 51 × 121         0.0585    0.8750     0.2606   0.0199          -
+         Present           813               0.05410   0.8951    0.25865   0.0185     1.8418
+         Present           1293              0.05671   0.8798    0.26054   0.0194     1.8365
+         Present           1613              0.05730   0.8789    0.26184   0.0217     1.8345
+         Present           2573              0.05789   0.8774    0.26181   0.0214     1.8322
+
+
+   We then measure Nusselt numbers to quantify the heat transfer process. We
+consider the mean Nusselt number Numean at the x = 0.5 midplane along the
+hot wall (y = 0) and the cold wall (y = 1); the overall Nusselt number Nuoverall
+along the hot and cold walls. Here, Numean (x) and Nuoverall are defined as
+                                       Z 1
+                                             ∂T (x, z)
+                     Numean (x) = −                               dz                (30)
+                                        0       ∂y     y=0 or y=1
+
+
+                                  Z 1Z 1
+                                            ∂T (x, z)
+                 Nuoverall = −                                   dx dz              (31)
+                                   0   0       ∂y     y=0 or y=1
+
+The convergence behavior of these Nusselt numbers are tabulated in Table 2. In
+addition, the asymptotic values f∞ are used as the reference values to compute
+the relative error, which are then used to estimate the order of accuracy n for
+LB simulation. At Ra = 107 , results obtained at coarse mesh size of 813 do not
+
+
+                                             14
+fit well with the interpolating polynomial, and they have been excluded from
+computing asymptotic values. Overall, the present thermal LB model has an
+approximate second-order spatial accuracy.
+
+
+                    Table 2: Convergence behaviors of Nusselt numbers.
+ Ra       Ref.            Mesh size         Numean          Numean        Nuoverall      Nuoverall
+                                              y=0           y=1            y=0             y=1
+ 106   Fusegi [27]            623             9.012            -            8.770            -
+                                   3
+        Tric [28]             81             8.8771            -           8.6407            -
+       Wang [29]              503            8.7795            -           8.5428            -
+        Chen [30]       101 × 51 × 101        9.072            -            8.741            -
+         Present              813           8.99850         8.99333        8.75450        8.75405
+                                   3
+         Present             129            8.91688         8.91467        8.67775        8.67746
+         Present             1613           8.89886         8.89744        8.66075        8.66060
+                                   3
+         Present             257            8.88054         8.87994        8.64345        8.64342
+                              f∞             8.8735         8.8728         8.6369         8.6364
+                               n                2.49         2.45           2.49           2.44
+ 107    Tric [28]            1113           16.5477            -           16.3427           -
+                                   3
+       Wang [29]             200            16.4153         16.3909        16.2112        16.1872
+        Chen [30]       121 × 51 × 121       16.457            -           16.604            -
+                                                       ∗              ∗              ∗
+         Present              81   3
+                                           17.26877        17.31377       17.03864       17.09483∗
+         Present             1293           16.85522       16.85465       16.64342       16.64642
+                                   3
+         Present             161            16.73787       16.73588       16.52963       16.52950
+         Present             2573           16.60871       16.60782       16.40322       16.40285
+                              f∞            16.5204         16.5301        16.3124        16.3237
+                               n                1.93         2.07           1.88           2.04
+
+
+   In Tables 1 and 2, the results given by Wang et al. [29] at Ra = 107 were
+time-averaged quantities, indicating their simulations did not converge to steady
+states; while Tric et al. [28] and Chen et al. [30] mentioned natural convection
+in such a configuration enters unsteady flow regime at Rayleigh number beyond
+
+
+                                           15
+107 . Here, we present convergence histories of velocity u in Fig. 3. With the
+present LB model and the four mesh sizes of 813 , 1293 , 1613 and 2573 , our sim-
+ulations were able to reach residual errors down to 10−9 ; similar convergence
+histories of temperature T were also observed, but not shown here for clarity.
+It is worth mentioning in numerical investigations, the bifurcation critical num-
+ber depends on the formulation, numerical method, and choice of grid. Even
+for the canonical lid-driven cavity problem that only considers incompressible
+isothermal flows, different researchers presented various first bifurcation critical
+Reynolds numbers [26, 31].
+
+
+
+
+      Figure 3: Convergence history of velocity u at (a) Ra = 106 and (b) Ra = 107 .
+
+
+   We further show the y variation of the Nusselt number averaged over x-z
+plane in Fig. 4. Here, the x-z plane averaged Nusselt number is defined as
+                            Z 1Z 1 √               
+                                                 ∂T
+                  Nu(y) =            vT RaPr −         dx dz               (32)
+                             0   0               ∂y
+
+We can see from Fig. 4, the Nusselt number oscillates near the hot or cold walls
+(y = 0 or y = 1), which is due to lack of mesh resolution. When increasing
+mesh sizes, the amplitude of this small variation will decrease, and the Nusselt
+number will converge to a constant.
+
+
+
+
+                                           16
+Figure 4: The Nusselt number averaged over x-z plane as a function of y at (a) Ra = 106 and
+(b) Ra = 107 ; subfigures in the right column are zoomed-in views of corresponding subfigures
+in the left column.
+
+
+    Since the lattice Boltzmann method intrinsically solves weakly compressible
+Navier-Stokes equations, to directly quantify the compressibility effect, we then
+compute the root-mean-square (rms) density fluctuation and the rms velocity
+divergence as
+                                                            2 1/2
+                                             P              
+                                                i (ρi − ρ0 )
+                            p
+                                h(δρ)2 i =                                              (33)
+                                                Nx Ny Nz
+
+                                                               2 1/2
+                                               P               
+                                                    i (∇ · ui )
+                           p
+                               h(∇ · u)2 i =                                            (34)
+                                                    Nx Ny Nz
+
+
+                                               17
+We can see from Table 3, both the Rayleigh number and mesh sizes have little
+effects on the rms density fluctuation; while the rms velocity divergence de-
+creases when increasing the mesh sizes or decreasing the Rayleigh number. The
+dependence of rms velocity divergence on mesh sizes or Rayleigh number can be
+explained as follows. In the present LB model, the relaxation parameters were
+adjusted following the principles in TRT model, i.e., se = sε = sν = sπ = 1/τf ,
+sq = sm = 8(2τf − 1)/(8τf − 1), which leads to the bulk viscosity equal to
+shear viscosity as ζ = c2s (s−1            2 −1
+                             e − 0.5)δt = cs (sν − 0.5)δt = ν. At fixed Rayleigh
+
+number, increasing the mesh sizes leads to larger shear viscosity and bulk vis-
+cosity, thus resulting in stronger dissipation of modes related to compressibility,
+and smaller rms velocity divergence; at fixed mesh size, increasing the Rayleigh
+number leads to smaller bulk viscosity, resulting in larger rms velocity diver-
+gence. On the other hand, we notice that the simulation results reported by
+Ostilla-Monico et al. [32], who used the finite difference method coupling with
+multiple-resolution strategy to directly solve the Navier-Stokes equations, also
+show non-solenoidal velocity field with small residual divergence of O(10−3 ).
+So far, this small magnitude of residual divergence has not resulted in appar-
+ent problems when simulating incompressible thermal convective flows, even for
+flows in turbulent flow regime.
+
+
+       Table 3: The root-mean-square density fluctuation and velocity divergence.
+      Ra    Mesh size     rms density fluctuation       rms velocity divergence
+     106       813             1.4793 × 10−3                  1.994 × 10−2
+              1293             1.4794 × 10−3                  8.779 × 10−3
+              1613             1.4794 × 10−3                  5.722 × 10−3
+              2573             1.4795 × 10−3                  2.228 × 10−3
+     107       813             1.4770 × 10−3                  4.183 × 10−2
+              1293             1.4788 × 10−3                  2.295 × 10−2
+              1613             1.4791 × 10−3                  1.617 × 10−2
+              2573             1.4795 × 10−3                  7.132 × 10−3
+
+
+
+
+                                          18
+4. Turbulent thermal convection in Rayleigh-Bénard convection cell
+
+   The flow configuration for the RB cell is shown in Fig. 5. The top and
+bottom walls are kept at constant cold and hot temperature, respectively; while
+the other four vertical walls are adiabatic. All six walls impose no-slip velocity
+boundary condition. The dimension of the cell is L×D×H, and we set L = D =
+H in this work. Simulation results are provided at Rayleigh numbers of 106 ,
+3 × 106 , and 107 , and Prandtl numbers of 0.7 and 7. The Mach number is fixed
+as 0.1. The simulation protocol is as follows: first check whether statistically
+stationary state has reached in every 100 dimensionless time units; after that
+check whether statistically converge state has reached in every 200 dimensionless
+time units.
+
+
+
+
+              Figure 5: Illustration of the Rayleigh-Bénard convection cell.
+
+
+   To measure global strength of the convection, the Reynolds number based
+on root-mean-square (rms) velocity is defined as
+                               p
+                         rms     h(u2 + v 2 + w2 )iV,t H
+                      Re     =                                                  (35)
+                                           ν
+
+where h·iV,t denotes an ensemble average over the whole cell and over time.
+Similarly, the Reynolds number based on rms vertical velocity (i.e., parallel to
+
+
+
+                                            19
+gravity) is defined as                      p
+                                                   hw2 iV,t H
+                                  Rerms
+                                    w =                                        (36)
+                                                     ν
+   To measure global heat transport, the volume average Nusselt number (Nuvol )
+is calculated as [33, 34]
+                                            √
+                            Nuvol = 1 +            PrRahwT iV,t                (37)
+
+Meanwhile, since no-slip velocity is imposed on the top and bottom walls, the
+average Nusselt number over top and bottom walls can be calculated as
+
+                              1
+                    Nuwall = − (h∂z T itop,t + h∂z T ibottom,t )               (38)
+                              2
+
+where h·itop and h·ibottom denotes an ensemble average over the top and bottom
+walls, respectively. In addition, by averaging the equations of motion, we can
+define another two Nusselt numbers related with global averages of kinetic and
+thermal energy dissipation rates as [35, 36]
+                                               √
+                            Nukin = 1 +             RaPrhεu iV,t               (39)
+
+
+                                           √
+                                  Nuth =       RaPrhεT iV,t                    (40)
+
+where the kinetic and thermal energy dissipation rates are given by
+                                                           2
+                                  1 X ∂uj (x, t) ∂ui (x, t)
+                    εu (x, t) =    ν            +                              (41)
+                                  2 ij   ∂xi       ∂xj
+
+                                            X  ∂T (x, t) 2
+                            εT (x, t) = κ                                      (42)
+                                               i
+                                                        ∂xi
+The above rigorous relations further form the backbone of the Grossmann-Lohse
+(GL) theory of turbulent heat transfer [37, 38].
+   Table 4 tabulates the values for Reynolds and Nusselt numbers obtained
+from the present simulations. If the direct numerical simulation of RB convec-
+tion is well resolved and statistically convergent, the above definitions of Nusselt
+numbers should give results agree with each other. Here, the volume averaged
+
+
+                                               20
+Nusselt number Nuvol is chosen as the reference value to calculate its relative
+differences with other Nusselt numbers, and the results (denoted by ’diff.’) are
+included in the bracket in corresponding columns. From Table 4, we can see
+the differences are within 1%, indicating that Nusselt numbers show good con-
+sistency with each other. We further fit the data to obtain scaling relations of
+Reynolds number and Nusselt number versus Rayleigh number using power-law
+relations. For the Ra ∼ Re scaling, we have Rerms = 0.209Ra0.499±0.004 and
+Rerms
+  w   = 0.154Ra0.496±0.001 at Pr = 0.7, while Rerms = 0.016Ra0.532±0.017 and
+Rerms
+  w   = 0.013Ra0.529±0.025 at Pr = 7, which agree well with previous stud-
+ies that Re proportional to Ra1/2 [39]. For the Ra ∼ Nu scaling, we have
+Nu = 0.153Ra0.289±0.0003 at Pr = 0.7, while Nu = 0.158Ra0.287±0.018 at Pr = 7,
+which agree well with previous studies that Nu proportional to Ra2/7 [40, 41].
+
+
+            Table 4: The Reynolds and Nusselt numbers in Rayleigh-Bénard convection.
+   Ra           Pr    Rerms     Rerms
+                                  w      Nuvol        Nuwall (diff.)   Nukin (diff.)     Nuth (diff.)
+        6
+   10           0.7   208.80    145.58    8.33        8.35 (0.22%)     8.24 (1.06%)     8.26 (0.88%)
+            6
+ 3 × 10         0.7   357.11    249.96   11.46        11.48 (0.23%)    11.35 (0.89%)    11.37 (0.72%)
+        7
+   10           0.7   654.86    454.92   16.22        16.27 (0.30%)    16.07 (0.96%)    16.10 (0.78%)
+        6
+   10            7     26.13    20.26     8.49        8.52 (0.33%)     8.46 (0.42%)     8.44 (0.57%)
+            6
+ 3 × 10          7     44.56    33.65    11.12        11.14 (0.24%)    11.08 (0.35%)    11.06 (0.52%)
+   107           7     86.41    65.71    16.16        16.19 (0.16%)    16.11 (0.35%)    16.03 (0.80%)
+
+
+   Sufficiently resolved simulations would give converging Nusselt numbers,
+but not vice versa. For example, Kooij et al. [42] observed ripples in in-
+stantaneous snapshots of temperature fields near sharp gradients when the
+simulation is under-resolved, even though the Nusselt numbers from the sim-
+ulations look reasonable. Thus, we also check whether the grid spacing ∆g
+and time interval ∆t is properly resolved by comparing with the Kolmogorov
+and Batchelor scales. Here, the Kolmogorov length scale is estimated by the
+global criterion η = HPr1/2 /[Ra(Nu − 1)]1/4 , the Batchelor length scale is
+estimated by ηB = ηPr−1/2 , and the Kolmogorov time scale is estimated as
+     p          p
+τη = ν/hεu i = Pr/(Nu − 1). From Table 5, we can see that grid spacings
+
+
+                                                 21
+satisfy max (∆g /η, ∆g /ηB ) ≤ 0.52, which ensures the spatial resolution. In addi-
+tion, the time intervals are ∆t ≤ 0.00145τη , thus guaranteeing adequate tempo-
+ral resolution. However, such a fine temporal resolution is the result of intrinsic
+defects in LB time marching scheme, the small time steps was not adopted
+on purpose. Specifically, the Courant-Friedrichs-Lewy (CFL) number in LB
+                                                  p                   
+method can be calculated as CFLLB = dt/dx = δt / L0 /(gβT ∆T ) / δx /L0 =
+√                                                         √
+  L0 gβT ∆T = Ma · cs ≈ 0.0577, where δx = δt = 1, cs = 1/ 3, and Ma = 0.1
+have been used in our simulations. In conventional numerical methods that
+directly solve the Navier-Stokes equations, the CFL numbers can be five to
+six times larger, leading to larger time interval. On the other hand, it should
+be noted that the LB method does not require to solve the time consuming
+pressure Poisson equation, which saves the computational cost compared with
+the conventional Navier-Stokes solvers. Thus, a compressive compression of the
+overall computing efficiency between different numerical methods is needed in
+the future. In Table 5, we also estimate the number of grid points within the
+                               th
+thermal boundary layer, where NBL ≈ H/(2Nu) [43]. Around 8 nodes are used
+within the thermal boundary layers in all the cases. To make sure statistically
+stationary state has been reached and the initial transient effects are washed
+out, we first simulate a time period of at least 500tf . After that, an additional
+averaging time tavg of at least 200tf (one case even with 1800tf ) are simulated
+to reach the statistical convergence state. Here, tf denotes free-fall time units
+     p
+tf = H/(gβT ∆T ).
+
+
+                  Table 5: Spatial and temporal resolutions of the simulations.
+                                                                             th
+    Ra           Pr    Mesh size     ∆g /η     ∆g /ηB         ∆t /τη        NBL   tavg /tf
+    106          0.7      1293        0.48       0.40     1.45 × 10−3        8     1800
+             6                  3                                      −3
+  3 × 10         0.7      193         0.46       0.39     1.16 × 10          8      400
+    107          0.7      2573        0.52       0.43     1.05 × 10−3        8      400
+       6                        3                                      −4
+    10           7        129         0.15       0.41     4.63 × 10          8      200
+  3 × 106        7        1933        0.15       0.38     3.60 × 10−4        9      800
+         7                      3                                      −4
+    10           7        257         0.16       0.43     3.31 × 10          8      800
+
+
+                                               22
+   In addition to statistically averaged Reynolds and Nusselt numbers, we show
+instantaneous flow and temperature structures in Fig. 6. We can observe hot
+and cold plumes in mushroom-like shape detaching from both the top and bot-
+tom thermal boundary layers of the cell. In addition, the maximum absolute
+value of vertical velocity is higher at Pr = 0.7 (Fig. 6c) compared with that at
+Pr = 7 (Fig. 6d), indicating stronger motion of upward and downward moving
+fluids at lower Prandtl number. Fig. 7 further presents logarithmic kinetic en-
+ergy dissipation fields and logarithmic thermal energy dissipation fields. Since
+rising and falling thermal plumes are associated with large amplitudes of both
+kinetic and thermal energy dissipation rates, intense dissipations occur almost
+in regions with higher or lower temperature.
+
+
+
+
+                                      23
+Figure 6: Typical snapshots of the instantaneous (a-b) temperature fields, (c-d) vertical ve-
+locity fields at Ra = 107 , (a, c) Pr = 0.7, and (b, d) Pr = 7.
+
+
+
+
+                                              24
+Figure 7: Typical snapshots of the instantaneous (a-b) logarithmic kinetic energy dissipation
+fields, (c-d) logarithmic thermal energy dissipation fields at Ra = 107 , (a, c) Pr = 0.7, and
+(b, d) Pr = 7.
+
+
+    The probability density functions (PDFs) of kinetic and thermal energy
+dissipation rates obtained over the whole cell are shown in Fig. 8. All data
+have been normalized with respect to their root-mean-square values, where
+          p                        p
+(εu )rms = hε2u iV,t and (εT )rms = hε2T iV,t . At the same Rayleigh number,
+decreasing the Prandtl number (e.g., Fig. 8b versus Fig. 8a, and Fig. 8d versus
+Fig. 8c) leads to flatter tails of the PDFs; at the same Prandtl number, in-
+creasing the Rayleigh number leads to more extended tails of the PDFs. These
+trends generally agree with that in 2D square RB cells [44] and 3D cylindri-
+cal RB cells [45], and can be explained by the positive correlations between
+
+
+                                             25
+increasing Reynolds number and increasing small-scale intermittency of dissi-
+pation fields. To further quantitatively describe the shape of the PDF tails, we
+adopt a stretched exponential function [46, 45, 44]
+
+                                         C
+                              p(X ∗ ) = √    exp(−mX ∗α )                             (43)
+                                          X∗
+where C, m and α are fitting parameters. X = εu,T /(εu,T )rms and X ∗ =
+X − Xmp with Xmp being the abscissa of the most probable value. As shown
+in Fig. 8, the stretched exponential function (denoted by the solid black lines)
+fits well with the PDF tails, with adjusted R-squared values above 0.98.
+
+
+
+
+Figure 8: PDFs of kinetic energy dissipation rates at (a) Pr = 0.7, (b) Pr = 7; and thermal
+energy dissipation rates at (c) Pr = 0.7, (d) Pr = 7.
+
+
+                                             26
+5. Conclusions
+
+   In this work, we have presented three-dimensional LB simulations of thermal
+convective flows at high Rayleigh number. For both laminar thermal convection
+in side-heated convection cell and turbulent thermal convection in Rayleigh-
+Bénard convection cell, the present double distribution function based thermal
+LB model can give results that agree well with existing benchmark data obtained
+by other methods. The extensions to Rayleigh-Bénard turbulent convection
+with larger parameter spaces of Rayleigh and Prandtl numbers will be pursued
+in future work.
+
+
+Acknowledgements
+
+   This work was supported by National Natural Science Foundation of China
+(NSFC) through Grant No. 11772259, the Fundamental Research Funds for the
+Central Universities of China (No. 3102019PJ002) and the 111 project of China
+(No. B17037).
+
+
+References
+
+References
+
+ [1] G. Ahlers, S. Grossmann, D. Lohse, Heat transfer and large scale dynamics
+    in turbulent Rayleigh-Bénard convection, Reviews of Modern Physics 81 (2)
+    (2009) 503. doi:10.1103/RevModPhys.81.503.
+
+ [2] D. Lohse, K.-Q. Xia, Small-scale properties of turbulent Rayleigh-Bénard
+    convection, Annual Review of Fluid Mechanics 42 (2010) 335–364. doi:
+    10.1146/annurev.fluid.010908.165152.
+
+ [3] S. Chen, G. D. Doolen, Lattice Boltzmann method for fluid flows, Annual
+    Review of Fluid Mechanics 30 (1998) 329–364. doi:10.1146/annurev.
+    fluid.30.1.329.
+
+
+
+                                      27
+ [4] C. K. Aidun, J. R. Clausen, Lattice-Boltzmann method for complex flows,
+    Annual Review of Fluid Mechanics 42 (2010) 439–472. doi:10.1146/
+    annurev-fluid-121108-145519.
+
+ [5] A. Xu, W. Shyy, T. Zhao, Lattice Boltzmann modeling of transport phe-
+    nomena in fuel cells and flow batteries, Acta Mechanica Sinica 33 (3) (2017)
+    555–574. doi:10.1007/s10409-017-0667-6.
+
+ [6] P. Cheng, X. Quan, S. Gong, X. Liu, L. Yang, Chapter four - recent analyt-
+    ical and numerical studies on phase-change heat transfer, in: Advances in
+    Heat Transfer, Vol. 46, 2014, pp. 187–248. doi:10.1016/bs.aiht.2014.
+    08.004.
+
+ [7] F. J. Alexander, S. Chen, J. D. Sterling, Lattice boltzmann thermohydrody-
+    namics, Physical Review E 47 (4) (1993) R2249. doi:10.1103/PhysRevE.
+    47.R2249.
+
+ [8] Y. Chen, H. Ohashi, M. Akiyama, Thermal lattice Bhatnagar-Gross-Krook
+    model without nonlinear deviations in macrodynamic equations, Physical
+    Review E 50 (4) (1994) 2776. doi:10.1103/PhysRevE.50.2776.
+
+ [9] P. Lallemand, L.-S. Luo, Theory of the lattice Boltzmann method: Acoustic
+    and thermal properties in two and three dimensions, Physical Review E
+    68 (3) (2003) 036706. doi:10.1103/PhysRevE.68.036706.
+
+[10] X. He, Q. Zou, L.-S. Luo, M. Dembo, Analytic solutions of simple flows
+    and analysis of nonslip boundary conditions for the lattice Boltzmann BGK
+    model, Journal of Statistical Physics 87 (1-2) (1997) 115–136. doi:10.
+    1007/BF02181482.
+
+[11] X. Shan, Simulation of Rayleigh-Bénard convection using a lattice Boltz-
+    mann method, Physical Review E 55 (3) (1997) 2780.           doi:10.1103/
+    PhysRevE.55.2780.
+
+
+
+
+                                      28
+[12] Z. Guo, B. Shi, C. Zheng, A coupled lattice BGK model for the Boussinesq
+    equations, International Journal for Numerical Methods in Fluids 39 (4)
+    (2002) 325–342. doi:10.1002/fld.337.
+
+[13] Z. Chai, T. Zhao, Lattice Boltzmann model for the convection-diffusion
+    equation, Physical Review E 87 (6) (2013) 063309.             doi:10.1103/
+    PhysRevE.87.063309.
+
+[14] R. Huang, H. Wu, Lattice Boltzmann model for the correct convection-
+    diffusion equation with divergence-free velocity field, Physical Review E
+    91 (3) (2015) 033302. doi:10.1103/PhysRevE.91.033302.
+
+[15] I. Ginzburg, Equilibrium-type and link-type lattice Boltzmann models for
+    generic advection and anisotropic-dispersion equation, Advances in Water
+    Resources 28 (11) (2005) 1171–1195. doi:10.1016/j.advwatres.2005.
+    03.004.
+
+[16] I. Rasin, S. Succi, W. Miller, A multi-relaxation lattice kinetic method for
+    passive scalar diffusion, Journal of Computational Physics 206 (2) (2005)
+    453–462. doi:10.1016/j.jcp.2004.12.010.
+
+[17] H. Yoshida, M. Nagaoka, Multiple-relaxation-time lattice Boltzmann model
+    for the convection and anisotropic diffusion equation, Journal of Computa-
+    tional Physics 229 (20) (2010) 7774–7795. doi:10.1016/j.jcp.2010.06.
+    037.
+
+[18] R. Huang, H. Wu, A modified multiple-relaxation-time lattice Boltzmann
+    model for convection–diffusion equation, Journal of Computational Physics
+    274 (2014) 50–63. doi:10.1016/j.jcp.2014.05.041.
+
+[19] F. Dubois, P. Lallemand, Towards higher order lattice Boltzmann schemes,
+    Journal of Statistical mechanics: Theory and Experiment 2009 (06) (2009)
+    P06006. doi:10.1088/1742-5468/2009/06/P06006.
+
+[20] I. Ginzburg, D. dHumières, A. Kuzmin, Optimal stability of advection-
+    diffusion lattice Boltzmann models with two relaxation times for posi-
+
+
+                                       29
+    tive/negative equilibrium, Journal of Statistical Physics 139 (6) (2010)
+    1090–1143. doi:10.1007/s10955-010-9969-9.
+
+[21] J. Wang, D. Wang, P. Lallemand, L.-S. Luo, Lattice Boltzmann simulations
+    of thermal convective flows in two dimensions, Computers & Mathematics
+    with Applications 65 (2) (2013) 262–286. doi:10.1016/j.camwa.2012.
+    07.001.
+
+[22] D. Contrino, P. Lallemand, P. Asinari, L.-S. Luo, Lattice-Boltzmann
+    simulations of the thermally driven 2d square cavity at high Rayleigh
+    numbers, Journal of Computational Physics 275 (2014) 257–272. doi:
+    10.1016/j.jcp.2014.06.047.
+
+[23] Z. Guo, C. Zheng, B. Shi, Discrete lattice effects on the forcing term in
+    the lattice Boltzmann method, Physical Review E 65 (4) (2002) 046308.
+    doi:10.1103/PhysRevE.65.046308.
+
+[24] Z. Guo, C. Zheng, Analysis of lattice Boltzmann equation for microscale
+    gas flows: Relaxation times, boundary conditions and the Knudsen layer,
+    International Journal of Computational Fluid Dynamics 22 (7) (2008) 465–
+    473. doi:10.1080/10618560802253100.
+
+[25] L. Li, R. Mei, J. F. Klausner, Boundary conditions for thermal lattice
+    Boltzmann equation method, Journal of Computational Physics 237 (2013)
+    366–395. doi:10.1016/j.jcp.2012.11.027.
+
+[26] A. Xu, L. Shi, T. Zhao, Accelerated lattice Boltzmann simulation us-
+    ing GPU and OpenACC with data management, International Jour-
+    nal of Heat and Mass Transfer 109 (2017) 577–588.         doi:10.1016/j.
+    ijheatmasstransfer.2017.02.032.
+
+[27] T. Fusegi, J. M. Hyun, K. Kuwahara, B. Farouk, A numerical study of
+    three-dimensional natural convection in a differentially heated cubical en-
+    closure, International Journal of Heat and Mass Transfer 34 (6) (1991)
+    1543–1557. doi:10.1016/0017-9310(91)90295-P.
+
+
+                                     30
+[28] E. Tric, G. Labrosse, M. Betrouni, A first incursion into the 3D structure of
+    natural convection of air in a differentially heated cubic cavity, from accu-
+    rate numerical solutions, International Journal of Heat and Mass Transfer
+    43 (21) (2000) 4043–4056. doi:10.1016/S0017-9310(00)00037-5.
+
+[29] P. Wang, Y. Zhang, Z. Guo, Numerical study of three-dimensional nat-
+    ural convection in a cubical cavity at high Rayleigh numbers, Interna-
+    tional Journal of Heat and Mass Transfer 113 (2017) 217–228.             doi:
+    10.1016/j.ijheatmasstransfer.2017.05.057.
+
+[30] Z. Chen, C. Shu, D. Tan, High-order simplified thermal lattice Boltzmann
+    method for incompressible thermal flows, International Journal of Heat and
+    Mass Transfer 127 (2018) 1–16. doi:10.1016/j.ijheatmasstransfer.
+    2018.07.067.
+
+[31] V. Suman, S. V. S., M. K. Tekriwal, S. Bhaumik, T. K. Sengupta, Grid sen-
+    sitivity and role of error in computing a lid-driven cavity problem, Physical
+    Review E 99 (1) (2019) 013305. doi:10.1103/PhysRevE.99.013305.
+
+[32] R. Ostilla-Monico, Y. Yang, E. P. van der Poel, D. Lohse, R. Verz-
+    icco, A multiple-resolution strategy for direct numerical simulation of
+    scalar turbulence, Journal of Computational Physics 301 (2015) 308–321.
+    doi:10.1016/j.jcp.2015.08.031.
+
+[33] R. M. Kerr, Rayleigh number scaling in numerical convection, Journal of
+    Fluid Mechanics 310 (1996) 139–179. doi:10.1017/S0022112096001760.
+
+[34] R. Verzicco, R. Camussi, Numerical experiments on strongly turbulent ther-
+    mal convection in a slender cylindrical cell, Journal of Fluid Mechanics 477
+    (2003) 19–49. doi:10.1017/S0022112002003063.
+
+[35] B. I. Shraiman, E. D. Siggia, Heat transport in high-Rayleigh-number con-
+    vection, Physical Review A 42 (6) (1990) 3650. doi:10.1103/PhysRevA.
+    42.3650.
+
+
+
+                                       31
+[36] E. D. Siggia, High Rayleigh number convection, Annual Review of Fluid
+    Mechanics 26 (1994) 137–168.      doi:10.1146/annurev.fl.26.010194.
+    001033.
+
+[37] S. Grossmann, D. Lohse, Scaling in thermal convection:        a unifying
+    theory, Journal of Fluid Mechanics 407 (2000) 27–56.       doi:10.1017/
+    S0022112099007545.
+
+[38] S. Grossmann, D. Lohse, Fluctuations in turbulent Rayleigh–Bénard con-
+    vection: The role of plumes, Physics of Fluids 16 (12) (2004) 4462–4472.
+    doi:10.1063/1.1807751.
+
+[39] E. P. van der Poel, R. J. Stevens, D. Lohse, Comparison between two-and
+    three-dimensional Rayleigh–bénard convection, Journal of Fluid Mechanics
+    736 (2013) 177–194. doi:10.1017/jfm.2013.488.
+
+[40] B. Castaing, G. Gunaratne, F. Heslot, L. Kadanoff, A. Libchaber,
+    S. Thomae, X.-Z. Wu, S. Zaleski, G. Zanetti, Scaling of hard thermal tur-
+    bulence in Rayleigh-Bénard convection, Journal of Fluid Mechanics 204
+    (1989) 1–30. doi:10.1017/S0022112089001643.
+
+[41] S. Wagner, O. Shishkina, C. Wagner, Boundary layers and wind in cylindri-
+    cal Rayleigh–Bénard cells, Journal of Fluid Mechanics 697 (2012) 336–366.
+    doi:10.1017/jfm.2012.69.
+
+[42] G. L. Kooij, M. A. Botchev, E. M. Frederix, B. J. Geurts, S. Horn,
+    D. Lohse, E. P. van der Poel, O. Shishkina, R. J. Stevens, R. Verzicco,
+    Comparison of computational codes for direct numerical simulations of tur-
+    bulent Rayleigh–Bénard convection, Computers & Fluids 166 (2018) 1–8.
+    doi:10.1016/j.compfluid.2018.01.010.
+
+[43] O. Shishkina, R. J. Stevens, S. Grossmann, D. Lohse, Boundary layer
+    structure in turbulent thermal convection and its consequences for the re-
+    quired numerical resolution, New Journal of Physics 12 (7) (2010) 075022.
+    doi:10.1088/1367-2630/12/7/075022.
+
+
+                                     32
+[44] Y. Zhang, Q. Zhou, C. Sun, Statistics of kinetic and thermal energy dissipa-
+    tion rates in two-dimensional turbulent Rayleigh–Bénard convection, Jour-
+    nal of Fluid Mechanics 814 (2017) 165–184. doi:10.1017/jfm.2017.19.
+
+[45] M. Emran, J. Schumacher, Fine-scale statistics of temperature and its
+    derivatives in convective turbulence, Journal of Fluid Mechanics 611 (2008)
+    13–34. doi:10.1017/S0022112008002954.
+
+[46] M. Chertkov, G. Falkovich, I. Kolokolov, Intermittent dissipation of a pas-
+    sive scalar in turbulence, Physical Review Letters 80 (10) (1998) 2121.
+    doi:10.1103/PhysRevLett.80.2121.
+
+
+
+
+                                       33

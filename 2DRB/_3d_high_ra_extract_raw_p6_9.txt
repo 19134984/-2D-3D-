@@ -1,0 +1,467 @@
+where fi is the density distribution function. x is the fluid parcel position, t is
+the time, δt is the time step. ei is the discrete velocity along the ith direction.
+For the three-dimensional D3Q19 discrete velocity model, ei can be given as
+
+e0, e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, e12, e13, e14, e15, e16, e17, e18
+
+=
+c
+
+
+
+
+
+0 1 −1 0 0 0 0 1 −1 1 −1 1 −1 1 −1 0 0 0 0
+0 0 0 1 −1 0 0 1 1 −1 −1 0 0 0 0 1 −1 1 −1
+0 0 0 0 0 1 −1 0 0 0 0 1 1 −1 −1 1 1 −1 −1
+
+
+
+
+
+(6)
+In the above, c = δx/δt is the lattice constant. For simplicity, we adopt c =
+δx = δt = 1. M is a 19 × 19 orthogonal transformation matrix, and it is given
+6
+by
+M =
+
+h1|, h19e2
+− 30|, h
+21
+2
+e4
+−
+53
+2
+e2
++ 12|, hex|, h(5e2
+− 9)ex|, hey|, h(5e2
+− 9)ey|, hez|,
+h(5e2
+− 9)ez|, h3e2
+x − e2
+|, h(3e2
+− 5)(3e2
+x − e2
+)|, he2
+y − e2
+z|, h(3e2
+− 5)(e2
+y − e2
+z)|,
+hexey|, heyez|, hexez|, h(e2
+y − e2
+z)ex|, h(e2
+z − e2
+x)ey|, h(e2
+x − e2
+y)ez|
+T
+=
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1
+−30 −11 −11 −11 −11 −11 −11 8 8 8 8 8 8 8 8 8 8 8 8
+12 −4 −4 −4 −4 −4 −4 1 1 1 1 1 1 1 1 1 1 1 1
+0 1 −1 0 0 0 0 1 −1 1 −1 1 −1 1 −1 0 0 0 0
+0 −4 4 0 0 0 0 1 −1 1 −1 1 −1 1 −1 0 0 0 0
+0 0 0 1 −1 0 0 1 1 −1 −1 0 0 0 0 1 −1 1 −1
+0 0 0 −4 4 0 0 1 1 −1 −1 0 0 0 0 1 −1 1 −1
+0 0 0 0 0 1 −1 0 0 0 0 1 1 −1 −1 1 1 −1 −1
+0 0 0 0 0 −4 4 0 0 0 0 1 1 −1 −1 1 1 −1 −1
+0 2 2 −1 −1 −1 −1 1 1 1 1 1 1 1 1 −2 −2 −2 −2
+0 −4 −4 2 2 2 2 1 1 1 1 1 1 1 1 −2 −2 −2 −2
+0 0 0 1 1 −1 −1 1 1 1 1 −1 −1 −1 −1 0 0 0 0
+0 0 0 −2 −2 2 2 1 1 1 1 −1 −1 −1 −1 0 0 0 0
+0 0 0 0 0 0 0 1 −1 −1 1 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 −1 −1 1
+0 0 0 0 0 0 0 0 0 0 0 1 −1 −1 1 0 0 0 0
+0 0 0 0 0 0 0 1 −1 1 −1 −1 1 −1 1 0 0 0 0
+0 0 0 0 0 0 0 −1 −1 1 1 0 0 0 0 1 −1 1 −1
+0 0 0 0 0 0 0 0 0 0 0 1 1 −1 −1 −1 −1 1 1
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+(7)
+Choose the equilibrium distribution function as f
+(eq)
+i = ωiρ
+h
+1 + ei·u
+c2
+s
++ (ei·u)2
+2c4
+s
+− |u|2
+2c2
+s
+i
+,
+where the weights are ω0 = 1/3, ω1−6 = 1/18, ω7−18 = 1/36. Then, the equi-
+7
+librium moments m(eq)
+are
+m(eq)
+= ρ
+
+1, −11 + 19|u|2
+, 3 −
+11
+2
+|u|2
+, u, −
+2
+3
+u, v, −
+2
+3
+v, w,
+−
+2
+3
+w, 2u2
+− v2
+− w2
+, −
+1
+2
+(2u2
+− v2
+− w2
+), v2
+− w2
+,
+−
+1
+2
+(v2
+− w2
+), uv, vw, uw, 0, 0, 0
+T
+(8)
+The diagonal relaxation matrix S is given as
+S = diag(sρ, se, sε, sj, sq, sj, sq, sj, sq, sν, sπ, sν, sπ, sν, sν, sν, sm, sm, sm) (9)
+To ensure accurate flow boundary conditions as well as adequate numerical
+stability, relaxation parameters si are choosen as sρ = sj = 0, se = sε = sν =
+sπ = 1/τf , sq = sm = 8(2τf − 1)/(8τf − 1). Here, τf is determined by the
+kinematic viscosity of the fluids as ν = c2
+s(τf − 0.5)δt, and cs = 1/
+√
+3c is the
+speed of sound. The forcing term F
+0
+i in the right-hand side of Eq. 5 is given by
+F
+0
+= M−1
+
+I −
+S
+2
+
+MF̃ (10)
+and the term MF̃ is [23, 24]
+MF̄ =
+
+0, 38u · F, −11u · F, Fx, −
+2
+3
+Fx, Fy, −
+2
+3
+Fy, Fz, −
+2
+3
+Fz,
+4uFx − 2vFy − 2wFz, −2uFx + vFy + wFz, 2vFy − 2wFz,
+− vFy + wFz, uFy + vFx, vFz + wFy, uFz + wFx, 0, 0, 0
+T
+(11)
+where F = ρgβT (T − T0)ẑ. The macroscopic density ρ and velocity u are
+obtained from
+ρ =
+18
+X
+i=0
+fi, u =
+1
+ρ
+18
+X
+i=0
+eifi +
+1
+2
+F
+!
+(12)
+The no-slip velocity boundary conditions at the wall can be realized by the
+half-way bounce-back boundary scheme as
+fī(xf , t + δt) = f+
+i (xf , t) (13)
+where f+
+i (xf , t) is the post collision value of the distribution function, fī(xf , t)
+is the distribution function associated with the velocity eī = −ei.
+8
+2.3. The LB model for heat transfer
+To solve Eq. 1c, the evolution equation of temperature distribution function
+is written as
+gi(x + eiδt, t + δt) − gi(x, t) = −(N−1
+Q)ij
+h
+nj(x, t) − n
+(eq)
+j (x, t)
+i
+(14)
+where gi is the temperature distribution function. For the three-dimensional
+D3Q7 discrete velocity model, ei can be given as
+
+e0, e1, e2, e3, e4, e5, e6
+
+= c
+
+
+
+
+
+0 1 −1 0 0 0 0
+0 0 0 1 −1 0 0
+0 0 0 0 0 1 −1
+
+
+
+
+
+(15)
+N is a 7 × 7 orthogonal transformation matrix, and it is given by
+N =
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+h1|
+hex|
+hey|
+hez|
+h−6 + 7e2
+|
+h3e2
+x − e2
+|
+he2
+y − e2
+z|
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+=
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+1 1 1 1 1 1 1
+0 1 −1 0 0 0 0
+0 0 0 1 −1 0 0
+0 0 0 0 0 −1 −1
+−6 1 1 1 1 1 1
+0 2 2 −1 −1 −1 −1
+0 0 0 1 1 −1 −1
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+(16)
+Choose the equilibrium distribution function as g
+(eq)
+i = ωiT
+h
+1 + 7
+6+aT
+ei·u
+c2
+s
+i
+,
+where the weights are ω0 = (1 − aT )/7, ω1−6 = (6 + aT )/42. Then, the equilib-
+rium moments n(eq)
+are
+n(eq)
+= [T, uT, vT, wT, aT T, 0, 0]
+T
+(17)
+where aT is a constant. The relaxation matrix is given by Q = diag(0, qκ, qκ, qκ, qe, qν, qν).
+The thermal diffusivity κ is determined from the relaxation parameter qκ as
+κ =
+6 + aT
+21
+
+1
+qκ
+−
+1
+2
+
+(18)
+To achieve the isotropy of the fourth-order error term, Dubois et al. [19] pro-
+posed the following relationships for the relaxation parameters in D3Q7 model:
+9
+

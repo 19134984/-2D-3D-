@@ -1,4 +1,4 @@
-!=============================================================
+﻿!=============================================================
 !!!    3D buoyancy-driven natural convection
 !!!    D3Q19 flow + D3Q7 temperature
 !!!    主循环按 collision/streaming/boundary/macro 展开
@@ -10,8 +10,8 @@
 #define steadyFlow
 !#define unsteadyFlow
 
-! EnableRBInitPerturbation3D: 小 Ra 时给 3D RB 一个初始温度扰动，帮助脱离导热支路
-! EnableUseG               : 是否启用温度方程中的偏差修正
+! EnableRBInitPerturbation3D : 小 Ra 时给 3D RB 一个初始温度扰动，帮助脱离导热支路
+! EnableUseG                : 是否启用温度方程中的偏差修正
 #define EnableRBInitPerturbation3D
 #define EnableUseG
 
@@ -31,16 +31,12 @@ module commondata3d
   integer(kind=4), parameter :: reloadbinFileNum = 0
 
 
-  ! 网格： 2:1:1 的 3D periodic RB 几何设成 80x40x40
-  integer(kind=4), parameter :: nx = 80, ny = 40, nz = 40
-  integer(kind=4), parameter :: itc_max = 20000000
-  real(kind=8),    parameter :: outputFrequency = 100.0d0
-
-
-  ! 竖直方向长度 ny 对应特征长度， lengthUnit = ny
+  ! 网格：2:1:1 的 3D periodic RB 几何设成 40x20x20
+  integer(kind=4), parameter :: nx = 40, ny = 20, nz = 20
   real(kind=8), parameter :: lengthUnit = dble(ny)
   real(kind=8), parameter :: pi = acos(-1.0d0)
-
+  integer(kind=4), parameter :: itc_max = 20000000
+  real(kind=8),    parameter :: outputFrequency = 100.0d0
   ! 主要控制参数：Rayleigh / Prandtl / Mach / 热壁温度
   real(kind=8), parameter :: Rayleigh = 2.0d3
   real(kind=8), parameter :: Prandtl = 0.71d0
@@ -51,22 +47,21 @@ module commondata3d
 
   ! 松弛时间和输运系数：
   ! tauf 仍沿用流场的黏性定义
-  ! 温度场这里改成与参考文献一致的 D3Q7-MRT 写法：
-  ! 1) 热扩散率不是靠“固定权重 + 可变 taug”来给
-  ! 2) 而是通过 aT 改写 D3Q7 权重，并令 qkappa = 3-sqrt(3)
-  ! 3) 对应的有效二阶矩 cs2T = (6+aT)/21
+  ! 温度场这里保留 2DRB 的算法口径：
+  ! 1) D3Q7 的变换矩阵 N 采用参考文献的正交基底
+  ! 2) 但热扩散率仍用固定权重 + taug 的方式给定
+  ! 3) 也就是“基底学文献，碰撞参数沿用 2DRB 思路”
   real(kind=8), parameter :: tauf = 0.5d0 + Mach * lengthUnit * dsqrt(3.0d0 * Prandtl / Rayleigh)
   real(kind=8), parameter :: viscosity = (tauf - 0.5d0) / 3.0d0
   real(kind=8), parameter :: diffusivity = viscosity / Prandtl
-  real(kind=8), parameter :: aT = 42.0d0 * dsqrt(3.0d0) * diffusivity - 6.0d0
-  real(kind=8), parameter :: cs2T = (6.0d0 + aT) / 21.0d0
-  real(kind=8), parameter :: qkappa = 3.0d0 - dsqrt(3.0d0)
-  real(kind=8), parameter :: qeT = 4.0d0 * dsqrt(3.0d0) - 6.0d0
-  real(kind=8), parameter :: qnuT = qeT
-  real(kind=8), parameter :: taug = 1.0d0 / qkappa
+  real(kind=8), parameter :: cs2T = 0.25d0
+  real(kind=8), parameter :: taug = 0.5d0 + diffusivity / cs2T
+  real(kind=8), parameter :: s_eT = 1.0d0
+  real(kind=8), parameter :: s_qT = 1.0d0
+  real(kind=8), parameter :: s_jT = 1.0d0 / taug
 
 
-  ! heatFluxScale         : Nu 相关量的系数，L/kappa
+  ! heatFluxScale         : Nu 相关量的系数，等于 L/kappa
   ! velocityScaleCompare  : 输出速度时使用的无量纲速度标度
   real(kind=8), parameter :: heatFluxScale = lengthUnit / diffusivity
   real(kind=8), parameter :: velocityScaleCompare = lengthUnit / diffusivity
@@ -80,7 +75,7 @@ module commondata3d
 
   ! 输出相关控制量
   integer(kind=4), parameter :: dimensionlessTimeMax = max(1, int(12000.0d0 / outputFrequency))
-  integer(kind=4), parameter :: backupInterval = 1000      !备份间隔
+  integer(kind=4), parameter :: backupInterval = 1000      ! 备份间隔
 
   ! 稳态判据
   real(kind=8), parameter :: epsU = 1.0d-7
@@ -96,7 +91,7 @@ module commondata3d
   ! 体平均 Nu / Re 的时间序列缓存
   real(kind=8) :: NuVolAvg(0:dimensionlessTimeMax), ReVolAvg(0:dimensionlessTimeMax)
 
-  ! 输出文件命名统一和 2D 版分开，避免共存时互相覆盖
+  ! 输出文件命名与 2D 版分开，避免共存时互相覆盖
   character(len=100) :: binFilePrefix = "buoyancyCavity3D"
   character(len=100) :: pltFilePrefix = "buoyancyCavity3D"
   character(len=100) :: reloadFilePrefix = "backupFile3D"
@@ -114,8 +109,7 @@ module commondata3d
   real(kind=8), allocatable :: up(:,:,:), vp(:,:,:), wp(:,:,:), Tp(:,:,:)
 #endif
 
-  ! f / g 是当前分布函数；f_post / g_post 是碰撞后、迁移前的分布函数
-  ! 这里 post 数组带 ghost 层，方便周期边界时直接 pull streaming
+  ! f/g 是当前分布函数，f_post/g_post 是碰撞后、迁移前的分布函数，post 数组带 ghost 层便于直接 pull streaming
   real(kind=8), allocatable :: f(:,:,:,:), f_post(:,:,:,:)
   real(kind=8), allocatable :: g(:,:,:,:), g_post(:,:,:,:)
   ! 流场力项，以及温度方程中的历史热流项
@@ -141,9 +135,7 @@ module commondata3d
 
   real(kind=8) :: M19(qf,qf), Minv19(qf,qf)
   real(kind=8) :: M7(qt,qt),  Minv7(qt,qt)
-  ! 这里的 M / Minv 不是查表硬编码，而是由一组单项式基底自动生成。
-  ! 这样读起来更直观，也更方便后面你自己换基底试验。
-
+  ! M 和 Minv 在初始化时按当前正交基底构造，既保持文献编号一致，也方便后续自己改基底做试验
 end module commondata3d
 
 
@@ -159,8 +151,8 @@ program main3d
   integer(kind=4) :: time
   integer(kind=4) :: myMaxThreads
 
-  ! 先写日志头，并固定 OpenMP 线程数。
-  ! 这里故意不引入 MPI / OpenACC，保持实现路径单纯。
+  ! 先写日志头，并固定 OpenMP 线程数
+  ! 这里故意不引入 MPI / OpenACC，保持实现路径单纯
   open(unit=00, file=trim(settingsFile), status='replace')
   string = ctime(time())
   write(00,*) 'Start: ', string
@@ -196,7 +188,7 @@ program main3d
     if (mod(itc, 2000) .EQ. 0) call check3d()
 #endif
 
-    ! 每到一个物理输出间隔，就统计一次 Nu/Re，并按需输出切面/重启文件
+    ! 每到一个物理输出间隔，就统计一次 Nu/Re，并按需输出切面或重启文件
     if (mod(itc, outputIntervalItc) .EQ. 0) then
       call calNuRe3d()
 
@@ -234,9 +226,13 @@ program main3d
   open(unit=00, file=trim(settingsFile), status='unknown', position='append')
   write(00,*) '======================================================================'
   write(00,*) 'Time (CPU) = ', real(timeEnd - timeStart, kind=8), 's'
-  write(00,*) 'MLUPS = ', real(dble(nx) * dble(ny) * dble(nz) * dble(itc) / max(timeEnd - timeStart, 1.0d-12) / 1.0d6, kind=8)
+  write(00,*) 'MLUPS = ', &
+       real(dble(nx) * dble(ny) * dble(nz) * dble(itc) / &
+       & max(timeEnd - timeStart, 1.0d-12) / 1.0d6, kind=8)
   write(00,*) 'Time (OMP) = ', real(timeEnd2 - timeStart2, kind=8), 's'
-  write(00,*) 'MLUPS (OMP) = ', real(dble(nx) * dble(ny) * dble(nz) * dble(itc) / max(timeEnd2 - timeStart2, 1.0d-12) / 1.0d6, kind=8)
+  write(00,*) 'MLUPS (OMP) = ', &
+       real(dble(nx) * dble(ny) * dble(nz) * dble(itc) / &
+       & max(timeEnd2 - timeStart2, 1.0d-12) / 1.0d6, kind=8)
   write(00,*) 'Nu_global =', Nu_global
   write(00,*) 'Nu_hot    =', Nu_hot
   write(00,*) 'Nu_cold   =', Nu_cold
@@ -273,12 +269,12 @@ subroutine initial3d()
   real(kind=8) :: xLen, yLen, rbInitPerturbAmp
   character(len=100) :: reloadFileName
 
-  ! 初始时把误差设大，这样主循环一定能先进入一次
+  ! 初始时把误差设大，这样主循环一定能先进入一轮
   itc = 0
   errorU = 100.0d0
   errorT = 100.0d0
 
-  ! 把“按自由落体时间给出的输出/备份间隔”换算成格子步数 itc
+  ! 把按自由落体时间给出的输出/备份间隔换算成格子步数 itc
   outputIntervalItc = max(1, int(outputFrequency * timeUnit))
   backupIntervalItc = max(1, int(backupInterval * timeUnit))
 
@@ -286,8 +282,7 @@ subroutine initial3d()
   call init_lattice_constants_3d()
   call init_mrt_matrices_3d()
 
-  ! 网格点采用 cell-center 布置：
-  ! 内点坐标是 i-0.5, j-0.5, k-0.5，再统一除以 lengthUnit 做无量纲化
+  ! 网格点采用 cell-center 布置，内点坐标取 i-0.5、j-0.5、k-0.5，再统一除以 lengthUnit 做无量纲
   xp(0) = 0.0d0
   xp(nx+1) = dble(nx)
   do i = 1, nx
@@ -327,9 +322,9 @@ subroutine initial3d()
   write(00,*) 'Length unit: L0 =', real(lengthUnit,kind=8)
   write(00,*) 'Time unit: Sqrt(L0/(gBeta*DeltaT)) =', real(timeUnit,kind=8)
   write(00,*) 'Velocity unit: Sqrt(gBeta*L0*DeltaT) =', real(velocityUnit,kind=8)
-  write(00,*) 'tauf =', real(tauf,kind=8), '; taug(eqv) =', real(taug,kind=8)
-  write(00,*) 'aT =', real(aT,kind=8), '; cs2T =', real(cs2T,kind=8)
-  write(00,*) 'qkappa =', real(qkappa,kind=8), '; qeT =', real(qeT,kind=8), '; qnuT =', real(qnuT,kind=8)
+  write(00,*) 'tauf =', real(tauf,kind=8), '; taug =', real(taug,kind=8)
+  write(00,*) 'cs2T =', real(cs2T,kind=8), '; s_jT =', real(s_jT,kind=8), &
+       '; s_eT =', real(s_eT,kind=8), '; s_qT =', real(s_qT,kind=8)
   write(00,*) 'viscosity =', real(viscosity,kind=8), '; diffusivity =', real(diffusivity,kind=8)
   write(00,*) 'outputFrequency =', real(outputFrequency,kind=8), ' free-fall time units'
   write(00,*) '......................  or ', outputIntervalItc, ' in itc units'
@@ -364,9 +359,9 @@ subroutine initial3d()
       enddo
     enddo
 
-#ifdef EnableRBInitPerturbation3D
+
     if (Rayleigh .LE. 1.0d4) then
-      ! 小 Ra 时，导热解附近的增长很慢，给一个很小的初始温度扰动更容易触发对流模态
+      ! 小 Ra 时导热解附近的增长很慢，给一个很小的初始温度扰动更容易触发对流模态
       ! 这里扰动只沿 x-y 变化，z 方向保持均匀，先对应最简单的卷胞结构
       xLen = xp(nx+1)
       yLen = yp(ny+1)
@@ -382,7 +377,7 @@ subroutine initial3d()
       write(00,'(a,1x,es12.4)') '3D RB initial T perturbation amplitude =', rbInitPerturbAmp
       close(00)
     endif
-#endif
+
 
     do k = 1, nz
       do j = 1, ny
@@ -439,10 +434,8 @@ subroutine init_lattice_constants_3d()
   use commondata3d
   implicit none
 
-  ! D3Q19 顺序按参考文献 Eq. (6)：
-  ! 先 6 个轴向速度，再依次是 xy / xz / yz 三组面对角速度
-  ! 注意这与一些 LBM 教材里常见的“成对排列”顺序并不完全一样
-  ! opp(alpha) 也要和这套编号同步改写
+  ! D3Q19 顺序按参考文献 Eq. (6)：先是 6 个轴向速度，再依次是 xy / xz / yz 三组面对角速度
+  ! 注意这与一些 LBM 教材里常见的编号不同，opp(alpha) 也要和这套编号同步修改
   ex  = (/ 0,  1, -1,  0,  0,  0,  0,  1, -1,  1, -1,  1, -1,  1, -1,  0,  0,  0,  0 /)
   ey  = (/ 0,  0,  0,  1, -1,  0,  0,  1,  1, -1, -1,  0,  0,  0,  0,  1, -1,  1, -1 /)
   ez  = (/ 0,  0,  0,  0,  0,  1, -1,  0,  0,  0,  0,  1,  1, -1, -1,  1,  1, -1, -1 /)
@@ -458,11 +451,9 @@ subroutine init_lattice_constants_3d()
   ezT  = (/ 0,  0,  0,  0,  0,  1, -1 /)
   oppT = (/ 0,  2,  1,  4,  3,  6,  5 /)
 
-  ! 文献中的 D3Q7 权重由 aT 控制：
-  ! w0 = (1-aT)/7, w1~w6 = (6+aT)/42
-  if ((aT .LE. -6.0d0) .OR. (aT .GE. 1.0d0)) stop 'D3Q7 parameter aT is out of the admissible range (-6,1)'
-  omegaT(0) = (1.0d0 - aT) / 7.0d0
-  omegaT(1:6) = (6.0d0 + aT) / 42.0d0
+  ! 这里温度权重按 2DRB 思路固定下来：w0 = 1/4，w1~w6 = 1/8，对应 cs2T = 1/4
+  omegaT(0) = 1.0d0 / 4.0d0
+  omegaT(1:6) = 1.0d0 / 8.0d0
 
 end subroutine init_lattice_constants_3d
 
@@ -472,13 +463,54 @@ subroutine init_mrt_matrices_3d()
   implicit none
 
   ! M / Minv 在程序启动时一次性构造完，后续碰撞步骤直接拿来做矩空间变换
+  ! 这里不再调用通用求逆，而是利用文献这套正交基底的已知模长，直接给出逆矩阵
   call build_basis_matrix_d3q19(M19)
-  call invert_matrix_generic(qf, M19, Minv19)
+  call init_inverse_matrix_d3q19()
 
   call build_basis_matrix_d3q7(M7)
-  call invert_matrix_generic(qt, M7, Minv7)
+  call init_inverse_matrix_d3q7()
 
 end subroutine init_mrt_matrices_3d
+
+
+subroutine init_inverse_matrix_d3q19()
+  use commondata3d
+  implicit none
+
+  integer(kind=4) :: i, j
+  real(kind=8), parameter :: invRowNorm2(qf) = (/ &
+       1.0d0/19.0d0,   1.0d0/2394.0d0, 1.0d0/252.0d0, &
+       1.0d0/10.0d0,   1.0d0/40.0d0,   1.0d0/10.0d0,   1.0d0/40.0d0, &
+       1.0d0/10.0d0,   1.0d0/40.0d0,   1.0d0/36.0d0,   1.0d0/72.0d0, &
+       1.0d0/12.0d0,   1.0d0/24.0d0,   1.0d0/4.0d0,    1.0d0/4.0d0, &
+       1.0d0/4.0d0,    1.0d0/8.0d0,    1.0d0/8.0d0,    1.0d0/8.0d0 /)
+
+  ! 对正交基底有 Minv = transpose(M) * diag(1/||row_i||^2)
+  do i = 1, qf
+    do j = 1, qf
+      Minv19(j,i) = M19(i,j) * invRowNorm2(i)
+    enddo
+  enddo
+
+end subroutine init_inverse_matrix_d3q19
+
+
+subroutine init_inverse_matrix_d3q7()
+  use commondata3d
+  implicit none
+
+  integer(kind=4) :: i, j
+  real(kind=8), parameter :: invRowNorm2(qt) = (/ &
+       1.0d0/7.0d0, 1.0d0/2.0d0, 1.0d0/2.0d0, 1.0d0/2.0d0, &
+       1.0d0/42.0d0, 1.0d0/12.0d0, 1.0d0/4.0d0 /)
+
+  do i = 1, qt
+    do j = 1, qt
+      Minv7(j,i) = M7(i,j) * invRowNorm2(i)
+    enddo
+  enddo
+
+end subroutine init_inverse_matrix_d3q7
 
 
 subroutine build_basis_matrix_d3q19(M)
@@ -486,13 +518,10 @@ subroutine build_basis_matrix_d3q19(M)
   implicit none
 
   real(kind=8), intent(out) :: M(qf,qf)
-  real(kind=8) :: candidate(qf)
-  integer(kind=4) :: count, a, b, c
   integer(kind=4) :: alpha
   real(kind=8) :: exa, eya, eza, ex2, ey2, ez2, e2, e4
 
-  ! 这里直接按文献给出的 D3Q19 正交基底来生成 M19。
-  ! 这样 M19 与文献中的速度编号、矩空间定义是一一对应的。
+  ! 这里直接按文献给出的 D3Q19 正交基底来生成 M19，和文献中的速度编号、矩空间定义保持一一对应
   M = 0.0d0
   do alpha = 0, qf-1
     exa = dble(ex(alpha))
@@ -524,42 +553,6 @@ subroutine build_basis_matrix_d3q19(M)
     M(18,alpha+1) = (ez2 - ex2) * eya
     M(19,alpha+1) = (ex2 - ey2) * eza
   enddo
-  ! 下面旧的自动选基代码只保留作参考，不再执行。
-  return
-
-  ! 这里不是手写固定矩阵，而是从一组单项式基底里挑出线性无关的 19 行
-  ! 这样做的好处是：
-  ! 1) 结构更容易看懂
-  ! 2) 以后想换一套基底时更方便试验
-  M = 0.0d0
-  count = 0
-
-  call make_candidate_row_d3q19(0, 0, 0, candidate)
-  call add_candidate_row(candidate, qf, qf, count, M)
-  call make_candidate_row_d3q19(1, 0, 0, candidate)
-  call add_candidate_row(candidate, qf, qf, count, M)
-  call make_candidate_row_d3q19(0, 1, 0, candidate)
-  call add_candidate_row(candidate, qf, qf, count, M)
-  call make_candidate_row_d3q19(0, 0, 1, candidate)
-  call add_candidate_row(candidate, qf, qf, count, M)
-
-  do a = 0, 2
-    do b = 0, 2
-      do c = 0, 2
-        if ((a .EQ. 0) .AND. (b .EQ. 0) .AND. (c .EQ. 0)) cycle
-        if ((a .EQ. 1) .AND. (b .EQ. 0) .AND. (c .EQ. 0)) cycle
-        if ((a .EQ. 0) .AND. (b .EQ. 1) .AND. (c .EQ. 0)) cycle
-        if ((a .EQ. 0) .AND. (b .EQ. 0) .AND. (c .EQ. 1)) cycle
-        call make_candidate_row_d3q19(a, b, c, candidate)
-        call add_candidate_row(candidate, qf, qf, count, M)
-        if (count .EQ. qf) exit
-      enddo
-      if (count .EQ. qf) exit
-    enddo
-    if (count .EQ. qf) exit
-  enddo
-
-  if (count .NE. qf) stop 'Failed to build a full-rank D3Q19 moment basis'
 
 end subroutine build_basis_matrix_d3q19
 
@@ -569,12 +562,10 @@ subroutine build_basis_matrix_d3q7(M)
   implicit none
 
   real(kind=8), intent(out) :: M(qt,qt)
-  real(kind=8) :: candidate(qt)
-  integer(kind=4) :: count, a, b, c
   integer(kind=4) :: alpha
   real(kind=8) :: exa, eya, eza, ex2, ey2, ez2, e2
 
-  ! 这里按文献 Eq. (16) 的 7 个基底逐行生成 M7。
+  ! 这里按文献 Eq. (16) 的 7 个基底逐行生成 M7
   M = 0.0d0
   do alpha = 0, qt-1
     exa = dble(exT(alpha))
@@ -593,226 +584,17 @@ subroutine build_basis_matrix_d3q7(M)
     M(6,alpha+1) = 3.0d0 * ex2 - e2
     M(7,alpha+1) = ey2 - ez2
   enddo
-  ! 下面旧的自动选基代码只保留作参考，不再执行。
-  return
-
-  M = 0.0d0
-  count = 0
-
-  call make_candidate_row_d3q7(0, 0, 0, candidate)
-  call add_candidate_row(candidate, qt, qt, count, M)
-  call make_candidate_row_d3q7(1, 0, 0, candidate)
-  call add_candidate_row(candidate, qt, qt, count, M)
-  call make_candidate_row_d3q7(0, 1, 0, candidate)
-  call add_candidate_row(candidate, qt, qt, count, M)
-  call make_candidate_row_d3q7(0, 0, 1, candidate)
-  call add_candidate_row(candidate, qt, qt, count, M)
-
-  do a = 0, 2
-    do b = 0, 2
-      do c = 0, 2
-        if ((a .EQ. 0) .AND. (b .EQ. 0) .AND. (c .EQ. 0)) cycle
-        if ((a .EQ. 1) .AND. (b .EQ. 0) .AND. (c .EQ. 0)) cycle
-        if ((a .EQ. 0) .AND. (b .EQ. 1) .AND. (c .EQ. 0)) cycle
-        if ((a .EQ. 0) .AND. (b .EQ. 0) .AND. (c .EQ. 1)) cycle
-        call make_candidate_row_d3q7(a, b, c, candidate)
-        call add_candidate_row(candidate, qt, qt, count, M)
-        if (count .EQ. qt) exit
-      enddo
-      if (count .EQ. qt) exit
-    enddo
-    if (count .EQ. qt) exit
-  enddo
-
-  if (count .NE. qt) stop 'Failed to build a full-rank D3Q7 moment basis'
 
 end subroutine build_basis_matrix_d3q7
 
 
-subroutine make_candidate_row_d3q19(a, b, c, row)
-  use commondata3d
-  implicit none
-
-  integer(kind=4), intent(in) :: a, b, c
-  real(kind=8), intent(out) :: row(qf)
-  integer(kind=4) :: alpha
-  real(kind=8) :: monomial_value
-
-  do alpha = 0, qf-1
-    row(alpha+1) = monomial_value(ex(alpha), a) * monomial_value(ey(alpha), b) * monomial_value(ez(alpha), c)
-  enddo
-
-end subroutine make_candidate_row_d3q19
 
 
-subroutine make_candidate_row_d3q7(a, b, c, row)
-  use commondata3d
-  implicit none
-
-  integer(kind=4), intent(in) :: a, b, c
-  real(kind=8), intent(out) :: row(qt)
-  integer(kind=4) :: alpha
-  real(kind=8) :: monomial_value
-
-  do alpha = 0, qt-1
-    row(alpha+1) = monomial_value(exT(alpha), a) * monomial_value(eyT(alpha), b) * monomial_value(ezT(alpha), c)
-  enddo
-
-end subroutine make_candidate_row_d3q7
 
 
-subroutine add_candidate_row(candidate, nrow, ncol, count, M)
-  implicit none
-
-  integer(kind=4), intent(in) :: nrow, ncol
-  real(kind=8), intent(in) :: candidate(ncol)
-  integer(kind=4), intent(inout) :: count
-  real(kind=8), intent(inout) :: M(nrow,ncol)
-
-  real(kind=8) :: temp(nrow,ncol)
-  integer(kind=4) :: newRank
-  integer(kind=4) :: matrix_rank_rect
-
-  ! 每加一行就做一次 rank 检查，只有线性无关时才真正收入矩阵
-  if (count .GE. nrow) return
-
-  temp = 0.0d0
-  if (count .GE. 1) temp(1:count,:) = M(1:count,:)
-  temp(count+1,:) = candidate
-
-  newRank = matrix_rank_rect(temp, count+1, ncol, 1.0d-12)
-  if (newRank .GT. count) then
-    count = count + 1
-    M(count,:) = candidate
-  endif
-
-end subroutine add_candidate_row
 
 
-integer(kind=4) function matrix_rank_rect(A, m, n, tol)
-  implicit none
 
-  integer(kind=4), intent(in) :: m, n
-  real(kind=8), intent(in) :: A(m,n)
-  real(kind=8), intent(in) :: tol
-
-  real(kind=8), allocatable :: R(:,:)
-  real(kind=8) :: pivotVal, factor, tempRow(n)
-  integer(kind=4) :: row, col, pivot, i
-
-  allocate(R(m,n))
-  R = A(1:m,1:n)
-
-  matrix_rank_rect = 0
-  row = 1
-  col = 1
-
-  do while ((row .LE. m) .AND. (col .LE. n))
-    pivot = 0
-    pivotVal = tol
-    do i = row, m
-      if (dabs(R(i,col)) .GT. pivotVal) then
-        pivot = i
-        pivotVal = dabs(R(i,col))
-      endif
-    enddo
-
-    if (pivot .EQ. 0) then
-      col = col + 1
-    else
-      if (pivot .NE. row) then
-        tempRow = R(row,:)
-        R(row,:) = R(pivot,:)
-        R(pivot,:) = tempRow
-      endif
-      do i = row + 1, m
-        factor = R(i,col) / R(row,col)
-        R(i,col:n) = R(i,col:n) - factor * R(row,col:n)
-      enddo
-      matrix_rank_rect = matrix_rank_rect + 1
-      row = row + 1
-      col = col + 1
-    endif
-  enddo
-
-  deallocate(R)
-
-end function matrix_rank_rect
-
-
-subroutine invert_matrix_generic(n, A, Ainv)
-  implicit none
-
-  integer(kind=4), intent(in) :: n
-  real(kind=8), intent(in)  :: A(n,n)
-  real(kind=8), intent(out) :: Ainv(n,n)
-
-  real(kind=8), allocatable :: aug(:,:)
-  real(kind=8) :: factor, pivotVal, temp
-  integer(kind=4) :: i, j, pivot
-
-  ! 这里用最直接的 Gauss-Jordan 消元。
-  ! 只在初始化阶段调用一次，性能不是关键，重点是代码直观。
-  allocate(aug(n, 2*n))
-  aug = 0.0d0
-  aug(:,1:n) = A
-  do i = 1, n
-    aug(i,n+i) = 1.0d0
-  enddo
-
-  do i = 1, n
-    pivot = i
-    pivotVal = dabs(aug(i,i))
-    do j = i + 1, n
-      if (dabs(aug(j,i)) .GT. pivotVal) then
-        pivot = j
-        pivotVal = dabs(aug(j,i))
-      endif
-    enddo
-
-    if (pivotVal .LE. 1.0d-14) stop 'Matrix inversion failed: singular matrix'
-
-    if (pivot .NE. i) then
-      do j = 1, 2*n
-        temp = aug(i,j)
-        aug(i,j) = aug(pivot,j)
-        aug(pivot,j) = temp
-      enddo
-    endif
-
-    aug(i,:) = aug(i,:) / aug(i,i)
-
-    do j = 1, n
-      if (j .NE. i) then
-        factor = aug(j,i)
-        aug(j,:) = aug(j,:) - factor * aug(i,:)
-      endif
-    enddo
-  enddo
-
-  Ainv = aug(:,n+1:2*n)
-  deallocate(aug)
-
-end subroutine invert_matrix_generic
-
-
-real(kind=8) function monomial_value(ival, power)
-  implicit none
-
-  integer(kind=4), intent(in) :: ival, power
-
-  select case (power)
-  case (0)
-    monomial_value = 1.0d0
-  case (1)
-    monomial_value = dble(ival)
-  case (2)
-    monomial_value = dble(ival * ival)
-  case default
-    monomial_value = 0.0d0
-  end select
-
-end function monomial_value
 
 
 subroutine compute_feq_d3q19(rhoLoc, uLoc, vLoc, wLoc, feq)
@@ -854,27 +636,6 @@ subroutine compute_geq_d3q7(TLoc, uLoc, vLoc, wLoc, geq)
 end subroutine compute_geq_d3q7
 
 
-subroutine compute_guo_force_term_d3q19(uLoc, vLoc, wLoc, FxLoc, FyLoc, FzLoc, forceTerm)
-  use commondata3d
-  implicit none
-
-  real(kind=8), intent(in) :: uLoc, vLoc, wLoc, FxLoc, FyLoc, FzLoc
-  real(kind=8), intent(out) :: forceTerm(qf)
-
-  integer(kind=4) :: alpha
-  real(kind=8) :: eu, ef, uF, pref
-
-  ! Guo forcing：把体力项以二阶精度写回速度分布函数
-  pref = 1.0d0 - 0.5d0 / tauf
-  uF = uLoc * FxLoc + vLoc * FyLoc + wLoc * FzLoc
-
-  do alpha = 0, qf-1
-    eu = dble(ex(alpha)) * uLoc + dble(ey(alpha)) * vLoc + dble(ez(alpha)) * wLoc
-    ef = dble(ex(alpha)) * FxLoc + dble(ey(alpha)) * FyLoc + dble(ez(alpha)) * FzLoc
-    forceTerm(alpha+1) = pref * omega(alpha) * (3.0d0 * ef + 9.0d0 * eu * ef - 3.0d0 * uF)
-  enddo
-
-end subroutine compute_guo_force_term_d3q19
 
 
 subroutine collision3d()
@@ -882,15 +643,22 @@ subroutine collision3d()
   implicit none
 
   integer(kind=4) :: i, j, k, alpha
-  real(kind=8) :: fLoc(qf), feq(qf), m(qf), meq(qf), mPost(qf), fPostLoc(qf), forceTerm(qf)
-  real(kind=8) :: omegaF
+  real(kind=8) :: fLoc(qf), m(qf), meq(qf), mPost(qf), fPostLoc(qf)
+  real(kind=8) :: rhoLoc, uLoc, vLoc, wLoc, u2, uDotF
+  real(kind=8) :: FxLoc, FyLoc, FzLoc
+  real(kind=8), parameter :: s_e  = 1.0d0 / tauf
+  real(kind=8), parameter :: s_eps = 1.0d0 / tauf
+  real(kind=8), parameter :: s_nu = 1.0d0 / tauf
+  real(kind=8), parameter :: s_pi = 1.0d0 / tauf
+  real(kind=8), parameter :: s_q  = 8.0d0 * (2.0d0 * tauf - 1.0d0) / (8.0d0 * tauf - 1.0d0)
+  real(kind=8), parameter :: s_m  = 8.0d0 * (2.0d0 * tauf - 1.0d0) / (8.0d0 * tauf - 1.0d0)
 
-  ! 这一版先保留“矩空间骨架”，但非守恒矩统一用 1/tauf 松弛。
-  ! 也就是说结构是 MRT 风格，参数上先取成接近 BGK-equivalent 的写法。
-  omegaF = 1.0d0 / tauf
+  ! 这里改回和 2DRB 同类型的矩空间碰撞：
+  ! 先做 m = M*f，再按文献的平衡矩 meq 和松弛率逐个碰撞，
+  ! 体力项也先投到矩空间，再乘以 (I-S/2) 做半步修正。
 
   !$omp parallel do collapse(3) default(none) shared(f,f_post,rho,u,v,w,T,Fx,Fy,Fz,M19,Minv19) &
-  !$omp private(i,j,k,alpha,fLoc,feq,m,meq,mPost,fPostLoc,forceTerm,omegaF)
+  !$omp private(i,j,k,alpha,fLoc,m,meq,mPost,fPostLoc,rhoLoc,uLoc,vLoc,wLoc,u2,uDotF,FxLoc,FyLoc,FzLoc)
   do k = 1, nz
     do j = 1, ny
       do i = 1, nx
@@ -898,24 +666,74 @@ subroutine collision3d()
           fLoc(alpha+1) = f(alpha,i,j,k)
         enddo
 
-        Fx(i,j,k) = 0.0d0
-        Fy(i,j,k) = rho(i,j,k) * gBeta * (T(i,j,k) - Tref)
-        Fz(i,j,k) = 0.0d0
+        rhoLoc = rho(i,j,k)
+        uLoc = u(i,j,k)
+        vLoc = v(i,j,k)
+        wLoc = w(i,j,k)
+        u2 = uLoc * uLoc + vLoc * vLoc + wLoc * wLoc
 
-        ! 流场只有 y 方向浮力，x/z 方向体力为 0
-        call compute_feq_d3q19(rho(i,j,k), u(i,j,k), v(i,j,k), w(i,j,k), feq)
-        call compute_guo_force_term_d3q19(u(i,j,k), v(i,j,k), w(i,j,k), Fx(i,j,k), Fy(i,j,k), Fz(i,j,k), forceTerm)
+        FxLoc = 0.0d0
+        FyLoc = rhoLoc * gBeta * (T(i,j,k) - Tref)
+        FzLoc = 0.0d0
+        Fx(i,j,k) = FxLoc
+        Fy(i,j,k) = FyLoc
+        Fz(i,j,k) = FzLoc
+        uDotF = uLoc * FxLoc + vLoc * FyLoc + wLoc * FzLoc
+
+        ! x / z 方向无体力，RB 浮力只在 y 方向
 
         ! 先把分布函数变到矩空间，再做松弛
         m = matmul(M19, fLoc)
-        meq = matmul(M19, feq)
 
-        ! 前四个矩对应守恒量/低阶矩，这里先直接保留
-        mPost(1:4) = m(1:4)
-        mPost(5:qf) = m(5:qf) - omegaF * (m(5:qf) - meq(5:qf))
+        meq(1)  = rhoLoc
+        meq(2)  = rhoLoc * (-11.0d0 + 19.0d0 * u2)
+        meq(3)  = rhoLoc * (3.0d0 - 11.0d0 * u2 / 2.0d0)
+        meq(4)  = rhoLoc * uLoc
+        meq(5)  = -2.0d0 * rhoLoc * uLoc / 3.0d0
+        meq(6)  = rhoLoc * vLoc
+        meq(7)  = -2.0d0 * rhoLoc * vLoc / 3.0d0
+        meq(8)  = rhoLoc * wLoc
+        meq(9)  = -2.0d0 * rhoLoc * wLoc / 3.0d0
+        meq(10) = rhoLoc * (2.0d0 * uLoc * uLoc - vLoc * vLoc - wLoc * wLoc)
+        meq(11) = -0.5d0 * meq(10)
+        meq(12) = rhoLoc * (vLoc * vLoc - wLoc * wLoc)
+        meq(13) = -0.5d0 * meq(12)
+        meq(14) = rhoLoc * uLoc * vLoc
+        meq(15) = rhoLoc * vLoc * wLoc
+        meq(16) = rhoLoc * uLoc * wLoc
+        meq(17) = 0.0d0
+        meq(18) = 0.0d0
+        meq(19) = 0.0d0
 
-        ! 变回速度空间，并叠加 Guo forcing 贡献
-        fPostLoc = matmul(Minv19, mPost) + forceTerm
+        ! 矩空间碰撞加体力修正：结构上和 2DRB 一样，只是这里使用 D3Q19 的矩定义
+        mPost(1)  = m(1)
+        mPost(2)  = m(2)  - s_e   * (m(2)  - meq(2))  + (1.0d0 - 0.5d0 * s_e  ) * 38.0d0 * uDotF
+        mPost(3)  = m(3)  - s_eps * (m(3)  - meq(3))  + (1.0d0 - 0.5d0 * s_eps) * (-11.0d0) * uDotF
+        mPost(4)  = m(4)  + FxLoc
+        mPost(5)  = m(5)  - s_q   * (m(5)  - meq(5))  + (1.0d0 - 0.5d0 * s_q  ) * (-2.0d0 / 3.0d0) * FxLoc
+        mPost(6)  = m(6)  + FyLoc
+        mPost(7)  = m(7)  - s_q   * (m(7)  - meq(7))  + (1.0d0 - 0.5d0 * s_q  ) * (-2.0d0 / 3.0d0) * FyLoc
+        mPost(8)  = m(8)  + FzLoc
+        mPost(9)  = m(9)  - s_q   * (m(9)  - meq(9))  + (1.0d0 - 0.5d0 * s_q  ) * (-2.0d0 / 3.0d0) * FzLoc
+        mPost(10) = m(10) - s_nu  * (m(10) - meq(10)) + &
+             (1.0d0 - 0.5d0 * s_nu ) * &
+             (4.0d0 * uLoc * FxLoc - 2.0d0 * vLoc * FyLoc - 2.0d0 * wLoc * FzLoc)
+        mPost(11) = m(11) - s_pi  * (m(11) - meq(11)) + &
+             (1.0d0 - 0.5d0 * s_pi ) * &
+             (-2.0d0 * uLoc * FxLoc + vLoc * FyLoc + wLoc * FzLoc)
+        mPost(12) = m(12) - s_nu  * (m(12) - meq(12)) + &
+             (1.0d0 - 0.5d0 * s_nu ) * &
+             (2.0d0 * vLoc * FyLoc - 2.0d0 * wLoc * FzLoc)
+        mPost(13) = m(13) - s_pi  * (m(13) - meq(13)) + (1.0d0 - 0.5d0 * s_pi ) * (-vLoc * FyLoc + wLoc * FzLoc)
+        mPost(14) = m(14) - s_nu  * (m(14) - meq(14)) + (1.0d0 - 0.5d0 * s_nu ) * (uLoc * FyLoc + vLoc * FxLoc)
+        mPost(15) = m(15) - s_nu  * (m(15) - meq(15)) + (1.0d0 - 0.5d0 * s_nu ) * (vLoc * FzLoc + wLoc * FyLoc)
+        mPost(16) = m(16) - s_nu  * (m(16) - meq(16)) + (1.0d0 - 0.5d0 * s_nu ) * (uLoc * FzLoc + wLoc * FxLoc)
+        mPost(17) = m(17) - s_m   * m(17)
+        mPost(18) = m(18) - s_m   * m(18)
+        mPost(19) = m(19) - s_m   * m(19)
+
+        ! 再由逆矩阵回到速度空间
+        fPostLoc = matmul(Minv19, mPost)
 
         do alpha = 0, qf-1
           f_post(alpha,i,j,k) = fPostLoc(alpha+1)
@@ -934,8 +752,7 @@ subroutine fill_periodic_ghosts_f_post()
 
   integer(kind=4) :: i, j, k, alpha
 
-  ! x 方向和 z 方向都是周期边界：
-  ! 这里先把碰撞后分布写入 ghost 层，随后 streaming3d 直接 pull 即可
+  ! x 和 z 方向都是周期边界，这里先把碰撞后分布写入 ghost 层，随后 streaming3d 直接 pull 即可
   !$omp parallel do collapse(2) default(none) shared(f_post) private(j,k,alpha)
   do k = 1, nz
     do j = 1, ny
@@ -967,8 +784,7 @@ subroutine streaming3d()
 
   integer(kind=4) :: i, j, k, ip, jp, kp, alpha
 
-  ! pull streaming：
-  ! 当前格点 (i,j,k) 从上游格点 (i-ex, j-ey, k-ez) 拉取分布函数
+  ! pull streaming：当前格点 (i,j,k) 从上游格点 (i-ex, j-ey, k-ez) 拉取分布函数
   !$omp parallel do collapse(3) default(none) shared(f,f_post,ex,ey,ez) private(i,j,k,ip,jp,kp,alpha)
   do k = 1, nz
     do j = 1, ny
@@ -1016,9 +832,11 @@ subroutine macro3d()
   integer(kind=4) :: i, j, k, alpha
   real(kind=8) :: momx, momy, momz, rhoLoc
 
-  ! 由分布函数恢复宏观密度和三分量速度。
-  ! 速度恢复里带 0.5F 的半步修正，对应前面的 Guo forcing 写法。
-  !$omp parallel do collapse(3) default(none) shared(f,rho,u,v,w,Fx,Fy,Fz,ex,ey,ez) private(i,j,k,alpha,momx,momy,momz,rhoLoc)
+  ! 由分布函数恢复宏观密度和三分量速度
+  ! 速度恢复里带 0.5F 的半步修正，对应前面的体力项半步离散
+  !$omp parallel do collapse(3) default(none) &
+  !$omp& shared(f,rho,u,v,w,Fx,Fy,Fz,ex,ey,ez) &
+  !$omp& private(i,j,k,alpha,momx,momy,momz,rhoLoc)
   do k = 1, nz
     do j = 1, ny
       do i = 1, nx
@@ -1033,15 +851,9 @@ subroutine macro3d()
           momz = momz + f(alpha,i,j,k) * dble(ez(alpha))
         enddo
         rho(i,j,k) = rhoLoc
-        if (rhoLoc .GT. 0.0d0) then
-          u(i,j,k) = (momx + 0.5d0 * Fx(i,j,k)) / rhoLoc
-          v(i,j,k) = (momy + 0.5d0 * Fy(i,j,k)) / rhoLoc
-          w(i,j,k) = (momz + 0.5d0 * Fz(i,j,k)) / rhoLoc
-        else
-          u(i,j,k) = 0.0d0
-          v(i,j,k) = 0.0d0
-          w(i,j,k) = 0.0d0
-        endif
+        u(i,j,k) = (momx + 0.5d0 * Fx(i,j,k)) / rhoLoc
+        v(i,j,k) = (momy + 0.5d0 * Fy(i,j,k)) / rhoLoc
+        w(i,j,k) = (momz + 0.5d0 * Fz(i,j,k)) / rhoLoc
       enddo
     enddo
   enddo
@@ -1055,19 +867,15 @@ subroutine collisionT3d()
   implicit none
 
   integer(kind=4) :: i, j, k, alpha
-  real(kind=8) :: gLoc(qt), geq(qt), n(qt), neq(qt), nPost(qt), gPostLoc(qt)
+  real(kind=8) :: gLoc(qt), n(qt), neq(qt), nPost(qt), gPostLoc(qt)
   real(kind=8) :: Bx, By, Bz, dBx, dBy, dBz
-  real(kind=8) :: omegaG, SG
+  real(kind=8), parameter :: SG = 1.0d0 - 0.5d0 * s_jT
 
   ! 温度场的思路和 2D 一样：
   ! 1) 先构造当前热通量 B = uT
-  ! 2) 若启用 useG，则用相邻时刻差分 dB 做修正
-  ! 3) 在矩空间里做温度碰撞
-  omegaG = qkappa
-  SG = 1.0d0 - 0.5d0 * qkappa
-
+  ! 2) 若启用 useG，则用相邻时刻差分 dB 做修正；3) 在矩空间里做温度碰撞
   !$omp parallel do collapse(3) default(none) shared(g,g_post,u,v,w,T,Bx_prev,By_prev,Bz_prev,M7,Minv7) &
-  !$omp private(i,j,k,alpha,gLoc,geq,n,neq,nPost,gPostLoc,Bx,By,Bz,dBx,dBy,dBz,omegaG,SG)
+  !$omp private(i,j,k,alpha,gLoc,n,neq,nPost,gPostLoc,Bx,By,Bz,dBx,dBy,dBz)
   do k = 1, nz
     do j = 1, ny
       do i = 1, nx
@@ -1093,16 +901,23 @@ subroutine collisionT3d()
         By_prev(i,j,k) = By
         Bz_prev(i,j,k) = Bz
 
-        call compute_geq_d3q7(T(i,j,k), u(i,j,k), v(i,j,k), w(i,j,k), geq)
-
-        ! 温度分布函数变到矩空间
+        ! 先把温度分布函数变到矩空间
         n = matmul(M7, gLoc)
-        neq = matmul(M7, geq)
+
+        ! 这里按 2DRB 的思路直接写平衡矩，而不是跟文献那套 aT/qkappa 走
+        ! [T, uT, vT, wT, -3/4*T, 0, 0]
+        neq(1) = T(i,j,k)
+        neq(2) = Bx
+        neq(3) = By
+        neq(4) = Bz
+        neq(5) = -0.75d0 * T(i,j,k)
+        neq(6) = 0.0d0
+        neq(7) = 0.0d0
 
         nPost(1) = n(1)
-        nPost(2:4) = n(2:4) - omegaG * (n(2:4) - neq(2:4))
-        nPost(5) = n(5) - qeT * (n(5) - neq(5))
-        nPost(6:7) = n(6:7) - qnuT * (n(6:7) - neq(6:7))
+        nPost(2:4) = n(2:4) - s_jT * (n(2:4) - neq(2:4))
+        nPost(5) = n(5) - s_eT * (n(5) - neq(5))
+        nPost(6:7) = n(6:7) - s_qT * (n(6:7) - neq(6:7))
         nPost(2) = nPost(2) + SG * dBx
         nPost(3) = nPost(3) + SG * dBy
         nPost(4) = nPost(4) + SG * dBz
@@ -1234,7 +1049,7 @@ subroutine reconstruct_macro_from_fg3d()
   real(kind=8) :: momx, momy, momz
   logical :: rho_bad
 
-  ! 重启时只存了 f 和 g，所以这里统一把 T、rho、u、v、w、历史热流都重构回来
+  ! 重启时只存了 f 和 g，所以这里统一把 T、rho、u、v、w 以及历史热流都重构回来
   call macroT3d()
   rho_bad = .false.
 
@@ -1299,15 +1114,16 @@ subroutine check3d()
   real(kind=8) :: error1, error2, error5, error6
   character(len=80) :: caseTag
 
-  ! 误差定义：
-  ! errorU 用速度场相对 L2 误差
+  ! 误差定义：errorU 用速度场相对 L2 误差
   ! errorT 用温度场相对 L1 误差
   error1 = 0.0d0
   error2 = 0.0d0
   error5 = 0.0d0
   error6 = 0.0d0
 
-  !$omp parallel do collapse(3) default(none) shared(u,up,v,vp,w,wp,T,Tp) private(i,j,k) reduction(+:error1,error2,error5,error6)
+  !$omp parallel do collapse(3) default(none) &
+  !$omp& shared(u,up,v,vp,w,wp,T,Tp) private(i,j,k) &
+  !$omp& reduction(+:error1,error2,error5,error6)
   do k = 1, nz
     do j = 1, ny
       do i = 1, nx
@@ -1407,7 +1223,7 @@ subroutine output_binary3d()
   integer(kind=4) :: i, j, k
   character(len=100) :: filename
 
-  ! 这是给后处理看的快照文件：
+  ! 这是给后处理看的快照文件
   ! 输出的是已经乘上 velocityScaleCompare 的无量纲速度场
 #ifdef steadyFlow
   write(filename,'(i12.12)') itc
@@ -1437,7 +1253,7 @@ subroutine backupData3d()
   integer(kind=4) :: i, j, k, alpha
   character(len=100) :: filename
 
-  ! 这是严格重启文件：
+  ! 这是严格重启文件
   ! 只写 f 和 g，后续由 reconstruct_macro_from_fg3d() 恢复宏观量
 #ifdef steadyFlow
   write(filename,'(i0)') itc
@@ -1466,8 +1282,7 @@ subroutine output_midplanes_tecplot3d()
 
   character(len=100) :: tag
 
-  ! 3D 第一版不输出全体积 Tecplot，
-  ! 只输出三个中面切片，便于先看主流型和温度分布
+  ! 3D 第一版不输出整体 Tecplot 体数据，只输出三个中面切片便于观察主流型和温度分布
 #ifdef steadyFlow
   write(tag,'(i12.12)') itc
 #endif
@@ -1603,7 +1418,9 @@ subroutine RBcalc_Nu_wall_avg3d()
     !$omp parallel do collapse(2) default(none) shared(v,T,jB,dy,deltaT,coef) private(i,k) reduction(+:sum_mid)
     do k = 1, nz
       do i = 1, nx
-        sum_mid = sum_mid + (coef * v(i,jB,k) * (T(i,jB,k) - Tref) - (T(i,jB+1,k) - T(i,jB-1,k)) / (2.0d0 * dy)) / deltaT
+        sum_mid = sum_mid + &
+             (coef * v(i,jB,k) * (T(i,jB,k) - Tref) - &
+             (T(i,jB+1,k) - T(i,jB-1,k)) / (2.0d0 * dy)) / deltaT
       enddo
     enddo
     !$omp end parallel do
@@ -1640,7 +1457,6 @@ subroutine RBcalc_midplane_velocity_max3d()
   real(kind=8) :: targetX, targetY, targetZ, wx, wy, wz, val, umax, vmax, wmax
   real(kind=8) :: yAtU, zAtU, xAtV, zAtV, xAtW, yAtW
 
-  ! 三个速度诊断量的定义：
   ! u_max : 在 x = Lx/2 的中面上找最大 u，输出 (y,z)
   ! v_max : 在 y = Ly/2 的中面上找最大 v，输出 (x,z)
   ! w_max : 在 z = Lz/2 的中面上找最大 w，输出 (x,y)
@@ -1684,9 +1500,15 @@ subroutine RBcalc_midplane_velocity_max3d()
   enddo
   xAtW = xp(iBest); yAtW = yp(jBest)
 
-  write(*,'(A,1X,ES16.8,2X,A,1X,ES16.8,2X,A,1X,ES16.8,2X,A,1X,ES16.8)') 'u_max* =', umax*velocityScaleCompare, 'y =', yAtU, 'z =', zAtU, 'x_mid =', targetX
-  write(*,'(A,1X,ES16.8,2X,A,1X,ES16.8,2X,A,1X,ES16.8,2X,A,1X,ES16.8)') 'v_max* =', vmax*velocityScaleCompare, 'x =', xAtV, 'z =', zAtV, 'y_mid =', targetY
-  write(*,'(A,1X,ES16.8,2X,A,1X,ES16.8,2X,A,1X,ES16.8,2X,A,1X,ES16.8)') 'w_max* =', wmax*velocityScaleCompare, 'x =', xAtW, 'y =', yAtW, 'z_mid =', targetZ
+  write(*,'(A,1X,ES16.8,2X,A,1X,ES16.8,2X,A,1X,ES16.8,2X,A,1X,ES16.8)') &
+       'u_max* =', umax*velocityScaleCompare, 'y =', yAtU, 'z =', zAtU, &
+       'x_mid =', targetX
+  write(*,'(A,1X,ES16.8,2X,A,1X,ES16.8,2X,A,1X,ES16.8,2X,A,1X,ES16.8)') &
+       'v_max* =', vmax*velocityScaleCompare, 'x =', xAtV, 'z =', zAtV, &
+       'y_mid =', targetY
+  write(*,'(A,1X,ES16.8,2X,A,1X,ES16.8,2X,A,1X,ES16.8,2X,A,1X,ES16.8)') &
+       'w_max* =', wmax*velocityScaleCompare, 'x =', xAtW, 'y =', yAtW, &
+       'z_mid =', targetZ
 
 end subroutine RBcalc_midplane_velocity_max3d
 
@@ -1723,7 +1545,7 @@ subroutine interp_scalar_x(iL, iR, weight, j, k, field, val)
   real(kind=8), intent(in) :: field(nx,ny,nz)
   real(kind=8), intent(out) :: val
 
-  ! 沿 x 方向做一维线性插值；y、z 固定
+  ! 在 x 方向做一维线性插值；y、z 固定
   if (iL .EQ. iR) then
     val = field(iL,j,k)
   else
@@ -1741,7 +1563,7 @@ subroutine interp_scalar_y(jL, jR, weight, i, k, field, val)
   real(kind=8), intent(in) :: field(nx,ny,nz)
   real(kind=8), intent(out) :: val
 
-  ! 沿 y 方向做一维线性插值；x、z 固定
+  ! 在 y 方向做一维线性插值；x、z 固定
   if (jL .EQ. jR) then
     val = field(i,jL,k)
   else
@@ -1759,7 +1581,7 @@ subroutine interp_scalar_z(kL, kR, weight, i, j, field, val)
   real(kind=8), intent(in) :: field(nx,ny,nz)
   real(kind=8), intent(out) :: val
 
-  ! 沿 z 方向做一维线性插值；x、y 固定
+  ! 在 z 方向做一维线性插值；x、y 固定
   if (kL .EQ. kR) then
     val = field(i,j,kL)
   else
@@ -1788,7 +1610,8 @@ subroutine write_midplane_x(filename)
       call interp_scalar_x(iL, iR, weight, j, k, v, valV)
       call interp_scalar_x(iL, iR, weight, j, k, w, valW)
       call interp_scalar_x(iL, iR, weight, j, k, T, valT)
-      write(uout,'(6(1X,ES24.16))') yp(j), zp(k), velocityScaleCompare*valU, velocityScaleCompare*valV, velocityScaleCompare*valW, valT
+      write(uout,'(6(1X,ES24.16))') yp(j), zp(k), velocityScaleCompare*valU, &
+           velocityScaleCompare*valV, velocityScaleCompare*valW, valT
     enddo
   enddo
   close(uout)
@@ -1815,7 +1638,8 @@ subroutine write_midplane_y(filename)
       call interp_scalar_y(jL, jR, weight, i, k, v, valV)
       call interp_scalar_y(jL, jR, weight, i, k, w, valW)
       call interp_scalar_y(jL, jR, weight, i, k, T, valT)
-      write(uout,'(6(1X,ES24.16))') xp(i), zp(k), velocityScaleCompare*valU, velocityScaleCompare*valV, velocityScaleCompare*valW, valT
+      write(uout,'(6(1X,ES24.16))') xp(i), zp(k), velocityScaleCompare*valU, &
+           velocityScaleCompare*valV, velocityScaleCompare*valW, valT
     enddo
   enddo
   close(uout)
@@ -1842,9 +1666,12 @@ subroutine write_midplane_z(filename)
       call interp_scalar_z(kL, kR, weight, i, j, v, valV)
       call interp_scalar_z(kL, kR, weight, i, j, w, valW)
       call interp_scalar_z(kL, kR, weight, i, j, T, valT)
-      write(uout,'(6(1X,ES24.16))') xp(i), yp(j), velocityScaleCompare*valU, velocityScaleCompare*valV, velocityScaleCompare*valW, valT
+      write(uout,'(6(1X,ES24.16))') xp(i), yp(j), velocityScaleCompare*valU, &
+           velocityScaleCompare*valV, velocityScaleCompare*valW, valT
     enddo
   enddo
   close(uout)
 
 end subroutine write_midplane_z
+
+
