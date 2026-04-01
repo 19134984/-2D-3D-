@@ -1,21 +1,51 @@
 ﻿!=============================================================
-!!!    3D buoyancy-driven natural convection
-!!!    D3Q19 flow + D3Q7 temperature
+!!!    注释区，代码描述
+!!!    三维浮力驱动自然对流
+!!!    D3Q19 流场 + D3Q7 温度场
 !!!    主循环按 collision/streaming/boundary/macro 展开
-!!!    后处理也放在同一文件里，便于直接查阅
 !=============================================================
 
-! 宏开关：
+!=============================================================
+!   自定义宏，一些选项的开关
+! 工况切换：默认保留 3D periodic RB；若要侧壁加热封闭方腔，就开启 SideHeatedCell 并关闭 RayleighBenardCell
+!#define SideHeatedCell
+#define RayleighBenardCell
+
 ! steadyFlow / unsteadyFlow : 稳态或非稳态运行模式
 #define steadyFlow
 !#define unsteadyFlow
 
-! EnableRBInitPerturbation3D : 小 Ra 时给 3D RB 一个初始温度扰动，帮助脱离导热支路
-! EnableUseG                : 是否启用温度方程中的偏差修正
+! RB 小 Ra 初始温度扰动：只对 RayleighBenardCell 且 Rayleigh<=1e4 生效
+! EnableUseG : 是否启用温度方程中的偏差修正
 #define EnableRBInitPerturbation3D
 #define EnableUseG
 
+! 下面这些边界宏尽量沿用 2DRB 的命名风格：
+! Horizontal = y 方向上下壁面
+! Vertical   = x 方向左右壁面
+! Spanwise   = z 方向前后壁面
+#define HorizontalWallsNoslip
+#ifdef SideHeatedCell
+#define VerticalWallsNoslip
+#define SpanwiseWallsNoslip
+#define VerticalWallsConstT
+#define HorizontalWallsAdiabatic
+#define SpanwiseWallsAdiabatic
+#else
+#define VerticalWallsPeriodicalU
+#define SpanwiseWallsPeriodicalU
+#define HorizontalWallsConstT
+#define VerticalWallsPeriodicalT
+#define SpanwiseWallsPeriodicalT
+#endif
 
+
+!   自定义宏结束
+!=============================================================
+
+
+!=============================================================
+!   全局模块
 module commondata3d
   implicit none
 
@@ -31,9 +61,17 @@ module commondata3d
   integer(kind=4), parameter :: reloadbinFileNum = 0
 
 
-  ! 网格：2:1:1 的 3D periodic RB 几何设成 40x20x20
+#ifdef SideHeatedCell
+  ! 网格：侧壁加热封闭方腔，建议使用 nx=ny=nz
+#else
+  ! 网格：2:1:1 的 3D periodic RB 几何
+#endif
   integer(kind=4), parameter :: nx = 40, ny = 20, nz = 20
+#ifdef SideHeatedCell
+  real(kind=8), parameter :: lengthUnit = dble(nx)
+#else
   real(kind=8), parameter :: lengthUnit = dble(ny)
+#endif
   real(kind=8), parameter :: pi = acos(-1.0d0)
   integer(kind=4), parameter :: itc_max = 20000000
   real(kind=8),    parameter :: outputFrequency = 100.0d0
@@ -137,6 +175,14 @@ module commondata3d
   real(kind=8) :: M7(qt,qt),  Minv7(qt,qt)
   ! M 和 Minv 在初始化时按当前正交基底构造，既保持文献编号一致，也方便后续自己改基底做试验
 end module commondata3d
+
+
+!   全局模块结束
+!=============================================================
+
+
+!=============================================================
+!   主程序
 
 
 program main3d
@@ -259,7 +305,15 @@ program main3d
 
 end program main3d
 
+!   主程序结束
+!=============================================================
 
+
+
+!===========================================================================================================================
+! 子程序: initial3d
+! 作用: 初始化网格坐标、场变量、分布函数、输出文件和重启信息。
+!===========================================================================================================================
 subroutine initial3d()
   use commondata3d
   implicit none
@@ -316,7 +370,11 @@ subroutine initial3d()
   ! 把这次算例的主要信息写入日志文件，方便后续查设置
   open(unit=00, file=trim(settingsFile), status='unknown', position='append')
   write(00,*) '-------------------------------------------------------------------------------'
+#ifdef SideHeatedCell
+  write(00,*) 'I am 3D Side Heated Closed Cavity'
+#else
   write(00,*) 'I am 3D periodic Rayleigh-Benard Cell'
+#endif
   write(00,*) 'Mesh:', nx, ny, nz
   write(00,*) 'Rayleigh=', real(Rayleigh,kind=8), '; Prandtl =', real(Prandtl,kind=8), '; Mach =', real(Mach,kind=8)
   write(00,*) 'Length unit: L0 =', real(lengthUnit,kind=8)
@@ -332,6 +390,42 @@ subroutine initial3d()
   write(00,*) '.................... or ', backupIntervalItc, ' in itc units'
   write(00,*) 'itc_max =', itc_max
   write(00,*) 'default epsU =', real(epsU,kind=8), '; epsT =', real(epsT,kind=8)
+#ifdef VerticalWallsNoslip
+  write(00,*) 'Velocity B.C. for vertical walls are: ===No-slip wall==='
+#endif
+#ifdef VerticalWallsPeriodicalU
+  write(00,*) 'Velocity B.C. for vertical walls are: ===Periodical==='
+#endif
+#ifdef HorizontalWallsNoslip
+  write(00,*) 'Velocity B.C. for horizontal walls are: ===No-slip wall==='
+#endif
+#ifdef SpanwiseWallsNoslip
+  write(00,*) 'Velocity B.C. for spanwise walls are: ===No-slip wall==='
+#endif
+#ifdef SpanwiseWallsPeriodicalU
+  write(00,*) 'Velocity B.C. for spanwise walls are: ===Periodical==='
+#endif
+#ifdef VerticalWallsConstT
+  write(00,*) 'Temperature B.C. for vertical walls are: ===Hot/cold wall==='
+#endif
+#ifdef VerticalWallsAdiabatic
+  write(00,*) 'Temperature B.C. for vertical walls are: ===Adiabatic wall==='
+#endif
+#ifdef VerticalWallsPeriodicalT
+  write(00,*) 'Temperature B.C. for vertical walls are: ===Periodical==='
+#endif
+#ifdef HorizontalWallsConstT
+  write(00,*) 'Temperature B.C. for horizontal walls are: ===Hot/cold wall==='
+#endif
+#ifdef HorizontalWallsAdiabatic
+  write(00,*) 'Temperature B.C. for horizontal walls are: ===Adiabatic wall==='
+#endif
+#ifdef SpanwiseWallsAdiabatic
+  write(00,*) 'Temperature B.C. for spanwise walls are: ===Adiabatic wall==='
+#endif
+#ifdef SpanwiseWallsPeriodicalT
+  write(00,*) 'Temperature B.C. for spanwise walls are: ===Periodical==='
+#endif
   write(00,*) 'OpenMP only; MPI/OpenACC are not included in this file'
   close(00)
 
@@ -351,6 +445,17 @@ subroutine initial3d()
     w = 0.0d0
     T = 0.0d0
 
+#ifdef VerticalWallsConstT
+    do k = 1, nz
+      do j = 1, ny
+        do i = 1, nx
+          T(i,j,k) = Thot + (xp(i) - xp(0)) / (xp(nx+1) - xp(0)) * (Tcold - Thot)
+        enddo
+      enddo
+    enddo
+#endif
+
+#ifdef HorizontalWallsConstT
     do k = 1, nz
       do j = 1, ny
         do i = 1, nx
@@ -358,8 +463,8 @@ subroutine initial3d()
         enddo
       enddo
     enddo
-
-
+#ifdef RayleighBenardCell
+#ifdef EnableRBInitPerturbation3D
     if (Rayleigh .LE. 1.0d4) then
       ! 小 Ra 时导热解附近的增长很慢，给一个很小的初始温度扰动更容易触发对流模态
       ! 这里扰动只沿 x-y 变化，z 方向保持均匀，先对应最简单的卷胞结构
@@ -377,7 +482,9 @@ subroutine initial3d()
       write(00,'(a,1x,es12.4)') '3D RB initial T perturbation amplitude =', rbInitPerturbAmp
       close(00)
     endif
-
+#endif
+#endif
+#endif
 
     do k = 1, nz
       do j = 1, ny
@@ -430,6 +537,10 @@ subroutine initial3d()
 end subroutine initial3d
 
 
+!===========================================================================================================================
+! 子程序: init_lattice_constants_3d
+! 作用: 初始化 D3Q19 / D3Q7 的离散速度、反向索引和权重。
+!===========================================================================================================================
 subroutine init_lattice_constants_3d()
   use commondata3d
   implicit none
@@ -458,6 +569,10 @@ subroutine init_lattice_constants_3d()
 end subroutine init_lattice_constants_3d
 
 
+!===========================================================================================================================
+! 子程序: init_mrt_matrices_3d
+! 作用: 初始化 D3Q19 / D3Q7 的变换矩阵及其逆矩阵。
+!===========================================================================================================================
 subroutine init_mrt_matrices_3d()
   use commondata3d
   implicit none
@@ -473,6 +588,10 @@ subroutine init_mrt_matrices_3d()
 end subroutine init_mrt_matrices_3d
 
 
+!===========================================================================================================================
+! 子程序: init_inverse_matrix_d3q19
+! 作用: 根据当前正交基底直接构造 D3Q19 逆矩阵。
+!===========================================================================================================================
 subroutine init_inverse_matrix_d3q19()
   use commondata3d
   implicit none
@@ -495,6 +614,10 @@ subroutine init_inverse_matrix_d3q19()
 end subroutine init_inverse_matrix_d3q19
 
 
+!===========================================================================================================================
+! 子程序: init_inverse_matrix_d3q7
+! 作用: 根据当前正交基底直接构造 D3Q7 逆矩阵。
+!===========================================================================================================================
 subroutine init_inverse_matrix_d3q7()
   use commondata3d
   implicit none
@@ -513,6 +636,10 @@ subroutine init_inverse_matrix_d3q7()
 end subroutine init_inverse_matrix_d3q7
 
 
+!===========================================================================================================================
+! 子程序: build_basis_matrix_d3q19
+! 作用: 按既定矩基顺序填写 D3Q19 变换矩阵。
+!===========================================================================================================================
 subroutine build_basis_matrix_d3q19(M)
   use commondata3d
   implicit none
@@ -557,6 +684,10 @@ subroutine build_basis_matrix_d3q19(M)
 end subroutine build_basis_matrix_d3q19
 
 
+!===========================================================================================================================
+! 子程序: build_basis_matrix_d3q7
+! 作用: 按既定矩基顺序填写 D3Q7 变换矩阵。
+!===========================================================================================================================
 subroutine build_basis_matrix_d3q7(M)
   use commondata3d
   implicit none
@@ -597,6 +728,10 @@ end subroutine build_basis_matrix_d3q7
 
 
 
+!===========================================================================================================================
+! 子程序: compute_feq_d3q19
+! 作用: 根据宏观量计算 D3Q19 流场平衡分布函数。
+!===========================================================================================================================
 subroutine compute_feq_d3q19(rhoLoc, uLoc, vLoc, wLoc, feq)
   use commondata3d
   implicit none
@@ -617,6 +752,10 @@ subroutine compute_feq_d3q19(rhoLoc, uLoc, vLoc, wLoc, feq)
 end subroutine compute_feq_d3q19
 
 
+!===========================================================================================================================
+! 子程序: compute_geq_d3q7
+! 作用: 根据温度和速度计算 D3Q7 温度平衡分布函数。
+!===========================================================================================================================
 subroutine compute_geq_d3q7(TLoc, uLoc, vLoc, wLoc, geq)
   use commondata3d
   implicit none
@@ -638,6 +777,10 @@ end subroutine compute_geq_d3q7
 
 
 
+!===========================================================================================================================
+! 子程序: collision3d
+! 作用: 流场碰撞步骤，在矩空间完成松弛并加入浮力源项修正。
+!===========================================================================================================================
 subroutine collision3d()
   use commondata3d
   implicit none
@@ -746,13 +889,18 @@ subroutine collision3d()
 end subroutine collision3d
 
 
+!===========================================================================================================================
+! 子程序: fill_periodic_ghosts_f_post
+! 作用: 为流场分布函数补齐周期 ghost 层，便于统一 pull streaming。
+!===========================================================================================================================
 subroutine fill_periodic_ghosts_f_post()
   use commondata3d
   implicit none
 
   integer(kind=4) :: i, j, k, alpha
 
-  ! x 和 z 方向都是周期边界，这里先把碰撞后分布写入 ghost 层，随后 streaming3d 直接 pull 即可
+#ifdef VerticalWallsPeriodicalU
+  ! x 方向是周期边界时，先把左右 ghost 层补齐
   !$omp parallel do collapse(2) default(none) shared(f_post) private(j,k,alpha)
   do k = 1, nz
     do j = 1, ny
@@ -763,7 +911,10 @@ subroutine fill_periodic_ghosts_f_post()
     enddo
   enddo
   !$omp end parallel do
+#endif
 
+#ifdef SpanwiseWallsPeriodicalU
+  ! z 方向是周期边界时，再把前后 ghost 层补齐
   !$omp parallel do collapse(2) default(none) shared(f_post) private(i,j,alpha)
   do j = 1, ny
     do i = 0, nx+1
@@ -774,10 +925,15 @@ subroutine fill_periodic_ghosts_f_post()
     enddo
   enddo
   !$omp end parallel do
+#endif
 
 end subroutine fill_periodic_ghosts_f_post
 
 
+!===========================================================================================================================
+! 子程序: streaming3d
+! 作用: 对流场分布函数执行三维 pull streaming。
+!===========================================================================================================================
 subroutine streaming3d()
   use commondata3d
   implicit none
@@ -803,28 +959,62 @@ subroutine streaming3d()
 end subroutine streaming3d
 
 
+!===========================================================================================================================
+! 子程序: bounceback3d
+! 作用: 施加流场边界条件，包括无滑移壁面和周期边界配套处理。
+!===========================================================================================================================
 subroutine bounceback3d()
   use commondata3d
   implicit none
 
-  integer(kind=4) :: i, k, alpha
+  integer(kind=4) :: i, j, k, alpha
 
-  ! 这里只处理 y=1 和 y=ny 两个水平壁面的无滑移反弹
-  ! x/z 方向由于本来就是周期边界，所以不在这里处理
+#ifdef VerticalWallsNoslip
+  !$omp parallel do collapse(2) default(none) shared(f,f_post,ex,opp) private(j,k,alpha)
+  do k = 1, nz
+    do j = 1, ny
+      do alpha = 0, qf-1
+        if (ex(alpha) .EQ. 1)  f(alpha,1,j,k)  = f_post(opp(alpha),1,j,k)
+        if (ex(alpha) .EQ. -1) f(alpha,nx,j,k) = f_post(opp(alpha),nx,j,k)
+      enddo
+    enddo
+  enddo
+  !$omp end parallel do
+#endif
+
+#ifdef HorizontalWallsNoslip
   !$omp parallel do collapse(2) default(none) shared(f,f_post,ey,opp) private(i,k,alpha)
   do k = 1, nz
     do i = 1, nx
       do alpha = 0, qf-1
-        if (ey(alpha) .EQ. 1) f(alpha,i,1,k) = f_post(opp(alpha),i,1,k)
+        if (ey(alpha) .EQ. 1)  f(alpha,i,1,k)  = f_post(opp(alpha),i,1,k)
         if (ey(alpha) .EQ. -1) f(alpha,i,ny,k) = f_post(opp(alpha),i,ny,k)
       enddo
     enddo
   enddo
   !$omp end parallel do
+#endif
+
+#ifdef SpanwiseWallsNoslip
+  !$omp parallel do collapse(2) default(none) shared(f,f_post,ez,opp) private(i,j,alpha)
+  do j = 1, ny
+    do i = 1, nx
+      do alpha = 0, qf-1
+        if (ez(alpha) .EQ. 1)  f(alpha,i,j,1)  = f_post(opp(alpha),i,j,1)
+        if (ez(alpha) .EQ. -1) f(alpha,i,j,nz) = f_post(opp(alpha),i,j,nz)
+      enddo
+    enddo
+  enddo
+  !$omp end parallel do
+#endif
 
 end subroutine bounceback3d
 
 
+!===========================================================================================================================
+! 子程序: macro3d
+! 作用: 由流场分布函数恢复 rho、u、v、w 以及浮力项。
+!===========================================================================================================================
 subroutine macro3d()
   use commondata3d
   implicit none
@@ -862,6 +1052,10 @@ subroutine macro3d()
 end subroutine macro3d
 
 
+!===========================================================================================================================
+! 子程序: collisionT3d
+! 作用: 温度场碰撞步骤，算法口径尽量保持与 2DRB 的对流扩散处理一致。
+!===========================================================================================================================
 subroutine collisionT3d()
   use commondata3d
   implicit none
@@ -935,13 +1129,18 @@ subroutine collisionT3d()
 end subroutine collisionT3d
 
 
+!===========================================================================================================================
+! 子程序: fill_periodic_ghosts_g_post
+! 作用: 为温度分布函数补齐周期 ghost 层，便于统一 pull streaming。
+!===========================================================================================================================
 subroutine fill_periodic_ghosts_g_post()
   use commondata3d
   implicit none
 
   integer(kind=4) :: i, j, k, alpha
 
-  ! 温度场和流场一样，x/z 方向先填周期 ghost 层
+#ifdef VerticalWallsPeriodicalT
+  ! x 方向是周期边界时，先把左右 ghost 层补齐
   !$omp parallel do collapse(2) default(none) shared(g_post) private(j,k,alpha)
   do k = 1, nz
     do j = 1, ny
@@ -952,7 +1151,10 @@ subroutine fill_periodic_ghosts_g_post()
     enddo
   enddo
   !$omp end parallel do
+#endif
 
+#ifdef SpanwiseWallsPeriodicalT
+  ! z 方向是周期边界时，再把前后 ghost 层补齐
   !$omp parallel do collapse(2) default(none) shared(g_post) private(i,j,alpha)
   do j = 1, ny
     do i = 0, nx+1
@@ -963,10 +1165,15 @@ subroutine fill_periodic_ghosts_g_post()
     enddo
   enddo
   !$omp end parallel do
+#endif
 
 end subroutine fill_periodic_ghosts_g_post
 
 
+!===========================================================================================================================
+! 子程序: streamingT3d
+! 作用: 对温度分布函数执行三维 pull streaming。
+!===========================================================================================================================
 subroutine streamingT3d()
   use commondata3d
   implicit none
@@ -992,30 +1199,88 @@ subroutine streamingT3d()
 end subroutine streamingT3d
 
 
+!===========================================================================================================================
+! 子程序: bouncebackT3d
+! 作用: 施加温度边界条件，包括恒温、绝热和周期边界。
+!===========================================================================================================================
 subroutine bouncebackT3d()
   use commondata3d
   implicit none
 
-  integer(kind=4) :: i, k, alpha
+  integer(kind=4) :: i, j, k, alpha
 
-  ! 温度边界只在上下水平壁处理：
-  ! y=1   为热壁 Thot
-  ! y=ny  为冷壁 Tcold
-  ! 写法沿用 2D 版“反弹 + 壁温修正”思路
+#ifdef VerticalWallsConstT
+  !$omp parallel do collapse(2) default(none) shared(g,g_post,exT,oppT,omegaT) private(j,k,alpha)
+  do k = 1, nz
+    do j = 1, ny
+      do alpha = 0, qt-1
+        if (exT(alpha) .EQ. 1)  g(alpha,1,j,k)  = -g_post(oppT(alpha),1,j,k)  + 2.0d0 * omegaT(alpha) * Thot
+        if (exT(alpha) .EQ. -1) g(alpha,nx,j,k) = -g_post(oppT(alpha),nx,j,k) + 2.0d0 * omegaT(alpha) * Tcold
+      enddo
+    enddo
+  enddo
+  !$omp end parallel do
+#endif
+
+#ifdef VerticalWallsAdiabatic
+  !$omp parallel do collapse(2) default(none) shared(g,g_post,exT,oppT) private(j,k,alpha)
+  do k = 1, nz
+    do j = 1, ny
+      do alpha = 0, qt-1
+        if (exT(alpha) .EQ. 1)  g(alpha,1,j,k)  = g_post(oppT(alpha),1,j,k)
+        if (exT(alpha) .EQ. -1) g(alpha,nx,j,k) = g_post(oppT(alpha),nx,j,k)
+      enddo
+    enddo
+  enddo
+  !$omp end parallel do
+#endif
+
+#ifdef HorizontalWallsAdiabatic
+  !$omp parallel do collapse(2) default(none) shared(g,g_post,eyT,oppT) private(i,k,alpha)
+  do k = 1, nz
+    do i = 1, nx
+      do alpha = 0, qt-1
+        if (eyT(alpha) .EQ. 1)  g(alpha,i,1,k)  = g_post(oppT(alpha),i,1,k)
+        if (eyT(alpha) .EQ. -1) g(alpha,i,ny,k) = g_post(oppT(alpha),i,ny,k)
+      enddo
+    enddo
+  enddo
+  !$omp end parallel do
+#endif
+
+#ifdef HorizontalWallsConstT
   !$omp parallel do collapse(2) default(none) shared(g,g_post,eyT,oppT,omegaT) private(i,k,alpha)
   do k = 1, nz
     do i = 1, nx
       do alpha = 0, qt-1
-        if (eyT(alpha) .EQ. 1) g(alpha,i,1,k) = -g_post(oppT(alpha),i,1,k) + 2.0d0 * omegaT(alpha) * Thot
+        if (eyT(alpha) .EQ. 1)  g(alpha,i,1,k)  = -g_post(oppT(alpha),i,1,k)  + 2.0d0 * omegaT(alpha) * Thot
         if (eyT(alpha) .EQ. -1) g(alpha,i,ny,k) = -g_post(oppT(alpha),i,ny,k) + 2.0d0 * omegaT(alpha) * Tcold
       enddo
     enddo
   enddo
   !$omp end parallel do
+#endif
+
+#ifdef SpanwiseWallsAdiabatic
+  !$omp parallel do collapse(2) default(none) shared(g,g_post,ezT,oppT) private(i,j,alpha)
+  do j = 1, ny
+    do i = 1, nx
+      do alpha = 0, qt-1
+        if (ezT(alpha) .EQ. 1)  g(alpha,i,j,1)  = g_post(oppT(alpha),i,j,1)
+        if (ezT(alpha) .EQ. -1) g(alpha,i,j,nz) = g_post(oppT(alpha),i,j,nz)
+      enddo
+    enddo
+  enddo
+  !$omp end parallel do
+#endif
 
 end subroutine bouncebackT3d
 
 
+!===========================================================================================================================
+! 子程序: macroT3d
+! 作用: 由温度分布函数恢复温度场，并更新历史热流项。
+!===========================================================================================================================
 subroutine macroT3d()
   use commondata3d
   implicit none
@@ -1041,6 +1306,10 @@ subroutine macroT3d()
 end subroutine macroT3d
 
 
+!===========================================================================================================================
+! 子程序: reconstruct_macro_from_fg3d
+! 作用: 从重启读回的 f/g 重新恢复宏观场，避免备份文件格式过重。
+!===========================================================================================================================
 subroutine reconstruct_macro_from_fg3d()
   use commondata3d
   implicit none
@@ -1106,6 +1375,10 @@ end subroutine reconstruct_macro_from_fg3d
 
 
 #ifdef steadyFlow
+!===========================================================================================================================
+! 子程序: check3d
+! 作用: 计算稳态收敛误差，并按需写入收敛历史。
+!===========================================================================================================================
 subroutine check3d()
   use commondata3d
   implicit none
@@ -1162,6 +1435,10 @@ end subroutine check3d
 #endif
 
 
+!===========================================================================================================================
+! 子程序: append_convergence_tecplot3d
+! 作用: 向单个收敛历史文件追加一条误差记录。
+!===========================================================================================================================
 subroutine append_convergence_tecplot3d(filename, itcLoc, errorULoc, errorTLoc)
   implicit none
   character(len=*), intent(in) :: filename
@@ -1186,6 +1463,10 @@ subroutine append_convergence_tecplot3d(filename, itcLoc, errorULoc, errorTLoc)
 end subroutine append_convergence_tecplot3d
 
 
+!===========================================================================================================================
+! 子程序: append_convergence_master_tecplot3d
+! 作用: 向带 zone 名称的收敛历史文件追加一条记录。
+!===========================================================================================================================
 subroutine append_convergence_master_tecplot3d(filename, zoneName, itcLoc, errorULoc, errorTLoc)
   implicit none
   character(len=*), intent(in) :: filename, zoneName
@@ -1216,6 +1497,10 @@ subroutine append_convergence_master_tecplot3d(filename, zoneName, itcLoc, error
 end subroutine append_convergence_master_tecplot3d
 
 
+!===========================================================================================================================
+! 子程序: output_binary3d
+! 作用: 输出三维快照二进制文件，供后处理或继续分析使用。
+!===========================================================================================================================
 subroutine output_binary3d()
   use commondata3d
   implicit none
@@ -1246,6 +1531,10 @@ subroutine output_binary3d()
 end subroutine output_binary3d
 
 
+!===========================================================================================================================
+! 子程序: backupData3d
+! 作用: 备份 f/g 分布函数，供后续重启继续计算。
+!===========================================================================================================================
 subroutine backupData3d()
   use commondata3d
   implicit none
@@ -1276,6 +1565,10 @@ subroutine backupData3d()
 end subroutine backupData3d
 
 
+!===========================================================================================================================
+! 子程序: output_midplanes_tecplot3d
+! 作用: 输出 x/y/z 三个中面切片，便于快速查看三维流场结构。
+!===========================================================================================================================
 subroutine output_midplanes_tecplot3d()
   use commondata3d
   implicit none
@@ -1299,6 +1592,10 @@ subroutine output_midplanes_tecplot3d()
 end subroutine output_midplanes_tecplot3d
 
 
+!===========================================================================================================================
+! 子程序: calNuRe3d
+! 作用: 计算体平均 Nu / Re，并把时间序列缓存到数组中。
+!===========================================================================================================================
 subroutine calNuRe3d()
   use commondata3d
   implicit none
@@ -1307,12 +1604,23 @@ subroutine calNuRe3d()
   real(kind=8) :: NuVolAvg_temp, ReVolAvg_temp
 
   ! 这里记录的是时间序列版本的体平均 Nu / Re：
-  ! NuVolAvg : 1 + (L/kappa) * <vT>
+  ! NuVolAvg : 体平均对流热通量对应的 Nu
   ! ReVolAvg : 全域 RMS 速度对应的 Reynolds 数
   if (dimensionlessTime .GE. dimensionlessTimeMax) return
   dimensionlessTime = dimensionlessTime + 1
 
   NuVolAvg_temp = 0.0d0
+#ifdef SideHeatedCell
+  !$omp parallel do collapse(3) default(none) shared(u,T) private(i,j,k) reduction(+:NuVolAvg_temp)
+  do k = 1, nz
+    do j = 1, ny
+      do i = 1, nx
+        NuVolAvg_temp = NuVolAvg_temp + u(i,j,k) * T(i,j,k)
+      enddo
+    enddo
+  enddo
+  !$omp end parallel do
+#else
   !$omp parallel do collapse(3) default(none) shared(v,T) private(i,j,k) reduction(+:NuVolAvg_temp)
   do k = 1, nz
     do j = 1, ny
@@ -1322,6 +1630,8 @@ subroutine calNuRe3d()
     enddo
   enddo
   !$omp end parallel do
+#endif
+
   NuVolAvg(dimensionlessTime) = NuVolAvg_temp / dble(nx * ny * nz) * lengthUnit / diffusivity + 1.0d0
   open(unit=01, file='Nu_VolAvg_3D.dat', status='unknown', position='append')
   write(01,*) real(reloadDimensionlessTime + dimensionlessTime * outputFrequency, kind=8), NuVolAvg(dimensionlessTime)
@@ -1348,13 +1658,42 @@ subroutine calNuRe3d()
 end subroutine calNuRe3d
 
 
+!===========================================================================================================================
+! 子程序: RBcalc_Nu_global3d
+! 作用: 计算三维算例的全局平均 Nusselt 数。
+!===========================================================================================================================
 subroutine RBcalc_Nu_global3d()
   use commondata3d
   implicit none
   integer(kind=4) :: i, j, k
-  real(kind=8) :: Nu_sum
+  real(kind=8) :: Nu_sum, dx, deltaT, coef, dT, qx
 
-  ! 最终全局 Nu：对整个体积做平均
+#ifdef SideHeatedCell
+  dx = 1.0d0 / lengthUnit
+  deltaT = Thot - Tcold
+  coef = heatFluxScale
+  Nu_sum = 0.0d0
+
+  !$omp parallel do collapse(3) default(none) shared(u,T,dx,coef) private(i,j,k,dT,qx) reduction(+:Nu_sum)
+  do k = 1, nz
+    do j = 1, ny
+      do i = 1, nx
+        if (i .EQ. 1) then
+          dT = (-3.0d0*T(1,j,k) - T(2,j,k) + 4.0d0*Thot) / (3.0d0*dx)
+        elseif (i .EQ. nx) then
+          dT = (-4.0d0*Tcold + 3.0d0*T(nx,j,k) + T(nx-1,j,k)) / (3.0d0*dx)
+        else
+          dT = (T(i-1,j,k) - T(i+1,j,k)) / (2.0d0*dx)
+        endif
+        qx = coef * u(i,j,k) * (T(i,j,k) - Tref) + dT
+        Nu_sum = Nu_sum + qx
+      enddo
+    enddo
+  enddo
+  !$omp end parallel do
+
+  Nu_global = (Nu_sum / dble(nx * ny * nz)) / deltaT
+#else
   Nu_sum = 0.0d0
   !$omp parallel do collapse(3) default(none) shared(v,T) private(i,j,k) reduction(+:Nu_sum)
   do k = 1, nz
@@ -1365,8 +1704,9 @@ subroutine RBcalc_Nu_global3d()
     enddo
   enddo
   !$omp end parallel do
-
   Nu_global = 1.0d0 + heatFluxScale * Nu_sum / dble(nx * ny * nz)
+#endif
+
   write(*,'(a,1x,es16.8)') 'Nu_global =', Nu_global
   open(unit=00, file=trim(settingsFile), status='unknown', position='append')
   write(00,'(a,1x,es16.8)') 'Nu_global =', Nu_global
@@ -1375,38 +1715,99 @@ subroutine RBcalc_Nu_global3d()
 end subroutine RBcalc_Nu_global3d
 
 
+!===========================================================================================================================
+! 子程序: RBcalc_Nu_wall_avg3d
+! 作用: 计算壁面平均 Nu、中心面 Nu 以及相关后处理量。
+!===========================================================================================================================
 subroutine RBcalc_Nu_wall_avg3d()
   use commondata3d
   implicit none
-  integer(kind=4) :: i, jB, jT, k
-  real(kind=8) :: dy, deltaT, coef
-  real(kind=8) :: sum_hot, sum_cold, sum_mid, qy_wall
+  integer(kind=4) :: i, j, k, iL, iR, iMid, jB, jT
+  real(kind=8) :: dx, dy, deltaT, coef
+  real(kind=8) :: sum_hot, sum_cold, sum_mid, q_wall
 
-  ! 这一版先做“平面平均”的 3D RB 后处理：
-  ! Nu_hot    : 底壁 x-z 平面平均
-  ! Nu_cold   : 顶壁 x-z 平面平均
-  ! Nu_middle : y=1/2 中平面平均
+#ifdef SideHeatedCell
+  dx = 1.0d0 / lengthUnit
+  deltaT = Thot - Tcold
+  coef = heatFluxScale
+
+  sum_hot = 0.0d0
+  !$omp parallel do collapse(2) default(none) shared(T,dx,deltaT) private(j,k,q_wall) reduction(+:sum_hot)
+  do k = 1, nz
+    do j = 1, ny
+      q_wall = 2.0d0 * (Thot - T(1,j,k)) / dx
+      sum_hot = sum_hot + q_wall / deltaT
+    enddo
+  enddo
+  !$omp end parallel do
+  Nu_hot = sum_hot / dble(ny * nz)
+
+  sum_cold = 0.0d0
+  !$omp parallel do collapse(2) default(none) shared(T,dx,deltaT) private(j,k,q_wall) reduction(+:sum_cold)
+  do k = 1, nz
+    do j = 1, ny
+      q_wall = 2.0d0 * (T(nx,j,k) - Tcold) / dx
+      sum_cold = sum_cold + q_wall / deltaT
+    enddo
+  enddo
+  !$omp end parallel do
+  Nu_cold = sum_cold / dble(ny * nz)
+
+  sum_mid = 0.0d0
+  if (mod(nx,2) .EQ. 1) then
+    iMid = (nx + 1) / 2
+    !$omp parallel do collapse(2) default(none) shared(u,T,iMid,dx,deltaT,coef) private(j,k) reduction(+:sum_mid)
+    do k = 1, nz
+      do j = 1, ny
+        sum_mid = sum_mid + (coef * u(iMid,j,k) * (T(iMid,j,k) - Tref) + &
+             (T(iMid-1,j,k) - T(iMid+1,j,k)) / (2.0d0 * dx)) / deltaT
+      enddo
+    enddo
+    !$omp end parallel do
+  else
+    iL = nx / 2
+    iR = iL + 1
+    !$omp parallel do collapse(2) default(none) shared(u,T,iL,iR,dx,deltaT,coef) private(j,k) reduction(+:sum_mid)
+    do k = 1, nz
+      do j = 1, ny
+        sum_mid = sum_mid + (coef * 0.5d0 * (u(iL,j,k) * (T(iL,j,k) - Tref) + &
+             u(iR,j,k) * (T(iR,j,k) - Tref)) + (T(iL,j,k) - T(iR,j,k)) / dx) / deltaT
+      enddo
+    enddo
+    !$omp end parallel do
+  endif
+  Nu_middle = sum_mid / dble(ny * nz)
+
+  write(*,'(a,1x,es16.8)') 'Nu_hot(left)  =', Nu_hot
+  write(*,'(a,1x,es16.8)') 'Nu_cold(right)=', Nu_cold
+  write(*,'(a,1x,es16.8)') 'Nu_middle     =', Nu_middle
+  open(unit=00, file=trim(settingsFile), status='unknown', position='append')
+  write(00,'(a,1x,es16.8)') 'Nu_hot(left)  =', Nu_hot
+  write(00,'(a,1x,es16.8)') 'Nu_cold(right)=', Nu_cold
+  write(00,'(a,1x,es16.8)') 'Nu_middle     =', Nu_middle
+  close(00)
+#else
   dy = 1.0d0 / lengthUnit
   deltaT = Thot - Tcold
   coef = heatFluxScale
 
   sum_hot = 0.0d0
-  !$omp parallel do collapse(2) default(none) shared(T,dy,deltaT) private(i,k,qy_wall) reduction(+:sum_hot)
+  !$omp parallel do collapse(2) default(none) shared(T,dy,deltaT) private(i,k,q_wall) reduction(+:sum_hot)
   do k = 1, nz
     do i = 1, nx
-      qy_wall = 2.0d0 * (Thot - T(i,1,k)) / dy
-      sum_hot = sum_hot + qy_wall / deltaT
+      q_wall = 2.0d0 * (Thot - T(i,1,k)) / dy
+      sum_hot = sum_hot + q_wall / deltaT
     enddo
   enddo
   !$omp end parallel do
   Nu_hot = sum_hot / dble(nx * nz)
 
   sum_cold = 0.0d0
-  !$omp parallel do collapse(2) default(none) shared(T,dy,deltaT) private(i,k,qy_wall) reduction(+:sum_cold)
+  !$omp parallel do collapse(2) default(none) shared(T,dy,deltaT) private(i,k,q_wall) reduction(+:sum_cold)
   do k = 1, nz
     do i = 1, nx
-      qy_wall = 2.0d0 * (T(i,ny,k) - Tcold) / dy
-      sum_cold = sum_cold + qy_wall / deltaT
+      q_wall = 2.0d0 * (T(i,ny,k) - Tcold) / dy
+      sum_cold = sum_cold + q_wall / deltaT
     enddo
   enddo
   !$omp end parallel do
@@ -1418,8 +1819,7 @@ subroutine RBcalc_Nu_wall_avg3d()
     !$omp parallel do collapse(2) default(none) shared(v,T,jB,dy,deltaT,coef) private(i,k) reduction(+:sum_mid)
     do k = 1, nz
       do i = 1, nx
-        sum_mid = sum_mid + &
-             (coef * v(i,jB,k) * (T(i,jB,k) - Tref) - &
+        sum_mid = sum_mid + (coef * v(i,jB,k) * (T(i,jB,k) - Tref) - &
              (T(i,jB+1,k) - T(i,jB-1,k)) / (2.0d0 * dy)) / deltaT
       enddo
     enddo
@@ -1430,8 +1830,8 @@ subroutine RBcalc_Nu_wall_avg3d()
     !$omp parallel do collapse(2) default(none) shared(v,T,jB,jT,dy,deltaT,coef) private(i,k) reduction(+:sum_mid)
     do k = 1, nz
       do i = 1, nx
-        sum_mid = sum_mid + (coef * 0.5d0 * (v(i,jB,k)*(T(i,jB,k)-Tref) + v(i,jT,k)*(T(i,jT,k)-Tref)) &
-                 + (T(i,jB,k) - T(i,jT,k)) / dy) / deltaT
+        sum_mid = sum_mid + (coef * 0.5d0 * (v(i,jB,k) * (T(i,jB,k) - Tref) + &
+             v(i,jT,k) * (T(i,jT,k) - Tref)) + (T(i,jB,k) - T(i,jT,k)) / dy) / deltaT
       enddo
     enddo
     !$omp end parallel do
@@ -1446,10 +1846,15 @@ subroutine RBcalc_Nu_wall_avg3d()
   write(00,'(a,1x,es16.8)') 'Nu_cold(top)   =', Nu_cold
   write(00,'(a,1x,es16.8)') 'Nu_middle      =', Nu_middle
   close(00)
+#endif
 
 end subroutine RBcalc_Nu_wall_avg3d
 
 
+!===========================================================================================================================
+! 子程序: RBcalc_midplane_velocity_max3d
+! 作用: 统计三个中面上的速度极值及其所在位置。
+!===========================================================================================================================
 subroutine RBcalc_midplane_velocity_max3d()
   use commondata3d
   implicit none
@@ -1513,6 +1918,10 @@ subroutine RBcalc_midplane_velocity_max3d()
 end subroutine RBcalc_midplane_velocity_max3d
 
 
+!===========================================================================================================================
+! 子程序: find_bracketing_index
+! 作用: 在一维坐标数组中寻找包围目标点的左右索引及插值权重。
+!===========================================================================================================================
 subroutine find_bracketing_index(coord, n, target, iL, iR, weight)
   implicit none
   integer(kind=4), intent(in) :: n
@@ -1537,6 +1946,10 @@ subroutine find_bracketing_index(coord, n, target, iL, iR, weight)
 end subroutine find_bracketing_index
 
 
+!===========================================================================================================================
+! 子程序: interp_scalar_x
+! 作用: 在 x 方向对标量场做线性插值。
+!===========================================================================================================================
 subroutine interp_scalar_x(iL, iR, weight, j, k, field, val)
   use commondata3d
   implicit none
@@ -1555,6 +1968,10 @@ subroutine interp_scalar_x(iL, iR, weight, j, k, field, val)
 end subroutine interp_scalar_x
 
 
+!===========================================================================================================================
+! 子程序: interp_scalar_y
+! 作用: 在 y 方向对标量场做线性插值。
+!===========================================================================================================================
 subroutine interp_scalar_y(jL, jR, weight, i, k, field, val)
   use commondata3d
   implicit none
@@ -1573,6 +1990,10 @@ subroutine interp_scalar_y(jL, jR, weight, i, k, field, val)
 end subroutine interp_scalar_y
 
 
+!===========================================================================================================================
+! 子程序: interp_scalar_z
+! 作用: 在 z 方向对标量场做线性插值。
+!===========================================================================================================================
 subroutine interp_scalar_z(kL, kR, weight, i, j, field, val)
   use commondata3d
   implicit none
@@ -1591,6 +2012,10 @@ subroutine interp_scalar_z(kL, kR, weight, i, j, field, val)
 end subroutine interp_scalar_z
 
 
+!===========================================================================================================================
+! 子程序: write_midplane_x
+! 作用: 输出 x=Lx/2 中面的 Tecplot 切片文件。
+!===========================================================================================================================
 subroutine write_midplane_x(filename)
   use commondata3d
   implicit none
@@ -1619,6 +2044,10 @@ subroutine write_midplane_x(filename)
 end subroutine write_midplane_x
 
 
+!===========================================================================================================================
+! 子程序: write_midplane_y
+! 作用: 输出 y=Ly/2 中面的 Tecplot 切片文件。
+!===========================================================================================================================
 subroutine write_midplane_y(filename)
   use commondata3d
   implicit none
@@ -1647,6 +2076,10 @@ subroutine write_midplane_y(filename)
 end subroutine write_midplane_y
 
 
+!===========================================================================================================================
+! 子程序: write_midplane_z
+! 作用: 输出 z=Lz/2 中面的 Tecplot 切片文件。
+!===========================================================================================================================
 subroutine write_midplane_z(filename)
   use commondata3d
   implicit none
@@ -1673,5 +2106,6 @@ subroutine write_midplane_z(filename)
   close(uout)
 
 end subroutine write_midplane_z
+
 
 
