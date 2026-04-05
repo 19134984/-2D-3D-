@@ -13,25 +13,31 @@
 
 !   速度边界，包括水平垂直边界无滑移，还有垂直边界速度周期
 #define HorizontalWallsNoslip
-!#define VerticalWallsNoslip
-#define VerticalWallsPeriodicalU
+#define VerticalWallsNoslip
+!#define VerticalWallsPeriodicalU
 
 !   温度边界(for Rayleigh Benard Cell)，包括水平边界恒温，垂直边界温度不可穿透以及周期
-#define RayleighBenardCell
-#define HorizontalWallsConstT
+!#define RayleighBenardCell
+!#define HorizontalWallsConstT
 !#define VerticalWallsAdiabatic
-#define VerticalWallsPeriodicalT
-!RB 小 Ra 初始温度扰动开关；仅对 RayleighBenardCell 且 Rayleigh<=1e4 生效
+!#define VerticalWallsPeriodicalT
+
 
 
 !   温度边界(for Side Heated Cell)，包括水平边界温度不可穿透，垂直边界恒温,侧壁加热加磁场
-!#define SideHeatedCell
-!#define HorizontalWallsAdiabatic
-!#define VerticalWallsConstT
-!#define SideHeatedHa          
-!#define EnableUseG            
-!启用 M1G 修正；注释掉则不使用 useG 相关修正
+#define SideHeatedCell
+#define HorizontalWallsAdiabatic
+#define VerticalWallsConstT
+!#define SideHeatedHa  
 !~~temperature B.C.~~
+
+!算法切换
+!启用 M1G 修正；注释掉则不使用 useG 相关修正
+!#define EnableUseG
+!启用旧温度算法
+#define EnableLegacyThermalScheme
+
+
 
 !   自定义宏结束
 !=============================================================
@@ -52,7 +58,7 @@
 
         !===============================================================================================
         ! 无量纲参数
-        integer(kind=4), parameter :: nx=80, ny=40     !格子网格
+        integer(kind=4), parameter :: nx=80, ny=80     !格子网格
 #ifdef SideHeatedCell
         real(kind=8), parameter :: lengthUnit=dble(nx)     !侧壁差温：特征长度取 x 方向长度
 #else
@@ -60,7 +66,7 @@
 #endif
         real(kind=8), parameter :: pi = acos(-1.0d0)
 
-        real(kind=8), parameter :: Rayleigh=2.0d3        
+        real(kind=8), parameter :: Rayleigh=1.0d4        
         real(kind=8), parameter :: Prandtl=0.71d0       
         real(kind=8), parameter :: Mach=0.1d0
         real(kind=8), parameter :: Thot=0.5d0, Tcold=-0.5d0
@@ -99,9 +105,15 @@
         real(kind=8), parameter :: velocityUnit=dsqrt(gBeta*lengthUnit)  !无量纲速度
     
         real(kind=8), parameter :: Snu=1.0d0/tauf, Sq=8.0d0*(2.0d0*tauf-1.0d0)/(8.0d0*tauf-1.0d0)  !动量的多松弛系数
-        !real(kind=8), parameter :: Qd=3.0d0-dsqrt(3.0d0), Qnu=4.0d0*dsqrt(3.0d0)-6.0d0             !温度的多松弛系数
+
+#ifdef EnableLegacyThermalScheme
+        real(kind=8), parameter :: Qk=3.0d0-dsqrt(3.0d0), Qnu=4.0d0*dsqrt(3.0d0)-6.0d0             !旧温度算法的多松弛系数
+        real(kind=8), parameter :: thermalGeqCoeff=10.0d0/(4.0d0+paraA)
+#else
         real(kind=8), parameter :: taug = 0.5d0 + (tauf - 0.5d0)/Prandtl
-        real(kind=8), parameter :: s_e = 1.0d0, s_q = 1.0d0, s_j = 1.0d0/taug
+        real(kind=8), parameter :: Qnu = 1.0d0, Qk = 1.0d0/taug
+        real(kind=8), parameter :: thermalGeqCoeff=3.0d0
+#endif
         !===============================================================================================          
         
         !===============================================================================================
@@ -153,13 +165,21 @@
         real(kind=8), allocatable :: f(:,:,:), f_post(:,:,:)
         real(kind=8), allocatable :: g(:,:,:), g_post(:,:,:)
         real(kind=8), allocatable :: Fx(:,:), Fy(:,:)
+
         real(kind=8), allocatable :: Bx_prev(:,:), By_prev(:,:)
+
         integer(kind=4) :: itc
         integer(kind=4), parameter :: itc_max=20000000 !格子时间步长
 #ifdef EnableUseG
         logical, parameter :: useG = .true.            !M1G 开关
 #else
         logical, parameter :: useG = .false.           !M1G 开关
+#endif
+
+#ifdef EnableLegacyThermalScheme
+        logical, parameter :: useLegacyThermalScheme = .true.            !旧算法的逻辑变量
+#else
+        logical, parameter :: useLegacyThermalScheme = .false.           
 #endif
         real(kind=8) :: Nu_global, Nu_hot, Nu_cold, Nu_middle    !平均Nu，全场，侧壁以及中线
         real(kind=8) :: Nu_hot_max, Nu_hot_min, Nu_hot_max_position, Nu_hot_min_position    !左侧壁面的最大最小Nu，以及对应的位置
@@ -250,7 +270,7 @@
 #ifdef unsteadyFlow
              if(outputBinFile.EQ.1) then
                      call output_binary()          !bin 输出后处理间隔uvTrho数据
-                     if(MOD(itc, int(backupInterval/outputFrequency)*int(outputFrequency*timeUnit)).EQ.0) call backupData()  !输出备份间隔uvTfg
+                     if(MOD(itc, int(backupInterval/outputFrequency)*int(outputFrequency*timeUnit)).EQ.0) call backupData()  !输出备份间隔fg
              endif   
              if(outputPltFile.EQ.1) call output_Tecplot()  !plt 输出后处理uvT快照
 #endif
@@ -382,15 +402,17 @@
         write(00,*) "Data will be stored in ", pltFolderPrefix
     endif
     
-    !if( (paraA.GE.1.0d0).OR.(paraA.LE.-4.0d0) ) then                           !只有在[-4,1]才可以，要不然预警
-    !    write(00,*) "----------------------------------"
-    !    write(00,*) "paraA=", paraA
-    !    write(00,*) "Error: condition not meet for the algorithm"
-    !    write(00,*) "Ref: Luo2013, CMA"
-    !    write(00,*) "Please try to reduce Mach number"
-    !    write(00,*) "----------------------------------"
-    !    stop
-    !endif
+#ifdef EnableLegacyThermalScheme
+    if( (paraA.GE.1.0d0).OR.(paraA.LE.-4.0d0) ) then                           !只有在[-4,1]才可以，要不然预警退出
+        write(00,*) "----------------------------------"
+        write(00,*) "paraA=", paraA
+        write(00,*) "Error: condition not meet for the legacy thermal algorithm"
+        write(00,*) "Ref: Luo2013, CMA"
+        write(00,*) "Please try to reduce Mach number"
+        write(00,*) "----------------------------------"
+        stop
+    endif
+#endif
 
     write(00,*)"-------------------------------------------------------------------------------"
     write(00,*) 'Mesh:',nx,ny
@@ -400,7 +422,13 @@
     write(00,*) "Velocity unit: Sqrt(gBeta*L0*DeltaT) =", real(velocityUnit,kind=8)
     write(00,*) "   "
     write(00,*) 'tauf=',real(tauf,kind=8)
+#ifdef EnableLegacyThermalScheme
+    write(00,*) "thermalScheme = legacy D2Q5 (Qk/Qnu)"
+    write(00,*) 'Qk=',real(Qk,kind=8), '; Qnu=',real(Qnu,kind=8), '; paraA=',real(paraA,kind=8)
+#else
+    write(00,*) "thermalScheme = current D2Q5 (s_j/s_e/s_q)"
     write(00,*) 'taug=',real(taug,kind=8)
+#endif
     write(00,*) "viscosity =",real(viscosity,kind=8), "; diffusivity =",real(diffusivity,kind=8)
     write(00,*) "outputFrequency =", real(outputFrequency,kind=8), "free-fall time units"
     write(00,*) "......................  or ",  int(outputFrequency*timeUnit), "in itc units"
@@ -465,7 +493,9 @@
 
     allocate (Fx(nx,ny))
     allocate (Fy(nx,ny))
+
     allocate (Bx_prev(nx,ny), By_prev(nx,ny)) 
+
     !-----------------------------------------------------------------------------------------------
 
 
@@ -482,21 +512,27 @@
         omega(alpha) = 1.0d0/36.0d0
     enddo
     
-    !omegaT(0) = (1.0d0-paraA)/5.0d0
-    !do alpha=1,4
-    !    omegaT(alpha) = (paraA+4.0d0)/20.0d0
-    !enddo
-
-        omegaT(0) = 1.0d0/3.0d0
+#ifdef EnableLegacyThermalScheme
+    omegaT(0) = (1.0d0-paraA)/5.0d0
+    do alpha=1,4
+        omegaT(alpha) = (paraA+4.0d0)/20.0d0
+    enddo
+#else
+    omegaT(0) = 1.0d0/3.0d0
     do alpha=1,4
         omegaT(alpha) = 1.0d0/6.0d0
     enddo
+#endif
 
     if(loadInitField.EQ.0) then                    !在不加载文件的情况下，都是零场为初值
     
         u = 0.0d0
         v = 0.0d0
         T = 0.0d0
+        Bx= 0.0d0
+        By= 0.0d0
+        Bx_prev= 0.0d0
+        By_prev= 0.0d0
         
         write(00,*) "Initial field is set exactly"
         if(reloadDimensionlessTime.NE.0) then        !在不加载文件的情况下，reloadDimensionlessTime必须是零
@@ -566,12 +602,11 @@
                 enddo
                 do alpha = 0, 4
                     un(alpha) = u(i,j)*ex(alpha)+v(i,j)*ey(alpha) 
-                    !g(alpha,i,j) = omegaT(alpha)*T(i,j)*(1.0d0+10.0d0/(4.0d0+paraA)*un(alpha))                        !D2Q5线性geq，不含有u^2项，这个是含有修正的geq
-                    g(alpha,i,j) = omegaT(alpha)*T(i,j)*(1.0d0+3.0d0*un(alpha))  
+                    g(alpha,i,j) = omegaT(alpha)*T(i,j)*(1.0d0+thermalGeqCoeff*un(alpha))
                 enddo
             enddo
         enddo
-
+#ifdef EnableUseG
         do j = 1,ny
             do i = 1,nx
               Bx = u(i,j) * T(i,j)
@@ -580,7 +615,7 @@
               By_prev(i,j) = By
             enddo
         enddo
-
+#endif
 
 
 
@@ -878,7 +913,7 @@ close(00)
     real(kind=8) :: q(0:4)
     real(kind=8) :: Bx, By
     real(kind=8) :: dBx, dBy
-    real(kind=8), parameter :: SG = 1.0d0 - 0.5d0*s_j
+    real(kind=8), parameter :: SG = 1.0d0 - 0.5d0*Qk
 
 
 
@@ -898,9 +933,10 @@ close(00)
             dBy = 0.0d0
 #endif
 
+#ifdef EnableUseG
             Bx_prev(i,j) = Bx
             By_prev(i,j) = By
-
+#endif
 
           n(0) = g(0,i,j)+g(1,i,j)+g(2,i,j)+g(3,i,j)+g(4,i,j)
           n(1) = g(1,i,j)-g(3,i,j)
@@ -911,14 +947,18 @@ close(00)
           neq(0) = T(i,j)
           neq(1) = T(i,j)*u(i,j)
           neq(2) = T(i,j)*v(i,j)
+#ifdef EnableLegacyThermalScheme
+          neq(3) = T(i,j)*paraA
+#else
           neq(3) = T(i,j)*(-2.0d0/3.0d0)
+#endif
           neq(4) = 0.0d0
         
           q(0) = 0.0d0
-          q(1) = s_j
-          q(2) = s_j
-          q(3) = s_e
-          q(4) = s_q
+          q(1) = Qk
+          q(2) = Qk
+          q(3) = Qnu
+          q(4) = Qnu
         
           
           n_post(0) = n(0)-q(0)*(n(0)-neq(0))
@@ -1006,12 +1046,17 @@ close(00)
     !$omp parallel do default(none) shared(g,g_post,omegaT) private(j)
     do j = 1, ny
         !Left boundary
-        !g(1,1,j) = -g_post(3,1,j)+(4.0d0+paraA)/10.0d0*Thot
+#ifdef EnableLegacyThermalScheme
+        g(1,1,j) = -g_post(3,1,j)+(4.0d0+paraA)/10.0d0*Thot
+#else
         g(1,1,j) = -g_post(3,1,j)+2.0d0*omegaT(3)*Thot
-
+#endif
         !Right boundary
-        !g(3,nx,j) = -g_post(1,nx,j)+(4.0d0+paraA)/10.0d0*Tcold
+#ifdef EnableLegacyThermalScheme
+        g(3,nx,j) = -g_post(1,nx,j)+(4.0d0+paraA)/10.0d0*Tcold
+#else
         g(3,nx,j) = -g_post(1,nx,j)+2.0d0*omegaT(1)*Tcold
+#endif
     enddo
     !$omp end parallel do
 #endif
@@ -1044,12 +1089,17 @@ close(00)
     !$omp parallel do default(none) shared(g,g_post,omegaT) private(i)
     do i = 1, nx
         !Bottom side
-        !g(2,i,1) = -g_post(4,i,1)+(4.0d0+paraA)/10.0d0*Thot
+#ifdef EnableLegacyThermalScheme
+        g(2,i,1) = -g_post(4,i,1)+(4.0d0+paraA)/10.0d0*Thot
+#else
         g(2,i,1) = -g_post(4,i,1)+2.0d0*omegaT(4)*Thot
-
+#endif
         !Top side
-        !g(4,i,ny) = -g_post(2,i,ny)+(4.0d0+paraA)/10.0d0*Tcold
+#ifdef EnableLegacyThermalScheme
+        g(4,i,ny) = -g_post(2,i,ny)+(4.0d0+paraA)/10.0d0*Tcold
+#else
         g(4,i,ny) = -g_post(2,i,ny)+2.0d0*omegaT(2)*Tcold
+#endif
     enddo
     !$omp end parallel do
 #endif
@@ -1134,9 +1184,10 @@ close(00)
                 u(i,j) = 0.0d0
                 v(i,j) = 0.0d0
             endif
-
+#ifdef EnableUseG
             Bx_prev(i,j) = u(i,j)*T(i,j)
             By_prev(i,j) = v(i,j)*T(i,j)
+#endif
         enddo
     enddo
     !$omp end parallel do
@@ -1199,7 +1250,8 @@ close(00)
     call append_convergence_tecplot('convergence.plt', itc, errorU, errorT)
 
     
-    write(caseTag,'("Ra=",ES10.3E2,",nx=",I0,",ny=",I0,",useG=",L1)') Rayleigh, nx, ny, useG      !输出收敛曲线的对比
+    write(caseTag,'("Ra=",ES10.3E2,",nx=",I0,",ny=",I0,",useG=",L1,",useLegacyThermalScheme=",L1)') Rayleigh, nx, ny, useG,&
+    &useLegacyThermalScheme  !输出收敛曲线的对比
     call append_convergence_master_tecplot('convergence_all.plt', caseTag, itc, errorU, errorT)
 
     write(*,'(I12,1X,ES24.16,1X,ES24.16)') itc, errorU, errorT
@@ -1299,7 +1351,7 @@ end subroutine append_convergence_master_tecplot
 
 
 !===================================================================================================
-! File output helpers
+! File output 
 !===========================================================================================================================
 !===================================================================================================
 !===================================================================================================
@@ -1642,7 +1694,7 @@ end subroutine append_convergence_master_tecplot
     ! 网格间距
     dx = 1.0d0 / lengthUnit
     deltaT = Thot - Tcold
-    coef   = heatFluxScale
+    coef   = velocityScaleCompare
 
     sum_qx = 0.0d0
 
@@ -1723,7 +1775,7 @@ end subroutine append_convergence_master_tecplot
     dx = 1.0d0 / lengthUnit
     dy = 1.0d0 / lengthUnit
     deltaT = Thot - Tcold
-    coef   = heatFluxScale
+    coef   = velocityScaleCompare
 
    
 
@@ -2206,7 +2258,7 @@ subroutine RBcalc_Nu_global()
 
   dy     = 1.0d0 / lengthUnit
   deltaT = Thot - Tcold
-  coef   = heatFluxScale
+  coef   = velocityScaleCompare
 
   sum_qy = 0.0d0
 
@@ -2273,7 +2325,7 @@ subroutine RBcalc_Nu_wall_avg()
   dx     = 1.0d0 / lengthUnit
   dy     = 1.0d0 / lengthUnit
   deltaT = Thot - Tcold
-  coef   = heatFluxScale
+  coef   = velocityScaleCompare
 
   !-----------------------------
   ! (1) 底部热壁平均 Nu_hot（不含角点）
@@ -2376,7 +2428,7 @@ subroutine RBcalc_Nu_wall_avg()
   Nu_cold = sum_cold / dble(nx)
 
   !-----------------------------
-  ! 输出：屏幕 + 日志
+  ! 中线的 Nusselt 数
   sum_mid = 0.0d0
 
   if (mod(ny,2) == 1) then
