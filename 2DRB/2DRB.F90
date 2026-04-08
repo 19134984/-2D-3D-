@@ -33,9 +33,9 @@
 
 !算法切换
 !启用 M1G 修正；注释掉则不使用 useG 相关修正
-!#define EnableUseG
+#define EnableUseG
 !启用旧温度算法
-#define EnableLegacyThermalScheme
+!#define EnableLegacyThermalScheme
 
 
 
@@ -58,7 +58,7 @@
 
         !===============================================================================================
         ! 无量纲参数
-        integer(kind=4), parameter :: nx=80, ny=80     !格子网格
+        integer(kind=4), parameter :: nx=152, ny=152     !格子网格
 #ifdef SideHeatedCell
         real(kind=8), parameter :: lengthUnit=dble(nx)     !侧壁差温：特征长度取 x 方向长度
 #else
@@ -66,11 +66,10 @@
 #endif
         real(kind=8), parameter :: pi = acos(-1.0d0)
 
-        real(kind=8), parameter :: Rayleigh=1.0d4        
+        real(kind=8), parameter :: Rayleigh=1.0d8        
         real(kind=8), parameter :: Prandtl=0.71d0       
         real(kind=8), parameter :: Mach=0.1d0
         real(kind=8), parameter :: Thot=0.5d0, Tcold=-0.5d0
-        !real(kind=8), parameter :: Tref=0.0d0
         real(kind=8), parameter :: Tref=0.5d0*(Thot+Tcold)
         real(kind=8), parameter :: tauf=0.5d0+Mach*lengthUnit*dsqrt(3.0d0*Prandtl/Rayleigh) 
         real(kind=8), parameter :: viscosity=(tauf-0.5d0)/3.0d0
@@ -261,7 +260,7 @@
         
          if( MOD(itc, int(outputFrequency*timeUnit)).EQ.0 ) then  ! 达到一个输出间隔outputFrequency，就执行一次计算体平均Nu，是瞬时全场平均Nu
 
-             call calNuRe()
+             !call calNuRe()
             
 #ifdef steadyFlow
              if( (outputPltFile.EQ.1).AND.(MOD(itc, backupInterval*int(timeUnit)).EQ.0) ) call output_Tecplot()  !plt 输出备份间隔uvT
@@ -282,7 +281,7 @@
 
 #ifdef steadyFlow
     call output_Tecplot()          !输出最后一步的plt结果
-    call output_binary()              !输出最后一步的bin结果
+    call output_binary()              !输出最后一步的uvTrho数据
 #endif
     !===============================================================================================
 
@@ -1250,7 +1249,7 @@ close(00)
     call append_convergence_tecplot('convergence.plt', itc, errorU, errorT)
 
     
-    write(caseTag,'("Ra=",ES10.3E2,",nx=",I0,",ny=",I0,",useG=",L1,",useLegacyThermalScheme=",L1)') Rayleigh, nx, ny, useG,&
+    write(caseTag,'("Ra=",ES10.3E2,",nx=",I0,",ny=",I0,",useG=",L1,",old=",L1)') Rayleigh, nx, ny, useG,&
     &useLegacyThermalScheme  !输出收敛曲线的对比
     call append_convergence_master_tecplot('convergence_all.plt', caseTag, itc, errorU, errorT)
 
@@ -1785,7 +1784,7 @@ end subroutine append_convergence_master_tecplot
     !$omp parallel do default(none) shared(T,Nu_left,dx,deltaT) private(j,qx_wall) reduction(+:sum_hot)
     do j = 1, ny
       ! 壁面导热通量：qx(x=0,j)
-      qx_wall   = 2.0d0 * (Thot - T(1,j) ) / dx
+      qx_wall = (8.0d0*Thot - 9.0d0*T(1,j) + T(2,j)) / (3.0d0*dx)
       Nu_left(j)= qx_wall / deltaT
       sum_hot   = sum_hot + Nu_left(j)
     enddo
@@ -1885,7 +1884,7 @@ end subroutine append_convergence_master_tecplot
     sum_cold = 0.0d0
     !$omp parallel do default(none) shared(T,dx,deltaT) private(j,qx_wall) reduction(+:sum_cold)
     do j = 1, ny
-      qx_wall  = 2.0d0 * (T(nx,j) - Tcold) / dx
+      qx_wall = (-8.0d0*Tcold + 9.0d0*T(nx,j) - T(nx-1,j)) / (3.0d0*dx)
       sum_cold = sum_cold + qx_wall/ deltaT
     enddo
     !$omp end parallel do
@@ -2332,7 +2331,7 @@ subroutine RBcalc_Nu_wall_avg()
   sum_hot = 0.0d0
   !$omp parallel do default(none) shared(T,Nu_bot,dy,deltaT) private(i,qy_wall) reduction(+:sum_hot)
   do i = 1, nx
-    qy_wall  = 2.0d0 * (Thot - T(i,1)) / dy
+    qy_wall   = (8.0d0*Thot - 9.0d0*T(i,1) + T(i,2)) / (3.0d0*dy)
     Nu_bot(i)= qy_wall / deltaT
     sum_hot  = sum_hot + Nu_bot(i)
   enddo
@@ -2421,7 +2420,7 @@ subroutine RBcalc_Nu_wall_avg()
   sum_cold = 0.0d0
   !$omp parallel do default(none) shared(T,dy,deltaT) private(i,qy_wall) reduction(+:sum_cold)
   do i = 1, nx
-    qy_wall  = 2.0d0 * ( T(i,ny) - Tcold ) / dy
+    qy_wall = (-8.0d0*Tcold + 9.0d0*T(i,ny) - T(i,ny-1)) / (3.0d0*dy)
     sum_cold = sum_cold + qy_wall / deltaT
   enddo
   !$omp end parallel do
