@@ -13,21 +13,21 @@
 
 !   速度边界，包括水平垂直边界无滑移，还有垂直边界速度周期
 #define HorizontalWallsNoslip
-#define VerticalWallsNoslip
-!#define VerticalWallsPeriodicalU
+!#define VerticalWallsNoslip
+#define VerticalWallsPeriodicalU
 
 !   温度边界(for Rayleigh Benard Cell)，包括水平边界恒温，垂直边界温度不可穿透以及周期
-!#define RayleighBenardCell
-!#define HorizontalWallsConstT
+#define RayleighBenardCell
+#define HorizontalWallsConstT
 !#define VerticalWallsAdiabatic
-!#define VerticalWallsPeriodicalT
+#define VerticalWallsPeriodicalT
 
 
 
 !   温度边界(for Side Heated Cell)，包括水平边界温度不可穿透，垂直边界恒温,侧壁加热加磁场
-#define SideHeatedCell
-#define HorizontalWallsAdiabatic
-#define VerticalWallsConstT
+!#define SideHeatedCell
+!#define HorizontalWallsAdiabatic
+!#define VerticalWallsConstT
 !#define SideHeatedHa  
 !~~temperature B.C.~~
 
@@ -58,7 +58,7 @@
 
         !===============================================================================================
         ! 无量纲参数
-        integer(kind=4), parameter :: nx=152, ny=152     !格子网格
+        integer(kind=4), parameter :: nx=320, ny=160     !格子网格
 #ifdef SideHeatedCell
         real(kind=8), parameter :: lengthUnit=dble(nx)     !侧壁差温：特征长度取 x 方向长度
 #else
@@ -66,7 +66,7 @@
 #endif
         real(kind=8), parameter :: pi = acos(-1.0d0)
 
-        real(kind=8), parameter :: Rayleigh=1.0d8        
+        real(kind=8), parameter :: Rayleigh=5.0d4        
         real(kind=8), parameter :: Prandtl=0.71d0       
         real(kind=8), parameter :: Mach=0.1d0
         real(kind=8), parameter :: Thot=0.5d0, Tcold=-0.5d0
@@ -565,7 +565,7 @@
         enddo
     enddo
 #ifdef RayleighBenardCell
-    if (Rayleigh.LE.1.0d4) then
+    if (Rayleigh.LT.1.0d4) then
         xLen = xp(nx+1)
         yLen = yp(ny+1)
         rbInitPerturbAmp = 1.0d-3*(Thot-Tcold)

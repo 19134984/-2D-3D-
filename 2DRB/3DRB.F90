@@ -70,7 +70,7 @@ module commondata3d
 
   !===============================================================================================
   ! 无量纲参数
-  integer(kind=4), parameter :: nx=80, ny=80, nz=80
+  integer(kind=4), parameter :: nx=120, ny=120, nz=120
 #ifdef SideHeatedCell
   real(kind=8), parameter :: lengthUnit=dble(nx)     ! 侧壁差温：特征长度取 x 方向长度
 #else
@@ -78,7 +78,7 @@ module commondata3d
 #endif
   real(kind=8), parameter :: pi=acos(-1.0d0)
 
-  real(kind=8), parameter :: Rayleigh=1.0d5
+  real(kind=8), parameter :: Rayleigh=1.0d7
   real(kind=8), parameter :: Prandtl=0.71d0
   real(kind=8), parameter :: Mach=0.1d0
   real(kind=8), parameter :: Thot=0.5d0, Tcold=-0.5d0
