@@ -3,42 +3,42 @@
 !!!    三维浮力驱动自然对流
 !!!    D3Q19 流场 + D3Q7 温度场
 !!!    主循环按 collision/streaming/boundary/macro 展开
-!!!    当前 OpenACC+MPI 多 GPU 版本尚未检查是否正确，仅作为初稿保存
+!!!    参考 3DRB.F90 的主流程与后处理结构，并保留 MPI/OpenACC 必需部分
 !=============================================================
 
 !=============================================================
 !   自定义宏，一些选项的开关
-! 工况切换：默认保留 3D periodic RB；若要侧壁加热封闭方腔，就开启 SideHeatedCell 并关闭 RayleighBenardCell
-!#define SideHeatedCell
-#define RayleighBenardCell
-
-! steadyFlow / unsteadyFlow : 稳态或非稳态运行模式
+!steadyFlow / unsteadyFlow : 稳态或非稳态运行模式
 #define steadyFlow
 !#define unsteadyFlow
 
-! RB 小 Ra 初始温度扰动：只对 RayleighBenardCell 且 Rayleigh<=1e4 生效
-! EnableUseG : 是否启用温度方程中的偏差修正
-#define EnableRBInitPerturbation3D
-#define EnableUseG
-
-! 下面这些边界宏尽量沿用 2DRB 的命名风格：
-! Horizontal = y 方向上下壁面
-! Vertical   = x 方向左右壁面
-! Spanwise   = z 方向前后壁面
+!速度边界，包括水平垂直展向边界无滑移，还有垂直展向边界速度周期
+!spanwise 表示 z 方向前后展向壁面
 #define HorizontalWallsNoslip
-#ifdef SideHeatedCell
 #define VerticalWallsNoslip
 #define SpanwiseWallsNoslip
+!#define VerticalWallsPeriodicalU
+!#define SpanwiseWallsPeriodicalU
+
+!温度边界(for Rayleigh Benard Cell)，包括水平边界恒温，垂直/展向边界温度不可穿透以及周期
+!#define RayleighBenardCell
+!#define HorizontalWallsConstT
+!#define VerticalWallsAdiabatic
+!#define VerticalWallsPeriodicalT
+!#define SpanwiseWallsAdiabatic
+!#define SpanwiseWallsPeriodicalT
+
+!温度边界(for Side Heated Cell)，包括水平/展向边界温度不可穿透，垂直边界恒温
+#define SideHeatedCell
 #define VerticalWallsConstT
 #define HorizontalWallsAdiabatic
 #define SpanwiseWallsAdiabatic
-#else
-#define VerticalWallsPeriodicalU
-#define SpanwiseWallsPeriodicalU
-#define HorizontalWallsConstT
-#define VerticalWallsPeriodicalT
-#define SpanwiseWallsPeriodicalT
-#endif
+
+!算法切换
+! RB 小 Ra 初始温度扰动：只对 RayleighBenardCell 且 Rayleigh<=1e4 生效
+#define EnableRBInitPerturbation3D
+#define EnableUseG
+!#define EnableLegacyThermalScheme
 
 
 !   自定义宏结束
@@ -56,18 +56,13 @@ module commondata3dOpenaccMpi
 
   ! 重启控制参数：
   ! loadInitField=0 表示从初值启动
-  ! loadInitField=1 表示从当前 rank 对应的 backupFile3DOpenaccMpi-*.bin 重启
+  ! loadInitField=1 表示从当前 rank 对应的 backupFile3D-rankXXXX-*.bin 重启
   integer(kind=4), parameter :: loadInitField = 0
   integer(kind=4), parameter :: reloadDimensionlessTime = 0
   integer(kind=4), parameter :: reloadbinFileNum = 0
 
 
-#ifdef SideHeatedCell
-  ! 网格：侧壁加热封闭方腔，建议使用 nx=ny=nz
-#else
-  ! 网格：2:1:1 的 3D periodic RB 几何
-#endif
-  integer(kind=4), parameter :: nx = 40, ny = 20, nzGlobal = 20
+  integer(kind=4), parameter :: nx = 120, ny = 120, nzGlobal = 120
 #ifdef SideHeatedCell
   real(kind=8), parameter :: lengthUnit = dble(nx)
 #else
@@ -77,27 +72,35 @@ module commondata3dOpenaccMpi
   integer(kind=4), parameter :: itc_max = 20000000
   real(kind=8),    parameter :: outputFrequency = 100.0d0
   ! 主要控制参数：Rayleigh / Prandtl / Mach / 热壁温度
-  real(kind=8), parameter :: Rayleigh = 2.0d3
+  real(kind=8), parameter :: Rayleigh = 1.0d7
   real(kind=8), parameter :: Prandtl = 0.71d0
   real(kind=8), parameter :: Mach = 0.1d0
   real(kind=8), parameter :: Thot = 0.5d0
   real(kind=8), parameter :: Tcold = -0.5d0
   real(kind=8), parameter :: Tref = 0.5d0 * (Thot + Tcold)
 
-  ! 松弛时间和输运系数：
-  ! tauf 仍沿用流场的黏性定义
-  ! 温度场这里保留 2DRB 的算法口径：
-  ! 1) D3Q7 的变换矩阵 N 采用参考文献的正交基底
-  ! 2) 但热扩散率仍用固定权重 + taug 的方式给定
-  ! 3) 也就是“基底学文献，碰撞参数沿用 2DRB 思路”
+  ! 松弛时间和输运系数
   real(kind=8), parameter :: tauf = 0.5d0 + Mach * lengthUnit * dsqrt(3.0d0 * Prandtl / Rayleigh)
   real(kind=8), parameter :: viscosity = (tauf - 0.5d0) / 3.0d0
   real(kind=8), parameter :: diffusivity = viscosity / Prandtl
   real(kind=8), parameter :: cs2T = 0.25d0
+  real(kind=8), parameter :: paraA = 42.0d0 * dsqrt(3.0d0) * diffusivity - 6.0d0
+
+  ! 动量方程的多松弛系数
+  real(kind=8), parameter :: Se = 1.0d0 / tauf, Seps = 1.0d0 / tauf
+  real(kind=8), parameter :: Snu = 1.0d0 / tauf, Spi = 1.0d0 / tauf
+  real(kind=8), parameter :: Sq = 8.0d0 * (2.0d0 * tauf - 1.0d0) / (8.0d0 * tauf - 1.0d0)
+  real(kind=8), parameter :: Sm = 8.0d0 * (2.0d0 * tauf - 1.0d0) / (8.0d0 * tauf - 1.0d0)
+
+  ! 温度方程的多松弛系数
+#ifdef EnableLegacyThermalScheme
+  real(kind=8), parameter :: Qk = 3.0d0 - dsqrt(3.0d0), Qnu = 4.0d0 * dsqrt(3.0d0) - 6.0d0
+  real(kind=8), parameter :: thermalGeqCoeff = 7.0d0 / ((6.0d0 + paraA) * cs2T)
+#else
   real(kind=8), parameter :: taug = 0.5d0 + diffusivity / cs2T
-  real(kind=8), parameter :: s_eT = 1.0d0
-  real(kind=8), parameter :: s_qT = 1.0d0
-  real(kind=8), parameter :: s_jT = 1.0d0 / taug
+  real(kind=8), parameter :: Qnu = 1.0d0, Qk = 1.0d0 / taug
+  real(kind=8), parameter :: thermalGeqCoeff = 1.0d0 / cs2T
+#endif
 
 
   ! heatFluxScale         : Nu 相关量的系数，等于 L/kappa
@@ -135,11 +138,11 @@ module commondata3dOpenaccMpi
   ! 体平均 Nu / Re 的时间序列缓存
   real(kind=8) :: NuVolAvg(0:dimensionlessTimeMax), ReVolAvg(0:dimensionlessTimeMax)
 
-  ! 输出文件命名与 2D 版分开，避免共存时互相覆盖
-  character(len=100) :: binFilePrefix = "buoyancyCavity3DOpenaccMpi"
-  character(len=100) :: pltFilePrefix = "buoyancyCavity3DOpenaccMpi"
-  character(len=100) :: reloadFilePrefix = "backupFile3DOpenaccMpi"
-  character(len=100) :: settingsFile = "SimulationSettings3DOpenaccMpi.txt"
+  ! 输出文件命名保留 MPI rank 后缀，但基名尽量与 3DRB 对齐
+  character(len=100) :: binFilePrefix = "buoyancyCavity3DbinFile"
+  character(len=100) :: pltFilePrefix = "buoyancyCavity3DTecplot"
+  character(len=100) :: reloadFilePrefix = "backupFile3D"
+  character(len=100) :: settingsFile = "SimulationSettings3D.txt"
 
   real(kind=8) :: errorU, errorT
 
@@ -157,8 +160,7 @@ module commondata3dOpenaccMpi
   ! f/g 是当前分布函数，f_post/g_post 是碰撞后、迁移前的分布函数，post 数组带 ghost 层便于直接 pull streaming
   real(kind=8), allocatable :: f(:,:,:,:), f_post(:,:,:,:)
   real(kind=8), allocatable :: g(:,:,:,:), g_post(:,:,:,:)
-  ! 流场力项，以及温度方程中的历史热流项
-  real(kind=8), allocatable :: Fx(:,:,:), Fy(:,:,:), Fz(:,:,:)
+  ! 温度方程中的历史热流项
   real(kind=8), allocatable :: Bx_prev(:,:,:), By_prev(:,:,:), Bz_prev(:,:,:)
   real(kind=8), allocatable :: fSendLower(:), fSendUpper(:), fRecvLower(:), fRecvUpper(:)
   real(kind=8), allocatable :: gSendLower(:), gSendUpper(:), gRecvLower(:), gRecvUpper(:)
@@ -171,7 +173,14 @@ module commondata3dOpenaccMpi
   logical, parameter :: useG = .false.
 #endif
 
+#ifdef EnableLegacyThermalScheme
+  logical, parameter :: useLegacyThermalScheme = .true.
+#else
+  logical, parameter :: useLegacyThermalScheme = .false.
+#endif
+
   real(kind=8) :: Nu_global, Nu_hot, Nu_cold, Nu_middle
+  real(kind=8) :: Nu_hot_max, Nu_hot_min, Nu_hot_max_position, Nu_hot_min_position
 
   ! D3Q19 / D3Q7 的离散速度、反向索引和权重
   integer(kind=4) :: ex(0:qf-1), ey(0:qf-1), ez(0:qf-1), opp(0:qf-1)
@@ -180,9 +189,6 @@ module commondata3dOpenaccMpi
   integer(kind=4) :: exT(0:qt-1), eyT(0:qt-1), ezT(0:qt-1), oppT(0:qt-1)
   real(kind=8)    :: omegaT(0:qt-1)
 
-  real(kind=8) :: M19(qf,qf), Minv19(qf,qf)
-  real(kind=8) :: M7(qt,qt),  Minv7(qt,qt)
-  ! M 和 Minv 在初始化时按当前正交基底构造，既保持文献编号一致，也方便后续自己改基底做试验
 end module commondata3dOpenaccMpi
 
 
@@ -261,12 +267,12 @@ program main3dOpenaccMpi
 #endif
 
     if (mod(itc, outputIntervalItc) .EQ. 0) then
-      call calNuRe3d()
+      !call calNuRe3d()
 
 #ifdef steadyFlow
       if ((outputPltFile .EQ. 1) .AND. (mod(itc, backupIntervalItc) .EQ. 0)) then
         call update_host_all_3d_openacc()
-        call output_midplanes_tecplot3d()
+        call output_Tecplot3d()
       endif
 #endif
 
@@ -278,7 +284,7 @@ program main3dOpenaccMpi
       endif
       if (outputPltFile .EQ. 1) then
         call update_host_all_3d_openacc()
-        call output_midplanes_tecplot3d()
+        call output_Tecplot3d()
       endif
 #endif
     endif
@@ -291,14 +297,28 @@ program main3dOpenaccMpi
   call update_host_all_3d_openacc()
 
 #ifdef steadyFlow
-  if (outputPltFile .EQ. 1) call output_midplanes_tecplot3d()
+  if (outputPltFile .EQ. 1) call output_Tecplot3d()
   if (outputBinFile .EQ. 1) call output_binary3d()
 #endif
 
+#ifdef SideHeatedCell
+  call SideHeatedcalc_Nu_global3d()
+  call SideHeatedcalc_Nu_wall_avg3d()
+  call SideHeatedcalc_umid_max3d()
+  call SideHeatedcalc_vmid_max3d()
+  call SideHeatedcalc_wmid_max3d()
+#endif
+
+#ifdef RayleighBenardCell
   call RBcalc_Nu_global3d()
   call RBcalc_Nu_wall_avg3d()
-  call RBcalc_midplane_velocity_max3d()
+  call RBcalc_umid_max3d()
+  call RBcalc_vmid_max3d()
+  call RBcalc_wmid_max3d()
+#endif
+
   call calNuRe3d()
+  call output_Tecplot3d()
 
   open(unit=00, file=trim(settingsFile), status='unknown', position='append')
   write(00,*) '======================================================================'
@@ -315,6 +335,7 @@ program main3dOpenaccMpi
   write(00,*) 'Nu_cold   =', Nu_cold
   write(00,*) 'Nu_middle =', Nu_middle
   write(00,*) 'useG =', useG
+  write(00,*) 'useLegacyThermalScheme =', useLegacyThermalScheme
   if (outputBinFile .EQ. 1) then
     call backupData3d()
   endif
@@ -329,9 +350,15 @@ program main3dOpenaccMpi
 #ifdef steadyFlow
   deallocate(up, vp, wp, Tp)
 #endif
-  deallocate(Fx, Fy, Fz, Bx_prev, By_prev, Bz_prev)
+  deallocate(Bx_prev, By_prev, Bz_prev)
   deallocate(fSendLower, fSendUpper, fRecvLower, fRecvUpper)
   deallocate(gSendLower, gSendUpper, gRecvLower, gRecvUpper)
+
+  open(unit=00, file=trim(settingsFile), status='unknown', position='append')
+  write(00,*) 'Successfully: DNS completed!'
+  string = ctime(time())
+  write(00,*) 'End:   ', string
+  close(00)
 
   call acc_shutdown(acc_device_default)
   call MPI_Finalize(mpiErr)
@@ -405,10 +432,10 @@ subroutine compose_ranked_file_prefixes_3d()
   use commondata3dOpenaccMpi
   implicit none
   write(rankTag,'("rank",I4.4)') mpiRank
-  binFilePrefix = 'buoyancyCavity3DOpenaccMpi-' // trim(rankTag)
-  pltFilePrefix = 'buoyancyCavity3DOpenaccMpi-' // trim(rankTag)
-  reloadFilePrefix = 'backupFile3DOpenaccMpi-' // trim(rankTag)
-  settingsFile = 'SimulationSettings3DOpenaccMpi-' // trim(rankTag) // '.txt'
+  binFilePrefix = 'buoyancyCavity3DbinFile-' // trim(rankTag)
+  pltFilePrefix = 'buoyancyCavity3DTecplot-' // trim(rankTag)
+  reloadFilePrefix = 'backupFile3D-' // trim(rankTag)
+  settingsFile = 'SimulationSettings3D-' // trim(rankTag) // '.txt'
 end subroutine compose_ranked_file_prefixes_3d
 
 
@@ -423,24 +450,78 @@ subroutine initial3d()
   implicit none
 
   integer(kind=4) :: i, j, k, alpha
-  real(kind=8) :: feq(qf), geq(qt)
+  real(kind=8) :: eu, u2Loc
   real(kind=8) :: xLen, yLen, rbInitPerturbAmp
   character(len=100) :: reloadFileName
 
-  ! 初始时把误差设大，这样主循环一定能先进入一轮
   itc = 0
   errorU = 100.0d0
   errorT = 100.0d0
 
-  ! 把按自由落体时间给出的输出/备份间隔换算成格子步数 itc
   outputIntervalItc = max(1, int(outputFrequency * timeUnit))
   backupIntervalItc = max(1, int(backupInterval * timeUnit))
 
-  ! 先初始化离散速度、权重，以及 MRT 变换矩阵
-  call init_lattice_constants_3d()
-  call init_mrt_matrices_3d()
+  open(unit=00, file=trim(settingsFile), status='unknown', position='append')
+  if (outputBinFile .EQ. 1) write(00,*) 'Binary snapshots will be stored with prefix: ', trim(binFilePrefix)
+  if (outputPltFile .EQ. 1) write(00,*) 'Tecplot slices will be stored with prefix: ', trim(pltFilePrefix)
 
-  ! 网格点采用 cell-center 布置，内点坐标取 i-0.5、j-0.5、k-0.5，再统一除以 lengthUnit 做无量纲
+#ifdef EnableLegacyThermalScheme
+  if ((paraA .GE. 1.0d0) .OR. (paraA .LE. -6.0d0)) then
+    write(00,*) '----------------------------------'
+    write(00,*) 'paraA =', paraA
+    write(00,*) 'Error: condition not met for the legacy 3D thermal algorithm'
+    write(00,*) 'Ref: Lattice Boltzmann simulations of three-dimensional thermal convective flows at high Rayleigh number'
+    write(00,*) 'Please try to reduce Mach number'
+    write(00,*) '----------------------------------'
+    close(00)
+    stop
+  endif
+#endif
+
+  write(00,*) '-------------------------------------------------------------------------------'
+  write(00,*) 'Mesh local :', nx, ny, nz
+  write(00,*) 'Mesh global:', nx, ny, nzGlobal
+  write(00,*) 'MPI rank/size =', mpiRank, mpiSize, '; global z range =', zStartGlobal, zEndGlobal
+  write(00,*) 'Rayleigh=', real(Rayleigh,kind=8), '; Prandtl =', real(Prandtl,kind=8), '; Mach =', real(Mach,kind=8)
+  write(00,*) 'Length unit: L0 =', real(lengthUnit,kind=8)
+  write(00,*) 'Time unit: Sqrt(L0/(gBeta*DeltaT)) =', real(timeUnit,kind=8)
+  write(00,*) 'Velocity unit: Sqrt(gBeta*L0*DeltaT) =', real(velocityUnit,kind=8)
+  write(00,*) 'tauf =', real(tauf,kind=8)
+#ifdef EnableLegacyThermalScheme
+  write(00,*) 'thermalScheme = legacy D3Q7 '
+  write(00,*) 'Qk =', real(Qk,kind=8), '; Qnu =', real(Qnu,kind=8), '; paraA =', real(paraA,kind=8)
+#else
+  write(00,*) 'thermalScheme = current D3Q7 (EnableUseG branch)'
+  write(00,*) 'taug =', real(taug,kind=8), '; cs2T =', real(cs2T,kind=8)
+  write(00,*) 'Qk =', real(Qk,kind=8), '; Qnu =', real(Qnu,kind=8)
+#endif
+  write(00,*) 'thermalGeqCoeff =', real(thermalGeqCoeff,kind=8)
+  write(00,*) 'viscosity =', real(viscosity,kind=8), '; diffusivity =', real(diffusivity,kind=8)
+  write(00,*) 'outputFrequency =', real(outputFrequency,kind=8), ' free-fall time units'
+  write(00,*) '......................  or ', outputIntervalItc, ' in itc units'
+  write(00,*) 'backupInterval =', backupInterval, ' free-fall time units'
+  write(00,*) '.................... or ', backupIntervalItc, ' in itc units'
+  if (loadInitField .EQ. 1) write(00,*) 'reloadDimensionlessTime =', reloadDimensionlessTime
+  write(00,*) 'itc_max =', itc_max
+  write(00,*) 'default epsU =', real(epsU,kind=8), '; epsT =', real(epsT,kind=8)
+  write(00,*) 'useG =', useG
+  write(00,*) 'useLegacyThermalScheme =', useLegacyThermalScheme
+
+#ifdef RayleighBenardCell
+  write(00,*) 'I am 3D periodic Rayleigh-Benard Cell'
+#endif
+#ifdef SideHeatedCell
+  write(00,*) 'I am 3D Side Heated Closed Cavity'
+#endif
+
+#ifdef steadyFlow
+  write(00,*) 'I am steadyFlow'
+#endif
+#ifdef unsteadyFlow
+  write(00,*) 'I am unsteadyFlow'
+#endif
+  write(00,*) 'OpenACC+MPI version; z-slab domain decomposition in MPI, kernels on OpenACC devices'
+
   xp(0) = 0.0d0
   xp(nx+1) = dble(nx)
   do i = 1, nx
@@ -469,88 +550,47 @@ subroutine initial3d()
 #endif
   allocate(f(0:qf-1,nx,ny,nz), f_post(0:qf-1,0:nx+1,0:ny+1,0:nz+1))
   allocate(g(0:qt-1,nx,ny,nz), g_post(0:qt-1,0:nx+1,0:ny+1,0:nz+1))
-  allocate(Fx(nx,ny,nz), Fy(nx,ny,nz), Fz(nx,ny,nz))
   allocate(Bx_prev(nx,ny,nz), By_prev(nx,ny,nz), Bz_prev(nx,ny,nz))
   allocate(fSendLower(qf*(nx+2)*(ny+2)), fSendUpper(qf*(nx+2)*(ny+2)))
   allocate(fRecvLower(qf*(nx+2)*(ny+2)), fRecvUpper(qf*(nx+2)*(ny+2)))
   allocate(gSendLower(qt*(nx+2)*(ny+2)), gSendUpper(qt*(nx+2)*(ny+2)))
   allocate(gRecvLower(qt*(nx+2)*(ny+2)), gRecvUpper(qt*(nx+2)*(ny+2)))
 
-  ! 把这次算例的主要信息写入日志文件，方便后续查设置
-  open(unit=00, file=trim(settingsFile), status='unknown', position='append')
-  write(00,*) '-------------------------------------------------------------------------------'
-#ifdef SideHeatedCell
-  write(00,*) 'I am 3D Side Heated Closed Cavity'
-#else
-  write(00,*) 'I am 3D periodic Rayleigh-Benard Cell'
-#endif
-  write(00,*) 'Mesh local :', nx, ny, nz
-  write(00,*) 'Mesh global:', nx, ny, nzGlobal
-  write(00,*) 'MPI rank/size =', mpiRank, mpiSize, '; global z range =', zStartGlobal, zEndGlobal
-  write(00,*) 'Rayleigh=', real(Rayleigh,kind=8), '; Prandtl =', real(Prandtl,kind=8), '; Mach =', real(Mach,kind=8)
-  write(00,*) 'Length unit: L0 =', real(lengthUnit,kind=8)
-  write(00,*) 'Time unit: Sqrt(L0/(gBeta*DeltaT)) =', real(timeUnit,kind=8)
-  write(00,*) 'Velocity unit: Sqrt(gBeta*L0*DeltaT) =', real(velocityUnit,kind=8)
-  write(00,*) 'tauf =', real(tauf,kind=8), '; taug =', real(taug,kind=8)
-  write(00,*) 'cs2T =', real(cs2T,kind=8), '; s_jT =', real(s_jT,kind=8), &
-       '; s_eT =', real(s_eT,kind=8), '; s_qT =', real(s_qT,kind=8)
-  write(00,*) 'viscosity =', real(viscosity,kind=8), '; diffusivity =', real(diffusivity,kind=8)
-  write(00,*) 'outputFrequency =', real(outputFrequency,kind=8), ' free-fall time units'
-  write(00,*) '......................  or ', outputIntervalItc, ' in itc units'
-  write(00,*) 'backupInterval =', backupInterval, ' free-fall time units'
-  write(00,*) '.................... or ', backupIntervalItc, ' in itc units'
-  write(00,*) 'itc_max =', itc_max
-  write(00,*) 'default epsU =', real(epsU,kind=8), '; epsT =', real(epsT,kind=8)
-#ifdef VerticalWallsNoslip
-  write(00,*) 'Velocity B.C. for vertical walls are: ===No-slip wall==='
-#endif
-#ifdef VerticalWallsPeriodicalU
-  write(00,*) 'Velocity B.C. for vertical walls are: ===Periodical==='
-#endif
-#ifdef HorizontalWallsNoslip
-  write(00,*) 'Velocity B.C. for horizontal walls are: ===No-slip wall==='
-#endif
-#ifdef SpanwiseWallsNoslip
-  write(00,*) 'Velocity B.C. for spanwise walls are: ===No-slip wall==='
-#endif
-#ifdef SpanwiseWallsPeriodicalU
-  write(00,*) 'Velocity B.C. for spanwise walls are: ===Periodical==='
-#endif
-#ifdef VerticalWallsConstT
-  write(00,*) 'Temperature B.C. for vertical walls are: ===Hot/cold wall==='
-#endif
-#ifdef VerticalWallsAdiabatic
-  write(00,*) 'Temperature B.C. for vertical walls are: ===Adiabatic wall==='
-#endif
-#ifdef VerticalWallsPeriodicalT
-  write(00,*) 'Temperature B.C. for vertical walls are: ===Periodical==='
-#endif
-#ifdef HorizontalWallsConstT
-  write(00,*) 'Temperature B.C. for horizontal walls are: ===Hot/cold wall==='
-#endif
-#ifdef HorizontalWallsAdiabatic
-  write(00,*) 'Temperature B.C. for horizontal walls are: ===Adiabatic wall==='
-#endif
-#ifdef SpanwiseWallsAdiabatic
-  write(00,*) 'Temperature B.C. for spanwise walls are: ===Adiabatic wall==='
-#endif
-#ifdef SpanwiseWallsPeriodicalT
-  write(00,*) 'Temperature B.C. for spanwise walls are: ===Periodical==='
-#endif
-  write(00,*) 'OpenACC+MPI multi-GPU draft version; current file is not verified yet'
-  close(00)
+  call init_lattice_constants_3d()
 
   rho = 1.0d0
-  Fx = 0.0d0
-  Fy = 0.0d0
-  Fz = 0.0d0
   f = 0.0d0
   g = 0.0d0
   f_post = 0.0d0
   g_post = 0.0d0
+  Bx_prev = 0.0d0
+  By_prev = 0.0d0
+  Bz_prev = 0.0d0
 
   if (loadInitField .EQ. 0) then
-    ! 解析初值：速度先全部置零，温度先给导热基态
+    write(00,*) 'Initial field is set exactly'
+    if (reloadDimensionlessTime .NE. 0) then
+      write(00,*) 'Error: since loadInitField .EQ. 0, reloadDimensionlessTime should also be 0'
+      close(00)
+      stop
+    endif
+
+#ifdef VerticalWallsNoslip
+    write(00,*) 'Velocity B.C. for vertical walls are: ===No-slip wall==='
+#endif
+#ifdef VerticalWallsPeriodicalU
+    write(00,*) 'Velocity B.C. for vertical walls are: ===Periodical==='
+#endif
+#ifdef HorizontalWallsNoslip
+    write(00,*) 'Velocity B.C. for horizontal walls are: ===No-slip wall==='
+#endif
+#ifdef SpanwiseWallsNoslip
+    write(00,*) 'Velocity B.C. for spanwise walls are: ===No-slip wall==='
+#endif
+#ifdef SpanwiseWallsPeriodicalU
+    write(00,*) 'Velocity B.C. for spanwise walls are: ===Periodical==='
+#endif
+
     u = 0.0d0
     v = 0.0d0
     w = 0.0d0
@@ -564,6 +604,7 @@ subroutine initial3d()
         enddo
       enddo
     enddo
+    write(00,*) 'Temperature B.C. for vertical walls are: ===Hot/cold wall==='
 #endif
 
 #ifdef HorizontalWallsConstT
@@ -574,11 +615,10 @@ subroutine initial3d()
         enddo
       enddo
     enddo
+    write(00,*) 'Temperature B.C. for horizontal walls are: ===Hot/cold wall==='
 #ifdef RayleighBenardCell
 #ifdef EnableRBInitPerturbation3D
     if (Rayleigh .LE. 1.0d4) then
-      ! 小 Ra 时导热解附近的增长很慢，给一个很小的初始温度扰动更容易触发对流模态
-      ! 这里扰动只沿 x-y 变化，z 方向保持均匀，先对应最简单的卷胞结构
       xLen = xp(nx+1)
       yLen = yp(ny+1)
       rbInitPerturbAmp = 1.0d-3 * (Thot - Tcold)
@@ -589,48 +629,75 @@ subroutine initial3d()
           enddo
         enddo
       enddo
-      open(unit=00, file=trim(settingsFile), status='unknown', position='append')
       write(00,'(a,1x,es12.4)') '3D RB initial T perturbation amplitude =', rbInitPerturbAmp
-      close(00)
+    else
+      write(00,*) '3D RB initial T perturbation skipped because Rayleigh > 1.0d4'
     endif
 #endif
 #endif
 #endif
 
+#ifdef VerticalWallsAdiabatic
+    write(00,*) 'Temperature B.C. for vertical walls are: ===Adiabatic wall==='
+#endif
+#ifdef VerticalWallsPeriodicalT
+    write(00,*) 'Temperature B.C. for vertical walls are: ===Periodical==='
+#endif
+#ifdef HorizontalWallsAdiabatic
+    write(00,*) 'Temperature B.C. for horizontal walls are: ===Adiabatic wall==='
+#endif
+#ifdef SpanwiseWallsAdiabatic
+    write(00,*) 'Temperature B.C. for spanwise walls are: ===Adiabatic wall==='
+#endif
+#ifdef SpanwiseWallsPeriodicalT
+    write(00,*) 'Temperature B.C. for spanwise walls are: ===Periodical==='
+#endif
+
     do k = 1, nz
       do j = 1, ny
         do i = 1, nx
-          ! 用当前宏观场直接生成 feq / geq，作为初始分布函数
-          call compute_feq_d3q19(rho(i,j,k), u(i,j,k), v(i,j,k), w(i,j,k), feq)
-          call compute_geq_d3q7(T(i,j,k), u(i,j,k), v(i,j,k), w(i,j,k), geq)
+          u2Loc = u(i,j,k) * u(i,j,k) + v(i,j,k) * v(i,j,k) + w(i,j,k) * w(i,j,k)
           do alpha = 0, qf-1
-            f(alpha,i,j,k) = feq(alpha+1)
+            eu = dble(ex(alpha)) * u(i,j,k) + dble(ey(alpha)) * v(i,j,k) + dble(ez(alpha)) * w(i,j,k)
+            f(alpha,i,j,k) = omega(alpha) * rho(i,j,k) * (1.0d0 + 3.0d0 * eu + 4.5d0 * eu * eu - 1.5d0 * u2Loc)
           enddo
           do alpha = 0, qt-1
-            g(alpha,i,j,k) = geq(alpha+1)
+            eu = dble(exT(alpha)) * u(i,j,k) + dble(eyT(alpha)) * v(i,j,k) + dble(ezT(alpha)) * w(i,j,k)
+            g(alpha,i,j,k) = omegaT(alpha) * T(i,j,k) * (1.0d0 + thermalGeqCoeff * eu)
           enddo
+#ifdef EnableUseG
           Bx_prev(i,j,k) = u(i,j,k) * T(i,j,k)
           By_prev(i,j,k) = v(i,j,k) * T(i,j,k)
           Bz_prev(i,j,k) = w(i,j,k) * T(i,j,k)
+#endif
         enddo
       enddo
     enddo
 
   elseif (loadInitField .EQ. 1) then
-    ! 重启时只读 f 和 g，宏观量后面统一重构，避免文件格式反复变化
+    if (reloadDimensionlessTime .EQ. 0) then
+      write(00,*) 'WARNING: since loadInitField .EQ. 1, please confirm reloadDimensionlessTime', reloadDimensionlessTime
+      close(00)
+      stop
+    endif
+    write(00,*) 'Load initial field from previous simulation: ', trim(reloadFilePrefix), '- >>>'
     write(reloadFileName,'(i0)') reloadbinFileNum
     open(unit=01, file=trim(reloadFilePrefix)//'-'//trim(adjustl(reloadFileName))//'.bin', &
          form='unformatted', access='sequential', status='old')
+    write(00,*) 'Reloading f and g from file'
     read(01) ((((f(alpha,i,j,k), i=1,nx), j=1,ny), k=1,nz), alpha=0,qf-1)
     read(01) ((((g(alpha,i,j,k), i=1,nx), j=1,ny), k=1,nz), alpha=0,qt-1)
     close(01)
     call reconstruct_macro_from_fg3d()
+    write(00,*) 'Raw data is loaded from the file: ', trim(reloadFilePrefix), '-', trim(adjustl(reloadFileName)), '.bin'
   else
-    open(unit=00, file=trim(settingsFile), status='unknown', position='append')
     write(00,*) 'Error: initial field is not properly set'
     close(00)
     stop
   endif
+
+  write(00,*) '-------------------------------------------------------------------------------'
+  close(00)
 
 #ifdef steadyFlow
   up = 0.0d0
@@ -639,6 +706,8 @@ subroutine initial3d()
   Tp = 0.0d0
 #endif
 
+  f_post = 0.0d0
+  g_post = 0.0d0
   binFileNum = 0
   pltFileNum = 0
   dimensionlessTime = 0
@@ -655,8 +724,8 @@ subroutine enter_data_3d_openacc()
   use commondata3dOpenaccMpi
   implicit none
 
-  !$acc enter data copyin(xp,yp,zp,ex,ey,ez,opp,omega,exT,eyT,ezT,oppT,omegaT,M19,Minv19,M7,Minv7)
-  !$acc enter data copyin(u,v,w,T,rho,f,g,Fx,Fy,Fz,Bx_prev,By_prev,Bz_prev)
+  !$acc enter data copyin(xp,yp,zp,ex,ey,ez,opp,omega,exT,eyT,ezT,oppT,omegaT)
+  !$acc enter data copyin(u,v,w,T,rho,f,g,Bx_prev,By_prev,Bz_prev)
   !$acc enter data create(f_post,g_post)
 #ifdef steadyFlow
   !$acc enter data copyin(up,vp,wp,Tp)
@@ -672,7 +741,7 @@ subroutine update_host_all_3d_openacc()
   use commondata3dOpenaccMpi
   implicit none
 
-  !$acc update self(u,v,w,T,rho,f,g,Fx,Fy,Fz,Bx_prev,By_prev,Bz_prev)
+  !$acc update self(u,v,w,T,rho,f,g,Bx_prev,By_prev,Bz_prev)
 #ifdef steadyFlow
   !$acc update self(up,vp,wp,Tp)
 #endif
@@ -690,8 +759,8 @@ subroutine exit_data_3d_openacc()
 #ifdef steadyFlow
   !$acc exit data delete(up,vp,wp,Tp)
 #endif
-  !$acc exit data delete(f_post,g_post,u,v,w,T,rho,f,g,Fx,Fy,Fz,Bx_prev,By_prev,Bz_prev)
-  !$acc exit data delete(xp,yp,zp,ex,ey,ez,opp,omega,exT,eyT,ezT,oppT,omegaT,M19,Minv19,M7,Minv7)
+  !$acc exit data delete(f_post,g_post,u,v,w,T,rho,f,g,Bx_prev,By_prev,Bz_prev)
+  !$acc exit data delete(xp,yp,zp,ex,ey,ez,opp,omega,exT,eyT,ezT,oppT,omegaT)
 end subroutine exit_data_3d_openacc
 
 !===========================================================================================================================
@@ -846,8 +915,7 @@ subroutine init_lattice_constants_3d()
   use commondata3dOpenaccMpi
   implicit none
 
-  ! D3Q19 顺序按参考文献 Eq. (6)：先是 6 个轴向速度，再依次是 xy / xz / yz 三组面对角速度
-  ! 注意这与一些 LBM 教材里常见的编号不同，opp(alpha) 也要和这套编号同步修改
+  ! D3Q19 顺序与 D3Q7 的编号同步（前 7 个速度一样）
   ex  = (/ 0,  1, -1,  0,  0,  0,  0,  1, -1,  1, -1,  1, -1,  1, -1,  0,  0,  0,  0 /)
   ey  = (/ 0,  0,  0,  1, -1,  0,  0,  1,  1, -1, -1,  0,  0,  0,  0,  1, -1,  1, -1 /)
   ez  = (/ 0,  0,  0,  0,  0,  1, -1,  0,  0,  0,  0,  1,  1, -1, -1,  1,  1, -1, -1 /)
@@ -857,223 +925,22 @@ subroutine init_lattice_constants_3d()
   omega(1:6) = 1.0d0 / 18.0d0
   omega(7:18) = 1.0d0 / 36.0d0
 
-  ! D3Q7 温度场：顺序与文献 Eq. (15) 一致
+  ! D3Q7 温度场
   exT  = (/ 0,  1, -1,  0,  0,  0,  0 /)
   eyT  = (/ 0,  0,  0,  1, -1,  0,  0 /)
   ezT  = (/ 0,  0,  0,  0,  0,  1, -1 /)
   oppT = (/ 0,  2,  1,  4,  3,  6,  5 /)
 
-  ! 这里温度权重按 2DRB 思路固定下来：w0 = 1/4，w1~w6 = 1/8，对应 cs2T = 1/4
+  ! 温度权重按所选热算法分支设置
+#ifdef EnableLegacyThermalScheme
+  omegaT(0) = (1.0d0 - paraA) / 7.0d0
+  omegaT(1:6) = (6.0d0 + paraA) / 42.0d0
+#else
   omegaT(0) = 1.0d0 / 4.0d0
   omegaT(1:6) = 1.0d0 / 8.0d0
+#endif
 
 end subroutine init_lattice_constants_3d
-
-
-!===========================================================================================================================
-! 子程序: init_mrt_matrices_3d
-! 作用: 初始化 D3Q19 / D3Q7 的变换矩阵及其逆矩阵。
-!===========================================================================================================================
-subroutine init_mrt_matrices_3d()
-  use commondata3dOpenaccMpi
-  implicit none
-
-  ! M / Minv 在程序启动时一次性构造完，后续碰撞步骤直接拿来做矩空间变换
-  ! 这里不再调用通用求逆，而是利用文献这套正交基底的已知模长，直接给出逆矩阵
-  call build_basis_matrix_d3q19(M19)
-  call init_inverse_matrix_d3q19()
-
-  call build_basis_matrix_d3q7(M7)
-  call init_inverse_matrix_d3q7()
-
-end subroutine init_mrt_matrices_3d
-
-
-!===========================================================================================================================
-! 子程序: init_inverse_matrix_d3q19
-! 作用: 根据当前正交基底直接构造 D3Q19 逆矩阵。
-!===========================================================================================================================
-subroutine init_inverse_matrix_d3q19()
-  use commondata3dOpenaccMpi
-  implicit none
-
-  integer(kind=4) :: i, j
-  real(kind=8), parameter :: invRowNorm2(qf) = (/ &
-       1.0d0/19.0d0,   1.0d0/2394.0d0, 1.0d0/252.0d0, &
-       1.0d0/10.0d0,   1.0d0/40.0d0,   1.0d0/10.0d0,   1.0d0/40.0d0, &
-       1.0d0/10.0d0,   1.0d0/40.0d0,   1.0d0/36.0d0,   1.0d0/72.0d0, &
-       1.0d0/12.0d0,   1.0d0/24.0d0,   1.0d0/4.0d0,    1.0d0/4.0d0, &
-       1.0d0/4.0d0,    1.0d0/8.0d0,    1.0d0/8.0d0,    1.0d0/8.0d0 /)
-
-  ! 对正交基底有 Minv = transpose(M) * diag(1/||row_i||^2)
-  do i = 1, qf
-    do j = 1, qf
-      Minv19(j,i) = M19(i,j) * invRowNorm2(i)
-    enddo
-  enddo
-
-end subroutine init_inverse_matrix_d3q19
-
-
-!===========================================================================================================================
-! 子程序: init_inverse_matrix_d3q7
-! 作用: 根据当前正交基底直接构造 D3Q7 逆矩阵。
-!===========================================================================================================================
-subroutine init_inverse_matrix_d3q7()
-  use commondata3dOpenaccMpi
-  implicit none
-
-  integer(kind=4) :: i, j
-  real(kind=8), parameter :: invRowNorm2(qt) = (/ &
-       1.0d0/7.0d0, 1.0d0/2.0d0, 1.0d0/2.0d0, 1.0d0/2.0d0, &
-       1.0d0/42.0d0, 1.0d0/12.0d0, 1.0d0/4.0d0 /)
-
-  do i = 1, qt
-    do j = 1, qt
-      Minv7(j,i) = M7(i,j) * invRowNorm2(i)
-    enddo
-  enddo
-
-end subroutine init_inverse_matrix_d3q7
-
-
-!===========================================================================================================================
-! 子程序: build_basis_matrix_d3q19
-! 作用: 按既定矩基顺序填写 D3Q19 变换矩阵。
-!===========================================================================================================================
-subroutine build_basis_matrix_d3q19(M)
-  use commondata3dOpenaccMpi
-  implicit none
-
-  real(kind=8), intent(out) :: M(qf,qf)
-  integer(kind=4) :: alpha
-  real(kind=8) :: exa, eya, eza, ex2, ey2, ez2, e2, e4
-
-  ! 这里直接按文献给出的 D3Q19 正交基底来生成 M19，和文献中的速度编号、矩空间定义保持一一对应
-  M = 0.0d0
-  do alpha = 0, qf-1
-    exa = dble(ex(alpha))
-    eya = dble(ey(alpha))
-    eza = dble(ez(alpha))
-    ex2 = exa * exa
-    ey2 = eya * eya
-    ez2 = eza * eza
-    e2 = ex2 + ey2 + ez2
-    e4 = e2 * e2
-
-    M( 1,alpha+1) = 1.0d0
-    M( 2,alpha+1) = 19.0d0 * e2 - 30.0d0
-    M( 3,alpha+1) = 0.5d0 * (21.0d0 * e4 - 53.0d0 * e2 + 24.0d0)
-    M( 4,alpha+1) = exa
-    M( 5,alpha+1) = (5.0d0 * e2 - 9.0d0) * exa
-    M( 6,alpha+1) = eya
-    M( 7,alpha+1) = (5.0d0 * e2 - 9.0d0) * eya
-    M( 8,alpha+1) = eza
-    M( 9,alpha+1) = (5.0d0 * e2 - 9.0d0) * eza
-    M(10,alpha+1) = 3.0d0 * ex2 - e2
-    M(11,alpha+1) = (3.0d0 * e2 - 5.0d0) * (3.0d0 * ex2 - e2)
-    M(12,alpha+1) = ey2 - ez2
-    M(13,alpha+1) = (3.0d0 * e2 - 5.0d0) * (ey2 - ez2)
-    M(14,alpha+1) = exa * eya
-    M(15,alpha+1) = eya * eza
-    M(16,alpha+1) = exa * eza
-    M(17,alpha+1) = (ey2 - ez2) * exa
-    M(18,alpha+1) = (ez2 - ex2) * eya
-    M(19,alpha+1) = (ex2 - ey2) * eza
-  enddo
-
-end subroutine build_basis_matrix_d3q19
-
-
-!===========================================================================================================================
-! 子程序: build_basis_matrix_d3q7
-! 作用: 按既定矩基顺序填写 D3Q7 变换矩阵。
-!===========================================================================================================================
-subroutine build_basis_matrix_d3q7(M)
-  use commondata3dOpenaccMpi
-  implicit none
-
-  real(kind=8), intent(out) :: M(qt,qt)
-  integer(kind=4) :: alpha
-  real(kind=8) :: exa, eya, eza, ex2, ey2, ez2, e2
-
-  ! 这里按文献 Eq. (16) 的 7 个基底逐行生成 M7
-  M = 0.0d0
-  do alpha = 0, qt-1
-    exa = dble(exT(alpha))
-    eya = dble(eyT(alpha))
-    eza = dble(ezT(alpha))
-    ex2 = exa * exa
-    ey2 = eya * eya
-    ez2 = eza * eza
-    e2 = ex2 + ey2 + ez2
-
-    M(1,alpha+1) = 1.0d0
-    M(2,alpha+1) = exa
-    M(3,alpha+1) = eya
-    M(4,alpha+1) = eza
-    M(5,alpha+1) = -6.0d0 + 7.0d0 * e2
-    M(6,alpha+1) = 3.0d0 * ex2 - e2
-    M(7,alpha+1) = ey2 - ez2
-  enddo
-
-end subroutine build_basis_matrix_d3q7
-
-
-
-
-
-
-
-
-
-
-
-!===========================================================================================================================
-! 子程序: compute_feq_d3q19
-! 作用: 根据宏观量计算 D3Q19 流场平衡分布函数。
-!===========================================================================================================================
-subroutine compute_feq_d3q19(rhoLoc, uLoc, vLoc, wLoc, feq)
-  use commondata3dOpenaccMpi
-  implicit none
-
-  real(kind=8), intent(in) :: rhoLoc, uLoc, vLoc, wLoc
-  real(kind=8), intent(out) :: feq(qf)
-
-  integer(kind=4) :: alpha
-  real(kind=8) :: eu, u2
-
-  ! 标准二阶平衡分布：保留到速度平方项
-  u2 = uLoc * uLoc + vLoc * vLoc + wLoc * wLoc
-  do alpha = 0, qf-1
-    eu = dble(ex(alpha)) * uLoc + dble(ey(alpha)) * vLoc + dble(ez(alpha)) * wLoc
-    feq(alpha+1) = omega(alpha) * rhoLoc * (1.0d0 + 3.0d0 * eu + 4.5d0 * eu * eu - 1.5d0 * u2)
-  enddo
-
-end subroutine compute_feq_d3q19
-
-
-!===========================================================================================================================
-! 子程序: compute_geq_d3q7
-! 作用: 根据温度和速度计算 D3Q7 温度平衡分布函数。
-!===========================================================================================================================
-subroutine compute_geq_d3q7(TLoc, uLoc, vLoc, wLoc, geq)
-  use commondata3dOpenaccMpi
-  implicit none
-
-  real(kind=8), intent(in) :: TLoc, uLoc, vLoc, wLoc
-  real(kind=8), intent(out) :: geq(qt)
-
-  integer(kind=4) :: alpha
-  real(kind=8) :: eu
-
-  ! 温度场采用线性平衡分布，结构和 2D 版保持一致
-  do alpha = 0, qt-1
-    eu = dble(exT(alpha)) * uLoc + dble(eyT(alpha)) * vLoc + dble(ezT(alpha)) * wLoc
-    geq(alpha+1) = omegaT(alpha) * TLoc * (1.0d0 + eu / cs2T)
-  enddo
-
-end subroutine compute_geq_d3q7
 
 
 
@@ -1087,100 +954,231 @@ subroutine collision3d()
   implicit none
 
   integer(kind=4) :: i, j, k, alpha
-  real(kind=8) :: fLoc(qf), m(qf), meq(qf), mPost(qf), fPostLoc(qf)
+  real(kind=8) :: m(0:qf-1), meq(0:qf-1), m_post(0:qf-1)
+  real(kind=8) :: s(0:qf-1), fSource(0:qf-1)
   real(kind=8) :: rhoLoc, uLoc, vLoc, wLoc, u2, uDotF
   real(kind=8) :: FxLoc, FyLoc, FzLoc
-  real(kind=8), parameter :: s_e  = 1.0d0 / tauf
-  real(kind=8), parameter :: s_eps = 1.0d0 / tauf
-  real(kind=8), parameter :: s_nu = 1.0d0 / tauf
-  real(kind=8), parameter :: s_pi = 1.0d0 / tauf
-  real(kind=8), parameter :: s_q  = 8.0d0 * (2.0d0 * tauf - 1.0d0) / (8.0d0 * tauf - 1.0d0)
-  real(kind=8), parameter :: s_m  = 8.0d0 * (2.0d0 * tauf - 1.0d0) / (8.0d0 * tauf - 1.0d0)
 
-  ! 这里改回和 2DRB 同类型的矩空间碰撞：
-  ! 先做 m = M*f，再按文献的平衡矩 meq 和松弛率逐个碰撞，
-  ! 体力项也先投到矩空间，再乘以 (I-S/2) 做半步修正。
-
- !$acc parallel loop collapse(3) present(f,f_post,rho,u,v,w,T,Fx,Fy,Fz,M19,Minv19) &
+  !$acc parallel loop collapse(3) present(f,f_post,rho,u,v,w,T)
   do k = 1, nz
     do j = 1, ny
       do i = 1, nx
-        do alpha = 0, qf-1
-          fLoc(alpha+1) = f(alpha,i,j,k)
-        enddo
-
         rhoLoc = rho(i,j,k)
         uLoc = u(i,j,k)
         vLoc = v(i,j,k)
         wLoc = w(i,j,k)
         u2 = uLoc * uLoc + vLoc * vLoc + wLoc * wLoc
 
+        m(0) = f(0,i,j,k) + f(1,i,j,k) + f(2,i,j,k) + f(3,i,j,k) + f(4,i,j,k) + f(5,i,j,k) + &
+             f(6,i,j,k) + f(7,i,j,k) + f(8,i,j,k) + f(9,i,j,k) + f(10,i,j,k) + f(11,i,j,k) + &
+             f(12,i,j,k) + f(13,i,j,k) + f(14,i,j,k) + f(15,i,j,k) + f(16,i,j,k) + f(17,i,j,k) + f(18,i,j,k)
+
+        m(1) = -30.0d0 * f(0,i,j,k) - 11.0d0 * (f(1,i,j,k) + f(2,i,j,k) + f(3,i,j,k) + f(4,i,j,k) + &
+             f(5,i,j,k) + f(6,i,j,k)) + 8.0d0 * (f(7,i,j,k) + f(8,i,j,k) + f(9,i,j,k) + f(10,i,j,k) + &
+             f(11,i,j,k) + f(12,i,j,k) + f(13,i,j,k) + f(14,i,j,k) + f(15,i,j,k) + f(16,i,j,k) + &
+             f(17,i,j,k) + f(18,i,j,k))
+
+        m(2) = 12.0d0 * f(0,i,j,k) - 4.0d0 * (f(1,i,j,k) + f(2,i,j,k) + f(3,i,j,k) + f(4,i,j,k) + &
+             f(5,i,j,k) + f(6,i,j,k)) + (f(7,i,j,k) + f(8,i,j,k) + f(9,i,j,k) + f(10,i,j,k) + &
+             f(11,i,j,k) + f(12,i,j,k) + f(13,i,j,k) + f(14,i,j,k) + f(15,i,j,k) + f(16,i,j,k) + &
+             f(17,i,j,k) + f(18,i,j,k))
+
+        m(3) = f(1,i,j,k) - f(2,i,j,k) + f(7,i,j,k) - f(8,i,j,k) + f(9,i,j,k) - f(10,i,j,k) + &
+             f(11,i,j,k) - f(12,i,j,k) + f(13,i,j,k) - f(14,i,j,k)
+
+        m(4) = -4.0d0 * f(1,i,j,k) + 4.0d0 * f(2,i,j,k) + f(7,i,j,k) - f(8,i,j,k) + f(9,i,j,k) - &
+             f(10,i,j,k) + f(11,i,j,k) - f(12,i,j,k) + f(13,i,j,k) - f(14,i,j,k)
+
+        m(5) = f(3,i,j,k) - f(4,i,j,k) + f(7,i,j,k) + f(8,i,j,k) - f(9,i,j,k) - f(10,i,j,k) + &
+             f(15,i,j,k) - f(16,i,j,k) + f(17,i,j,k) - f(18,i,j,k)
+
+        m(6) = -4.0d0 * f(3,i,j,k) + 4.0d0 * f(4,i,j,k) + f(7,i,j,k) + f(8,i,j,k) - f(9,i,j,k) - &
+             f(10,i,j,k) + f(15,i,j,k) - f(16,i,j,k) + f(17,i,j,k) - f(18,i,j,k)
+
+        m(7) = f(5,i,j,k) - f(6,i,j,k) + f(11,i,j,k) + f(12,i,j,k) - f(13,i,j,k) - f(14,i,j,k) + &
+             f(15,i,j,k) + f(16,i,j,k) - f(17,i,j,k) - f(18,i,j,k)
+
+        m(8) = -4.0d0 * f(5,i,j,k) + 4.0d0 * f(6,i,j,k) + f(11,i,j,k) + f(12,i,j,k) - f(13,i,j,k) - &
+             f(14,i,j,k) + f(15,i,j,k) + f(16,i,j,k) - f(17,i,j,k) - f(18,i,j,k)
+
+        m(9) = 2.0d0 * (f(1,i,j,k) + f(2,i,j,k)) - (f(3,i,j,k) + f(4,i,j,k) + f(5,i,j,k) + f(6,i,j,k)) + &
+             (f(7,i,j,k) + f(8,i,j,k) + f(9,i,j,k) + f(10,i,j,k) + f(11,i,j,k) + f(12,i,j,k) + &
+             f(13,i,j,k) + f(14,i,j,k)) - 2.0d0 * (f(15,i,j,k) + f(16,i,j,k) + f(17,i,j,k) + f(18,i,j,k))
+
+        m(10) = -4.0d0 * (f(1,i,j,k) + f(2,i,j,k)) + 2.0d0 * (f(3,i,j,k) + f(4,i,j,k) + f(5,i,j,k) + f(6,i,j,k)) + &
+             (f(7,i,j,k) + f(8,i,j,k) + f(9,i,j,k) + f(10,i,j,k) + f(11,i,j,k) + f(12,i,j,k) + &
+             f(13,i,j,k) + f(14,i,j,k)) - 2.0d0 * (f(15,i,j,k) + f(16,i,j,k) + f(17,i,j,k) + f(18,i,j,k))
+
+        m(11) = (f(3,i,j,k) + f(4,i,j,k)) - (f(5,i,j,k) + f(6,i,j,k)) + &
+             (f(7,i,j,k) + f(8,i,j,k) + f(9,i,j,k) + f(10,i,j,k)) - &
+             (f(11,i,j,k) + f(12,i,j,k) + f(13,i,j,k) + f(14,i,j,k))
+
+        m(12) = -2.0d0 * (f(3,i,j,k) + f(4,i,j,k)) + 2.0d0 * (f(5,i,j,k) + f(6,i,j,k)) + &
+             (f(7,i,j,k) + f(8,i,j,k) + f(9,i,j,k) + f(10,i,j,k)) - &
+             (f(11,i,j,k) + f(12,i,j,k) + f(13,i,j,k) + f(14,i,j,k))
+
+        m(13) = f(7,i,j,k) - f(8,i,j,k) - f(9,i,j,k) + f(10,i,j,k)
+        m(14) = f(15,i,j,k) - f(16,i,j,k) - f(17,i,j,k) + f(18,i,j,k)
+        m(15) = f(11,i,j,k) - f(12,i,j,k) - f(13,i,j,k) + f(14,i,j,k)
+        m(16) = f(7,i,j,k) - f(8,i,j,k) + f(9,i,j,k) - f(10,i,j,k) - f(11,i,j,k) + f(12,i,j,k) - &
+             f(13,i,j,k) + f(14,i,j,k)
+        m(17) = -f(7,i,j,k) - f(8,i,j,k) + f(9,i,j,k) + f(10,i,j,k) + f(15,i,j,k) - f(16,i,j,k) + &
+             f(17,i,j,k) - f(18,i,j,k)
+        m(18) = f(11,i,j,k) + f(12,i,j,k) - f(13,i,j,k) - f(14,i,j,k) - f(15,i,j,k) - f(16,i,j,k) + &
+             f(17,i,j,k) + f(18,i,j,k)
+
+        meq(0) = rhoLoc
+        meq(1) = rhoLoc * (-11.0d0 + 19.0d0 * u2)
+        meq(2) = rhoLoc * (3.0d0 - 11.0d0 * u2 / 2.0d0)
+        meq(3) = rhoLoc * uLoc
+        meq(4) = -2.0d0 * rhoLoc * uLoc / 3.0d0
+        meq(5) = rhoLoc * vLoc
+        meq(6) = -2.0d0 * rhoLoc * vLoc / 3.0d0
+        meq(7) = rhoLoc * wLoc
+        meq(8) = -2.0d0 * rhoLoc * wLoc / 3.0d0
+        meq(9) = rhoLoc * (2.0d0 * uLoc * uLoc - vLoc * vLoc - wLoc * wLoc)
+        meq(10) = -0.5d0 * meq(9)
+        meq(11) = rhoLoc * (vLoc * vLoc - wLoc * wLoc)
+        meq(12) = -0.5d0 * meq(11)
+        meq(13) = rhoLoc * uLoc * vLoc
+        meq(14) = rhoLoc * vLoc * wLoc
+        meq(15) = rhoLoc * uLoc * wLoc
+        meq(16) = 0.0d0
+        meq(17) = 0.0d0
+        meq(18) = 0.0d0
+
+        s(0) = 0.0d0
+        s(1) = Se
+        s(2) = Seps
+        s(3) = 0.0d0
+        s(4) = Sq
+        s(5) = 0.0d0
+        s(6) = Sq
+        s(7) = 0.0d0
+        s(8) = Sq
+        s(9) = Snu
+        s(10) = Spi
+        s(11) = Snu
+        s(12) = Spi
+        s(13) = Snu
+        s(14) = Snu
+        s(15) = Snu
+        s(16) = Sm
+        s(17) = Sm
+        s(18) = Sm
+
         FxLoc = 0.0d0
         FyLoc = rhoLoc * gBeta * (T(i,j,k) - Tref)
         FzLoc = 0.0d0
-        Fx(i,j,k) = FxLoc
-        Fy(i,j,k) = FyLoc
-        Fz(i,j,k) = FzLoc
         uDotF = uLoc * FxLoc + vLoc * FyLoc + wLoc * FzLoc
 
-        ! x / z 方向无体力，RB 浮力只在 y 方向
-
-        ! 先把分布函数变到矩空间，再做松弛
-        m = matmul(M19, fLoc)
-
-        meq(1)  = rhoLoc
-        meq(2)  = rhoLoc * (-11.0d0 + 19.0d0 * u2)
-        meq(3)  = rhoLoc * (3.0d0 - 11.0d0 * u2 / 2.0d0)
-        meq(4)  = rhoLoc * uLoc
-        meq(5)  = -2.0d0 * rhoLoc * uLoc / 3.0d0
-        meq(6)  = rhoLoc * vLoc
-        meq(7)  = -2.0d0 * rhoLoc * vLoc / 3.0d0
-        meq(8)  = rhoLoc * wLoc
-        meq(9)  = -2.0d0 * rhoLoc * wLoc / 3.0d0
-        meq(10) = rhoLoc * (2.0d0 * uLoc * uLoc - vLoc * vLoc - wLoc * wLoc)
-        meq(11) = -0.5d0 * meq(10)
-        meq(12) = rhoLoc * (vLoc * vLoc - wLoc * wLoc)
-        meq(13) = -0.5d0 * meq(12)
-        meq(14) = rhoLoc * uLoc * vLoc
-        meq(15) = rhoLoc * vLoc * wLoc
-        meq(16) = rhoLoc * uLoc * wLoc
-        meq(17) = 0.0d0
-        meq(18) = 0.0d0
-        meq(19) = 0.0d0
-
-        ! 矩空间碰撞加体力修正：结构上和 2DRB 一样，只是这里使用 D3Q19 的矩定义
-        mPost(1)  = m(1)
-        mPost(2)  = m(2)  - s_e   * (m(2)  - meq(2))  + (1.0d0 - 0.5d0 * s_e  ) * 38.0d0 * uDotF
-        mPost(3)  = m(3)  - s_eps * (m(3)  - meq(3))  + (1.0d0 - 0.5d0 * s_eps) * (-11.0d0) * uDotF
-        mPost(4)  = m(4)  + FxLoc
-        mPost(5)  = m(5)  - s_q   * (m(5)  - meq(5))  + (1.0d0 - 0.5d0 * s_q  ) * (-2.0d0 / 3.0d0) * FxLoc
-        mPost(6)  = m(6)  + FyLoc
-        mPost(7)  = m(7)  - s_q   * (m(7)  - meq(7))  + (1.0d0 - 0.5d0 * s_q  ) * (-2.0d0 / 3.0d0) * FyLoc
-        mPost(8)  = m(8)  + FzLoc
-        mPost(9)  = m(9)  - s_q   * (m(9)  - meq(9))  + (1.0d0 - 0.5d0 * s_q  ) * (-2.0d0 / 3.0d0) * FzLoc
-        mPost(10) = m(10) - s_nu  * (m(10) - meq(10)) + &
-             (1.0d0 - 0.5d0 * s_nu ) * &
-             (4.0d0 * uLoc * FxLoc - 2.0d0 * vLoc * FyLoc - 2.0d0 * wLoc * FzLoc)
-        mPost(11) = m(11) - s_pi  * (m(11) - meq(11)) + &
-             (1.0d0 - 0.5d0 * s_pi ) * &
-             (-2.0d0 * uLoc * FxLoc + vLoc * FyLoc + wLoc * FzLoc)
-        mPost(12) = m(12) - s_nu  * (m(12) - meq(12)) + &
-             (1.0d0 - 0.5d0 * s_nu ) * &
-             (2.0d0 * vLoc * FyLoc - 2.0d0 * wLoc * FzLoc)
-        mPost(13) = m(13) - s_pi  * (m(13) - meq(13)) + (1.0d0 - 0.5d0 * s_pi ) * (-vLoc * FyLoc + wLoc * FzLoc)
-        mPost(14) = m(14) - s_nu  * (m(14) - meq(14)) + (1.0d0 - 0.5d0 * s_nu ) * (uLoc * FyLoc + vLoc * FxLoc)
-        mPost(15) = m(15) - s_nu  * (m(15) - meq(15)) + (1.0d0 - 0.5d0 * s_nu ) * (vLoc * FzLoc + wLoc * FyLoc)
-        mPost(16) = m(16) - s_nu  * (m(16) - meq(16)) + (1.0d0 - 0.5d0 * s_nu ) * (uLoc * FzLoc + wLoc * FxLoc)
-        mPost(17) = m(17) - s_m   * m(17)
-        mPost(18) = m(18) - s_m   * m(18)
-        mPost(19) = m(19) - s_m   * m(19)
-
-        ! 再由逆矩阵回到速度空间
-        fPostLoc = matmul(Minv19, mPost)
+        fSource(0) = 0.0d0
+        fSource(1) = (1.0d0 - 0.5d0 * s(1)) * 38.0d0 * uDotF
+        fSource(2) = (1.0d0 - 0.5d0 * s(2)) * (-11.0d0) * uDotF
+        fSource(3) = (1.0d0 - 0.5d0 * s(3)) * FxLoc
+        fSource(4) = (1.0d0 - 0.5d0 * s(4)) * (-2.0d0 / 3.0d0) * FxLoc
+        fSource(5) = (1.0d0 - 0.5d0 * s(5)) * FyLoc
+        fSource(6) = (1.0d0 - 0.5d0 * s(6)) * (-2.0d0 / 3.0d0) * FyLoc
+        fSource(7) = (1.0d0 - 0.5d0 * s(7)) * FzLoc
+        fSource(8) = (1.0d0 - 0.5d0 * s(8)) * (-2.0d0 / 3.0d0) * FzLoc
+        fSource(9) = (1.0d0 - 0.5d0 * s(9)) * (4.0d0 * uLoc * FxLoc - 2.0d0 * vLoc * FyLoc - 2.0d0 * wLoc * FzLoc)
+        fSource(10) = (1.0d0 - 0.5d0 * s(10)) * (-2.0d0 * uLoc * FxLoc + vLoc * FyLoc + wLoc * FzLoc)
+        fSource(11) = (1.0d0 - 0.5d0 * s(11)) * (2.0d0 * vLoc * FyLoc - 2.0d0 * wLoc * FzLoc)
+        fSource(12) = (1.0d0 - 0.5d0 * s(12)) * (-vLoc * FyLoc + wLoc * FzLoc)
+        fSource(13) = (1.0d0 - 0.5d0 * s(13)) * (uLoc * FyLoc + vLoc * FxLoc)
+        fSource(14) = (1.0d0 - 0.5d0 * s(14)) * (vLoc * FzLoc + wLoc * FyLoc)
+        fSource(15) = (1.0d0 - 0.5d0 * s(15)) * (uLoc * FzLoc + wLoc * FxLoc)
+        fSource(16) = 0.0d0
+        fSource(17) = 0.0d0
+        fSource(18) = 0.0d0
 
         do alpha = 0, qf-1
-          f_post(alpha,i,j,k) = fPostLoc(alpha+1)
+          m_post(alpha) = m(alpha) - s(alpha) * (m(alpha) - meq(alpha)) + fSource(alpha)
         enddo
+
+        f_post(0,i,j,k) = m_post(0) / 19.0d0 - 5.0d0 * m_post(1) / 399.0d0 + m_post(2) / 21.0d0
+
+        f_post(1,i,j,k) = m_post(0) / 19.0d0 - 11.0d0 * m_post(1) / 2394.0d0 - m_post(2) / 63.0d0 + &
+             m_post(3) / 10.0d0 - m_post(4) / 10.0d0 + m_post(9) / 18.0d0 - m_post(10) / 18.0d0
+
+        f_post(2,i,j,k) = m_post(0) / 19.0d0 - 11.0d0 * m_post(1) / 2394.0d0 - m_post(2) / 63.0d0 - &
+             m_post(3) / 10.0d0 + m_post(4) / 10.0d0 + m_post(9) / 18.0d0 - m_post(10) / 18.0d0
+
+        f_post(3,i,j,k) = m_post(0) / 19.0d0 - 11.0d0 * m_post(1) / 2394.0d0 - m_post(2) / 63.0d0 + &
+             m_post(5) / 10.0d0 - m_post(6) / 10.0d0 - m_post(9) / 36.0d0 + m_post(10) / 36.0d0 + &
+             m_post(11) / 12.0d0 - m_post(12) / 12.0d0
+
+        f_post(4,i,j,k) = m_post(0) / 19.0d0 - 11.0d0 * m_post(1) / 2394.0d0 - m_post(2) / 63.0d0 - &
+             m_post(5) / 10.0d0 + m_post(6) / 10.0d0 - m_post(9) / 36.0d0 + m_post(10) / 36.0d0 + &
+             m_post(11) / 12.0d0 - m_post(12) / 12.0d0
+
+        f_post(5,i,j,k) = m_post(0) / 19.0d0 - 11.0d0 * m_post(1) / 2394.0d0 - m_post(2) / 63.0d0 + &
+             m_post(7) / 10.0d0 - m_post(8) / 10.0d0 - m_post(9) / 36.0d0 + m_post(10) / 36.0d0 - &
+             m_post(11) / 12.0d0 + m_post(12) / 12.0d0
+
+        f_post(6,i,j,k) = m_post(0) / 19.0d0 - 11.0d0 * m_post(1) / 2394.0d0 - m_post(2) / 63.0d0 - &
+             m_post(7) / 10.0d0 + m_post(8) / 10.0d0 - m_post(9) / 36.0d0 + m_post(10) / 36.0d0 - &
+             m_post(11) / 12.0d0 + m_post(12) / 12.0d0
+
+        f_post(7,i,j,k) = m_post(0) / 19.0d0 + 4.0d0 * m_post(1) / 1197.0d0 + m_post(2) / 252.0d0 + &
+             m_post(3) / 10.0d0 + m_post(4) / 40.0d0 + m_post(5) / 10.0d0 + m_post(6) / 40.0d0 + &
+             m_post(9) / 36.0d0 + m_post(10) / 72.0d0 + m_post(11) / 12.0d0 + m_post(12) / 24.0d0 + &
+             m_post(13) / 4.0d0 + m_post(16) / 8.0d0 - m_post(17) / 8.0d0
+
+        f_post(8,i,j,k) = m_post(0) / 19.0d0 + 4.0d0 * m_post(1) / 1197.0d0 + m_post(2) / 252.0d0 - &
+             m_post(3) / 10.0d0 - m_post(4) / 40.0d0 + m_post(5) / 10.0d0 + m_post(6) / 40.0d0 + &
+             m_post(9) / 36.0d0 + m_post(10) / 72.0d0 + m_post(11) / 12.0d0 + m_post(12) / 24.0d0 - &
+             m_post(13) / 4.0d0 - m_post(16) / 8.0d0 - m_post(17) / 8.0d0
+
+        f_post(9,i,j,k) = m_post(0) / 19.0d0 + 4.0d0 * m_post(1) / 1197.0d0 + m_post(2) / 252.0d0 + &
+             m_post(3) / 10.0d0 + m_post(4) / 40.0d0 - m_post(5) / 10.0d0 - m_post(6) / 40.0d0 + &
+             m_post(9) / 36.0d0 + m_post(10) / 72.0d0 + m_post(11) / 12.0d0 + m_post(12) / 24.0d0 - &
+             m_post(13) / 4.0d0 + m_post(16) / 8.0d0 + m_post(17) / 8.0d0
+
+        f_post(10,i,j,k) = m_post(0) / 19.0d0 + 4.0d0 * m_post(1) / 1197.0d0 + m_post(2) / 252.0d0 - &
+             m_post(3) / 10.0d0 - m_post(4) / 40.0d0 - m_post(5) / 10.0d0 - m_post(6) / 40.0d0 + &
+             m_post(9) / 36.0d0 + m_post(10) / 72.0d0 + m_post(11) / 12.0d0 + m_post(12) / 24.0d0 + &
+             m_post(13) / 4.0d0 - m_post(16) / 8.0d0 + m_post(17) / 8.0d0
+
+        f_post(11,i,j,k) = m_post(0) / 19.0d0 + 4.0d0 * m_post(1) / 1197.0d0 + m_post(2) / 252.0d0 + &
+             m_post(3) / 10.0d0 + m_post(4) / 40.0d0 + m_post(7) / 10.0d0 + m_post(8) / 40.0d0 + &
+             m_post(9) / 36.0d0 + m_post(10) / 72.0d0 - m_post(11) / 12.0d0 - m_post(12) / 24.0d0 + &
+             m_post(15) / 4.0d0 - m_post(16) / 8.0d0 + m_post(18) / 8.0d0
+
+        f_post(12,i,j,k) = m_post(0) / 19.0d0 + 4.0d0 * m_post(1) / 1197.0d0 + m_post(2) / 252.0d0 - &
+             m_post(3) / 10.0d0 - m_post(4) / 40.0d0 + m_post(7) / 10.0d0 + m_post(8) / 40.0d0 + &
+             m_post(9) / 36.0d0 + m_post(10) / 72.0d0 - m_post(11) / 12.0d0 - m_post(12) / 24.0d0 - &
+             m_post(15) / 4.0d0 + m_post(16) / 8.0d0 + m_post(18) / 8.0d0
+
+        f_post(13,i,j,k) = m_post(0) / 19.0d0 + 4.0d0 * m_post(1) / 1197.0d0 + m_post(2) / 252.0d0 + &
+             m_post(3) / 10.0d0 + m_post(4) / 40.0d0 - m_post(7) / 10.0d0 - m_post(8) / 40.0d0 + &
+             m_post(9) / 36.0d0 + m_post(10) / 72.0d0 - m_post(11) / 12.0d0 - m_post(12) / 24.0d0 - &
+             m_post(15) / 4.0d0 - m_post(16) / 8.0d0 - m_post(18) / 8.0d0
+
+        f_post(14,i,j,k) = m_post(0) / 19.0d0 + 4.0d0 * m_post(1) / 1197.0d0 + m_post(2) / 252.0d0 - &
+             m_post(3) / 10.0d0 - m_post(4) / 40.0d0 - m_post(7) / 10.0d0 - m_post(8) / 40.0d0 + &
+             m_post(9) / 36.0d0 + m_post(10) / 72.0d0 - m_post(11) / 12.0d0 - m_post(12) / 24.0d0 + &
+             m_post(15) / 4.0d0 + m_post(16) / 8.0d0 - m_post(18) / 8.0d0
+
+        f_post(15,i,j,k) = m_post(0) / 19.0d0 + 4.0d0 * m_post(1) / 1197.0d0 + m_post(2) / 252.0d0 + &
+             m_post(5) / 10.0d0 + m_post(6) / 40.0d0 + m_post(7) / 10.0d0 + m_post(8) / 40.0d0 - &
+             m_post(9) / 18.0d0 - m_post(10) / 36.0d0 + m_post(14) / 4.0d0 + m_post(17) / 8.0d0 - &
+             m_post(18) / 8.0d0
+
+        f_post(16,i,j,k) = m_post(0) / 19.0d0 + 4.0d0 * m_post(1) / 1197.0d0 + m_post(2) / 252.0d0 - &
+             m_post(5) / 10.0d0 - m_post(6) / 40.0d0 + m_post(7) / 10.0d0 + m_post(8) / 40.0d0 - &
+             m_post(9) / 18.0d0 - m_post(10) / 36.0d0 - m_post(14) / 4.0d0 - m_post(17) / 8.0d0 - &
+             m_post(18) / 8.0d0
+
+        f_post(17,i,j,k) = m_post(0) / 19.0d0 + 4.0d0 * m_post(1) / 1197.0d0 + m_post(2) / 252.0d0 + &
+             m_post(5) / 10.0d0 + m_post(6) / 40.0d0 - m_post(7) / 10.0d0 - m_post(8) / 40.0d0 - &
+             m_post(9) / 18.0d0 - m_post(10) / 36.0d0 - m_post(14) / 4.0d0 + m_post(17) / 8.0d0 + &
+             m_post(18) / 8.0d0
+
+        f_post(18,i,j,k) = m_post(0) / 19.0d0 + 4.0d0 * m_post(1) / 1197.0d0 + m_post(2) / 252.0d0 - &
+             m_post(5) / 10.0d0 - m_post(6) / 40.0d0 - m_post(7) / 10.0d0 - m_post(8) / 40.0d0 - &
+             m_post(9) / 18.0d0 - m_post(10) / 36.0d0 + m_post(14) / 4.0d0 - m_post(17) / 8.0d0 + &
+             m_post(18) / 8.0d0
       enddo
     enddo
   enddo
@@ -1255,6 +1253,18 @@ subroutine bounceback3d()
 
   integer(kind=4) :: i, j, k, alpha
 
+#ifdef VerticalWallsPeriodicalU
+ !$acc parallel loop collapse(2) present(f,f_post,ex)
+  do k = 1, nz
+    do j = 1, ny
+      do alpha = 0, qf-1
+        if (ex(alpha) .EQ. 1)  f(alpha,1,j,k)  = f_post(alpha,nx,j,k)
+        if (ex(alpha) .EQ. -1) f(alpha,nx,j,k) = f_post(alpha,1,j,k)
+      enddo
+    enddo
+  enddo
+#endif
+
 #ifdef VerticalWallsNoslip
  !$acc parallel loop collapse(2) present(f,f_post,ex,opp)
   do k = 1, nz
@@ -1277,6 +1287,29 @@ subroutine bounceback3d()
       enddo
     enddo
   enddo
+#endif
+
+#ifdef SpanwiseWallsPeriodicalU
+  if (isFirstZRank) then
+ !$acc parallel loop collapse(2) present(f,f_post,ez)
+    do j = 1, ny
+      do i = 1, nx
+        do alpha = 0, qf-1
+          if (ez(alpha) .EQ. 1)  f(alpha,i,j,1)  = f_post(alpha,i,j,0)
+        enddo
+      enddo
+    enddo
+  endif
+  if (isLastZRank) then
+ !$acc parallel loop collapse(2) present(f,f_post,ez)
+    do j = 1, ny
+      do i = 1, nx
+        do alpha = 0, qf-1
+          if (ez(alpha) .EQ. -1) f(alpha,i,j,nz) = f_post(alpha,i,j,nz+1)
+        enddo
+      enddo
+    enddo
+  endif
 #endif
 
 #ifdef SpanwiseWallsNoslip
@@ -1313,28 +1346,27 @@ subroutine macro3d()
   use commondata3dOpenaccMpi
   implicit none
 
-  integer(kind=4) :: i, j, k, alpha
-  real(kind=8) :: momx, momy, momz, rhoLoc
+  integer(kind=4) :: i, j, k
+  real(kind=8) :: FyLoc
 
-  !$acc parallel loop collapse(3) &
- !$acc& present(f,rho,u,v,w,Fx,Fy,Fz,ex,ey,ez) &
+  !$acc parallel loop collapse(3) present(f,rho,u,v,w,T)
   do k = 1, nz
     do j = 1, ny
       do i = 1, nx
-        rhoLoc = 0.0d0
-        momx = 0.0d0
-        momy = 0.0d0
-        momz = 0.0d0
-        do alpha = 0, qf-1
-          rhoLoc = rhoLoc + f(alpha,i,j,k)
-          momx = momx + f(alpha,i,j,k) * dble(ex(alpha))
-          momy = momy + f(alpha,i,j,k) * dble(ey(alpha))
-          momz = momz + f(alpha,i,j,k) * dble(ez(alpha))
-        enddo
-        rho(i,j,k) = rhoLoc
-        u(i,j,k) = (momx + 0.5d0 * Fx(i,j,k)) / rhoLoc
-        v(i,j,k) = (momy + 0.5d0 * Fy(i,j,k)) / rhoLoc
-        w(i,j,k) = (momz + 0.5d0 * Fz(i,j,k)) / rhoLoc
+        rho(i,j,k) = f(0,i,j,k) + f(1,i,j,k) + f(2,i,j,k) + f(3,i,j,k) + f(4,i,j,k) + f(5,i,j,k) + &
+             f(6,i,j,k) + f(7,i,j,k) + f(8,i,j,k) + f(9,i,j,k) + f(10,i,j,k) + f(11,i,j,k) + &
+             f(12,i,j,k) + f(13,i,j,k) + f(14,i,j,k) + f(15,i,j,k) + f(16,i,j,k) + f(17,i,j,k) + f(18,i,j,k)
+
+        FyLoc = rho(i,j,k) * gBeta * (T(i,j,k) - Tref)
+
+        u(i,j,k) = (f(1,i,j,k) - f(2,i,j,k) + f(7,i,j,k) - f(8,i,j,k) + f(9,i,j,k) - f(10,i,j,k) + &
+             f(11,i,j,k) - f(12,i,j,k) + f(13,i,j,k) - f(14,i,j,k)) / rho(i,j,k)
+
+        v(i,j,k) = (f(3,i,j,k) - f(4,i,j,k) + f(7,i,j,k) + f(8,i,j,k) - f(9,i,j,k) - f(10,i,j,k) + &
+             f(15,i,j,k) - f(16,i,j,k) + f(17,i,j,k) - f(18,i,j,k) + 0.5d0 * FyLoc) / rho(i,j,k)
+
+        w(i,j,k) = (f(5,i,j,k) - f(6,i,j,k) + f(11,i,j,k) + f(12,i,j,k) - f(13,i,j,k) - f(14,i,j,k) + &
+             f(15,i,j,k) + f(16,i,j,k) - f(17,i,j,k) - f(18,i,j,k)) / rho(i,j,k)
       enddo
     enddo
   enddo
@@ -1350,66 +1382,79 @@ subroutine collisionT3d()
   use commondata3dOpenaccMpi
   implicit none
 
-  integer(kind=4) :: i, j, k, alpha
-  real(kind=8) :: gLoc(qt), n(qt), neq(qt), nPost(qt), gPostLoc(qt)
+  integer(kind=4) :: i, j, k
+  real(kind=8) :: n(0:qt-1), neq(0:qt-1), n_post(0:qt-1), q(0:qt-1)
   real(kind=8) :: Bx, By, Bz, dBx, dBy, dBz
-  real(kind=8), parameter :: SG = 1.0d0 - 0.5d0 * s_jT
+  real(kind=8), parameter :: SG = 1.0d0 - 0.5d0 * Qk
 
-  ! 温度场的思路和 2D 一样：
-  ! 1) 先构造当前热通量 B = uT
-  ! 2) 若启用 useG，则用相邻时刻差分 dB 做修正；3) 在矩空间里做温度碰撞
- !$acc parallel loop collapse(3) present(g,g_post,u,v,w,T,Bx_prev,By_prev,Bz_prev,M7,Minv7) &
+  !$acc parallel loop collapse(3) present(g,g_post,u,v,w,T,Bx_prev,By_prev,Bz_prev)
   do k = 1, nz
     do j = 1, ny
       do i = 1, nx
-        do alpha = 0, qt-1
-          gLoc(alpha+1) = g(alpha,i,j,k)
-        enddo
-
         Bx = u(i,j,k) * T(i,j,k)
         By = v(i,j,k) * T(i,j,k)
         Bz = w(i,j,k) * T(i,j,k)
 
-        if (useG) then
+#ifdef EnableUseG
           dBx = Bx - Bx_prev(i,j,k)
           dBy = By - By_prev(i,j,k)
           dBz = Bz - Bz_prev(i,j,k)
-        else
+          Bx_prev(i,j,k) = Bx
+          By_prev(i,j,k) = By
+          Bz_prev(i,j,k) = Bz
+#else
           dBx = 0.0d0
           dBy = 0.0d0
           dBz = 0.0d0
-        endif
+#endif
 
-        Bx_prev(i,j,k) = Bx
-        By_prev(i,j,k) = By
-        Bz_prev(i,j,k) = Bz
+        n(0) = g(0,i,j,k) + g(1,i,j,k) + g(2,i,j,k) + g(3,i,j,k) + g(4,i,j,k) + g(5,i,j,k) + g(6,i,j,k)
+        n(1) = g(1,i,j,k) - g(2,i,j,k)
+        n(2) = g(3,i,j,k) - g(4,i,j,k)
+        n(3) = g(5,i,j,k) - g(6,i,j,k)
+        n(4) = -6.0d0 * g(0,i,j,k) + g(1,i,j,k) + g(2,i,j,k) + g(3,i,j,k) + g(4,i,j,k) + g(5,i,j,k) + g(6,i,j,k)
+        n(5) = 2.0d0 * g(1,i,j,k) + 2.0d0 * g(2,i,j,k) - g(3,i,j,k) - g(4,i,j,k) - g(5,i,j,k) - g(6,i,j,k)
+        n(6) = g(3,i,j,k) + g(4,i,j,k) - g(5,i,j,k) - g(6,i,j,k)
 
-        ! 先把温度分布函数变到矩空间
-        n = matmul(M7, gLoc)
-
-        ! 这里按 2DRB 的思路直接写平衡矩，而不是跟文献那套 aT/qkappa 走
-        ! [T, uT, vT, wT, -3/4*T, 0, 0]
-        neq(1) = T(i,j,k)
-        neq(2) = Bx
-        neq(3) = By
-        neq(4) = Bz
-        neq(5) = -0.75d0 * T(i,j,k)
+        neq(0) = T(i,j,k)
+        neq(1) = Bx
+        neq(2) = By
+        neq(3) = Bz
+#ifdef EnableLegacyThermalScheme
+        neq(4) = paraA * T(i,j,k)
+#else
+        neq(4) = -0.75d0 * T(i,j,k)
+#endif
+        neq(5) = 0.0d0
         neq(6) = 0.0d0
-        neq(7) = 0.0d0
 
-        nPost(1) = n(1)
-        nPost(2:4) = n(2:4) - s_jT * (n(2:4) - neq(2:4))
-        nPost(5) = n(5) - s_eT * (n(5) - neq(5))
-        nPost(6:7) = n(6:7) - s_qT * (n(6:7) - neq(6:7))
-        nPost(2) = nPost(2) + SG * dBx
-        nPost(3) = nPost(3) + SG * dBy
-        nPost(4) = nPost(4) + SG * dBz
+        q(0) = 0.0d0
+        q(1) = Qk
+        q(2) = Qk
+        q(3) = Qk
+        q(4) = Qnu
+        q(5) = Qnu
+        q(6) = Qnu
 
-        gPostLoc = matmul(Minv7, nPost)
+        n_post(0) = n(0) - q(0) * (n(0) - neq(0))
+        n_post(1) = n(1) - q(1) * (n(1) - neq(1)) + SG * dBx
+        n_post(2) = n(2) - q(2) * (n(2) - neq(2)) + SG * dBy
+        n_post(3) = n(3) - q(3) * (n(3) - neq(3)) + SG * dBz
+        n_post(4) = n(4) - q(4) * (n(4) - neq(4))
+        n_post(5) = n(5) - q(5) * (n(5) - neq(5))
+        n_post(6) = n(6) - q(6) * (n(6) - neq(6))
 
-        do alpha = 0, qt-1
-          g_post(alpha,i,j,k) = gPostLoc(alpha+1)
-        enddo
+        g_post(0,i,j,k) = n_post(0) / 7.0d0 - n_post(4) / 7.0d0
+        g_post(1,i,j,k) = n_post(0) / 7.0d0 + n_post(1) / 2.0d0 + n_post(4) / 42.0d0 + n_post(5) / 6.0d0
+        g_post(2,i,j,k) = n_post(0) / 7.0d0 - n_post(1) / 2.0d0 + n_post(4) / 42.0d0 + n_post(5) / 6.0d0
+        g_post(3,i,j,k) = n_post(0) / 7.0d0 + n_post(2) / 2.0d0 + n_post(4) / 42.0d0 - n_post(5) / 12.0d0 + &
+             n_post(6) / 4.0d0
+        g_post(4,i,j,k) = n_post(0) / 7.0d0 - n_post(2) / 2.0d0 + n_post(4) / 42.0d0 - n_post(5) / 12.0d0 + &
+             n_post(6) / 4.0d0
+        g_post(5,i,j,k) = n_post(0) / 7.0d0 + n_post(3) / 2.0d0 + n_post(4) / 42.0d0 - n_post(5) / 12.0d0 - &
+             n_post(6) / 4.0d0
+        g_post(6,i,j,k) = n_post(0) / 7.0d0 - n_post(3) / 2.0d0 + n_post(4) / 42.0d0 - n_post(5) / 12.0d0 - &
+             n_post(6) / 4.0d0
       enddo
     enddo
   enddo
@@ -1482,13 +1527,30 @@ subroutine bouncebackT3d()
 
   integer(kind=4) :: i, j, k, alpha
 
+#ifdef VerticalWallsPeriodicalT
+ !$acc parallel loop collapse(2) present(g,g_post,exT)
+  do k = 1, nz
+    do j = 1, ny
+      do alpha = 0, qt-1
+        if (exT(alpha) .EQ. 1)  g(alpha,1,j,k)  = g_post(alpha,nx,j,k)
+        if (exT(alpha) .EQ. -1) g(alpha,nx,j,k) = g_post(alpha,1,j,k)
+      enddo
+    enddo
+  enddo
+#endif
+
 #ifdef VerticalWallsConstT
  !$acc parallel loop collapse(2) present(g,g_post,exT,oppT,omegaT)
   do k = 1, nz
     do j = 1, ny
       do alpha = 0, qt-1
+#ifdef EnableLegacyThermalScheme
+        if (exT(alpha) .EQ. 1)  g(alpha,1,j,k)  = -g_post(oppT(alpha),1,j,k)  + (6.0d0 + paraA) / 21.0d0 * Thot
+        if (exT(alpha) .EQ. -1) g(alpha,nx,j,k) = -g_post(oppT(alpha),nx,j,k) + (6.0d0 + paraA) / 21.0d0 * Tcold
+#else
         if (exT(alpha) .EQ. 1)  g(alpha,1,j,k)  = -g_post(oppT(alpha),1,j,k)  + 2.0d0 * omegaT(alpha) * Thot
         if (exT(alpha) .EQ. -1) g(alpha,nx,j,k) = -g_post(oppT(alpha),nx,j,k) + 2.0d0 * omegaT(alpha) * Tcold
+#endif
       enddo
     enddo
   enddo
@@ -1523,11 +1585,39 @@ subroutine bouncebackT3d()
   do k = 1, nz
     do i = 1, nx
       do alpha = 0, qt-1
+#ifdef EnableLegacyThermalScheme
+        if (eyT(alpha) .EQ. 1)  g(alpha,i,1,k)  = -g_post(oppT(alpha),i,1,k)  + (6.0d0 + paraA) / 21.0d0 * Thot
+        if (eyT(alpha) .EQ. -1) g(alpha,i,ny,k) = -g_post(oppT(alpha),i,ny,k) + (6.0d0 + paraA) / 21.0d0 * Tcold
+#else
         if (eyT(alpha) .EQ. 1)  g(alpha,i,1,k)  = -g_post(oppT(alpha),i,1,k)  + 2.0d0 * omegaT(alpha) * Thot
         if (eyT(alpha) .EQ. -1) g(alpha,i,ny,k) = -g_post(oppT(alpha),i,ny,k) + 2.0d0 * omegaT(alpha) * Tcold
+#endif
       enddo
     enddo
   enddo
+#endif
+
+#ifdef SpanwiseWallsPeriodicalT
+  if (isFirstZRank) then
+ !$acc parallel loop collapse(2) present(g,g_post,ezT)
+    do j = 1, ny
+      do i = 1, nx
+        do alpha = 0, qt-1
+          if (ezT(alpha) .EQ. 1)  g(alpha,i,j,1)  = g_post(alpha,i,j,0)
+        enddo
+      enddo
+    enddo
+  endif
+  if (isLastZRank) then
+ !$acc parallel loop collapse(2) present(g,g_post,ezT)
+    do j = 1, ny
+      do i = 1, nx
+        do alpha = 0, qt-1
+          if (ezT(alpha) .EQ. -1) g(alpha,i,j,nz) = g_post(alpha,i,j,nz+1)
+        enddo
+      enddo
+    enddo
+  endif
 #endif
 
 #ifdef SpanwiseWallsAdiabatic
@@ -1553,6 +1643,7 @@ subroutine bouncebackT3d()
   endif
 #endif
 
+  return
 end subroutine bouncebackT3d
 
 
@@ -1564,22 +1655,19 @@ subroutine macroT3d()
   use commondata3dOpenaccMpi
   implicit none
 
-  integer(kind=4) :: i, j, k, alpha
-  real(kind=8) :: TLoc
+  integer(kind=4) :: i, j, k
 
  !$acc parallel loop collapse(3) present(g,T)
   do k = 1, nz
     do j = 1, ny
       do i = 1, nx
-        TLoc = 0.0d0
-        do alpha = 0, qt-1
-          TLoc = TLoc + g(alpha,i,j,k)
-        enddo
-        T(i,j,k) = TLoc
+        T(i,j,k) = g(0,i,j,k) + g(1,i,j,k) + g(2,i,j,k) + g(3,i,j,k) + &
+                   g(4,i,j,k) + g(5,i,j,k) + g(6,i,j,k)
       enddo
     enddo
   enddo
 
+  return
 end subroutine macroT3d
 
 !===========================================================================================================================
@@ -1592,6 +1680,7 @@ subroutine reconstruct_macro_from_fg3d()
 
   integer(kind=4) :: i, j, k, alpha, iter
   real(kind=8) :: momx, momy, momz
+  real(kind=8) :: FxLoc, FyLoc, FzLoc
   logical :: rho_bad
 
   ! 重启时只存了 f 和 g，所以这里统一把 T、rho、u、v、w 以及历史热流都重构回来
@@ -1627,36 +1716,39 @@ subroutine reconstruct_macro_from_fg3d()
           v(i,j,k) = momy / rho(i,j,k)
           w(i,j,k) = momz / rho(i,j,k)
           do iter = 1, 3
-            Fx(i,j,k) = 0.0d0
-            Fy(i,j,k) = rho(i,j,k) * gBeta * (T(i,j,k) - Tref)
-            Fz(i,j,k) = 0.0d0
-            u(i,j,k) = (momx + 0.5d0 * Fx(i,j,k)) / rho(i,j,k)
-            v(i,j,k) = (momy + 0.5d0 * Fy(i,j,k)) / rho(i,j,k)
-            w(i,j,k) = (momz + 0.5d0 * Fz(i,j,k)) / rho(i,j,k)
+            FxLoc = 0.0d0
+            FyLoc = rho(i,j,k) * gBeta * (T(i,j,k) - Tref)
+            FzLoc = 0.0d0
+            u(i,j,k) = (momx + 0.5d0 * FxLoc) / rho(i,j,k)
+            v(i,j,k) = (momy + 0.5d0 * FyLoc) / rho(i,j,k)
+            w(i,j,k) = (momz + 0.5d0 * FzLoc) / rho(i,j,k)
           enddo
         else
           rho_bad = .true.
           u(i,j,k) = 0.0d0
           v(i,j,k) = 0.0d0
           w(i,j,k) = 0.0d0
-          Fx(i,j,k) = 0.0d0
-          Fy(i,j,k) = 0.0d0
-          Fz(i,j,k) = 0.0d0
         endif
 
+#ifdef EnableUseG
         Bx_prev(i,j,k) = u(i,j,k) * T(i,j,k)
         By_prev(i,j,k) = v(i,j,k) * T(i,j,k)
         Bz_prev(i,j,k) = w(i,j,k) * T(i,j,k)
+#else
+        Bx_prev(i,j,k) = 0.0d0
+        By_prev(i,j,k) = 0.0d0
+        Bz_prev(i,j,k) = 0.0d0
+#endif
       enddo
     enddo
   enddo
 
   if (rho_bad) then
-    open(unit=00, file=trim(settingsFile), status='unknown', position='append')
-    write(00,*) 'Error: rho <= 0 encountered while reconstructing macro fields from restart data'
-    close(00)
+    write(*,*) 'Warning: non-positive rho found during restart reconstruction.'
     stop
   endif
+
+  return
 end subroutine reconstruct_macro_from_fg3d
 
 
@@ -1717,12 +1809,13 @@ subroutine check3d()
 
   if (isRoot) then
     call append_convergence_tecplot3d('convergence3D_mpi.plt', itc, errorU, errorT)
-    write(caseTag,'(''Ra='',ES10.3E2,'',nx='',I0,'',ny='',I0,'',nz='',I0,'',useG='',L1,'',mpi='',I0)') &
-         Rayleigh, nx, ny, nzGlobal, useG, mpiSize
+    write(caseTag,'("Ra=",ES10.3E2,",nx=",I0,",ny=",I0,",nz=",I0,",useG=",L1,",old=",L1,",mpi=",I0)') &
+         Rayleigh, nx, ny, nzGlobal, useG, useLegacyThermalScheme, mpiSize
     call append_convergence_master_tecplot3d('convergence_all_3D_mpi.plt', caseTag, itc, errorU, errorT)
-    write(*,'(''MPI '',I4,1X,I12,1X,ES24.16,1X,ES24.16)') mpiRank, itc, errorU, errorT
+    write(*,'(I12,1X,ES24.16,1X,ES24.16)') itc, errorU, errorT
   endif
 
+  return
 end subroutine check3d
 #endif
 
@@ -1858,6 +1951,16 @@ end subroutine backupData3d
 
 
 !===========================================================================================================================
+! 子程序: output_Tecplot3d
+! 作用: MPI 版本当前仍只输出中面切片，这里保留和 3DRB 一致的调用入口。
+!===========================================================================================================================
+subroutine output_Tecplot3d()
+  call output_midplanes_tecplot3d()
+  return
+end subroutine output_Tecplot3d
+
+
+!===========================================================================================================================
 ! 子程序: output_midplanes_tecplot3d
 ! 作用: 输出 x/y/z 三个中面切片，便于快速查看三维流场结构。
 !===========================================================================================================================
@@ -1940,6 +2043,15 @@ subroutine calNuRe3d()
   endif
 
 end subroutine calNuRe3d
+
+
+subroutine SideHeatedcalc_Nu_global3d()
+  call RBcalc_Nu_global3d()
+end subroutine SideHeatedcalc_Nu_global3d
+
+subroutine SideHeatedcalc_Nu_wall_avg3d()
+  call RBcalc_Nu_wall_avg3d()
+end subroutine SideHeatedcalc_Nu_wall_avg3d
 
 
 subroutine RBcalc_Nu_global3d()
@@ -2131,28 +2243,49 @@ subroutine RBcalc_Nu_wall_avg3d()
 end subroutine RBcalc_Nu_wall_avg3d
 
 
-subroutine RBcalc_midplane_velocity_max3d()
+subroutine SideHeatedcalc_umid_max3d()
+  call calc_umid_max_common3d('SideHeatedcalc_umid_max')
+end subroutine SideHeatedcalc_umid_max3d
+
+subroutine SideHeatedcalc_vmid_max3d()
+  call calc_vmid_max_common3d('SideHeatedcalc_vmid_max')
+end subroutine SideHeatedcalc_vmid_max3d
+
+subroutine SideHeatedcalc_wmid_max3d()
+  call calc_wmid_max_common3d('SideHeatedcalc_wmid_max')
+end subroutine SideHeatedcalc_wmid_max3d
+
+subroutine RBcalc_umid_max3d()
+  call calc_umid_max_common3d('RBcalc_umid_max')
+end subroutine RBcalc_umid_max3d
+
+subroutine RBcalc_vmid_max3d()
+  call calc_vmid_max_common3d('RBcalc_vmid_max')
+end subroutine RBcalc_vmid_max3d
+
+subroutine RBcalc_wmid_max3d()
+  call calc_wmid_max_common3d('RBcalc_wmid_max')
+end subroutine RBcalc_wmid_max3d
+
+subroutine calc_umid_max_common3d(logTag)
   use mpi
   use commondata3dOpenaccMpi
   implicit none
-  integer(kind=4) :: i, j, k, iL, iR, jL, jR, kL, kR, jBest, kBest, iBest, r, bestIdx
-  real(kind=8) :: targetX, targetY, targetZ, wx, wy, wz, val, umax, vmax, wmax
-  real(kind=8) :: yAtU, zAtU, xAtV, zAtV, xAtW, yAtW
-  real(kind=8) :: localU(3), localV(3), localW(3)
-  real(kind=8), allocatable :: gatherU(:), gatherV(:), gatherW(:)
+  character(len=*), intent(in) :: logTag
+  integer(kind=4) :: j, k, iL, iR, jBest, kBest, r, bestIdx
+  real(kind=8) :: targetX, weight, val, umax, yAtU, zAtU
+  real(kind=8) :: localU(3)
+  real(kind=8), allocatable :: gatherU(:)
 
   targetX = 0.5d0 * xp(nx+1)
-  targetY = 0.5d0 * yp(ny+1)
-  targetZ = 0.5d0 * dble(nzGlobal) / lengthUnit
-  call find_bracketing_index(xp, nx, targetX, iL, iR, wx)
-  call find_bracketing_index(yp, ny, targetY, jL, jR, wy)
+  call find_bracketing_index(xp, nx, targetX, iL, iR, weight)
 
   umax = -huge(1.0d0)
   jBest = 1
   kBest = 1
   do k = 1, nz
     do j = 1, ny
-      call interp_scalar_x(iL, iR, wx, j, k, u, val)
+      call interp_scalar_x(iL, iR, weight, j, k, u, val)
       if (val .GT. umax) then
         umax = val
         jBest = j
@@ -2164,12 +2297,50 @@ subroutine RBcalc_midplane_velocity_max3d()
   zAtU = zp(kBest)
   localU = (/ umax, yAtU, zAtU /)
 
+  allocate(gatherU(3*mpiSize))
+  call MPI_Gather(localU, 3, MPI_DOUBLE_PRECISION, gatherU, 3, MPI_DOUBLE_PRECISION, mpiRoot, MPI_COMM_WORLD, mpiErr)
+
+  if (isRoot) then
+    bestIdx = 1
+    do r = 1, mpiSize-1
+      if (gatherU(3*r+1) .GT. gatherU(3*bestIdx-2)) bestIdx = r + 1
+    enddo
+    umax = gatherU(3*bestIdx-2)
+    yAtU = gatherU(3*bestIdx-1)
+    zAtU = gatherU(3*bestIdx)
+
+    write(*,'(A,1X,ES16.8,2X,A,1X,ES16.8,2X,A,1X,ES16.8,2X,A,1X,ES16.8)') &
+         'u_mid_max =', umax*velocityScaleCompare, 'at y =', yAtU, 'z =', zAtU, 'on x_mid =', targetX
+
+    open(unit=00, file=trim(settingsFile), status='unknown', position='append')
+    write(00,*) '--- ', trim(logTag), ' ---'
+    write(00,*) 'x_mid =', targetX
+    write(00,*) 'u_mid_max =', umax*velocityScaleCompare, ' y_pos =', yAtU, ' z_pos =', zAtU
+    close(00)
+  endif
+
+  deallocate(gatherU)
+end subroutine calc_umid_max_common3d
+
+subroutine calc_vmid_max_common3d(logTag)
+  use mpi
+  use commondata3dOpenaccMpi
+  implicit none
+  character(len=*), intent(in) :: logTag
+  integer(kind=4) :: i, k, jL, jR, iBest, kBest, r, bestIdx
+  real(kind=8) :: targetY, weight, val, vmax, xAtV, zAtV
+  real(kind=8) :: localV(3)
+  real(kind=8), allocatable :: gatherV(:)
+
+  targetY = 0.5d0 * yp(ny+1)
+  call find_bracketing_index(yp, ny, targetY, jL, jR, weight)
+
   vmax = -huge(1.0d0)
   iBest = 1
   kBest = 1
   do k = 1, nz
     do i = 1, nx
-      call interp_scalar_y(jL, jR, wy, i, k, v, val)
+      call interp_scalar_y(jL, jR, weight, i, k, v, val)
       if (val .GT. vmax) then
         vmax = val
         iBest = i
@@ -2181,14 +2352,50 @@ subroutine RBcalc_midplane_velocity_max3d()
   zAtV = zp(kBest)
   localV = (/ vmax, xAtV, zAtV /)
 
+  allocate(gatherV(3*mpiSize))
+  call MPI_Gather(localV, 3, MPI_DOUBLE_PRECISION, gatherV, 3, MPI_DOUBLE_PRECISION, mpiRoot, MPI_COMM_WORLD, mpiErr)
+
+  if (isRoot) then
+    bestIdx = 1
+    do r = 1, mpiSize-1
+      if (gatherV(3*r+1) .GT. gatherV(3*bestIdx-2)) bestIdx = r + 1
+    enddo
+    vmax = gatherV(3*bestIdx-2)
+    xAtV = gatherV(3*bestIdx-1)
+    zAtV = gatherV(3*bestIdx)
+
+    write(*,'(A,1X,ES16.8,2X,A,1X,ES16.8,2X,A,1X,ES16.8,2X,A,1X,ES16.8)') &
+         'v_mid_max =', vmax*velocityScaleCompare, 'at x =', xAtV, 'z =', zAtV, 'on y_mid =', targetY
+
+    open(unit=00, file=trim(settingsFile), status='unknown', position='append')
+    write(00,*) '--- ', trim(logTag), ' ---'
+    write(00,*) 'y_mid =', targetY
+    write(00,*) 'v_mid_max =', vmax*velocityScaleCompare, ' x_pos =', xAtV, ' z_pos =', zAtV
+    close(00)
+  endif
+
+  deallocate(gatherV)
+end subroutine calc_vmid_max_common3d
+
+subroutine calc_wmid_max_common3d(logTag)
+  use mpi
+  use commondata3dOpenaccMpi
+  implicit none
+  character(len=*), intent(in) :: logTag
+  integer(kind=4) :: i, j, kL, kR, iBest, jBest, r, bestIdx
+  real(kind=8) :: targetZ, weight, val, wmax, xAtW, yAtW
+  real(kind=8) :: localW(3)
+  real(kind=8), allocatable :: gatherW(:)
+
+  targetZ = 0.5d0 * dble(nzGlobal) / lengthUnit
   if ((targetZ .GT. zp(0)) .AND. (targetZ .LE. zp(nz+1))) then
-    call find_bracketing_index(zp, nz, targetZ, kL, kR, wz)
+    call find_bracketing_index(zp, nz, targetZ, kL, kR, weight)
     wmax = -huge(1.0d0)
     iBest = 1
     jBest = 1
     do j = 1, ny
       do i = 1, nx
-        call interp_scalar_z(kL, kR, wz, i, j, w, val)
+        call interp_scalar_z(kL, kR, weight, i, j, w, val)
         if (val .GT. wmax) then
           wmax = val
           iBest = i
@@ -2203,28 +2410,10 @@ subroutine RBcalc_midplane_velocity_max3d()
     localW = (/ -huge(1.0d0), 0.0d0, 0.0d0 /)
   endif
 
-  allocate(gatherU(3*mpiSize), gatherV(3*mpiSize), gatherW(3*mpiSize))
-  call MPI_Gather(localU, 3, MPI_DOUBLE_PRECISION, gatherU, 3, MPI_DOUBLE_PRECISION, mpiRoot, MPI_COMM_WORLD, mpiErr)
-  call MPI_Gather(localV, 3, MPI_DOUBLE_PRECISION, gatherV, 3, MPI_DOUBLE_PRECISION, mpiRoot, MPI_COMM_WORLD, mpiErr)
+  allocate(gatherW(3*mpiSize))
   call MPI_Gather(localW, 3, MPI_DOUBLE_PRECISION, gatherW, 3, MPI_DOUBLE_PRECISION, mpiRoot, MPI_COMM_WORLD, mpiErr)
 
   if (isRoot) then
-    bestIdx = 1
-    do r = 1, mpiSize-1
-      if (gatherU(3*r+1) .GT. gatherU(3*bestIdx-2)) bestIdx = r + 1
-    enddo
-    umax = gatherU(3*bestIdx-2)
-    yAtU = gatherU(3*bestIdx-1)
-    zAtU = gatherU(3*bestIdx)
-
-    bestIdx = 1
-    do r = 1, mpiSize-1
-      if (gatherV(3*r+1) .GT. gatherV(3*bestIdx-2)) bestIdx = r + 1
-    enddo
-    vmax = gatherV(3*bestIdx-2)
-    xAtV = gatherV(3*bestIdx-1)
-    zAtV = gatherV(3*bestIdx)
-
     bestIdx = 1
     do r = 1, mpiSize-1
       if (gatherW(3*r+1) .GT. gatherW(3*bestIdx-2)) bestIdx = r + 1
@@ -2234,24 +2423,17 @@ subroutine RBcalc_midplane_velocity_max3d()
     yAtW = gatherW(3*bestIdx)
 
     write(*,'(A,1X,ES16.8,2X,A,1X,ES16.8,2X,A,1X,ES16.8,2X,A,1X,ES16.8)') &
-         'u_max* =', umax*velocityScaleCompare, 'y =', yAtU, 'z =', zAtU, 'x_mid =', targetX
-    write(*,'(A,1X,ES16.8,2X,A,1X,ES16.8,2X,A,1X,ES16.8,2X,A,1X,ES16.8)') &
-         'v_max* =', vmax*velocityScaleCompare, 'x =', xAtV, 'z =', zAtV, 'y_mid =', targetY
-    write(*,'(A,1X,ES16.8,2X,A,1X,ES16.8,2X,A,1X,ES16.8,2X,A,1X,ES16.8)') &
-         'w_max* =', wmax*velocityScaleCompare, 'x =', xAtW, 'y =', yAtW, 'z_mid =', targetZ
+         'w_mid_max =', wmax*velocityScaleCompare, 'at x =', xAtW, 'y =', yAtW, 'on z_mid =', targetZ
 
     open(unit=00, file=trim(settingsFile), status='unknown', position='append')
-    write(00,'(A,1X,ES16.8,2X,A,1X,ES16.8,2X,A,1X,ES16.8,2X,A,1X,ES16.8)') &
-         'u_max* =', umax*velocityScaleCompare, 'y =', yAtU, 'z =', zAtU, 'x_mid =', targetX
-    write(00,'(A,1X,ES16.8,2X,A,1X,ES16.8,2X,A,1X,ES16.8,2X,A,1X,ES16.8)') &
-         'v_max* =', vmax*velocityScaleCompare, 'x =', xAtV, 'z =', zAtV, 'y_mid =', targetY
-    write(00,'(A,1X,ES16.8,2X,A,1X,ES16.8,2X,A,1X,ES16.8,2X,A,1X,ES16.8)') &
-         'w_max* =', wmax*velocityScaleCompare, 'x =', xAtW, 'y =', yAtW, 'z_mid =', targetZ
+    write(00,*) '--- ', trim(logTag), ' ---'
+    write(00,*) 'z_mid =', targetZ
+    write(00,*) 'w_mid_max =', wmax*velocityScaleCompare, ' x_pos =', xAtW, ' y_pos =', yAtW
     close(00)
   endif
 
-  deallocate(gatherU, gatherV, gatherW)
-end subroutine RBcalc_midplane_velocity_max3d
+  deallocate(gatherW)
+end subroutine calc_wmid_max_common3d
 
 
 !===========================================================================================================================
