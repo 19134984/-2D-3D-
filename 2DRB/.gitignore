@@ -1,2 +1,4 @@
 # Keep third-party reference code local only.
 references/
+detail/
+codex-skills/

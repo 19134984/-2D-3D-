@@ -80,7 +80,7 @@ module commondata3dOpenacc
 #endif
   real(kind=8), parameter :: pi=acos(-1.0d0)
 
-  real(kind=8), parameter :: Rayleigh=1.0d7
+  real(kind=8), parameter :: Rayleigh=1.0d5
   real(kind=8), parameter :: Prandtl=0.71d0
   real(kind=8), parameter :: Mach=0.1d0
   real(kind=8), parameter :: Thot=0.5d0, Tcold=-0.5d0
@@ -126,9 +126,9 @@ module commondata3dOpenacc
   !===============================================================================================
   ! 输出/备份相关设置（以自由落体时间 t_ff 为单位）
   integer(kind=4), parameter :: itc_max=20000000
-  real(kind=8), parameter :: outputFrequency=100.0d0
+  real(kind=8), parameter :: outputFrequency=100.0d0   !100个无量纲时间（以格子时间计算）
   integer(kind=4), parameter :: dimensionlessTimeMax=int(12000.0d0/outputFrequency)
-  integer(kind=4), parameter :: backupInterval=1000
+  integer(kind=4), parameter :: backupInterval=1000    !1000个无量纲时间（以格子时间计算）
 
   real(kind=8), parameter :: epsU=1.0d-7, epsT=1.0d-7
 
@@ -219,23 +219,21 @@ program main3dOpenacc
   close(00)
 
   call initial3d()
-  call enter_data_3d_openacc()
+  call enter_data_3d_openacc()     !把主要数组和常量映射到 OpenACC 设备端
 
   call CPU_TIME(timeStart)
-  call system_clock(wallClockStart, wallClockRate)
-  timeStart2 = dble(wallClockStart) / dble(max(wallClockRate,1_8))
+  call system_clock(wallClockStart, wallClockRate)   !wallClockStart 保存“当前这一刻”的时钟计数值, tick 数
+  timeStart2 = dble(wallClockStart) / dble(max(wallClockRate,1_8))  !把“tick 数”换成“秒数”
 
   do while (((errorU .GT. epsU) .OR. (errorT .GT. epsT)) .AND. (itc .LE. itc_max))
     itc = itc + 1
 
     call collision3d()
-    call fill_periodic_ghosts_f_post()
     call streaming3d()
     call bounceback3d()
     call macro3d()
 
     call collisionT3d()
-    call fill_periodic_ghosts_g_post()
     call streamingT3d()
     call bouncebackT3d()
     call macroT3d()
@@ -296,7 +294,7 @@ program main3dOpenacc
 #endif
 
   call calNuRe3d()
-  call output_Tecplot3d()
+
 
   open(unit=00, file=trim(settingsFile), status='unknown', position='append')
   write(00,*) '======================================================================'
@@ -357,8 +355,8 @@ subroutine initial3d()
   errorT = 100.0d0
 
   ! 把按自由落体时间给出的输出/备份间隔换算成格子步数 itc
-  outputIntervalItc = max(1, int(outputFrequency * timeUnit))
-  backupIntervalItc = max(1, int(backupInterval * timeUnit))
+  outputIntervalItc = max(1, int(outputFrequency * timeUnit))  !100个无量纲时间（以格子时间计算）
+  backupIntervalItc = max(1, int(backupInterval * timeUnit))   !1000个无量纲时间（以格子时间计算）
 
   !-----------------------------------------------------------------------------------------------
   ! 记录各种信息在日志文件中
@@ -544,7 +542,7 @@ subroutine initial3d()
     enddo
     write(00,*) 'Temperature B.C. for horizontal walls are: ===Hot/cold wall==='
 #ifdef RayleighBenardCell
-    if (Rayleigh .LE. 1.0d4) then
+    if (Rayleigh .LT. 1.0d4) then
       xLen = xp(nx+1)
       yLen = yp(ny+1)
       rbInitPerturbAmp = 1.0d-3 * (Thot - Tcold)
@@ -557,7 +555,7 @@ subroutine initial3d()
       enddo
       write(00,'(a,1x,es12.4)') '3D RB initial T perturbation amplitude =', rbInitPerturbAmp
     else
-      write(00,*) '3D RB initial T perturbation skipped because Rayleigh > 1.0d4'
+      write(00,*) '3D RB initial T perturbation skipped because Rayleigh >= 1.0d4'
     endif
 #endif
 #endif
@@ -994,45 +992,6 @@ end subroutine collision3d
 
 
 !===========================================================================================================================
-! 子程序: fill_periodic_ghosts_f_post
-! 作用: 为流场分布函数补齐周期 ghost 层，便于统一 pull streaming。
-!===========================================================================================================================
-subroutine fill_periodic_ghosts_f_post()
-  use commondata3dOpenacc
-  implicit none
-
-  integer(kind=4) :: i, j, k, alpha
-
-#ifdef VerticalWallsPeriodicalU
-  ! x 方向是周期边界时，先把左右 ghost 层补齐
- !$acc parallel loop collapse(2) present(f_post)
-  do k = 1, nz
-    do j = 1, ny
-      do alpha = 0, qf-1
-        f_post(alpha,0,j,k) = f_post(alpha,nx,j,k)
-        f_post(alpha,nx+1,j,k) = f_post(alpha,1,j,k)
-      enddo
-    enddo
-  enddo
-#endif
-
-#ifdef SpanwiseWallsPeriodicalU
-  ! z 方向是周期边界时，再把前后 ghost 层补齐
- !$acc parallel loop collapse(2) present(f_post)
-  do j = 1, ny
-    do i = 0, nx+1
-      do alpha = 0, qf-1
-        f_post(alpha,i,j,0) = f_post(alpha,i,j,nz)
-        f_post(alpha,i,j,nz+1) = f_post(alpha,i,j,1)
-      enddo
-    enddo
-  enddo
-#endif
-
-end subroutine fill_periodic_ghosts_f_post
-
-
-!===========================================================================================================================
 ! 子程序: streaming3d
 ! 作用: 对流场分布函数执行三维 pull streaming。
 !===========================================================================================================================
@@ -1263,45 +1222,6 @@ subroutine collisionT3d()
   enddo
 
 end subroutine collisionT3d
-
-
-!===========================================================================================================================
-! 子程序: fill_periodic_ghosts_g_post
-! 作用: 为温度分布函数补齐周期 ghost 层，便于统一 pull streaming。
-!===========================================================================================================================
-subroutine fill_periodic_ghosts_g_post()
-  use commondata3dOpenacc
-  implicit none
-
-  integer(kind=4) :: i, j, k, alpha
-
-#ifdef VerticalWallsPeriodicalT
-  ! x 方向是周期边界时，先把左右 ghost 层补齐
- !$acc parallel loop collapse(2) present(g_post)
-  do k = 1, nz
-    do j = 1, ny
-      do alpha = 0, qt-1
-        g_post(alpha,0,j,k) = g_post(alpha,nx,j,k)
-        g_post(alpha,nx+1,j,k) = g_post(alpha,1,j,k)
-      enddo
-    enddo
-  enddo
-#endif
-
-#ifdef SpanwiseWallsPeriodicalT
-  ! z 方向是周期边界时，再把前后 ghost 层补齐
- !$acc parallel loop collapse(2) present(g_post)
-  do j = 1, ny
-    do i = 0, nx+1
-      do alpha = 0, qt-1
-        g_post(alpha,i,j,0) = g_post(alpha,i,j,nz)
-        g_post(alpha,i,j,nz+1) = g_post(alpha,i,j,1)
-      enddo
-    enddo
-  enddo
-#endif
-
-end subroutine fill_periodic_ghosts_g_post
 
 
 !===========================================================================================================================
@@ -1599,6 +1519,7 @@ subroutine check3d()
   endif
 
   call append_convergence_tecplot3d('convergence3D.plt', itc, errorU, errorT)
+
   write(caseTag,'("Ra=",ES10.3E2,",nx=",I0,",ny=",I0,",nz=",I0,",useG=",L1,",old=",L1)') &
        Rayleigh, nx, ny, nz, useG, useLegacyThermalScheme
   call append_convergence_master_tecplot3d('convergence_all_3D.plt', caseTag, itc, errorU, errorT)
@@ -3241,6 +3162,3 @@ subroutine dumpstring_to_unit(iunit, instring)
 
   return
 end subroutine dumpstring_to_unit
-
-
-

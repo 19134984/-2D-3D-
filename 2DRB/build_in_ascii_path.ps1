@@ -1,19 +1,14 @@
 param(
     [string]$SourceFile = "2DRB.F90",
     [string]$BuildRoot = "C:\msys64\tmp\fortran-2drb-build",
-    [switch]$Run
+    [switch]$Run,
+    [switch]$SyntaxOnly,
+    [switch]$UseMpi,
+    [string]$ParallelFlag = "-fopenmp",
+    [string[]]$ExtraArgs = @()
 )
 
 $ErrorActionPreference = "Stop"
-
-function Convert-ToMsysPath {
-    param([string]$WindowsPath)
-
-    $full = [System.IO.Path]::GetFullPath($WindowsPath)
-    $drive = $full.Substring(0, 1).ToLowerInvariant()
-    $rest  = $full.Substring(2).Replace("\", "/")
-    return "/$drive$rest"
-}
 
 $projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $sourcePath  = Join-Path $projectRoot $SourceFile
@@ -22,12 +17,12 @@ if (-not (Test-Path -LiteralPath $sourcePath)) {
     throw "Source file not found: $sourcePath"
 }
 
-if (-not (Test-Path -LiteralPath "C:\msys64\usr\bin\bash.exe")) {
-    throw "MSYS2 bash was not found at C:\msys64\usr\bin\bash.exe"
-}
+$msysBin = "C:\msys64\ucrt64\bin"
+$compilerName = if ($UseMpi) { "mpifort.exe" } else { "gfortran.exe" }
+$compilerPath = Join-Path $msysBin $compilerName
 
-if (-not (Test-Path -LiteralPath "C:\msys64\ucrt64\bin\gfortran.exe")) {
-    throw "gfortran was not found at C:\msys64\ucrt64\bin\gfortran.exe"
+if (-not (Test-Path -LiteralPath $compilerPath)) {
+    throw "$compilerName was not found at $compilerPath"
 }
 
 New-Item -ItemType Directory -Force -Path $BuildRoot | Out-Null
@@ -38,15 +33,38 @@ $buildSrc   = Join-Path $BuildRoot $sourceName
 
 Copy-Item -LiteralPath $sourcePath -Destination $buildSrc -Force
 
-$buildRootMsys = Convert-ToMsysPath $BuildRoot
-$compileCmd = "export PATH=/ucrt64/bin:/usr/bin:`$PATH && cd '$buildRootMsys' && /ucrt64/bin/gfortran -cpp -fopenmp '$sourceName' -o '$exeName'"
-
-if ($Run) {
-    $compileCmd += " && './$exeName'"
+$env:PATH = "$msysBin;$env:PATH"
+$compileArgs = @("-cpp")
+if ($ParallelFlag) {
+    $compileArgs += $ParallelFlag
+}
+if ($ExtraArgs.Count -gt 0) {
+    $compileArgs += $ExtraArgs
+}
+if ($SyntaxOnly) {
+    $compileArgs += @("-fsyntax-only", $buildSrc)
+} else {
+    $compileArgs += @($buildSrc, "-o", (Join-Path $BuildRoot $exeName))
 }
 
 Write-Host "Build root  : $BuildRoot"
 Write-Host "Source file : $sourcePath"
-Write-Host "Executable  : $(Join-Path $BuildRoot $exeName)"
+Write-Host "Compiler    : $compilerPath"
+if ($SyntaxOnly) {
+    Write-Host "Mode        : syntax-only"
+} else {
+    Write-Host "Executable  : $(Join-Path $BuildRoot $exeName)"
+}
 
-& "C:\msys64\usr\bin\bash.exe" -lc $compileCmd
+& $compilerPath @compileArgs
+if ($LASTEXITCODE -ne 0) {
+    exit $LASTEXITCODE
+}
+
+if ($Run) {
+    if ($SyntaxOnly) {
+        throw "-Run cannot be used together with -SyntaxOnly"
+    }
+    & (Join-Path $BuildRoot $exeName)
+    exit $LASTEXITCODE
+}

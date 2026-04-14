@@ -35,8 +35,6 @@
 #define SpanwiseWallsAdiabatic
 
 !算法切换
-! RB 小 Ra 初始温度扰动：只对 RayleighBenardCell 且 Rayleigh<=1e4 生效
-#define EnableRBInitPerturbation3D
 #define EnableUseG
 !#define EnableLegacyThermalScheme
 
@@ -130,8 +128,14 @@ module commondata3dOpenaccMpi
   integer(kind=4) :: dimensionlessTime
   integer(kind=4) :: outputIntervalItc, backupIntervalItc
   integer(kind=4), parameter :: mpiRoot = 0
+  ! mpiRank / mpiSize        : 当前进程编号 / 总进程数
+  ! mpiLeft / mpiRight       : 在 z-slab 分解下的左右邻居 rank
+  ! nz                       : 当前 rank 持有的本地 z 层数
   integer(kind=4) :: nz, mpiRank, mpiSize, mpiErr, mpiLeft, mpiRight
+  ! zStartGlobal / zEndGlobal: 当前 rank 对应的全局 z 层范围（1-based）
+  ! accDeviceId              : 当前 rank 绑定到的 OpenACC 设备编号
   integer(kind=4) :: zStartGlobal, zEndGlobal, accDeviceId, numAccDevices
+  ! isFirstZRank / isLastZRank 用来判断当前 rank 是否位于 z 分块链的两端
   logical :: isRoot, isFirstZRank, isLastZRank
   character(len=16) :: rankTag
 
@@ -213,11 +217,16 @@ program main3dOpenaccMpi
   integer(kind=4) :: time
   integer(kind=8) :: wallClockStart, wallClockEnd, wallClockRate
 
+  ! MPI 启动三步：
+  ! 1) 初始化 MPI 环境
+  ! 2) 取得当前 rank 编号
+  ! 3) 取得总 rank 数
   call MPI_Init(mpiErr)
   call MPI_Comm_rank(MPI_COMM_WORLD, mpiRank, mpiErr)
   call MPI_Comm_size(MPI_COMM_WORLD, mpiSize, mpiErr)
   isRoot = (mpiRank .EQ. mpiRoot)
 
+  ! 先按 z 方向把全域切成 mpiSize 份，再给每个 rank 生成独立的输出文件前缀
   call setup_mpi_decomposition_3d()
   call compose_ranked_file_prefixes_3d()
 
@@ -228,6 +237,8 @@ program main3dOpenaccMpi
   write(00,*) 'Starting OpenACC+MPI >>>>>>', ' rank =', mpiRank, '; size =', mpiSize
   write(00,*) 'Local nz =', nz, '; Global z range =', zStartGlobal, zEndGlobal, '; nzGlobal =', nzGlobal
 
+  ! 每个 MPI rank 独立初始化 OpenACC 运行时，然后按 rank -> device 的方式绑定 GPU。
+  ! 这里采用最简单的 round-robin 方案：rank 通过 mod 映射到本机可见 GPU。
   call acc_init(acc_device_default)
   numAccDevices = acc_get_num_devices(acc_device_default)
   if (numAccDevices .GT. 0) then
@@ -251,13 +262,13 @@ program main3dOpenaccMpi
     itc = itc + 1
 
     call collision3d()
-    call fill_periodic_ghosts_f_post()
+    call exchange_f_post_halo_mpi()
     call streaming3d()
     call bounceback3d()
     call macro3d()
 
     call collisionT3d()
-    call fill_periodic_ghosts_g_post()
+    call exchange_g_post_halo_mpi()
     call streamingT3d()
     call bouncebackT3d()
     call macroT3d()
@@ -386,6 +397,8 @@ subroutine setup_mpi_decomposition_3d()
     call MPI_Abort(MPI_COMM_WORLD, 1, mpiErr)
   endif
 
+  ! 采用 1D z-slab 分解：
+  ! 每个 rank 拿到 baseNz 层，前 remainderNz 个 rank 再多拿 1 层，保证尽量均匀。
   baseNz = nzGlobal / mpiSize
   remainderNz = mod(nzGlobal, mpiSize)
 
@@ -407,9 +420,11 @@ subroutine setup_mpi_decomposition_3d()
   isLastZRank = (zEndGlobal .EQ. nzGlobal)
 
 #ifdef SpanwiseWallsPeriodicalU
+  ! 若 z 方向是周期边界，则 rank 邻居也是首尾相接的环形关系。
   mpiLeft = mod(mpiRank - 1 + mpiSize, mpiSize)
   mpiRight = mod(mpiRank + 1, mpiSize)
 #else
+  ! 若 z 方向不是周期边界，则最左/最右 rank 在外侧没有邻居，置为 MPI_PROC_NULL。
   if (isFirstZRank) then
     mpiLeft = MPI_PROC_NULL
   else
@@ -617,7 +632,6 @@ subroutine initial3d()
     enddo
     write(00,*) 'Temperature B.C. for horizontal walls are: ===Hot/cold wall==='
 #ifdef RayleighBenardCell
-#ifdef EnableRBInitPerturbation3D
     if (Rayleigh .LE. 1.0d4) then
       xLen = xp(nx+1)
       yLen = yp(ny+1)
@@ -633,7 +647,6 @@ subroutine initial3d()
     else
       write(00,*) '3D RB initial T perturbation skipped because Rayleigh > 1.0d4'
     endif
-#endif
 #endif
 #endif
 
@@ -775,6 +788,7 @@ subroutine exchange_f_post_halo_mpi()
 
   if (mpiSize .EQ. 1) then
 #ifdef SpanwiseWallsPeriodicalU
+    ! 单 rank 时不需要真正 MPI 通信；若 z 周期，直接在本地补 halo 即可。
     !$acc parallel loop collapse(2) present(f_post)
     do j = 1, ny
       do i = 0, nx+1
@@ -789,8 +803,13 @@ subroutine exchange_f_post_halo_mpi()
   endif
 
   nBuf = qf * (nx + 2) * (ny + 2)
-  !$acc update self(f_post(:,:,:,1), f_post(:,:,:,nz))
+  ! 当前实现采用“主机参与通信”的路径：
+  ! 先把设备端的首层/末层更新回主机端，再打包后用 MPI_Sendrecv 交换。
+  !$acc update self(f_post(:,:,:,1))
+  !$acc update self(f_post(:,:,:,nz))
 
+  ! 打包待发送的两张 z 边界面：
+  ! k=1 发给左邻居，k=nz 发给右邻居。
   idx = 0
   do j = 0, ny+1
     do i = 0, nx+1
@@ -802,11 +821,13 @@ subroutine exchange_f_post_halo_mpi()
     enddo
   enddo
 
+  ! 两次 Sendrecv 分别完成“向左发 / 从右收”和“向右发 / 从左收”。
   call MPI_Sendrecv(fSendLower, nBuf, MPI_DOUBLE_PRECISION, mpiLeft, 101, &
        fRecvUpper, nBuf, MPI_DOUBLE_PRECISION, mpiRight, 101, MPI_COMM_WORLD, MPI_STATUS_IGNORE, mpiErr)
   call MPI_Sendrecv(fSendUpper, nBuf, MPI_DOUBLE_PRECISION, mpiRight, 102, &
        fRecvLower, nBuf, MPI_DOUBLE_PRECISION, mpiLeft, 102, MPI_COMM_WORLD, MPI_STATUS_IGNORE, mpiErr)
 
+  ! 把收到的邻居边界写回本地 halo 层：0 层对应左 halo，nz+1 层对应右 halo。
   if (mpiLeft .NE. MPI_PROC_NULL) then
     idx = 0
     do j = 0, ny+1
@@ -831,7 +852,9 @@ subroutine exchange_f_post_halo_mpi()
     enddo
   endif
 
-  !$acc update device(f_post(:,:,:,0), f_post(:,:,:,nz+1))
+  ! halo 回填到主机后，再把这两层送回设备端，供后续 pull streaming 直接读取。
+  !$acc update device(f_post(:,:,:,0))
+  !$acc update device(f_post(:,:,:,nz+1))
 end subroutine exchange_f_post_halo_mpi
 
 
@@ -847,6 +870,7 @@ subroutine exchange_g_post_halo_mpi()
 
   if (mpiSize .EQ. 1) then
 #ifdef SpanwiseWallsPeriodicalT
+    ! 温度场与流场同理：单 rank 时 z 周期退化成一次本地复制。
     !$acc parallel loop collapse(2) present(g_post)
     do j = 1, ny
       do i = 0, nx+1
@@ -861,8 +885,11 @@ subroutine exchange_g_post_halo_mpi()
   endif
 
   nBuf = qt * (nx + 2) * (ny + 2)
-  !$acc update self(g_post(:,:,:,1), g_post(:,:,:,nz))
+  ! 先取回设备端边界面，再通过 MPI 交换热分布函数的 z 向 halo。
+  !$acc update self(g_post(:,:,:,1))
+  !$acc update self(g_post(:,:,:,nz))
 
+  ! 打包 k=1 和 k=nz 两张温度边界面。
   idx = 0
   do j = 0, ny+1
     do i = 0, nx+1
@@ -874,6 +901,7 @@ subroutine exchange_g_post_halo_mpi()
     enddo
   enddo
 
+  ! Sendrecv 标签与流场分开，避免 f/g 通信相互混淆。
   call MPI_Sendrecv(gSendLower, nBuf, MPI_DOUBLE_PRECISION, mpiLeft, 201, &
        gRecvUpper, nBuf, MPI_DOUBLE_PRECISION, mpiRight, 201, MPI_COMM_WORLD, MPI_STATUS_IGNORE, mpiErr)
   call MPI_Sendrecv(gSendUpper, nBuf, MPI_DOUBLE_PRECISION, mpiRight, 202, &
@@ -903,7 +931,9 @@ subroutine exchange_g_post_halo_mpi()
     enddo
   endif
 
-  !$acc update device(g_post(:,:,:,0), g_post(:,:,:,nz+1))
+  ! 把温度场 halo 重新送回设备端。
+  !$acc update device(g_post(:,:,:,0))
+  !$acc update device(g_post(:,:,:,nz+1))
 end subroutine exchange_g_post_halo_mpi
 
 
@@ -1791,6 +1821,8 @@ subroutine check3d()
     enddo
   enddo
 
+  ! OpenACC reduction 得到的是“当前 rank 的局部误差和”，
+  ! 这里再用 MPI_Allreduce 把所有 rank 的局部和汇总成全局误差。
   call MPI_Allreduce(MPI_IN_PLACE, error1, 1, MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, mpiErr)
   call MPI_Allreduce(MPI_IN_PLACE, error2, 1, MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, mpiErr)
   call MPI_Allreduce(MPI_IN_PLACE, error5, 1, MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, mpiErr)
@@ -2016,6 +2048,7 @@ subroutine calNuRe3d()
     enddo
   enddo
 #endif
+  ! 体平均 Nu 先在本地子域求和，再跨 rank 做全局求和。
   call MPI_Allreduce(MPI_IN_PLACE, NuVolAvg_temp, 1, MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, mpiErr)
   NuVolAvg(dimensionlessTime) = NuVolAvg_temp / dble(nx * ny * nzGlobal) * lengthUnit / diffusivity + 1.0d0
 
@@ -2028,6 +2061,7 @@ subroutine calNuRe3d()
       enddo
     enddo
   enddo
+  ! ReVolAvg 同理：局部速度平方和 -> 全局平方和。
   call MPI_Allreduce(MPI_IN_PLACE, ReVolAvg_temp, 1, MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, mpiErr)
   ReVolAvg(dimensionlessTime) = dsqrt(ReVolAvg_temp / dble(nx * ny * nzGlobal)) * lengthUnit / viscosity
 
@@ -2298,6 +2332,8 @@ subroutine calc_umid_max_common3d(logTag)
   localU = (/ umax, yAtU, zAtU /)
 
   allocate(gatherU(3*mpiSize))
+  ! 每个 rank 只知道自己子域上的局部最大值及位置；
+  ! 用 MPI_Gather 把 (umax, y, z) 收集到 root，再由 root 选出全局最大值。
   call MPI_Gather(localU, 3, MPI_DOUBLE_PRECISION, gatherU, 3, MPI_DOUBLE_PRECISION, mpiRoot, MPI_COMM_WORLD, mpiErr)
 
   if (isRoot) then

@@ -41,9 +41,9 @@
 
 !算法切换
 !启用 M1G 修正；注释掉则不使用 useG 相关修正
-#define EnableUseG
+!#define EnableUseG
 !启用旧算法
-!#define EnableLegacyThermalScheme
+#define EnableLegacyThermalScheme
 
 
 !   自定义宏结束
