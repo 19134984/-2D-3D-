@@ -281,9 +281,12 @@ program main3d
 #ifdef SideHeatedCell
   call SideHeatedcalc_Nu_global()
   call SideHeatedcalc_Nu_wall_avg()
+  call SideHeatedcalc_Nu_zmid_wall_mean()
   call SideHeatedcalc_umid_max()
   call SideHeatedcalc_vmid_max()
   call SideHeatedcalc_wmid_max()
+  call SideHeatedcalc_centerline_uv_max()
+  call SideHeatedcalc_kinetic_energy_avg()
 #endif
 
 #ifdef RayleighBenardCell
@@ -2042,6 +2045,62 @@ end subroutine SideHeatedcalc_Nu_wall_avg
 
 
 !===========================================================================================================================
+! 子程序: SideHeatedcalc_Nu_zmid_wall_mean
+! 作用: 计算侧壁差温工况下 z=Lz/2 中平面上 x=0 和 x=1 两条壁线各自的平均 Nusselt 数。
+! 用途: 保持与主侧壁 Nu 统计相同的壁面导数离散方式，只在 z 方向插值到中平面后沿 y 求平均。
+!===========================================================================================================================
+subroutine SideHeatedcalc_Nu_zmid_wall_mean()
+  use commondata3d
+  implicit none
+  integer(kind=4) :: j, kL, kR
+  real(kind=8) :: targetZ, weight
+  real(kind=8) :: dx, deltaT
+  real(kind=8) :: Tleft1, Tleft2, Tright1, Tright2
+  real(kind=8) :: qx_hot, qx_cold, Nu_left_mean, Nu_right_mean
+
+  targetZ = 0.5d0 * zp(nz+1)
+  call find_bracketing_index(zp, nz, targetZ, kL, kR, weight)
+
+  dx = 1.0d0 / lengthUnit
+  deltaT = Thot - Tcold
+  Nu_left_mean = 0.0d0
+  Nu_right_mean = 0.0d0
+
+  !$omp parallel do default(none) shared(T,kL,kR,weight,dx,deltaT) private(j,Tleft1,Tleft2,Tright1,Tright2,qx_hot,qx_cold) reduction(+:Nu_left_mean,Nu_right_mean)
+  do j = 1, ny
+    call interp_scalar_z(kL, kR, weight, 1,  j, T, Tleft1)
+    call interp_scalar_z(kL, kR, weight, 2,  j, T, Tleft2)
+    call interp_scalar_z(kL, kR, weight, nx, j, T, Tright1)
+    call interp_scalar_z(kL, kR, weight, nx-1, j, T, Tright2)
+
+    qx_hot  = ( 8.0d0 * Thot  - 9.0d0 * Tleft1  + Tleft2 ) / (3.0d0 * dx)
+    qx_cold = (-8.0d0 * Tcold + 9.0d0 * Tright1 - Tright2) / (3.0d0 * dx)
+
+    Nu_left_mean  = Nu_left_mean  + qx_hot  / deltaT
+    Nu_right_mean = Nu_right_mean + qx_cold / deltaT
+  enddo
+  !$omp end parallel do
+
+  Nu_left_mean  = Nu_left_mean  / dble(ny)
+  Nu_right_mean = Nu_right_mean / dble(ny)
+  write(*,'(a,1x,es16.8)') 'Nu_zmid_left   =', Nu_left_mean
+  write(*,'(a,1x,es16.8)') 'Nu_zmid_right  =', Nu_right_mean
+  write(*,'(a,1x,es16.8)') 'z_mid          =', targetZ
+
+  open(unit=00, file=trim(settingsFile), status='unknown', position='append')
+  write(00,'(a,1x,es16.8)') 'Nu_zmid_left   =', Nu_left_mean
+  write(00,'(a,1x,es16.8)') 'Nu_zmid_right  =', Nu_right_mean
+  write(00,'(a,1x,es16.8)') 'z_mid          =', targetZ
+  close(00)
+
+  return
+end subroutine SideHeatedcalc_Nu_zmid_wall_mean
+!===========================================================================================================================
+! SideHeatedcalc_Nu_zmid_wall_mean 结束: 计算 z=Lz/2 截面上两侧壁线各自的平均 Nu。
+!===========================================================================================================================
+
+
+!===========================================================================================================================
 ! 子程序: RBcalc_Nu_wall_avg
 ! 作用: 计算 Rayleigh-Benard 工况下热壁、冷壁和中面的 Nusselt 数及其极值。spanwise 平均后的热壁局部 Nu 在 x 方向上的最大位置
 ! 用途: 在 RayleighBenardCell 工况结束后的后处理中调用。
@@ -2363,6 +2422,128 @@ end subroutine SideHeatedcalc_vmid_max
 subroutine SideHeatedcalc_wmid_max()
   call calc_wmid_max_common('SideHeatedcalc_wmid_max')
 end subroutine SideHeatedcalc_wmid_max
+
+
+!===========================================================================================================================
+! 子程序: SideHeatedcalc_centerline_uv_max
+! 作用: 计算侧壁差温工况下 z=Lz/2 平面内两条中心线上的极大速度及其位置。
+! 用途: 统计 x=Lx/2、z=Lz/2 垂直中心线上的 u 最大值及对应 y，
+!       以及 y=Ly/2、z=Lz/2 水平中心线上的 v 最大值及对应 x。
+!===========================================================================================================================
+subroutine SideHeatedcalc_centerline_uv_max()
+  use commondata3d
+  implicit none
+  integer(kind=4) :: i, j, iL, iR, jL, jR, kL, kR, iBest, jBest
+  real(kind=8) :: targetX, targetY, targetZ, wx, wy, wz
+  real(kind=8) :: val, valL, valR, valB, valT
+  real(kind=8) :: umax, vmax, yAtU, xAtV
+
+  targetX = 0.5d0 * xp(nx+1)
+  targetY = 0.5d0 * yp(ny+1)
+  targetZ = 0.5d0 * zp(nz+1)
+  call find_bracketing_index(xp, nx, targetX, iL, iR, wx)
+  call find_bracketing_index(yp, ny, targetY, jL, jR, wy)
+  call find_bracketing_index(zp, nz, targetZ, kL, kR, wz)
+
+  umax = -huge(1.0d0)
+  jBest = 1
+  do j = 1, ny
+    ! 在 z=Lz/2 上先做 z 向插值，再在 x=Lx/2 上做 x 向插值，得到中心竖线上的 u。
+    if (kL .EQ. kR) then
+      valL = u(iL,j,kL)
+      valR = u(iR,j,kL)
+    else
+      valL = (1.0d0 - wz) * u(iL,j,kL) + wz * u(iL,j,kR)
+      valR = (1.0d0 - wz) * u(iR,j,kL) + wz * u(iR,j,kR)
+    endif
+
+    if (iL .EQ. iR) then
+      val = valL
+    else
+      val = (1.0d0 - wx) * valL + wx * valR
+    endif
+
+    if (val .GT. umax) then
+      umax = val
+      jBest = j
+    endif
+  enddo
+  yAtU = yp(jBest)
+
+  vmax = -huge(1.0d0)
+  iBest = 1
+  do i = 1, nx
+    ! 在 z=Lz/2 上先做 z 向插值，再在 y=Ly/2 上做 y 向插值，得到中心横线上的 v。
+    if (kL .EQ. kR) then
+      valB = v(i,jL,kL)
+      valT = v(i,jR,kL)
+    else
+      valB = (1.0d0 - wz) * v(i,jL,kL) + wz * v(i,jL,kR)
+      valT = (1.0d0 - wz) * v(i,jR,kL) + wz * v(i,jR,kR)
+    endif
+
+    if (jL .EQ. jR) then
+      val = valB
+    else
+      val = (1.0d0 - wy) * valB + wy * valT
+    endif
+
+    if (val .GT. vmax) then
+      vmax = val
+      iBest = i
+    endif
+  enddo
+  xAtV = xp(iBest)
+
+  write(*,'(A,1X,ES16.8,2X,A,1X,ES16.8,2X,A,1X,ES16.8,2X,A,1X,ES16.8)') &
+       'u_centerline_max =', umax*velocityScaleCompare, 'at y =', yAtU, 'on x =', targetX, 'z =', targetZ
+  write(*,'(A,1X,ES16.8,2X,A,1X,ES16.8,2X,A,1X,ES16.8,2X,A,1X,ES16.8)') &
+       'v_centerline_max =', vmax*velocityScaleCompare, 'at x =', xAtV, 'on y =', targetY, 'z =', targetZ
+
+  open(unit=00, file=trim(settingsFile), status='unknown', position='append')
+  write(00,*) '--- SideHeatedcalc_centerline_uv_max ---'
+  write(00,*) 'z_mid =', targetZ
+  write(00,*) 'u_centerline_max =', umax*velocityScaleCompare, ' x_mid =', targetX, ' y_pos =', yAtU
+  write(00,*) 'v_centerline_max =', vmax*velocityScaleCompare, ' y_mid =', targetY, ' x_pos =', xAtV
+  close(00)
+
+end subroutine SideHeatedcalc_centerline_uv_max
+
+
+!===========================================================================================================================
+! 子程序: SideHeatedcalc_kinetic_energy_avg
+! 作用: 计算侧壁差温工况下全域平均动能 E = 0.5 * <|u|^2>。
+! 用途: 使用当前速度后处理缩放后的无量纲速度，统计整个计算域的平均动能。
+!===========================================================================================================================
+subroutine SideHeatedcalc_kinetic_energy_avg()
+  use commondata3d
+  implicit none
+  integer(kind=4) :: i, j, k
+  real(kind=8) :: coef, energyAvg
+
+  coef = velocityScaleCompare
+  energyAvg = 0.0d0
+
+  !$omp parallel do collapse(3) default(none) shared(u,v,w,coef) private(i,j,k) reduction(+:energyAvg)
+  do k = 1, nz
+    do j = 1, ny
+      do i = 1, nx
+        energyAvg = energyAvg + (coef * u(i,j,k))**2 + (coef * v(i,j,k))**2 + (coef * w(i,j,k))**2
+      enddo
+    enddo
+  enddo
+  !$omp end parallel do
+
+  energyAvg = 0.5d0 * energyAvg / dble(nx * ny * nz)
+
+  write(*,'(A,1X,ES16.8)') 'KineticEnergyAvg =', energyAvg
+
+  open(unit=00, file=trim(settingsFile), status='unknown', position='append')
+  write(00,*) '--- SideHeatedcalc_kinetic_energy_avg ---'
+  write(00,*) 'KineticEnergyAvg =', energyAvg
+  close(00)
+
+end subroutine SideHeatedcalc_kinetic_energy_avg
 
 
 !===========================================================================================================================

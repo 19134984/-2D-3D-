@@ -237,6 +237,7 @@ program main3dOpenacc
     call streamingT3d()
     call bouncebackT3d()
     call macroT3d()
+    !$acc wait(1)   ! 等待 async(1) 队列上的 GPU kernel 全部完成，后面的检查/输出才能读取一致结果
 
 #ifdef steadyFlow
     if (mod(itc, 2000) .EQ. 0) call check3d()
@@ -253,13 +254,14 @@ program main3dOpenacc
 #endif
 
 #ifdef unsteadyFlow
-      if (outputBinFile .EQ. 1) then
+      if ((outputBinFile .EQ. 1) .OR. (outputPltFile .EQ. 1)) then
         call update_host_all_3d_openacc()
+      endif
+      if (outputBinFile .EQ. 1) then
         call output_binary3d()
         if (mod(itc, backupIntervalItc) .EQ. 0) call backupData3d()
       endif
       if (outputPltFile .EQ. 1) then
-        call update_host_all_3d_openacc()
         call output_Tecplot3d()
       endif
 #endif
@@ -652,10 +654,13 @@ subroutine enter_data_3d_openacc()
   use commondata3dOpenacc
   implicit none
 
+  ! copyin: 把主机端已有初值复制到设备端，并让这些数组在整个时间推进期间常驻 GPU。
   !$acc enter data copyin(xp,yp,zp,ex,ey,ez,opp,omega,exT,eyT,ezT,oppT,omegaT)
   !$acc enter data copyin(u,v,w,T,rho,f,g,Bx_prev,By_prev,Bz_prev)
+  ! create: 只在设备端分配中间缓冲，不从主机复制初值；f_post/g_post 会在 GPU kernel 内被完全覆盖。
   !$acc enter data create(f_post,g_post)
 #ifdef steadyFlow
+  ! 稳态误差判据需要保留上一时刻场，因此也放到设备端常驻。
   !$acc enter data copyin(up,vp,wp,Tp)
 #endif
 end subroutine enter_data_3d_openacc
@@ -669,6 +674,8 @@ subroutine update_host_all_3d_openacc()
   use commondata3dOpenacc
   implicit none
 
+  ! update self: 仅在主机端需要读这些数组时，把设备端最新值同步回 CPU。
+  ! 典型场景是输出文件、写重启、或最后一次 CPU 后处理。
   !$acc update self(u,v,w,T,rho,f,g,Bx_prev,By_prev,Bz_prev)
 #ifdef steadyFlow
   !$acc update self(up,vp,wp,Tp)
@@ -685,6 +692,7 @@ subroutine exit_data_3d_openacc()
   implicit none
 
 #ifdef steadyFlow
+  ! delete: 释放设备端映射关系；不会删除主机端的 Fortran 数组，只是清掉 GPU 常驻数据。
   !$acc exit data delete(up,vp,wp,Tp)
 #endif
   !$acc exit data delete(f_post,g_post,u,v,w,T,rho,f,g,Bx_prev,By_prev,Bz_prev)
@@ -744,7 +752,15 @@ subroutine collision3d()
   real(kind=8) :: FxLoc, FyLoc, FzLoc
 
   ! 流场采用 D3Q19 MRT。这里把正变换和逆变换都显式展开
- !$acc parallel loop collapse(3) present(f,f_post,rho,u,v,w,T)
+  ! parallel loop : 为整个三重循环生成一个 GPU kernel。
+  ! gang/vector   : 指示 OpenACC 把迭代映射到粗粒度/细粒度并行层次。
+  ! collapse(3)   : 把 i-j-k 三层循环展平，扩大可并行的迭代空间。
+  ! default(none) : 强制显式写出数据属性，避免变量被编译器偷偷按默认规则处理。
+  ! present(...)  : 这些数组已经由 enter data 放到 GPU，这里直接使用，不再重复拷贝。
+  ! async(1)      : 投递到编号 1 的异步队列；同一队列中的 kernel 按顺序执行，但 CPU 不必原地等待。
+  ! private(...)  : 每个并行迭代拥有自己的临时标量/小数组，避免线程之间相互覆盖。
+  !$acc parallel loop gang vector collapse(3) default(none) present(f,f_post,rho,u,v,w,T) async(1) &
+  !$acc& private(alpha,m,meq,m_post,s,fSource,rhoLoc,uLoc,vLoc,wLoc,u2,uDotF,FxLoc,FyLoc,FzLoc)
   do k = 1, nz
     do j = 1, ny
       do i = 1, nx
@@ -1002,7 +1018,7 @@ subroutine streaming3d()
   integer(kind=4) :: i, j, k, ip, jp, kp, alpha
 
   ! pull streaming：当前格点 (i,j,k) 从上游格点 (i-ex, j-ey, k-ez) 拉取分布函数
- !$acc parallel loop collapse(3) present(f,f_post,ex,ey,ez)
+ !$acc parallel loop gang vector collapse(3) default(none) present(f,f_post,ex,ey,ez) async(1) private(alpha,ip,jp,kp)
   do k = 1, nz
     do j = 1, ny
       do i = 1, nx
@@ -1030,7 +1046,8 @@ subroutine bounceback3d()
   integer(kind=4) :: i, j, k, alpha
 
 #ifdef VerticalWallsPeriodicalU
- !$acc parallel loop collapse(2) present(f,f_post,ex)
+  ! 边界面循环通常只需要 collapse(2)；alpha 作为方向索引必须 private。
+  !$acc parallel loop gang vector collapse(2) default(none) present(f,f_post,ex) async(1) private(alpha)
   do k = 1, nz
     do j = 1, ny
       do alpha = 0, qf-1
@@ -1042,7 +1059,7 @@ subroutine bounceback3d()
 #endif
 
 #ifdef VerticalWallsNoslip
- !$acc parallel loop collapse(2) present(f,f_post,ex,opp)
+ !$acc parallel loop gang vector collapse(2) default(none) present(f,f_post,ex,opp) async(1) private(alpha)
   do k = 1, nz
     do j = 1, ny
       do alpha = 0, qf-1
@@ -1054,7 +1071,7 @@ subroutine bounceback3d()
 #endif
 
 #ifdef HorizontalWallsNoslip
- !$acc parallel loop collapse(2) present(f,f_post,ey,opp)
+ !$acc parallel loop gang vector collapse(2) default(none) present(f,f_post,ey,opp) async(1) private(alpha)
   do k = 1, nz
     do i = 1, nx
       do alpha = 0, qf-1
@@ -1066,7 +1083,7 @@ subroutine bounceback3d()
 #endif
 
 #ifdef SpanwiseWallsPeriodicalU
- !$acc parallel loop collapse(2) present(f,f_post,ez)
+ !$acc parallel loop gang vector collapse(2) default(none) present(f,f_post,ez) async(1) private(alpha)
   do j = 1, ny
     do i = 1, nx
       do alpha = 0, qf-1
@@ -1078,7 +1095,7 @@ subroutine bounceback3d()
 #endif
 
 #ifdef SpanwiseWallsNoslip
- !$acc parallel loop collapse(2) present(f,f_post,ez,opp)
+ !$acc parallel loop gang vector collapse(2) default(none) present(f,f_post,ez,opp) async(1) private(alpha)
   do j = 1, ny
     do i = 1, nx
       do alpha = 0, qf-1
@@ -1103,7 +1120,9 @@ subroutine macro3d()
   integer(kind=4) :: i, j, k
   real(kind=8) :: FyLoc
 
- !$acc parallel loop collapse(3) present(f,rho,u,v,w,T)
+  ! 这里仍沿用上面的并行模板；因为放在同一个 async(1) 队列中，所以 collision -> streaming -> bounceback -> macro
+  ! 的先后顺序由队列保证，不需要每一步都显式 wait。
+ !$acc parallel loop gang vector collapse(3) default(none) present(f,rho,u,v,w,T) async(1) private(FyLoc)
   do k = 1, nz
     do j = 1, ny
       do i = 1, nx
@@ -1142,7 +1161,9 @@ subroutine collisionT3d()
   real(kind=8), parameter :: SG = 1.0d0 - 0.5d0 * Qk
 
   ! 温度场采用 D3Q7 MRT
- !$acc parallel loop collapse(3) present(g,g_post,u,v,w,T,Bx_prev,By_prev,Bz_prev)
+  ! 下面这条指令的 clause 含义与 collision3d 相同，只是处理对象改成温度分布函数 g / g_post。
+  !$acc parallel loop gang vector collapse(3) default(none) present(g,g_post,u,v,w,T,Bx_prev,By_prev,Bz_prev) async(1) &
+  !$acc& private(n,neq,q,n_post,Bx,By,Bz,dBx,dBy,dBz)
   do k = 1, nz
     do j = 1, ny
       do i = 1, nx
@@ -1235,7 +1256,7 @@ subroutine streamingT3d()
   integer(kind=4) :: i, j, k, ip, jp, kp, alpha
 
   ! 温度场同样采用 pull streaming
- !$acc parallel loop collapse(3) present(g,g_post,exT,eyT,ezT)
+ !$acc parallel loop gang vector collapse(3) default(none) present(g,g_post,exT,eyT,ezT) async(1) private(alpha,ip,jp,kp)
   do k = 1, nz
     do j = 1, ny
       do i = 1, nx
@@ -1264,7 +1285,8 @@ subroutine bouncebackT3d()
   integer(kind=4) :: i, j, k, alpha
 
 #ifdef VerticalWallsPeriodicalT
- !$acc parallel loop collapse(2) present(g,g_post,exT)
+  ! 温度边界 kernel 和流场边界 kernel 一样：用 collapse(2) 铺开边界面，并继续放到 async(1) 队列中。
+  !$acc parallel loop gang vector collapse(2) default(none) present(g,g_post,exT) async(1) private(alpha)
   do k = 1, nz
     do j = 1, ny
       do alpha = 0, qt-1
@@ -1276,7 +1298,7 @@ subroutine bouncebackT3d()
 #endif
 
 #ifdef VerticalWallsConstT
-  !$acc parallel loop collapse(2) present(g,g_post,exT,oppT,omegaT)
+  !$acc parallel loop gang vector collapse(2) default(none) present(g,g_post,exT,oppT,omegaT) async(1) private(alpha)
   do k = 1, nz
     do j = 1, ny
       do alpha = 0, qt-1
@@ -1293,7 +1315,7 @@ subroutine bouncebackT3d()
 #endif
 
 #ifdef VerticalWallsAdiabatic
- !$acc parallel loop collapse(2) present(g,g_post,exT,oppT)
+ !$acc parallel loop gang vector collapse(2) default(none) present(g,g_post,exT,oppT) async(1) private(alpha)
   do k = 1, nz
     do j = 1, ny
       do alpha = 0, qt-1
@@ -1305,7 +1327,7 @@ subroutine bouncebackT3d()
 #endif
 
 #ifdef HorizontalWallsAdiabatic
- !$acc parallel loop collapse(2) present(g,g_post,eyT,oppT)
+ !$acc parallel loop gang vector collapse(2) default(none) present(g,g_post,eyT,oppT) async(1) private(alpha)
   do k = 1, nz
     do i = 1, nx
       do alpha = 0, qt-1
@@ -1317,7 +1339,7 @@ subroutine bouncebackT3d()
 #endif
 
 #ifdef HorizontalWallsConstT
-  !$acc parallel loop collapse(2) present(g,g_post,eyT,oppT,omegaT)
+  !$acc parallel loop gang vector collapse(2) default(none) present(g,g_post,eyT,oppT,omegaT) async(1) private(alpha)
   do k = 1, nz
     do i = 1, nx
       do alpha = 0, qt-1
@@ -1334,7 +1356,7 @@ subroutine bouncebackT3d()
 #endif
 
 #ifdef SpanwiseWallsPeriodicalT
- !$acc parallel loop collapse(2) present(g,g_post,ezT)
+ !$acc parallel loop gang vector collapse(2) default(none) present(g,g_post,ezT) async(1) private(alpha)
   do j = 1, ny
     do i = 1, nx
       do alpha = 0, qt-1
@@ -1346,7 +1368,7 @@ subroutine bouncebackT3d()
 #endif
 
 #ifdef SpanwiseWallsAdiabatic
- !$acc parallel loop collapse(2) present(g,g_post,ezT,oppT)
+ !$acc parallel loop gang vector collapse(2) default(none) present(g,g_post,ezT,oppT) async(1) private(alpha)
   do j = 1, ny
     do i = 1, nx
       do alpha = 0, qt-1
@@ -1372,7 +1394,7 @@ subroutine macroT3d()
   integer(kind=4) :: i, j, k
 
   ! 温度恢复就是对 7 个方向的 g 求和
- !$acc parallel loop collapse(3) present(g,T)
+ !$acc parallel loop gang vector collapse(3) default(none) present(g,T) async(1)
   do k = 1, nz
     do j = 1, ny
       do i = 1, nx
@@ -1487,7 +1509,9 @@ subroutine check3d()
   error5 = 0.0d0
   error6 = 0.0d0
 
- !$acc parallel loop collapse(3) &
+  ! reduction(+:...) : 每个线程先做局部累加，kernel 结束后再安全归并成 error1/error2/error5/error6。
+  ! 如果不写 reduction，这几个误差标量会被并发写坏。
+ !$acc parallel loop collapse(3) default(none) &
  !$acc& present(u,up,v,vp,w,wp,T,Tp) &
  !$acc& reduction(+:error1,error2,error5,error6)
   do k = 1, nz
@@ -1717,7 +1741,8 @@ subroutine calNuRe3d()
 
   NuVolAvg_temp = 0.0d0
 #ifdef SideHeatedCell
- !$acc parallel loop collapse(3) present(u,T) reduction(+:NuVolAvg_temp)
+  ! 全域求和型后处理和误差计算一样，需要 reduction 来避免竞争写。
+ !$acc parallel loop collapse(3) default(none) present(u,T) reduction(+:NuVolAvg_temp)
   do k = 1, nz
     do j = 1, ny
       do i = 1, nx
@@ -1726,7 +1751,7 @@ subroutine calNuRe3d()
     enddo
   enddo
 #else
- !$acc parallel loop collapse(3) present(v,T) reduction(+:NuVolAvg_temp)
+ !$acc parallel loop collapse(3) default(none) present(v,T) reduction(+:NuVolAvg_temp)
   do k = 1, nz
     do j = 1, ny
       do i = 1, nx
@@ -1742,7 +1767,7 @@ subroutine calNuRe3d()
   close(01)
 
   ReVolAvg_temp = 0.0d0
- !$acc parallel loop collapse(3) present(u,v,w) reduction(+:ReVolAvg_temp)
+ !$acc parallel loop collapse(3) default(none) present(u,v,w) reduction(+:ReVolAvg_temp)
   do k = 1, nz
     do j = 1, ny
       do i = 1, nx
@@ -1778,7 +1803,7 @@ subroutine RBcalc_Nu_global3d()
   coef = velocityScaleCompare
   sum_qy = 0.0d0
 
- !$acc parallel loop collapse(3) present(v,T) reduction(+:sum_qy)
+ !$acc parallel loop collapse(3) default(none) present(v,T) reduction(+:sum_qy) private(dTdy,qy)
   do k = 1, nz
     do j = 1, ny
       do i = 1, nx
@@ -1828,7 +1853,8 @@ subroutine RBcalc_Nu_wall_avg3d()
   deltaT = Thot - Tcold
   coef = heatFluxScale
 
- !$acc parallel loop present(T,T_bot_avg)
+  ! copyout(T_bot_avg): T_bot_avg 只在这个 GPU 循环里临时生成，但后面 CPU 端还要继续拟合/插值，所以循环结束后自动拷回主机。
+ !$acc parallel loop default(none) present(T) copyout(T_bot_avg)
   do i = 1, nx
     T_bot_avg(i) = 0.0d0
     do k = 1, nz
@@ -1838,7 +1864,8 @@ subroutine RBcalc_Nu_wall_avg3d()
   enddo
 
   sum_hot = 0.0d0
- !$acc parallel loop present(T,Nu_bot) reduction(+:sum_hot)
+  ! Nu_bot 同样需要回到主机继续做极值搜索；sum_hot 则是标量求和，因此同时使用 copyout + reduction。
+ !$acc parallel loop default(none) present(T) copyout(Nu_bot) reduction(+:sum_hot) private(qy_wall)
   do i = 1, nx
     Nu_bot(i) = 0.0d0
     do k = 1, nz
@@ -1911,7 +1938,7 @@ subroutine RBcalc_Nu_wall_avg3d()
   Nu_hot_min_position = xstar
 
   sum_cold = 0.0d0
- !$acc parallel loop collapse(2) present(T) reduction(+:sum_cold)
+ !$acc parallel loop collapse(2) default(none) present(T) reduction(+:sum_cold) private(qy_wall)
   do k = 1, nz
     do i = 1, nx
       qy_wall = (-8.0d0*Tcold + 9.0d0*T(i,ny,k) - T(i,ny-1,k)) / (3.0d0*dy)
@@ -1923,7 +1950,7 @@ subroutine RBcalc_Nu_wall_avg3d()
   sum_mid = 0.0d0
   if (mod(ny,2) .EQ. 1) then
     jMid = (ny + 1) / 2
- !$acc parallel loop collapse(2) present(v,T) reduction(+:sum_mid)
+ !$acc parallel loop collapse(2) default(none) present(v,T) reduction(+:sum_mid)
     do k = 1, nz
       do i = 1, nx
         sum_mid = sum_mid + (coef * v(i,jMid,k) * (T(i,jMid,k) - Tref) - &
@@ -1933,7 +1960,7 @@ subroutine RBcalc_Nu_wall_avg3d()
   else
     jB = ny / 2
     jT = jB + 1
- !$acc parallel loop collapse(2) present(v,T) reduction(+:sum_mid)
+ !$acc parallel loop collapse(2) default(none) present(v,T) reduction(+:sum_mid)
     do k = 1, nz
       do i = 1, nx
         sum_mid = sum_mid + (coef * 0.5d0 * (v(i,jB,k) * (T(i,jB,k) - Tref) + &
