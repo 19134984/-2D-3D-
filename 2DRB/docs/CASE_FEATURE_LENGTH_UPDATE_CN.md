@@ -13,7 +13,7 @@
 
 ## 主要修改内容
 
-### 1. 主程序 `2DRB.F90`
+### 1. 主程序 `2DRBOpenmp.F90`
 
 在 `commondata` 中将 `lengthUnit` 改成按宏自动选择：
 
@@ -84,12 +84,12 @@
 本次修改后：
 
 - `2DRB_ISLBM.F90` 已通过最小编译检查
-- `2DRB.F90` 仍存在一个原有的编译问题：`SG = 1.0d0 - 0.5d0*s_j` 处把非常量写成了 `parameter`，该问题不是本次修改引入的
+- `2DRBOpenmp.F90` 仍存在一个原有的编译问题：`SG = 1.0d0 - 0.5d0*s_j` 处把非常量写成了 `parameter`，该问题不是本次修改引入的
 - `ChaiPRE2020.F90` 本身也存在原有的独立编译问题，本次修改未额外扩大该问题范围
 
 ## 涉及文件
 
-- `2DRB/2DRB.F90`
+- `2DRB/2DRBOpenmp.F90`
 - `2DRB/2DRB_ISLBM.F90`
 - `2DRB/ChaiPRE2020.F90`
 - `2DRB/diagnostics/ChaiPRE2020_41.F90`

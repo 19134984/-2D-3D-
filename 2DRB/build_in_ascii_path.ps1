@@ -1,5 +1,5 @@
 param(
-    [string]$SourceFile = "2DRB.F90",
+    [string]$SourceFile = "2DRBOpenmp.F90",
     [string]$BuildRoot = "C:\msys64\tmp\fortran-2drb-build",
     [switch]$Run,
     [switch]$SyntaxOnly,

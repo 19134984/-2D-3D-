@@ -6,8 +6,8 @@ This file mirrors the active repository instructions in `AGENTS.md`.
 
 The canonical core source files for this repository are:
 
-- `2DRB.F90`
-- `3DRB.F90`
+- `2DRBOpenmp.F90`
+- `3DRBOpenmp.F90`
 - `3DRBOpenacc.F90`
 - `3DRBOpenaccMpi.F90`
 
@@ -19,8 +19,8 @@ four files as the main framework.
 
 Choose the closest baseline before generating or editing code:
 
-- `2DRB.F90` for 2D natural-convection / Rayleigh-Benard style work
-- `3DRB.F90` for 3D CPU baseline work
+- `2DRBOpenmp.F90` for 2D natural-convection / Rayleigh-Benard style work
+- `3DRBOpenmp.F90` for 3D CPU baseline work
 - `3DRBOpenacc.F90` for 3D OpenACC / GPU work
 - `3DRBOpenaccMpi.F90` for 3D MPI + OpenACC work
 

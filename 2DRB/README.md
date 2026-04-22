@@ -4,7 +4,7 @@ This folder contains the main 2D side-heated cavity codes and a few supporting v
 
 ## Main source files
 
-- `2DRB.F90`
+- `2DRBOpenmp.F90`
   Baseline main program in the original project layout.
 
 - `2DRB_ISLBM.F90`
@@ -33,7 +33,7 @@ This folder contains the main 2D side-heated cavity codes and a few supporting v
 
 ## Suggested entry points
 
-- If you want the original baseline code, start with `2DRB.F90`.
+- If you want the original baseline code, start with `2DRBOpenmp.F90`.
 - If you want the non-uniform mesh / ISLBM version, start with `2DRB_ISLBM.F90`.
 - If you want the Chai comparison code, start with `ChaiPRE2020.F90`.
 - If you want quick small-grid checks or parameter sweeps, look in `diagnostics/`.
