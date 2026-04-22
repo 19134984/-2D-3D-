@@ -141,14 +141,15 @@
         ! 体平均 Nu 和 Re 的时间序列缓存
         ! 只有在启用并调用 calNuRe() 的情况下这些数组才会被真正填充
   
-        character(len=100) :: binFolderPrefix="./binFile/buoyancyCavity"
+        character(len=100) :: binFolderPrefix="buoyancyCavity2DOpenmpbinFile"
         ! bin 输出文件前缀（实际文件名形如：<binFolderPrefix>-<编号>.bin）
 
-        character(len=100) :: pltFolderPrefix="./pltFile/buoyancyCavity"
+        character(len=100) :: pltFolderPrefix="buoyancyCavity2DOpenmpTecplot"
         ! plt 输出文件前缀（实际文件名形如：<pltFolderPrefix>-<编号>.plt）
 
-        character(len=100) :: reloadFilePrefix="./reloadFile/backupFile"
+        character(len=100) :: reloadFilePrefix="backupFile2DOpenmp"
         ! 重启读取文件的前缀（实际读取：<reloadFilePrefix>-<reloadbinFileNum>.bin）
+        character(len=100) :: settingsFile="SimulationSettings2DOpenmp.txt"
         !===============================================================================================
 
         !===============================================================================================
@@ -213,7 +214,7 @@
 
     !===============================================================================================
     !设置并行核数
-    open(unit=00,file="SimulationSettings.txt",status='unknown')   !打开（或创建）txt文件，准备写入
+    open(unit=00,file=trim(settingsFile),status='unknown')   !打开（或创建）txt文件，准备写入
     string = ctime( time() )                      !ctime把 time() 返回的时间戳转换成可读的字符串
     write(00,*) 'Start: ', string                 !什么时候开始计算
     write(00,*) "Starting OpenMP >>>>>>"
@@ -317,7 +318,7 @@
 
      
 
-    open(unit=00,file="SimulationSettings.txt",status='unknown',position='append')        !在这个txt文件后面继续写（追加模式）
+    open(unit=00,file=trim(settingsFile),status='unknown',position='append')        !在这个txt文件后面继续写（追加模式）
     write(00,*) "======================================================================"
     write(00,*) "Time (CPU) = ", real(timeEnd-timeStart,kind=8), "s"                             !当前进程累计消耗的 CPU 时间,包括并行
     write(00,*) "MLUPS = ", real( dble(nx)*dble(ny)*dble(itc)/(timeEnd-timeStart)/1.0d6,kind=8 )   !百万格点更新/秒
@@ -386,7 +387,7 @@
 
     !-----------------------------------------------------------------------------------------------
     !记录各种信息在日志文件中
-    open(unit=00,file="SimulationSettings.txt",status='unknown',position='append')  !在这个txt文件后面继续写（追加模式）
+    open(unit=00,file=trim(settingsFile),status='unknown',position='append')  !在这个txt文件后面继续写（追加模式）
     
     if(outputBinFile.EQ.1) then
         open(unit=01,file=trim(binFolderPrefix)//"-"//"readme",status="unknown")    !trim去掉字符串尾部空格，换了存储路径，可自己更改
@@ -1422,7 +1423,7 @@ end subroutine append_convergence_master_tecplot
     write(05) (((g(alpha,i,j), i=1,nx), j=1,ny), alpha=0,4)
     close(05)
     
-    open(unit=00,file="SimulationSettings.txt",status='unknown',position='append')
+    open(unit=00,file=trim(settingsFile),status='unknown',position='append')
     write(00,*) "Backup  f and g to the file: backupFile-", trim(filename),".bin"
     close(00)
     
@@ -1617,7 +1618,7 @@ end subroutine append_convergence_master_tecplot
 
     if (dimensionlessTime.GE.dimensionlessTimeMax) then
         write(*,*) "Error: dimensionlessTime exceeds dimensionlessTimeMax, please enlarge dimensionlessTimeMax"
-        open(unit=00,file="SimulationSettings.txt",status="unknown",position="append")
+        open(unit=00,file=trim(settingsFile),status="unknown",position="append")
         write(00,*) "Error: dimensionlessTime exceeds dimensionlessTimeMax, please enlarge dimensionlessTimeMax"
         close(00)
         stop
@@ -1726,7 +1727,7 @@ end subroutine append_convergence_master_tecplot
 
 
     ! 同步写入日志
-    open(unit=00,file="SimulationSettings.txt",status="unknown",position="append")
+    open(unit=00,file=trim(settingsFile),status="unknown",position="append")
     write(00,'(a,1x,es16.8)') "Nu_global =", Nu_global
     close(00)
 
@@ -1929,7 +1930,7 @@ end subroutine append_convergence_master_tecplot
     !write(12,'(i12,1x,8(1x,es16.8))') itc, Nu_hot, Nu_cold, Nu_middle, Nu_hot_max, Nu_hot_max_position, Nu_hot_min, Nu_hot_min_position
     !close(12)
 
-    open(unit=00,file="SimulationSettings.txt",status="unknown",position="append")
+    open(unit=00,file=trim(settingsFile),status="unknown",position="append")
     write(00,'(a,1x,es16.8)') "Nu_hot    =", Nu_hot
     write(00,'(a,1x,es16.8)') "Nu_cold   =", Nu_cold
     write(00,'(a,1x,es16.8)') "Nu_middle =", Nu_middle
@@ -2142,7 +2143,7 @@ end subroutine append_convergence_master_tecplot
          'u_mid_max =', umax_fit*coef, 'at y =', y_fit, 'on x_mid =', xmid
          
 
-    open(unit=00,file="SimulationSettings.txt",status='unknown',position='append')
+    open(unit=00,file=trim(settingsFile),status='unknown',position='append')
     string = ctime( time() )
     write(00,*) '--- calc_umid_max --- ', string
     write(00,*) 'x_mid =', xmid
@@ -2227,7 +2228,7 @@ end subroutine append_convergence_master_tecplot
          'v_mid_max =', vmax_fit*coef, 'at x =', x_fit, 'on y_mid =', ymid
 
 
-    open(unit=00,file="SimulationSettings.txt",status='unknown',position='append')
+    open(unit=00,file=trim(settingsFile),status='unknown',position='append')
     string = ctime( time() )
     write(00,*) '--- calc_vmid_max --- ', string
     write(00,*) 'y_mid =', ymid
@@ -2289,7 +2290,7 @@ subroutine RBcalc_Nu_global()
   Nu_global = (sum_qy / dble(nx*ny)) / deltaT
 
   write(*,'(a,1x,es16.8)') "Nu_global =", Nu_global
-  open(unit=00,file="SimulationSettings.txt",status="unknown",position="append")
+  open(unit=00,file=trim(settingsFile),status="unknown",position="append")
   write(00,'(a,1x,es16.8)') "Nu_global =", Nu_global
   close(00)
 
@@ -2461,7 +2462,7 @@ subroutine RBcalc_Nu_wall_avg()
   write(*,'(a,1x,es16.8,2x,a,1x,es16.8)') "Nu_hot_max =", Nu_hot_max, "x_max =", Nu_hot_max_position
   write(*,'(a,1x,es16.8,2x,a,1x,es16.8)') "Nu_hot_min =", Nu_hot_min, "x_min =", Nu_hot_min_position
 
-  open(unit=00,file="SimulationSettings.txt",status="unknown",position="append")
+  open(unit=00,file=trim(settingsFile),status="unknown",position="append")
   write(00,'(a,1x,es16.8)') "Nu_hot(bottom) =", Nu_hot
   write(00,'(a,1x,es16.8)') "Nu_cold(top)   =", Nu_cold
   write(00,'(a,1x,es16.8)') "Nu_middle      =", Nu_middle
@@ -2555,7 +2556,7 @@ subroutine RBcalc_umid_max()
   write(*,'(A,1X,ES16.8,2X,A,1X,ES16.8,2X,A,1X,ES16.8)') &
        'u_mid_max* =', umax_fit*coef, 'y =', y_fit, 'x_mid =', xmid
 
-  open(unit=00,file="SimulationSettings.txt",status="unknown",position="append")
+  open(unit=00,file=trim(settingsFile),status="unknown",position="append")
   write(00,'(A,1X,ES16.8,2X,A,1X,ES16.8,2X,A,1X,ES16.8)') &
        'u_mid_max* =', umax_fit*coef, 'y =', y_fit, 'x_mid =', xmid
   close(00)
@@ -2633,7 +2634,7 @@ subroutine RBcalc_vmid_max()
   write(*,'(A,1X,ES16.8,2X,A,1X,ES16.8,2X,A,1X,ES16.8)') &
        'v_mid_max* =', vmax_fit*coef, 'x =', x_fit, 'y_mid =', ymid
 
-  open(unit=00,file="SimulationSettings.txt",status="unknown",position="append")
+  open(unit=00,file=trim(settingsFile),status="unknown",position="append")
   write(00,'(A,1X,ES16.8,2X,A,1X,ES16.8,2X,A,1X,ES16.8)') &
        'v_mid_max* =', vmax_fit*coef, 'x =', x_fit, 'y_mid =', ymid
   close(00)
@@ -2760,7 +2761,7 @@ subroutine calc_psi_vort_and_output()
   write(*,'(a,1x,es16.8,2x,a,1x,es16.8,2x,a,1x,es16.8)') &
        "max(|psi|) =", psi_abs_max, "x* =", x_at_max, "y* =", y_at_max
 
-  open(unit=00,file="SimulationSettings.txt",status="unknown",position="append")
+  open(unit=00,file=trim(settingsFile),status="unknown",position="append")
   write(00,'(a,1x,es16.8)') "abs(psi_center_fine) =", psi_center_abs_fine
   write(00,'(a,1x,es16.8,2x,a,1x,es16.8,2x,a,1x,es16.8)') &
        "max(|psi|) =", psi_abs_max, "x* =", x_at_max, "y* =", y_at_max
@@ -3134,7 +3135,7 @@ subroutine output_psi_center_abs(psi)
   write(*,'(a,1x,es16.8)') "abs(psi_center_coarse) =", psi_center_abs
 
   ! Log output
-  open(unit=00,file="SimulationSettings.txt",status="unknown",position="append")
+  open(unit=00,file=trim(settingsFile),status="unknown",position="append")
   write(00,'(a,1x,es16.8)') "abs(psi_center_coarse) =", psi_center_abs
   close(00)
 

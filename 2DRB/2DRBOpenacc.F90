@@ -142,13 +142,13 @@
         ! 体平均 Nu 和 Re 的时间序列缓存
         ! 只有在启用并调用 calNuRe() 的情况下这些数组才会被真正填充
   
-        character(len=100) :: binFolderPrefix="./binFile/buoyancyCavity2DOpenacc"
+        character(len=100) :: binFolderPrefix="buoyancyCavity2DOpenaccbinFile"
         ! bin 输出文件前缀（实际文件名形如：<binFolderPrefix>-<编号>.bin）
 
-        character(len=100) :: pltFolderPrefix="./pltFile/buoyancyCavity2DOpenacc"
+        character(len=100) :: pltFolderPrefix="buoyancyCavity2DOpenaccTecplot"
         ! plt 输出文件前缀（实际文件名形如：<pltFolderPrefix>-<编号>.plt）
 
-        character(len=100) :: reloadFilePrefix="./reloadFile/backupFile"
+        character(len=100) :: reloadFilePrefix="backupFile2DOpenacc"
         ! 重启读取文件的前缀（实际读取：<reloadFilePrefix>-<reloadbinFileNum>.bin）
         character(len=100) :: settingsFile="SimulationSettings2DOpenacc.txt"
         !===============================================================================================
