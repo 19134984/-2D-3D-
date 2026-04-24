@@ -8,16 +8,8 @@
 
 !=============================================================
 !   自定义宏，一些选项的开关
-!#define steadyFlow    
+!#define steadyFlow
 #define unsteadyFlow
-
-!   流动模式宏的选择
-#if defined(steadyFlow) && defined(unsteadyFlow)
-#error "Choose only one flow mode: steadyFlow or unsteadyFlow"
-#endif
-#if !defined(steadyFlow) && !defined(unsteadyFlow)
-#error "Define one flow mode: steadyFlow or unsteadyFlow"
-#endif
 
 !   速度边界，包括水平垂直边界无滑移，还有垂直边界速度周期
 #define HorizontalWallsNoslip
@@ -62,6 +54,7 @@
         ! 在 loadInitField=1 的前提下：
         integer(kind=4), parameter :: reloadDimensionlessTime=0  ! 旧算例累计的无量纲时间（用于续写 Nu/Re 输出横坐标）
         integer(kind=4), parameter :: reloadbinFileNum=0         ! 读取的备份文件编号：backupFile-<reloadbinFileNum>.bin
+        integer(kind=4), parameter :: enableTimeStatistics=0     ! 0: 过渡阶段；1: 统计阶段（从重启场立即开始采样）
         !===============================================================================================
 
         !===============================================================================================
@@ -125,39 +118,30 @@
         
         !===============================================================================================
         ! 输出/备份相关设置（以自由落体时间 t_ff 为单位）
+        real(kind=8), parameter :: outputFrequency=100.0d0   ! 每隔 outputFrequency 个自由落体时间 t_ff 输出/统计一次（时间间隔）
+
+        integer(kind=4), parameter :: statsMinSamples=200
+        integer(kind=4), parameter :: statsWindowSamples=50
+        integer(kind=4), parameter :: statsStableWindowsRequired=3
+        real(kind=8), parameter :: statsTolNu=1.0d-3
+        real(kind=8), parameter :: statsTolRe=1.0d-3
+        integer(kind=4), parameter :: dimensionlessTimeMax=max(int(100000.0d0/outputFrequency), &
+        & statsMinSamples+statsStableWindowsRequired*statsWindowSamples+10)
+        ! 统计版默认保留更长的采样缓冲区；维数仍由 outputFrequency 的采样间隔控制
+
+        integer(kind=4), parameter :: backupInterval=1000  ! 备份间隔（自由落体时间单位），为了停电情况下，可以继续计算
+        
         real(kind=8), parameter :: epsU=1.0d-7, epsT=1.0d-7    ! 稳态收敛阈值   
 
-#ifdef steadyFlow
-        real(kind=8), parameter :: outputFrequency=10.0d0   ! Nu/Re 时间序列采样间隔（单位：t_ff）
-        real(kind=8), parameter :: reloadFileInterval=100.0d0  ! f/g 重启文件输出间隔（单位：t_ff）
-        real(kind=8), parameter :: outputPltFileInterval=100.0d0  ! Tecplot 文件输出间隔（单位：t_ff）
-        integer(kind=4), parameter :: dimensionlessTimeMax=int(12000.0d0/outputFrequency)
         integer(kind=4), parameter :: outputBinFile=0   ! 是否输出 bin 文件：0=不输出，1=输出
         integer(kind=4), parameter :: outputPltFile=0   ! 是否输出 plt 文件：0=不输出，1=输出
-        integer(kind=4), parameter :: outputReloadFile=0 ! 是否周期输出 f/g 重启文件：0=不输出，1=输出
-        integer(kind=4), parameter :: itc_max=20000000  ! 稳态：最大格子步，实际仍由 errorU/errorT 提前停止
-#endif
 
-#ifdef unsteadyFlow
-        real(kind=8), parameter :: outputFrequency=0.5d0   ! uvTrho 和 Nu/Re 时间序列采样间隔（单位：t_ff）
-        real(kind=8), parameter :: reloadFileInterval=100.0d0  ! f/g 重启文件输出间隔（单位：t_ff）
-        real(kind=8), parameter :: outputPltFileInterval=100.0d0  ! Tecplot 文件周期输出间隔（单位：t_ff）
-        real(kind=8), parameter :: unsteadyRunDuration=1000.0d0  ! 非稳态阶段固定运行到 1000 个 t_ff
-        integer(kind=4), parameter :: unsteadySampleCount=max(1, int(unsteadyRunDuration/outputFrequency+0.5d0))   !计数器
-        integer(kind=4), parameter :: dimensionlessTimeMax=unsteadySampleCount
-        integer(kind=4), parameter :: outputBinFile=1   ! 是否输出 bin 文件：0=不输出，1=输出
-        integer(kind=4), parameter :: outputPltFile=1   ! 是否输出 plt 文件：0=不输出，1=输出
-        integer(kind=4), parameter :: outputReloadFile=0 ! 是否周期输出 f/g 重启文件：0=不输出，1=输出
-        integer(kind=4), parameter :: itc_max=max(1, int(unsteadyRunDuration*timeUnit+0.5d0)) ! 非稳态：由总 t_ff 自动换算格子步
-#endif
-
-        integer(kind=4) :: binFileNum, pltFileNum  ! bin/plt 输出文件的计数器
+        integer(kind=4) :: binFileNum, pltFileNum, backupFileNum  ! bin/plt/backup 输出文件的计数器
         ! - unsteadyFlow：每次输出递增（用于文件名编号）
-        ! - steadyFlow：bin/plt 文件名通常直接用 itc 格子步
+        ! - steadyFlow：bin/plt 文件名通常直接用 itc
 
         integer(kind=4) :: dimensionlessTime
-        integer(kind=4) :: outputFrequencyIntervalItc
-        integer(kind=4) :: reloadFileIntervalItc, outputPltFileIntervalItc
+        integer(kind=4) :: outputIntervalItc, backupIntervalItc
         ! 统计/输出时间点编号（与 outputFrequency 对应）：
         ! 每调用一次 calNuRe() 就 dimensionlessTime = dimensionlessTime + 1
         ! 用于索引 NuVolAvg/ReVolAvg 数组，并用于输出的时间轴：t = reloadDimensionlessTime + dimensionlessTime*outputFrequency（单位：t_ff）
@@ -165,17 +149,37 @@
         real(kind=8) :: NuVolAvg(0:dimensionlessTimeMax), ReVolAvg(0:dimensionlessTimeMax)
         ! 体平均 Nu 和 Re 的时间序列缓存
         ! 只有在启用并调用 calNuRe() 的情况下这些数组才会被真正填充
+
+        logical :: statsConverged
+        integer(kind=4) :: statsStableWindowCount
+
+        real(kind=8) :: NuVolAvg_inst, ReVolAvg_inst
+        real(kind=8) :: Nu_hot_inst, Nu_cold_inst, Nu_middle_inst
+        real(kind=8) :: u_mid_max_inst, v_mid_max_inst
+
+        real(kind=8) :: statsNuSum, statsNuSum2
+        real(kind=8) :: statsReSum, statsReSum2
+        real(kind=8) :: statsNuHotSum, statsNuHotSum2
+        real(kind=8) :: statsNuColdSum, statsNuColdSum2
+        real(kind=8) :: statsNuMiddleSum, statsNuMiddleSum2
+        real(kind=8) :: statsUmidSum, statsUmidSum2
+        real(kind=8) :: statsVmidSum, statsVmidSum2
+
+        real(kind=8) :: statsNuMean, statsReMean
+        real(kind=8) :: statsNuHotMean, statsNuColdMean, statsNuMiddleMean
+        real(kind=8) :: statsUmidMean, statsVmidMean
+        real(kind=8) :: prevNuWindowMean, currNuWindowMean
+        real(kind=8) :: prevReWindowMean, currReWindowMean
   
-        character(len=100) :: binFolderPrefix="buoyancyCavity2DOpenaccbinFile"
+        character(len=100) :: binFolderPrefix="buoyancyCavity2DOpenaccUnsteadyStatsbinFile"
         ! bin 输出文件前缀（实际文件名形如：<binFolderPrefix>-<编号>.bin）
 
-        character(len=100) :: pltFolderPrefix="buoyancyCavity2DOpenaccTecplot"
+        character(len=100) :: pltFolderPrefix="buoyancyCavity2DOpenaccUnsteadyStatsTecplot"
         ! plt 输出文件前缀（实际文件名形如：<pltFolderPrefix>-<编号>.plt）
 
-        character(len=100) :: reloadFilePrefix="reloadFile2DOpenacc"
+        character(len=100) :: reloadFilePrefix="backupFile2DOpenaccUnsteadyStats"
         ! 重启读取文件的前缀（实际读取：<reloadFilePrefix>-<reloadbinFileNum>.bin）
-        
-        character(len=100) :: settingsFile="SimulationSettings2DOpenacc.txt"
+        character(len=100) :: settingsFile="SimulationSettings2DOpenaccUnsteadyStats.txt"
         !===============================================================================================
 
         !===============================================================================================
@@ -195,6 +199,7 @@
         real(kind=8), allocatable :: Bx_prev(:,:), By_prev(:,:)
 
         integer(kind=4) :: itc
+        integer(kind=4), parameter :: itc_max=20000000 !格子时间步长
 #ifdef EnableUseG
         logical, parameter :: useG = .true.            !M1G 开关
 #else
@@ -206,10 +211,8 @@
 #else
         logical, parameter :: useLegacyThermalScheme = .false.           
 #endif
-#ifdef steadyFlow
         real(kind=8) :: Nu_global, Nu_hot, Nu_cold, Nu_middle    !平均Nu，全场，侧壁以及中线
         real(kind=8) :: Nu_hot_max, Nu_hot_min, Nu_hot_max_position, Nu_hot_min_position    !左侧壁面的最大最小Nu，以及对应的位置
-#endif
         
         
         !格子离散速度和权重
@@ -227,7 +230,7 @@
 
 !=============================================================
 
-    program main
+    program main2dOpenaccUnsteadyStats
 
     use openacc
     use commondata
@@ -237,10 +240,8 @@
     character(len=24) :: ctime, string
     INTEGER(kind=4) :: time
     integer(kind=4) :: numAccDevices
-#ifdef unsteadyFlow
-    integer(kind=4) :: nextSampleItc
-#endif
     integer(kind=8) :: wallClockStart, wallClockEnd, wallClockRate
+    logical :: needHostSnapshot, needBackupThisStep
     
 
     !===============================================================================================
@@ -265,16 +266,9 @@
     !-----------------------------------------------------------------------------------------------
 
     call CPU_TIME(timeStart)         !当前进程累计消耗的 CPU 时间,包括并行
-    ! system_clock 返回墙钟计数器和每秒计数率；
-    ! 下面用 counter/rate 把它换算成实际经过的秒数。
     call system_clock(wallClockStart, wallClockRate)
     timeStart2 = dble(wallClockStart) / dble(max(wallClockRate,1_8))
-#ifdef steadyFlow
-    do while( ((errorU.GT.epsU).OR.(errorT.GT.epsT)).AND.(itc.LE.itc_max) )
-#endif
-#ifdef unsteadyFlow
-    do while( itc.LT.itc_max )   !非稳态：只按预设自由落体时间推进，不再用稳态误差停止
-#endif
+    do while( (itc.LT.itc_max) .AND. ((enableTimeStatistics.EQ.0) .OR. (.NOT.statsConverged)) )
 
         itc = itc+1
         
@@ -295,53 +289,35 @@
         call macroT()
         !$acc wait(1)
 
-#ifdef steadyFlow
-        if(MOD(itc,2000).EQ.0) call check()
-        if( (outputPltFile.EQ.1).AND.(MOD(itc, outputPltFileIntervalItc).EQ.0) ) then
-            call update_host_all_2d_openacc()
-            call output_Tecplot()  !稳态模式下的可选周期 Tecplot 输出
-        endif
-        if( (outputReloadFile.EQ.1).AND.(MOD(itc, reloadFileIntervalItc).EQ.0) ) then
-            call update_host_all_2d_openacc()
-            call writeReloadFile()      !稳态模式下的可选周期 f/g 重启文件输出
-        endif
-#endif
+        if( MOD(itc, outputIntervalItc).EQ.0 ) then
+            if(enableTimeStatistics.EQ.1) call calNuRe()
 
 #ifdef unsteadyFlow
-        do while(dimensionlessTime.LT.unsteadySampleCount)
-            ! 每个目标采样时刻都重新从 t_ff 换算到 itc，以避免累积误差导致的采样时间点漂移
-            nextSampleItc = max(1, int(real(dimensionlessTime+1,kind=8)*outputFrequency*timeUnit+0.5d0))
-            if(itc.LT.nextSampleItc) exit
-            call calNuRe()
-            if(outputBinFile.EQ.1) then
-                call update_host_all_2d_openacc()
-                call output_binary()          !每 0.5 t_ff 输出一次后处理 uvTrho 快照
-            endif
-        enddo
-        if( (outputPltFile.EQ.1).AND.(MOD(itc, outputPltFileIntervalItc).EQ.0) ) then
-            call update_host_all_2d_openacc()
-            call output_Tecplot()  !非稳态模式下的可选周期 Tecplot 输出
-        endif
-        if( (outputReloadFile.EQ.1).AND.(MOD(itc, reloadFileIntervalItc).EQ.0) ) then
-            call update_host_all_2d_openacc()
-            call writeReloadFile()      !非稳态模式下的可选周期 f/g 重启文件输出
-        endif
+            needBackupThisStep = (MOD(itc, backupIntervalItc).EQ.0)
+            needHostSnapshot = (outputBinFile.EQ.1) .OR. (outputPltFile.EQ.1) .OR. needBackupThisStep
+
+            if(needHostSnapshot) call update_host_all_2d_openacc()
+            if(outputBinFile.EQ.1) call output_binary()
+            if(outputPltFile.EQ.1) call output_Tecplot()
+            if(needBackupThisStep) call backupData()
 #endif
+        endif
      enddo
 
     call CPU_TIME(timeEnd)         !当前进程累计消耗的 CPU 时间,包括并行
-    ! 取墙钟结束计数器，用于后面输出 OpenACC 实际耗时。
     call system_clock(wallClockEnd, wallClockRate)
     timeEnd2 = dble(wallClockEnd) / dble(max(wallClockRate,1_8))
     call update_host_all_2d_openacc()
-
-#ifdef steadyFlow
-    call output_Tecplot()          !输出最后一步的plt结果
-    call output_binary()              !输出最后一步的uvTrho数据
-#endif
 #ifdef unsteadyFlow
-    call output_Tecplot()          !非稳态只在 1000 t_ff 结束时强制输出一次 Tecplot 结果
+    call backupData()
 #endif
+    open(unit=00,file=trim(settingsFile),status='unknown',position='append')
+    if(enableTimeStatistics.EQ.1) then
+        write(00,*) "statisticsSampleCount =", dimensionlessTime
+        write(00,*) "statsStableWindowCount =", statsStableWindowCount
+        write(00,*) "statsConverged =", statsConverged
+    endif
+    close(00)
     !===============================================================================================
 
 
@@ -349,8 +325,7 @@
     !===============================================================================================
 
     
-#ifdef steadyFlow
-!侧壁加热和RB对流的计算Nu不一样；这些最终标量诊断只用于稳态收敛后评估
+!侧壁加热和RB对流的计算Nu不一样
 #ifdef SideHeatedCell                        
     call SideHeatedcalc_Nu_global()          ! 全场平均Nu
     call SideHeatedcalc_Nu_wall_avg()  ! 热/冷壁, 中线平均Nu,以及热壁最大Numax和Numin以及位置，都采用五点最小二乘法插值出来
@@ -366,14 +341,11 @@
     call RBcalc_umid_max()     !中心线上的最大速度及其位置，也是用五点最小二乘法插值出来
     call RBcalc_vmid_max()
 #endif
-#endif
 
 
     call calc_psi_vort_and_output()  !输出腔体中心的abs(psi),以及最大的abs(psi)max以及位置（采用细网格插值出来）
 
-#ifdef steadyFlow
     call calNuRe()
-#endif
 
 
 
@@ -386,11 +358,9 @@
     write(00,*) "MLUPS = ", real( dble(nx)*dble(ny)*dble(itc)/(timeEnd-timeStart)/1.0d6,kind=8 )   !百万格点更新/秒
     write(00,*) "Time (ACC) = ", real(timeEnd2-timeStart2,kind=8), "s"                           !墙钟时间
     write(00,*) "MLUPS (ACC) = ", real( dble(nx)*dble(ny)*dble(itc)/(timeEnd2-timeStart2)/1.0d6,kind=8 )   !百万格点更新/秒
-#ifdef steadyFlow
     write(00,*) "Nu_global =", Nu_global
     write(00,*) "Nu_hot    =", Nu_hot
     write(00,*) "Nu_cold   =", Nu_cold
-#endif
     write(00,*) "useG =", useG
 
 
@@ -421,7 +391,7 @@
     close(00)
 
     
-    end program main
+    end program main2dOpenaccUnsteadyStats
 
 !===========================================================================================================================
 
@@ -448,9 +418,16 @@
     itc = 0
     errorU = 100.0d0
     errorT = 100.0d0 
-    outputFrequencyIntervalItc = max(1, int(outputFrequency*timeUnit+0.5d0))
-    reloadFileIntervalItc = max(1, int(reloadFileInterval*timeUnit+0.5d0))
-    outputPltFileIntervalItc = max(1, int(outputPltFileInterval*timeUnit+0.5d0))
+    outputIntervalItc = max(1, int(outputFrequency*timeUnit))
+    backupIntervalItc = max(1, int(backupInterval*timeUnit))
+
+    if ((enableTimeStatistics.EQ.1).AND.(loadInitField.NE.1)) then
+        open(unit=00,file=trim(settingsFile),status='unknown',position='append')
+        write(00,*) "Error: enableTimeStatistics=1 requires loadInitField=1"
+        write(00,*) "Please start the statistics stage from a restart file."
+        close(00)
+        stop
+    endif
 
 
     !-----------------------------------------------------------------------------------------------
@@ -499,23 +476,25 @@
 #endif
     write(00,*) "viscosity =",real(viscosity,kind=8), "; diffusivity =",real(diffusivity,kind=8)
     write(00,*) "outputFrequency =", real(outputFrequency,kind=8), "free-fall time units"
-    write(00,*) "outputFrequencyIntervalItc =", outputFrequencyIntervalItc, "in itc units"
-    write(00,*) "outputPltFile =", outputPltFile
-    write(00,*) "outputPltFileInterval =", real(outputPltFileInterval,kind=8), "free-fall time units"
-    write(00,*) "outputPltFileIntervalItc =", outputPltFileIntervalItc, "in itc units"
-    write(00,*) "outputReloadFile =", outputReloadFile
-    write(00,*) "reloadFileInterval =", real(reloadFileInterval,kind=8), "free-fall time units"
-    write(00,*) "reloadFileIntervalItc =", reloadFileIntervalItc, "in itc units"
-#ifdef unsteadyFlow
-    write(00,*) "unsteadyRunDuration =", real(unsteadyRunDuration,kind=8), "free-fall time units"
-    write(00,*) "unsteadySampleCount =", unsteadySampleCount
-#endif
+    write(00,*) "......................  or ", outputIntervalItc, "in itc units"
+    write(00,*) "backupInterval =", backupInterval, " free-fall time units"
+    write(00,*) ".................... or ", backupIntervalItc, "in itc units"
     if(loadInitField.EQ.1) then
         write(00,*) "reloadDimensionlessTime=", reloadDimensionlessTime
     endif
     write(00,*) "itc_max =",itc_max
-    write(00,*) "default epsU =", real(epsU,kind=8),"; epsT =", real(epsT,kind=8)
     write(00,*) "useG =", useG
+    write(00,*) "flowMode = unsteadyFlow"
+    if(enableTimeStatistics.EQ.1) then
+        write(00,*) "statisticsMode = on"
+        write(00,*) "statsMinSamples =", statsMinSamples
+        write(00,*) "statsWindowSamples =", statsWindowSamples
+        write(00,*) "statsStableWindowsRequired =", statsStableWindowsRequired
+        write(00,*) "statsTolNu =", real(statsTolNu,kind=8), "; statsTolRe =", real(statsTolRe,kind=8)
+    else
+        write(00,*) "statisticsMode = off"
+        write(00,*) "This run is treated as transient burn-in / restart preparation."
+    endif
     write(00,*) "    "
 
 #ifdef RayleighBenardCell
@@ -525,9 +504,6 @@
     write(00,*) "I am Side Heated Cell"
 #endif
     
-#ifdef steadyFlow
-    write(00,*) "I am steadyFlow"
-#endif
 #ifdef unsteadyFlow
     write(00,*) "I am unsteadyFlow"
 #endif
@@ -701,7 +677,7 @@
             write(00,*) "WARNING: since loadInitField.EQ.1, please confirm reloadDimensionlessTime", reloadDimensionlessTime
             stop
         endif
-        write(00,*) "Load initial field from previous simulation: ../reloadFile/backupFile- >>>"
+        write(00,*) "Load initial field from previous simulation: ", trim(reloadFilePrefix), "- >>>"
         write(reloadFileName, *) reloadbinFileNum                 !换了个变量Name
         reloadFileName = adjustl(reloadFileName)                  !adjustl把字符串左对齐，把前导空格移到字符串末尾
         open(unit=01,file=trim(reloadFilePrefix)//"-"//trim(reloadFileName)//".bin",form="unformatted", &
@@ -712,7 +688,7 @@
             read(01) (((g(alpha,i,j), i=1,nx), j=1,ny), alpha=0,4)
         close(01)
         call reconstruct_macro_from_fg()
-        write(00,*) "Raw data is loaded from the file: backupFile-",trim(reloadFileName),".bin"
+        write(00,*) "Raw data is loaded from the file: ", trim(reloadFilePrefix), "-", trim(reloadFileName), ".bin"
     else
         write(00,*) "Error: initial field is not properly set"                                                  !如果 loadInitField 不是 0/1 或逻辑不一致，直接停止
         stop
@@ -732,10 +708,48 @@ close(00)
         
     binFileNum = 0
     pltFileNum = 0
+    backupFileNum = 0
     dimensionlessTime = 0
     
     NuVolAvg = 0.0d0
     ReVolAvg = 0.0d0
+    statsConverged = .false.
+    statsStableWindowCount = 0
+
+    NuVolAvg_inst = 0.0d0
+    ReVolAvg_inst = 0.0d0
+    Nu_hot_inst = 0.0d0
+    Nu_cold_inst = 0.0d0
+    Nu_middle_inst = 0.0d0
+    u_mid_max_inst = 0.0d0
+    v_mid_max_inst = 0.0d0
+
+    statsNuSum = 0.0d0
+    statsNuSum2 = 0.0d0
+    statsReSum = 0.0d0
+    statsReSum2 = 0.0d0
+    statsNuHotSum = 0.0d0
+    statsNuHotSum2 = 0.0d0
+    statsNuColdSum = 0.0d0
+    statsNuColdSum2 = 0.0d0
+    statsNuMiddleSum = 0.0d0
+    statsNuMiddleSum2 = 0.0d0
+    statsUmidSum = 0.0d0
+    statsUmidSum2 = 0.0d0
+    statsVmidSum = 0.0d0
+    statsVmidSum2 = 0.0d0
+
+    statsNuMean = 0.0d0
+    statsReMean = 0.0d0
+    statsNuHotMean = 0.0d0
+    statsNuColdMean = 0.0d0
+    statsNuMiddleMean = 0.0d0
+    statsUmidMean = 0.0d0
+    statsVmidMean = 0.0d0
+    prevNuWindowMean = 0.0d0
+    currNuWindowMean = 0.0d0
+    prevReWindowMean = 0.0d0
+    currReWindowMean = 0.0d0
     
     return
   end subroutine initial
@@ -1475,7 +1489,7 @@ end subroutine append_convergence_master_tecplot
     integer(kind=4) :: i, j
     character(len=100) :: filename
     ! This snapshot is for post-processing only; u/v are written after nondimensionalization.
-    ! For strict restart, keep using writeReloadFile(), which preserves the lattice-state variables.
+    ! For strict restart, keep using backupData(), which preserves the lattice-state variables.
     
 #ifdef steadyFlow
     write(filename,*) itc                                            !steadyFlow：bin/plt文件名通常直接用 itc 来编写（格子时间步长） 
@@ -1493,7 +1507,7 @@ end subroutine append_convergence_master_tecplot
 
     open(unit=03,file=trim(binFolderPrefix)//"-"//trim(filename)//'.bin',form="unformatted",access="sequential")    !二进制
     ! Post-processing snapshot only: write nondimensionalized u/v together with T and rho.
-    ! Do not use this file for strict restart; writeReloadFile() keeps lattice velocities for that purpose.
+    ! Do not use this file for strict restart; backupData() keeps lattice velocities for that purpose.
     write(03) ((velocityScaleCompare*u(i,j),i=1,nx),j=1,ny)
     write(03) ((velocityScaleCompare*v(i,j),i=1,nx),j=1,ny)
     write(03) ((T(i,j),i=1,nx),j=1,ny)
@@ -1510,11 +1524,11 @@ end subroutine append_convergence_master_tecplot
     
 
 !===================================================================================================
-! 子程序: writeReloadFile
+! 子程序: backupData
 ! 作用: 输出包含 f、g、u、v、T 的重启备份文件。
 ! 用途: 在运行过程中定期调用，也在程序结束前调用。
 !===================================================================================================
-  subroutine writeReloadFile()                                    !输出fg，存储在当前路径，名字是backupFile-1000.bin
+  subroutine backupData()                                         !输出fg，存储在当前路径，名字是backupFile-1000.bin
     use commondata                                                !用于重启，包含 f,g；读入时必须先读 f,g 再读 u,v,T（无 rho）
     implicit none
     integer(kind=4) :: i, j, alpha
@@ -1525,26 +1539,27 @@ end subroutine append_convergence_master_tecplot
 #endif
 
 #ifdef unsteadyFlow
-    if(loadInitField.EQ.0) write(filename,*) binFileNum     !unsteadyFlow：文件名用输出序号 binFileNum（每次输出自增，与 tff 间隔由 outputFrequency 控制）
-    if(loadInitField.EQ.1) write(filename,*) binFileNum+reloadbinFileNum
+    backupFileNum = backupFileNum+1
+    if(loadInitField.EQ.0) write(filename,*) backupFileNum
+    if(loadInitField.EQ.1) write(filename,*) backupFileNum+reloadbinFileNum
 #endif
 
     filename = adjustl(filename)
 
-    open(unit=05,file='backupFile-'//trim(filename)//'.bin',form="unformatted",access="sequential")   !二进制
+    open(unit=05,file=trim(reloadFilePrefix)//"-"//trim(filename)//'.bin',form="unformatted",access="sequential")   !二进制
     ! Strict restart snapshots store only f and g; rho/u/v/T are reconstructed after reload.
     write(05) (((f(alpha,i,j), i=1,nx), j=1,ny), alpha=0,8)
     write(05) (((g(alpha,i,j), i=1,nx), j=1,ny), alpha=0,4)
     close(05)
     
     open(unit=00,file=trim(settingsFile),status='unknown',position='append')
-    write(00,*) "Backup  f and g to the file: backupFile-", trim(filename),".bin"
+    write(00,*) "Backup  f and g to the file: ", trim(reloadFilePrefix), "-", trim(filename), ".bin"
     close(00)
     
     return
-  end subroutine writeReloadFile
+  end subroutine backupData
 !===================================================================================================
-! writeReloadFile 结束: 输出包含 f、g、u、v、T 的重启备份文件。
+! backupData 结束: 输出包含 f、g、u、v、T 的重启备份文件。
 !===================================================================================================
 
     
@@ -1559,7 +1574,7 @@ end subroutine append_convergence_master_tecplot
     use commondata
     implicit none
     ! Here u and v are exported as nondimensional post-processing velocities using velocityScaleCompare.
-    ! Restart files should still come from writeReloadFile(), which preserves the lattice-state information.
+    ! Restart files should still come from backupData(), which preserves the lattice-state information.
     integer(kind=4) :: i, j, k
     REAL(kind=4) :: zoneMarker, eohMarker   !Tecplot 二进制格式里用的两个“标记值”（299 和 357），用于告诉 Tecplot：这里开始是 zone 描述 / header 结束。
     character(len=40) :: title              !文件 Title 字符串
@@ -1725,9 +1740,8 @@ end subroutine append_convergence_master_tecplot
   subroutine calNuRe()
     use commondata
     implicit none
-    integer(kind=4) :: i, j
-    real(kind=8) :: NuVolAvg_temp    !体平均 Nu
-    real(kind=8) :: ReVolAvg_temp    !体平均 Re
+    integer :: uOut
+    real(kind=8) :: dimensionlessTimeNow
     
 
     if (dimensionlessTime.GE.dimensionlessTimeMax) then
@@ -1740,49 +1754,28 @@ end subroutine append_convergence_master_tecplot
 
     dimensionlessTime = dimensionlessTime+1   !每隔 outputFrequency 个自由落体时间调用一次calNuRe
 
+    call sampleInstantStats2dRB(NuVolAvg_inst, ReVolAvg_inst)
+    call sampleWallAndMidStatsRB(Nu_hot_inst, Nu_cold_inst, Nu_middle_inst, u_mid_max_inst, v_mid_max_inst)
 
-    
-    NuVolAvg_temp = 0.0d0    
-#ifdef SideHeatedCell  
-    !$acc parallel loop collapse(2) default(none) present(u,T) reduction(+:NuVolAvg_temp)
-    do j = 1, ny
-        do i = 1, nx
-            NuVolAvg_temp = NuVolAvg_temp+u(i,j)*T(i,j)     !对流热通量
-        enddo
-    enddo
-#endif
+    NuVolAvg(dimensionlessTime) = NuVolAvg_inst
+    ReVolAvg(dimensionlessTime) = ReVolAvg_inst
+    dimensionlessTimeNow = real(reloadDimensionlessTime+dimensionlessTime*outputFrequency,kind=8)
 
-#ifdef RayleighBenardCell  
-    !$acc parallel loop collapse(2) default(none) present(v,T) reduction(+:NuVolAvg_temp)
-    do j = 1, ny
-        do i = 1, nx
-            NuVolAvg_temp = NuVolAvg_temp+v(i,j)*T(i,j)     !对流热通量
-        enddo
-    enddo
-#endif
+    open(newunit=uOut,file="NuInst_2DOpenaccUnsteadyStats.dat",status='unknown',position='append')
+    write(uOut,*) dimensionlessTimeNow, NuVolAvg_inst
+    close(uOut)
 
+    open(newunit=uOut,file="ReInst_2DOpenaccUnsteadyStats.dat",status='unknown',position='append')
+    write(uOut,*) dimensionlessTimeNow, ReVolAvg_inst
+    close(uOut)
 
-    NuVolAvg(dimensionlessTime) = NuVolAvg_temp/dble(nx*ny)*lengthUnit/diffusivity+1.0d0    !!体平均 Nusselt 数 = 1 + (常数系数) × 体平均对流热通量
+    call updateRunningStats()
+    call checkStatisticalConvergence()
 
-    open(unit=01,file="Nu_VolAvg_2DOpenacc.dat",status='unknown',position='append')
-    write(01,*) real(reloadDimensionlessTime+dimensionlessTime*outputFrequency,kind=8), NuVolAvg(dimensionlessTime)   !以自由落体时间来写入
-    close(01)
-
-    ReVolAvg_temp = 0.0d0
-    !$acc parallel loop collapse(2) default(none) present(u,v) reduction(+:ReVolAvg_temp)
-    do j = 1, ny
-        do i = 1, nx 
-            ReVolAvg_temp = ReVolAvg_temp+(u(i,j)*u(i,j)+v(i,j)*v(i,j))
-        enddo
-    enddo
-    ReVolAvg(dimensionlessTime) = dsqrt(ReVolAvg_temp/dble(nx*ny))*lengthUnit/viscosity    !全域体平均 RMS-Reynolds 数
-
-
-    open(unit=02,file="Re_VolAvg_2DOpenacc.dat",status='unknown',position='append')
-    write(02,*) real(reloadDimensionlessTime+dimensionlessTime*outputFrequency,kind=8), ReVolAvg(dimensionlessTime)  !!for print purpose only
-    close(02)
-    write(*,'(a,1x,es16.8)') "NuVolAvg =", NuVolAvg(dimensionlessTime)
-    write(*,'(a,1x,es16.8)') "ReVolAvg =", ReVolAvg(dimensionlessTime)
+    write(*,'(a,1x,es16.8)') "NuVolAvg_inst =", NuVolAvg_inst
+    write(*,'(a,1x,es16.8)') "ReVolAvg_inst =", ReVolAvg_inst
+    write(*,'(a,1x,es16.8)') "NuVolAvg_mean =", statsNuMean
+    write(*,'(a,1x,es16.8)') "ReVolAvg_mean =", statsReMean
     return
   end subroutine calNuRe
 !===================================================================================================
@@ -1791,7 +1784,346 @@ end subroutine append_convergence_master_tecplot
 
 
 !===================================================================================================
-#ifdef steadyFlow
+! 子程序: sampleInstantStats2dRB
+! 作用: 在设备端计算瞬时体平均 Nu 和 RMS-Re。
+!===================================================================================================
+  subroutine sampleInstantStats2dRB(NuInst, ReInst)
+    use commondata
+    implicit none
+    real(kind=8), intent(out) :: NuInst, ReInst
+    integer(kind=4) :: i, j
+    real(kind=8) :: NuVolAvg_temp
+    real(kind=8) :: ReVolAvg_temp
+
+    NuVolAvg_temp = 0.0d0
+#ifdef SideHeatedCell
+    !$acc parallel loop collapse(2) default(none) present(u,T) reduction(+:NuVolAvg_temp)
+    do j = 1, ny
+        do i = 1, nx
+            NuVolAvg_temp = NuVolAvg_temp+u(i,j)*T(i,j)
+        enddo
+    enddo
+#endif
+
+#ifdef RayleighBenardCell
+    !$acc parallel loop collapse(2) default(none) present(v,T) reduction(+:NuVolAvg_temp)
+    do j = 1, ny
+        do i = 1, nx
+            NuVolAvg_temp = NuVolAvg_temp+v(i,j)*T(i,j)
+        enddo
+    enddo
+#endif
+
+    NuInst = NuVolAvg_temp/dble(nx*ny)*lengthUnit/diffusivity+1.0d0
+
+    ReVolAvg_temp = 0.0d0
+    !$acc parallel loop collapse(2) default(none) present(u,v) reduction(+:ReVolAvg_temp)
+    do j = 1, ny
+        do i = 1, nx
+            ReVolAvg_temp = ReVolAvg_temp+(u(i,j)*u(i,j)+v(i,j)*v(i,j))
+        enddo
+    enddo
+    ReInst = dsqrt(ReVolAvg_temp/dble(nx*ny))*lengthUnit/viscosity
+
+    return
+  end subroutine sampleInstantStats2dRB
+!===================================================================================================
+! sampleInstantStats2dRB 结束: 在设备端计算瞬时体平均 Nu 和 RMS-Re。
+!===================================================================================================
+
+
+!===================================================================================================
+! 子程序: sampleWallAndMidStatsRB
+! 作用: 仅同步 RB 统计所需切片，并在主机端提取壁面/中线瞬时统计量。
+!===================================================================================================
+  subroutine sampleWallAndMidStatsRB(NuHotInst, NuColdInst, NuMiddleInst, uMidMaxInst, vMidMaxInst)
+    use commondata
+    implicit none
+    real(kind=8), intent(out) :: NuHotInst, NuColdInst, NuMiddleInst
+    real(kind=8), intent(out) :: uMidMaxInst, vMidMaxInst
+    integer(kind=4) :: i, j, k
+    integer(kind=4) :: iL, iR, jMid, jB, jT, j0, i0
+    integer(kind=4) :: ii(5), jj(5)
+    real(kind=8) :: dy, deltaT, coef
+    real(kind=8) :: qy_wall, sum_hot, sum_cold, sum_mid
+    real(kind=8) :: targetX, w, umax_grid, vmax_grid
+    real(kind=8) :: umax_fit, y_fit, vmax_fit, x_fit
+    real(kind=8) :: yLen, xmid, ymid
+    real(kind=8) :: uline(1:ny), vline(1:nx)
+    real(kind=8) :: xk(5), yk(5), fk(5)
+
+    NuHotInst = 0.0d0
+    NuColdInst = 0.0d0
+    NuMiddleInst = 0.0d0
+    uMidMaxInst = 0.0d0
+    vMidMaxInst = 0.0d0
+
+#ifdef RayleighBenardCell
+    dy = 1.0d0 / lengthUnit
+    deltaT = Thot - Tcold
+    coef = velocityScaleCompare
+
+    targetX = 0.5d0
+    iL = 1
+    do while (iL < nx .and. xp(iL+1) < targetX)
+      iL = iL + 1
+    enddo
+    iR = min(iL + 1, nx)
+
+    if (mod(ny,2) == 1) then
+      jMid = (ny + 1)/2
+      !$acc update self(T(:,1:2), T(:,ny-1:ny), T(:,jMid-1:jMid+1), v(:,jMid), u(iL:iR,:))
+    else
+      jB = ny/2
+      jT = jB + 1
+      !$acc update self(T(:,1:2), T(:,ny-1:ny), T(:,jB:jT), v(:,jB:jT), u(iL:iR,:))
+    endif
+
+    sum_hot = 0.0d0
+    do i = 1, nx
+      qy_wall = (8.0d0*Thot - 9.0d0*T(i,1) + T(i,2)) / (3.0d0*dy)
+      sum_hot = sum_hot + qy_wall / deltaT
+    enddo
+    NuHotInst = sum_hot / dble(nx)
+
+    sum_cold = 0.0d0
+    do i = 1, nx
+      qy_wall = (-8.0d0*Tcold + 9.0d0*T(i,ny) - T(i,ny-1)) / (3.0d0*dy)
+      sum_cold = sum_cold + qy_wall / deltaT
+    enddo
+    NuColdInst = sum_cold / dble(nx)
+
+    sum_mid = 0.0d0
+    if (mod(ny,2) == 1) then
+      do i = 1, nx
+        sum_mid = sum_mid + ( coef*v(i,jMid)*(T(i,jMid)-Tref) - (T(i,jMid+1)-T(i,jMid-1))/(2.0d0*dy) ) / deltaT
+      enddo
+      ymid = yp(jMid)
+      do i = 1, nx
+        vline(i) = v(i,jMid)
+      enddo
+    else
+      do i = 1, nx
+        sum_mid = sum_mid + (coef*(0.5d0*(v(i,jB)*(T(i,jB)-Tref) + v(i,jT)*(T(i,jT)-Tref))) &
+        & + (T(i,jB)-T(i,jT))/dy ) / deltaT
+      enddo
+      ymid = 0.5d0*(yp(jB) + yp(jT))
+      do i = 1, nx
+        vline(i) = 0.5d0*(v(i,jB) + v(i,jT))
+      enddo
+    endif
+    NuMiddleInst = sum_mid / dble(nx)
+
+    xmid = targetX
+    if (dabs(xp(iL) - targetX) <= 1.0d-14) then
+      do j = 1, ny
+        uline(j) = u(iL,j)
+      enddo
+    elseif (iR == iL) then
+      do j = 1, ny
+        uline(j) = u(iL,j)
+      enddo
+    else
+      w = (targetX - xp(iL)) / (xp(iR) - xp(iL))
+      do j = 1, ny
+        uline(j) = (1.0d0 - w) * u(iL,j) + w * u(iR,j)
+      enddo
+    endif
+
+    j0 = 1
+    umax_grid = uline(1)
+    do j = 2, ny
+      if (uline(j) > umax_grid) then
+        umax_grid = uline(j)
+        j0 = j
+      endif
+    enddo
+    if (j0 <= 2) then
+      jj = (/ 1, 2, 3, 4, 5 /)
+    elseif (j0 >= ny-1) then
+      jj = (/ ny-4, ny-3, ny-2, ny-1, ny /)
+    else
+      jj = (/ j0-2, j0-1, j0, j0+1, j0+2 /)
+    endif
+    do k = 1, 5
+      yk(k) = yp(jj(k))
+      fk(k) = uline(jj(k))
+    enddo
+    call fit_parabola_ls5(yk, fk, +1, umax_fit, y_fit)
+    yLen = yp(ny+1)
+    if (y_fit > 0.5d0*yLen) y_fit = yLen - y_fit
+    uMidMaxInst = umax_fit * coef
+
+    i0 = 1
+    vmax_grid = vline(1)
+    do i = 2, nx
+      if (vline(i) > vmax_grid) then
+        vmax_grid = vline(i)
+        i0 = i
+      endif
+    enddo
+    if (i0 <= 2) then
+      ii = (/ 1, 2, 3, 4, 5 /)
+    elseif (i0 >= nx-1) then
+      ii = (/ nx-4, nx-3, nx-2, nx-1, nx /)
+    else
+      ii = (/ i0-2, i0-1, i0, i0+1, i0+2 /)
+    endif
+    do k = 1, 5
+      xk(k) = xp(ii(k))
+      fk(k) = vline(ii(k))
+    enddo
+    call fit_parabola_ls5(xk, fk, +1, vmax_fit, x_fit)
+    vMidMaxInst = vmax_fit * coef
+#endif
+
+    return
+  end subroutine sampleWallAndMidStatsRB
+!===================================================================================================
+! sampleWallAndMidStatsRB 结束: 仅同步 RB 统计所需切片，并在主机端提取壁面/中线瞬时统计量。
+!===================================================================================================
+
+
+!===================================================================================================
+! 子程序: updateRunningStats
+! 作用: 更新统计累积量并输出 running mean。
+!===================================================================================================
+  subroutine updateRunningStats()
+    use commondata
+    implicit none
+    integer :: uOut
+    real(kind=8) :: dimensionlessTimeNow, invCount
+
+    if (dimensionlessTime.LE.0) return
+
+    statsNuSum = statsNuSum + NuVolAvg_inst
+    statsNuSum2 = statsNuSum2 + NuVolAvg_inst*NuVolAvg_inst
+    statsReSum = statsReSum + ReVolAvg_inst
+    statsReSum2 = statsReSum2 + ReVolAvg_inst*ReVolAvg_inst
+    statsNuHotSum = statsNuHotSum + Nu_hot_inst
+    statsNuHotSum2 = statsNuHotSum2 + Nu_hot_inst*Nu_hot_inst
+    statsNuColdSum = statsNuColdSum + Nu_cold_inst
+    statsNuColdSum2 = statsNuColdSum2 + Nu_cold_inst*Nu_cold_inst
+    statsNuMiddleSum = statsNuMiddleSum + Nu_middle_inst
+    statsNuMiddleSum2 = statsNuMiddleSum2 + Nu_middle_inst*Nu_middle_inst
+    statsUmidSum = statsUmidSum + u_mid_max_inst
+    statsUmidSum2 = statsUmidSum2 + u_mid_max_inst*u_mid_max_inst
+    statsVmidSum = statsVmidSum + v_mid_max_inst
+    statsVmidSum2 = statsVmidSum2 + v_mid_max_inst*v_mid_max_inst
+
+    invCount = 1.0d0 / dble(dimensionlessTime)
+    statsNuMean = statsNuSum * invCount
+    statsReMean = statsReSum * invCount
+    statsNuHotMean = statsNuHotSum * invCount
+    statsNuColdMean = statsNuColdSum * invCount
+    statsNuMiddleMean = statsNuMiddleSum * invCount
+    statsUmidMean = statsUmidSum * invCount
+    statsVmidMean = statsVmidSum * invCount
+
+    dimensionlessTimeNow = real(reloadDimensionlessTime+dimensionlessTime*outputFrequency,kind=8)
+    open(newunit=uOut,file="StatsRunningMean_2DOpenaccUnsteadyStats.dat",status='unknown',position='append')
+    write(uOut,*) dimensionlessTimeNow, NuVolAvg_inst, ReVolAvg_inst, statsNuMean, statsReMean, &
+    & statsNuHotMean, statsNuColdMean, statsNuMiddleMean, statsUmidMean, statsVmidMean
+    close(uOut)
+
+    return
+  end subroutine updateRunningStats
+!===================================================================================================
+! updateRunningStats 结束: 更新统计累积量并输出 running mean。
+!===================================================================================================
+
+
+!===================================================================================================
+! 子程序: checkStatisticalConvergence
+! 作用: 用相邻统计窗口的均值变化判定是否达到统计收敛。
+!===================================================================================================
+  subroutine checkStatisticalConvergence()
+    use commondata
+    implicit none
+    integer(kind=4) :: i, iStartPrev, iEndPrev, iStartCurr, iEndCurr
+    integer :: uOut
+    real(kind=8) :: prevNuSumLocal, currNuSumLocal
+    real(kind=8) :: prevReSumLocal, currReSumLocal
+    real(kind=8) :: relNu, relRe, dimensionlessTimeNow
+    real(kind=8) :: safeRelativeChange
+
+    if (enableTimeStatistics.NE.1) return
+    if (dimensionlessTime.LT.max(statsMinSamples, 2*statsWindowSamples)) return
+    if (mod(dimensionlessTime, statsWindowSamples).NE.0) return
+
+    iEndCurr = dimensionlessTime
+    iStartCurr = iEndCurr - statsWindowSamples + 1
+    iEndPrev = iStartCurr - 1
+    iStartPrev = iEndPrev - statsWindowSamples + 1
+
+    prevNuSumLocal = 0.0d0
+    currNuSumLocal = 0.0d0
+    prevReSumLocal = 0.0d0
+    currReSumLocal = 0.0d0
+    do i = iStartPrev, iEndPrev
+      prevNuSumLocal = prevNuSumLocal + NuVolAvg(i)
+      prevReSumLocal = prevReSumLocal + ReVolAvg(i)
+    enddo
+    do i = iStartCurr, iEndCurr
+      currNuSumLocal = currNuSumLocal + NuVolAvg(i)
+      currReSumLocal = currReSumLocal + ReVolAvg(i)
+    enddo
+
+    prevNuWindowMean = prevNuSumLocal / dble(statsWindowSamples)
+    currNuWindowMean = currNuSumLocal / dble(statsWindowSamples)
+    prevReWindowMean = prevReSumLocal / dble(statsWindowSamples)
+    currReWindowMean = currReSumLocal / dble(statsWindowSamples)
+
+    relNu = safeRelativeChange(currNuWindowMean, prevNuWindowMean)
+    relRe = safeRelativeChange(currReWindowMean, prevReWindowMean)
+
+    if ((relNu.LE.statsTolNu) .AND. (relRe.LE.statsTolRe)) then
+      statsStableWindowCount = statsStableWindowCount + 1
+    else
+      statsStableWindowCount = 0
+    endif
+
+    if (statsStableWindowCount.GE.statsStableWindowsRequired) statsConverged = .true.
+
+    dimensionlessTimeNow = real(reloadDimensionlessTime+dimensionlessTime*outputFrequency,kind=8)
+    open(newunit=uOut,file="StatsConvergence_2DOpenaccUnsteadyStats.dat",status='unknown',position='append')
+    write(uOut,*) dimensionlessTimeNow, prevNuWindowMean, currNuWindowMean, relNu, prevReWindowMean, &
+    & currReWindowMean, relRe, statsStableWindowCount, merge(1, 0, statsConverged)
+    close(uOut)
+
+    if (statsConverged) then
+      open(unit=00,file=trim(settingsFile),status='unknown',position='append')
+      write(00,*) "Statistical convergence reached at sample =", dimensionlessTime
+      write(00,*) "time_ff =", dimensionlessTimeNow
+      write(00,*) "relNu =", relNu, "; relRe =", relRe
+      close(00)
+    endif
+
+    return
+  end subroutine checkStatisticalConvergence
+!===================================================================================================
+! checkStatisticalConvergence 结束: 用相邻统计窗口的均值变化判定是否达到统计收敛。
+!===================================================================================================
+
+
+!===================================================================================================
+! 函数: safeRelativeChange
+! 作用: 计算稳健的相对变化，避免分母接近零时数值放大。
+!===================================================================================================
+  real(kind=8) function safeRelativeChange(newValue, oldValue)
+    implicit none
+    real(kind=8), intent(in) :: newValue, oldValue
+    real(kind=8), parameter :: tinyScale = 1.0d-30
+
+    safeRelativeChange = dabs(newValue-oldValue) / max(dabs(oldValue), tinyScale)
+    return
+  end function safeRelativeChange
+!===================================================================================================
+! safeRelativeChange 结束: 计算稳健的相对变化，避免分母接近零时数值放大。
+!===================================================================================================
+
+
+!===================================================================================================
 ! 子程序: SideHeatedcalc_Nu_global
 ! 作用: 计算侧壁差温工况下的全场平均 Nusselt 数。
 ! 用途: 在 SideHeatedCell 工况结束后的后处理中调用。
@@ -2053,7 +2385,6 @@ end subroutine append_convergence_master_tecplot
 !===================================================================================================
 ! SideHeatedcalc_Nu_wall_avg 结束: 计算侧壁差温工况下热壁、冷壁和中线的 Nusselt 数及其极值。
 !===================================================================================================
-#endif
 
 
 
@@ -2356,7 +2687,6 @@ end subroutine append_convergence_master_tecplot
 
 
 !===================================================================================================
-#ifdef steadyFlow
 ! 子程序: RBcalc_Nu_global
 ! 作用: 计算 Rayleigh-Benard 工况下的全场平均 Nusselt 数。
 ! 用途: 在 RayleighBenardCell 工况结束后的后处理中调用。
@@ -2583,7 +2913,6 @@ end subroutine RBcalc_Nu_wall_avg
 !===================================================================================================
 ! RBcalc_Nu_wall_avg 结束: 计算 Rayleigh-Benard 工况下热壁、冷壁和中线的 Nusselt 数及其极值。
 !===================================================================================================
-#endif
 
 
 !===================================================================================================
