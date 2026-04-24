@@ -9,7 +9,15 @@
 !=============================================================
 !   自定义宏，一些选项的开关
 #define steadyFlow    
-!~!!#define unsteadyFlow
+!#define unsteadyFlow
+
+!   流动模式宏的选择
+#if defined(steadyFlow) && defined(unsteadyFlow)
+#error "Choose only one flow mode: steadyFlow or unsteadyFlow"
+#endif
+#if !defined(steadyFlow) && !defined(unsteadyFlow)
+#error "Define one flow mode: steadyFlow or unsteadyFlow"
+#endif
 
 !   速度边界，包括水平垂直边界无滑移，还有垂直边界速度周期
 #define HorizontalWallsNoslip
@@ -49,11 +57,11 @@
         implicit none
         !===============================================================================================
         ! 是否在计算前从旧算例重启
-        integer(kind=4), parameter :: loadInitField=0   ! 0: 不重启；1: 从 backupFile-*.bin 读取初值
+        integer(kind=4), parameter :: loadInitField=0   ! 0: 不重启；1: 从 reloadFilePrefix-*.bin 读取初值
 
         ! 在 loadInitField=1 的前提下：
         integer(kind=4), parameter :: reloadDimensionlessTime=0  ! 旧算例累计的无量纲时间（用于续写 Nu/Re 输出横坐标）
-        integer(kind=4), parameter :: reloadbinFileNum=0         ! 读取的备份文件编号：backupFile-<reloadbinFileNum>.bin
+        integer(kind=4), parameter :: reloadbinFileNum=0         ! 读取的备份文件编号：reloadFilePrefix-<reloadbinFileNum>.bin
         !===============================================================================================
 
         !===============================================================================================
@@ -116,23 +124,39 @@
         !===============================================================================================          
         
         !===============================================================================================
-        ! 输出/备份相关设置（以自由落体时间 t_ff 为单位）
-        real(kind=8), parameter :: outputFrequency=100.0d0   ! 每隔 outputFrequency 个自由落体时间 t_ff 输出/统计一次（时间间隔）
-
-        integer(kind=4), parameter :: dimensionlessTimeMax=int(12000/outputFrequency)  ! 用于 NuVolAvg/ReVolAvg 数组的最大记录点数；每 outputFrequency*t_ff 记录一次，则最多覆盖约 12000*t_ff
-
-        integer(kind=4), parameter :: backupInterval=1000  ! 备份间隔（自由落体时间单位），为了停电情况下，可以继续计算
-        
         real(kind=8), parameter :: epsU=1.0d-7, epsT=1.0d-7    ! 稳态收敛阈值   
 
+#ifdef steadyFlow
+        real(kind=8), parameter :: outputFrequency=100.0d0   ! Nu/Re 时间序列采样间隔（单位：t_ff）
+        real(kind=8), parameter :: reloadFileInterval=1000.0d0  ! f/g 重启文件输出间隔（单位：t_ff）
+        real(kind=8), parameter :: outputPltFileInterval=1000.0d0  ! Tecplot 文件输出间隔（单位：t_ff）
+        integer(kind=4), parameter :: dimensionlessTimeMax=int(12000.0d0/outputFrequency)
         integer(kind=4), parameter :: outputBinFile=0   ! 是否输出 bin 文件：0=不输出，1=输出
         integer(kind=4), parameter :: outputPltFile=0   ! 是否输出 plt 文件：0=不输出，1=输出
+        integer(kind=4), parameter :: outputReloadFile=0 ! 是否周期输出 f/g 重启文件：0=不输出，1=输出
+        integer(kind=4), parameter :: itc_max=20000000  ! 稳态：最大格子步，实际仍由 errorU/errorT 提前停止
+#endif
+
+#ifdef unsteadyFlow
+        real(kind=8), parameter :: outputFrequency=0.5d0   ! uvTrho 和 Nu/Re 时间序列采样间隔（单位：t_ff）
+        real(kind=8), parameter :: reloadFileInterval=100.0d0  ! f/g 重启文件输出间隔（单位：t_ff）
+        real(kind=8), parameter :: outputPltFileInterval=100.0d0  ! Tecplot 文件周期输出间隔（单位：t_ff）
+        real(kind=8), parameter :: unsteadyRunDuration=1000.0d0  ! 非稳态阶段固定运行到 1000 个 t_ff
+        integer(kind=4), parameter :: unsteadySampleCount=max(1, int(unsteadyRunDuration/outputFrequency+0.5d0))
+        integer(kind=4), parameter :: dimensionlessTimeMax=unsteadySampleCount
+        integer(kind=4), parameter :: outputBinFile=1   ! 是否输出 bin 文件：0=不输出，1=输出
+        integer(kind=4), parameter :: outputPltFile=0   ! 非稳态默认不周期输出 Tecplot，只在结束时强制输出一次
+        integer(kind=4), parameter :: outputReloadFile=0 ! 是否周期输出 f/g 重启文件：0=不输出，1=输出
+        integer(kind=4), parameter :: itc_max=max(1, int(unsteadyRunDuration*timeUnit+0.5d0)) ! 非稳态：由总 t_ff 自动换算格子步
+#endif
 
         integer(kind=4) :: binFileNum, pltFileNum  ! bin/plt 输出文件的计数器
         ! - unsteadyFlow：每次输出递增（用于文件名编号）
         ! - steadyFlow：bin/plt 文件名通常直接用 itc
 
         integer(kind=4) :: dimensionlessTime
+        integer(kind=4) :: outputFrequencyIntervalItc
+        integer(kind=4) :: reloadFileIntervalItc, outputPltFileIntervalItc
         ! 统计/输出时间点编号（与 outputFrequency 对应）：
         ! 每调用一次 calNuRe() 就 dimensionlessTime = dimensionlessTime + 1
         ! 用于索引 NuVolAvg/ReVolAvg 数组，并用于输出的时间轴：t = reloadDimensionlessTime + dimensionlessTime*outputFrequency（单位：t_ff）
@@ -169,7 +193,6 @@
         real(kind=8), allocatable :: Bx_prev(:,:), By_prev(:,:)
 
         integer(kind=4) :: itc
-        integer(kind=4), parameter :: itc_max=20000000 !格子时间步长
 #ifdef EnableUseG
         logical, parameter :: useG = .true.            !M1G 开关
 #else
@@ -210,6 +233,9 @@
     INTEGER(kind=4) :: time
     real(kind=8) :: timeStart2, timeEnd2
     integer(kind=4) :: myMaxThreads
+#ifdef unsteadyFlow
+    integer(kind=4) :: nextSampleItc
+#endif
     
 
     !===============================================================================================
@@ -234,8 +260,13 @@
 
     call CPU_TIME(timeStart)         !当前进程累计消耗的 CPU 时间,包括并行
     timeStart2 = OMP_get_wtime()     !墙钟时间(实际耗时，不包括并行)
+#ifdef steadyFlow
     do while( ((errorU.GT.epsU).OR.(errorT.GT.epsT)).AND.(itc.LE.itc_max) )   !只要 (errorU > epsU 或 errorT > epsT) 且 itc ≤ itc_max，就继续循环
                                                                               !换成if，就是 errorU > epsU .and. errorT > epsT
+#endif
+#ifdef unsteadyFlow
+    do while( itc.LT.itc_max )       !非稳态：只按预设自由落体时间推进，不再用稳态误差停止
+#endif
 
         itc = itc+1
         
@@ -257,24 +288,28 @@
 
 #ifdef steadyFlow
         if(MOD(itc,2000).EQ.0) call check()
-#endif
-        
-         if( MOD(itc, int(outputFrequency*timeUnit)).EQ.0 ) then  ! 达到一个输出间隔outputFrequency，就执行一次计算体平均Nu，是瞬时全场平均Nu
-
-             !call calNuRe()
-            
-#ifdef steadyFlow
-             if( (outputPltFile.EQ.1).AND.(MOD(itc, backupInterval*int(timeUnit)).EQ.0) ) call output_Tecplot()  !plt 输出备份间隔uvT
-#endif
-            
-#ifdef unsteadyFlow
-             if(outputBinFile.EQ.1) then
-                     call output_binary()          !bin 输出后处理间隔uvTrho数据
-                     if(MOD(itc, int(backupInterval/outputFrequency)*int(outputFrequency*timeUnit)).EQ.0) call backupData()  !输出备份间隔fg
-             endif   
-             if(outputPltFile.EQ.1) call output_Tecplot()  !plt 输出后处理uvT快照
-#endif
+        if( (outputPltFile.EQ.1).AND.(MOD(itc, outputPltFileIntervalItc).EQ.0) ) then
+            call output_Tecplot()  !稳态模式下的可选周期 Tecplot 输出
         endif
+        if( (outputReloadFile.EQ.1).AND.(MOD(itc, reloadFileIntervalItc).EQ.0) ) then
+            call writeReloadFile()      !稳态模式下的可选周期 f/g 重启文件输出
+        endif
+#endif
+
+#ifdef unsteadyFlow
+        do while(dimensionlessTime.LT.unsteadySampleCount)
+            ! 每个目标采样时刻都重新从 t_ff 换算到 itc，以避免累积误差导致的采样时间点漂移
+            nextSampleItc = max(1, int(real(dimensionlessTime+1,kind=8)*outputFrequency*timeUnit+0.5d0))
+            if(itc.LT.nextSampleItc) exit
+            call calNuRe()
+            if(outputBinFile.EQ.1) then
+                call output_binary()          !每 0.5 t_ff 输出一次后处理 uvTrho 快照
+            endif
+        enddo
+        if( (outputReloadFile.EQ.1).AND.(MOD(itc, reloadFileIntervalItc).EQ.0) ) then
+            call writeReloadFile()      !非稳态模式下的可选周期 f/g 重启文件输出
+        endif
+#endif
      enddo
 
     call CPU_TIME(timeEnd)         !当前进程累计消耗的 CPU 时间,包括并行
@@ -284,6 +319,9 @@
     call output_Tecplot()          !输出最后一步的plt结果
     call output_binary()              !输出最后一步的uvTrho数据
 #endif
+#ifdef unsteadyFlow
+    call output_Tecplot()          !非稳态只在 1000 t_ff 结束时强制输出一次 Tecplot 结果
+#endif
     !===============================================================================================
 
 
@@ -291,7 +329,8 @@
     !===============================================================================================
 
     
-!侧壁加热和RB对流的计算Nu不一样
+#ifdef steadyFlow
+!侧壁加热和RB对流的计算Nu不一样；这些最终标量诊断只用于稳态收敛后评估
 #ifdef SideHeatedCell                        
     call SideHeatedcalc_Nu_global()          ! 全场平均Nu
     call SideHeatedcalc_Nu_wall_avg()  ! 热/冷壁, 中线平均Nu,以及热壁最大Numax和Numin以及位置，都采用五点最小二乘法插值出来
@@ -312,6 +351,7 @@
     call calc_psi_vort_and_output()  !输出腔体中心的abs(psi),以及最大的abs(psi)max以及位置（采用细网格插值出来）
 
     call calNuRe()
+#endif
 
 
 
@@ -324,9 +364,11 @@
     write(00,*) "MLUPS = ", real( dble(nx)*dble(ny)*dble(itc)/(timeEnd-timeStart)/1.0d6,kind=8 )   !百万格点更新/秒
     write(00,*) "Time (OMP) = ", real(timeEnd2-timeStart2,kind=8), "s"                           !墙钟时间
     write(00,*) "MLUPS (OMP) = ", real( dble(nx)*dble(ny)*dble(itc)/(timeEnd2-timeStart2)/1.0d6,kind=8 )   !百万格点更新/秒
+#ifdef steadyFlow
     write(00,*) "Nu_global =", Nu_global
     write(00,*) "Nu_hot    =", Nu_hot
     write(00,*) "Nu_cold   =", Nu_cold
+#endif
     write(00,*) "useG =", useG
 
 
@@ -383,6 +425,9 @@
     itc = 0
     errorU = 100.0d0
     errorT = 100.0d0 
+    outputFrequencyIntervalItc = max(1, int(outputFrequency*timeUnit+0.5d0))
+    reloadFileIntervalItc = max(1, int(reloadFileInterval*timeUnit+0.5d0))
+    outputPltFileIntervalItc = max(1, int(outputPltFileInterval*timeUnit+0.5d0))
 
 
     !-----------------------------------------------------------------------------------------------
@@ -431,9 +476,17 @@
 #endif
     write(00,*) "viscosity =",real(viscosity,kind=8), "; diffusivity =",real(diffusivity,kind=8)
     write(00,*) "outputFrequency =", real(outputFrequency,kind=8), "free-fall time units"
-    write(00,*) "......................  or ",  int(outputFrequency*timeUnit), "in itc units"
-    write(00,*) "backupInterval =", backupInterval, " free-fall time units"
-    write(00,*) ".................... or ", int(backupInterval/outputFrequency)*int(outputFrequency*timeUnit), "in itc units"
+    write(00,*) "outputFrequencyIntervalItc =", outputFrequencyIntervalItc, "in itc units"
+    write(00,*) "outputPltFile =", outputPltFile
+    write(00,*) "outputPltFileInterval =", real(outputPltFileInterval,kind=8), "free-fall time units"
+    write(00,*) "outputPltFileIntervalItc =", outputPltFileIntervalItc, "in itc units"
+    write(00,*) "outputReloadFile =", outputReloadFile
+    write(00,*) "reloadFileInterval =", real(reloadFileInterval,kind=8), "free-fall time units"
+    write(00,*) "reloadFileIntervalItc =", reloadFileIntervalItc, "in itc units"
+#ifdef unsteadyFlow
+    write(00,*) "unsteadyRunDuration =", real(unsteadyRunDuration,kind=8), "free-fall time units"
+    write(00,*) "unsteadySampleCount =", unsteadySampleCount
+#endif
     if(loadInitField.EQ.1) then
         write(00,*) "reloadDimensionlessTime=", reloadDimensionlessTime
     endif
@@ -624,7 +677,7 @@
             write(00,*) "WARNING: since loadInitField.EQ.1, please confirm reloadDimensionlessTime", reloadDimensionlessTime
             stop
         endif
-        write(00,*) "Load initial field from previous simulation: ../reloadFile/backupFile- >>>"
+        write(00,*) "Load initial field from previous simulation: ", trim(reloadFilePrefix), "- >>>"
         write(reloadFileName, *) reloadbinFileNum                 !换了个变量Name
         reloadFileName = adjustl(reloadFileName)                  !adjustl把字符串左对齐，把前导空格移到字符串末尾
         open(unit=01,file=trim(reloadFilePrefix)//"-"//trim(reloadFileName)//".bin",form="unformatted", &
@@ -635,7 +688,7 @@
             read(01) (((g(alpha,i,j), i=1,nx), j=1,ny), alpha=0,4)
         close(01)
         call reconstruct_macro_from_fg()
-        write(00,*) "Raw data is loaded from the file: backupFile-",trim(reloadFileName),".bin"
+        write(00,*) "Raw data is loaded from the file: ", trim(reloadFilePrefix), "-", trim(reloadFileName),".bin"
     else
         write(00,*) "Error: initial field is not properly set"                                                  !如果 loadInitField 不是 0/1 或逻辑不一致，直接停止
         stop
@@ -1361,7 +1414,7 @@ end subroutine append_convergence_master_tecplot
     integer(kind=4) :: i, j
     character(len=100) :: filename
     ! This snapshot is for post-processing only; u/v are written after nondimensionalization.
-    ! For strict restart, keep using backupData(), which preserves the lattice-state variables.
+    ! For strict restart, keep using writeReloadFile(), which preserves the lattice-state variables.
     
 #ifdef steadyFlow
     write(filename,*) itc                                            !steadyFlow：bin/plt文件名通常直接用 itc 来编写（格子时间步长） 
@@ -1379,7 +1432,7 @@ end subroutine append_convergence_master_tecplot
 
     open(unit=03,file=trim(binFolderPrefix)//"-"//trim(filename)//'.bin',form="unformatted",access="sequential")    !二进制
     ! Post-processing snapshot only: write nondimensionalized u/v together with T and rho.
-    ! Do not use this file for strict restart; backupData() keeps lattice velocities for that purpose.
+    ! Do not use this file for strict restart; writeReloadFile() keeps lattice velocities for that purpose.
     write(03) ((velocityScaleCompare*u(i,j),i=1,nx),j=1,ny)
     write(03) ((velocityScaleCompare*v(i,j),i=1,nx),j=1,ny)
     write(03) ((T(i,j),i=1,nx),j=1,ny)
@@ -1396,11 +1449,11 @@ end subroutine append_convergence_master_tecplot
     
 
 !===================================================================================================
-! 子程序: backupData
+! 子程序: writeReloadFile
 ! 作用: 输出包含 f、g、u、v、T 的重启备份文件。
 ! 用途: 在运行过程中定期调用，也在程序结束前调用。
 !===================================================================================================
-  subroutine backupData()                                         !输出fg，存储在当前路径，名字是backupFile-1000.bin
+  subroutine writeReloadFile()                                    !输出fg，存储在当前路径，名字由 reloadFilePrefix 控制
     use commondata                                                !用于重启，包含 f,g；读入时必须先读 f,g 再读 u,v,T（无 rho）
     implicit none
     integer(kind=4) :: i, j, alpha
@@ -1417,20 +1470,20 @@ end subroutine append_convergence_master_tecplot
 
     filename = adjustl(filename)
 
-    open(unit=05,file='backupFile-'//trim(filename)//'.bin',form="unformatted",access="sequential")   !二进制
+    open(unit=05,file=trim(reloadFilePrefix)//"-"//trim(filename)//'.bin',form="unformatted",access="sequential")   !二进制
     ! Strict restart snapshots store only f and g; rho/u/v/T are reconstructed after reload.
     write(05) (((f(alpha,i,j), i=1,nx), j=1,ny), alpha=0,8)
     write(05) (((g(alpha,i,j), i=1,nx), j=1,ny), alpha=0,4)
     close(05)
     
     open(unit=00,file=trim(settingsFile),status='unknown',position='append')
-    write(00,*) "Backup  f and g to the file: backupFile-", trim(filename),".bin"
+    write(00,*) "Backup  f and g to the file: ", trim(reloadFilePrefix), "-", trim(filename),".bin"
     close(00)
     
     return
-  end subroutine backupData
+  end subroutine writeReloadFile
 !===================================================================================================
-! backupData 结束: 输出包含 f、g、u、v、T 的重启备份文件。
+! writeReloadFile 结束: 输出包含 f、g、u、v、T 的重启备份文件。
 !===================================================================================================
 
     
@@ -1445,7 +1498,7 @@ end subroutine append_convergence_master_tecplot
     use commondata
     implicit none
     ! Here u and v are exported as nondimensional post-processing velocities using velocityScaleCompare.
-    ! Restart files should still come from backupData(), which preserves the lattice-state information.
+    ! Restart files should still come from writeReloadFile(), which preserves the lattice-state information.
     integer(kind=4) :: i, j, k
     REAL(kind=4) :: zoneMarker, eohMarker   !Tecplot 二进制格式里用的两个“标记值”（299 和 357），用于告诉 Tecplot：这里开始是 zone 描述 / header 结束。
     character(len=40) :: title              !文件 Title 字符串

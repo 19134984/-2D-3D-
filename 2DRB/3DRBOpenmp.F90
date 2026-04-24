@@ -9,6 +9,14 @@
 #define steadyFlow
 !#define unsteadyFlow
 
+! 流动模式宏的选择
+#if defined(steadyFlow) && defined(unsteadyFlow)
+#error "Choose only one flow mode: steadyFlow or unsteadyFlow"
+#endif
+#if !defined(steadyFlow) && !defined(unsteadyFlow)
+#error "Define one flow mode: steadyFlow or unsteadyFlow"
+#endif
+
 !速度边界，包括水平垂直展向边界无滑移，还有垂直展向边界速度周期
 !spanwise 表示 z 方向前后展向壁面
 #define HorizontalWallsNoslip
@@ -61,11 +69,11 @@ module commondata3d
 
   !===============================================================================================
   ! 是否在计算前从旧算例重启
-  integer(kind=4), parameter :: loadInitField=0   ! 0: 不重启；1: 从 backupFile3D-*.bin 读取初值
+  integer(kind=4), parameter :: loadInitField=0   ! 0: 不重启；1: 从 reloadFilePrefix-*.bin 读取初值
 
   ! 在 loadInitField=1 的前提下：
   integer(kind=4), parameter :: reloadDimensionlessTime=0  ! 旧算例累计的无量纲时间
-  integer(kind=4), parameter :: reloadbinFileNum=0         ! 读取的备份文件编号：backupFile3D-<reloadbinFileNum>.bin
+  integer(kind=4), parameter :: reloadbinFileNum=0         ! 读取的备份文件编号：reloadFilePrefix-<reloadbinFileNum>.bin
   !===============================================================================================
 
   !===============================================================================================
@@ -125,19 +133,36 @@ module commondata3d
 
   !===============================================================================================
   ! 输出/备份相关设置（以自由落体时间 t_ff 为单位）
-  integer(kind=4), parameter :: itc_max=20000000
-  real(kind=8), parameter :: outputFrequency=100.0d0   ! 每隔 outputFrequency 个自由落体时间输出/统计一次
-  integer(kind=4), parameter :: dimensionlessTimeMax=int(12000.0d0/outputFrequency)
-  integer(kind=4), parameter :: backupInterval=1000    ! 备份间隔（自由落体时间单位）
-
   real(kind=8), parameter :: epsU=1.0d-7, epsT=1.0d-7
 
+#ifdef steadyFlow
+  real(kind=8), parameter :: outputFrequency=100.0d0   ! Nu/Re 时间序列采样间隔（单位：t_ff）
+  real(kind=8), parameter :: reloadFileInterval=1000.0d0  ! f/g 重启文件输出间隔（单位：t_ff）
+  real(kind=8), parameter :: outputPltFileInterval=1000.0d0  ! Tecplot 文件输出间隔（单位：t_ff）
+  integer(kind=4), parameter :: dimensionlessTimeMax=int(12000.0d0/outputFrequency)
   integer(kind=4), parameter :: outputBinFile=0
   integer(kind=4), parameter :: outputPltFile=0
+  integer(kind=4), parameter :: outputReloadFile=0
+  integer(kind=4), parameter :: itc_max=20000000
+#endif
+
+#ifdef unsteadyFlow
+  real(kind=8), parameter :: outputFrequency=0.5d0   ! uvwTrho 和 Nu/Re 时间序列采样间隔（单位：t_ff）
+  real(kind=8), parameter :: reloadFileInterval=100.0d0  ! f/g 重启文件输出间隔（单位：t_ff）
+  real(kind=8), parameter :: outputPltFileInterval=100.0d0  ! Tecplot 文件周期输出间隔（单位：t_ff）
+  real(kind=8), parameter :: unsteadyRunDuration=1000.0d0
+  integer(kind=4), parameter :: unsteadySampleCount=max(1, int(unsteadyRunDuration/outputFrequency+0.5d0))
+  integer(kind=4), parameter :: dimensionlessTimeMax=unsteadySampleCount
+  integer(kind=4), parameter :: outputBinFile=1
+  integer(kind=4), parameter :: outputPltFile=0      ! 非稳态默认不周期输出 Tecplot，只在结束时强制输出一次
+  integer(kind=4), parameter :: outputReloadFile=0
+  integer(kind=4), parameter :: itc_max=max(1, int(unsteadyRunDuration*timeUnit+0.5d0))
+#endif
 
   integer(kind=4) :: binFileNum, pltFileNum
   integer(kind=4) :: dimensionlessTime
-  integer(kind=4) :: outputIntervalItc, backupIntervalItc
+  integer(kind=4) :: outputFrequencyIntervalItc
+  integer(kind=4) :: reloadFileIntervalItc, outputPltFileIntervalItc
 
   real(kind=8) :: NuVolAvg(0:dimensionlessTimeMax), ReVolAvg(0:dimensionlessTimeMax)
   ! 体平均 Nu 和 Re 的时间序列缓存
@@ -206,6 +231,9 @@ program main3d
   character(len=24) :: string
   integer(kind=4) :: time
   integer(kind=4) :: myMaxThreads
+#ifdef unsteadyFlow
+  integer(kind=4) :: nextSampleItc
+#endif
 
 
   open(unit=00, file=trim(settingsFile), status='unknown')
@@ -222,7 +250,12 @@ program main3d
   call CPU_TIME(timeStart)
   timeStart2 = OMP_get_wtime()
 
+#ifdef steadyFlow
   do while( ((errorU.GT.epsU).OR.(errorT.GT.epsT)).AND.(itc.LE.itc_max) )
+#endif
+#ifdef unsteadyFlow
+  do while( itc.LT.itc_max )
+#endif
   
     itc = itc+1
 
@@ -244,23 +277,28 @@ program main3d
 
 #ifdef steadyFlow
     if(MOD(itc,2000).EQ.0) call check()
-#endif
-
-    if( MOD(itc, int(outputFrequency*timeUnit)).EQ.0 ) then
-      !call calNuRe()
-
-#ifdef steadyFlow
-      if( (outputPltFile.EQ.1).AND.(MOD(itc, backupInterval*int(timeUnit)).EQ.0) ) call output_Tecplot()
+    if ((outputPltFile .EQ. 1) .AND. (mod(itc, outputPltFileIntervalItc) .EQ. 0)) then
+      call output_Tecplot()
+    endif
+    if ((outputReloadFile .EQ. 1) .AND. (mod(itc, reloadFileIntervalItc) .EQ. 0)) then
+      call writeReloadFile()
+    endif
 #endif
 
 #ifdef unsteadyFlow
+    do while(dimensionlessTime.LT.unsteadySampleCount)
+      ! 每个目标采样时刻都重新从 t_ff 换算到 itc，以避免累积误差导致的采样时间点漂移
+      nextSampleItc = max(1, int(real(dimensionlessTime+1,kind=8)*outputFrequency*timeUnit+0.5d0))
+      if(itc.LT.nextSampleItc) exit
+      call calNuRe()
       if(outputBinFile.EQ.1) then
-        call output_binary()     !输出 u、v、w、T、rho 的二进制快照文件
-        if(MOD(itc, int(backupInterval/outputFrequency)*int(outputFrequency*timeUnit)).EQ.0) call backupData()
+        call output_binary()     !每 0.5 t_ff 输出一次 u、v、w、T、rho 的二进制快照文件
       endif
-      if(outputPltFile.EQ.1) call output_Tecplot()
-#endif
+    enddo
+    if ((outputReloadFile .EQ. 1) .AND. (mod(itc, reloadFileIntervalItc) .EQ. 0)) then
+      call writeReloadFile()
     endif
+#endif
   enddo
 
   call CPU_TIME(timeEnd)
@@ -270,6 +308,9 @@ program main3d
   call output_Tecplot()
   call output_binary()    !输出 u、v、w、T、rho 的二进制快照文件
 #endif 
+#ifdef unsteadyFlow
+  call output_Tecplot()   !非稳态只在 1000 t_ff 结束时强制输出一次 Tecplot 结果
+#endif
     !===============================================================================================
 
 
@@ -277,7 +318,8 @@ program main3d
     !===============================================================================================
 
     
-!侧壁加热和RB对流的计算Nu不一样
+#ifdef steadyFlow
+!侧壁加热和RB对流的计算Nu不一样；这些最终标量诊断只用于稳态收敛后评估
 #ifdef SideHeatedCell
   call SideHeatedcalc_Nu_global()
   call SideHeatedcalc_Nu_wall_avg()
@@ -298,7 +340,7 @@ program main3d
 #endif
 
   call calNuRe()
-  call output_Tecplot()   !输出全场数据以及三个中面场变量的 plt 文件，以及对应的 psi-vort 诊断 plt 文件
+#endif
 
   open(unit=00, file=trim(settingsFile), status='unknown', position='append')
   write(00,*) '======================================================================'
@@ -310,10 +352,12 @@ program main3d
   write(00,*) 'MLUPS (OMP) = ', &
        real(dble(nx) * dble(ny) * dble(nz) * dble(itc) / &
        & max(timeEnd2 - timeStart2, 1.0d-12) / 1.0d6, kind=8)
+#ifdef steadyFlow
   write(00,*) 'Nu_global =', Nu_global
   write(00,*) 'Nu_hot    =', Nu_hot
   write(00,*) 'Nu_cold   =', Nu_cold
   write(00,*) 'Nu_middle =', Nu_middle
+#endif
   write(00,*) 'Deallocate Array......'
 
 
@@ -356,8 +400,9 @@ subroutine initial()
   errorT = 100.0d0
 
   ! 把按自由落体时间给出的输出/备份间隔换算成格子步数 itc
-  outputIntervalItc = max(1, int(outputFrequency * timeUnit))
-  backupIntervalItc = max(1, int(backupInterval * timeUnit))
+  outputFrequencyIntervalItc = max(1, int(outputFrequency * timeUnit + 0.5d0))
+  reloadFileIntervalItc = max(1, int(reloadFileInterval * timeUnit + 0.5d0))
+  outputPltFileIntervalItc = max(1, int(outputPltFileInterval * timeUnit + 0.5d0))
 
   !-----------------------------------------------------------------------------------------------
   ! 记录各种信息在日志文件中
@@ -410,9 +455,17 @@ subroutine initial()
   write(00,*) 'thermalGeqCoeff =', real(thermalGeqCoeff,kind=8)
   write(00,*) 'viscosity =', real(viscosity,kind=8), '; diffusivity =', real(diffusivity,kind=8)
   write(00,*) 'outputFrequency =', real(outputFrequency,kind=8), ' free-fall time units'
-  write(00,*) '......................  or ', outputIntervalItc, ' in itc units'
-  write(00,*) 'backupInterval =', backupInterval, ' free-fall time units'
-  write(00,*) '.................... or ', backupIntervalItc, ' in itc units'
+  write(00,*) 'outputFrequencyIntervalItc =', outputFrequencyIntervalItc, ' in itc units'
+  write(00,*) 'outputPltFile =', outputPltFile
+  write(00,*) 'outputPltFileInterval =', real(outputPltFileInterval,kind=8), ' free-fall time units'
+  write(00,*) 'outputPltFileIntervalItc =', outputPltFileIntervalItc, ' in itc units'
+  write(00,*) 'outputReloadFile =', outputReloadFile
+  write(00,*) 'reloadFileInterval =', real(reloadFileInterval,kind=8), ' free-fall time units'
+  write(00,*) 'reloadFileIntervalItc =', reloadFileIntervalItc, ' in itc units'
+#ifdef unsteadyFlow
+  write(00,*) 'unsteadyRunDuration =', real(unsteadyRunDuration,kind=8), ' free-fall time units'
+  write(00,*) 'unsteadySampleCount =', unsteadySampleCount
+#endif
   if (loadInitField .EQ. 1) then
     write(00,*) 'reloadDimensionlessTime =', reloadDimensionlessTime
   endif
@@ -1607,7 +1660,7 @@ subroutine output_binary()
   character(len=100) :: filename
 
   ! This snapshot is for post-processing only; u/v/w are written after nondimensionalization.
-  ! For strict restart, keep using backupData(), which preserves the lattice-state variables.
+  ! For strict restart, keep using writeReloadFile(), which preserves the lattice-state variables.
 #ifdef steadyFlow
   write(filename,'(i12.12)') itc
 #endif
@@ -1634,11 +1687,11 @@ end subroutine output_binary
 
 
 !===========================================================================================================================
-! 子程序: backupData
+! 子程序: writeReloadFile
 ! 作用: 备份 f/g 分布函数，供后续重启继续计算。
 ! 用途: 在运行过程中定期调用，也在程序结束前调用。
 !===========================================================================================================================
-subroutine backupData()
+subroutine writeReloadFile()
   use commondata3d
   implicit none
 
@@ -1655,19 +1708,19 @@ subroutine backupData()
 #endif
 
   filename = adjustl(filename)
-  open(unit=05, file='backupFile3D-'//trim(filename)//'.bin', form='unformatted', access='sequential')
+  open(unit=05, file=trim(reloadFilePrefix)//'-'//trim(filename)//'.bin', form='unformatted', access='sequential')
   write(05) ((((f(alpha,i,j,k), i=1,nx), j=1,ny), k=1,nz), alpha=0,qf-1)
   write(05) ((((g(alpha,i,j,k), i=1,nx), j=1,ny), k=1,nz), alpha=0,qt-1)
   close(05)
 
   open(unit=00, file=trim(settingsFile), status='unknown', position='append')
-  write(00,*) 'Backup f and g to the file: backupFile3D-', trim(filename), '.bin'
+  write(00,*) 'Backup f and g to the file: ', trim(reloadFilePrefix), '-', trim(filename), '.bin'
   close(00)
 
   return
-end subroutine backupData
+end subroutine writeReloadFile
 !===========================================================================================================================
-! backupData 结束: 输出包含 f、g 的重启备份文件。
+! writeReloadFile 结束: 输出包含 f、g 的重启备份文件。
 !===========================================================================================================================
 
 
