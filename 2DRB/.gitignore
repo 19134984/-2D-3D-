@@ -3,3 +3,16 @@ references/
 detail/
 codex-skills/
 pdf/
+
+# Local build products and scratch outputs.
+*.mod
+*.o
+*.obj
+*.exe
+a.out
+*.log
+tmp-build-*/
+
+# Temporary text extracted from papers during manual review.
+_*.txt
+paper_3d_lb.txt
