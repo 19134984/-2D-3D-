@@ -41,9 +41,9 @@
 
 !算法切换
 !启用 M1G 修正；注释掉则不使用 useG 相关修正
-#define EnableUseG
+!#define EnableUseG
 !启用旧温度算法
-!#define EnableLegacyThermalScheme
+#define EnableLegacyThermalScheme
 
 
 
@@ -74,7 +74,7 @@
 #endif
         real(kind=8), parameter :: pi = acos(-1.0d0)
 
-        real(kind=8), parameter :: Rayleigh=1.0d7        
+        real(kind=8), parameter :: Rayleigh=1.0d6        
         real(kind=8), parameter :: Prandtl=0.7d0       
         real(kind=8), parameter :: Mach=0.1d0
         real(kind=8), parameter :: Thot=0.5d0, Tcold=-0.5d0
@@ -339,9 +339,7 @@
     call output_Tecplot()          !输出最后一步的plt结果
     call output_binary()              !输出最后一步的uvTrho数据
 #endif
-#ifdef unsteadyFlow
-    call output_Tecplot()          !非稳态只在 1000 t_ff 结束时强制输出一次 Tecplot 结果
-#endif
+
     !===============================================================================================
 
 
