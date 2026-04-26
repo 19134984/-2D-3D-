@@ -74,7 +74,7 @@
 #endif
         real(kind=8), parameter :: pi = acos(-1.0d0)
 
-        real(kind=8), parameter :: Rayleigh=1.0d6        
+        real(kind=8), parameter :: Rayleigh=1.0d7        
         real(kind=8), parameter :: Prandtl=0.7d0       
         real(kind=8), parameter :: Mach=0.1d0
         real(kind=8), parameter :: Thot=0.5d0, Tcold=-0.5d0
