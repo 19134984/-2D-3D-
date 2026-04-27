@@ -80,7 +80,7 @@ module commondata3dOpenaccThermalLBGK
 #endif
   real(kind=8), parameter :: pi=acos(-1.0d0)
 
-  real(kind=8), parameter :: Rayleigh=1.0d5
+  real(kind=8), parameter :: Rayleigh=1.0d6
   real(kind=8), parameter :: Prandtl=0.71d0
   real(kind=8), parameter :: Mach=0.1d0
   real(kind=8), parameter :: Thot=0.5d0, Tcold=-0.5d0
@@ -1269,8 +1269,13 @@ subroutine bouncebackT3d()
   do k = 1, nz
     do j = 1, ny
       do alpha = 0, qt-1
+#ifdef EnableLegacyThermalScheme
+        if (exT(alpha) .EQ. 1)  g(alpha,1,j,k)  = -g_post(oppT(alpha),1,j,k)  + (6.0d0 + paraA) / 21.0d0 * Thot
+        if (exT(alpha) .EQ. -1) g(alpha,nx,j,k) = -g_post(oppT(alpha),nx,j,k) + (6.0d0 + paraA) / 21.0d0 * Tcold
+#else
         if (exT(alpha) .EQ. 1)  g(alpha,1,j,k)  = -g_post(oppT(alpha),1,j,k)  + 2.0d0 * omegaT(alpha) * Thot
         if (exT(alpha) .EQ. -1) g(alpha,nx,j,k) = -g_post(oppT(alpha),nx,j,k) + 2.0d0 * omegaT(alpha) * Tcold
+#endif
       enddo
     enddo
   enddo
@@ -1305,8 +1310,13 @@ subroutine bouncebackT3d()
   do k = 1, nz
     do i = 1, nx
       do alpha = 0, qt-1
+#ifdef EnableLegacyThermalScheme
+        if (eyT(alpha) .EQ. 1)  g(alpha,i,1,k)  = -g_post(oppT(alpha),i,1,k)  + (6.0d0 + paraA) / 21.0d0 * Thot
+        if (eyT(alpha) .EQ. -1) g(alpha,i,ny,k) = -g_post(oppT(alpha),i,ny,k) + (6.0d0 + paraA) / 21.0d0 * Tcold
+#else
         if (eyT(alpha) .EQ. 1)  g(alpha,i,1,k)  = -g_post(oppT(alpha),i,1,k)  + 2.0d0 * omegaT(alpha) * Thot
         if (eyT(alpha) .EQ. -1) g(alpha,i,ny,k) = -g_post(oppT(alpha),i,ny,k) + 2.0d0 * omegaT(alpha) * Tcold
+#endif
       enddo
     enddo
   enddo

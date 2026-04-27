@@ -10,8 +10,8 @@ program postprocess_statAvg_2DOpenacc
   ! 本程序在给定的统计稳态起点之后，计算到 1000 t_ff 为止的整体/前半/后半平均值。
 
   ! 输入文件名写在源码中，对应 2DRBOpenacc.F90 中 calNuRe() 写出的两个 .dat 文件。
-  character(len=*), parameter :: nu_file = 'Nu_VolAvg_2DOpenacc.dat'
-  character(len=*), parameter :: re_file = 'Re_VolAvg_2DOpenacc.dat'
+  character(len=*), parameter :: nu_file = 'Nu_VolAvg.dat'
+  character(len=*), parameter :: re_file = 'Re_VolAvg.dat'
 
   ! Nu/Re 文件中已知有 2000 行数据，因此直接按固定行数读取。
   integer(kind=4), parameter :: sample_count = 2000

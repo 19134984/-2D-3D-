@@ -8,8 +8,8 @@
 
 !=============================================================
 !   自定义宏，一些选项的开关
-#define steadyFlow    
-!#define unsteadyFlow
+!#define steadyFlow    
+#define unsteadyFlow
 
 !   流动模式宏的选择
 #if defined(steadyFlow) && defined(unsteadyFlow)
@@ -21,14 +21,14 @@
 
 !   速度边界，包括水平垂直边界无滑移，还有垂直边界速度周期
 #define HorizontalWallsNoslip
-!#define VerticalWallsNoslip
-#define VerticalWallsPeriodicalU
+#define VerticalWallsNoslip
+!#define VerticalWallsPeriodicalU
 
 !   温度边界(for Rayleigh Benard Cell)，包括水平边界恒温，垂直边界温度不可穿透以及周期
 #define RayleighBenardCell
 #define HorizontalWallsConstT
-!#define VerticalWallsAdiabatic
-#define VerticalWallsPeriodicalT
+#define VerticalWallsAdiabatic
+!#define VerticalWallsPeriodicalT
 
 
 
@@ -66,7 +66,7 @@
 
         !===============================================================================================
         ! 无量纲参数
-        integer(kind=4), parameter :: nx=320, ny=160     !格子网格
+        integer(kind=4), parameter :: nx=256, ny=256     !格子网格
 #ifdef SideHeatedCell
         real(kind=8), parameter :: lengthUnit=dble(nx)     !侧壁差温：特征长度取 x 方向长度
 #else
@@ -74,8 +74,8 @@
 #endif
         real(kind=8), parameter :: pi = acos(-1.0d0)
 
-        real(kind=8), parameter :: Rayleigh=5.0d4        
-        real(kind=8), parameter :: Prandtl=0.71d0       
+        real(kind=8), parameter :: Rayleigh=1.0d7        
+        real(kind=8), parameter :: Prandtl=0.7d0       
         real(kind=8), parameter :: Mach=0.1d0
         real(kind=8), parameter :: Thot=0.5d0, Tcold=-0.5d0
         real(kind=8), parameter :: Tref=0.5d0*(Thot+Tcold)
@@ -145,8 +145,8 @@
         integer(kind=4), parameter :: unsteadySampleCount=max(1, int(unsteadyRunDuration/outputFrequency+0.5d0))
         integer(kind=4), parameter :: dimensionlessTimeMax=unsteadySampleCount
         integer(kind=4), parameter :: outputBinFile=1   ! 是否输出 bin 文件：0=不输出，1=输出
-        integer(kind=4), parameter :: outputPltFile=0   ! 非稳态默认不周期输出 Tecplot，只在结束时强制输出一次
-        integer(kind=4), parameter :: outputReloadFile=0 ! 是否周期输出 f/g 重启文件：0=不输出，1=输出
+        integer(kind=4), parameter :: outputPltFile=1   ! 是否输出 plt 文件：0=不输出，1=输出
+        integer(kind=4), parameter :: outputReloadFile=1 ! 是否周期输出 f/g 重启文件：0=不输出，1=输出
         integer(kind=4), parameter :: itc_max=max(1, int(unsteadyRunDuration*timeUnit+0.5d0)) ! 非稳态：由总 t_ff 自动换算格子步
 #endif
 
@@ -171,7 +171,7 @@
         character(len=100) :: pltFolderPrefix="buoyancyCavity2DOpenmpTecplot"
         ! plt 输出文件前缀（实际文件名形如：<pltFolderPrefix>-<编号>.plt）
 
-        character(len=100) :: reloadFilePrefix="backupFile2DOpenmp"
+        character(len=100) :: reloadFilePrefix="reloadFile2DOpenmp"
         ! 重启读取文件的前缀（实际读取：<reloadFilePrefix>-<reloadbinFileNum>.bin）
         character(len=100) :: settingsFile="SimulationSettings2DOpenmp.txt"
         !===============================================================================================
@@ -306,6 +306,9 @@
                 call output_binary()          !每 0.5 t_ff 输出一次后处理 uvTrho 快照
             endif
         enddo
+        if( (outputPltFile.EQ.1).AND.(MOD(itc, outputPltFileIntervalItc).EQ.0) ) then
+            call output_Tecplot()  !非稳态模式下的可选周期 Tecplot 输出
+        endif
         if( (outputReloadFile.EQ.1).AND.(MOD(itc, reloadFileIntervalItc).EQ.0) ) then
             call writeReloadFile()      !非稳态模式下的可选周期 f/g 重启文件输出
         endif
@@ -319,9 +322,7 @@
     call output_Tecplot()          !输出最后一步的plt结果
     call output_binary()              !输出最后一步的uvTrho数据
 #endif
-#ifdef unsteadyFlow
-    call output_Tecplot()          !非稳态只在 1000 t_ff 结束时强制输出一次 Tecplot 结果
-#endif
+
     !===============================================================================================
 
 
@@ -346,12 +347,14 @@
     call RBcalc_umid_max()     !中心线上的最大速度及其位置，也是用五点最小二乘法插值出来
     call RBcalc_vmid_max()
 #endif
-
+#endif
 
     call calc_psi_vort_and_output()  !输出腔体中心的abs(psi),以及最大的abs(psi)max以及位置（采用细网格插值出来）
 
+#ifdef steadyFlow
     call calNuRe()
 #endif
+
 
 
 

@@ -41,9 +41,9 @@
 
 !算法切换
 !启用 M1G 修正；注释掉则不使用 useG 相关修正
-!#define EnableUseG
+#define EnableUseG
 !启用旧温度算法
-#define EnableLegacyThermalScheme
+!#define EnableLegacyThermalScheme
 
 
 
@@ -75,7 +75,7 @@
         real(kind=8), parameter :: pi = acos(-1.0d0)
 
         real(kind=8), parameter :: Rayleigh=1.0d7        
-        real(kind=8), parameter :: Prandtl=0.7d0       
+        real(kind=8), parameter :: Prandtl=5.3d0       
         real(kind=8), parameter :: Mach=0.1d0
         real(kind=8), parameter :: Thot=0.5d0, Tcold=-0.5d0
         real(kind=8), parameter :: Tref=0.5d0*(Thot+Tcold)

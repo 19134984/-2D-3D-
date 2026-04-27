@@ -11,8 +11,8 @@ program postprocess
   ! 3) 输出一个累计时间平均 Tecplot 文件，其中第 k 个点为 mean(1:k)。
 
   ! 输入文件名写在源码中，对应 2DRBOpenacc.F90 中 calNuRe() 写出的两个 .dat 文件。
-  character(len=*), parameter :: nu_file = 'Nu_VolAvg_2DOpenacc.dat'
-  character(len=*), parameter :: re_file = 'Re_VolAvg_2DOpenacc.dat'
+  character(len=*), parameter :: nu_file = 'Nu_VolAvg.dat'
+  character(len=*), parameter :: re_file = 'Re_VolAvg.dat'
 
   ! Nu/Re 文件中已知有 2000 行数据，因此直接按固定行数读取。
   integer(kind=4), parameter :: sample_count = 2000

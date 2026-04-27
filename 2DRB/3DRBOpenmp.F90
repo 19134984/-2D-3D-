@@ -154,8 +154,8 @@ module commondata3d
   integer(kind=4), parameter :: unsteadySampleCount=max(1, int(unsteadyRunDuration/outputFrequency+0.5d0))
   integer(kind=4), parameter :: dimensionlessTimeMax=unsteadySampleCount
   integer(kind=4), parameter :: outputBinFile=1
-  integer(kind=4), parameter :: outputPltFile=0      ! 非稳态默认不周期输出 Tecplot，只在结束时强制输出一次
-  integer(kind=4), parameter :: outputReloadFile=0
+  integer(kind=4), parameter :: outputPltFile=1
+  integer(kind=4), parameter :: outputReloadFile=1
   integer(kind=4), parameter :: itc_max=max(1, int(unsteadyRunDuration*timeUnit+0.5d0))
 #endif
 
@@ -169,7 +169,7 @@ module commondata3d
 
   character(len=100) :: binFolderPrefix="buoyancyCavity3DOpenmpbinFile"
   character(len=100) :: pltFolderPrefix="buoyancyCavity3DOpenmpTecplot"
-  character(len=100) :: reloadFilePrefix="backupFile3DOpenmp"
+  character(len=100) :: reloadFilePrefix="reloadFile3DOpenmp"
   character(len=100) :: settingsFile="SimulationSettings3DOpenmp.txt"
   !===============================================================================================
 
@@ -295,6 +295,8 @@ program main3d
         call output_binary()     !每 0.5 t_ff 输出一次 u、v、w、T、rho 的二进制快照文件
       endif
     enddo
+    if ((outputPltFile .EQ. 1) .AND. (mod(itc, outputPltFileIntervalItc) .EQ. 0)) then
+      call output_Tecplot()
     if ((outputReloadFile .EQ. 1) .AND. (mod(itc, reloadFileIntervalItc) .EQ. 0)) then
       call writeReloadFile()
     endif
@@ -308,9 +310,7 @@ program main3d
   call output_Tecplot()
   call output_binary()    !输出 u、v、w、T、rho 的二进制快照文件
 #endif 
-#ifdef unsteadyFlow
-  call output_Tecplot()   !非稳态只在 1000 t_ff 结束时强制输出一次 Tecplot 结果
-#endif
+
     !===============================================================================================
 
 
