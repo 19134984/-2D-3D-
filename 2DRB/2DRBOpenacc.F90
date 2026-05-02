@@ -11,7 +11,7 @@
 !#define steadyFlow    
 #define unsteadyFlow
 
-!   流动模式宏的选择
+!   流动模式宏的选择，两个都开、两个都关都会报错；只有二选一才通过。
 #if defined(steadyFlow) && defined(unsteadyFlow)
 #error "Choose only one flow mode: steadyFlow or unsteadyFlow"
 #endif
@@ -23,6 +23,14 @@
 #define HorizontalWallsNoslip
 #define VerticalWallsNoslip
 !#define VerticalWallsPeriodicalU
+
+!   垂直速度边界宏的选择
+#if defined(VerticalWallsNoslip) && defined(VerticalWallsPeriodicalU)
+#error "Choose only one vertical velocity BC: VerticalWallsNoslip or VerticalWallsPeriodicalU"
+#endif
+#if !defined(VerticalWallsNoslip) && !defined(VerticalWallsPeriodicalU)
+#error "Define one vertical velocity BC: VerticalWallsNoslip or VerticalWallsPeriodicalU"
+#endif
 
 !   温度边界(for Rayleigh Benard Cell)，包括水平边界恒温，垂直边界温度不可穿透以及周期
 #define RayleighBenardCell
@@ -39,13 +47,27 @@
 !#define SideHeatedHa  
 !~~temperature B.C.~~
 
+!   对流算例宏的选择
+#if defined(RayleighBenardCell) && defined(SideHeatedCell)
+#error "Choose only one convection case: RayleighBenardCell or SideHeatedCell"
+#endif
+#if !defined(RayleighBenardCell) && !defined(SideHeatedCell)
+#error "Define one convection case: RayleighBenardCell or SideHeatedCell"
+#endif
+
 !算法切换
 !启用 M1G 修正；注释掉则不使用 useG 相关修正
 !#define EnableUseG
 !启用旧温度算法
 #define EnableLegacyThermalScheme
 
-
+!   温度算法宏的选择
+#if defined(EnableUseG) && defined(EnableLegacyThermalScheme)
+#error "Choose only one thermal scheme: EnableUseG or EnableLegacyThermalScheme"
+#endif
+#if !defined(EnableUseG) && !defined(EnableLegacyThermalScheme)
+#error "Define one thermal scheme: EnableUseG or EnableLegacyThermalScheme"
+#endif
 
 !   自定义宏结束
 !=============================================================
@@ -57,11 +79,11 @@
         implicit none
         !===============================================================================================
         ! 是否在计算前从旧算例重启
-        integer(kind=4), parameter :: loadInitField=0   ! 0: 不重启；1: 从 backupFile-*.bin 读取初值
+        integer(kind=4), parameter :: loadInitField=0   ! 0: 不重启；1: 从 reloadFilePrefix-*.bin 读取初值
 
         ! 在 loadInitField=1 的前提下：
         integer(kind=4), parameter :: reloadDimensionlessTime=0  ! 旧算例累计的无量纲时间（用于续写 Nu/Re 输出横坐标）
-        integer(kind=4), parameter :: reloadbinFileNum=0         ! 读取的备份文件编号：backupFile-<reloadbinFileNum>.bin
+        integer(kind=4) :: reloadFileNum=0                       ! 重启文件编号；loadInitField=1 时先读取该编号，后续输出时继续递增
         !===============================================================================================
 
         !===============================================================================================
@@ -83,8 +105,6 @@
         real(kind=8), parameter :: viscosity=(tauf-0.5d0)/3.0d0
         real(kind=8), parameter :: diffusivity=viscosity/Prandtl
         
-        ! heatFluxScale is used in Nu/heat-flux post-processing and should stay consistent with the Nu definition.
-        real(kind=8), parameter :: heatFluxScale=lengthUnit/diffusivity          ! 固定采用 L/kappa
 
         ! velocityScaleCompare is used only in velocity-related post-processing to convert lattice velocity
         ! to the nondimensional velocity scale adopted by the reference paper being compared.
@@ -128,52 +148,51 @@
         real(kind=8), parameter :: epsU=1.0d-7, epsT=1.0d-7    ! 稳态收敛阈值   
 
 #ifdef steadyFlow
-        real(kind=8), parameter :: outputFrequency=10.0d0   ! Nu/Re 时间序列采样间隔（单位：t_ff）
+        real(kind=8), parameter :: outputSnapshotInterval=10.0d0   ! 快照和 Nu/Re 时间序列采样间隔（单位：t_ff）
         real(kind=8), parameter :: reloadFileInterval=100.0d0  ! f/g 重启文件输出间隔（单位：t_ff）
         real(kind=8), parameter :: outputPltFileInterval=100.0d0  ! Tecplot 文件输出间隔（单位：t_ff）
-        integer(kind=4), parameter :: dimensionlessTimeMax=int(12000.0d0/outputFrequency)
-        integer(kind=4), parameter :: outputBinFile=0   ! 是否输出 bin 文件：0=不输出，1=输出
+        integer(kind=4), parameter :: dimensionlessTimeMax=int(12000.0d0/outputSnapshotInterval)
+        integer(kind=4), parameter :: outputSnapshotFile=0   ! 是否输出后处理快照文件：0=不输出，1=输出
         integer(kind=4), parameter :: outputPltFile=0   ! 是否输出 plt 文件：0=不输出，1=输出
         integer(kind=4), parameter :: outputReloadFile=0 ! 是否周期输出 f/g 重启文件：0=不输出，1=输出
         integer(kind=4), parameter :: itc_max=20000000  ! 稳态：最大格子步，实际仍由 errorU/errorT 提前停止
 #endif
 
 #ifdef unsteadyFlow
-        real(kind=8), parameter :: outputFrequency=0.5d0   ! uvTrho 和 Nu/Re 时间序列采样间隔（单位：t_ff）
+        real(kind=8), parameter :: outputSnapshotInterval=0.5d0   ! uvTrho 快照和 Nu/Re 时间序列采样间隔（单位：t_ff）
         real(kind=8), parameter :: reloadFileInterval=100.0d0  ! f/g 重启文件输出间隔（单位：t_ff）
         real(kind=8), parameter :: outputPltFileInterval=100.0d0  ! Tecplot 文件周期输出间隔（单位：t_ff）
         real(kind=8), parameter :: unsteadyRunDuration=1800.0d0  ! 非稳态阶段固定运行到 1800 个 t_ff
-        integer(kind=4), parameter :: unsteadySampleCount=max(1, int(unsteadyRunDuration/outputFrequency+0.5d0))   !计数器
+        integer(kind=4), parameter :: unsteadySampleCount=max(1, int(unsteadyRunDuration/outputSnapshotInterval+0.5d0))   !计数器
         integer(kind=4), parameter :: dimensionlessTimeMax=unsteadySampleCount
-        integer(kind=4), parameter :: outputBinFile=1   ! 是否输出 bin 文件：0=不输出，1=输出
+        integer(kind=4), parameter :: outputSnapshotFile=1   ! 是否输出后处理快照文件：0=不输出，1=输出
         integer(kind=4), parameter :: outputPltFile=1   ! 是否输出 plt 文件：0=不输出，1=输出
         integer(kind=4), parameter :: outputReloadFile=1 ! 是否周期输出 f/g 重启文件：0=不输出，1=输出
         integer(kind=4), parameter :: itc_max=max(1, int(unsteadyRunDuration*timeUnit+0.5d0)) ! 非稳态：由总 t_ff 自动换算格子步
 #endif
 
-        integer(kind=4) :: binFileNum, pltFileNum  ! bin/plt 输出文件的计数器
-        ! - unsteadyFlow：每次输出递增（用于文件名编号）
-        ! - steadyFlow：bin/plt 文件名通常直接用 itc 格子步
+        integer(kind=4) :: snapshotFileNum, pltFileNum  ! 快照/plt 输出文件的计数器
+        ! 每次调用对应输出子程序时递增（用于文件名编号）
 
         integer(kind=4) :: dimensionlessTime
-        integer(kind=4) :: outputFrequencyIntervalItc
+        integer(kind=4) :: outputSnapshotIntervalItc
         integer(kind=4) :: reloadFileIntervalItc, outputPltFileIntervalItc
-        ! 统计/输出时间点编号（与 outputFrequency 对应）：
+        ! 统计/输出时间点编号（与 outputSnapshotInterval 对应）：
         ! 每调用一次 calNuRe() 就 dimensionlessTime = dimensionlessTime + 1
-        ! 用于索引 NuVolAvg/ReVolAvg 数组，并用于输出的时间轴：t = reloadDimensionlessTime + dimensionlessTime*outputFrequency（单位：t_ff）
+        ! 用于索引 NuVolAvg/ReVolAvg 数组，并用于输出的时间轴：t = reloadDimensionlessTime + dimensionlessTime*outputSnapshotInterval（单位：t_ff）
 
         real(kind=8) :: NuVolAvg(0:dimensionlessTimeMax), ReVolAvg(0:dimensionlessTimeMax)
         ! 体平均 Nu 和 Re 的时间序列缓存
         ! 只有在启用并调用 calNuRe() 的情况下这些数组才会被真正填充
   
-        character(len=100) :: binFolderPrefix="buoyancyCavity2DOpenaccbinFile"
-        ! bin 输出文件前缀（实际文件名形如：<binFolderPrefix>-<编号>.bin）
+        character(len=100) :: snapshotFilePrefix="buoyancyCavity2DOpenaccSnapshot"
+        ! 快照输出文件前缀（实际文件名形如：<snapshotFilePrefix>-<编号>.bin）
 
         character(len=100) :: pltFolderPrefix="buoyancyCavity2DOpenaccTecplot"
         ! plt 输出文件前缀（实际文件名形如：<pltFolderPrefix>-<编号>.plt）
 
         character(len=100) :: reloadFilePrefix="reloadFile2DOpenacc"
-        ! 重启读取文件的前缀（实际读取：<reloadFilePrefix>-<reloadbinFileNum>.bin）
+        ! 重启读取文件的前缀（实际读取：<reloadFilePrefix>-<reloadFileNum>.bin）
         
         character(len=100) :: settingsFile="SimulationSettings2DOpenacc.txt"
         !===============================================================================================
@@ -262,7 +281,6 @@
     call enter_data_2d_openacc()
 
     !===============================================================================================
-    !-----------------------------------------------------------------------------------------------
 
     call CPU_TIME(timeStart)         !当前进程累计消耗的 CPU 时间,包括并行
     ! system_clock 返回墙钟计数器和每秒计数率；
@@ -298,33 +316,37 @@
 #ifdef steadyFlow
         if(MOD(itc,2000).EQ.0) call check()
         if( (outputPltFile.EQ.1).AND.(MOD(itc, outputPltFileIntervalItc).EQ.0) ) then
-            call update_host_all_2d_openacc()
+            call update_host_tecplot_2d_openacc()
             call output_Tecplot()  !稳态模式下的可选周期 Tecplot 输出
         endif
+        if( (outputSnapshotFile.EQ.1).AND.(MOD(itc, outputSnapshotIntervalItc).EQ.0) ) then
+            call update_host_snapshot_2d_openacc()
+            call output_SnapshotFile()  !稳态模式下的可选周期 uvTrho 快照输出
+        endif
         if( (outputReloadFile.EQ.1).AND.(MOD(itc, reloadFileIntervalItc).EQ.0) ) then
-            call update_host_all_2d_openacc()
-            call writeReloadFile()      !稳态模式下的可选周期 f/g 重启文件输出
+            call update_host_reload_2d_openacc()
+            call output_ReloadFile()      !稳态模式下的可选周期 f/g 重启文件输出
         endif
 #endif
 
 #ifdef unsteadyFlow
         do while(dimensionlessTime.LT.unsteadySampleCount)
             ! 每个目标采样时刻都重新从 t_ff 换算到 itc，以避免累积误差导致的采样时间点漂移
-            nextSampleItc = max(1, int(real(dimensionlessTime+1,kind=8)*outputFrequency*timeUnit+0.5d0))
+            nextSampleItc = max(1, int(real(dimensionlessTime+1,kind=8)*outputSnapshotInterval*timeUnit+0.5d0))
             if(itc.LT.nextSampleItc) exit
             call calNuRe()
-            if(outputBinFile.EQ.1) then
-                call update_host_all_2d_openacc()
-                call output_binary()          !每 0.5 t_ff 输出一次后处理 uvTrho 快照
+            if(outputSnapshotFile.EQ.1) then
+                call update_host_snapshot_2d_openacc()
+                call output_SnapshotFile()          !每 0.5 t_ff 输出一次后处理 uvTrho 快照
             endif
         enddo
         if( (outputPltFile.EQ.1).AND.(MOD(itc, outputPltFileIntervalItc).EQ.0) ) then
-            call update_host_all_2d_openacc()
+            call update_host_tecplot_2d_openacc()
             call output_Tecplot()  !非稳态模式下的可选周期 Tecplot 输出
         endif
         if( (outputReloadFile.EQ.1).AND.(MOD(itc, reloadFileIntervalItc).EQ.0) ) then
-            call update_host_all_2d_openacc()
-            call writeReloadFile()      !非稳态模式下的可选周期 f/g 重启文件输出
+            call update_host_reload_2d_openacc()
+            call output_ReloadFile()      !非稳态模式下的可选周期 f/g 重启文件输出
         endif
 #endif
      enddo
@@ -333,11 +355,11 @@
     ! 取墙钟结束计数器，用于后面输出 OpenACC 实际耗时。
     call system_clock(wallClockEnd, wallClockRate)
     timeEnd2 = dble(wallClockEnd) / dble(max(wallClockRate,1_8))
-    call update_host_all_2d_openacc()
+    call update_host_snapshot_2d_openacc()
 
 #ifdef steadyFlow
     call output_Tecplot()          !输出最后一步的plt结果
-    call output_binary()              !输出最后一步的uvTrho数据
+    call output_SnapshotFile()              !输出最后一步的uvTrho数据
 #endif
 
     !===============================================================================================
@@ -348,7 +370,12 @@
 
     
 #ifdef steadyFlow
-!侧壁加热和RB对流的计算Nu不一样；这些最终标量诊断只用于稳态收敛后评估
+! 稳态最终标量诊断：
+! 1) 只在 steadyFlow 收敛后调用；非稳态统计不要直接套用这一组最终诊断。
+! 2) SideHeatedCell 的主热流方向为 x，用 u 和 dT/dx；RayleighBenardCell 的主热流方向为 y，用 v 和 dT/dy。
+! 3) 壁面 Nu 和角点扩展默认采用半步长边界：流体节点距离物理边界 dx/2 或 dy/2。
+! 4) Nu 极值、中心线速度极值使用五点最小二乘抛物线插值；中心线在偶数网格时用两侧流体节点线性插值。
+! 5) 如果后续改成周期速度/温度边界，或改变半步长边界布置，这里和各后处理子程序都需要重新检查。
 #ifdef SideHeatedCell                        
     call SideHeatedcalc_Nu_global()          ! 全场平均Nu
     call SideHeatedcalc_Nu_wall_avg()  ! 热/冷壁, 中线平均Nu,以及热壁最大Numax和Numin以及位置，都采用五点最小二乘法插值出来
@@ -367,7 +394,11 @@
 #endif
 
 
-    call calc_psi_vort_and_output()  !输出腔体中心的abs(psi),以及最大的abs(psi)max以及位置（采用细网格插值出来）
+#ifdef VerticalWallsNoslip
+    ! psi/vort 后处理默认封闭腔体：四周无滑移，psi 在物理边界取同一常数。
+    ! 若垂直边界改为周期速度边界，流函数边界补点和涡量单边差分需要另写周期版本。
+    call calc_psi_vort_and_output()  ! 输出中心abs(psi), max(abs(psi))及位置；max位置用细网格样条插值
+#endif
 
 #ifdef steadyFlow
     call calNuRe()
@@ -385,9 +416,9 @@
     write(00,*) "Time (ACC) = ", real(timeEnd2-timeStart2,kind=8), "s"                           !墙钟时间
     write(00,*) "MLUPS (ACC) = ", real( dble(nx)*dble(ny)*dble(itc)/(timeEnd2-timeStart2)/1.0d6,kind=8 )   !百万格点更新/秒
 #ifdef steadyFlow
-    write(00,*) "Nu_global =", Nu_global
-    write(00,*) "Nu_hot    =", Nu_hot
-    write(00,*) "Nu_cold   =", Nu_cold
+    write(00,'(a,1x,ES24.16E3)') "Nu_global =", real(Nu_global,kind=8)
+    write(00,'(a,1x,ES24.16E3)') "Nu_hot    =", real(Nu_hot,kind=8)
+    write(00,'(a,1x,ES24.16E3)') "Nu_cold   =", real(Nu_cold,kind=8)
 #endif
     write(00,*) "useG =", useG
 
@@ -424,10 +455,6 @@
 !===========================================================================================================================
 
 
-!===========================================================================================================================
-!===========================================================================================================================
-
-!===========================================================================================================================
 !===================================================================================================
 ! 子程序: initial
 ! 作用: 初始化网格坐标、场变量、分布函数、输出文件和重启信息。
@@ -446,7 +473,7 @@
     itc = 0
     errorU = 100.0d0
     errorT = 100.0d0 
-    outputFrequencyIntervalItc = max(1, int(outputFrequency*timeUnit+0.5d0))
+    outputSnapshotIntervalItc = max(1, int(outputSnapshotInterval*timeUnit+0.5d0))
     reloadFileIntervalItc = max(1, int(reloadFileInterval*timeUnit+0.5d0))
     outputPltFileIntervalItc = max(1, int(outputPltFileInterval*timeUnit+0.5d0))
 
@@ -455,17 +482,23 @@
     !记录各种信息在日志文件中
     open(unit=00,file=trim(settingsFile),status='unknown',position='append')  !在这个txt文件后面继续写（追加模式）
     
-    if(outputBinFile.EQ.1) then
-        open(unit=01,file=trim(binFolderPrefix)//"-"//"readme",status="unknown")    !trim去掉字符串尾部空格，换了存储路径，可自己更改
-        write(01,*) "binFile folder exist!"                                         !读取路径binFolderPrefix="../binFile/buoyancyCavity
+    if(outputSnapshotFile.EQ.1) then
+        open(unit=01,file=trim(snapshotFilePrefix)//"-"//"readme",status="unknown")    !trim去掉字符串尾部空格，换了存储路径，可自己更改
+        write(01,*) "snapshot file prefix exists!"
         close(01)
-        write(00,*) "Data will be stored in ", binFolderPrefix
+        write(00,*) "Snapshot data will be stored in ", snapshotFilePrefix
     endif
     if(outputPltFile.EQ.1) then
         open(unit=01,file=trim(pltFolderPrefix)//"-"//"readme",status="unknown")     !读取路径pltFolderPrefix="../pltFile/buoyancyCavity
         write(01,*) "pltFile folder exist!"
         close(01)
         write(00,*) "Data will be stored in ", pltFolderPrefix
+    endif
+    if(outputReloadFile.EQ.1) then
+        open(unit=01,file=trim(reloadFilePrefix)//"-"//"readme",status="unknown")
+        write(01,*) "reloadFile prefix exists!"
+        close(01)
+        write(00,*) "Reload data will be stored in ", reloadFilePrefix
     endif
     
 #ifdef EnableLegacyThermalScheme
@@ -496,8 +529,9 @@
     write(00,*) 'taug=',real(taug,kind=8)
 #endif
     write(00,*) "viscosity =",real(viscosity,kind=8), "; diffusivity =",real(diffusivity,kind=8)
-    write(00,*) "outputFrequency =", real(outputFrequency,kind=8), "free-fall time units"
-    write(00,*) "outputFrequencyIntervalItc =", outputFrequencyIntervalItc, "in itc units"
+    write(00,*) "outputSnapshotFile =", outputSnapshotFile
+    write(00,*) "outputSnapshotInterval =", real(outputSnapshotInterval,kind=8), "free-fall time units"
+    write(00,*) "outputSnapshotIntervalItc =", outputSnapshotIntervalItc, "in itc units"
     write(00,*) "outputPltFile =", outputPltFile
     write(00,*) "outputPltFileInterval =", real(outputPltFileInterval,kind=8), "free-fall time units"
     write(00,*) "outputPltFileIntervalItc =", outputPltFileIntervalItc, "in itc units"
@@ -694,23 +728,27 @@
 
 
 
-    elseif(loadInitField.EQ.1) then                               !在加载文件的情况下，读取路径 reloadFilePrefix="./reloadFile/backupFile
+    elseif(loadInitField.EQ.1) then                               !在加载文件的情况下，读取路径 <reloadFilePrefix>-<reloadFileNum>.bin
         if(reloadDimensionlessTime.EQ.0) then                     !在加载文件的情况下，reloadDimensionlessTime最好是非零
             write(00,*) "WARNING: since loadInitField.EQ.1, please confirm reloadDimensionlessTime", reloadDimensionlessTime
             stop
         endif
-        write(00,*) "Load initial field from previous simulation: ../reloadFile/backupFile- >>>"
-        write(reloadFileName, *) reloadbinFileNum                 !换了个变量Name
+        write(00,*) "Load initial field from previous simulation: ", trim(reloadFilePrefix), "- >>>"
+        write(reloadFileName,'(i12.12)') reloadFileNum
         reloadFileName = adjustl(reloadFileName)                  !adjustl把字符串左对齐，把前导空格移到字符串末尾
         open(unit=01,file=trim(reloadFilePrefix)//"-"//trim(reloadFileName)//".bin",form="unformatted", &
         access="sequential",status='old')  !unformatted是二进制,sequential：按记录顺序读写
-            ! Strict restart files store only f and g; rho, u, v and T are rebuilt after reading.
-            write(00,*) "Reloading f and g from file"
+            ! Strict restart files store f and g; EnableUseG also stores the previous heat-flux history.
+            write(00,*) "Reloading f, g and optional UseG history from file"
             read(01) (((f(alpha,i,j), i=1,nx), j=1,ny), alpha=0,8)      !先 i，再 j，再 alpha
             read(01) (((g(alpha,i,j), i=1,nx), j=1,ny), alpha=0,4)
+#ifdef EnableUseG
+            read(01) ((Bx_prev(i,j), i=1,nx), j=1,ny)
+            read(01) ((By_prev(i,j), i=1,nx), j=1,ny)
+#endif
         close(01)
         call reconstruct_macro_from_fg()
-        write(00,*) "Raw data is loaded from the file: backupFile-",trim(reloadFileName),".bin"
+        write(00,*) "Raw data is loaded from the file: ", trim(reloadFilePrefix), "-", trim(reloadFileName), ".bin"
     else
         write(00,*) "Error: initial field is not properly set"                                                  !如果 loadInitField 不是 0/1 或逻辑不一致，直接停止
         stop
@@ -728,8 +766,11 @@ close(00)
     f_post = 0.0d0
     g_post = 0.0d0
         
-    binFileNum = 0
+    snapshotFileNum = 0
     pltFileNum = 0
+    if(loadInitField.EQ.0) then
+        reloadFileNum = 0
+    endif
     dimensionlessTime = 0
     
     NuVolAvg = 0.0d0
@@ -739,7 +780,6 @@ close(00)
   end subroutine initial
 !===================================================================================================
 
-!===================================================================================================
 
 !===================================================================================================
 ! 子程序: enter_data_2d_openacc
@@ -760,18 +800,42 @@ close(00)
 !===================================================================================================
 
 !===================================================================================================
-! 子程序: update_host_all_2d_openacc
-! 作用: 在主机端输出或后处理前，把设备端最新场变量同步回 CPU。
+! 子程序: update_host_snapshot_2d_openacc
+! 作用: 在主机端输出 uvTrho 快照或做 CPU 后处理前，同步宏观场。
 !===================================================================================================
-  subroutine update_host_all_2d_openacc()
+  subroutine update_host_snapshot_2d_openacc()
     use commondata
     implicit none
 
-    !$acc update self(u,v,T,rho,f,g,Fx,Fy,Bx_prev,By_prev)
-#ifdef steadyFlow
-    !$acc update self(up,vp,Tp)
+    !$acc update self(u,v,T,rho)
+  end subroutine update_host_snapshot_2d_openacc
+!===================================================================================================
+
+!===================================================================================================
+! 子程序: update_host_tecplot_2d_openacc
+! 作用: Tecplot 主场输出只需要 u、v、T。
+!===================================================================================================
+  subroutine update_host_tecplot_2d_openacc()
+    use commondata
+    implicit none
+
+    !$acc update self(u,v,T)
+  end subroutine update_host_tecplot_2d_openacc
+!===================================================================================================
+
+!===================================================================================================
+! 子程序: update_host_reload_2d_openacc
+! 作用: 严格重启文件需要 f/g；EnableUseG 还需要保存历史通量。
+!===================================================================================================
+  subroutine update_host_reload_2d_openacc()
+    use commondata
+    implicit none
+
+    !$acc update self(f,g)
+#ifdef EnableUseG
+    !$acc update self(Bx_prev,By_prev)
 #endif
-  end subroutine update_host_all_2d_openacc
+  end subroutine update_host_reload_2d_openacc
 !===================================================================================================
 
 !===================================================================================================
@@ -993,6 +1057,7 @@ close(00)
 
 !===================================================================================================
 ! 子程序: macro
+! 作用: 由流场分布函数恢复 rho、u、v，并加入半步力项速度修正。
 !===================================================================================================
   subroutine macro()
     use commondata
@@ -1246,7 +1311,8 @@ close(00)
 
 
 !===================================================================================================
-! reconstruct_macro_from_fg: rebuild rho, u, v, T and previous heat flux from reloaded f and g
+! 子程序: reconstruct_macro_from_fg
+! 作用: 从重启读回的 f/g 重新恢复 rho、u、v 和 T。
 !===================================================================================================
     subroutine reconstruct_macro_from_fg()
     use commondata
@@ -1255,13 +1321,10 @@ close(00)
     real(kind=8) :: momx, momy
     logical :: rho_bad
 
-    call macroT()
-
     rho_bad = .false.
-    !$omp parallel do default(none) shared(f,rho,u,v,T,Fx,Fy,Bx_prev,By_prev) private(i,j,iter,momx,momy) &
-    !$omp reduction(.or.:rho_bad)
     do j = 1, ny
         do i = 1, nx
+            T(i,j) = g(0,i,j)+g(1,i,j)+g(2,i,j)+g(3,i,j)+g(4,i,j)
             rho(i,j) = f(0,i,j)+f(1,i,j)+f(2,i,j)+f(3,i,j)+f(4,i,j)+f(5,i,j)+f(6,i,j)+f(7,i,j)+f(8,i,j)
             momx = f(1,i,j)-f(3,i,j)+f(5,i,j)-f(6,i,j)-f(7,i,j)+f(8,i,j)
             momy = f(2,i,j)-f(4,i,j)+f(5,i,j)+f(6,i,j)-f(7,i,j)-f(8,i,j)
@@ -1290,13 +1353,8 @@ close(00)
                 u(i,j) = 0.0d0
                 v(i,j) = 0.0d0
             endif
-#ifdef EnableUseG
-            Bx_prev(i,j) = u(i,j)*T(i,j)
-            By_prev(i,j) = v(i,j)*T(i,j)
-#endif
         enddo
     enddo
-    !$omp end parallel do
 
     if (rho_bad) then
         write(*,*) "Warning: non-positive rho found during restart reconstruction."
@@ -1362,11 +1420,11 @@ close(00)
     call append_convergence_tecplot('convergence2DOpenacc.plt', itc, errorU, errorT)
 
     
-    write(caseTag,'("Ra=",ES10.3E2,",nx=",I0,",ny=",I0,",useG=",L1,",old=",L1)') Rayleigh, nx, ny, useG,&
+    write(caseTag,'("Ra=",ES24.16E3,",nx=",I0,",ny=",I0,",useG=",L1,",old=",L1)') Rayleigh, nx, ny, useG,&
     &useLegacyThermalScheme  !输出收敛曲线的对比
     call append_convergence_master_tecplot('convergence_all_2DOpenacc.plt', caseTag, itc, errorU, errorT)
 
-    write(*,'(I12,1X,ES24.16,1X,ES24.16)') itc, errorU, errorT
+    write(*,'(I12,1X,ES24.16E3,1X,ES24.16E3)') itc, errorU, errorT
 
 
     return
@@ -1398,14 +1456,14 @@ subroutine append_convergence_tecplot(filename, itc, errorU, errorT)
 
     write(u,'(A)') 'VARIABLES = "itc" "errorU" "errorT"'
     write(u,'(A)') 'ZONE T="conv", F=POINT'
-    write(u,'(I12,1X,ES24.16,1X,ES24.16)') itc, errorU, errorT
+    write(u,'(I12,1X,ES24.16E3,1X,ES24.16E3)') itc, errorU, errorT
     close(u)
 
     first_write = .false.
   else
     ! 同一次运行的后续调用：追加数据行
     open(newunit=u, file=trim(filename), status='old', position='append', action='write', form='formatted')
-    write(u,'(I12,1X,ES24.16,1X,ES24.16)') itc, errorU, errorT
+    write(u,'(I12,1X,ES24.16E3,1X,ES24.16E3)') itc, errorU, errorT
     close(u)
   end if
 
@@ -1451,7 +1509,7 @@ subroutine append_convergence_master_tecplot(filename, zoneName, itc, errorU, er
 
   ! 追加一个数据点
   open(newunit=u, file=trim(filename), status='old', position='append', action='write', form='formatted')
-  write(u,'(I12,1X,ES24.16,1X,ES24.16)') itc, errorU, errorT
+  write(u,'(I12,1X,ES24.16E3,1X,ES24.16E3)') itc, errorU, errorT
   close(u)
 end subroutine append_convergence_master_tecplot
 !===================================================================================================
@@ -1463,86 +1521,86 @@ end subroutine append_convergence_master_tecplot
 
 
 !===================================================================================================
-! File output 
-!===========================================================================================================================
+! 子程序: output_SnapshotFile
+! 作用: 输出 u、v、T、rho 的二进制快照文件，供后处理分析使用。
 !===================================================================================================
-!===================================================================================================
-  subroutine output_binary()                                         !输出uvTrho，存储在binFolderPrefix="../binFile/buoyancyCavity-000000001234.bin
+  subroutine output_SnapshotFile()                                   !输出 uvTrho 二进制快照
     use commondata                                                   !用于后处理快照；重启读入时必须按 u,v,T,rho 顺序读取
     implicit none
     integer(kind=4) :: i, j
     character(len=100) :: filename
     ! This snapshot is for post-processing only; u/v are written after nondimensionalization.
-    ! For strict restart, keep using writeReloadFile(), which preserves the lattice-state variables.
+    ! For strict restart, keep using output_ReloadFile(), which preserves the lattice-state variables.
     
 #ifdef steadyFlow
-    write(filename,*) itc                                            !steadyFlow：bin/plt文件名通常直接用 itc 来编写（格子时间步长） 
+    write(filename,'(i12.12)') itc                                   !steadyFlow：快照文件名使用当前格子步
 #endif
 
 #ifdef unsteadyFlow
-    binFileNum = binFileNum+1                 !unsteadyFlow：文件名用输出序号 binFileNum（每次输出自增，与 tff 间隔由 outputFrequency 控制）
-    if(loadInitField.EQ.0) write(filename,*) binFileNum
-    if(loadInitField.EQ.1) write(filename,*) binFileNum+reloadbinFileNum
+    snapshotFileNum = snapshotFileNum+1
+    write(filename,'(i12.12)') snapshotFileNum                       !unsteadyFlow：快照文件按调用次数编号，与 reloadFileNum 分离
 #endif
-
-    !unsteadyFlow 下：按“输出次数”编号，也就是调用一次加一
 
     filename = adjustl(filename)
 
-    open(unit=03,file=trim(binFolderPrefix)//"-"//trim(filename)//'.bin',form="unformatted",access="sequential")    !二进制
+    open(unit=03,file=trim(snapshotFilePrefix)//"-"//trim(filename)//'.bin',form="unformatted",access="sequential")    !二进制
     ! Post-processing snapshot only: write nondimensionalized u/v together with T and rho.
-    ! Do not use this file for strict restart; writeReloadFile() keeps lattice velocities for that purpose.
-    write(03) ((velocityScaleCompare*u(i,j),i=1,nx),j=1,ny)
-    write(03) ((velocityScaleCompare*v(i,j),i=1,nx),j=1,ny)
-    write(03) ((T(i,j),i=1,nx),j=1,ny)
-    write(03) ((rho(i,j), i=1,nx), j=1,ny)
+    ! Do not use this file for strict restart; output_ReloadFile() keeps lattice velocities for that purpose.
+    write(03) ((real(velocityScaleCompare*u(i,j),kind=8),i=1,nx),j=1,ny)
+    write(03) ((real(velocityScaleCompare*v(i,j),kind=8),i=1,nx),j=1,ny)
+    write(03) ((real(T(i,j),kind=8),i=1,nx),j=1,ny)
+    write(03) ((real(rho(i,j),kind=8), i=1,nx), j=1,ny)
     close(03)
 
     return
-  end subroutine output_binary
+  end subroutine output_SnapshotFile
 !===================================================================================================
-! output_binary 结束: 输出 u、v、T、rho 的二进制快照文件。
+! output_SnapshotFile 结束: 输出 u、v、T、rho 的二进制快照文件。
 !===================================================================================================
 
 
     
 
 !===================================================================================================
-! 子程序: writeReloadFile
-! 作用: 输出包含 f、g、u、v、T 的重启备份文件。
+! 子程序: output_ReloadFile
+! 作用: 输出包含 f、g 的严格重启备份文件；rho/u/v/T 在读取后由 f/g 重建。
 ! 用途: 在运行过程中定期调用，也在程序结束前调用。
 !===================================================================================================
-  subroutine writeReloadFile()                                    !输出fg，存储在当前路径，名字是backupFile-1000.bin
-    use commondata                                                !用于重启，包含 f,g；读入时必须先读 f,g 再读 u,v,T（无 rho）
+  subroutine output_ReloadFile()                                  !输出fg，存储在当前路径，名字由 reloadFilePrefix 控制
+    use commondata                                                !用于重启，包含 f,g；读入后调用 reconstruct_macro_from_fg() 重建宏观量
     implicit none
     integer(kind=4) :: i, j, alpha
     character(len=100) :: filename
 
 #ifdef steadyFlow
-    write(filename,*) itc                                    !steadyFlow：bin/plt文件名通常直接用 itc 来编写（格子时间步长）                               
+    write(filename,'(i12.12)') itc                           !steadyFlow：重启文件名使用当前格子步
 #endif
 
 #ifdef unsteadyFlow
-    if(loadInitField.EQ.0) write(filename,*) binFileNum     !unsteadyFlow：文件名用输出序号 binFileNum（每次输出自增，与 tff 间隔由 outputFrequency 控制）
-    if(loadInitField.EQ.1) write(filename,*) binFileNum+reloadbinFileNum
+    reloadFileNum = reloadFileNum + 1
+    write(filename,'(i12.12)') reloadFileNum                !unsteadyFlow：reload 文件使用独立编号，不依赖快照输出是否开启
 #endif
 
     filename = adjustl(filename)
 
-    open(unit=05,file='backupFile-'//trim(filename)//'.bin',form="unformatted",access="sequential")   !二进制
-    ! Strict restart snapshots store only f and g; rho/u/v/T are reconstructed after reload.
-    write(05) (((f(alpha,i,j), i=1,nx), j=1,ny), alpha=0,8)
-    write(05) (((g(alpha,i,j), i=1,nx), j=1,ny), alpha=0,4)
+    open(unit=05,file=trim(reloadFilePrefix)//"-"//trim(filename)//'.bin',form="unformatted",access="sequential")   !二进制
+    ! Strict restart snapshots store f and g; EnableUseG also stores the previous heat-flux history.
+    write(05) (((real(f(alpha,i,j),kind=8), i=1,nx), j=1,ny), alpha=0,8)
+    write(05) (((real(g(alpha,i,j),kind=8), i=1,nx), j=1,ny), alpha=0,4)
+#ifdef EnableUseG
+    write(05) ((real(Bx_prev(i,j),kind=8), i=1,nx), j=1,ny)
+    write(05) ((real(By_prev(i,j),kind=8), i=1,nx), j=1,ny)
+#endif
     close(05)
     
     open(unit=00,file=trim(settingsFile),status='unknown',position='append')
-    write(00,*) "Backup  f and g to the file: backupFile-", trim(filename),".bin"
+    write(00,*) "Backup  f and g to the file: ", trim(reloadFilePrefix), "-", trim(filename),".bin"
     close(00)
     
     return
-  end subroutine writeReloadFile
+  end subroutine output_ReloadFile
 !===================================================================================================
-! writeReloadFile 结束: 输出包含 f、g、u、v、T 的重启备份文件。
+! output_ReloadFile 结束: 输出包含 f、g 的严格重启备份文件。
 !===================================================================================================
 
     
@@ -1557,7 +1615,7 @@ end subroutine append_convergence_master_tecplot
     use commondata
     implicit none
     ! Here u and v are exported as nondimensional post-processing velocities using velocityScaleCompare.
-    ! Restart files should still come from writeReloadFile(), which preserves the lattice-state information.
+    ! Restart files should still come from output_ReloadFile(), which preserves the lattice-state information.
     integer(kind=4) :: i, j, k
     REAL(kind=4) :: zoneMarker, eohMarker   !Tecplot 二进制格式里用的两个“标记值”（299 和 357），用于告诉 Tecplot：这里开始是 zone 描述 / header 结束。
     character(len=40) :: title              !文件 Title 字符串
@@ -1565,15 +1623,12 @@ end subroutine append_convergence_master_tecplot
     integer(kind=4), parameter :: kmax=1    !二维数据也按 3D 的 IJK 写，K=1
     character(len=40) :: zoneName           !zone 名称
     character(len=100) :: filename          !输出文件名字符串
-    
-    !$acc update self(u,v,T)                !OpenACC指令，忽略
-
 #ifdef steadyFlow
     write(filename,'(i12.12)') itc
 #endif
 
 #ifdef unsteadyFlow
-    pltFileNum = pltFileNum+1               !和前面的binFileNum一样
+    pltFileNum = pltFileNum+1               !Tecplot 文件使用独立输出编号
     write(filename,'(i12.12)') pltFileNum
 #endif
 
@@ -1716,9 +1771,8 @@ end subroutine append_convergence_master_tecplot
 
 
 !===================================================================================================
-!===========================================================================================================================
-!===================================================================================================
 ! 子程序: calNuRe
+! 作用: 计算体平均 Nu / Re，并把时间序列缓存到数组中。
 !===================================================================================================
   subroutine calNuRe()
     use commondata
@@ -1736,7 +1790,7 @@ end subroutine append_convergence_master_tecplot
         stop
     endif
 
-    dimensionlessTime = dimensionlessTime+1   !每隔 outputFrequency 个自由落体时间调用一次calNuRe
+    dimensionlessTime = dimensionlessTime+1   !每隔 outputSnapshotInterval 个自由落体时间调用一次calNuRe
 
 
     
@@ -1763,7 +1817,9 @@ end subroutine append_convergence_master_tecplot
     NuVolAvg(dimensionlessTime) = NuVolAvg_temp/dble(nx*ny)*lengthUnit/diffusivity+1.0d0    !!体平均 Nusselt 数 = 1 + (常数系数) × 体平均对流热通量
 
     open(unit=01,file="Nu_VolAvg_2DOpenacc.dat",status='unknown',position='append')
-    write(01,*) real(reloadDimensionlessTime+dimensionlessTime*outputFrequency,kind=8), NuVolAvg(dimensionlessTime)   !以自由落体时间来写入
+    write(01,'(ES24.16E3,1X,ES24.16E3)') &
+        real(reloadDimensionlessTime+dimensionlessTime*outputSnapshotInterval,kind=8), &
+        real(NuVolAvg(dimensionlessTime),kind=8)   !以自由落体时间来写入
     close(01)
 
     ReVolAvg_temp = 0.0d0
@@ -1777,10 +1833,12 @@ end subroutine append_convergence_master_tecplot
 
 
     open(unit=02,file="Re_VolAvg_2DOpenacc.dat",status='unknown',position='append')
-    write(02,*) real(reloadDimensionlessTime+dimensionlessTime*outputFrequency,kind=8), ReVolAvg(dimensionlessTime)  !!for print purpose only
+    write(02,'(ES24.16E3,1X,ES24.16E3)') &
+        real(reloadDimensionlessTime+dimensionlessTime*outputSnapshotInterval,kind=8), &
+        real(ReVolAvg(dimensionlessTime),kind=8)
     close(02)
-    write(*,'(a,1x,es16.8)') "NuVolAvg =", NuVolAvg(dimensionlessTime)
-    write(*,'(a,1x,es16.8)') "ReVolAvg =", ReVolAvg(dimensionlessTime)
+    write(*,'(a,1x,ES24.16E3)') "NuVolAvg =", real(NuVolAvg(dimensionlessTime),kind=8)
+    write(*,'(a,1x,ES24.16E3)') "ReVolAvg =", real(ReVolAvg(dimensionlessTime),kind=8)
     return
   end subroutine calNuRe
 !===================================================================================================
@@ -1831,12 +1889,12 @@ end subroutine append_convergence_master_tecplot
     Nu_global = (sum_qx / dble(nx*ny)) / deltaT
 
     ! 屏幕输出
-    write(*,'(a,1x,es16.8)') "Nu_global =", Nu_global
+    write(*,'(a,1x,ES24.16E3)') "Nu_global =", real(Nu_global,kind=8)
 
 
     ! 同步写入日志
     open(unit=00,file=trim(settingsFile),status="unknown",position="append")
-    write(00,'(a,1x,es16.8)') "Nu_global =", Nu_global
+    write(00,'(a,1x,ES24.16E3)') "Nu_global =", real(Nu_global,kind=8)
     close(00)
 
     return
@@ -1890,14 +1948,12 @@ end subroutine append_convergence_master_tecplot
     !-----------------------------
     ! (1) 左侧热壁平均 Nu_hot，同时记录 Numax/Numin 及其 y 位置
     sum_hot = 0.0d0
-    !$omp parallel do default(none) shared(T,Nu_left,dx,deltaT) private(j,qx_wall) reduction(+:sum_hot)
     do j = 1, ny
       ! 壁面导热通量：qx(x=0,j)
       qx_wall = (8.0d0*Thot - 9.0d0*T(1,j) + T(2,j)) / (3.0d0*dx)
       Nu_left(j)= qx_wall / deltaT
       sum_hot   = sum_hot + Nu_left(j)
     enddo
-    !$omp end parallel do
     Nu_hot = sum_hot / dble(ny)
 
     ! 计算左壁面上下两个角点的热通量 
@@ -1991,12 +2047,10 @@ end subroutine append_convergence_master_tecplot
     !-----------------------------
     ! (2) 右侧冷壁平均 Nu_cold
     sum_cold = 0.0d0
-    !$omp parallel do default(none) shared(T,dx,deltaT) private(j,qx_wall) reduction(+:sum_cold)
     do j = 1, ny
       qx_wall = (-8.0d0*Tcold + 9.0d0*T(nx,j) - T(nx-1,j)) / (3.0d0*dx)
       sum_cold = sum_cold + qx_wall/ deltaT
     enddo
-    !$omp end parallel do
     Nu_cold = (sum_cold / dble(ny))
 
     !-----------------------------
@@ -2006,44 +2060,44 @@ end subroutine append_convergence_master_tecplot
     if (mod(nx,2) == 1) then
       iMid = (nx + 1)/2
 
-      !$omp parallel do default(none) shared(u,T,iMid,dx,deltaT,coef) private(j) reduction(+:sum_mid)
       do j = 1, ny
         sum_mid = sum_mid + ( coef*u(iMid,j)*(T(iMid,j)-Tref) + (T(iMid-1,j)-T(iMid+1,j))/(2.0d0*dx) ) / deltaT
       enddo
-      !$omp end parallel do
 
     else
       iL = nx/2
       iR = iL + 1
 
-      !$omp parallel do default(none) shared(u,T,iL,iR,dx,deltaT,coef) private(j) reduction(+:sum_mid)
       do j = 1, ny
         sum_mid = sum_mid + (coef*( 0.5d0*( u(iL,j)*(T(iL,j)-Tref) + u(iR,j)*(T(iR,j)-Tref) )) &
         + (T(iL,j)-T(iR,j))/dx )/ deltaT
       enddo
-      !$omp end parallel do
     endif
 
     Nu_middle = (sum_mid / dble(ny))
 
     !-----------------------------
     ! 输出：屏幕 + 日志
-    write(*,'(a,1x,es16.8)') "Nu_hot    =", Nu_hot
-    write(*,'(a,1x,es16.8)') "Nu_cold   =", Nu_cold
-    write(*,'(a,1x,es16.8)') "Nu_middle =", Nu_middle
-    write(*,'(a,1x,es16.8,2x,a,1x,es16.8)') "Nu_hot_max =", Nu_hot_max, "y_max =", Nu_hot_max_position
-    write(*,'(a,1x,es16.8,2x,a,1x,es16.8)') "Nu_hot_min =", Nu_hot_min, "y_min =", Nu_hot_min_position
+    write(*,'(a,1x,ES24.16E3)') "Nu_hot    =", real(Nu_hot,kind=8)
+    write(*,'(a,1x,ES24.16E3)') "Nu_cold   =", real(Nu_cold,kind=8)
+    write(*,'(a,1x,ES24.16E3)') "Nu_middle =", real(Nu_middle,kind=8)
+    write(*,'(a,1x,ES24.16E3,2x,a,1x,ES24.16E3)') &
+        "Nu_hot_max =", real(Nu_hot_max,kind=8), "y_max =", real(Nu_hot_max_position,kind=8)
+    write(*,'(a,1x,ES24.16E3,2x,a,1x,ES24.16E3)') &
+        "Nu_hot_min =", real(Nu_hot_min,kind=8), "y_min =", real(Nu_hot_min_position,kind=8)
 
     !open(unit=12,file="Nu_wall_avg.txt",status="unknown",position="append")
-    !write(12,'(i12,1x,8(1x,es16.8))') itc, Nu_hot, Nu_cold, Nu_middle, Nu_hot_max, Nu_hot_max_position, Nu_hot_min, Nu_hot_min_position
+    !write(12,'(I12,1X,8(1X,ES24.16E3))') itc, Nu_hot, Nu_cold, Nu_middle, Nu_hot_max, Nu_hot_max_position, Nu_hot_min, Nu_hot_min_position
     !close(12)
 
     open(unit=00,file=trim(settingsFile),status="unknown",position="append")
-    write(00,'(a,1x,es16.8)') "Nu_hot    =", Nu_hot
-    write(00,'(a,1x,es16.8)') "Nu_cold   =", Nu_cold
-    write(00,'(a,1x,es16.8)') "Nu_middle =", Nu_middle
-    write(00,'(a,1x,es16.8,2x,a,1x,es16.8)') "Nu_hot_max =", Nu_hot_max, "y_max =", Nu_hot_max_position
-    write(00,'(a,1x,es16.8,2x,a,1x,es16.8)') "Nu_hot_min =", Nu_hot_min, "y_min =", Nu_hot_min_position
+    write(00,'(a,1x,ES24.16E3)') "Nu_hot    =", real(Nu_hot,kind=8)
+    write(00,'(a,1x,ES24.16E3)') "Nu_cold   =", real(Nu_cold,kind=8)
+    write(00,'(a,1x,ES24.16E3)') "Nu_middle =", real(Nu_middle,kind=8)
+    write(00,'(a,1x,ES24.16E3,2x,a,1x,ES24.16E3)') &
+        "Nu_hot_max =", real(Nu_hot_max,kind=8), "y_max =", real(Nu_hot_max_position,kind=8)
+    write(00,'(a,1x,ES24.16E3,2x,a,1x,ES24.16E3)') &
+        "Nu_hot_min =", real(Nu_hot_min,kind=8), "y_min =", real(Nu_hot_min_position,kind=8)
     close(00)
 
     return
@@ -2248,15 +2302,16 @@ end subroutine append_convergence_master_tecplot
     call fit_parabola_ls5(s, fu, +1, umax_fit, y_fit)
 
     ! ---- 输出 ----
-    write(*,'(A,1X,F12.6,1X,A,1X,F12.6,1X,A,1X,F12.6)') &
+    write(*,'(A,1X,ES24.16E3,1X,A,1X,ES24.16E3,1X,A,1X,ES24.16E3)') &
          'u_mid_max =', umax_fit*coef, 'at y =', y_fit, 'on x_mid =', xmid
          
 
     open(unit=00,file=trim(settingsFile),status='unknown',position='append')
     string = ctime( time() )
     write(00,*) '--- calc_umid_max --- ', string
-    write(00,*) 'x_mid =', xmid
-    write(00,*) 'u_mid_max =', umax_fit*coef, ' y_pos =', y_fit, ' (grid j0=', j0, ')'
+    write(00,'(A,1X,ES24.16E3)') 'x_mid =', real(xmid,kind=8)
+    write(00,'(A,1X,ES24.16E3,1X,A,1X,ES24.16E3,1X,A,I0,A)') &
+        'u_mid_max =', real(umax_fit*coef,kind=8), 'y_pos =', real(y_fit,kind=8), ' (grid j0=', j0, ')'
     close(00)
 
     return
@@ -2333,15 +2388,16 @@ end subroutine append_convergence_master_tecplot
     call fit_parabola_ls5(s, fv, +1, vmax_fit, x_fit)
 
     ! ---- 输出 ----
-    write(*,'(A,1X,F12.6,1X,A,1X,F12.6,1X,A,1X,F12.6)') &
+    write(*,'(A,1X,ES24.16E3,1X,A,1X,ES24.16E3,1X,A,1X,ES24.16E3)') &
          'v_mid_max =', vmax_fit*coef, 'at x =', x_fit, 'on y_mid =', ymid
 
 
     open(unit=00,file=trim(settingsFile),status='unknown',position='append')
     string = ctime( time() )
     write(00,*) '--- calc_vmid_max --- ', string
-    write(00,*) 'y_mid =', ymid
-    write(00,*) 'v_mid_max =', vmax_fit*coef, ' x_pos =', x_fit, ' (grid i0=', i0, ')'
+    write(00,'(A,1X,ES24.16E3)') 'y_mid =', real(ymid,kind=8)
+    write(00,'(A,1X,ES24.16E3,1X,A,1X,ES24.16E3,1X,A,I0,A)') &
+        'v_mid_max =', real(vmax_fit*coef,kind=8), 'x_pos =', real(x_fit,kind=8), ' (grid i0=', i0, ')'
     close(00)
 
     return
@@ -2395,9 +2451,9 @@ subroutine RBcalc_Nu_global()
   enddo
   Nu_global = (sum_qy / dble(nx*ny)) / deltaT
 
-  write(*,'(a,1x,es16.8)') "Nu_global =", Nu_global
+  write(*,'(a,1x,ES24.16E3)') "Nu_global =", real(Nu_global,kind=8)
   open(unit=00,file=trim(settingsFile),status="unknown",position="append")
-  write(00,'(a,1x,es16.8)') "Nu_global =", Nu_global
+  write(00,'(a,1x,ES24.16E3)') "Nu_global =", real(Nu_global,kind=8)
   close(00)
 
   return
@@ -2436,13 +2492,11 @@ subroutine RBcalc_Nu_wall_avg()
   !-----------------------------
   ! (1) 底部热壁平均 Nu_hot（不含角点）
   sum_hot = 0.0d0
-  !$omp parallel do default(none) shared(T,Nu_bot,dy,deltaT) private(i,qy_wall) reduction(+:sum_hot)
   do i = 1, nx
     qy_wall   = (8.0d0*Thot - 9.0d0*T(i,1) + T(i,2)) / (3.0d0*dy)
     Nu_bot(i)= qy_wall / deltaT
     sum_hot  = sum_hot + Nu_bot(i)
   enddo
-  !$omp end parallel do
   Nu_hot = sum_hot / dble(nx)
 
   !-----------------------------
@@ -2525,12 +2579,10 @@ subroutine RBcalc_Nu_wall_avg()
   !-----------------------------
   ! (2) 顶部冷壁平均 Nu_cold（不含角点）
   sum_cold = 0.0d0
-  !$omp parallel do default(none) shared(T,dy,deltaT) private(i,qy_wall) reduction(+:sum_cold)
   do i = 1, nx
     qy_wall = (-8.0d0*Tcold + 9.0d0*T(i,ny) - T(i,ny-1)) / (3.0d0*dy)
     sum_cold = sum_cold + qy_wall / deltaT
   enddo
-  !$omp end parallel do
   Nu_cold = sum_cold / dble(nx)
 
   !-----------------------------
@@ -2540,40 +2592,40 @@ subroutine RBcalc_Nu_wall_avg()
   if (mod(ny,2) == 1) then
     jMid = (ny + 1)/2
 
-    !$omp parallel do default(none) shared(v,T,jMid,dy,deltaT,coef) private(i) reduction(+:sum_mid)
     do i = 1, nx
       sum_mid = sum_mid + ( coef*v(i,jMid)*(T(i,jMid)-Tref) - (T(i,jMid+1)-T(i,jMid-1))/(2.0d0*dy) ) / deltaT
     enddo
-    !$omp end parallel do
 
   else
     jB = ny/2
     jT = jB + 1
 
-    !$omp parallel do default(none) shared(v,T,jB,jT,dy,deltaT,coef) private(i) reduction(+:sum_mid)
     do i = 1, nx
       sum_mid = sum_mid + (coef*( 0.5d0*( v(i,jB)*(T(i,jB)-Tref) + v(i,jT)*(T(i,jT)-Tref) )) &
       + (T(i,jB)-T(i,jT))/dy ) / deltaT
     enddo
-    !$omp end parallel do
   endif
 
   Nu_middle = sum_mid / dble(nx)
 
   !-----------------------------
   ! 输出：屏幕 + 日志
-  write(*,'(a,1x,es16.8)') "Nu_hot(bottom) =", Nu_hot
-  write(*,'(a,1x,es16.8)') "Nu_cold(top)   =", Nu_cold
-  write(*,'(a,1x,es16.8)') "Nu_middle      =", Nu_middle
-  write(*,'(a,1x,es16.8,2x,a,1x,es16.8)') "Nu_hot_max =", Nu_hot_max, "x_max =", Nu_hot_max_position
-  write(*,'(a,1x,es16.8,2x,a,1x,es16.8)') "Nu_hot_min =", Nu_hot_min, "x_min =", Nu_hot_min_position
+  write(*,'(a,1x,ES24.16E3)') "Nu_hot(bottom) =", real(Nu_hot,kind=8)
+  write(*,'(a,1x,ES24.16E3)') "Nu_cold(top)   =", real(Nu_cold,kind=8)
+  write(*,'(a,1x,ES24.16E3)') "Nu_middle      =", real(Nu_middle,kind=8)
+  write(*,'(a,1x,ES24.16E3,2x,a,1x,ES24.16E3)') &
+      "Nu_hot_max =", real(Nu_hot_max,kind=8), "x_max =", real(Nu_hot_max_position,kind=8)
+  write(*,'(a,1x,ES24.16E3,2x,a,1x,ES24.16E3)') &
+      "Nu_hot_min =", real(Nu_hot_min,kind=8), "x_min =", real(Nu_hot_min_position,kind=8)
 
   open(unit=00,file=trim(settingsFile),status="unknown",position="append")
-  write(00,'(a,1x,es16.8)') "Nu_hot(bottom) =", Nu_hot
-  write(00,'(a,1x,es16.8)') "Nu_cold(top)   =", Nu_cold
-  write(00,'(a,1x,es16.8)') "Nu_middle      =", Nu_middle
-  write(00,'(a,1x,es16.8,2x,a,1x,es16.8)') "Nu_hot_max =", Nu_hot_max, "x_max =", Nu_hot_max_position
-  write(00,'(a,1x,es16.8,2x,a,1x,es16.8)') "Nu_hot_min =", Nu_hot_min, "x_min =", Nu_hot_min_position
+  write(00,'(a,1x,ES24.16E3)') "Nu_hot(bottom) =", real(Nu_hot,kind=8)
+  write(00,'(a,1x,ES24.16E3)') "Nu_cold(top)   =", real(Nu_cold,kind=8)
+  write(00,'(a,1x,ES24.16E3)') "Nu_middle      =", real(Nu_middle,kind=8)
+  write(00,'(a,1x,ES24.16E3,2x,a,1x,ES24.16E3)') &
+      "Nu_hot_max =", real(Nu_hot_max,kind=8), "x_max =", real(Nu_hot_max_position,kind=8)
+  write(00,'(a,1x,ES24.16E3,2x,a,1x,ES24.16E3)') &
+      "Nu_hot_min =", real(Nu_hot_min,kind=8), "x_min =", real(Nu_hot_min_position,kind=8)
   close(00)
 
   return
@@ -2660,11 +2712,11 @@ subroutine RBcalc_umid_max()
   if (y_fit > 0.5d0*yLen) y_fit = yLen - y_fit
   
 
-  write(*,'(A,1X,ES16.8,2X,A,1X,ES16.8,2X,A,1X,ES16.8)') &
+  write(*,'(A,1X,ES24.16E3,2X,A,1X,ES24.16E3,2X,A,1X,ES24.16E3)') &
        'u_mid_max* =', umax_fit*coef, 'y =', y_fit, 'x_mid =', xmid
 
   open(unit=00,file=trim(settingsFile),status="unknown",position="append")
-  write(00,'(A,1X,ES16.8,2X,A,1X,ES16.8,2X,A,1X,ES16.8)') &
+  write(00,'(A,1X,ES24.16E3,2X,A,1X,ES24.16E3,2X,A,1X,ES24.16E3)') &
        'u_mid_max* =', umax_fit*coef, 'y =', y_fit, 'x_mid =', xmid
   close(00)
 
@@ -2738,11 +2790,11 @@ subroutine RBcalc_vmid_max()
 
   call fit_parabola_ls5(xk, fk, +1, vmax_fit, x_fit)
 
-  write(*,'(A,1X,ES16.8,2X,A,1X,ES16.8,2X,A,1X,ES16.8)') &
+  write(*,'(A,1X,ES24.16E3,2X,A,1X,ES24.16E3,2X,A,1X,ES24.16E3)') &
        'v_mid_max* =', vmax_fit*coef, 'x =', x_fit, 'y_mid =', ymid
 
   open(unit=00,file=trim(settingsFile),status="unknown",position="append")
-  write(00,'(A,1X,ES16.8,2X,A,1X,ES16.8,2X,A,1X,ES16.8)') &
+  write(00,'(A,1X,ES24.16E3,2X,A,1X,ES24.16E3,2X,A,1X,ES24.16E3)') &
        'v_mid_max* =', vmax_fit*coef, 'x =', x_fit, 'y_mid =', ymid
   close(00)
 
@@ -2750,7 +2802,6 @@ subroutine RBcalc_vmid_max()
 end subroutine RBcalc_vmid_max
 !===================================================================================================
 
-!===================================================================================================
 
 
 
@@ -2863,15 +2914,17 @@ subroutine calc_psi_vort_and_output()
   !=========================================================
   call calc_psi_absmax_fine_spline(psi, psi_abs_max, x_at_max, y_at_max, psi_center_abs_fine)
 
-  write(*,'(a,1x,es16.8)') "abs(psi_center_fine) =", psi_center_abs_fine
+  write(*,'(a,1x,ES24.16E3)') "abs(psi_center_fine) =", real(psi_center_abs_fine,kind=8)
 
-  write(*,'(a,1x,es16.8,2x,a,1x,es16.8,2x,a,1x,es16.8)') &
-       "max(|psi|) =", psi_abs_max, "x* =", x_at_max, "y* =", y_at_max
+  write(*,'(a,1x,ES24.16E3,2x,a,1x,ES24.16E3,2x,a,1x,ES24.16E3)') &
+       "max(|psi|) =", real(psi_abs_max,kind=8), "x* =", real(x_at_max,kind=8), &
+       "y* =", real(y_at_max,kind=8)
 
   open(unit=00,file=trim(settingsFile),status="unknown",position="append")
-  write(00,'(a,1x,es16.8)') "abs(psi_center_fine) =", psi_center_abs_fine
-  write(00,'(a,1x,es16.8,2x,a,1x,es16.8,2x,a,1x,es16.8)') &
-       "max(|psi|) =", psi_abs_max, "x* =", x_at_max, "y* =", y_at_max
+  write(00,'(a,1x,ES24.16E3)') "abs(psi_center_fine) =", real(psi_center_abs_fine,kind=8)
+  write(00,'(a,1x,ES24.16E3,2x,a,1x,ES24.16E3,2x,a,1x,ES24.16E3)') &
+       "max(|psi|) =", real(psi_abs_max,kind=8), "x* =", real(x_at_max,kind=8), &
+       "y* =", real(y_at_max,kind=8)
   close(00)
 
   return
@@ -2957,10 +3010,10 @@ subroutine output_Tecplot_psi_vort(psi, vort)
   do k=1,kmax
     do j=1,ny
       do i=1,nx
-        write(41) xp(i)
-        write(41) yp(j)
-        write(41) psi(i,j)
-        write(41) vort(i,j)
+        write(41) real(xp(i),kind=8)
+        write(41) real(yp(j),kind=8)
+        write(41) real(psi(i,j),kind=8)
+        write(41) real(vort(i,j),kind=8)
       end do
     end do
   end do
@@ -3239,15 +3292,17 @@ subroutine output_psi_center_abs(psi)
   psi_center_abs = dabs(psi_center)
 
   ! Screen output
-  write(*,'(a,1x,es16.8)') "abs(psi_center_coarse) =", psi_center_abs
+  write(*,'(a,1x,ES24.16E3)') "abs(psi_center_coarse) =", real(psi_center_abs,kind=8)
 
   ! Log output
   open(unit=00,file=trim(settingsFile),status="unknown",position="append")
-  write(00,'(a,1x,es16.8)') "abs(psi_center_coarse) =", psi_center_abs
+  write(00,'(a,1x,ES24.16E3)') "abs(psi_center_coarse) =", real(psi_center_abs,kind=8)
   close(00)
 
   return
 contains
+  ! 子程序: interp_lagrange_4
+  ! 作用: 对给定的四个节点执行四点 Lagrange 插值。
   subroutine interp_lagrange_4(xq, xk, fk, fq)
     implicit none
     real(kind=8), intent(in)  :: xq

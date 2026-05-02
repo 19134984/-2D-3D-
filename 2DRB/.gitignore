@@ -1,6 +1,7 @@
 # Keep third-party reference code local only.
 references/
 detail/
+algorithm/
 codex-skills/
 pdf/
 

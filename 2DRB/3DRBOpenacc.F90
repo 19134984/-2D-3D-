@@ -26,6 +26,23 @@
 !#define VerticalWallsPeriodicalU
 !#define SpanwiseWallsPeriodicalU
 
+!   速度边界宏的选择
+#if !defined(HorizontalWallsNoslip)
+#error "Define horizontal velocity BC: HorizontalWallsNoslip"
+#endif
+#if defined(VerticalWallsNoslip) && defined(VerticalWallsPeriodicalU)
+#error "Choose only one vertical velocity BC: VerticalWallsNoslip or VerticalWallsPeriodicalU"
+#endif
+#if !defined(VerticalWallsNoslip) && !defined(VerticalWallsPeriodicalU)
+#error "Define one vertical velocity BC: VerticalWallsNoslip or VerticalWallsPeriodicalU"
+#endif
+#if defined(SpanwiseWallsNoslip) && defined(SpanwiseWallsPeriodicalU)
+#error "Choose only one spanwise velocity BC: SpanwiseWallsNoslip or SpanwiseWallsPeriodicalU"
+#endif
+#if !defined(SpanwiseWallsNoslip) && !defined(SpanwiseWallsPeriodicalU)
+#error "Define one spanwise velocity BC: SpanwiseWallsNoslip or SpanwiseWallsPeriodicalU"
+#endif
+
 
 
 !温度边界(for Rayleigh Benard Cell)，包括水平边界恒温，垂直/展向边界温度不可穿透以及周期
@@ -46,6 +63,14 @@
 #define SpanwiseWallsAdiabatic
 !~~temperature B.C.~~
 
+!   物理算例宏的选择
+#if defined(RayleighBenardCell) && defined(SideHeatedCell)
+#error "Choose only one thermal case: RayleighBenardCell or SideHeatedCell"
+#endif
+#if !defined(RayleighBenardCell) && !defined(SideHeatedCell)
+#error "Define one thermal case: RayleighBenardCell or SideHeatedCell"
+#endif
+
 
 
 !算法切换
@@ -53,6 +78,14 @@
 #define EnableUseG
 !启用旧算法
 !#define EnableLegacyThermalScheme
+
+!   温度算法宏的选择
+#if defined(EnableUseG) && defined(EnableLegacyThermalScheme)
+#error "Choose only one thermal algorithm: EnableUseG or EnableLegacyThermalScheme"
+#endif
+#if !defined(EnableUseG) && !defined(EnableLegacyThermalScheme)
+#error "Define one thermal algorithm: EnableUseG or EnableLegacyThermalScheme"
+#endif
 
 
 !   自定义宏结束
@@ -75,7 +108,7 @@ module commondata3dOpenacc
 
   ! 在 loadInitField=1 的前提下：
   integer(kind=4), parameter :: reloadDimensionlessTime=0
-  integer(kind=4), parameter :: reloadbinFileNum=0
+  integer(kind=4), parameter :: reloadFileNum=0  ! 读取的严格重启文件编号；非稳态续算时也作为快照编号偏移
   !===============================================================================================
 
   !===============================================================================================
@@ -102,11 +135,8 @@ module commondata3dOpenacc
   ! 高阶矩参数修正 aT
   real(kind=8), parameter :: paraA=42.0d0*dsqrt(3.0d0)*diffusivity-6.0d0
 
-  ! heatFluxScale is used in Nu/heat-flux post-processing and should stay consistent with the Nu definition.
-  real(kind=8), parameter :: heatFluxScale=lengthUnit/diffusivity
-
-  ! velocityScaleCompare is used only in velocity-related post-processing to convert lattice velocity
-  ! to the nondimensional velocity scale adopted by the reference paper being compared.
+  ! velocityScaleCompare converts lattice velocity to the thermal-diffusion scale U*L/alpha.
+  ! It is used by velocity output and by the convective heat-flux part of Nu diagnostics.
   real(kind=8), parameter :: velocityScaleCompare=lengthUnit/diffusivity
 
   ! 浮力项参数
@@ -136,39 +166,39 @@ module commondata3dOpenacc
   real(kind=8), parameter :: epsU=1.0d-7, epsT=1.0d-7
 
 #ifdef steadyFlow
-  real(kind=8), parameter :: outputFrequency=100.0d0   ! Nu/Re 时间序列采样间隔（单位：t_ff）
+  real(kind=8), parameter :: outputSnapshotInterval=100.0d0   ! Nu/Re 时间序列采样间隔（单位：t_ff）
   real(kind=8), parameter :: reloadFileInterval=1000.0d0  ! f/g 重启文件输出间隔（单位：t_ff）
   real(kind=8), parameter :: outputPltFileInterval=1000.0d0  ! Tecplot 文件输出间隔（单位：t_ff）
-  integer(kind=4), parameter :: dimensionlessTimeMax=int(12000.0d0/outputFrequency)
-  integer(kind=4), parameter :: outputBinFile=0
+  integer(kind=4), parameter :: dimensionlessTimeMax=int(12000.0d0/outputSnapshotInterval)
+  integer(kind=4), parameter :: outputSnapshotFile=0
   integer(kind=4), parameter :: outputPltFile=0
   integer(kind=4), parameter :: outputReloadFile=0
   integer(kind=4), parameter :: itc_max=20000000
 #endif
 
 #ifdef unsteadyFlow
-  real(kind=8), parameter :: outputFrequency=0.5d0   ! uvwTrho 和 Nu/Re 时间序列采样间隔（单位：t_ff）
+  real(kind=8), parameter :: outputSnapshotInterval=0.5d0   ! uvwTrho 和 Nu/Re 时间序列采样间隔（单位：t_ff）
   real(kind=8), parameter :: reloadFileInterval=100.0d0  ! f/g 重启文件输出间隔（单位：t_ff）
   real(kind=8), parameter :: outputPltFileInterval=100.0d0  ! Tecplot 文件周期输出间隔（单位：t_ff）
   real(kind=8), parameter :: unsteadyRunDuration=1000.0d0
-  integer(kind=4), parameter :: unsteadySampleCount=max(1, int(unsteadyRunDuration/outputFrequency+0.5d0))
+  integer(kind=4), parameter :: unsteadySampleCount=max(1, int(unsteadyRunDuration/outputSnapshotInterval+0.5d0))
   integer(kind=4), parameter :: dimensionlessTimeMax=unsteadySampleCount
-  integer(kind=4), parameter :: outputBinFile=1
-  integer(kind=4), parameter :: outputPltFile=0      ! 非稳态默认不周期输出 Tecplot，只在结束时强制输出一次
-  integer(kind=4), parameter :: outputReloadFile=0
+  integer(kind=4), parameter :: outputSnapshotFile=1
+  integer(kind=4), parameter :: outputPltFile=1
+  integer(kind=4), parameter :: outputReloadFile=1
   integer(kind=4), parameter :: itc_max=max(1, int(unsteadyRunDuration*timeUnit+0.5d0))
 #endif
 
-  integer(kind=4) :: binFileNum, pltFileNum
+  integer(kind=4) :: snapshotFileNum, pltFileNum
   integer(kind=4) :: dimensionlessTime
-  integer(kind=4) :: outputFrequencyIntervalItc
+  integer(kind=4) :: outputSnapshotIntervalItc
   integer(kind=4) :: reloadFileIntervalItc, outputPltFileIntervalItc
 
   real(kind=8) :: NuVolAvg(0:dimensionlessTimeMax), ReVolAvg(0:dimensionlessTimeMax)
 
-  character(len=100) :: binFolderPrefix="buoyancyCavity3DOpenaccbinFile"
+  character(len=100) :: snapshotFilePrefix="buoyancyCavity3DOpenaccSnapshot"
   character(len=100) :: pltFolderPrefix="buoyancyCavity3DOpenaccTecplot"
-  character(len=100) :: reloadFilePrefix="backupFile3DOpenacc"
+  character(len=100) :: reloadFilePrefix="reloadFile3DOpenacc"
   character(len=100) :: settingsFile="SimulationSettings3DOpenacc.txt"
   !===============================================================================================
 
@@ -200,8 +230,10 @@ module commondata3dOpenacc
   logical, parameter :: useLegacyThermalScheme=.false.
 #endif
 
+#ifdef steadyFlow
   real(kind=8) :: Nu_global, Nu_hot, Nu_cold, Nu_middle
   real(kind=8) :: Nu_hot_max, Nu_hot_min, Nu_hot_max_position, Nu_hot_min_position
+#endif
 
   integer(kind=4) :: ex(0:qf-1), ey(0:qf-1), ez(0:qf-1), opp(0:qf-1)
   real(kind=8)    :: omega(0:qf-1)
@@ -275,29 +307,37 @@ program main3dOpenacc
 #ifdef steadyFlow
     if (mod(itc, 2000) .EQ. 0) call check3d()
     if ((outputPltFile .EQ. 1) .AND. (mod(itc, outputPltFileIntervalItc) .EQ. 0)) then
-      call update_host_all_3d_openacc()
+      call update_host_tecplot_3d_openacc()
       call output_Tecplot3d()
     endif
+    if ((outputSnapshotFile .EQ. 1) .AND. (mod(itc, outputSnapshotIntervalItc) .EQ. 0)) then
+      call update_host_snapshot_3d_openacc()
+      call output_SnapshotFile3d()
+    endif
     if ((outputReloadFile .EQ. 1) .AND. (mod(itc, reloadFileIntervalItc) .EQ. 0)) then
-      call update_host_all_3d_openacc()
-      call writeReloadFile3d()
+      call update_host_reload_3d_openacc()
+      call output_ReloadFile3d()
     endif
 #endif
 
 #ifdef unsteadyFlow
     do while(dimensionlessTime .LT. unsteadySampleCount)
       ! 每个目标采样时刻都重新从 t_ff 换算到 itc，以避免累积误差导致的采样时间点漂移
-      nextSampleItc = max(1, int(real(dimensionlessTime+1,kind=8)*outputFrequency*timeUnit+0.5d0))
+      nextSampleItc = max(1, int(real(dimensionlessTime+1,kind=8)*outputSnapshotInterval*timeUnit+0.5d0))
       if(itc .LT. nextSampleItc) exit
       call calNuRe3d()
-      if (outputBinFile .EQ. 1) then
-        call update_host_all_3d_openacc()
-        call output_binary3d()     !每 0.5 t_ff 输出一次 u、v、w、T、rho 的二进制快照文件
+      if (outputSnapshotFile .EQ. 1) then
+        call update_host_snapshot_3d_openacc()
+        call output_SnapshotFile3d()     !每 0.5 t_ff 输出一次 u、v、w、T、rho 的二进制快照文件
       endif
     enddo
+    if ((outputPltFile .EQ. 1) .AND. (mod(itc, outputPltFileIntervalItc) .EQ. 0)) then
+      call update_host_tecplot_3d_openacc()
+      call output_Tecplot3d()
+    endif
     if ((outputReloadFile .EQ. 1) .AND. (mod(itc, reloadFileIntervalItc) .EQ. 0)) then
-      call update_host_all_3d_openacc()
-      call writeReloadFile3d()
+      call update_host_reload_3d_openacc()
+      call output_ReloadFile3d()
     endif
 #endif
   enddo
@@ -306,15 +346,12 @@ program main3dOpenacc
   call system_clock(wallClockEnd, wallClockRate)
   timeEnd2 = dble(wallClockEnd) / dble(max(wallClockRate,1_8))
 
-  call update_host_all_3d_openacc()
-
 #ifdef steadyFlow
+  call update_host_snapshot_3d_openacc()
   call output_Tecplot3d()
-  call output_binary3d()
+  call output_SnapshotFile3d()
 #endif
-#ifdef unsteadyFlow
-  call output_Tecplot3d()  !非稳态只在 1000 t_ff 结束时强制输出一次 Tecplot 结果
-#endif
+
 
 #ifdef steadyFlow
 ! 这些最终标量诊断只用于稳态收敛后评估
@@ -349,10 +386,10 @@ program main3dOpenacc
        real(dble(nx) * dble(ny) * dble(nz) * dble(itc) / &
        & max(timeEnd2 - timeStart2, 1.0d-12) / 1.0d6, kind=8)
 #ifdef steadyFlow
-  write(00,*) 'Nu_global =', Nu_global
-  write(00,*) 'Nu_hot    =', Nu_hot
-  write(00,*) 'Nu_cold   =', Nu_cold
-  write(00,*) 'Nu_middle =', Nu_middle
+  write(00,'(a,1x,ES24.16E3)') 'Nu_global =', real(Nu_global,kind=8)
+  write(00,'(a,1x,ES24.16E3)') 'Nu_hot    =', real(Nu_hot,kind=8)
+  write(00,'(a,1x,ES24.16E3)') 'Nu_cold   =', real(Nu_cold,kind=8)
+  write(00,'(a,1x,ES24.16E3)') 'Nu_middle =', real(Nu_middle,kind=8)
 #endif
   write(00,*) 'useG =', useG
   write(00,*) 'useLegacyThermalScheme =', useLegacyThermalScheme
@@ -399,7 +436,7 @@ subroutine initial3d()
   errorT = 100.0d0
 
   ! 把按自由落体时间给出的输出/备份间隔换算成格子步数 itc
-  outputFrequencyIntervalItc = max(1, int(outputFrequency * timeUnit + 0.5d0))
+  outputSnapshotIntervalItc = max(1, int(outputSnapshotInterval * timeUnit + 0.5d0))
   reloadFileIntervalItc = max(1, int(reloadFileInterval * timeUnit + 0.5d0))
   outputPltFileIntervalItc = max(1, int(outputPltFileInterval * timeUnit + 0.5d0))
 
@@ -408,11 +445,11 @@ subroutine initial3d()
   !-----------------------------------------------------------------------------------------------
   open(unit=00, file=trim(settingsFile), status='unknown', position='append')
 
-  if (outputBinFile .EQ. 1) then
-    open(unit=01, file=trim(binFolderPrefix)//'-'//'readme', status='unknown')
-    write(01,*) 'binFile folder exist!'
+  if (outputSnapshotFile .EQ. 1) then
+    open(unit=01, file=trim(snapshotFilePrefix)//'-'//'readme', status='unknown')
+    write(01,*) 'snapshotFile folder exist!'
     close(01)
-    write(00,*) 'Data will be stored in ', trim(binFolderPrefix)
+    write(00,*) 'Snapshot data will be stored in ', trim(snapshotFilePrefix)
   endif
 
   if (outputPltFile .EQ. 1) then
@@ -420,6 +457,13 @@ subroutine initial3d()
     write(01,*) 'pltFile folder exist!'
     close(01)
     write(00,*) 'Data will be stored in ', trim(pltFolderPrefix)
+  endif
+
+  if(outputReloadFile.EQ.1) then
+        open(unit=01,file=trim(reloadFilePrefix)//"-"//"readme",status="unknown")
+        write(01,*) "reloadFile prefix exists!"
+        close(01)
+        write(00,*) "Reload data will be stored in ", reloadFilePrefix
   endif
 
 #ifdef EnableLegacyThermalScheme
@@ -453,8 +497,9 @@ subroutine initial3d()
 #endif
   write(00,*) 'thermalGeqCoeff =', real(thermalGeqCoeff,kind=8)
   write(00,*) 'viscosity =', real(viscosity,kind=8), '; diffusivity =', real(diffusivity,kind=8)
-  write(00,*) 'outputFrequency =', real(outputFrequency,kind=8), ' free-fall time units'
-  write(00,*) 'outputFrequencyIntervalItc =', outputFrequencyIntervalItc, ' in itc units'
+  write(00,*) 'outputSnapshotFile =', outputSnapshotFile
+  write(00,*) 'outputSnapshotInterval =', real(outputSnapshotInterval,kind=8), ' free-fall time units'
+  write(00,*) 'outputSnapshotIntervalItc =', outputSnapshotIntervalItc, ' in itc units'
   write(00,*) 'outputPltFile =', outputPltFile
   write(00,*) 'outputPltFileInterval =', real(outputPltFileInterval,kind=8), ' free-fall time units'
   write(00,*) 'outputPltFileIntervalItc =', outputPltFileIntervalItc, ' in itc units'
@@ -606,7 +651,7 @@ subroutine initial3d()
           enddo
         enddo
       enddo
-      write(00,'(a,1x,es12.4)') '3D RB initial T perturbation amplitude =', rbInitPerturbAmp
+      write(00,'(a,1x,ES24.16E3)') '3D RB initial T perturbation amplitude =', real(rbInitPerturbAmp,kind=8)
     else
       write(00,*) '3D RB initial T perturbation skipped because Rayleigh >= 1.0d4'
     endif
@@ -661,13 +706,18 @@ subroutine initial3d()
       stop
     endif
     write(00,*) 'Load initial field from previous simulation: ', trim(reloadFilePrefix), '- >>>'
-    write(reloadFileName,*) reloadbinFileNum
+    write(reloadFileName,'(i12.12)') reloadFileNum
     reloadFileName = adjustl(reloadFileName)
     open(unit=01, file=trim(reloadFilePrefix)//'-'//trim(adjustl(reloadFileName))//'.bin', &
          form='unformatted', access='sequential', status='old')
-    write(00,*) 'Reloading f and g from file'
+    write(00,*) 'Reloading strict restart state from file'
     read(01) ((((f(alpha,i,j,k), i=1,nx), j=1,ny), k=1,nz), alpha=0,qf-1)
     read(01) ((((g(alpha,i,j,k), i=1,nx), j=1,ny), k=1,nz), alpha=0,qt-1)
+#ifdef EnableUseG
+    read(01) (((Bx_prev(i,j,k), i=1,nx), j=1,ny), k=1,nz)
+    read(01) (((By_prev(i,j,k), i=1,nx), j=1,ny), k=1,nz)
+    read(01) (((Bz_prev(i,j,k), i=1,nx), j=1,ny), k=1,nz)
+#endif
     close(01)
     call reconstruct_macro_from_fg3d()
     write(00,*) 'Raw data is loaded from the file: ', trim(reloadFilePrefix), '-', trim(adjustl(reloadFileName)), '.bin'
@@ -689,7 +739,7 @@ subroutine initial3d()
 
   f_post = 0.0d0
   g_post = 0.0d0
-  binFileNum = 0
+  snapshotFileNum = 0
   pltFileNum = 0
   dimensionlessTime = 0
   NuVolAvg = 0.0d0
@@ -718,20 +768,42 @@ end subroutine enter_data_3d_openacc
 
 
 !===========================================================================================================================
-! 子程序: update_host_all_3d_openacc
-! 作用: 在需要输出或写文件前，把设备端场变量同步回主机端。
+! 子程序: update_host_snapshot_3d_openacc
+! 作用: 输出 u/v/w/T/rho 快照前，把对应宏观场同步回主机端。
 !===========================================================================================================================
-subroutine update_host_all_3d_openacc()
+subroutine update_host_snapshot_3d_openacc()
   use commondata3dOpenacc
   implicit none
 
-  ! update self: 仅在主机端需要读这些数组时，把设备端最新值同步回 CPU。
-  ! 典型场景是输出文件、写重启、或最后一次 CPU 后处理。
-  !$acc update self(u,v,w,T,rho,f,g,Bx_prev,By_prev,Bz_prev)
-#ifdef steadyFlow
-  !$acc update self(up,vp,wp,Tp)
+  !$acc update self(u,v,w,T,rho)
+end subroutine update_host_snapshot_3d_openacc
+
+
+!===========================================================================================================================
+! 子程序: update_host_tecplot_3d_openacc
+! 作用: 输出 Tecplot 主场和 CPU 后处理切片前，同步可视化需要的宏观场。
+!===========================================================================================================================
+subroutine update_host_tecplot_3d_openacc()
+  use commondata3dOpenacc
+  implicit none
+
+  !$acc update self(u,v,w,T)
+end subroutine update_host_tecplot_3d_openacc
+
+
+!===========================================================================================================================
+! 子程序: update_host_reload_3d_openacc
+! 作用: 写严格重启文件前，只同步分布函数和 EnableUseG 的历史热流。
+!===========================================================================================================================
+subroutine update_host_reload_3d_openacc()
+  use commondata3dOpenacc
+  implicit none
+
+  !$acc update self(f,g)
+#ifdef EnableUseG
+  !$acc update self(Bx_prev,By_prev,Bz_prev)
 #endif
-end subroutine update_host_all_3d_openacc
+end subroutine update_host_reload_3d_openacc
 
 
 !===========================================================================================================================
@@ -1094,65 +1166,109 @@ subroutine bounceback3d()
   use commondata3dOpenacc
   implicit none
 
-  integer(kind=4) :: i, j, k, alpha
+  integer(kind=4) :: i, j, k
 
 #ifdef VerticalWallsPeriodicalU
-  ! 边界面循环通常只需要 collapse(2)；alpha 作为方向索引必须 private。
-  !$acc parallel loop gang vector collapse(2) default(none) present(f,f_post,ex) async(1) private(alpha)
+  !$acc parallel loop gang vector collapse(2) default(none) present(f,f_post) async(1)
   do k = 1, nz
     do j = 1, ny
-      do alpha = 0, qf-1
-        if (ex(alpha) .EQ. 1)  f(alpha,1,j,k)  = f_post(alpha,nx,j,k)
-        if (ex(alpha) .EQ. -1) f(alpha,nx,j,k) = f_post(alpha,1,j,k)
-      enddo
+      ! Left boundary (i=1): incoming populations with ex=+1
+      f(1, 1,j,k) = f_post(1, nx,j,k)
+      f(7, 1,j,k) = f_post(7, nx,j,k)
+      f(9, 1,j,k) = f_post(9, nx,j,k)
+      f(11,1,j,k) = f_post(11,nx,j,k)
+      f(13,1,j,k) = f_post(13,nx,j,k)
+
+      ! Right boundary (i=nx): incoming populations with ex=-1
+      f(2, nx,j,k) = f_post(2, 1,j,k)
+      f(8, nx,j,k) = f_post(8, 1,j,k)
+      f(10,nx,j,k) = f_post(10,1,j,k)
+      f(12,nx,j,k) = f_post(12,1,j,k)
+      f(14,nx,j,k) = f_post(14,1,j,k)
     enddo
   enddo
 #endif
 
 #ifdef VerticalWallsNoslip
- !$acc parallel loop gang vector collapse(2) default(none) present(f,f_post,ex,opp) async(1) private(alpha)
+ !$acc parallel loop gang vector collapse(2) default(none) present(f,f_post) async(1)
   do k = 1, nz
     do j = 1, ny
-      do alpha = 0, qf-1
-        if (ex(alpha) .EQ. 1)  f(alpha,1,j,k)  = f_post(opp(alpha),1,j,k)
-        if (ex(alpha) .EQ. -1) f(alpha,nx,j,k) = f_post(opp(alpha),nx,j,k)
-      enddo
+      ! Left no-slip wall (i=1): incoming populations with ex=+1
+      f(1, 1,j,k) = f_post(2, 1,j,k)
+      f(7, 1,j,k) = f_post(10,1,j,k)
+      f(9, 1,j,k) = f_post(8, 1,j,k)
+      f(11,1,j,k) = f_post(14,1,j,k)
+      f(13,1,j,k) = f_post(12,1,j,k)
+
+      ! Right no-slip wall (i=nx): incoming populations with ex=-1
+      f(2, nx,j,k) = f_post(1, nx,j,k)
+      f(8, nx,j,k) = f_post(9, nx,j,k)
+      f(10,nx,j,k) = f_post(7, nx,j,k)
+      f(12,nx,j,k) = f_post(13,nx,j,k)
+      f(14,nx,j,k) = f_post(11,nx,j,k)
     enddo
   enddo
 #endif
 
 #ifdef HorizontalWallsNoslip
- !$acc parallel loop gang vector collapse(2) default(none) present(f,f_post,ey,opp) async(1) private(alpha)
+ !$acc parallel loop gang vector collapse(2) default(none) present(f,f_post) async(1)
   do k = 1, nz
     do i = 1, nx
-      do alpha = 0, qf-1
-        if (ey(alpha) .EQ. 1)  f(alpha,i,1,k)  = f_post(opp(alpha),i,1,k)
-        if (ey(alpha) .EQ. -1) f(alpha,i,ny,k) = f_post(opp(alpha),i,ny,k)
-      enddo
+      ! Bottom no-slip wall (j=1): incoming populations with ey=+1
+      f(3, i,1,k) = f_post(4, i,1,k)
+      f(7, i,1,k) = f_post(10,i,1,k)
+      f(8, i,1,k) = f_post(9, i,1,k)
+      f(15,i,1,k) = f_post(18,i,1,k)
+      f(17,i,1,k) = f_post(16,i,1,k)
+
+      ! Top no-slip wall (j=ny): incoming populations with ey=-1
+      f(4, i,ny,k) = f_post(3, i,ny,k)
+      f(9, i,ny,k) = f_post(8, i,ny,k)
+      f(10,i,ny,k) = f_post(7, i,ny,k)
+      f(16,i,ny,k) = f_post(15,i,ny,k)
+      f(18,i,ny,k) = f_post(17,i,ny,k)
     enddo
   enddo
 #endif
 
 #ifdef SpanwiseWallsPeriodicalU
- !$acc parallel loop gang vector collapse(2) default(none) present(f,f_post,ez) async(1) private(alpha)
+ !$acc parallel loop gang vector collapse(2) default(none) present(f,f_post) async(1)
   do j = 1, ny
     do i = 1, nx
-      do alpha = 0, qf-1
-        if (ez(alpha) .EQ. 1)  f(alpha,i,j,1)  = f_post(alpha,i,j,nz)
-        if (ez(alpha) .EQ. -1) f(alpha,i,j,nz) = f_post(alpha,i,j,1)
-      enddo
+      ! Front/spanwise-low boundary (k=1): incoming populations with ez=+1
+      f(5, i,j,1) = f_post(5, i,j,nz)
+      f(11,i,j,1) = f_post(11,i,j,nz)
+      f(12,i,j,1) = f_post(12,i,j,nz)
+      f(15,i,j,1) = f_post(15,i,j,nz)
+      f(16,i,j,1) = f_post(16,i,j,nz)
+
+      ! Back/spanwise-high boundary (k=nz): incoming populations with ez=-1
+      f(6, i,j,nz) = f_post(6, i,j,1)
+      f(13,i,j,nz) = f_post(13,i,j,1)
+      f(14,i,j,nz) = f_post(14,i,j,1)
+      f(17,i,j,nz) = f_post(17,i,j,1)
+      f(18,i,j,nz) = f_post(18,i,j,1)
     enddo
   enddo
 #endif
 
 #ifdef SpanwiseWallsNoslip
- !$acc parallel loop gang vector collapse(2) default(none) present(f,f_post,ez,opp) async(1) private(alpha)
+ !$acc parallel loop gang vector collapse(2) default(none) present(f,f_post) async(1)
   do j = 1, ny
     do i = 1, nx
-      do alpha = 0, qf-1
-        if (ez(alpha) .EQ. 1)  f(alpha,i,j,1)  = f_post(opp(alpha),i,j,1)
-        if (ez(alpha) .EQ. -1) f(alpha,i,j,nz) = f_post(opp(alpha),i,j,nz)
-      enddo
+      ! Front/spanwise-low no-slip wall (k=1): incoming populations with ez=+1
+      f(5, i,j,1) = f_post(6, i,j,1)
+      f(11,i,j,1) = f_post(14,i,j,1)
+      f(12,i,j,1) = f_post(13,i,j,1)
+      f(15,i,j,1) = f_post(18,i,j,1)
+      f(16,i,j,1) = f_post(17,i,j,1)
+
+      ! Back/spanwise-high no-slip wall (k=nz): incoming populations with ez=-1
+      f(6, i,j,nz) = f_post(5, i,j,nz)
+      f(13,i,j,nz) = f_post(12,i,j,nz)
+      f(14,i,j,nz) = f_post(11,i,j,nz)
+      f(17,i,j,nz) = f_post(16,i,j,nz)
+      f(18,i,j,nz) = f_post(15,i,j,nz)
     enddo
   enddo
 #endif
@@ -1177,9 +1293,11 @@ subroutine macro3d()
   do k = 1, nz
     do j = 1, ny
       do i = 1, nx
-        rho(i,j,k) = f(0,i,j,k) + f(1,i,j,k) + f(2,i,j,k) + f(3,i,j,k) + f(4,i,j,k) + f(5,i,j,k) + &
-             f(6,i,j,k) + f(7,i,j,k) + f(8,i,j,k) + f(9,i,j,k) + f(10,i,j,k) + f(11,i,j,k) + &
-             f(12,i,j,k) + f(13,i,j,k) + f(14,i,j,k) + f(15,i,j,k) + f(16,i,j,k) + f(17,i,j,k) + f(18,i,j,k)
+        rho(i,j,k) = f(0,i,j,k) + f(1,i,j,k) + f(2,i,j,k) + f(3,i,j,k) + &
+             f(4,i,j,k) + f(5,i,j,k) + f(6,i,j,k) + f(7,i,j,k) + &
+             f(8,i,j,k) + f(9,i,j,k) + f(10,i,j,k) + f(11,i,j,k) + &
+             f(12,i,j,k) + f(13,i,j,k) + f(14,i,j,k) + f(15,i,j,k) + &
+             f(16,i,j,k) + f(17,i,j,k) + f(18,i,j,k)
 
         FyLoc = rho(i,j,k) * gBeta * (T(i,j,k) - Tref)
 
@@ -1333,99 +1451,85 @@ subroutine bouncebackT3d()
   use commondata3dOpenacc
   implicit none
 
-  integer(kind=4) :: i, j, k, alpha
+  integer(kind=4) :: i, j, k
 
 #ifdef VerticalWallsPeriodicalT
   ! 温度边界 kernel 和流场边界 kernel 一样：用 collapse(2) 铺开边界面，并继续放到 async(1) 队列中。
-  !$acc parallel loop gang vector collapse(2) default(none) present(g,g_post,exT) async(1) private(alpha)
+  !$acc parallel loop gang vector collapse(2) default(none) present(g,g_post) async(1)
   do k = 1, nz
     do j = 1, ny
-      do alpha = 0, qt-1
-        if (exT(alpha) .EQ. 1)  g(alpha,1,j,k)  = g_post(alpha,nx,j,k)
-        if (exT(alpha) .EQ. -1) g(alpha,nx,j,k) = g_post(alpha,1,j,k)
-      enddo
+      g(1,1,j,k)  = g_post(1,nx,j,k)
+      g(2,nx,j,k) = g_post(2,1,j,k)
     enddo
   enddo
 #endif
 
 #ifdef VerticalWallsConstT
-  !$acc parallel loop gang vector collapse(2) default(none) present(g,g_post,exT,oppT,omegaT) async(1) private(alpha)
+  !$acc parallel loop gang vector collapse(2) default(none) present(g,g_post,omegaT) async(1)
   do k = 1, nz
     do j = 1, ny
-      do alpha = 0, qt-1
 #ifdef EnableLegacyThermalScheme
-        if (exT(alpha) .EQ. 1)  g(alpha,1,j,k)  = -g_post(oppT(alpha),1,j,k)  + (6.0d0 + paraA) / 21.0d0 * Thot
-        if (exT(alpha) .EQ. -1) g(alpha,nx,j,k) = -g_post(oppT(alpha),nx,j,k) + (6.0d0 + paraA) / 21.0d0 * Tcold
+      g(1,1,j,k)  = -g_post(2,1,j,k)  + (6.0d0 + paraA) / 21.0d0 * Thot
+      g(2,nx,j,k) = -g_post(1,nx,j,k) + (6.0d0 + paraA) / 21.0d0 * Tcold
 #else
-        if (exT(alpha) .EQ. 1)  g(alpha,1,j,k)  = -g_post(oppT(alpha),1,j,k)  + 2.0d0 * omegaT(alpha) * Thot
-        if (exT(alpha) .EQ. -1) g(alpha,nx,j,k) = -g_post(oppT(alpha),nx,j,k) + 2.0d0 * omegaT(alpha) * Tcold
+      g(1,1,j,k)  = -g_post(2,1,j,k)  + 2.0d0 * omegaT(1) * Thot
+      g(2,nx,j,k) = -g_post(1,nx,j,k) + 2.0d0 * omegaT(2) * Tcold
 #endif
-      enddo
     enddo
   enddo
 #endif
 
 #ifdef VerticalWallsAdiabatic
- !$acc parallel loop gang vector collapse(2) default(none) present(g,g_post,exT,oppT) async(1) private(alpha)
+ !$acc parallel loop gang vector collapse(2) default(none) present(g,g_post) async(1)
   do k = 1, nz
     do j = 1, ny
-      do alpha = 0, qt-1
-        if (exT(alpha) .EQ. 1)  g(alpha,1,j,k)  = g_post(oppT(alpha),1,j,k)
-        if (exT(alpha) .EQ. -1) g(alpha,nx,j,k) = g_post(oppT(alpha),nx,j,k)
-      enddo
+      g(1,1,j,k)  = g_post(2,1,j,k)
+      g(2,nx,j,k) = g_post(1,nx,j,k)
     enddo
   enddo
 #endif
 
 #ifdef HorizontalWallsAdiabatic
- !$acc parallel loop gang vector collapse(2) default(none) present(g,g_post,eyT,oppT) async(1) private(alpha)
+ !$acc parallel loop gang vector collapse(2) default(none) present(g,g_post) async(1)
   do k = 1, nz
     do i = 1, nx
-      do alpha = 0, qt-1
-        if (eyT(alpha) .EQ. 1)  g(alpha,i,1,k)  = g_post(oppT(alpha),i,1,k)
-        if (eyT(alpha) .EQ. -1) g(alpha,i,ny,k) = g_post(oppT(alpha),i,ny,k)
-      enddo
+      g(3,i,1,k)  = g_post(4,i,1,k)
+      g(4,i,ny,k) = g_post(3,i,ny,k)
     enddo
   enddo
 #endif
 
 #ifdef HorizontalWallsConstT
-  !$acc parallel loop gang vector collapse(2) default(none) present(g,g_post,eyT,oppT,omegaT) async(1) private(alpha)
+  !$acc parallel loop gang vector collapse(2) default(none) present(g,g_post,omegaT) async(1)
   do k = 1, nz
     do i = 1, nx
-      do alpha = 0, qt-1
 #ifdef EnableLegacyThermalScheme
-        if (eyT(alpha) .EQ. 1)  g(alpha,i,1,k)  = -g_post(oppT(alpha),i,1,k)  + (6.0d0 + paraA) / 21.0d0 * Thot
-        if (eyT(alpha) .EQ. -1) g(alpha,i,ny,k) = -g_post(oppT(alpha),i,ny,k) + (6.0d0 + paraA) / 21.0d0 * Tcold
+      g(3,i,1,k)  = -g_post(4,i,1,k)  + (6.0d0 + paraA) / 21.0d0 * Thot
+      g(4,i,ny,k) = -g_post(3,i,ny,k) + (6.0d0 + paraA) / 21.0d0 * Tcold
 #else
-        if (eyT(alpha) .EQ. 1)  g(alpha,i,1,k)  = -g_post(oppT(alpha),i,1,k)  + 2.0d0 * omegaT(alpha) * Thot
-        if (eyT(alpha) .EQ. -1) g(alpha,i,ny,k) = -g_post(oppT(alpha),i,ny,k) + 2.0d0 * omegaT(alpha) * Tcold
+      g(3,i,1,k)  = -g_post(4,i,1,k)  + 2.0d0 * omegaT(3) * Thot
+      g(4,i,ny,k) = -g_post(3,i,ny,k) + 2.0d0 * omegaT(4) * Tcold
 #endif
-      enddo
     enddo
   enddo
 #endif
 
 #ifdef SpanwiseWallsPeriodicalT
- !$acc parallel loop gang vector collapse(2) default(none) present(g,g_post,ezT) async(1) private(alpha)
+ !$acc parallel loop gang vector collapse(2) default(none) present(g,g_post) async(1)
   do j = 1, ny
     do i = 1, nx
-      do alpha = 0, qt-1
-        if (ezT(alpha) .EQ. 1)  g(alpha,i,j,1)  = g_post(alpha,i,j,nz)
-        if (ezT(alpha) .EQ. -1) g(alpha,i,j,nz) = g_post(alpha,i,j,1)
-      enddo
+      g(5,i,j,1)  = g_post(5,i,j,nz)
+      g(6,i,j,nz) = g_post(6,i,j,1)
     enddo
   enddo
 #endif
 
 #ifdef SpanwiseWallsAdiabatic
- !$acc parallel loop gang vector collapse(2) default(none) present(g,g_post,ezT,oppT) async(1) private(alpha)
+ !$acc parallel loop gang vector collapse(2) default(none) present(g,g_post) async(1)
   do j = 1, ny
     do i = 1, nx
-      do alpha = 0, qt-1
-        if (ezT(alpha) .EQ. 1)  g(alpha,i,j,1)  = g_post(oppT(alpha),i,j,1)
-        if (ezT(alpha) .EQ. -1) g(alpha,i,j,nz) = g_post(oppT(alpha),i,j,nz)
-      enddo
+      g(5,i,j,1)  = g_post(6,i,j,1)
+      g(6,i,j,nz) = g_post(5,i,j,nz)
     enddo
   enddo
 #endif
@@ -1461,44 +1565,40 @@ end subroutine macroT3d
 
 !===========================================================================================================================
 ! 子程序: reconstruct_macro_from_fg3d
-! 作用: 从重启读回的 f/g 重新恢复宏观场，避免备份文件格式过重。
+! 作用: 从重启读回的 f/g 重新恢复宏观场。
 !===========================================================================================================================
 subroutine reconstruct_macro_from_fg3d()
   use commondata3dOpenacc
   implicit none
 
-  integer(kind=4) :: i, j, k, alpha, iter
+  integer(kind=4) :: i, j, k, iter
   real(kind=8) :: momx, momy, momz
   real(kind=8) :: FxLoc, FyLoc, FzLoc
   logical :: rho_bad
 
-  ! 重启时只存了 f 和 g，所以这里统一把 T、rho、u、v、w 以及历史热流都重构回来
+  ! 严格重启文件会保存 EnableUseG 的历史热流；这里只从 f/g 恢复当前宏观场。
   ! 这一步发生在 enter_data_3d_openacc() 之前，因此保持主机端重构更稳妥。
-  do k = 1, nz
-    do j = 1, ny
-      do i = 1, nx
-        T(i,j,k) = 0.0d0
-        do alpha = 0, qt-1
-          T(i,j,k) = T(i,j,k) + g(alpha,i,j,k)
-        enddo
-      enddo
-    enddo
-  enddo
-
   rho_bad = .false.
   do k = 1, nz
     do j = 1, ny
       do i = 1, nx
-        rho(i,j,k) = 0.0d0
-        momx = 0.0d0
-        momy = 0.0d0
-        momz = 0.0d0
-        do alpha = 0, qf-1
-          rho(i,j,k) = rho(i,j,k) + f(alpha,i,j,k)
-          momx = momx + f(alpha,i,j,k) * dble(ex(alpha))
-          momy = momy + f(alpha,i,j,k) * dble(ey(alpha))
-          momz = momz + f(alpha,i,j,k) * dble(ez(alpha))
-        enddo
+        T(i,j,k) = g(0,i,j,k) + g(1,i,j,k) + g(2,i,j,k) + g(3,i,j,k) + &
+                   g(4,i,j,k) + g(5,i,j,k) + g(6,i,j,k)
+
+        rho(i,j,k) = f(0,i,j,k) + f(1,i,j,k) + f(2,i,j,k) + f(3,i,j,k) + &
+             f(4,i,j,k) + f(5,i,j,k) + f(6,i,j,k) + f(7,i,j,k) + &
+             f(8,i,j,k) + f(9,i,j,k) + f(10,i,j,k) + f(11,i,j,k) + &
+             f(12,i,j,k) + f(13,i,j,k) + f(14,i,j,k) + f(15,i,j,k) + &
+             f(16,i,j,k) + f(17,i,j,k) + f(18,i,j,k)
+
+        momx = f(1,i,j,k) - f(2,i,j,k) + f(7,i,j,k) - f(8,i,j,k) + f(9,i,j,k) - f(10,i,j,k) + &
+             f(11,i,j,k) - f(12,i,j,k) + f(13,i,j,k) - f(14,i,j,k)
+
+        momy = f(3,i,j,k) - f(4,i,j,k) + f(7,i,j,k) + f(8,i,j,k) - f(9,i,j,k) - f(10,i,j,k) + &
+             f(15,i,j,k) - f(16,i,j,k) + f(17,i,j,k) - f(18,i,j,k)
+
+        momz = f(5,i,j,k) - f(6,i,j,k) + f(11,i,j,k) + f(12,i,j,k) - f(13,i,j,k) - f(14,i,j,k) + &
+             f(15,i,j,k) + f(16,i,j,k) - f(17,i,j,k) - f(18,i,j,k)
 
         if (rho(i,j,k) .GT. 0.0d0) then
           u(i,j,k) = momx / rho(i,j,k)
@@ -1520,15 +1620,6 @@ subroutine reconstruct_macro_from_fg3d()
           w(i,j,k) = 0.0d0
         endif
 
-#ifdef EnableUseG
-        Bx_prev(i,j,k) = u(i,j,k) * T(i,j,k)
-        By_prev(i,j,k) = v(i,j,k) * T(i,j,k)
-        Bz_prev(i,j,k) = w(i,j,k) * T(i,j,k)
-#else
-        Bx_prev(i,j,k) = 0.0d0
-        By_prev(i,j,k) = 0.0d0
-        Bz_prev(i,j,k) = 0.0d0
-#endif
       enddo
     enddo
   enddo
@@ -1596,9 +1687,9 @@ subroutine check3d()
   call append_convergence_tecplot3d('convergence3D.plt', itc, errorU, errorT)
 
   write(caseTag,'("Ra=",ES10.3E2,",nx=",I0,",ny=",I0,",nz=",I0,",useG=",L1,",old=",L1)') &
-       Rayleigh, nx, ny, nz, useG, useLegacyThermalScheme
+       real(Rayleigh,kind=8), nx, ny, nz, useG, useLegacyThermalScheme
   call append_convergence_master_tecplot3d('convergence_all_3D.plt', caseTag, itc, errorU, errorT)
-  write(*,'(I12,1X,ES24.16,1X,ES24.16)') itc, errorU, errorT
+  write(*,'(I12,1X,ES24.16E3,1X,ES24.16E3)') itc, real(errorU,kind=8), real(errorT,kind=8)
 
 end subroutine check3d
 #endif
@@ -1620,12 +1711,12 @@ subroutine append_convergence_tecplot3d(filename, itcLoc, errorULoc, errorTLoc)
     open(newunit=u, file=trim(filename), status='replace', action='write', form='formatted')
     write(u,'(A)') 'VARIABLES = "itc" "errorU" "errorT"'
     write(u,'(A)') 'ZONE T="conv3d", F=POINT'
-    write(u,'(I12,1X,ES24.16,1X,ES24.16)') itcLoc, errorULoc, errorTLoc
+    write(u,'(I12,1X,ES24.16E3,1X,ES24.16E3)') itcLoc, real(errorULoc,kind=8), real(errorTLoc,kind=8)
     close(u)
     first_write = .false.
   else
     open(newunit=u, file=trim(filename), status='old', position='append', action='write', form='formatted')
-    write(u,'(I12,1X,ES24.16,1X,ES24.16)') itcLoc, errorULoc, errorTLoc
+    write(u,'(I12,1X,ES24.16E3,1X,ES24.16E3)') itcLoc, real(errorULoc,kind=8), real(errorTLoc,kind=8)
     close(u)
   endif
 
@@ -1660,17 +1751,17 @@ subroutine append_convergence_master_tecplot3d(filename, zoneName, itcLoc, error
   endif
 
   open(newunit=u, file=trim(filename), status='old', position='append', action='write', form='formatted')
-  write(u,'(I12,1X,ES24.16,1X,ES24.16)') itcLoc, errorULoc, errorTLoc
+  write(u,'(I12,1X,ES24.16E3,1X,ES24.16E3)') itcLoc, real(errorULoc,kind=8), real(errorTLoc,kind=8)
   close(u)
 
 end subroutine append_convergence_master_tecplot3d
 
 
 !===========================================================================================================================
-! 子程序: output_binary3d
+! 子程序: output_SnapshotFile3d
 ! 作用: 输出三维快照二进制文件，供后处理或继续分析使用。
 !===========================================================================================================================
-subroutine output_binary3d()
+subroutine output_SnapshotFile3d()
   use commondata3dOpenacc
   implicit none
 
@@ -1683,29 +1774,29 @@ subroutine output_binary3d()
   write(filename,'(i12.12)') itc
 #endif
 #ifdef unsteadyFlow
-  binFileNum = binFileNum + 1
-  if (loadInitField .EQ. 0) write(filename,'(i12.12)') binFileNum
-  if (loadInitField .EQ. 1) write(filename,'(i12.12)') binFileNum + reloadbinFileNum
+  snapshotFileNum = snapshotFileNum + 1
+  if (loadInitField .EQ. 0) write(filename,'(i12.12)') snapshotFileNum
+  if (loadInitField .EQ. 1) write(filename,'(i12.12)') snapshotFileNum + reloadFileNum
 #endif
 
   filename = adjustl(filename)
-  open(unit=03, file=trim(binFolderPrefix)//'-'//trim(filename)//'.bin', form='unformatted', access='sequential')
-  write(03) (((velocityScaleCompare*u(i,j,k), i=1,nx), j=1,ny), k=1,nz)
-  write(03) (((velocityScaleCompare*v(i,j,k), i=1,nx), j=1,ny), k=1,nz)
-  write(03) (((velocityScaleCompare*w(i,j,k), i=1,nx), j=1,ny), k=1,nz)
-  write(03) (((T(i,j,k), i=1,nx), j=1,ny), k=1,nz)
-  write(03) (((rho(i,j,k), i=1,nx), j=1,ny), k=1,nz)
+  open(unit=03, file=trim(snapshotFilePrefix)//'-'//trim(filename)//'.bin', form='unformatted', access='sequential')
+  write(03) (((real(velocityScaleCompare*u(i,j,k),kind=8), i=1,nx), j=1,ny), k=1,nz)
+  write(03) (((real(velocityScaleCompare*v(i,j,k),kind=8), i=1,nx), j=1,ny), k=1,nz)
+  write(03) (((real(velocityScaleCompare*w(i,j,k),kind=8), i=1,nx), j=1,ny), k=1,nz)
+  write(03) (((real(T(i,j,k),kind=8), i=1,nx), j=1,ny), k=1,nz)
+  write(03) (((real(rho(i,j,k),kind=8), i=1,nx), j=1,ny), k=1,nz)
   close(03)
 
   return
-end subroutine output_binary3d
+end subroutine output_SnapshotFile3d
 
 
 !===========================================================================================================================
-! 子程序: writeReloadFile3d
-! 作用: 备份 f/g 分布函数，供后续重启继续计算。
+! 子程序: output_ReloadFile3d
+! 作用: 备份严格重启状态，供后续重启继续计算。
 !===========================================================================================================================
-subroutine writeReloadFile3d()
+subroutine output_ReloadFile3d()
   use commondata3dOpenacc
   implicit none
 
@@ -1713,27 +1804,31 @@ subroutine writeReloadFile3d()
   character(len=100) :: filename
 
   ! 这是严格重启文件
-  ! 只写 f 和 g，后续由 reconstruct_macro_from_fg3d() 恢复宏观量
+  ! f/g 恢复宏观量；EnableUseG 的历史热流必须原样保存，不能由当前 u*T 近似替代。
 #ifdef steadyFlow
-  write(filename,'(i0)') itc
+  write(filename,'(i12.12)') itc
 #endif
 #ifdef unsteadyFlow
-  if (loadInitField .EQ. 0) write(filename,'(i0)') binFileNum
-  if (loadInitField .EQ. 1) write(filename,'(i0)') binFileNum + reloadbinFileNum
+  write(filename,'(i12.12)') itc
 #endif
 
   filename = adjustl(filename)
   open(unit=05, file=trim(reloadFilePrefix)//'-'//trim(filename)//'.bin', form='unformatted', access='sequential')
-  write(05) ((((f(alpha,i,j,k), i=1,nx), j=1,ny), k=1,nz), alpha=0,qf-1)
-  write(05) ((((g(alpha,i,j,k), i=1,nx), j=1,ny), k=1,nz), alpha=0,qt-1)
+  write(05) ((((real(f(alpha,i,j,k),kind=8), i=1,nx), j=1,ny), k=1,nz), alpha=0,qf-1)
+  write(05) ((((real(g(alpha,i,j,k),kind=8), i=1,nx), j=1,ny), k=1,nz), alpha=0,qt-1)
+#ifdef EnableUseG
+  write(05) (((real(Bx_prev(i,j,k),kind=8), i=1,nx), j=1,ny), k=1,nz)
+  write(05) (((real(By_prev(i,j,k),kind=8), i=1,nx), j=1,ny), k=1,nz)
+  write(05) (((real(Bz_prev(i,j,k),kind=8), i=1,nx), j=1,ny), k=1,nz)
+#endif
   close(05)
 
   open(unit=00, file=trim(settingsFile), status='unknown', position='append')
-  write(00,*) 'Backup f and g to the file: ', trim(reloadFilePrefix), '-', trim(filename), '.bin'
+  write(00,*) 'Backup strict restart state to the file: ', trim(reloadFilePrefix), '-', trim(filename), '.bin'
   close(00)
 
   return
-end subroutine writeReloadFile3d
+end subroutine output_ReloadFile3d
 
 
 !===========================================================================================================================
@@ -1812,9 +1907,11 @@ subroutine calNuRe3d()
   enddo
 #endif
 
-  NuVolAvg(dimensionlessTime) = NuVolAvg_temp / dble(nx * ny * nz) * lengthUnit / diffusivity + 1.0d0
+  NuVolAvg(dimensionlessTime) = NuVolAvg_temp / dble(nx * ny * nz) * velocityScaleCompare + 1.0d0
   open(unit=01, file='Nu_VolAvg_3D.dat', status='unknown', position='append')
-  write(01,*) real(reloadDimensionlessTime + dimensionlessTime * outputFrequency, kind=8), NuVolAvg(dimensionlessTime)
+  write(01,'(2(ES24.16E3,1X))') &
+       real(reloadDimensionlessTime + dimensionlessTime * outputSnapshotInterval, kind=8), &
+       real(NuVolAvg(dimensionlessTime), kind=8)
   close(01)
 
   ReVolAvg_temp = 0.0d0
@@ -1828,16 +1925,19 @@ subroutine calNuRe3d()
   enddo
   ReVolAvg(dimensionlessTime) = dsqrt(ReVolAvg_temp / dble(nx * ny * nz)) * lengthUnit / viscosity
   open(unit=02, file='Re_VolAvg_3D.dat', status='unknown', position='append')
-  write(02,*) real(reloadDimensionlessTime + dimensionlessTime * outputFrequency, kind=8), ReVolAvg(dimensionlessTime)
+  write(02,'(2(ES24.16E3,1X))') &
+       real(reloadDimensionlessTime + dimensionlessTime * outputSnapshotInterval, kind=8), &
+       real(ReVolAvg(dimensionlessTime), kind=8)
   close(02)
 
-  write(*,'(a,1x,es16.8)') 'NuVolAvg =', NuVolAvg(dimensionlessTime)
-  write(*,'(a,1x,es16.8)') 'ReVolAvg =', ReVolAvg(dimensionlessTime)
+  write(*,'(a,1x,ES24.16E3)') 'NuVolAvg =', real(NuVolAvg(dimensionlessTime),kind=8)
+  write(*,'(a,1x,ES24.16E3)') 'ReVolAvg =', real(ReVolAvg(dimensionlessTime),kind=8)
 
   return
 end subroutine calNuRe3d
 
 
+#ifdef steadyFlow
 !===========================================================================================================================
 ! 子程序: RBcalc_Nu_global3d
 ! 作用: 计算三维算例的全局平均 Nusselt 数。
@@ -1874,9 +1974,9 @@ subroutine RBcalc_Nu_global3d()
 
   Nu_global = (sum_qy / dble(nx * ny * nz)) / deltaT
 
-  write(*,'(a,1x,es16.8)') 'Nu_global =', Nu_global
+  write(*,'(a,1x,ES24.16E3)') 'Nu_global =', real(Nu_global,kind=8)
   open(unit=00, file=trim(settingsFile), status='unknown', position='append')
-  write(00,'(a,1x,es16.8)') 'Nu_global =', Nu_global
+  write(00,'(a,1x,ES24.16E3)') 'Nu_global =', real(Nu_global,kind=8)
   close(00)
 
   return
@@ -1902,7 +2002,7 @@ subroutine RBcalc_Nu_wall_avg3d()
   dx = 1.0d0 / lengthUnit
   dy = 1.0d0 / lengthUnit
   deltaT = Thot - Tcold
-  coef = heatFluxScale
+  coef = velocityScaleCompare
 
   ! copyout(T_bot_avg): T_bot_avg 只在这个 GPU 循环里临时生成，但后面 CPU 端还要继续拟合/插值，所以循环结束后自动拷回主机。
  !$acc parallel loop default(none) present(T) copyout(T_bot_avg)
@@ -2021,21 +2121,26 @@ subroutine RBcalc_Nu_wall_avg3d()
   endif
   Nu_middle = sum_mid / dble(nx * nz)
 
-  write(*,'(a,1x,es16.8)') 'Nu_hot(bottom) =', Nu_hot
-  write(*,'(a,1x,es16.8)') 'Nu_cold(top)   =', Nu_cold
-  write(*,'(a,1x,es16.8)') 'Nu_middle      =', Nu_middle
-  write(*,'(a,1x,es16.8,2x,a,1x,es16.8)') 'Nu_hot_max =', Nu_hot_max, 'x_max =', Nu_hot_max_position
-  write(*,'(a,1x,es16.8,2x,a,1x,es16.8)') 'Nu_hot_min =', Nu_hot_min, 'x_min =', Nu_hot_min_position
+  write(*,'(a,1x,ES24.16E3)') 'Nu_hot(bottom) =', real(Nu_hot,kind=8)
+  write(*,'(a,1x,ES24.16E3)') 'Nu_cold(top)   =', real(Nu_cold,kind=8)
+  write(*,'(a,1x,ES24.16E3)') 'Nu_middle      =', real(Nu_middle,kind=8)
+  write(*,'(a,1x,ES24.16E3,2x,a,1x,ES24.16E3)') &
+       'Nu_hot_max =', real(Nu_hot_max,kind=8), 'x_max =', real(Nu_hot_max_position,kind=8)
+  write(*,'(a,1x,ES24.16E3,2x,a,1x,ES24.16E3)') &
+       'Nu_hot_min =', real(Nu_hot_min,kind=8), 'x_min =', real(Nu_hot_min_position,kind=8)
   open(unit=00, file=trim(settingsFile), status='unknown', position='append')
-  write(00,'(a,1x,es16.8)') 'Nu_hot(bottom) =', Nu_hot
-  write(00,'(a,1x,es16.8)') 'Nu_cold(top)   =', Nu_cold
-  write(00,'(a,1x,es16.8)') 'Nu_middle      =', Nu_middle
-  write(00,'(a,1x,es16.8,2x,a,1x,es16.8)') 'Nu_hot_max =', Nu_hot_max, 'x_max =', Nu_hot_max_position
-  write(00,'(a,1x,es16.8,2x,a,1x,es16.8)') 'Nu_hot_min =', Nu_hot_min, 'x_min =', Nu_hot_min_position
+  write(00,'(a,1x,ES24.16E3)') 'Nu_hot(bottom) =', real(Nu_hot,kind=8)
+  write(00,'(a,1x,ES24.16E3)') 'Nu_cold(top)   =', real(Nu_cold,kind=8)
+  write(00,'(a,1x,ES24.16E3)') 'Nu_middle      =', real(Nu_middle,kind=8)
+  write(00,'(a,1x,ES24.16E3,2x,a,1x,ES24.16E3)') &
+       'Nu_hot_max =', real(Nu_hot_max,kind=8), 'x_max =', real(Nu_hot_max_position,kind=8)
+  write(00,'(a,1x,ES24.16E3,2x,a,1x,ES24.16E3)') &
+       'Nu_hot_min =', real(Nu_hot_min,kind=8), 'x_min =', real(Nu_hot_min_position,kind=8)
   close(00)
 
   return
 end subroutine RBcalc_Nu_wall_avg3d
+#endif
 
 
 !===========================================================================================================================
@@ -2231,6 +2336,7 @@ subroutine write_midplane_z(filename)
 end subroutine write_midplane_z
 
 
+#ifdef steadyFlow
 !===========================================================================================================================
 ! 子程序: SideHeatedcalc_Nu_global3d
 ! 作用: 计算侧壁差温工况下的全场平均 Nusselt 数。
@@ -2266,9 +2372,9 @@ subroutine SideHeatedcalc_Nu_global3d()
 
   Nu_global = (sum_qx / dble(nx * ny * nz)) / deltaT
 
-  write(*,'(a,1x,es16.8)') 'Nu_global =', Nu_global
+  write(*,'(a,1x,ES24.16E3)') 'Nu_global =', real(Nu_global,kind=8)
   open(unit=00, file=trim(settingsFile), status='unknown', position='append')
-  write(00,'(a,1x,es16.8)') 'Nu_global =', Nu_global
+  write(00,'(a,1x,ES24.16E3)') 'Nu_global =', real(Nu_global,kind=8)
   close(00)
 
   return
@@ -2293,7 +2399,7 @@ subroutine SideHeatedcalc_Nu_wall_avg3d()
 
   dx = 1.0d0 / lengthUnit
   deltaT = Thot - Tcold
-  coef = heatFluxScale
+  coef = velocityScaleCompare
 
   do j = 1, ny
     T_left_avg(j) = 0.0d0
@@ -2403,22 +2509,27 @@ subroutine SideHeatedcalc_Nu_wall_avg3d()
   endif
   Nu_middle = sum_mid / dble(ny * nz)
 
-  write(*,'(a,1x,es16.8)') 'Nu_hot(left)  =', Nu_hot
-  write(*,'(a,1x,es16.8)') 'Nu_cold(right)=', Nu_cold
-  write(*,'(a,1x,es16.8)') 'Nu_middle     =', Nu_middle
-  write(*,'(a,1x,es16.8,2x,a,1x,es16.8)') 'Nu_hot_max =', Nu_hot_max, 'y_max =', Nu_hot_max_position
-  write(*,'(a,1x,es16.8,2x,a,1x,es16.8)') 'Nu_hot_min =', Nu_hot_min, 'y_min =', Nu_hot_min_position
+  write(*,'(a,1x,ES24.16E3)') 'Nu_hot(left)  =', real(Nu_hot,kind=8)
+  write(*,'(a,1x,ES24.16E3)') 'Nu_cold(right)=', real(Nu_cold,kind=8)
+  write(*,'(a,1x,ES24.16E3)') 'Nu_middle     =', real(Nu_middle,kind=8)
+  write(*,'(a,1x,ES24.16E3,2x,a,1x,ES24.16E3)') &
+       'Nu_hot_max =', real(Nu_hot_max,kind=8), 'y_max =', real(Nu_hot_max_position,kind=8)
+  write(*,'(a,1x,ES24.16E3,2x,a,1x,ES24.16E3)') &
+       'Nu_hot_min =', real(Nu_hot_min,kind=8), 'y_min =', real(Nu_hot_min_position,kind=8)
 
   open(unit=00, file=trim(settingsFile), status='unknown', position='append')
-  write(00,'(a,1x,es16.8)') 'Nu_hot(left)  =', Nu_hot
-  write(00,'(a,1x,es16.8)') 'Nu_cold(right)=', Nu_cold
-  write(00,'(a,1x,es16.8)') 'Nu_middle     =', Nu_middle
-  write(00,'(a,1x,es16.8,2x,a,1x,es16.8)') 'Nu_hot_max =', Nu_hot_max, 'y_max =', Nu_hot_max_position
-  write(00,'(a,1x,es16.8,2x,a,1x,es16.8)') 'Nu_hot_min =', Nu_hot_min, 'y_min =', Nu_hot_min_position
+  write(00,'(a,1x,ES24.16E3)') 'Nu_hot(left)  =', real(Nu_hot,kind=8)
+  write(00,'(a,1x,ES24.16E3)') 'Nu_cold(right)=', real(Nu_cold,kind=8)
+  write(00,'(a,1x,ES24.16E3)') 'Nu_middle     =', real(Nu_middle,kind=8)
+  write(00,'(a,1x,ES24.16E3,2x,a,1x,ES24.16E3)') &
+       'Nu_hot_max =', real(Nu_hot_max,kind=8), 'y_max =', real(Nu_hot_max_position,kind=8)
+  write(00,'(a,1x,ES24.16E3,2x,a,1x,ES24.16E3)') &
+       'Nu_hot_min =', real(Nu_hot_min,kind=8), 'y_min =', real(Nu_hot_min_position,kind=8)
   close(00)
 
   return
 end subroutine SideHeatedcalc_Nu_wall_avg3d
+#endif
 
 
 !===========================================================================================================================
@@ -2548,27 +2659,48 @@ end subroutine fit_parabola_ls5_3d
 
 !===========================================================================================================================
 ! 子程序: SideHeatedcalc_umid_max3d
+! 作用: 侧壁差温工况的 u 中面最大值诊断入口，复用公共搜索与输出逻辑。
 !===========================================================================================================================
 subroutine SideHeatedcalc_umid_max3d()
   call calc_umid_max_common3d('SideHeatedcalc_umid_max')
 end subroutine SideHeatedcalc_umid_max3d
 
+!===========================================================================================================================
+! 子程序: SideHeatedcalc_vmid_max3d
+! 作用: 侧壁差温工况的 v 中面最大值诊断入口，复用公共搜索与输出逻辑。
+!===========================================================================================================================
 subroutine SideHeatedcalc_vmid_max3d()
   call calc_vmid_max_common3d('SideHeatedcalc_vmid_max')
 end subroutine SideHeatedcalc_vmid_max3d
 
+!===========================================================================================================================
+! 子程序: SideHeatedcalc_wmid_max3d
+! 作用: 侧壁差温工况的 w 中面最大值诊断入口，复用公共搜索与输出逻辑。
+!===========================================================================================================================
 subroutine SideHeatedcalc_wmid_max3d()
   call calc_wmid_max_common3d('SideHeatedcalc_wmid_max')
 end subroutine SideHeatedcalc_wmid_max3d
 
+!===========================================================================================================================
+! 子程序: RBcalc_umid_max3d
+! 作用: Rayleigh-Benard 工况的 u 中面最大值诊断入口，复用公共搜索与输出逻辑。
+!===========================================================================================================================
 subroutine RBcalc_umid_max3d()
   call calc_umid_max_common3d('RBcalc_umid_max')
 end subroutine RBcalc_umid_max3d
 
+!===========================================================================================================================
+! 子程序: RBcalc_vmid_max3d
+! 作用: Rayleigh-Benard 工况的 v 中面最大值诊断入口，复用公共搜索与输出逻辑。
+!===========================================================================================================================
 subroutine RBcalc_vmid_max3d()
   call calc_vmid_max_common3d('RBcalc_vmid_max')
 end subroutine RBcalc_vmid_max3d
 
+!===========================================================================================================================
+! 子程序: RBcalc_wmid_max3d
+! 作用: Rayleigh-Benard 工况的 w 中面最大值诊断入口，复用公共搜索与输出逻辑。
+!===========================================================================================================================
 subroutine RBcalc_wmid_max3d()
   call calc_wmid_max_common3d('RBcalc_wmid_max')
 end subroutine RBcalc_wmid_max3d
@@ -2576,6 +2708,7 @@ end subroutine RBcalc_wmid_max3d
 
 !===========================================================================================================================
 ! 子程序: calc_umid_max_common3d
+! 作用: 在 x 中面插值搜索 u 的最大值，并输出对应的 y/z 位置。
 !===========================================================================================================================
 subroutine calc_umid_max_common3d(logTag)
   use commondata3dOpenacc
@@ -2603,8 +2736,9 @@ subroutine calc_umid_max_common3d(logTag)
   yAtU = yp(jBest)
   zAtU = zp(kBest)
 
-  write(*,'(A,1X,ES16.8,2X,A,1X,ES16.8,2X,A,1X,ES16.8,2X,A,1X,ES16.8)') &
-       'u_mid_max =', umax*velocityScaleCompare, 'at y =', yAtU, 'z =', zAtU, 'on x_mid =', targetX
+  write(*,'(A,1X,ES24.16E3,2X,A,1X,ES24.16E3,2X,A,1X,ES24.16E3,2X,A,1X,ES24.16E3)') &
+       'u_mid_max =', real(umax*velocityScaleCompare,kind=8), 'at y =', real(yAtU,kind=8), &
+       'z =', real(zAtU,kind=8), 'on x_mid =', real(targetX,kind=8)
 
   open(unit=00, file=trim(settingsFile), status='unknown', position='append')
   write(00,*) '--- ', trim(logTag), ' ---'
@@ -2617,6 +2751,7 @@ end subroutine calc_umid_max_common3d
 
 !===========================================================================================================================
 ! 子程序: calc_vmid_max_common3d
+! 作用: 在 y 中面插值搜索 v 的最大值，并输出对应的 x/z 位置。
 !===========================================================================================================================
 subroutine calc_vmid_max_common3d(logTag)
   use commondata3dOpenacc
@@ -2644,8 +2779,9 @@ subroutine calc_vmid_max_common3d(logTag)
   xAtV = xp(iBest)
   zAtV = zp(kBest)
 
-  write(*,'(A,1X,ES16.8,2X,A,1X,ES16.8,2X,A,1X,ES16.8,2X,A,1X,ES16.8)') &
-       'v_mid_max =', vmax*velocityScaleCompare, 'at x =', xAtV, 'z =', zAtV, 'on y_mid =', targetY
+  write(*,'(A,1X,ES24.16E3,2X,A,1X,ES24.16E3,2X,A,1X,ES24.16E3,2X,A,1X,ES24.16E3)') &
+       'v_mid_max =', real(vmax*velocityScaleCompare,kind=8), 'at x =', real(xAtV,kind=8), &
+       'z =', real(zAtV,kind=8), 'on y_mid =', real(targetY,kind=8)
 
   open(unit=00, file=trim(settingsFile), status='unknown', position='append')
   write(00,*) '--- ', trim(logTag), ' ---'
@@ -2658,6 +2794,7 @@ end subroutine calc_vmid_max_common3d
 
 !===========================================================================================================================
 ! 子程序: calc_wmid_max_common3d
+! 作用: 在 z 中面插值搜索 w 的最大值，并输出对应的 x/y 位置。
 !===========================================================================================================================
 subroutine calc_wmid_max_common3d(logTag)
   use commondata3dOpenacc
@@ -2685,8 +2822,9 @@ subroutine calc_wmid_max_common3d(logTag)
   xAtW = xp(iBest)
   yAtW = yp(jBest)
 
-  write(*,'(A,1X,ES16.8,2X,A,1X,ES16.8,2X,A,1X,ES16.8,2X,A,1X,ES16.8)') &
-       'w_mid_max =', wmax*velocityScaleCompare, 'at x =', xAtW, 'y =', yAtW, 'on z_mid =', targetZ
+  write(*,'(A,1X,ES24.16E3,2X,A,1X,ES24.16E3,2X,A,1X,ES24.16E3,2X,A,1X,ES24.16E3)') &
+       'w_mid_max =', real(wmax*velocityScaleCompare,kind=8), 'at x =', real(xAtW,kind=8), &
+       'y =', real(yAtW,kind=8), 'on z_mid =', real(targetZ,kind=8)
 
   open(unit=00, file=trim(settingsFile), status='unknown', position='append')
   write(00,*) '--- ', trim(logTag), ' ---'
@@ -3058,13 +3196,13 @@ subroutine write_full_fields_plt(filename)
   do k = 1, nz
     do j = 1, ny
       do i = 1, nx
-        write(uout) xp(i)
-        write(uout) yp(j)
-        write(uout) zp(k)
-        write(uout) u(i,j,k)
-        write(uout) v(i,j,k)
-        write(uout) w(i,j,k)
-        write(uout) T(i,j,k)
+        write(uout) real(xp(i),kind=8)
+        write(uout) real(yp(j),kind=8)
+        write(uout) real(zp(k),kind=8)
+        write(uout) real(u(i,j,k),kind=8)
+        write(uout) real(v(i,j,k),kind=8)
+        write(uout) real(w(i,j,k),kind=8)
+        write(uout) real(T(i,j,k),kind=8)
       enddo
     enddo
   enddo
@@ -3138,12 +3276,12 @@ subroutine write_slice_fields_plt(filename, title, var1Name, var2Name, field1Nam
 
   do j = 1, nj
     do i = 1, ni
-      write(uout) coord1(i)
-      write(uout) coord2(j)
-      write(uout) field1(i,j)
-      write(uout) field2(i,j)
-      write(uout) field3(i,j)
-      write(uout) field4(i,j)
+      write(uout) real(coord1(i),kind=8)
+      write(uout) real(coord2(j),kind=8)
+      write(uout) real(field1(i,j),kind=8)
+      write(uout) real(field2(i,j),kind=8)
+      write(uout) real(field3(i,j),kind=8)
+      write(uout) real(field4(i,j),kind=8)
     enddo
   enddo
 
@@ -3209,10 +3347,10 @@ subroutine write_slice_psi_vort_plt(filename, title, var1Name, var2Name, psiName
 
   do j = 1, nj
     do i = 1, ni
-      write(uout) coord1(i)
-      write(uout) coord2(j)
-      write(uout) psi(i,j)
-      write(uout) vort(i,j)
+      write(uout) real(coord1(i),kind=8)
+      write(uout) real(coord2(j),kind=8)
+      write(uout) real(psi(i,j),kind=8)
+      write(uout) real(vort(i,j),kind=8)
     enddo
   enddo
 
