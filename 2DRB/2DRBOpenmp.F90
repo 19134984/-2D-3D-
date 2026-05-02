@@ -164,6 +164,11 @@
         real(kind=8), parameter :: reloadFileInterval=100.0d0  ! f/g 重启文件输出间隔（单位：t_ff）
         real(kind=8), parameter :: outputPltFileInterval=100.0d0  ! Tecplot 文件周期输出间隔（单位：t_ff）
         real(kind=8), parameter :: unsteadyRunDuration=1000.0d0  ! 非稳态阶段固定运行到 1000 个 t_ff
+        ! 以下三个参数只控制非稳态结束后的 Nu/Re 统计平均窗口，不改变推进时长或采样频率。
+        ! 时间以本次运行段的 t_ff 计；写出统计文件时会自动叠加 reloadDimensionlessTime。
+        real(kind=8), parameter :: unsteadyAverageStartTf=0.5d0*unsteadyRunDuration  ! 平均窗口起点
+        real(kind=8), parameter :: unsteadyAverageEndTf=unsteadyRunDuration          ! 平均窗口终点
+        real(kind=8), parameter :: unsteadyAverageMidTf=0.5d0*(unsteadyAverageStartTf+unsteadyAverageEndTf) ! 前/后半分界
         integer(kind=4), parameter :: unsteadySampleCount=max(1, int(unsteadyRunDuration/outputSnapshotInterval+0.5d0)) !输出次数计数器
         integer(kind=4), parameter :: dimensionlessTimeMax=unsteadySampleCount
         integer(kind=4), parameter :: outputSnapshotFile=1   ! 是否输出后处理快照文件：0=不输出，1=输出
@@ -345,6 +350,10 @@
 #ifdef steadyFlow
     call output_Tecplot()          !输出最后一步的plt结果
     call output_SnapshotFile()              !输出最后一步的uvTrho数据
+#endif
+
+#ifdef unsteadyFlow
+    call output_unsteady_NuRe_postprocess()
 #endif
 
     !===============================================================================================
@@ -1787,6 +1796,135 @@ end subroutine append_convergence_master_tecplot
 !===================================================================================================
 ! calNuRe 结束: 计算体平均 Nu 和 Re 的时间历程统计量。
 !===================================================================================================
+
+
+#ifdef unsteadyFlow
+!===================================================================================================
+! Subroutine: output_unsteady_NuRe_postprocess
+! Purpose: write unsteady Nu/Re series, running means, and window averages from cached samples.
+!===================================================================================================
+  subroutine output_unsteady_NuRe_postprocess()
+    use commondata
+    implicit none
+
+    integer(kind=4) :: k, n
+    integer(kind=4) :: whole_count, first_count, second_count
+    real(kind=8) :: timeLoc, Nu_Accum, Re_Accum
+    real(kind=8) :: startTf, midTf, endTf
+    real(kind=8) :: Nu_WholeSum, Re_WholeSum, Nu_FirstSum, Re_FirstSum, Nu_SecondSum, Re_SecondSum
+    real(kind=8) :: Nu_WholeAvg, Re_WholeAvg, Nu_FirstAvg, Re_FirstAvg, Nu_SecondAvg, Re_SecondAvg
+    real(kind=8) :: Nu_FirstRelErr, Re_FirstRelErr, Nu_SecondRelErr, Re_SecondRelErr
+
+    n = dimensionlessTime
+    if (n <= 0) then
+        write(*,'(A)') 'Error: no unsteady Nu/Re samples were collected before postprocessing.'
+        open(unit=00,file=trim(settingsFile),status='unknown',position='append')
+        write(00,'(A)') 'Error: no unsteady Nu/Re samples were collected before postprocessing.'
+        close(00)
+        error stop 1
+    endif
+
+    open(unit=31, file='NuRe_VolAvg_2DOpenmp.plt', status='replace', action='write', form='formatted')
+    write(31,'(A)') 'TITLE = "2D OpenMP Nu/Re volume averages"'
+    write(31,'(A)') 'VARIABLES = "time" "NuVolAvg" "ReVolAvg"'
+    write(31,'(A)') 'ZONE T="NuReVolAvg", F=POINT'
+
+    open(unit=32, file='NuRe_VolAvg_runningMean_2DOpenmp.plt', status='replace', action='write', form='formatted')
+    write(32,'(A)') 'TITLE = "2D OpenMP Nu/Re running means"'
+    write(32,'(A)') 'VARIABLES = "time" "NuVolAvgMean" "ReVolAvgMean"'
+    write(32,'(A)') 'ZONE T="NuReRunningMean", F=POINT'
+
+    Nu_Accum = 0.0d0
+    Re_Accum = 0.0d0
+    do k = 1, n
+        timeLoc = real(reloadDimensionlessTime,kind=8) + real(k,kind=8)*outputSnapshotInterval
+        Nu_Accum = Nu_Accum + NuVolAvg(k)
+        Re_Accum = Re_Accum + ReVolAvg(k)
+        write(31,'(ES24.16E3,1X,ES24.16E3,1X,ES24.16E3)') timeLoc, NuVolAvg(k), ReVolAvg(k)
+        write(32,'(ES24.16E3,1X,ES24.16E3,1X,ES24.16E3)') timeLoc, Nu_Accum/dble(k), Re_Accum/dble(k)
+    enddo
+    close(31)
+    close(32)
+
+    startTf = real(reloadDimensionlessTime,kind=8) + unsteadyAverageStartTf
+    midTf = real(reloadDimensionlessTime,kind=8) + unsteadyAverageMidTf
+    endTf = real(reloadDimensionlessTime,kind=8) + unsteadyAverageEndTf
+
+    Nu_WholeSum = 0.0d0
+    Re_WholeSum = 0.0d0
+    Nu_FirstSum = 0.0d0
+    Re_FirstSum = 0.0d0
+    Nu_SecondSum = 0.0d0
+    Re_SecondSum = 0.0d0
+    whole_count = 0
+    first_count = 0
+    second_count = 0
+
+    do k = 1, n
+        timeLoc = real(reloadDimensionlessTime,kind=8) + real(k,kind=8)*outputSnapshotInterval
+        if ((timeLoc >= startTf) .and. (timeLoc <= endTf)) then
+            Nu_WholeSum = Nu_WholeSum + NuVolAvg(k)
+            Re_WholeSum = Re_WholeSum + ReVolAvg(k)
+            whole_count = whole_count + 1
+        endif
+        if ((timeLoc >= startTf) .and. (timeLoc < midTf)) then
+            Nu_FirstSum = Nu_FirstSum + NuVolAvg(k)
+            Re_FirstSum = Re_FirstSum + ReVolAvg(k)
+            first_count = first_count + 1
+        endif
+        if ((timeLoc >= midTf) .and. (timeLoc <= endTf)) then
+            Nu_SecondSum = Nu_SecondSum + NuVolAvg(k)
+            Re_SecondSum = Re_SecondSum + ReVolAvg(k)
+            second_count = second_count + 1
+        endif
+    enddo
+
+    if ((whole_count <= 0) .or. (first_count <= 0) .or. (second_count <= 0)) then
+        write(*,'(A)') 'Error: no complete unsteady average window was found for Nu/Re postprocessing.'
+        open(unit=00,file=trim(settingsFile),status='unknown',position='append')
+        write(00,'(A)') 'Error: no complete unsteady average window was found for Nu/Re postprocessing.'
+        close(00)
+        error stop 1
+    endif
+
+    Nu_WholeAvg = Nu_WholeSum / dble(whole_count)
+    Re_WholeAvg = Re_WholeSum / dble(whole_count)
+    Nu_FirstAvg = Nu_FirstSum / dble(first_count)
+    Re_FirstAvg = Re_FirstSum / dble(first_count)
+    Nu_SecondAvg = Nu_SecondSum / dble(second_count)
+    Re_SecondAvg = Re_SecondSum / dble(second_count)
+    ! tiny(1.0d0) 是双精度最小正规正数；这里用 max 避免整体平均值为 0 时相对误差除以 0。
+    Nu_FirstRelErr = abs(Nu_FirstAvg - Nu_WholeAvg) / max(abs(Nu_WholeAvg), tiny(1.0d0))
+    Re_FirstRelErr = abs(Re_FirstAvg - Re_WholeAvg) / max(abs(Re_WholeAvg), tiny(1.0d0))
+    Nu_SecondRelErr = abs(Nu_SecondAvg - Nu_WholeAvg) / max(abs(Nu_WholeAvg), tiny(1.0d0))
+    Re_SecondRelErr = abs(Re_SecondAvg - Re_WholeAvg) / max(abs(Re_WholeAvg), tiny(1.0d0))
+
+    open(unit=33, file='NuRe_TimeAverage_2DOpenmp.txt', status='replace', action='write', form='formatted')
+    write(33,'(A)') '# 2D OpenMP Nu/Re statistical-convergence window averages'
+    write(33,'(A)') '# start_tf mid_tf end_tf whole_count first_count second_count ' // &
+        'Nu_whole Re_whole Nu_first Re_first Nu_second Re_second ' // &
+        'Nu_first_relerr Re_first_relerr Nu_second_relerr Re_second_relerr'
+    write(33,'(ES24.16E3,1X,ES24.16E3,1X,ES24.16E3,1X,I0,1X,I0,1X,I0,1X,' // &
+        'ES24.16E3,1X,ES24.16E3,1X,ES24.16E3,1X,ES24.16E3,1X,ES24.16E3,1X,ES24.16E3,1X,' // &
+        'ES24.16E3,1X,ES24.16E3,1X,ES24.16E3,1X,ES24.16E3)') &
+        startTf, midTf, endTf, whole_count, first_count, second_count, &
+        Nu_WholeAvg, Re_WholeAvg, Nu_FirstAvg, Re_FirstAvg, Nu_SecondAvg, Re_SecondAvg, &
+        Nu_FirstRelErr, Re_FirstRelErr, Nu_SecondRelErr, Re_SecondRelErr
+    close(33)
+
+    write(*,'(A)') 'Unsteady Nu/Re statistical postprocessing:'
+    write(*,'(A,1X,ES16.8,1X,A,1X,ES16.8)') 'Average window:', startTf, 'to', endTf
+    write(*,'(A,1X,I0,1X,A,1X,I0,1X,A,1X,I0)') &
+        'Samples whole/first/second:', whole_count, '/', first_count, '/', second_count
+    write(*,'(A,1X,ES16.8,1X,A,1X,ES16.8)') 'Whole Nu/Re average:', Nu_WholeAvg, '/', Re_WholeAvg
+    write(*,'(A,1X,ES16.8,1X,A,1X,ES16.8)') 'First-half Nu/Re average:', Nu_FirstAvg, '/', Re_FirstAvg
+    write(*,'(A,1X,ES16.8,1X,A,1X,ES16.8)') 'Second-half Nu/Re average:', Nu_SecondAvg, '/', Re_SecondAvg
+    write(*,'(A,1X,ES16.8,1X,A,1X,ES16.8)') 'First-half Nu/Re relative error:', Nu_FirstRelErr, '/', Re_FirstRelErr
+    write(*,'(A,1X,ES16.8,1X,A,1X,ES16.8)') 'Second-half Nu/Re relative error:', Nu_SecondRelErr, '/', Re_SecondRelErr
+
+  end subroutine output_unsteady_NuRe_postprocess
+!===================================================================================================
+#endif
 
 
 !===================================================================================================
