@@ -75,9 +75,9 @@
 
 !算法切换
 !启用 M1G 修正；注释掉则不使用 useG 相关修正
-#define EnableUseG
+!#define EnableUseG
 !启用旧算法
-!#define EnableLegacyThermalScheme
+#define EnableLegacyThermalScheme
 
 !   温度算法宏的选择
 #if defined(EnableUseG) && defined(EnableLegacyThermalScheme)
@@ -113,7 +113,7 @@ module commondata3dOpenacc
 
   !===============================================================================================
   ! 无量纲参数
-  integer(kind=4), parameter :: nx=80, ny=80, nz=80
+  integer(kind=4), parameter :: nx=120, ny=120, nz=120
 #ifdef SideHeatedCell
   real(kind=8), parameter :: lengthUnit=dble(nx)
 #else
@@ -121,7 +121,7 @@ module commondata3dOpenacc
 #endif
   real(kind=8), parameter :: pi=acos(-1.0d0)
 
-  real(kind=8), parameter :: Rayleigh=1.0d5
+  real(kind=8), parameter :: Rayleigh=1.0d7
   real(kind=8), parameter :: Prandtl=0.71d0
   real(kind=8), parameter :: Mach=0.1d0
   real(kind=8), parameter :: Thot=0.5d0, Tcold=-0.5d0
@@ -166,13 +166,13 @@ module commondata3dOpenacc
   real(kind=8), parameter :: epsU=1.0d-7, epsT=1.0d-7
 
 #ifdef steadyFlow
-  real(kind=8), parameter :: outputSnapshotInterval=100.0d0   ! Nu/Re 时间序列采样间隔（单位：t_ff）
-  real(kind=8), parameter :: reloadFileInterval=1000.0d0  ! f/g 重启文件输出间隔（单位：t_ff）
-  real(kind=8), parameter :: outputPltFileInterval=1000.0d0  ! Tecplot 文件输出间隔（单位：t_ff）
+  real(kind=8), parameter :: outputSnapshotInterval=10.0d0   ! Nu/Re 时间序列采样间隔（单位：t_ff）
+  real(kind=8), parameter :: reloadFileInterval=100.0d0  ! f/g 重启文件输出间隔（单位：t_ff）
+  real(kind=8), parameter :: outputPltFileInterval=100.0d0  ! Tecplot 文件输出间隔（单位：t_ff）
   integer(kind=4), parameter :: dimensionlessTimeMax=int(12000.0d0/outputSnapshotInterval)
-  integer(kind=4), parameter :: outputSnapshotFile=0
-  integer(kind=4), parameter :: outputPltFile=0
-  integer(kind=4), parameter :: outputReloadFile=0
+  integer(kind=4), parameter :: outputSnapshotFile=1
+  integer(kind=4), parameter :: outputPltFile=1
+  integer(kind=4), parameter :: outputReloadFile=1
   integer(kind=4), parameter :: itc_max=20000000
 #endif
 

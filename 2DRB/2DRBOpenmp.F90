@@ -8,8 +8,8 @@
 
 !=============================================================
 !   自定义宏，一些选项的开关
-!#define steadyFlow    
-#define unsteadyFlow
+#define steadyFlow    
+!#define unsteadyFlow
 
 !   流动模式宏的选择，两个都开、两个都关都会报错；只有二选一才通过。
 #if defined(steadyFlow) && defined(unsteadyFlow)
@@ -33,17 +33,17 @@
 #endif
 
 !   温度边界(for Rayleigh Benard Cell)，包括水平边界恒温，垂直边界温度不可穿透以及周期
-#define RayleighBenardCell
-#define HorizontalWallsConstT
-#define VerticalWallsAdiabatic
+!#define RayleighBenardCell
+!#define HorizontalWallsConstT
+!#define VerticalWallsAdiabatic
 !#define VerticalWallsPeriodicalT
 
 
 
 !   温度边界(for Side Heated Cell)，包括水平边界温度不可穿透，垂直边界恒温,侧壁加热加磁场
-!#define SideHeatedCell
-!#define HorizontalWallsAdiabatic
-!#define VerticalWallsConstT
+#define SideHeatedCell
+#define HorizontalWallsAdiabatic
+#define VerticalWallsConstT
 !#define SideHeatedHa  
 !~~temperature B.C.~~
 
@@ -57,9 +57,9 @@
 
 !算法切换
 !启用 M1G 修正；注释掉则不使用 useG 相关修正
-#define EnableUseG
+!#define EnableUseG
 !启用旧温度算法
-!#define EnableLegacyThermalScheme
+#define EnableLegacyThermalScheme
 
 !   温度算法宏的选择
 #if defined(EnableUseG) && defined(EnableLegacyThermalScheme)
@@ -98,8 +98,8 @@
 #endif
         real(kind=8), parameter :: pi = acos(-1.0d0)
 
-        real(kind=8), parameter :: Rayleigh=1.0d7        
-        real(kind=8), parameter :: Prandtl=0.7d0       
+        real(kind=8), parameter :: Rayleigh=1.0d8        
+        real(kind=8), parameter :: Prandtl=0.71d0       
         real(kind=8), parameter :: Mach=0.1d0
         real(kind=8), parameter :: Thot=0.5d0, Tcold=-0.5d0
         real(kind=8), parameter :: Tref=0.5d0*(Thot+Tcold)
@@ -149,13 +149,13 @@
         real(kind=8), parameter :: epsU=1.0d-7, epsT=1.0d-7    ! 稳态收敛阈值   
 
 #ifdef steadyFlow
-        real(kind=8), parameter :: outputSnapshotInterval=100.0d0   ! 快照和 Nu/Re 时间序列采样间隔（单位：t_ff）
-        real(kind=8), parameter :: reloadFileInterval=1000.0d0  ! f/g 重启文件输出间隔（单位：t_ff）
-        real(kind=8), parameter :: outputPltFileInterval=1000.0d0  ! Tecplot 文件输出间隔（单位：t_ff）
+        real(kind=8), parameter :: outputSnapshotInterval=10.0d0   ! 快照和 Nu/Re 时间序列采样间隔（单位：t_ff）
+        real(kind=8), parameter :: reloadFileInterval=100.0d0  ! f/g 重启文件输出间隔（单位：t_ff）
+        real(kind=8), parameter :: outputPltFileInterval=100.0d0  ! Tecplot 文件输出间隔（单位：t_ff）
         integer(kind=4), parameter :: dimensionlessTimeMax=int(12000.0d0/outputSnapshotInterval)
-        integer(kind=4), parameter :: outputSnapshotFile=0   ! 是否输出后处理快照文件：0=不输出，1=输出
-        integer(kind=4), parameter :: outputPltFile=0   ! 是否输出 plt 文件：0=不输出，1=输出
-        integer(kind=4), parameter :: outputReloadFile=0 ! 是否周期输出 f/g 重启文件：0=不输出，1=输出
+        integer(kind=4), parameter :: outputSnapshotFile=1   ! 是否输出后处理快照文件：0=不输出，1=输出
+        integer(kind=4), parameter :: outputPltFile=1   ! 是否输出 plt 文件：0=不输出，1=输出
+        integer(kind=4), parameter :: outputReloadFile=1 ! 是否周期输出 f/g 重启文件：0=不输出，1=输出
         integer(kind=4), parameter :: itc_max=20000000  ! 稳态：最大格子步，实际仍由 errorU/errorT 提前停止
 #endif
 

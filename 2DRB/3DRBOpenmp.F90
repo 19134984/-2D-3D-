@@ -119,7 +119,7 @@ module commondata3d
 #endif
   real(kind=8), parameter :: pi=acos(-1.0d0)
 
-  real(kind=8), parameter :: Rayleigh=1.0d7
+  real(kind=8), parameter :: Rayleigh=1.0d5
   real(kind=8), parameter :: Prandtl=0.71d0
   real(kind=8), parameter :: Mach=0.1d0
   real(kind=8), parameter :: Thot=0.5d0, Tcold=-0.5d0
@@ -166,13 +166,13 @@ module commondata3d
   real(kind=8), parameter :: epsU=1.0d-7, epsT=1.0d-7    ! 稳态收敛阈值
 
 #ifdef steadyFlow
-  real(kind=8), parameter :: outputSnapshotInterval=100.0d0   ! 快照和 Nu/Re 时间序列采样间隔（单位：t_ff）
-  real(kind=8), parameter :: reloadFileInterval=1000.0d0  ! f/g 重启文件输出间隔（单位：t_ff）
-  real(kind=8), parameter :: outputPltFileInterval=1000.0d0  ! Tecplot 文件输出间隔（单位：t_ff）
+  real(kind=8), parameter :: outputSnapshotInterval=10.0d0   ! 快照和 Nu/Re 时间序列采样间隔（单位：t_ff）
+  real(kind=8), parameter :: reloadFileInterval=100.0d0  ! f/g 重启文件输出间隔（单位：t_ff）
+  real(kind=8), parameter :: outputPltFileInterval=100.0d0  ! Tecplot 文件输出间隔（单位：t_ff）
   integer(kind=4), parameter :: dimensionlessTimeMax=int(12000.0d0/outputSnapshotInterval)
-  integer(kind=4), parameter :: outputSnapshotFile=0  ! 是否输出后处理快照文件：0=不输出，1=输出
-  integer(kind=4), parameter :: outputPltFile=0       ! 是否输出 Tecplot 文件：0=不输出，1=输出
-  integer(kind=4), parameter :: outputReloadFile=0    ! 是否周期输出 f/g 重启文件：0=不输出，1=输出
+  integer(kind=4), parameter :: outputSnapshotFile=1  ! 是否输出后处理快照文件：0=不输出，1=输出
+  integer(kind=4), parameter :: outputPltFile=1       ! 是否输出 Tecplot 文件：0=不输出，1=输出
+  integer(kind=4), parameter :: outputReloadFile=1    ! 是否周期输出 f/g 重启文件：0=不输出，1=输出
   integer(kind=4), parameter :: itc_max=20000000      ! 稳态最大格子步，实际可由 errorU/errorT 提前停止
 #endif
 
@@ -2353,7 +2353,8 @@ subroutine SideHeatedcalc_Nu_zmid_wall_mean()
   Nu_left_mean = 0.0d0
   Nu_right_mean = 0.0d0
 
-  !$omp parallel do default(none) shared(T,kL,kR,weight,dx,deltaT) private(j,Tleft1,Tleft2,Tright1,Tright2,qx_hot,qx_cold) reduction(+:Nu_left_mean,Nu_right_mean)
+  !$omp parallel do default(none) shared(T,kL,kR,weight,dx,deltaT) private(j,Tleft1,Tleft2,Tright1,Tright2,qx_hot,qx_cold) &
+  !$omp reduction(+:Nu_left_mean,Nu_right_mean)
   do j = 1, ny
     call interp_scalar_z(kL, kR, weight, 1,  j, T, Tleft1)
     call interp_scalar_z(kL, kR, weight, 2,  j, T, Tleft2)
