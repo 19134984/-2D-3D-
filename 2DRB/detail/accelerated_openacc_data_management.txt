@@ -1,0 +1,790 @@
+                                                  International Journal of Heat and Mass Transfer 109 (2017) 577–588
+
+
+
+                                                             Contents lists available at ScienceDirect
+
+
+                                International Journal of Heat and Mass Transfer
+                                               journal homepage: www.elsevier.com/locate/ijhmt
+
+
+
+
+Accelerated lattice Boltzmann simulation using GPU and OpenACC with
+data management
+A. Xu, L. Shi, T.S. Zhao ⇑
+Department of Mechanical and Aerospace Engineering, The Hong Kong University of Science and Technology, Hong Kong, China
+
+
+
+a r t i c l e       i n f o                          a b s t r a c t
+
+Article history:                                     We assess the performance of the combined Open Accelerator (OpenACC) programming standard and
+Received 1 December 2016                             graphics processing unit (GPU) accelerator for lattice Boltzmann (LB) simulations of fluid flow, heat
+Received in revised form 9 February 2017             and mass transfer. By optimizing the data layout, minimizing the memory access frequency, and adjust-
+Accepted 13 February 2017
+                                                     ing the number of gangs and vector length, we show that the enhanced parallel computations can result
+Available online 23 February 2017
+                                                     in orders of magnitudes of speedup relative to the serial implementation of the LB algorithm. Based on
+                                                     such implementations, benchmark quality results are obtained with fine grid of 20492 for both two-
+Keywords:
+                                                     dimensional lid driven cavity flow with Reynolds number up to 7500, and double diffusive cavity flow
+GPU computing
+OpenACC
+                                                     with solute Rayleigh number up to 108 .
+Lattice Boltzmann method                                                                                            Ó 2017 Elsevier Ltd. All rights reserved.
+Heat and mass trasnfer
+
+
+
+
+1. Introduction                                                                        two-phase flow [3–6], particulate flow [7–10], flow in porous
+                                                                                       media [11–13], and so on. More importantly, the locality nature
+   The consistent demand for higher simulation accuracy and lar-                       of extensive computations makes the LB method favorable for mas-
+ger computing capability has driven the prosperous of high perfor-                     sively parallel programming, which is crucial for practical engi-
+mance computing community [1]. During the past decades, the                            neering applications.
+performance of central processing unit (CPU) microprocessor chip                           Parallel computing framework utilizing GPUs includes Open
+has been exponentially growing and follows the Moore’s law,                            Computing Language (OpenCL), Compute Unified Device Architec-
+which indicates that the chip’s performance will double every                          ture (CUDA), and Open Accelerator (OpenACC). OpenCL is an open
+two years. As the microprocessor reduces its physical size to tens                     standard for programming heterogeneous platforms consisting of
+of nanometer, the Moore’s law seems nearing its end [2]. On the                        CPUs and GPUs. It specifies C/C++ programming language, and pro-
+other hand, utilizing graphics processing unit (GPU) as computa-                       grammers must explicitly manage the way that a problem is
+tional accelerators has attracted great attention due to its com-                      decomposed to the hardware. CUDA works with programming lan-
+bined tremendous computing power and superior memory                                   guages such as C, C++ and Fortran. Although it reduces the effort in
+bandwidth. For example, the memory bandwidth is 480 gigabyte                           graphics programming compared to OpenCL, it only runs on NVI-
+per second (GB/s) and the peak double precision floating point per-                    DIA’s graphics card. These two programming standards require
+formance can reach 2910 giga floating-point operations per second                      substantial changes in the original code, thus threatening the code
+(GFLOPS) for the newest NVIDIAÒ TeslaÒ K80 GPU accelerator,                            correctness, portability, and maintainability. OpenACC is a high
+which is an order of magnitude higher than that for the newest                         level, platform independent, and directive based programming
+IntelÒ CoreTM i7 CPU processor.                                                        standard being jointly developed by NVIDIA, Cray, PGI, and CAPS.
+   The lattice Boltzmann (LB) method, originated from cellular                         Following hints provided by programmers as annotations to the
+automata and also derived from the Boltzmann kinetic theory,                           original code, compute intensive calculations are offloaded to the
+has been proven to be a promising tool for simulating fluid flows                      accelerator device to utilize the superior computing capabilities
+and associated transport phenomena. It is based on mesoscopic                          of the accelerator.
+kinetic equations describing the evolution of fluid parcels, and                           A number of studies have been conducted to utilize the comput-
+boundary conditions can be easily implemented, thus making it                          ing power of GPUs to accelerate LB simulations [14–19]. However,
+suitable for simulating complex fluid systems, such as gas-liquid                      most of the previous studies were based on CUDA acceleration,
+                                                                                       which may pose severe restriction on the target hardware. For
+ ⇑ Corresponding author.                                                               example, Sailfish [20], a free computational fluid dynamics solver
+   E-mail address: metzhao@ust.hk (T.S. Zhao).
+                                                                                       based on lattice Boltzmann method, serves as a reference GPU
+
+http://dx.doi.org/10.1016/j.ijheatmasstransfer.2017.02.032
+0017-9310/Ó 2017 Elsevier Ltd. All rights reserved.
+578                                                     A. Xu et al. / International Journal of Heat and Mass Transfer 109 (2017) 577–588
+
+
+implementation. It is based on CUDA/OpenCL programming stan-                                                   X
+                                                                                                               8             X
+                                                                                                                             8
+
+dard and implements LB models for single- and multi-component                                        dq ¼        f i;   u¼     ei f i                                                       ð4Þ
+                                                                                                               i¼0            i¼0
+fluid flows. To the best of our knowledge, very few implementa-
+tions of LB method incorporating OpenACC acceleration have been                                      and the kinetic viscosity m is given by
+described in the literature [21], In Ref. [21], a D2Q37 lattice model                                                    
+                                                                                                           1            1
+was adopted for the two-dimensional simulation of convective tur-                                    m ¼ c 2 sf           dt                                                               ð5Þ
+                                                                                                           3            2
+bulence; while in our work, the most widely used D2Q9 lattice
+model and D2Q5 lattice model will be adopted for the two-                                            where c ¼ dx =dt is lattice constant, and c ¼ dx ¼ dt ¼ 1 is adopted in
+dimensional simulation of laminar fluid flows and heat/mass trans-                                   this work.
+fer, respectively. The benefit of using simpler lattice model is that
+memory storage is reduced, while there is no loss of simulation                                      2.2. LB model for fluid flow and heat transfer
+accuracy for the laminar flow simulations. The immature of Open-
+ACC application in LB simulation may be mainly due to the percep-                                       In incompressible thermal flows, temperature variation will
+tion that simplicity and portability of OpenACC come at a price of                                   cause density variation thus resulting in buoyancy effect. Follow-
+degrading parallel performance. This motivates us to address                                         ing the Boussinesq approximation, the temperature can be treated
+implementation issues when using OpenACC to accelerate LB sim-                                       as a passive scalar, and its influence to the velocity field is through
+ulations, i.e., optimizing the data layout to meet the requirement of                                the buoyancy term [23,24]. Then, the governing equations can be
+coalescence memory access pattern, minimizing the memory                                             written as
+access frequency by fusion the collision and streaming subroutine,
+and adjusting number of gangs and vector length to maximize uti-                                     ru¼0                                                                                 ð6aÞ
+lize specific hardware architecture. We show that ultra-high com-                                    @u              1
+                                                                                                                                                ^
+                                                                                                        þ u  ru ¼  rp þ mr2 u þ gbT ðT  T 0 Þy                                          ð6bÞ
+putational performance can be achieved with proper                                                   @t             q0
+implementations, including simulations involving coupled fluid                                       @T
+flow, heat and mass transfer processes. By adopting OpenACC                                             þ u  rT ¼ jr2 T                                                                   ð6cÞ
+                                                                                                     @t
+accelerated LB simulations, highly refined computations can be
+                                                                                                     where T is the temperature, bT is the thermal expansion coefficient,
+made. To demonstrate this point, three two-dimensional bench-
+                                                                                                                                                                   ^ is unit
+                                                                                                     and j is the thermal diffusivity. g is the gravity value, and y
+mark problems, namely, lid driven cavity problem, buoyancy dri-
+ven cavity problem, and double diffusive cavity problem, with                                        vector in the vertical direction. q0 and T 0 are reference density and
+                                                                                                     temperature, respectively.
+the grid size up to 20492 will be presented.
+                                                                                                        In LB method, to solve Eqs. (6a) and (6b), the evolution equation
+                                                                                                     of density distribution function is similar to Eq. (2) except with the
+2. Numerical method                                                                                  addition of forcing term, which is written as
+                                                                                                                                                        h                      i
+                                                                                                                                                                      ðeqÞ
+2.1. LB model for fluid flow                                                                         f i ðx þ ei dt ; t þ dt Þ  f i ðx; tÞ ¼ ðM1 SÞij mj ðx; tÞ  mj ðx; tÞ
+
+   Fluid flows described by the incompressible Navier-Stokes                                                                                þ dt F 0i                                       ð7Þ
+equations can be written as
+                                                                                                     where F 0i is the forcing term in velocity space, and is given by
+ru¼0                                                                                         ð1aÞ                 
+                                                                                                                  S   ~
+@u             1                                                                                     F0 ¼ M1 I     MF                                                                     ð8Þ
+   þ u  ru ¼  rp þ mr2 u                                                                    ð1bÞ                2
+@t             q
+                                                                                                                   ~ is given by
+                                                                                                     and the term MF
+where u is the fluid velocity, q is the fluid density, p is the pressure,
+                                                                                                                                                                                              
+and m is the kinematic viscosity.                                                                     ~ ¼ 0; 6u  F; 6u  F; F x ; F x ; F y ; F y ; 2ðux F x  uy F y Þ; ðux F y þ uy F x Þ T
+                                                                                                     MF
+   In LB method, to solve Eqs. (1a) and (1b), the evolution equation                                                                                                                         ð9Þ
+of density distribution function based on D2Q9 lattice model can
+be written as                                                                                                                ^. The density variation dq and velocity u are
+                                                                                                     where F ¼ gbT ðT  T 0 Þy
+                                                         h                                i          obtained from
+                                                                          ðeqÞ
+f i ðx þ ei dt ; t þ dt Þ  f i ðx; tÞ ¼ ðM1 SÞij mj ðx; tÞ  mj               ðx; tÞ        ð2Þ
+                                                                                                               X
+                                                                                                               8             X8
+                                                                                                                                         1
+                                                                                                     dq ¼        f i;   u¼       ei f i þ F                                                ð10Þ
+where f i is the density distribution function, t is the time, dt is the                                       i¼0           i¼0
+                                                                                                                                         2
+time step, x is the fluid parcel position, and ei is the discrete velocity
+along the ith direction. To approximate incompressible flows and                                     To solve Eq. (6c), the evolution equation of temperature distribution
+minimize the round-off error, we only consider density fluctuation                                   function based on D2Q5 lattice model can be written as
+dq in various parts of equilibrium following Luo et al. [22]. Then, the                                                                                  h                      i
+                                                                                                                                                                       ðeqÞ
+equilibrium moments mðeqÞ is given by                                                                g i ðx þ ei dt ; t þ dt Þ  g i ðx; tÞ ¼ ðN1 Q Þij nj ðx; tÞ  nj ðx; tÞ            ð11Þ
+       
+                  3 2              3 2
+mðeqÞ ¼ dq; 2dq þ ðjx þ jy Þ; dq  ðjx þ jy Þ; jx ; jx ; jy ;
+                          2                2
+                                                                                                     where g i is the temperature distribution function.
+                                 q0                      q0                                            The equilibrium moments nðeqÞ is given by
+                                                   T
+                 1                    1
+                                                                                                                            v T; aT T; 0T
+                       2     2
+         jy ;        ðjx  jy Þ;          jx jy                                               ð3Þ   nðeqÞ ¼ ½T; uT;                                                                       ð12Þ
+                 q0                   q0
+                                                                                                     where aT is a constant determined by the thermal diffusivity as
+The relaxation matrix is given by S ¼ diagðsq ; se ; s ; sj ; sq ; sj ; sq ; sm ; sm Þ,
+                                                                                                            pﬃﬃﬃ
+where      the       relaxation       parameters     are          given             as               aT ¼ 20 3j  4                                                                        ð13Þ
+sq ¼ sj ¼ 0; se ¼ s ¼ sm ¼ 1=sf ; sq ¼ 8ð2sf  1Þ=ð8sf  1Þ, and sf is
+determined by the kinematic viscosity of the fluids.                                                 The relaxation matrix is given by Q ¼ diagð0; qT ; qT ; qe ; qm Þ, where
+                                                                                                                                                                   pﬃﬃﬃ
+   The density variation dq and velocity u are obtained from                                         the   relaxation parameters are given as qT ¼ 3  3 and
+                                                                                                                pﬃﬃﬃ
+                                                                                                     qe ¼ qm ¼ 4 3  6.
+                                             A. Xu et al. / International Journal of Heat and Mass Transfer 109 (2017) 577–588                                579
+
+
+   The temperature T is obtained from                                                   collision, streaming, bounce-back, and calculating macro variables
+                                                                                        as illustrated in Fig. 1. Among them, the collision subroutine takes
+      X
+      4
+T¼          gi                                                               ð14Þ       the most computational time due to extensive updates of distribu-
+      i¼0                                                                               tion function along nine directions in two-dimensional simulations
+                                                                                        or nineteen directions in three-dimensional simulations at a fluid
+                                                                                        node; in the streaming subroutine, the information of distribution
+2.3. LB model for fluid flow, heat transfer and mass transfer
+                                                                                        function at a node is simply transferred to its neighboring, and
+                                                                                        there is no tedious mathematical computations; the bounce-back
+    In addition to temperature variation, concentration variation
+                                                                                        subroutine only works at the boundary nodes to mimic various
+will also cause density variation, thus resulting in buoyancy effect.
+                                                                                        boundary conditions; although the subroutine of calculating macro
+Analogs to the Boussinesq approximation, the concentration can
+                                                                                        variables also takes effect at fluid nodes in the whole computa-
+also be treated as a passive scalar, and its influence to the velocity
+                                                                                        tional domain, its computational cost is much lower compared to
+field is through the buoyancy term [25]. Then, the governing equa-
+                                                                                        the collision subroutine due to much simpler mathematical manip-
+tions can be written as
+                                                                                        ulations. The second step is to use OpenACC parallel loop directive
+ru¼0                                                                       ð15aÞ       to parallelize computational intensive loops. Thanks to the locality
+@u              1                                                                       nature of LB method, the subroutines of collision and calculating
+                                                             ^
+                                           ^ þ gbs ðC  C 0 Þy
+   þ u  ru ¼  rp þ mr2 u þ gbT ðT  T 0 Þy                                ð15bÞ       macro variables completely use local node information. Although
+@t             q0
+                                                                                        the streaming subroutine involves data transfer, the data depen-
+@T
+   þ u  rT ¼ jr2 T                                                         ð15cÞ       dence problem can be avoided by using two distribution functions
+@t
+                                                                                        for data swapping. The third step is to optimize data locality and
+@C
+   þ u  rC ¼ Dr2 C                                                         ð15dÞ       minimize data transfer between CPU host and GPU accelerator
+@t
+                                                                                        through PCIe. After initializing the macroscopic field information
+where C is the concentration, bs is the concentration expansion                         (such as velocity u, density q, temperature T and concentration
+coefficient, and D is the mass diffusivity. q0 ; T 0 and C 0 are reference              C) and the mesoscopic distribution functions (such as density dis-
+density, temperature, and concentration, respectively.                                  tribution function f, temperature distribution function g and con-
+    In LB method, to solve Eqs. (15a) and (15b), the evolution equa-                    centration distribution function h), they can be copied into GPU
+tion of density distribution function is the same as Eq. (7), and F in                  memory space, and only copied back to CPU until the end of itera-
+Eq. (9) is given as F ¼ gbT ðT  T 0 Þy                  ^ ; to solve Eq.
+                                       ^ þ gbs ðC  C 0 Þy                              tions. This can be achieved by the data clauses including copy,
+(15c), the evolution equation of temperature distribution function                      copyin, copyout, and create. Otherwise, at each iterative step, all
+is the same as Eq. (11); to solve Eq. (15d), the evolution equation of                  the data will be transferred between CPUs and GPUs by default,
+concentration distribution function based on D2Q5 lattice model                         which may consume more time than the computation itself.
+can be written as                                                                           To characterize the parallel performance of LB implementation,
+                                                  h                     i               we adopt the metrics of million lattice updates per second
+                                                                ðeqÞ
+hi ðx þ ei dt ; t þ dt Þ  hi ðx; tÞ ¼ ðN1 Q Þij nj ðx; tÞ  nj ðx; tÞ     ð16Þ       (MLUPS), which is defined as
+
+where hi is the concentration distribution function. Here, the equi-                                 meshsize  iterationsteps
+                                                                                        MLUPS ¼                                                              ð20Þ
+librium moments nðeqÞ is given by                                                                         runningtime  106
+nðeqÞ ¼ ½C; uC; v C; as C; 0T                                               ð17Þ       For a given mesh size, we fixed the iteration steps as 20,000, and
+                                                                                        measure the running time. Less running time results in higher
+where as is a constant determined by the mass diffusivity as
+       pﬃﬃﬃ                                                                             MLUPS, which also means the better parallel performance. All the
+as ¼ 20 3D  4                                                               ð18Þ       simulations in the present work use double-precision floating point
+                                                                                        arithmetic, which ensures the simulation accuracy.
+The relaxation matrix is given by Q ¼ diagð0; qC ; qC ; qe ; qm Þ, where                    Three benchmark problems, namely, lid driven cavity problem
+                                                              pﬃﬃﬃ
+the   relaxation parameters are given as qC ¼ 3  3 and                                 [26,27], buoyancy driven cavity problem [28,29], and double diffu-
+           pﬃﬃﬃ
+qe ¼ qm ¼ 4 3  6.                                                                      sive cavity problem [30,31] are adopted to investigate the parallel
+   The temperature C is obtained from                                                   computing performance of OpenACC based LB simulation involving
+                                                                                        multiphysics processes. Fig. 2 shows the computing performance
+      X
+      4
+C¼      hi                                                                   ð19Þ       of utilizing OpenACC with the programming effort mentioned
+      i¼0
+
+
+
+3. OpenACC implementation and optimization
+
+3.1. GPU programming using OpenACC
+
+   CPUs are optimized for low latency access to cached data, while
+GPUs are optimized for data parallelism and hide latency with
+intensive computations. In OpenACC parallel execution model,
+both computation and data are offloaded from the CPU host to
+the GPU accelerator, so that the combined tremendous computing
+power and superior memory bandwidth of GPU can be utilized.
+   To ensure the correctness of the code employing OpenACC
+acceleration, an incremental approach to accelerate the code
+should be taken. The first step is to assess the numerical algorithm
+and estimate the running time each subroutine takes. In LB
+method, the standard implementation consists of four subroutines:                                          Fig. 1. Schematic illustration of LB flow chat.
+580                                      A. Xu et al. / International Journal of Heat and Mass Transfer 109 (2017) 577–588
+
+
+
+
+                                      Fig. 2. Performance comparisons between CPU and basic OpenACC implementation.
+
+
+
+above, and around 12–13 times speedup can be obtained compar-
+ing with the original code running on CPU. It is interesting to notice
+that the computing performance is much higher for the isothermal
+fluid flow problem than that for the coupled fluid flow, heat and
+mass transfer problem. This is because LB algorithm is memory
+bandwidth limited algorithm, and the usage of more global arrays
+to store distribution functions will appear as a limiting step. Specif-
+ically, we need three distribution functions f ; g, and h to store the
+information for flow field, temperature field, and concentration
+field in the double diffusive cavity problem. In contrast, only one
+distribution function f is needed in the lid driven cavity problem.
+It should also be pointed out that, this is the most basic effort of
+porting to GPU platform, and we can further boost the parallel
+computing performance by applying the improvement strategies
+mentioned in Sections 3.2, 3.3 and 3.4.                                                          Fig. 3. Schematic illustration of AoS and SoA data layout.
+
+
+
+3.2. Optimize data layout                                                               Fig. 4 compares the parallel performance of OpenACC acceler-
+                                                                                    ated LB implementation adopting AoS and SoA data layout. A
+    Usually, in CPU based LB implementation, the data layout of dis-                speedup of 2.37–2.85X can be obtained after changing the data lay-
+tribution function belongs to array of structure (AoS) because CPUs                 out, which also means around 29–38 times speedup can be
+can make use of cache memory. For example, the distribution func-                   obtained comparing with the original code running on CPU. It is
+tion f i ðx; tÞ is stored with index ði þ 9  x þ 9  Nx  yÞ for the               encouraging to see the effort of optimizing data layout, which prac-
+D2Q9 lattice model, as illustrated in Fig. 3. However, as GPUs adopt                tically means just changing the index of an array for distribution
+single instruction multiple threads (SIMT) execution model, the                     function and requires little programming effort, rewards nearly a
+data layout should be changed to structure of array (SoA) to meet                   threefold increase in computing performance.
+the requirement of coalescing memory access in OpenACC based
+LB implementation. For the D2Q9 lattice model, the distribution                     3.3. Minimize memory access frequency
+function f i ðx; tÞ is then stored with index ðx þ Nx  y þ Nx
+Ny  iÞ, so that parallel threads running the same instruction can                     Accessing data in the GPU memory space may take longer time
+access consecutive locations in memory. Using Fortran program-                      than the actual computations on these data. Thus, it is essential to
+ming language, this index formula implementation means chang-                       minimize the frequency of accesses to global memory. In LB
+ing array f ði; x; yÞ to array f ðx; y; iÞ; while the array f ½y½x½i is          method, the frequency of global memory accesses can be reduced
+changed to array f ½i½y½x using C programming language. Similar                  by fusing the collision and streaming subroutines. Based on the
+index formula for the D3Q19 lattice model can be straightfor-                       standard LB implementation described in Section 3.1, there is
+wardly obtained.                                                                    one read-access and one write-access in each of the two subrouti-
+                                             A. Xu et al. / International Journal of Heat and Mass Transfer 109 (2017) 577–588                            581
+
+
+
+
+                                                  Fig. 4. Performance comparisons between AoS and SoA data layout.
+
+
+nes to update the distribution function. An alternative implemen-                       implementation, and the left side of the bar in Figs. 4 and 6 are
+tation is fusing the collision and streaming subroutines, then only                     the same as the right side of the bar in Figs. 2 and 4, respectively.
+one read-access and one write-access is needed in total. Specifi-                          It is also interesting to notice from the above performance com-
+cally, at odd time steps, the distribution function f is read from                      parison that MLUPS is higher when the mesh size is above 10002 ,
+                                                           0
+the memory and the post-collision distribution function f is wrote                      as shown in Fig. 7 which consolidates the above-mentioned
+to the memory. At even time steps, the procedure is reversed. In                        improvement strategies. This is because there is extensive compu-
+practical implementation, we suggest to follow the flow chat                            tational load with a larger mesh size and GPUs can hide latency
+shown in Fig. 5, which can avoid handling the algorithm flow con-                       with intensive computations. In addition, the speedup for double
+trol to distinguish odd or even iterations using if statement.                          diffusive cavity problem degrades a little compared with that for
+    Fig. 6 compares the parallel performance between native two-                        lid driven cavity problem, which is due to the increase of complex-
+steps and fusion one-step implementations for the update of distri-                     ity of the numerical algorithm.
+bution function. A speedup of 1.34–1.42X can be obtained after
+reducing memory access frequency, which also means around
+39–54 times speedup can be obtained comparing with the original                         3.4. Adjust the number of gangs and vector length
+code running on CPU. One should keep in mind that the results in
+Figs. 2, 4 and 6 represent an incremental improvement in the                               In addition to loop directive to parallelize computational inten-
+                                                                                        sive loops, OpenACC execution model gives more detailed control
+                                                                                        over three levels of parallelism via gang, worker, and vector clauses.
+                                                                                        Gang parallelism is the highest level, and gangs work indepen-
+                                                                                        dently of each other and may not synchronize; vector parallelism
+                                                                                        has the finest granularity, indicating the data elements that oper-
+                                                                                        ated on with the same instruction; worker parallelism sits between
+                                                                                        gang and vector levels. To further boost the parallel performance of
+                                                                                        the code based on OpenACC acceleration, the programmers may
+                                                                                        specify the number of gangs and vector length to fit a target archi-
+                                                                                        tecture. Since the present numerical tests are performed on NVI-
+                                                                                        DIAÒ TeslaÒ K20c GPU accelerator, which prefers the number of
+                                                                                        gangs and vector length to be a multiple of 32, Fig. 8 gives the par-
+                                                                                        allel performance by varying the number of gangs between 27 and
+                                                                                        211 , and vector length between 27 and 210 . Here, we tested five dif-
+                                                                                        ferent mesh sizes with the same total computational loads, but
+                                                                                        with different aspect ratios including 1:16, 1:4, 1:1, 4:1, and
+                                                                                        16:1. Results show that an optimal choice for the number of gangs
+                                                                                        equals 2048, and the vector length equals 1024; in addition, the
+Fig. 5. Schematic illustration of LB flow chat by fusing collision and streaming        aspect ratio of the computational domain has minor effects on
+subroutine.                                                                             the parallel performance.
+582                                         A. Xu et al. / International Journal of Heat and Mass Transfer 109 (2017) 577–588
+
+
+
+
+                                   Fig. 6. Performance comparisons between native two-steps and fusion one-step implementation.
+
+
+
+                                                                                       dimensionless number characterize the system is the Reynolds
+                                                                                       number (Re), which is defined as
+
+                                                                                              U 0 L0
+                                                                                       Re ¼                                                              ð21Þ
+                                                                                                m
+                                                                                       where U 0 is the characteristic velocity and L0 is the characteristic
+                                                                                       length of the system. In this work, we provide results for steady
+                                                                                       states with Re ¼ 5000 and 7500. The criterion for reaching steady
+                                                                                       state is given by
+                                                                                       P
+                                                                                          i kuðxi ; t þ 2000dt Þ  uðxi ; tÞk2
+                                                                                                    P                            < 109                  ð22Þ
+                                                                                                        i kuðxi ; tÞk2
+
+
+                                                                                       where kuk2 denotes L2 norm of u. The characteristic velocity is cho-
+                                                                                       sen as U 0 ¼ 0:1. Fig. 9 shows stream-function, vorticity and pressure
+                                                                                       fields obtained on grid 20492 , which qualitatively agrees with pre-
+                                                                                       vious study. We also provide benchmark results on the extreme of
+                                                                                       stream-function (jwjmax ), and the vorticity (jxj) at the same position
+                                                                                       for both the primary vortex and the lower-right secondary vortex,
+ Fig. 7. Correlation of speedup versus mesh size for three benchmark problems.         as shown in Table 2. Existing data from Ghia et al. [26] using
+                                                                                       vorticity-stream function formulation together with coupled
+   As a summary, Table 1 gives the maximize parallel performance                       strongly implicit multigrid method; Bruneau et al. [27] using finite
+of OpenACC accelerated LB algorithm implementations by adopt-                          differences discretization and on a multigrid solver with a cell-by-
+ing the above-mentioned improvements. The mesh size is                                 cell relaxation procedure; and Zhu et al. [32] using discrete unified
+2048  2048, and MLUPS for GPU implementations are chosen                              gas kinetic scheme are also provided as comparison. In addition, the
+after adjusting the number of gangs and vector length on NVIDIAÒ                       asymptotic values f 1 are used as the reference values to compute
+TeslaÒ K20c accelerator. A speedup around 49–64 times can be                           the relative error, which are then used to estimate the order of accu-
+achieved compared with the serial implementations.                                     racy n for LB simulation.
+                                                                                           It should be noted that there are controversy results on the Rey-
+                                                                                       nolds number when the first Hopf bifurcation occurs: Ghia et al.
+4. Numerical benchmark                                                                 [26] provided steady results up to Re ¼ 10; 000, while Bruneau
+                                                                                       et al. [27] obtained the first Hopf bifurcation at Reynolds number
+4.1. Lid driven cavity problem                                                         close to Re ¼ 8000. Our data shows at Re = 10,000 the solution can-
+                                                                                       not converge to steady states, thus, steady solution of Reynolds
+   The flow domain is a unit square, with the top wall moving at a                     number up to Re ¼ 7500 are provided as benchmark. It is also
+constant velocity (U 0 ), and the other three walls are stationary. The                worth mentioning that the simulation accuracy can be further
+                                                 A. Xu et al. / International Journal of Heat and Mass Transfer 109 (2017) 577–588                                     583
+
+
+
+
+Fig. 8. Performance comparisons between various number of gangs and vector length. Five different mesh sizes are tested: red circles represent mesh size 512  8192; yellow
+circles represent mesh size 1024  4096; blue circles represent mesh size 2048  2048; green circles represent mesh size 4096  1024; black circles represent mesh size
+8192  512. (For interpretation of the references to colour in this figure legend, the reader is referred to the web version of this article.)
+
+
+
+Table 1                                                                                     ciency of LB algorithm and the trade-offs deserve further
+Performance comparison between CPU and GPU based LB algorithm implementation.               investigations.
+                                      CPU (MLUPS)        GPU (MLUPS)      Speedup
+  Lid driven cavity problem                7.6               488.7           64X
+  Buoyancy driven cavity problem           5.3               282.6           53X            4.2. Buoyancy driven cavity problem
+  Double diffusive cavity problem          4.3               210.8           49X
+                                                                                               The flow domain is a unit square, with left and right vertical
+                                                                                            walls maintained at a constant high temperature and low temper-
+improved by adopting adaptive mesh refinement method [33,34],                               ature, respectively; and the top and bottom horizontal walls are
+however, using non-uniform meshes may spoil the parallel effi-                              adiabatic. All four walls are stationary. The dimensionless numbers
+
+
+
+
+                             Fig. 9. From left to right: steady solution of stream-function, vorticity and pressure fields on grid 2049  2049.
+584                                                  A. Xu et al. / International Journal of Heat and Mass Transfer 109 (2017) 577–588
+
+
+Table 2
+Benchmark solutions of the primary vortex and lower-right secondary vortex.
+
+  Re                         Ref.                             Grid                   jwjmax                     jxj                       jwjmax  103     jxj
+
+  5000                       Ghia [26]                        2572                   0.118966                   1.86016                   3.08358          2.66354
+                             Bruneau [27]                    20482                   0.12197                    1.9327                    3.0706           2.7244
+                             Zhu [32]                         5122                   0.122387                   1.945667                  3.090044         2.777576
+                             Present                          5132                   0.119942                   1.90664                   3.00970          2.66394
+                             Present                         10252                   0.121113                   1.92401                   3.04203          2.73440
+                             Present                         20492                   0.121676                   1.93239                   3.05795          2.74009
+                                                               1                     0.121864                   1.93519                   3.06327          2.74199
+                                                               n                     1.68                       1.68                      1.67             2.68
+  7500                       Ghia [26]                        2572                   0.119976                   1.87987                   3.28484          3.49312
+                             Present                          5132                   0.119562                   1.88478                   3.15172          3.15388
+                             Present                         10252                   0.121023                   1.90645                   3.19014          3.21385
+                             Present                         20492                   0.121715                   1.91682                   3.20898          3.22024
+                                                               1                     0.121946                   1.92028                   3.21527          3.22237
+                                                               n                     1.69                       1.68                      1.67             2.50
+
+
+
+
+characterize the system is the thermal Rayleigh number (RaT ) and                               and its position y along the vertical mid-plane, the maximum ver-
+Prandtl number (Pr), which are defined as                                                       tical velocity v max and its position x along the horizontal mid-
+                                                                                                plane, as shown in Table 3. Existing data from Quéré [28] using
+          gbT DTL30                 m                                                           pseudo-spectral Chebyshev algorithm; and Contrino et al. [29]
+RaT ¼                 ;   Pr ¼                                                      ð23Þ
+             mj                     j                                                           using multiple-relaxation-time LB method are also provided as
+                                                                                                comparison.
+where L0 is the characteristic length of the system. In this work, we
+                                                                                                    In addition to the benchmark result for hydrodynamic intensi-
+provide results for steady states with RaT ¼ 107 , and 108 . The
+                                                                                                ties, we also provide benchmark results for Nusselt numbers,
+Prandtl number is fixed as Pr ¼ 0:71. The criterion for reaching
+                                                                                                including the volume average Nusselt number hNui, the average
+steady state is given by
+                                                                                                Nusselt number along the hot wall Nu0 , the average Nusselt num-
+P
+      i kuðxi ; t þ 2000dt Þ  uðxi ; tÞk2
+                                                                                                ber along the vertical mid-plane Nu1=2 , the maximum local Nusselt
+               P                               < 109 ;                                         number along the hot wall Numax and its location y, and the mini-
+                   i kuðxi ; tÞk2
+P                                                                                   ð24Þ        mum local Nusselt number along the hot wall Numin , as shown in
+      i jTðxi ; t þ 2000dt Þ  Tðxi ; tÞj
+               P                            < 107                                              Table 4.
+                  i jTðxi ; tÞj
+
+
+where kuk2 denotes L2 norm of u. Fig. 10 shows stream-function,                                 4.3. Double diffusive cavity problem
+temperature and vorticity fields obtained on grid 20492 , which
+qualitatively agrees with previous study.                                                          The flow domain is a unit square, with left vertical walls main-
+   We also provide benchmark results on the stream-function at                                  tained at a constant high temperature and low concentration; and
+the cavity center jwjmid , the maximum horizontal velocity umax                                 right vertical walls maintained at a constant low temperature and
+
+
+
+
+                                  Fig. 10. From left to right: steady solution of stream-function, temperature and vorticity fields on grid 2049  2049.
+                                                  A. Xu et al. / International Journal of Heat and Mass Transfer 109 (2017) 577–588                                585
+
+
+Table 3
+Benchmark solutions of the hydrodynamic intensities.
+
+  RaT                    Ref.                        Grid             jwjmid                  umax                     y              v max               x
+     7                   Quéré [28]                     2             29.3617                 148.5954                 0.879          699.1795            0.021
+  10                                                 128
+                         Contrino [29]            20432               29.3653                 148.5852                 0.8793         699.3224            0.0213
+                         Present                     5132             29.37105                148.31041                0.88012        698.70233           0.02047
+                         Present                  10252               29.36462                148.52300                0.87951        699.25729           0.02098
+                         Present                  20492               29.36267                148.57189                0.87921        699.33944           0.02123
+                                                    1                 29.36202                148.58821                0.87911        699.36685           0.02131
+                                                    n                 1.90                    2.05                     1.67           2.30                1.67
+
+  108                    Quéré [28]                  1282             52.32                   321.9                    0.928          2222.               0.012
+                         Contrino [29]            20432               52.3508                 321.9063                 0.9279         2222.3279           0.0120
+                         Present                     5132             52.37456                310.43507                0.91910        2219.03321          0.01267
+                         Present                  10252               52.33688                318.34510                0.92634        2222.31042          0.01220
+                         Present                  20492               52.32652                320.98831                0.92753        2223.46603          0.01196
+                                                    1                 52.32306                321.87064                0.92793        2223.85179          0.01188
+                                                    n                 1.95                    1.85                     2.24           1.82                1.65
+
+
+
+Table 4
+Benchmark solutions of the Nusselt numbers.
+
+  RaT                    Ref.                        Grid              hNui                    Nu0                     Nu1=2            Numax             Numin
+
+  107                    Quéré [28]                  1282              –                       16.523                  16.523           39.39             1.366
+                         Contrino [29]               20432             16.5231                 16.5230                 16.5231          39.3950           1.3659
+                         Present                     5132              16.53658                16.53243                16.53766         39.91395          1.39477
+                         Present                     10252             16.52673                16.52345                16.52710         39.48729          1.37206
+                         Present                     20492             16.52414                16.52229                16.52428         39.40215          1.36731
+                                                       1               16.52328                16.52190                16.52334         39.37374          1.36572
+                                                       n               1.97                    2.39                    1.97             2.13              2.10
+
+  108                    Quéré [28]                  1282              –                       30.225                  30.225           87.24             1.919
+                         Contrino [29]               20432             30.2251                 30.2241                 30.2251          87.2454           1.9195
+                         Present                     5132              30.30100                30.31372                30.30588         93.88534          2.12199
+                         Present                     10252             30.24443                30.24051                30.24571         88.61612          1.97001
+                         Present                     20492             30.23013                30.22650                30.23050         87.49182          1.93027
+                                                       1               30.22536                30.22183                30.22542         87.11660          1.91701
+                                                       n               1.99                    2.15                    1.99             2.09              1.98
+
+
+
+
+high concentration; and the top and bottom horizontal walls are                              age Sherwood number along the vertical mid-plane Sh1=2 , the max-
+adiabatic and impenetrable. All four walls are stationary. The                               imum local Sherwood number along the low concentration wall
+dimensionless numbers characterize the system is the thermal                                 Shmax , and the minimum local Sherwood number along the low
+Rayleigh number (RaT ), solute Rayleigh number (Ras ), Prandtl num-                          concentration wall Shmin , as shown in Tables 5 and 6. Existing data
+ber (Pr), and Lewis number (Le), which are defined as                                        from Beghein et al. [30] using finite volume method with SIMPLER
+                                                                                             algorithm; and Hu et al. [31] using lattice Boltzmann flux scheme
+         gbT DTL30                 gbs DCL30            m        j                           are also provided as a comparison. It is worth mentioning that pre-
+RaT ¼                ;     Ras ¼             ;   Pr ¼     ; Le ¼                  ð25Þ
+            mj                       mD                 j        D                           vious benchmark results on the double diffusive cavity problem is
+                                                                                             quite limited, e.g., only the average Sherwood number along the
+where L0 is the characteristic length of the system. In this work, we
+                                                                                             low concentration wall Sh0 is available; and there is no results
+provide results for steady states with Ras ¼ 5  106 ; 5  107 , and 108
+                                                                                             are available for RaT up to 108 . The present quantitative results will
+for RaT ¼ 107 ; Ras ¼ 5  107 and 2  108 for RaT ¼ 108 . The Prandtl
+                                                                                             certainly enrich our knowledge on the double diffusive cavity
+number is fixed as Pr ¼ 0:71, and the Lewis number is fixed as
+                                                                                             problem, and we encourage follow up works to provide validation
+Le ¼ 1. The criterion for reaching steady state is given by
+                                                                                             using other advanced numerical techniques.
+P
+    i kuðxi ; t þ 2000dt Þ  uðxi ; tÞk2
+             P                               < 109 ;
+                 i kuðxi ; tÞk2
+P                                                                                            5. Conclusion
+    i jTðxi ; t þ 2000dt Þ  Tðxi ; tÞj
+             P                            < 107 ;                                ð26Þ
+                   i jTðxi ; tÞj
+P                                                                                                In this work, we have presented improved implementation of
+      jCðx   ; t þ 2000dt Þ  Cðxi ; tÞj
+                                         < 107                                              OpenACC to accelerate LB simulations involving fluid flow, heat
+           i
+    i
+                 P
+                   i jCðxi ; tÞj                                                             and mass transfer. The results demonstrate that using OpenACC
+                                                                                             allows a speed up around 50–60 times for multiphysics LB simula-
+where kuk2 denotes L2 norm of u. Figs. 11 and 12 shows stream-                               tion. The applications of OpenACC accelerated LB simulation to
+function, temperature and concentration fields obtained on grid                              two-dimensional lid driven cavity problem, buoyancy driven cav-
+20492 for RaT ¼ 107 and RaT ¼ 108 , respectively.                                            ity problem, and double diffusive cavity problem using fine grid
+   We also provide benchmark results for Sherwood numbers,                                   provide benchmark quality results. The extensions to much more
+including the volume average Sherwood number hShi, the average                               memory consuming three-dimensional implementation will be
+Sherwood number along the low concentration wall Sh0 , the aver-                             pursued in future work.
+586                               A. Xu et al. / International Journal of Heat and Mass Transfer 109 (2017) 577–588
+
+
+
+
+      Fig. 11. From left to right: steady solution of stream-function, temperature and concentration fields on grid 2049  2049 (RaT ¼ 107 ).
+
+
+
+
+      Fig. 12. From left to right: steady solution of stream-function, temperature and concentration fields on grid 2049  2049 (RaT ¼ 108 ).
+                                             A. Xu et al. / International Journal of Heat and Mass Transfer 109 (2017) 577–588                                           587
+
+
+Table 5
+Benchmark solutions of the Sherwood numbers (RaT ¼ 107 ).
+
+  Ras                Ref                        Grid            hShi                     Sh0                        Sh1=2                  Shmax                Shmin
+
+  5  106            Beghein [30]               45   2          –                        13.6                      –                      –                    –
+                     Hu [31]                    2002            –                        13.64                     –                      –                    –
+                     Present                    5132            13.72797                13.72392                  13.72898              1.23026             30.92539
+                     Present                 10252              13.72223                13.71955                  13.72258              1.23235             30.89116
+                     Present                 20492              13.72068                13.71922                  13.72082              1.23314             30.89247
+                                               1                13.72016                13.71911                  13.72023              1.23340             30.89291
+                                               n                1.96                     2.73                       1.95                   1.79                 3.10
+
+  5  107            Beghein [30]               452             –                        23.7                      –                      –                    –
+                     Hu [31]                    2002            –                        23.85                     –                      –                    –
+                     Present                    5132            23.85876                23.85898                  23.86024              1.66060             64.37414
+                     Present                 10252              23.83032                23.82603                  23.83076              1.67243             63.75814
+                     Present                 20492              23.82303                23.82018                  23.82318              1.67586             63.64995
+                                               1                23.82060                23.81823                  23.82065              1.67701             63.61385
+                                               n                1.99                     2.19                       1.99                   1.92                 2.20
+
+  108                Present                    5132            29.48261                29.49357                  29.48709              1.86018             85.86658
+                     Present                 10252              29.43027                29.42622                  29.43143              1.88097             84.43427
+                     Present                 20492              29.41701                29.41348                  29.41735              1.88674             84.15782
+                                               1                29.41258                29.40923                  29.41265              1.88867             84.06556
+                                               n                1.99                     2.16                       1.99                   1.95                 2.15
+
+
+
+
+Table 6
+Benchmark solutions of the Sherwood numbers (RaT ¼ 108 ).
+
+  Ras                 Ref                  Grid              hShi                     Sh0                         Sh1=2                    Shmax                Shmin
+
+  5  107             Present             513 2              25.29378                25.29600                   25.29527                1.71943             69.42192
+                      Present             10252              25.26009                25.25574                   25.26062                1.72925             68.82583
+                      Present             20492              25.25149                25.24842                   25.25167                1.73218             68.72866
+                                            1                25.24862                25.24598                   25.24868                1.73316             68.69624
+                                            n                1.99                     2.18                        1.98                     1.91                 2.24
+
+  2  108             Present             5132               30.30208                30.31536                   30.30706                1.88324             89.30962
+                      Present             10252              30.24448                30.24056                   30.24577                1.90870             87.60812
+                      Present             20492              30.23013                30.22653                   30.23050                1.91558             87.25699
+                                            1                30.22534                30.22185                   30.22540                1.91788             87.13981
+                                            n                2.00                     2.16                        2.00                     1.96                 2.11
+
+
+
+
+                                                                                                 2                                                          3
+Acknowledgements                                                                                     1     1       1          1    1   1   1        1   1
+                                                                                           6 4 1 1 1 1 2 2     2 7
+                                                                                           6                      2   7
+                                                                                           6                          7
+    The authors thank Professor Wei Shyy for his useful discussion.                        6 4 2 2 2 2 1 1    1 1 7
+                                                                                           6                          7
+The work described in this paper was fully supported by a grant                            6                          7
+                                                                                           6  0 1   0 1  0 1 1 1 1 7
+from the Research Grants Council of the Hong Kong Special Admin-                           6                          7
+istrative Region, China (Project No. 623313).                                            M¼6
+                                                                                           6 0 2 0   2   0 1 1 1 1 7
+                                                                                                                      7                                                 ð28Þ
+                                                                                           6                          7
+                                                                                           6 0   0 1   0 1 1 1 1 1 7
+                                                                                           6                          7
+Appendix A. D2Qn lattice model                                                             6 0   0 2 0   2 1 1 1 1 7
+                                                                                           6                          7
+                                                                                           6                          7
+                                                                                           4 0  1 1 1 1 0 0     0 0 5
+A.1. D2Q9 lattice model                                                                       0  0  0  0  0 1 1 1 1
+
+   For the two-dimensional D2Q9 lattice model, ei can be given as
+                                                                                        A.2. D2Q5 lattice model
+                                                                               
+                                                  0 1 1 0 0 1 1 1 1
+½e0 ; e1 ; e2 ; e3 ; e4 ; e5 ; e6 ; e7 ; e8  ¼ c                                              For the two-dimensional D2Q5 lattice model, ei can be given as
+                                                  0 0 0 1 1 1 1 1 1
+                                                                                                                                               
+                                                                             ð27Þ                                            0 1 1 0       0
+                                                                                         ½e0 ; e1 ; e2 ; e3 ; e4  ¼ c                                                  ð29Þ
+                                                                                                                             0 0   0   1 1
+M is a 9  9 orthogonal transformation matrix given by [35]                             N is a 5  5 orthogonal transformation matrix given by [36]
+588                                                                  A. Xu et al. / International Journal of Heat and Mass Transfer 109 (2017) 577–588
+
+        2                                              3
+     1              1       1           1        1                                                               References
+  6                                                 7
+  6 0               1       0           1        0 7
+  6                                                 7                                                             [1] K. Mattila, T. Puurtinen, J. Hyväluoma, R. Surmas, M. Myllys, T. Turpeinen, F.
+N¼6
+  6 0               0       1             0      1 7
+                                                    7                                                     ð30Þ        Robertsen, J. Westerholm, J. Timonen, J. Comput. Sci. 12 (2016) 62–76, http://
+  6                                                 7
+  4 4              1       1             1      1 5                                                                  dx.doi.org/10.1016/j.jocs.2015.11.013.
+                                                                                                                  [2] M.M. Waldrop, Nature News 530 (2016) 144, http://dx.doi.org/10.1038/
+            0       1 1                  1      1                                                                   530144a.
+                                                                                                                  [3] P. Cheng, X. Quan, S. Gong, X. Liu, L. Yang, Adv. Heat Transfer 46 (2014) 187–
+                                                                                                                      248, http://dx.doi.org/10.1016/bs.aiht.2014.08.004.
+                                                                                                                  [4] Q. Li, K. Luo, X. Li, Phys. Rev. E 87 (2013) 053301, http://dx.doi.org/10.1103/
+Appendix B. Dimensional scaling
+                                                                                                                      PhysRevE.87.053301.
+                                                                                                                  [5] A. Xu, T. Zhao, L. An, L. Shi, Int. J. Heat Fluid Flow 56 (2015) 261–271, http://dx.
+B.1. Nondimensionalization model for fluid flow                                                                       doi.org/10.1016/j.ijheatfluidflow.2015.08.001.
+                                                                                                                  [6] Q. Li, K. Luo, Q. Kang, Y. He, Q. Chen, Q. Liu, Prog. Energy Combust. Sci. 52
+                                                                                                                      (2016) 62–105, http://dx.doi.org/10.1016/j.pecs.2015.10.001.
+      With the scalings                                                                                           [7] H. Huang, X. Yang, M. Krafczyk, X.-Y. Lu, J. Fluid Mech. 692 (2012) 369–394,
+                                                                                                                    http://dx.doi.org/10.1017/jfm.2011.519.
+                   L0
+x=L0 ! x ; t         ! t  ; u=U 0 ! u ;                                                                        [8] H. Huang, X. Yang, X.-Y. Lu, Phys. Fluids (1994-present) 26 (2014) 053302,
+                  U0                                                                                                  http://dx.doi.org/10.1063/1.4874606.
+  ,          !        ,         !                                                                         ð31Þ    [9] X. Yang, H. Huang, X. Lu, Phys. Rev. E 92 (2015) 063009, http://dx.doi.org/
+     q0 U 20               q0                                                                                        10.1103/PhysRevE.92.063009.
+p              !p ; q             ! q                                                                           [10] A. Xu, T. Zhao, L. Shi, X. Yan, Int. J. Heat Fluid Flow 62 (2016) 560–567, http://
+      L30                   L30
+                                                                                                                      dx.doi.org/10.1016/j.ijheatfluidflow.2016.08.001.
+                                                                                                                 [11] Z. Chai, B. Shi, J. Lu, Z. Guo, Comput. Fluids 39 (2010) 2069–2077, http://dx.doi.
+then, Eqs. (1a) and (1b) can be rewritten in dimensionless form as                                                    org/10.1016/j.compfluid.2010.07.012.
+                                                                                                                 [12] Z. Chai, C. Huang, B. Shi, Z. Guo, Int. J. Heat Mass Transf. 98 (2016) 687–696,
+r  u ¼ 0                                                                                           ð32aÞ            http://dx.doi.org/10.1016/j.ijheatmasstransfer.2016.03.065.
+@u                    1                                                                                         [13] W.-Z. Fang, L. Chen, J.-J. Gou, W.-Q. Tao, Int. J. Heat Mass Transf. 92 (2016)
+    þ u  ru ¼ rp þ r2 u                                                                        ð32bÞ            120–130, http://dx.doi.org/10.1016/j.ijheatmasstransfer.2015.08.071.
+@t                    Re                                                                                        [14] J. Tölke, M. Krafczyk, Int. J. Comput. Fluid Dynam. 22 (2008) 443–456, http://
+                                                                                                                      dx.doi.org/10.1080/10618560802238275.
+                                                                                                                 [15] N. Delbosc, J.L. Summers, A. Khan, N. Kapur, C.J. Noakes, Comput. Math. Appl.
+B.2. Nondimensionalization model for fluid flow and heat transfer                                                     67 (2014) 462–475, http://dx.doi.org/10.1016/j.camwa.2013.10.002.
+                                                                                                                 [16] L.-S. Lin, H.-W. Chang, C.-A. Lin, Comput. Fluids 80 (2013) 381–387, http://dx.
+      With the scalings                                                                                               doi.org/10.1016/j.compfluid.2012.01.018.
+                                                                                                                 [17] H.-W. Chang, P.-Y. Hong, L.-S. Lin, C.-A. Lin, Comput. Fluids 88 (2013) 866–871,
+                            ,             !                                                                         http://dx.doi.org/10.1016/j.compfluid.2013.08.019.
+                                   L20                             j
+x=L0 ! x ;              t                     ! t ;       u                ! u ;                               [18] C. Huang, B. Shi, N. He, Z. Chai, Adv. Appl. Math. Mech. 7 (2015) 1–12, http://
+                                    j                               L0                                                dx.doi.org/10.4208/aamm.2014.m468.
+    ,               !                                                                                     ð33Þ   [19] C. Huang, B. Shi, Z. Guo, Z. Chai, Commun. Comput. Phys. 17 (2015) 960–974,
+        q0 j2                                                                                                       http://dx.doi.org/10.4208/cicp.2014.m342.
+p                       !p ;              ðT  T 0 Þ=DT ! T                                                      [20] M. Januszewski, M. Kostur, Comput. Phys. Commun. 185 (2014) 2350–2368,
+            L20                                                                                                       http://dx.doi.org/10.1016/j.cpc.2014.04.018.
+                                                                                                                 [21] E. Calore, J. Kraus, S.F. Schifano, R. Tripiccione, in: European Conference on
+then, Eqs. 6a, 6b and 6c can be rewritten in dimensionless form as                                                    Parallel Processing, Springer, pp. 613–624. http://dx.doi.org/10.1007/978-3-
+                                                                                                                      662-48096-0_47.
+r  u ¼ 0                                                                                           ð34aÞ       [22] L.-S. Luo, W. Liao, X. Chen, Y. Peng, W. Zhang, et al., Phys. Rev. E 83 (2011)
+@u                                                                                                                   056710, http://dx.doi.org/10.1103/PhysRevE.83.056710.
+     þ u  ru ¼ rp þ Prr2 u þ RaT PrT  y
+                                             ~                                                       ð34bÞ       [23] B.-F. Wang, D.-J. Ma, C. Chen, D.-J. Sun, J. Fluid Mech. 711 (2012) 27, http://dx.
+@t                                                                                                                   doi.org/10.1017/jfm.2012.360.
+   
+@T                                                                                                               [24] S.-N. Xia, Z.-H. Wan, S. Liu, Q. Wang, D.-J. Sun, J. Fluid Mech. 798 (2016) 628–
+     þ u  rT  ¼ r2 T                                                                             ð34cÞ            642, http://dx.doi.org/10.1017/jfm.2016.338.
+@t                                                                                                              [25] W. Shyy, M.-H. Chen, Phys. Fluids A: Fluid Dynam. (1989–1993) 3 (1991)
+                                                                                                                      2592–2607, http://dx.doi.org/10.1063/1.858200.
+                                                                                                                 [26] U. Ghia, K.N. Ghia, C. Shin, J. Comput. Phys. 48 (1982) 387–411, http://dx.doi.
+B.3. Nondimensionalization model for fluid flow, heat transfer and                                                    org/10.1016/0021-9991(82)90058-4.
+mass transfer                                                                                                    [27] C.-H. Bruneau, M. Saad, Comput. Fluids 35 (2006) 326–348, http://dx.doi.org/
+                                                                                                                      10.1016/j.compfluid.2004.12.004.
+                                                                                                                 [28] P. Le Quéré, Comput. Fluids 20 (1991) 29–41, http://dx.doi.org/10.1016/0045-
+      With the scalings                                                                                               7930(91)90025-D.
+                        ,             !                                        ,           !                   [29] D. Contrino, P. Lallemand, P. Asinari, L.-S. Luo, J. Comput. Phys. 275 (2014)
+                                L20                            j                     q0 j2
+x=L0 ! x ; t                             ! t ; u                   ! u ; p                    ! p ;               257–272, http://dx.doi.org/10.1016/j.jcp.2014.06.047.
+                                j                              L0                     L20                        [30] C. Beghein, F. Haghighat, F. Allard, Int. J. Heat Mass Transf. 35 (1992) 833–846,
+                                                                                                                      http://dx.doi.org/10.1016/0017-9310(92)90251-M.
+ðT  T 0 Þ=DT ! T  ; ðC  C 0 Þ=DC ! C                                                                         [31] Y. Hu, D. Li, S. Shu, X. Niu, Comput. Math. Appl. 72 (2016) 48–63, http://dx.doi.
+                                                                                                                      org/10.1016/j.camwa.2016.04.032.
+                                                                                                          ð35Þ   [32] L. Zhu, P. Wang, Z. Guo, J. Comput. Phys. 333 (2017) 227–246, http://dx.doi.
+                                                                                                                      org/10.1016/j.jcp.2016.11.051.
+then, Eqs. (15a)–(15c) and (15d) can be rewritten in dimensionless                                               [33] C.-K. Kuan, J. Sim, W. Shyy, Acta. Mech. Sin. 28 (2012) 999–1021, http://dx.doi.
+form as                                                                                                               org/10.1007/s10409-012-0126-3.
+                                                                                                                 [34] C.-K. Kuan, K.-L. Pan, W. Shyy, J. Fluid Mech. 759 (2014) 104–133, http://dx.
+r  u ¼ 0                                                                                           ð36aÞ            doi.org/10.1017/jfm.2014.558.
+                                                                                                                 [35] P. Lallemand, L.-S. Luo, Phys. Rev. E 61 (2000) 6546, http://dx.doi.org/10.1103/
+@u                                                 Pr
+                                             ~ þ Ras C  y
+     þ u  ru ¼ rp þ Prr2 u þ RaT PrT  y           ~                                           ð36bÞ            PhysRevE.61.6546.
+@t                                                 Le                                                           [36] J. Wang, D. Wang, P. Lallemand, L.-S. Luo, Comput. Math. Appl. 65 (2013) 262–
+   
+@T                                                                                                                    286, http://dx.doi.org/10.1016/j.camwa.2012.07.001.
+     þ u  rT  ¼ r2 T                                                                             ð36cÞ
+@t
+@C                1
+     þ u  rC  ¼ r2 C                                                                             ð36dÞ
+@t                Le
+

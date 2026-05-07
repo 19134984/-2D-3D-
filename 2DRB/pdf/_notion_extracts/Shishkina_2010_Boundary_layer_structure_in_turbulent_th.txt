@@ -1,0 +1,921 @@
+                                                  Boundary layer structure in turbulent thermal convection and
+                                                  its consequences for the required numerical resolution
+arXiv:1109.6870v1 [physics.flu-dyn] 30 Sep 2011
+
+
+
+
+                                                           Olga Shishkina1 , Richard J. A. M. Stevens2 , Siegfried
+                                                           Grossmann3 , Detlef Lohse2
+                                                           1
+                                                            DLR - Institute for Aerodynamics and Flow Technology, Bunsenstraße 10, D-37073
+                                                           Göttingen, Germany
+                                                           E-mail: Olga.Shishkina@dlr.de
+                                                           2
+                                                            Department of Science and Technology, Impact Institute, and J.M. Burgers Center
+                                                           for Fluid Dynamics, University of Twente, P.O. Box 217, 7500 AE Enschede, The
+                                                           Netherlands
+                                                           E-mail: R.J.A.M.Stevens@tnw.utwente.nl; d.lohse@utwente.nl
+                                                           3
+                                                            Fachbereich Physik der Philipps-Universität, Renthof 6, D-35032 Marburg, Germany
+                                                           E-mail: grossmann@physik.uni-marburg.de
+
+                                                           Abstract. Results on the Prandtl–Blasius type kinetic and thermal boundary layer
+                                                           thicknesses in turbulent Rayleigh–Bénard convection in a broad range of Prandtl
+                                                           numbers are presented. By solving the laminar Prandtl–Blasius boundary layer
+                                                           equations, we calculate the ratio of the thermal and kinetic boundary layer thicknesses,
+                                                           which depends on the Prandtl number Pr only. It is approximated as 0.588Pr−1/2
+                                                           for Pr  Pr∗ and as 0.982Pr−1/3 for Pr∗  Pr, with Pr∗ ≡ 0.046. Comparison
+                                                           of the Prandtl–Blasius velocity boundary layer thickness with that evaluated in the
+                                                           direct numerical simulations by Stevens, Verzicco, and Lohse (J. Fluid Mech. 643, 495
+                                                           (2010)) gives very good agreement. Based on the Prandtl–Blasius type considerations,
+                                                           we derive a lower-bound estimate for the minimum number of the computational
+                                                           mesh nodes, required to conduct accurate numerical simulations of moderately high
+                                                           (boundary layer dominated) turbulent Rayleigh–Bénard convection, in the thermal and
+                                                           kinetic boundary layers close to bottom and top plates. It is shown that the number
+                                                           of required nodes within each boundary layer depends on Nu and Pr and grows with
+                                                           the Rayleigh number Ra not slower than ∼ Ra0.15 . This estimate agrees excellently
+                                                           with empirical results, which were based on the convergence of the Nusselt number in
+                                                           numerical simulations.
+Boundary layer structure in turbulent thermal convection                                   2
+
+1. Introduction
+
+Rayleigh–Bénard (RB) convection is the classical system to study properties of thermal
+convection. In this system a layer of fluid confined between two horizontal plates
+is heated from below and cooled from above. Thermally driven flows are of utmost
+importance in industrial applications and in natural phenomena. Examples include the
+thermal convection in the atmosphere, the ocean, in buildings, in process technology,
+and in metal-production processes. In the geophysical and astrophysical context one
+may think of convection in Earth’s mantle, in Earth’s outer core, and in the outer layer
+of the Sun. E.g., the random reversals of Earth’s or the Sun’s magnetic field have been
+connected with thermal convection.
+     Major progress in the understanding of the Rayleigh–Bénard system has been
+made over the last decades, see e.g. the recent reviews [1, 2]. Meanwhile it has
+been well established that the general heat transfer properties of the system, i. e.
+Nu = Nu(Ra, Pr) and Re = Re(Nu, Pr), are well described by the Grossmann–Lohse
+(GL) theory [3, 4, 5, 6]. In that theory, in order to estimate the thicknesses of the kinetic
+and thermal boundary layers (BL) and the viscous and thermal dissipation rates, the
+boundary layer flow is considered to be scalingwise laminar Prandtl–Blasius flow over a
+plate. We use the conventional definitions: The Rayleigh number is Ra = αgH 3 ∆/νκ
+with the isobaric thermal expansion coefficient α, the gravitational acceleration g, the
+height H of the RB system, the temperature difference ∆ between the heated lower
+plate and the cooled upper plate, and the material constants ν, kinematic viscosity,
+and κ, thermal diffusivity, both considered to be constant in the container (Oberbeck–
+Boussinesq approximation). The Prandtl number is defined as Pr = ν/κ and the
+Reynolds number Re = U H/ν, with the wind amplitude U which forms in the bulk of
+the RB container.
+     The assumption of a laminar boundary layer will break down if the shear
+Reynolds number Res in the BLs becomes larger than approximately 420 [7]. Most
+experiments and direct numerical simulations (DNS) currently available are in regimes
+where the boundary layers are expected to be still (scalingwise) laminar, see [1].
+Indeed, experiments have confirmed that the boundary layers scalingwise behave as
+in laminar flow [8], i.e., follow the scaling predictions of the Prandtl–Blasius theory
+[9, 10, 11, 12, 13, 7]. Recently, Zhou et al. [14, 15] have shown that not only the scaling
+of the thickness, but also the experimental and numerical boundary layer profiles in
+Rayleigh–Bénard convection agree perfectly with the Prandtl–Blasius profiles, if they
+are evaluated in the time dependent reference frames, based on the respective momentary
+thicknesses. This confirms that the Prandtl–Blasius boundary layer theory is indeed the
+relevant theory to describe the boundary layer dynamics in Rayleigh–Bénard convection
+for not too large Res .
+     The aim of this paper is to explore the consequences of the Prandtl–Blasius theory
+for the required numerical grid resolution of the BLs in DNSs. Hitherto, convergence
+checks can only be done a posteriori, by checking whether the Nusselt number does
+Boundary layer structure in turbulent thermal convection                                3
+
+not considerably change with increasing grid resolution [16, 17, 18, 19, 20, 21] or by
+guaranteeing (e.g. in ref. [22, 21]) that the Nusselt numbers calculated from the global
+energy dissipation rate or thermal dissipation rate well agree with that one calculated
+from the temperature gradient at the plates or the ones obtained from the overall
+heat flux. The knowledge that the profiles are of Prandtl–Blasius type offers the
+opportunity to a priori determine the number of required grid points in the BLs for
+given Rayleigh number and Prandtl number, valid in the boundary layer dominated
+ranges of moderately high Ra numbers.
+     In section 2 we will first revisit the Prandtl–Blasius BL theory – see refs.
+[9, 10, 11, 12, 13, 7] or for more recent discussions in the context of RB refs. [6, 23]
+– and derive the ratio between the thermal boundary layer thickness δθ and the velocity
+boundary layer thickness δu as functions of the Prandtl number Pr extending previous
+work (section 3). We will also discuss the limiting cases for large and small Pr,
+respectively. The transitional Prandtl number between the two limiting regimes turns
+out to be surprisingly small, namely Pr∗ = 0.046. The crossover range is found to
+be rather broad, roughly four orders of magnitude in Pr. In section 4 we note that
+the Prandtl–Blasius velocity BL thickness is different from the velocity BL thickness
+based on the position of the maximum r.m.s. velocity fluctuations (widely used in the
+literature), but well agrees with a BL thickness based on the position of the maximum
+of an energy dissipation derivate that was recently introduced in ref. [24, 21]. We then
+derive the estimate for the minimum number of grid points that should be placed in
+the boundary layers close the top and bottom plates, in order to guarantee proper grid
+resolution. Remarkably, the number of grid points that must have a distance smaller
+than δu from the wall increases with increasing Ra, roughly as ∼ Ra0.15 . This estimate
+is compared with a posteriori results for the required grid resolution obtained in various
+DNSs of the last three decades, finding good agreement. Section 5 is left to conclusions.
+
+2. Prandtl boundary layer equations
+
+The Prandtl–Blasius boundary layer equations for the velocity field u(x, z) (assumed to
+be two-dimensional and stationary) over a semi-infinite horizontal plate [9, 10, 11, 12,
+13, 7] read
+              ux ∂x ux + uz ∂z ux = ν∂z ∂z ux ,                                       (1)
+with the boundary conditions ux (x, 0) = 0, uz (x, 0) = 0, and ux (x, ∞) = U . Here
+ux (x, z) is the horizontal component of the velocity (in the direction x of the large-
+scale circulation), uz (x, z) the vertical component of the velocity (in the direction z
+perpendicular to the plate), and U the horizontal velocity outside the kinetic boundary
+layer (wind of turbulence). Correspondingly, the equation determining the (stationary)
+temperature field T (x, z) reads
+              ux ∂x T + uz ∂z T = κ∂z ∂z T,                                           (2)
+Boundary layer structure in turbulent thermal convection                                4
+
+with the boundary conditions T (x, 0) = Tplate and T (x, ∞) = Tbulk , which under
+Oberbeck–Boussinesq conditions is the arithmetic mean of the upper and lower plate
+temperature. Applying these equations to RB flow implies that we assume the
+temperature field to be passive.
+     The dimensionless similarity variable ξ for the vertical distance z from the plate
+measured at the distance x from the plate’s edge is
+                   r
+                      U
+              ξ=z        .                                                          (3)
+                      xν
+Since the flow in Prandtl theory is two-dimensional, a streamfunction Ψ̂ can
+be introduced, which represents
+                            √      the velocity field. The streamfunction is non-
+dimensionalized as Ψ = Ψ̂/ xνU , and the temperature is measured in terms of ∆/2,
+giving the non-dimensional temperature field Θ. Rewriting eqs. (1) and (2) in terms of
+Ψ and Θ one obtains
+              d3 Ψ/dξ 3 + 0.5 Ψ d2 Ψ/dξ 2 = 0,                                        (4)
+               2      2
+              d Θ/dξ + 0.5 Pr Ψ dΘ/dξ = 0.                                            (5)
+Here the boundary conditions are
+              Ψ(0) = 0,      dΨ/dξ(0) = 0,   dΨ/dξ(∞) = 1,                            (6)
+              Θ(0) = 0,                      Θ(∞) = 1.                                (7)
+     The temperature and velocity profiles obtained from numerically solving equations
+(4)–(7) (for particular Prandtl numbers) are already shown in textbooks [12, 7, 13] and
+in the context of RB convection in refs. [23, 25]: From the momentum equation (6) with
+above boundary conditions one immediately obtains the horizontal velocity dΨ/dξ. The
+dimensionless kinetic boundary layer thickness δ̃u can be defined as that distance from
+the plate at which the tangent to the function dΨ/dξ at the plate (ξ = 0) intersects the
+straight line dΨ/dξ = 1 (see figure 1 a). As equation (4) and the boundary conditions (6)
+contain no parameter whatsoever, the dimensionless thickness δ̃u of the kinetic boundary
+layer with respect to the similarity variable ξ is universal, i.e., independent of Pr and
+U or Re,
+              δ̃u = A−1 ≈ 3.012 or      A ≈ 0.332.                                    (8)
+     Solving numerically equation (5) with the boundary conditions (7) for any fixed
+Prandtl number, one obtains the temperature profile with respect to the similarity
+variable ξ (see figure 1 b). Note that in contrast to the longitudinal velocity dΨ/dξ, the
+temperature profile Θ depends not only on ξ but also on the Prandtl number, since Pr
+appears in equation (5) as the (only) parameter. The distance from the plate at which
+the tangent to the Θ profile intersects the straight line Θ = 1 defines the dimensionless
+thickness of the thermal boundary layer,
+              δ̃θ = C(Pr),                                                            (9)
+where C(Pr) is a certain function of Prandtl number. E.g., one numerically finds
+C ≈ 3.417, 1.814, and 1.596 for Pr = 0.7, 4.38, and 6.4, respectively (see figure 1
+b).
+Boundary layer structure in turbulent thermal convection                                                 5
+
+
+(a)                                                  (b)
+         1                                                 1
+ dΨ/dξ
+
+
+
+
+                                                        Θ
+
+
+
+
+         0                                                 0
+             0           δ̃u                   6               0                   δ̃θ               6
+                                     ξ                                                     ξ
+                 Figure 1.       Solution of the Prandtl–Blasius equations (4)–(7): (a) Longitudinal
+                 velocity profile dΨ
+                                   dξ (ξ) (solid curve) with respect to the similarity variable ξ. The
+                 tangent to the longitudinal velocity profile at the plate (ξ = 0) and the straight line
+                 dΨ/dξ = 1 (both dashed lines) intersect at ξ = δ̃u ≡ A−1 ≈ 3.012, for all Pr. We define
+                 this value δ̃u as the thickness of the kinetic boundary layer. (b) Temperature profile
+                 Θ(ξ) as function of the similarity variable ξ for Pr = 0.7 (black solid curve), Pr = 4.38
+                 (red solid curve) and Pr = 6.4 (green solid curve). The tangents to the profile curves
+                 at the plate (ξ = 0) and the straight line Θ = 1 (dashed lines) define the edges
+                 (thicknesses) of the corresponding thermal boundary layers, i. e., ξ = δ̃θ ≡ C(Pr). For
+                 the presented cases Pr = 0.7, 4.38, and 6.4 one has C(0.7) ≈ 3.417, C(4.38) ≈ 1.814,
+                 and C(6.4) ≈ 1.596, respectively.
+
+
+     From (8) and (9) one obtains the ratio between the (dimensional) thermal boundary
+layer thickness δθ and the (dimensional) kinetic boundary layer thickness δu :
+                 δθ   δ̃θ
+                    =     = AC(Pr).                                                                  (10)
+                 δu   δ̃u
+As discussed above, the constant A and the function C = C(Pr) are found from the
+solutions of equations (4)–(7) for different Pr. A and C(Pr) reflect the slopes of the
+respective profiles,
+                                                 −1
+                     d2 Ψ
+                                         
+                                           dΘ
+              A=          (0), C(Pr) =        (0)    .                            (11)
+                     dξ 2                  dξ
+                                                       q               q
+                                                         U               U
+     With (3) the physical thicknesses are δu = δ̃u / xν and δθ = δ̃θ / xν  , generally
+depending on U and the position x along the plate. The physical thermal BL thickness
+then is
+                                 "r            #−1           −1
+                       C(Pr)         U ∂Θ              ∂Θ
+              δθ = p           =            (0)    =       (0)    .               (12)
+                        U/(xν)      xν ∂ξ              ∂z
+Thus, explicitly it depends neither on U nor on the position x along the plate. Reminding
+the definition of the thermal current J = huz T i−κ∂z hT i, we get h ∂Θ
+                                                                     ∂z
+                                                                                1
+                                                                        (0)i = ∆/2 h ∂T
+                                                                                     ∂z
+                                                                                        (0)i =
+Boundary layer structure in turbulent thermal convection                                 6
+ 2
+κ∆
+   J = 2H −1 Nu, i. e., on x-average we have
+                     H
+              δθ =      .                                                           (13)
+                    2Nu
+δθ is the so-called slope thickness, see Sect. 2.4 of reference [23]. In contrast
+                                                                          q       to the
+thermal BL thickness δθ the physical velocity BL thickness δu = A−1 / xν   U
+                                                                             depends
+explicitly both on the position x and on the wind amplitude U . In a Rayleigh–Bénard
+cell we choose for x a representative value x = ãL = ãΓH. Then the famous Prandtl
+formula [9] results
+                      aH
+                δu = √ .                                                             (14)
+                       Re
+           q
+             ãΓ     −1
+                        √
+Here a = A     2 = A      ãΓ. The constant a has been obtained empirically [5], based on
+the experimental measurements by [26] performed in a cylindrical cell of aspect ratio
+one, filled with water. The result was [5]
+              a ≈ 0.482.                                                              (15)
+We note that this value probably depends on the aspect ratio, on the shape of the
+RB container, and can also be different for numerical 2D Rayleigh–Bénard convection
+[27, 28, 29]. It will also be different for the slope thickness as considered here or other
+definitions as e. g. the 99% -thickness.
+     It seems worthwhile to note that similarly to the case of δθ also δu can be expressed
+by a profile slope at the plate. Analogously to the temperature case one calculates
+for the kinetic thickness δu = U/ ∂u  ∂z
+                                        x
+                                          (0). Here U appears explicitly and the derivative
+may depend on x. The denominator is the local stress tensor component, which –
+after averaging – describes the momentum transport, just as the temperature profile
+                                                        √ In combination with eq. (14) it
+derivative at the plate characterises the heat transport.
+                                             ∂ux
+says that the kinetic stress behaves as h ∂z (0)i ∼ U Re/(aH).
+     From eqs. (10) and (14) we also find the useful (and known) relation for Prandtl-
+Blasius boundary layers
+                                H
+               δθ = aθ C(Pr) √          with aθ = A · a ≈ 0.160.                       (16)
+                                Re
+From solving equations (4)–(7) together with relations (11) one obtains that the BL
+thickness ratio (10) has two limiting cases, namely δθ /δu ∼ Pr−1/2 for very small Pr  1
+and δθ /δu ∼ Pr−1/3 for very large Pr  1. We thus present the ratio of the thermal
+and kinetic boundary layer thicknesses normalised by Pr−1/3 in figure 2 for different Pr
+from Pr = 10−6 to 106 . The figure confirms that the scaling of the ratio between the
+thermal and kinetic boundary layer thicknesses in the low and high Prandtl number
+regimes is Pr−1/2 and Pr−1/3 , respectively. Between these two limiting regimes there
+is a transition region, whose width is about 4 orders of magnitude in Pr. In the next
+section we will derive analytic expressions for the ratio δθ /δu in the respective regimes,
+which will be used in the remainder of the paper to analyse the resolution properties
+for DNS in the BLs of the Rayleigh–Bénard system.
+Boundary layer structure in turbulent thermal convection                                                7
+
+
+                                     0.8
+
+                                i
+             log (δθ /δu )Pr1/3
+                                     0.7
+                                     0.6
+                                     0.5
+                                     0.4
+                h
+
+
+
+                                     0.3
+                                     0.2
+                                     0.1
+                                     0.0
+                                    -0.1
+                                        -7 -6 -5 -4 -3 -2 -1 0 1 2 3 4 5 6 7
+                                                                   log Pr
+                   Figure 2. Double-logarithmic plot of the ratio of the thermal and kinetic boundary
+                   layer thicknesses, normalised by Pr−1/3 , as obtained from numerical solution of
+                   equations (4)–(7) as function of Pr (solid black line). For large Pr the curve through
+                   the data is constant, for small Pr the (plotted, reduced) curve behaves ∝ Pr−1/6 .
+                   Approximation (22) (green dotted line) is indistinguishable from δθ /δu in the region
+                   Pr < 3 × 10−4 . Approximation (24) (blue dashed-dotted line) well represents δθ /δu for
+                   Pr > 0.3; for Pr > 3 it practically coincides with approximation (25). Approximation
+                   (26) (red solid curve) connects the analytical approximations in the transition range
+                   3 × 10−4 ≤ Pr ≤ 3 between the lower and upper Prandtl number regimes.
+
+
+    In the Prandtl–Blasius theory the asymptotic velocity amplitude U is a given
+parameter; the resulting heat current Nu is a performance of the boundary layers only.
+In contrast, in Rayleigh–Bénard convection the heat transport is determined by the
+BLs together with the bulk flow. Therefore in RB convection the wind amplitude U no
+longer is a passive parameter, but U and Nu are actively coupled properties of the full
+thermal convection process.
+    The Reynolds number Re is defined as the dimensionless wind amplitude,
+                     UH
+               Re =      .                                                        (17)
+                      ν
+From the law for the kinetic BL thickness (14), the thermal BL thickness δθ (13), and
+the BL thickness ratio (10) one obtains
+                          2  2         2             2
+                       aH         δθ    aH          2   2  δθ
+               Re =          =                 = 4a Nu          .                 (18)
+                        δu       δu      δθ                δu
+This Re ∼ Nu2 law is in perfect agreement with the GL theory [3, 4, 5, 6]. In that
+theory several sub-regimes in the (Ra, Pr) parameter space are introduced, depending
+on the dominance of the BL or bulk contributions. In regimes I and II the BL of the
+temperature field dominates, while in III and VI it is the thermal bulk. Regimes I
+and II differ in the velocity field contributions: It either is the u-BL (I) or the u-bulk
+(II) which dominates; analogously the pair III and IV is characterized. The labels `
+Boundary layer structure in turbulent thermal convection                                 8
+
+(for lower Pr) and u (for upper Pr) distinguish the cases in which the thermal BL is
+thicker or smaller than the kinetic one. All ranges in the GL theory, which are thermal
+boundary layer dominated, show the Re ∼ Nu2 behaviour, namely Il , Iu , IIl , IIu . In
+the thermal bulk dominated ranges of RB convection the relation between Re and Nu
+is different.   In IIIu we have Re ∼ Nu4/3 , in IVl it is Re ∼ Nu, and in IVu also
+Re ∼ Nu4/3 holds; but here the Prandtl–Blasius result (18) is not applicable, since the
+heat transport mainly depends on the heat transport properties of the bulk. In the
+range I∞ , although boundary layer dominated, also a different relation (Re ∼ Nu3 )
+holds; here the upper and the lower kinetic BLs fill the whole volume and therefore
+there is no free flow outside the BLs, in contrast to the Prandtl–Blasius assumption of
+an asymptotic velocity with the LSC amplitude U .
+
+3. Approximations for the ratio δθ /δu of the temperature and velocity
+boundary layer thicknesses
+
+In this section we will derive analytical approximations for the ratio δθ /δu for the three
+regimes identified in the previous section, cf. figure 2. We start by discussing the low
+(Pr < 3 × 10−4 ) and the high (3 < Pr) Prandtl number regimes, before we discuss the
+transition region 3 × 10−4 ≤ Pr ≤ 3.
+
+3.1. Approximation of δθ /δu for Pr < 3 × 10−4
+In the case of very small Prandtl number, Pr  1, the thickness of the velocity boundary
+layer is negligible compared with the thickness of the temperature boundary layer, i.e.,
+δθ  δu . Hence, in most of the thermal boundary layer it is ux ≈ U . Introducing the
+similarity variable as in ref. [13]
+                      r
+                     z U
+                η=         ,                                                        (19)
+                     2 xκ
+one obtains the following equation for the temperature as a function of η:
+              d2 Θ/dη 2 + 2η dΘ/dη = 0,    with    Θ(0) = 0,    Θ(∞) = 1.
+The solution of this boundary value problem is the Gaussian error function
+                                  Z η
+                               2         2
+              Θ(η) = erf(η) ≡ √       e−t dt.                                         (20)
+                                π 0
+According to (3) and (19), the similarity variable ξ used in the Prandtl equations and
+the similarity variable η used in the approximation for Pr  1 are related as follows
+                    1
+               η = Pr1/2 ξ.                                                         (21)
+                    2
+Applying now the formulae (20), (21) and (11) we obtain the following equalities:
+               2  dΘ       dΘ       dξ     1
+              √ =    (0) =    (0) ·    =       · 2Pr−1/2 .
+                π dη       dξ       dη   C(Pr)
+Boundary layer structure in turbulent thermal convection                                     9
+                                                           √
+This leads to the approximation for the function C(Pr) = πPr−1/2 for very small Pr.
+               δθ    √
+                  = A πPr−1/2 ≈ 0.588Pr−1/2 , Pr  1.                               (22)
+               δu
+    In figure 2 one can see that for very small Prandtl numbers, Pr < 3 × 10−4 , the
+approximation (22) is as expected indistinguishable from the numerically obtained δθ /δu .
+
+3.2. Approximation of δθ /δu for Pr > 3
+Meksyn [12], based on the work by Pohlhausen [11], derived that the solution of the
+temperature equation (5), together with relation (7) equals
+                           Z ξ/√2                           Z t
+                  ξ                  −F (t)Pr               1
+             Θ √       =D           e         dt,  F (t) = √      Ψ(q)dq.       (23)
+                   2          0                              2 0
+The constant D can be found as usual from the boundary condition at infinity and was
+approximated in [11, 12] for Pr > 1 as follows
+                  0.478Pr1/3                           1     1         161
+             D=              ,         c(Pr) ≈ 1 +       −      2 +           − ...
+                     c(Pr)                           45Pr 405Pr     601425Pr3
+From this and (23) one derives
+                                                   √
+               0.478Pr1/3        dΘ      √ dΘ        2
+                          =D=     √ (0) = 2 (0) =       .
+                  c(Pr)       d(ξ/ 2)      dξ     C(Pr)
+This connects c(Pr) and C(Pr) as follows
+                         √
+                           2
+               C(Pr) ≈        c(Pr)Pr−1/3 ≈ 2.959 c(Pr)Pr−1/3 ,
+                        0.478
+resulting in the approximation
+                                                       √
+               δθ                  −1/3                  2
+                  = AC(Pr) = EPr        c(Pr), E ≈ A        ≈ 0.982.                      (24)
+               δu                                     0.478
+For Pr  1, the function c(Pr) approaches 1, hence C(Pr) ≈ 2.959Pr−1/3 , implying
+               δθ
+                  = EPr−1/3 , Pr  1.                                              (25)
+               δu
+In figure 2 the approximation (24) is presented as a blue dash-dotted curve. For Pr > 3
+the function (δθ /δu )Pr1/3 almost coincides with the constant E.
+
+3.3. Approximation of δθ /δu in the crossover range 3 × 10−4 ≤ Pr ≤ 3
+As one can see in figure 2, the approximation (22) well represents δθ /δu in the region
+Pr < 3×10−4 , while (25) is a good approximation of δθ /δu for Pr > 3. An approximation
+of the ratio of the thermal and kinetic boundary layer thicknesses in the transition region
+3 × 10−4 ≤ Pr ≤ 3 is obtained by applying a least square fit to the numerical solutions
+of the Prandtl–Blasius equations (4)-(7). One finds:
+                 δθ
+                    ≈ Pr−0.357+0.022 log Pr ,  3 × 10−4 ≤ Pr ≤ 3.                          (26)
+                δu
+As seen in figure 2, this relation is a good fit of the full solution in the transition regime.
+Boundary layer structure in turbulent thermal convection                                  10
+
+3.4. Summary
+For the ratio δθ /δu of the thicknesses of the thermal and kinetic boundary layers, which
+depends strongly (and only) on Pr, we find according to (22), (25), and (26)
+                      √
+                        A πPr−1/2 , A ≈ 0.332,       Pr < 3 × 10−4 ,
+               δθ    
+                   =     Pr−0.357+0.022 log Pr ,      3 × 10−4 ≤ Pr ≤ 3,             (27)
+               δu    E Pr−1/3 , E ≈ 0.982,          Pr > 3.
+The crossover Prandtl number Pr∗ between the asymptotic behaviours, cf. first
+and last line of (27), is defined as the intersection point Pr∗ = 0.046 of the
+asymptotic approximations. Note that this crossover between the small-Pr behaviour
+δθ /δu ∝ Pr−1/2 and the large-Pr behaviour δθ /δu ∝ Pr−1/3 does not happen at a Prandtl
+number of order 1, but at the more than 20 times smaller value Pr∗ = 0.046. In this
+sense most experiments are conducted in the large Pr regime. However, also note that
+other definitions of the BL thicknesses lead to other crossover Prandtl numbers.
+      Finally, we also give the thickness of the kinetic BL in the three regimes, as obtained
+from (27) and (13), namely
+                      
+                                −1   1/2 −1 −1/2
+                       0.5Nu Pr A π
+                                                  H,     Pr < 3 × 10−4 ,
+                δu =     0.5Nu−1 Pr0.357−0.022 log Pr H, 3 × 10−4 ≤ Pr ≤ 3,              (28)
+                       0.5Nu−1 Pr1/3 E −1 H,
+                      
+                                                          Pr > 3.
+     We compare this Prandtl–Blasius result (28) for the kinetic boundary layer
+thickness in terms of Nu and Pr (thus valid if the heat transport is BL dominated)
+with the estimate given in reference [21], where the kinetic boundary layer thickness in
+a cylindrical cell is identified as two times that height at which the averaged quantity
+              ”u := hu · ∇2 uit,φ,r                                                    (29)
+has a maximum, because it was empirically found that the maximum of ”u is
+approximately in the middle of the velocity boundary layer. Here u is the velocity
+field and the averaging is over time t, the azimuthal direction φ, and over the radial
+direction 0.1R < r < 0.9R, with R the radius of the cylindrical convective cell. The
+restricted range for the radial direction has been used in order to exclude the singularity
+region close to the cylinder axis and the region close to the sidewall, where the definition
+misrepresents the kinetic boundary layer thickness. Figure 3 shows that there is a very
+good agreement between the theoretical Prandtl–Blasius slope boundary layer thickness
+and that obtained using (29). The figure also shows that the position of the maximum
+r.m.s. velocity fluctuations is not a good indicator for the velocity boundary layer edge;
+it rather seems to identify the position where the LSC is the strongest.
+
+4. Resolution requirements within the boundary layers in DNS
+
+We now come to the main point of the paper: What can we learn from the Prandtl–
+Blasius theory for the required mesh resolution in the BLs of DNS of turbulent RB
+convection? Obviously, a “proper” mesh resolution should be used in order to obtain
+Boundary layer structure in turbulent thermal convection                                                                         11
+
+(a)                                                                         (b)
+                           rms
+
+
+
+
+                                                                                                       rms
+                  φ / max uφ
+
+
+
+
+                                                                                              φ / max uφ
+                                 1.0                                                                         1.0
+
+                                 0.8                                                                         0.8
+”u / max(”u ), urms
+
+
+
+
+                                                                            ”u / max(”u ), urms
+                                 0.6                                                                         0.6
+
+                                 0.4                                                                         0.4
+
+                                 0.2                                                                         0.2
+
+                                 0.0                                                                         0.0
+                                    0            0.05                 0.1                                       0   0.01         0.02
+                                                           z/H                                                             z/H
+                                        Figure 3. Profiles of ”u (29) (black), and the r.m.s. velocity fluctuations for the
+                                        azimuthal velocity component uφ (green) for (a) Ra = 108 and Pr = 6.4 and (b)
+                                        Ra = 2 × 109 and Pr = 0.7. The profiles have been normalised with the respective
+                                        maxima for clarity. The vertical black lines indicate the velocity boundary layer
+                                        thickness based on (28). The red dashed and solid lines indicate the heights at which
+                                        the quantity ”u (29) has a maximum and two times this height, respectively. The
+                                        vertical green line indicates the position of the maximum r.m.s. velocity fluctuations.
+
+
+accurate results. In a perfect DNS the local mesh size should be smaller than the local
+Kolmogorov ηK (x, t) and Batchelor ηB (x, t) scales (see e.g. ref. [30]), and the resolution
+in the boundary layers should be also sufficient, see e.g. [31, 16, 25, 32, 21]. It indeed
+has been well established that the Nusselt number is very sensitive to the grid resolution
+used in the boundary layers; when DNS is underresolved, the measured Nusselt number
+is too high [31, 33, 16, 34, 35, 36, 21]. Hitherto, the standard way to empirically check
+whether the mesh resolution is sufficient is to try a finer mesh and to make sure that the
+Nusselt number is not too different. In this way the minimal number of grid points that
+is needed in the boundary layer is obtained by trial and error: Grötzbach [31] varied
+the number of grid points in the boundary layer between 1 and 5 in simulations up to
+Ra = 3 × 105 with Pr = 0.71 and found that 3 grid points in the boundary layers should
+be sufficient. Verzicco and Camussi [33] tested this at Ra = 2 × 107 and Pr = 0.7 and
+stated that at least 5 points should be placed in the boundary layers. Stevens et al.
+[21] tested the grid resolution for Ra = 2 × 106 to 2 × 1011 and Pr = 0.7. They found
+that for Ra = 2 × 109 the minimum number of nodes in the boundary layers should be
+around 10 and that this number increases for increasing Ra. Together with the earlier
+series of papers the data clearly suggest that indeed there is an increase of required grid
+points in the BL with increasing Rayleigh number.
+     However, one must be careful. The empirical determination of the required number
+of grid points in the BL is not only intensive in computational cost, but also difficult.
+Boundary layer structure in turbulent thermal convection                                  12
+
+The Nusselt number obtained in the simulations not only depends on the grid resolution
+in the BLs at the top and bottom plates, but also on the grid resolution in the bulk and
+at the side walls where the thermal plumes pass along [21]. So obviously a general
+theory-based criterion for the required grid resolution in the thermal and kinematic
+boundary layers will be helpful for performing future simulations. In this section we
+will derive such a universal criterion, harvesting above results from the Prandtl–Blasius
+boundary layer theory.
+     We first define the (local) kinetic energy dissipation rates per mass,
+                                                          2
+                           ν X X ∂ui (x, t) ∂uj (x, t)
+               u (x, t) ≡                      +             .                      (30)
+                           2 i j         ∂xj         ∂xi
+
+Its time and space average for incompressible flow with zero velocity b.c. is hu it,V =
+  P P  i (x,t) 2
+ν i j h ∂u∂x  j
+                   it,V . It is connected with the Nusselt number through the exact
+relation
+
+                           ν3
+              hu it,V =      (Nu − 1)RaPr−2 .                                          (31)
+                           H4
+This follows directly from the momentum equation for Rayleigh–Bénard convection in
+Boussinesq approximation [37]. Here, h·it,V denotes averaging over the whole volume of
+the convective cell and over time and (later) h·it,A denotes averaging over any horizontal
+plane and time.
+     We start with the well established criterion that in a perfect DNS simulation the
+(local) mesh size must not be larger than the (local) Kolmogorov scale [38] ηK (x, t),
+which is locally defined with the energy dissipation rate of the velocity,
+                                          1/4
+               ηK (x, t) = ν 3 /u (x, t)      .                                      (32)
+ηK is the length scale at which the inertial term ∼ u2r /r and the viscous term ∼ νur /r2
+of the Navier-Stokes equation balance, where ur ∼ (u r)1/3 has been assumed for the
+velocity difference at scale r. A corresponding length scale ηT follows from the balance
+of the advection term ∼ ur Tr /r and the thermal diffusion term κTr /r2 in the advection
+equation; it is
+                                         1/4
+                ηT (x, t) = κ3 /u (x, t)     = ηK (x, t)Pr−3/4 .                   (33)
+However, for large Pr the velocity field is smooth at those scales p at which the temperature
+field is still fluctuating. Then the velocity difference ur ∼ u /νr and advection term
+and thermal diffusion term balance at the so-called Batchelor scale [39] ηB , which is
+defined as
+                                            1/4
+                  ηB (x, t) = νκ2 /u (x, t)     = ηK (x, t)Pr−1/2 .                     (34)
+For small Pr < 1 obviously ηT > ηB > ηK and for comparison with the grid resolution,
+the Kolmogorov scale ηK seems to be the most restrictive (i.e., smallest) length scale.
+In contrast, for large Pr > 1 it ηT < ηB < ηK and one may argue that ηT is the most
+Boundary layer structure in turbulent thermal convection                                     13
+
+restrictive length scale. This indeed may be the case in the Prandtl number regime in
+which the velocity field can still be described through Kolmogorovp  scaling ur ∼ (u r)1/3 ,
+but for even larger Pr the velocity field becomes smooth ur ∼ u /νr and then the
+grid resolution should be compared to the Batchelor scale ηB as smallest relevant length
+scale. In below analysis, for Pr > 1 we will restrict ourselves to this limiting case.
+                                                                        global     3/4
+     We now define global Kolmogorov and Batchelor length scales ηK            ≡ ν 1/4 and
+                                                                                      hu it,V
+ global   ν 1/4 κ1/2                                                   global     κ3/4
+ηB      ≡       1/4 , respectively, (and also the global length scale ηT      ≡     1/4 ). Using
+           h i
+            u t,V                                                               h i
+                                                                                  u t,V
+                                                                        global
+the exact relation (31), one can find how the global Kolmogorov length ηK      depends
+on Ra, Pr, and Nu, namely
+                 global       ν 3/4           Pr1/2
+                ηK      ≡         1/4
+                                      =                   H.                               (35)
+                             hu it,V   Ra1/4 (Nu − 1)1/4
+                                                                             global
+The admissible global mesh size hglobal should clearly be smaller than both ηK      and
+ global
+ηB , which implies that one is on the safe side provided that
+                    global      Pr1/2
+                h       ≤                   H for Pr ≤ 1                              (36)
+                          Ra1/4 (Nu − 1)1/4
+or with the relation (34) between the Kolmogorov and Batchelor length
+                                  1
+                hglobal ≤                   H for Pr > 1.                             (37)
+                          Ra1/4 (Nu − 1)1/4
+A similar way to estimate mesh requirements in the bulk was suggested for the first
+time by Grötzbach [31]. Note that with these estimates for the required bulk resolution
+for most times and locations one is on the safe side, as equation (31) is an estimate for
+the volume averaged energy dissipation rate, which is localized in the boundary layers.
+However, not only the background field but also plumes detaching from the boundary
+layers do require an adequate resolution.
+     To estimate the number of nodes that should be placed in the boundary layers, we
+will first estimate the area averaged energy dissipation rate in a horizontal plane in the
+velocity BL, hu it,A∈BL . Employing eqs. (17), (14) and (30), one can find a lower bound
+for this quantity, namely
+                                *      2 +                 !2      2
+                                    ∂ux                  ∂ux             U
+                hu it,A∈BL ≥ ν                  ≥ν               ≈ν          =
+                                    ∂z                   ∂z t,A          δu
+                                             t,A
+                                             !2
+                                         1/2
+                                  νRe Re           ν 3 Re3
+                            =ν                   = 2 4.                               (38)
+                                   H aH             aH
+From eqs. (31), (38), (18) and (27) it follows a lower bound for the ratio
+                                                               6
+              hu it,A∈BL    Pr2 Re3         4     5 Pr
+                                                        2 
+                                                            δθ
+                          ≥ 2          = 64a Nu
+                hu it,V     a RaNu                  Ra δu
+                       
+                                       5   −1     −1
+                             3 4 6
+                        64π a A Nu Pr Ra ,                      Pr < 3 × 10−4 ,
+                     =    64a4 Nu5 Pr−0.15+0.132 log Pr Ra−1 , 3 × 10−4 ≤ Pr ≤ 3,          (39)
+                        64a4 E 6 Nu5 Ra−1 ,
+                       
+                                                                 Pr > 3.
+Boundary layer structure in turbulent thermal convection                                14
+                           BL
+For the Kolmogorov length ηK   in the velocity BL one can therefore write
+                   *  +
+                           1/4                          1/4
+                       ν3
+                                          
+              BL                              hu it,V        global
+            ηK ≡                       ≈                     ηK      .                (40)
+                       u                   hu it,A∈BL
+                                   t,A∈BL
+                BL                                   BL
+The mesh size h      in the BL must be smaller than ηK  and ηBBL , i.e., one is on the safe
+side if
+                     −3/2 −1 −3/2 3/4 −3/2 −3/4
+                    
+                     2    a Nu       Pr A          π       H,   Pr < 3 × 10−4 ,
+                     −3/2 −1 −3/2 0.5355−0.033 log Pr
+                                                              H, 3 × 10−4 ≤ Pr ≤ 1,
+                    
+                      2    a Nu       Pr
+              hBL .    −3/2 −1   −3/2     0.0355−0.033 log Pr
+                                                                                    (41)
+                    
+                    
+                     2    a   Nu     P r                     H, 1 < Pr  ≤ 3,
+                     −3/2 −1 −3/2 −3/2
+                      2    a E      Nu        H,                 Pr > 3,
+according to (39), (40), (36) and (37).
+    From the relations (41), (27) and (13) one can estimate the minimum number of
+nodes of the computational mesh, which must be placed in each thermal and kinetic
+boundary layer close the plates. We find that this minimum number of nodes in the
+thermal boundary layers is
+                           δθ
+              Nth.BL ≡ BL
+                          h √
+                                2aNu1/2 Pr−3/4 A3/2 π 3/4 ,        Pr < 3 × 10−4 ,
+                              √
+                           
+                            2aNu1/2 Pr−0.5355+0.033 log Pr , 3 × 10−4 ≤ Pr ≤ 1,
+                           
+                           
+                       &      √      1/2    −0.0355+0.033 log Pr
+                                                                                   (42)
+                                2aNu     Pr                      , 1 < Pr  ≤ 3,
+                            √
+                           
+                           
+                           
+                                2aNu1/2 E 3/2 ,                    Pr > 3,
+while the minimum number of nodes in the kinetic boundary layers is
+                      δu    δu δθ
+             Nv.BL ≡ BL =
+                     h      δ hBL
+                      √ θ 1/2 −1/4 1/2 1/4
+                          2aNu Pr        A π ,             Pr < 3 × 10−4 ,
+                         √
+                     
+                          2aNu1/2 Pr−0.1785+0.011 log Pr , 3 × 10−4 ≤ Pr ≤ 1,
+                     
+                     
+                     
+                   &     √                                                            (43)
+                          2aNu1/2 Pr0.3215+0.011 log Pr ,  1 < Pr ≤ 3,
+                      √
+                     
+                     
+                     
+                               1/2   1/3 1/2
+                          2aNu Pr E ,                      Pr > 3.
+The number of nodes in the thermal boundary layer looks very restrictive for very low
+Pr; however, one should realise that for very low Pr the thermal boundary layer also
+becomes much thicker than the velocity boundary layer. Hence, the criterion for the
+number of nodes in the thermal boundary layers determines the ideal distribution of
+nodes above the viscous boundary layer. For very high Pr the kinetic boundary layer
+becomes much thicker than the thermal boundary layer, and hence the restriction for
+the velocity boundary layer determines the ideal distribution of nodes above the thermal
+boundary boundary layer. Note that for large Pr equation (42) suggests that the number
+of grid points in the thermal boundary layer becomes independent of Pr (for fixed Nu):
+Indeed, as the velocity field is smooth anyhow, with increasing Pr no extra grid points
+are necessary in the thermal BL.
+     In figure 4 we show the minimum number of nodes Nth.BL and Nv.BL , respectively,
+necessary to simulate the cases which have been investigated experimentally so far, for
+Boundary layer structure in turbulent thermal convection                                                        15
+
+
+
+     (a)                1.4
+           log Nth.BL
+                        1.2
+                        1.0
+                        0.8
+                        0.6
+                        0.4
+                        0.2
+                         0
+
+     (b)                1.4
+                        1.2
+           log Nv.BL
+
+
+
+
+                        1.0
+                        0.8
+                        0.6
+                        0.4
+                        0.2
+                         0
+                              5       6           7          8            9        10         11
+                                                                 log Ra
+                        Figure 4. Minimum number of BL nodes necessary in DNS of boundary layer
+                        dominated, moderately high RB convection. (a) Nth.BL (42) in the thermal boundary
+                        layers and (b) Nv.BL (43) in the kinetic boundary layers, required to simulate the
+                        experimentally investigated cases, references [40] (lilac squares, Pr = 0.67), [41] (black
+                        triangles, 0.60 ≤ Pr ≤ 7.00), [42] (blue circles, 0.68 ≤ Pr ≤ 5.92), [43] (green triangles,
+                        0.73 ≤ Pr ≤ 6.00), [44] (red pentagons, 3.76 ≤ Pr ≤ 5.54), [45] (black crosses,
+                        Pr = 4.2) and [46] (black pluses, Pr = 7.0). Dashed lines are fits to the quasi-data
+                        (measured values introduced into eqs. (42), (43)), with precision O(10−4 ); rounding
+                        the respective numbers to their upper bounds gives (a) Nth.BL ≈ 0.35Ra0.15 (44) and
+                        (b) Nv.BL ≈ 0.31Ra0.15 (45) for the quasi-data in the ranges 106 ≤ Ra ≤ 1010 and
+                        0.67 ≤ Pr ≤ 0.73.
+
+
+different Ra and Pr. The data points are generated by introducing the experimental
+values of Ra, Pr, and the (measured) corresponding Nu into the formulas (42), (43).
+Based on these quasi-data points, one can give e. g. the following fits for the minimum
+number of nodes within the boundary layers for the case of Pr ≈ 0.7:
+                        Nth.BL ≈ 0.35Ra0.15 ,         106 ≤ Ra ≤ 1010 ,                                      (44)
+                        Nv.BL ≈ 0.31Ra0.15 ,             6
+                                                      10 ≤ Ra ≤ 10 .      10
+                                                                                                             (45)
+Note that the numerical pre-factors in these estimates significantly depend on the
+Boundary layer structure in turbulent thermal convection                               16
+
+Prandtl number and on the empirically determined (ref. [5]) value of a, cf. eq. (15).
+The minimum node numbers for other values of Pr can be calculated directly using the
+relations (42)–(43). Apparently the scaling exponent depends much less on Pr. – All
+these estimates only give lower bounds on the required number of nodes in the boundary
+layers.
+     As discussed at the beginning of this section, previous studies by Grötzbach [31],
+Verzicco and Camussi [33], and Stevens et al. [21] found an increasing number of nodes
+that should be placed in the thermal and kinetic boundary layers. The theoretical results
+thus confirm all above studies, because the increasing number of nodes was due to the
+increasing Ra number at which the tests were performed. To be more specific: according
+to the estimates (44) and (45) for Pr = 0.7 the minimum number of nodes that should
+be placed in the thermal and kinetic boundary layers is N ≈ 2.3 for Ra = 3 × 105 ,
+N ≈ 4.4 for Ra = 2 × 107 , and N ≈ 8.7 for Ra = 2 × 109 . The empirically found values
+at the respective Ra with Pr ≈ 0.7 are 3 for Ra = 3 × 105 , 5 for Ra = 2 × 107 , and
+10 for Ra = 2 × 109 . Thus there is very good agreement between the theoretical results
+and the empirically obtained values, especially if one considers the difficulties involved
+in determining these values empirically, and the empirical value for the constant a (15)
+that is used in the theoretical estimates. We want to emphasize that not only the
+boundary layers close to the plates, but also the kinetic boundary layers close to the
+vertical walls must be well resolved.
+     To sum up, the mesh resolution should be analysed a priori using the resolution
+requirements in the bulk (36), (37) and in the boundary layers (42), (43). Having
+conducted the DNS, the Kolmogorov and Batchelor scale should be checked a posteriori,
+to make sure that the mesh size was indeed small enough (as it has been done, for
+example, in refs. [19, 20]).
+
+5. Conclusion
+
+In summary, we used laminar Prandtl–Blasius boundary layer theory to determine the
+relative thicknesses of the thermal and kinetic boundary layers as functions of Pr (27).
+     We found that neither the position of the maximum r.m.s. velocity fluctuations
+nor the position of the horizontal velocity maximum reflect the slope velocity boundary
+layer thickness, although many studies use these as criteria to determine the boundary
+layer thickness. In contrast to them, the algorithm by Stevens et al. [21] agrees very
+well with the theoretical estimate of the kinetic slope boundary layer thickness.
+     We used the results obtained from the Prandtl–Blasius boundary layer theory to
+derive a lower bound on the minimum number of nodes that should be placed in the
+thermal and kinetic boundary layers close to the plates. We found that this minimum
+number of nodes increases not slower than ∼ Ra0.15 with increasing Ra. This result is in
+excellent agreement with results from several numerical studies over the last decades, in
+which this minimum number of nodes was determined empirically. Hence, the derived
+estimates can be used as guideline for future direct numerical simulations.
+REFERENCES                                                                         17
+
+Acknowledgments
+
+OS expresses her thanks to Prof. Dr.-Ing. Claus Wagner and to the Deutsche
+Forschungsgemeinschaft (DFG) for supporting the work under the grant WA 1510/9.
+The Twente part of the work is supported by the Foundation for Fundamental Research
+on Matter (FOM), sponsored by NWO.
+
+References
+
+ [1] Ahlers G, Grossmann S and Lohse D 2009 Rev. Mod. Phys. 81 503
+ [2] Lohse D and Xia K Q 2010 Annu. Rev. Fluid Mech. 42 335–364
+ [3] Grossmann S and Lohse D 2000 J. Fluid. Mech. 407 27–56
+ [4] Grossmann S and Lohse D 2001 Phys. Rev. Lett. 86 3316–3319
+ [5] Grossmann S and Lohse D 2002 Phys. Rev. E 66 016305
+ [6] Grossmann S and Lohse D 2004 Phys. Fluids 16 4462–4472
+ [7] Landau L D and Lifshitz E M 1987 Fluid Mechanics (Oxford: Pergamon Press)
+ [8] Sun C, Cheung Y H and Xia K Q 2008 J. Fluid Mech. 605 79 – 113
+ [9] Prandtl L 1905 über flüssigkeitsbewegung bei sehr kleiner reibung Verhandlungen
+     des III. Int. Math. Kongr., Heidelberg, 1904 (Leipzig: Teubner) pp 484–491
+[10] Blasius H 1908 Z. Math. Phys. 56 1–37
+[11] Pohlhausen K 1921 Z. Angew. Math. Mech. 1 252–268
+[12] Meksyn D 1961 New Methods in Laminar Boundary Layer Theory (Oxford:
+     Pergamon Press)
+[13] Schlichting H 1979 Boundary layer theory 7th ed (New York: McGraw Hill book
+     company)
+[14] Zhou Q and Xia K Q 2010 Phys. Rev. Lett. 104 104301
+[15] Zhou Q, Stevens R J A M, Sugiyama K, Grossmann S, Lohse D and Xia K Q 2010
+     J. Fluid. Mech.
+[16] Kerr R 1996 J. Fluid Mech. 310 139–179
+[17] Verzicco R and Camussi R 1997 Phys. Fluids 9 1287–1295
+[18] Kerr R and Herring J R 2000 J. Fluid Mech. 419 325–344
+[19] Shishkina O and Wagner C 2007 Phys Fluids. 19 085107
+[20] Shishkina O and Wagner C 2008 J. Fluid Mech. 599 383–404
+[21] Stevens R J A M, Verzicco R and Lohse D 2010 J. Fluid. Mech. 643 495–507
+[22] Calzavarini E, Lohse D, Toschi F and Tripiccione R 2005 Phys. Fluids 17 055107
+[23] Ahlers G, Brown E, Fontenele Araujo F, Funfschilling D, Grossmann S and Lohse
+     D 2006 J. Fluid Mech. 569 409–445
+[24] Stevens R J A M, Clercx H J H and Lohse D 2010 New J. Phys. x y
+REFERENCES                                                                      18
+
+[25] Shishkina O and Thess A 2009 J. Fluid Mech. 633 449–460
+[26] Qiu X L and Tong P 2001 Phys. Rev. Lett 87 094501
+[27] DeLuca E E, Werne J, Rosner R and Cattaneo F 1990 Phys. Rev. Lett. 64 2370–
+     2373
+[28] Schmalzl J, Breuer M, Wessling S and Hansen U 2004 Europhys. Lett. 67 390–396
+[29] Sugiyama K, Calzavarini E, Grossmann S and Lohse D 2009 J. Fluid Mech. x y
+[30] Monin A S and Yaglom A M 1975 Statistical Fluid Mechanics (Cambridge,
+     Massachusetts: The MIT Press)
+[31] Grötzbach G 1983 J. Comp. Phys. 49 241–264
+[32] Shishkina O, Shishkin A and Thess A 2009 J. Comput. and Appl. Math. 226 336–
+     344
+[33] Verzicco R and Camussi R 2003 J. Fluid Mech. 477 19–49
+[34] Amati G, Koal K, Massaioli F, Sreenivasan K R and Verzicco R 2005 Phys. Fluids
+     17 121701
+[35] Verzicco R and Sreenivasan K R 2008 J. Fluid Mech. 595 203–219
+[36] Verdoold J, van Reeuwijk M, Tummers M J, Jonker H J J and Hanjalić K 2008
+     Phys. Rev. E 77 016303
+[37] Siggia E D 1994 Annu. Rev. Fluid Mech. 26 137–168
+[38] Kolmogorov A N 1941 CR. Acad. Sci. USSR. 30 299
+[39] Batchelor G K 1959 J. Fluid Mech. 5 113
+[40] Ahlers G 2009 Physics 2 74
+[41] Chavanne X, Chilla F, Chabaud B, Castaing B and Hebral B 2001 Phys. Fluids 13
+     1300–1320
+[42] Niemela J and Sreenivasan K R 2003 J. Fluid Mech. 481 355–384
+[43] Roche P E, Castaing B, Chabaud B and Hebral B 2004 J. Low. Temp. Phys. 134
+     1011–1042
+[44] Sun C, Ren L Y, Song H and Xia K Q 2005 J. Fluid Mech. 542 165–174
+[45] Xia K Q, Lam S and Zhou S Q 2002 Phys. Rev. Lett. 88 064501
+[46] Qiu X L and Xia K Q 1998 Phys. Rev. E 58 486–491
+

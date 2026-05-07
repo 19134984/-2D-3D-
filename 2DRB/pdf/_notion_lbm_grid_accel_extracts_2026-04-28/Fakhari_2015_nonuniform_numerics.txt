@@ -1,0 +1,745 @@
+                                                                   Computers & Fluids 107 (2015) 205–213
+
+
+
+                                                               Contents lists available at ScienceDirect
+
+
+                                                                  Computers & Fluids
+                                           j o u r n a l h o m e p a g e : w w w . e l s e v i e r . c o m / l o c a t e / c o m p fl u i d
+
+
+
+
+Numerics of the lattice boltzmann method on nonuniform grids:
+Standard LBM and ﬁnite-difference LBM
+Abbas Fakhari, Taehun Lee ⇑
+Department of Mechanical Engineering, City College of City University of New York, New York, NY 10031, USA
+
+
+
+a r t i c l e        i n f o                           a b s t r a c t
+
+Article history:                                       The present study is focused on the comparison between the standard ‘‘collide-and-stream’’ lattice Boltz-
+Received 24 June 2014                                  mann method (LBM) and the Lax-Wendroff-based ﬁnite-difference LBM (FDLBM) on block-structured
+Received in revised form 3 November 2014               nonuniform grids with an adaptive mesh reﬁnement (AMR) strategy. While the standard LBM (SLBM)
+Accepted 8 November 2014
+                                                       is found to be slightly faster than the FDLBM, the latter is shown to be more stable at higher Reynolds
+Available online 20 November 2014
+                                                       numbers. Although both approaches are as accurate in simulation of ﬂuid ﬂow problems, the SLBM
+                                                       has a more complicated algorithm and its implementation is more involved; this is mainly because, in
+Keywords:
+                                                       applying SLBM, the AMR blocks at different reﬁnement levels do not advance in time simultaneously.
+Adaptive mesh reﬁnement
+Lattice Boltzmann method
+                                                       On the other hand, the underlying differences between the cell-center and cell-vertex data structures
+Finite difference method                               are explained and their advantages and disadvantages are highlighted. In general, the cell-center data
+                                                       structure is favorable because it is more efﬁcient in terms of computational time and memory. The effect
+                                                       of the interpolation schemes on the order of accuracy of the LBM is also investigated. It is reestablished
+                                                       that the popular linear interpolation degrades the order of accuracy of LBM to ﬁrst order. A variety of
+                                                       benchmark studies, including Taylor–Green decaying vortex, gravity-driven Poiseuille ﬂow, thin shear
+                                                       layer instability, and unsteady ﬂow past a square cylinder, are carried out to assess SLMB and FDLBM with
+                                                       a multiple-relaxation-time collision operator.
+                                                                                                                          Ó 2014 Elsevier Ltd. All rights reserved.
+
+
+
+
+1. Introduction                                                                              grid reﬁnement scheme at the beginning of the simulation [17–19].
+                                                                                             Only few works have been devoted to develop an LBM with
+    Recent evolutions in computer technology have made it easier                             dynamic mesh reﬁnement [20–23,10].
+to perform numerical simulations using computational ﬂuid                                        In the previous work [10], we proposed a new adaptive mesh
+dynamics (CFD) techniques, especially on highly parallel comput-                             reﬁnement technique that does not need to maintain or
+ing machines. Along with the advancements in computer                                        manipulate a tree-type data structure. Therein, we highlighted
+technology, the numerical methods for the solution of ﬂuid ﬂow                               the differences between the standard LBM (SLBM) and the ﬁnite-
+have also evolved. The complicated adaptive mesh reﬁnement                                   difference LBM (FDLBM) on nonuniform grids but we did not make
+(AMR) strategies and the load balancing techniques associated                                a comparison between them. This is the subject of the present
+with them are now very common in daily simulations [1,2].                                    study to assess both models in terms of efﬁciency, stability, and
+    As a CFD tool to tackle ﬂuid ﬂow problems, the lattice Boltz-                            ease of implementation. We start by outlining the constituent
+mann method (LBM) has been in use for more than two decades                                  elements of the AMR and elaborating the differences between
+[3]. It has been harnessed and developed by many researchers in                              the cell-vortex and cell-center data structures in Section 2. We
+different ﬁelds [4]. The implementation of the lattice Boltzmann                             then describe the SLBM and the FDLBM in Section 3, followed by
+equation (LBE) on nonuniform grids has been facilitated by the                               numerical studies and detailed analysis of the two models in
+interpolation-supplemented LBM [5,6]. To improve the geometri-                               Section 4. Finally, we summarize the paper in Section 5.
+cal ﬂexibility of the LBM, several ﬁnite-difference [7–11],
+ﬁnite-volume [12–15], and ﬁnite-element [16] models have been                                2. Adaptive mesh reﬁnement strategy
+proposed. The majority of the proposed LBE models employ a static
+                                                                                                In our previous work [10], we proposed an AMR with a cell-
+ ⇑ Corresponding author.                                                                     vertex data structure (see Fig. 1(a)). In the current study, we
+   E-mail addresses: afakhar00@citymail.cuny.edu (A. Fakhari), thlee@ccny.cuny.              employ a cell-center data structure as shown in Fig. 1(b), and
+edu (T. Lee).                                                                                describe the differences between the two. The algorithm of the
+
+http://dx.doi.org/10.1016/j.compﬂuid.2014.11.013
+0045-7930/Ó 2014 Elsevier Ltd. All rights reserved.
+206                                                        A. Fakhari, T. Lee / Computers & Fluids 107 (2015) 205–213
+
+
+cell-center AMR is essentially the same as that of the cell-vertex                          some authors [19] use other techniques such as ﬁltering to avoid
+AMR with subtle differences in intra-block and inter-block                                  instability in their codes.
+communications such as the treatment of ghost cells and the                                     Another key difference between the cell-vertex and cell-center
+choice of interpolation schemes, which will be discussed shortly.                           data structures lies in the interpolation points for ﬁlling the ghost
+The details of the AMR algorithm itself can be found in [10].                               nodes/cells. In this respect, a lattice with the cell-vertex data
+    The proposed AMR hierarchy with a cell-center data structure                            structure is advantageous. As can be seen in Fig. 1(a), the ghost
+consists of self-similar blocks with nx  ny cells. The coarsest block                      nodes of the ﬁne block could be ﬁlled either via a direct copy from
+in the AMR hierarchy, which is a root block, has a reﬁnement level                          the corresponding points on the coarse block or by invoking an
+of l ¼ 0, while the reﬁnement level of the ﬁnest block is l ¼ lmax . The                    interpolation from available nodes on the coarse block. Moreover,
+maximum reﬁnement level lmax is an input parameter, which                                   the ghost nodes of the coarse block (not shown in Fig. 1(a)) are
+depends on the length of the root block Lx and the number of cells,                         readily overwritten from the existing lattice sites on the ﬁne block.
+e.g., in the x-direction. The grid spacing for each block is then given                     Unfortunately, this is not the case for the cell-center lattice. Not
+by                                                                                          only the use of interpolation is inevitable to ﬁll the ghost cells of
+                                                                                            the coarse block (not shown) in Fig. 1(b), an even more compli-
+         Lx                                                                                 cated interpolation is needed to ﬁll the ghost cells of the ﬁne block.
+Dx ¼                                                                              ð1Þ           As depicted in Fig. 2, the interpolation needed for ﬁlling the
+       2l  n x
+                                                                                            ghost cells of the ﬁne block is more involved and should be carried
+                                                                                            out in two steps. Assume that we need to ﬁll the ghost cell ‘’
+Therefore, the grid resolution doubles as one reﬁnes the mesh by
+                                                                                            shown with a red circle in Fig. 2. First, an intermediate value (point
+one level.
+                                                                                            p) is interpolated from the data points of the coarse block using a
+    One of the key differences between the cell-vertex and cell-
+                                                                                            linear or quadratic interpolation [24]:
+center data structures is that a lattice with the cell-center data
+points has fewer number of computation nodes. Referring to
+                                                                                             linear    f A þ 3f B
+Fig. 1, we see that the ﬁne block (marked with circles) in                                  fp        ¼           þ OðDx2 Þ                                                 ð2aÞ
+                                                                                                            4
+Fig. 1(a) consists of 15 active vertex nodes at which the
+                                                                                             quadratic     5f þ 30f B  3f C
+calculations such as collision and streaming are performed,                                 fp         ¼ A                   þ OðDx3 Þ                                      ð2bÞ
+                                                                                                                   32
+whereas the ﬁne block in Fig. 1(b) consists of only 8 active cells.
+In a more realistic scenario, if we start the simulations with blocks
+                                                                                            Then, the value of the ghost cell can be found using another linear
+of 4  4 cells, there would be 25 vertex nodes in the cell-vertex
+                                                                                            or quadratic interpolation with the help of the data points of the
+data structure while only 16 cells are involved in a cell-center data
+                                                                                            ﬁne block
+structure. That is a reduction of 36% in nodal point calculations.
+    Another shortcoming of the cell-vertex data structure is the                             linear    2f p þ f 1
+                                                                                            fx        ¼           þ OðDx2 Þ                                                 ð3aÞ
+presence of co-located nodes (see Fig. 1(a)). The problem with                                             3
+these co-located nodes is that there exist two slightly different                            quadratic    8f p þ 10f 1  3f 2
+                                                                                            fx         ¼                      þ OðDx3 Þ                                     ð3bÞ
+solutions on them; one is related to the ﬁner block and the other                                                  15
+is associated with the coarser block. Accordingly, it is usually
+                                                                                            In Section 4, the accuracy of these interpolation schemes will be
+required to override the solution from the coarser block to the ﬁner
+                                                                                            examined, and it will be shown that using linear interpolation
+block or vice versa. This is circumvented by using a cell-center data
+                                                                                            degrades the accuracy of the LBM to ﬁrst order.
+structure. It is worth mentioning that it is more accurate to over-
+ride the distribution functions from the coarse lattice sites to the
+ﬁne lattice because a spatial interpolation, and also a temporal                            3. Lattice Boltzmann method
+interpolation in the case of SLBM, is applied to ﬁll the ghost nodes
+of the ﬁne block prior to execution of the propagation (streaming)                             The simpliﬁed version of the discrete Boltzmann equation (DBE)
+step. After the propagation step the interpolated distribution                              for single-phase ﬂuids without a forcing term is
+functions will stream to the co-located nodes; therefore transfer-                                                         eq
+ring data from the ﬁne lattice to the coarse one could induce some                          @f a                f  fa
+                                                                                                 þ ea  rf a ¼  a                                                            ð4Þ
+inaccuracy and eventually cause numerical instability. This is why                          @t                     k
+
+
+
+
+Fig. 1. Arrangement of the computational data points: (a) cell-vertex versus and (b) cell-center data structure. Dashed-blue circles with a ‘‘+’’ are the ghost nodes/cells of the
+ﬁne grid on the left, which are to be interpolated from the coarse grid’s data points (square shapes) on the right.
+                                                           A. Fakhari, T. Lee / Computers & Fluids 107 (2015) 205–213                                         207
+
+
+                                                                                           The zero elements in the diagonal relaxation matrix correspond to
+                                                                                           the conserved quantities (one can set these relaxation rates to, for
+                                                                                           example, 1.0 without any complication). The relaxation rates
+                                                                                           related to the energy modes are se ¼ s ¼ sq ¼ 1:0 in this study.
+                                                                                           The last two elements are related to the single- relaxation time,
+                                                                                           and therefore to the kinematic viscosity, by
+                                                                                                         1
+                                                                                           sm ¼                   ;       m ¼ s0 c2s Dt                      ð12Þ
+                                                                                                  s0 þ 0:5
+                                                                                              The major difference between SLBM and FDLBM is the
+                                                                                           treatment of the propagation Eq. (9). Also, the collision step is local
+                                                                                           and we only need to interpolate or rescale the distribution func-
+                                                                                           tions needed in the propagation step. This will be elaborated in
+                                                                                           the following subsections.
+
+                                                                                           3.1. Standard LBM
+Fig. 2. Interpolation points involved in ﬁlling the ghost cells of the ﬁne grid on the
+left.                                                                                         In the conventional LBM, the grid spacing and the time step are
+                                                                                           both equal to one. Accordingly, perfect shift is the exact solution to
+                                                                                           the propagation Eq. (9):
+                                                                                          ^f a ðx; t þ DtÞ ¼ ^f a ðx  Dxa ; tÞ                              ð13Þ
+where f a is the particle distribution function, t is the time, and k is
+the relaxation parameter. For the nine-velocity lattice in two                             where Dxa is the grid spacing in the direction of ea .
+dimensions (D2Q9), the microscopic velocity set is given by                                   To take advantage of this unique feature on nonuniform grids,
+    8                                                                                      the distribution functions have to be rescaled across the ﬁne-
+    < ð0; 0Þ;
+    >                                          a¼0                                         coarse boundaries [17,6,27]. This rescaling is required to maintain
+ea ¼ ðcos ha ; sin ha Þ;     ha ¼ ða  1Þp=2;  a¼14                              ð5Þ      the second-order accuracy of the stress tensor. For the SRT model,
+    >
+    : pﬃﬃﬃ
+        2ðcos ha ; sin ha Þ; ha ¼ ð2a  9Þp=4; a ¼ 5  8                                   the stress tensor is given by
+                                                                                                               m X                       neq
+and the modiﬁed equilibrium distribution function for the nearly                           rab ¼                           eia eib f i                      ð14Þ
+incompressible ﬂuids is [25]                                                                             sc2s Dt i
+             "                                          !#                                               neq                 eq
+                                ea  u ðea  uÞ2 ðu  uÞ                                   where f i ¼ f i  f i is the non-equilibrium part of the distribution
+ eq                     2
+f a ¼ wa p þ q       0 cs             þ                                          ð6Þ      function.
+                                 c2s     2c4s     2c2s
+                                                                                              There are two approaches to rescale the distribution functions
+               pﬃﬃﬃ
+where cs ¼ 1= 3 is the lattice speed of sound and the weight                               needed for transferring the data between ﬁne and coarse lattices.
+coefﬁcients are w0 ¼ 4=9; w14 ¼ 1=9, and w58 ¼ 1=36. The density                         In the ﬁrst approach [17,6], the post-collision distribution func-
+q0 is constant and the macroscopic pressure and velocity are                               tions are rescaled while in the second one [27] the pre-collision
+calculated by:                                                                             ﬁelds are rescaled. The latter approach eliminates the existing
+                                                                                           singularities in the formulation of the former approach, and it is
+       X
+       8
+                                                                                           the one that we choose in the present study.
+p¼           fa
+       a¼0                                                                                    By equating the stress, given by Eq. (14), on the ﬁne and coarse
+                                                                                  ð7Þ      grids and noting that the kinematic viscosity is constant, one can
+             X
+             8
+q0 c2s u ¼         ea f a                                                                  derive the following formula for pre-collision distribution
+             a¼1                                                                           functions
+      One can split the DBE (4) into two steps [9]: collision                                            s F eq 
+                                                                                                                  C
+                                                                                           f i ¼ f eq
+                                                                                             C
+                                                                                                    i þ r F fi  fi
+                      eq                                                                                 s
+^f a ¼ f  f a  f a                                                                                                                                         ð15Þ
+        a
+           s0 þ 0:5
+                                                                                  ð8Þ        F   ~  eq  1 sF ~C ~eq 
+                                                                                           fi ¼ fi þ          f  fi
+                                                                                                        r sC i
+and propagation
+                                                                                           where the superscripts C and F stand for coarse and ﬁne grids,
+@^f a
+                                                                                                                     C
+                                                                                           respectively, and r ¼ DDttF ¼ 2 is the time increment ratio between
+      þ ea  r^f a ¼ 0                                                            ð9Þ
+@t                                                                                         the adjacent coarse and ﬁne blocks. The bar symbol indicates the
+                                                                                           need for a spatial interpolation, while the quantities with a tilde
+The dimensionless relaxation time is deﬁned as s0 ¼ k=Dt with Dt
+                                                                                           need to be interpolated both spatially and temporally. Also, the fol-
+being the time step. Note that in the literature usually s ¼ s0 þ 0:5
+                                                                                           lowing equation relates the relaxation time of the coarse lattice to
+is used.
+                                                                                           that of the ﬁne lattice
+    In the collision step, one can replace the single-relaxation time
+(SRT) with the multiple-relaxation-time (MRT) matrix to obtain                                     s0F
+the following collision equation with the MRT operator
+                                                                                           s0C ¼                                                             ð16Þ
+                                                                                                    r
+^f a ¼ f  M1 b                  eq 
+        a      SM f a  f a                                                     ð10Þ          For the MRT model, the transformation formula are slightly dif-
+                                                                                           ferent. The stress tensor for the MRT collision operator reads as
+where M is the orthogonal transformation matrix and M1 is its
+inverse [26]. The diagonal relaxation matrix is                                                     m X         X  1   
+                                                                                                                   M b
+                                                                                                                            neq
+                                                                                           rab ¼  2    eia eib        SM f j                                ð17Þ
+b
+S ¼ diagð0; se ; s ; 0; sq ; 0; sq ; sm ; sm Þ;                                ð11Þ                     c s Dt       i              j
+                                                                                                                                               ij
+208                                                                     A. Fakhari, T. Lee / Computers & Fluids 107 (2015) 205–213
+
+
+Equating the stress on the ﬁne and the coarse grids gives us the                                            The Reynolds number Re ¼ U 0 L=m is ﬁxed at 20 and the Mach
+following relations for the pre-collision states when MRT is used                                       number of the ﬂow Ma ¼ U 0 =cs is kept below 0.017 according to
+                                    !                                                                   the diffusive scaling (Note: it has been shown, using diffusive
+                               b
+                               SF                                                                     scaling (dt  d2x ), that LBM is of second order accuracy in both time
+f i ¼ f eq
+  C
+         i þ rM
+                1
+                                        M f Fi  f eq
+                                                     i
+                               b
+                               SC                                                                       and space). The computational domain consists of a ﬁne grid (the
+                                     !                                                      ð18Þ        left portion of the domain) and a coarse grid (the right portion of
+            1 1                b
+                                SC                      
+f i ¼ ~f eq
+  F
+         i þ M                           M ~f Ci  ~f eq
+                                                      i
+                                                                                                        the domain). Therefore, at the interface between the ﬁne-coarse
+                   r            b
+                                SF                                                                      grids in the middle of the domain an interpolation is needed to ﬁll
+                                                                                                        the ghost cells when using FDLBM or to rescale the distribution
+                                                                                                        functions according to Eq. (18) when implementing SLBM.
+3.2. Finite-difference LBM                                                                                  One can construct a variety of interpolation schemes to ﬁll the
+                                                                                                        ghost cells of ﬁne and coarse blocks. One scenario is to use linear
+   In the propagation Eq. (9), if we use central differences to dis-                                    interpolation to ﬁll the ghost cells of both ﬁne and coarse grids.
+cretize the ﬁrst and second derivatives along characteristic lines,                                     This is presented in Fig. 3 by C/F: linear/linear (C and F stand for
+the following Lax-Wendroff scheme with second-order accuracy                                            coarse and ﬁne, respectively). Another scenario would be using
+in both time and space is obtained [9,10]:                                                              biquadratic interpolation to ﬁll the ghost cells of the coarse grid
+                                                                                                        while using a linear interpolation to ﬁll the ghost cells of the ﬁne
+^f a ðx; t þ DtÞ ¼ rð1 þ rÞ ^f a ðx  Dxa ; tÞ þ 1  r2 ^f a ðx; tÞ
+                                                                                                        grid (shown as C/F: quadratic/linear in Fig. 3). And the last scenario
+                      2
+                                                                                                        is to use linear interpolation to ﬁll the ghost cells of the coarse grid
+                     rð1  rÞ ^
+                                f a ðx þ Dxa ; tÞ                                          ð19Þ        while using a quadratic interpolation to ﬁll the ghost cells of the
+                        2
+                                                                                                        ﬁne grid (shown as C/F: linear/quadratic in Fig. 3). As can be seen
+where r ¼ jeDaxjDa t is the CFL number.                                                                 in Fig. 3, the linear interpolation degrades the order of accuracy
+   As can be seen in Eq. (19), when the CFL number is equal to one,                                     of LBM even if it is combined with quadratic interpolation. This
+the Lax-Wendroff approximation of the propagation equation                                              is in contrary to the ﬁndings in Ref.[29]. On the other hand, using
+becomes equivalent to the perfect shift in SLBM. This happens                                           the quadratic interpolation consistently for both ﬁne and coarse
+when the spatial resolution is at its ﬁnest level and is favorable                                      grids results in the second-order convergence rate, as is illustrated
+because this solution is the most accurate one. In other parts of                                       in Fig. 4. In fact, it has been shown that a quadratic interpolation at
+the domain where r < 1, the propagation step is solved with                                             least is required to obtain second-order convergence rate in LBM
+second-order accuracy in both time and space. Note that the CFL                                         [31,19,10].
+number changes only due to the grid spacing. In comparison with
+the SLBM or other FDLBM schemes with a variable time step [28],
+                                                                                                        4.2. Poiseuille ﬂow
+in our FDLBM with AMR the time step is constant all over the com-
+putational domain and hence the viscosity remains constant, too.
+                                                                                                           Next we consider the effect of wall boundary condition, in addi-
+                                                                                                        tion to the interpolation schemes, on the order of accuracy of AMR-
+4. Numerical results                                                                                    LBM. Since we are using bounce back on the link, we expect to get
+                                                                                                        second order convergence rate using a quadratic interpolation. The
+4.1. Taylor–Green decaying vortex                                                                       gravity-driven Poiseuille ﬂow in a rectangular channel at steady
+                                                                                                        state is considered here. There are several ways to incorporate
+   In our previous work we showed that linear interpolation                                             the forcing term into the LBM [32,33]. In this study a constant body
+results in a pressure jump across the ﬁne-coarse grid boundary                                          force is added to the ﬂuid according to
+and degrades the order of accuracy of LBM from second to ﬁrst
+[10]. In a recent paper on SLBM with AMR, Guzik et al. [29] showed                                      u ¼ u þ s Dt G                                                     ð22Þ
+a higher than second-order convergence rate in their case studies
+                                                                                                        where G is the acceleration in the x-direction. This form of the forc-
+using a linear interpolation in ﬁlling the ghost cells. This motivated
+                                                                                                        ing term is chosen for the sake of simplicity in the algorithm and
+us to reexamine the effect of interpolation schemes on the order of
+                                                                                                        ease of implementation.
+accuracy of AMR-LBM.
+                                                                                                           The computational domain is shown in Fig. 5(a) with a coarse
+   As the ﬁrst test, we consider the Taylor–Green decaying vortex
+                                                                                                        grid in the middle of the domain that connects the two ﬁne grids
+ﬂow in a periodic domain. The analytic solution is given by [30]:
+                                                                                                        adjacent to the wall boundaries.
+8                                                                                                          Similar to the procedure used in Taylor–Green vortex ﬂow sim-
+> u ðx; yÞ ¼ U 0 cosðkxÞ sinðkyÞ exp ðt=t c Þ
+< a
+  v a ðx; yÞ ¼ U 0 sinðkxÞ cosðkyÞ exp ðt=tc Þ                                                         ulation, we use different combinations of the interpolation
+                                                                                            ð20Þ
+>
+:                    q U2
+                                                                                                        schemes to evaluate the convergence rate of the AMR-LBM. As
+  pa ðx; yÞ ¼ p0  04 0 ½cosð2kxÞ þ cosð2kyÞ exp ð2t=tc Þ                                             can be seen in Fig. 6, the convergence rate is less than second order
+                                                                                                        when linear interpolation is involved. This further conﬁrms that
+where k ¼ 2Lp is the wavenumber with L being the length of the
+                                                                                                        linear interpolation degrades the order of accuracy of LBM as
+domain, and t c ¼ 2m1k2 is the viscous time. The constant parameter
+                                                                                                        opposed to the ﬁndings by Guzik et al. [29].
+p0 is set to zero and the initial conditions are set by calculating
+                                                                                                           The absolute value of the non-dimensionalized slip velocity
+Eq. (20) at t ¼ 0. The numerical results are compared with the ana-
+                                                                                                        against the width of the channel (in lattice units) is plotted in
+lytical solution given by Eq. (20) at t ¼ tc and the error is measured
+                                                                                                        Fig. 7 for two different relaxation rates. As can be seen, the numer-
+by calculating the L2 norm
+                                                                                                        ical results based on SLBM, FDLBM, and the uniform mesh solution
+        vﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃ
+        uP h                                                       i                                    coincide very well and collapse into a second-order line. In our
+        u x;y ðu  ua Þ2 þ ðv  v a Þ2
+        t                                                                                               simulations we observed positive slip velocities for relaxation
+kduk2 ¼                 P  2                                                              ð21Þ
+                             x;y ua þ v a
+                                                   2                                                    times below 0.86, and negative slips for relaxation times greater
+                                                                                                        than 0.86. The smallest slip velocity happens when s ’ 0:86. This
+where u and v are the computed macroscopic velocities and the                                           value, of course, depends on the way the forcing term is incorpo-
+summation is taken over the entire computational domain.                                                rated into the LBE. He and Luo [34] found another expression for
+                                                                             A. Fakhari, T. Lee / Computers & Fluids 107 (2015) 205–213                                                              209
+
+                                              0                                                                               0
+                                         10                                                                              10
+
+
+
+
+                                                                             slo                                                                            slo
+                                                                                   pe                                                                             pe
+                                                                                        =-                                                                             =-
+                                                                                          1                                                                                 1
+
+
+
+
+                                                                                                               ⎥⎜δu⎥⎜2
+                               ⎥⎜δu⎥⎜2
+
+                                              -1                                                                              -1
+                                         10                                                                              10
+
+
+
+
+                                         10-2                                                                            10-2
+                                                   32                                                    256                       32                                                    256
+                                                                             Nx                                                                             Nx
+
+                                                                          (a) SLBM                                                                     (b) FDLBM
+    Fig. 3. Convergence test in the Taylor–Green vortex ﬂow: order of accuracy of the AMR-LBM using different combinations of linear and quadratic interpolations.
+
+
+
+                         -1
+                    10
+                                                                              FDLBM
+                                                                              SLBM
+                                                                              uniform mesh
+                                                                                                                                             10-1
+                         -2
+                    10
+                                                                                                                                   ⎥⎜δu⎥⎜2
+          ⎥⎜δu⎥⎜2
+
+
+
+
+                         -3
+                    10
+                                                                                                                                                  -2
+                                                                                                                                             10
+                                                        slo
+                                                            p   e=
+                    10
+                         -4                                          -2
+
+
+
+
+                                                                                                                                             10-3
+                    10-5                                                                                                                               16                                      128
+                              32                                                          512                                                                                       Ny
+                                                            Nx
+
+Fig. 4. Convergence test: order of accuracy of the AMR-LBM using quadratic                                      Fig. 6. Convergence test for the gravity driven Poiseuille ﬂow in a rectangular
+interpolation.                                                                                                  channel: effect of interpolation on the order of accuracy of SLBM and FDLBM.
+
+
+
+
+                                                                                                    1
+
+
+
+                                                                                                   0.8
+
+
+
+                                                                                                   0.6
+                                                                                                                                   Analytic
+                                                                                              Y*
+
+
+
+
+                                                                                                                                   LBM
+                                                                                                   0.4
+
+
+
+                                                                                                   0.2
+
+
+
+                                                                                                    0
+
+                                                                                                         0                               0.5                                    1
+                                                                                                                                     Ux / U0
+
+                                                    (a) domain                                                           (b) velocity profile
+                              Fig. 5. Poiseuille ﬂow: (a) computational domain and (b) comparison of the dimensionless results with analytical solution.
+210                                                               A. Fakhari, T. Lee / Computers & Fluids 107 (2015) 205–213
+
+
+                   10
+                        -1                                                                          cells. Periodic boundary condition is used in the streamwise direc-
+                                                                   τ                                tion while free slip is applied at the top and bottom boundaries.
+                                                                       τ                            The Reynolds number of the ﬂow is deﬁned by
+                                                    x                      τ
+                                                                   τ
+                   10
+                        -2   x                                         τ                                   U0 d
+                                                    x                      τ                        Re ¼                                                               ð24Þ
+                                                                                                               m
+                                       x
+                                                                                                    where U 0 is half the velocity difference across the shear layer. This
+           |Us*|
+
+
+
+
+                   10
+                        -3   x                                                                      velocity is chosen such that the Mach number of the ﬂow satisﬁes
+                                                              x
+                                            slo                                                     the incompressible limit of LBM (Ma ’ 0:08). The dimensionless
+                                                p   e=
+                                       x                 -2                                         time is deﬁned as t  ¼ tU 0 =d.
+                                                                               x                       First, we conduct the simulations with the SRT collision opera-
+                        -4
+                   10                                                                               tor at Re = 1500 and the results are shown in Fig. 8. As can be
+                                                              x
+                                                                                                    observed, the conventional LBM with SRT almost fails by smearing
+                                                                                                    out the vorticity contours and causing unnecessary reﬁnement of
+                                                                               x
+                                                                                                    the mesh in parts of the computational domain while the FDLBM
+                   10-5
+                             16                                            128                      successfully captures the vortex evolution. The reason for the fail-
+                                            Ny                                                      ure of the SLBM is that, according to Eq. (16), the relaxation time on
+                                                                                                    coarse grids is progressively smaller than that on the ﬁnest grid.
+Fig. 7. Magnitude of the non-dimensionalized slip velocity versus grid resolution
+                                                                                                    This initiates an unstable mode from the coarser grids which grows
+for the gravity driven Poiseuille ﬂow in a rectangular channel.
+                                                                                                    in time causing the vorticity to become smeared out. In contrary,
+                                                                                                    this pattern is not observed for the FDLBM results because the
+the slip velocity in their gravity-driven Poiseuille ﬂow calculations                               relaxation time is constant throughout the computational domain.
+with a different way of incorporating the forcing term.                                             This fact limits the applicability of the SLBM on nonuniform grids
+                                                                                                    to lower Reynolds numbers, as pointed out by Tölke et al. [21].
+                                                                                                    The aforementioned issue could be alleviated to some extent by
+4.3. Thin shear layer instability
+                                                                                                    using the MRT collision operator, as can be observed in Fig. 9.
+   In the previous studies, we examined the instability of a shear
+layer for both single-phase [10] and multiphase ﬂows [35]. Here,                                    4.4. Vortex shedding past a square cylinder
+the single-phase Kelvin–Helmholtz instability is considered to
+compare SLBM with FDLBM. The velocity proﬁle for initiation of                                         For the last case study, the unsteady ﬂow past a square cylinder
+vortex roll-up is given by:                                                                         placed in an unbounded ﬂow is examined here [38–42]. The com-
+(                                                                                                 putational domain is plotted in Fig. 10. A square box with length D
+    uðyÞ ¼ U 0 tanh yd þ eu0 ðyÞ cosðaxÞ                                                            is placed at x ¼ 8D from the inlet. The length and height of the
+                                                                                      ð23Þ
+    v ðyÞ ¼ ev 0 ðyÞ cosðaxÞ                                                                        domain are equal to L ¼ 32D and H ¼ 16D, respectively. The half-
+                                                                                                    way bounce back is used at the walls of the square cylinder, while
+where d is half the shear-layer depth or vorticity thickness,                                       the uniform ﬂow proﬁle ðu; v Þ ¼ ðU 0 ; 0Þ is imposed at the inlet, top,
+a ¼ 2p=k is the wave number with k being the wavelength, e is                                       and bottom of the domain by invoking the momentum exchange
+the perturbation amplitude, and u0 and v 0 are complex eigenfunc-                                   method [4]. At the outlet, the distribution function is set to its
+tions of the Rayleigh stability equation [36,37,35]. The computation                                equilibrium value using the convective boundary condition. The
+domain is equivalent to a uniform mesh with 256  256 lattice                                       ﬂow ﬁeld is initialized with a constant pressure and a uniform
+
+
+                   256                                                                               256
+
+
+
+
+                   192                                                                               192
+
+
+
+
+                   128                                                                               128
+                                                                                                Y
+             Y
+
+
+
+
+                    64                                                                                64
+
+
+
+
+                     0                                                                                 0
+                         0        64                    128                192           256               0          64          128           192          256
+                                                         X                                                                         X
+
+                                           (a) SLBM                                                                            (b) FDLBM
+                                                                                                
+         Fig. 8. Vorticity contours for Kelvin–Helmholtz instability at Re ¼ 1500 and t ¼ 26. Comparison between SLBM and FDLBM with SRT collision operator.
+                                                          A. Fakhari, T. Lee / Computers & Fluids 107 (2015) 205–213                                                      211
+
+
+       256                                                     256                                                            256
+
+
+
+
+       192                                                     192                                                            192
+
+
+
+
+       128                                                     128
+
+
+
+
+                                                           Y
+                                                                                                                              128
+   Y
+
+
+
+
+                                                                                                                          Y
+        64                                                      64                                                             64
+
+
+
+
+         0                                                       0                                                              0
+             0     64         128        192        256              0     64          128           192            256             0      64          128   192        256
+                               X                                                        X                                                                X
+
+
+                        (a) SLBM                                                (b) FDLBM                                               (c) uniform mesh
+Fig. 9. Vorticity contours for the Kelvin–Helmholtz instability at Re ¼ 1500 and t  ¼ 26. Comparison between SLBM and FDLBM with MRT collision (the vorticity increment
+between contours is 1=6).
+
+
+
+
+                                                                                             Table 1
+                                    u=U0 , v=0
+                                                                                             Drag coefﬁcient and Strouhal number for unsteady ﬂow past a square cylinder at
+                                                                                             Re ¼ 100.
+                          D                                                                    Reference                                                           St
+                                                                                                                                                CD
+   u=U0
+                               D                                oulow H=16D
+   v=0                                                                                         Saha et al. [41]                                 1.51               0.159
+                                                                                               Pavlov et al. [42]                               1.51               0.150
+                                                                                               SLBM (D ¼ 16)                                    1.53               0.151
+                                                                                               SLBM (D ¼ 32)                                    1.52               0.151
+                                    u=U0 , v=0                                                 FDLBM (D ¼ 16)                                   1.52               0.151
+                                                                                               FDLBM (D ¼ 32)                                   1.51               0.151
+                                      L=32D
+
+Fig. 10. Computational domain and boundary conditions for the unsteady ﬂow past                         2F x
+a square cylinder.                                                                           CD ¼
+                                                                                                    q0 U 20 D
+                                                                                                                                                                         ð26Þ
+                                                                                                        2F y
+velocity proﬁle everywhere except in the vicinity of the square                              CL ¼       2
+cylinder, where the velocity is set to zero. In order to expedite                                   q0 U0 D
+
+initiation of the vortex shedding, a small perturbation with a                                  First, we present the numerical results of the vortex shedding
+magnitude of 0:001U 0 is added to the velocity in y-direction. The                           past the square cylinder at Re ¼ 100 (Ma ¼ 0:08). The von Kármán
+Reynolds and the Strouhal numbers are deﬁned by                                              vortex street is shown in Fig. 11 for both SLBM and FDLBM with
+       U0 D                                                                                  D ¼ 32 lattice cells. As can be seen qualitatively, SLBM and FDLBM
+Re ¼                                                                                         results are more or less the same. The numerical values of the
+             m                                                                  ð25Þ
+    f D                                                                                      time-averaged drag coefﬁcient and the Strouhal number are also
+St ¼ s                                                                                       compared with the previous studies in Table 1. It is observed that
+     U0
+                                                                                             both SLBM and FDLBM give satisfactory results.
+where f s is the shedding frequency, which is determined from the                               We also considered the unsteady ﬂow past the square cylinder
+alternation of the lift force. The momentum-exchange method is                               at a higher Reynolds number equal to 300. In Fig. 12, the temporal
+used to calculate the force exerted on the cylinder. The drag and                            variations of lift and drag coefﬁcients at two different Reynolds
+the lift coefﬁcients are then calculated by                                                  numbers are plotted. For the case at the higher Reynolds number,
+
+
+
+
+                                         (a) SLBM                                                                             (b) FDLBM
+                                                      Fig. 11. Vortex-shedding past a square cylinder at Re ¼ 100.
+212                                                       A. Fakhari, T. Lee / Computers & Fluids 107 (2015) 205–213
+
+
+
+
+                                             (a) Re = 100                                                        (b) Re = 300
+                    Fig. 12. Temporal variation of the drag and lift coefﬁcients for unsteady ﬂow past a square cylinder at (a) Re ¼ 100 and (b) Re ¼ 300.
+
+
+
+
+Table 2
+                                                                                          functions at the previous time step, which are needed for temporal
+CPU time (in seconds) for the simulation of unsteady ﬂow past a square cylinder.          interpolation. On the other hand, the stability of the FDLBM at low
+                                                                                          relaxation times is slightly better than that of the SLBM mainly
+  Grid resolution          uniform-mesh          FDLBM-AMR            SLBM-AMR
+                           time (s)              time (s)             time (s)
+                                                                                          because the relaxation time in FDLBM is constant on all the blocks
+                                                                                          at different reﬁnement levels while it is progressively smaller on
+  512  256                1249                   344                  308
+                                                                                          coarser blocks in SLBM.
+  1024  512               9819                  1981                 1796
+
+
+                                                                                          Acknowledgment
+
+as expected, the temporal variation of the drag and lift coefﬁcients                        This research was carried out using funding received from the
+is more pronounced with a higher magnitude in the amplitude of                            DOEś NEUP.
+oscillations. At Re ¼ 300 the mean value of the drag coefﬁcient
+and the Strouhal number are found to be 1.606 and 0.1597,                                 References
+respectively.
+                                                                                           [1] Samet H. The design and analysis of spatial data structures. Reading,
+                                                                                               MA: Addison-Wesley; 1990.
+4.5. Efﬁciency                                                                             [2] Rantakokko J, Thuné M. Parallel computing. London: Springer; 2009 [chapter
+                                                                                               5].
+    The comparison between the performances of the SLBM and                                [3] Chen S, Doolen G. Lattice Boltzmann method for ﬂuid ﬂows. Annu Rev Fluid
+                                                                                               Mech 1998;30:329.
+FDLBM codes with AMR and the uniform-mesh results for the                                  [4] Yu D, Mei R, Luo L-S, Shyy W. Viscous ﬂow computations with the method of
+unsteady ﬂow past a cylinder at Re = 100 is provided in Table 2.                               lattice Boltzmann equation. Prog Aerosp Sci 2003;39:329.
+The simulations reported herein are carried out on an Intel(R)                             [5] He X, Luo L-S, Dembo M. Some progress in lattice Boltzmann method. Part i.
+                                                                                               Nonuniform mesh grids. J Comput Phys 1996;129:357.
+Xeon(R) workstation with CPU E5-26200 @2.00 GHz and a total                                [6] Yu D, Mei R, Shyy W. A multi-block lattice Boltzmann method for viscous ﬂuid
+of 32 GB RAM. The pgf95 compiler with the level three optimiza-                                ﬂows. Int J Numer Methods Fluids 2002;39:99.
+tion is used to produce the numbers in Table 2.                                            [7] Kandhai D, Soll W, Chen S, Hoekstra A, Sloot P. Finite-difference lattice-BGK
+                                                                                               methods on nested grids. Comput Phys Commun 2000;129:100.
+    For the case of unsteady ﬂow past a square cylinder, the AMR                           [8] Sofonea V, Sekerka RF. Viscosity of ﬁnite difference lattice Boltzmann models. J
+technique speeds up the calculations up to a factor of 6 compared                              Comput Phys 2003;184:422.
+to the uniform-mesh results. The SLBM is about 10% faster than the                         [9] Lee T, Lin C-L. An Eulerian description of the streaming process in the lattice
+                                                                                               Boltzmann equation. J Comput Phys 2003;185:445.
+FDLBM. On the other hand, however, the SLBM consumes more
+                                                                                          [10] Fakhari A, Lee T. Finite-difference lattice Boltzmann method with a block-
+computer memory to store the distribution functions, which are                                 structured adaptive-mesh-reﬁnement technique. Phys Rev E 2014;89:033310.
+needed for temporal interpolations, at the previous time step. It                         [11] Eitel-Amor G, Meinke M, Schroder W. A lattice-Boltzmann method with
+                                                                                               hierarchically reﬁned meshes. Comput Fluids 2013;75:127.
+is worth mentioning that compared to our previous study using
+                                                                                          [12] Nannelli F, Succi S. The ﬁnite volume lattice Boltzmann equation. J Stat Phys
+the cell-vertex lattice (with nodal points) [10], the cell-center data                         1992;68:401.
+structure is about 25% faster, as anticipated.                                            [13] Chen H. Volumetric formulation of the lattice Boltzmann method for ﬂuid
+                                                                                               dynamics: basic concept. Phys Rev E 1998;58:3955.
+                                                                                          [14] Chen H, Filippova O, Hoch J, Molvig K, Shock R, Teixeira C, et al. Grid
+5. Summary                                                                                     reﬁnement in lattice Boltzmann methods based on volumetric formulation.
+                                                                                               Phys A 2006;362:158.
+                                                                                          [15] Rohde M, Kandhai D, Derksen JJ, van den Akker HEA. A generic, mass
+    Using an adaptive mesh reﬁnement strategy, we compared the                                 conservative local grid reﬁnement technique for lattice-Boltzmann schemes.
+conventional stream-and-collide and the Lax-Wendroff-based                                     Int J Numer Methods Fluids 2006;51:439.
+                                                                                          [16] Lee T, Lin C-L. A characteristic Galerkin method for discrete Boltzmann
+ﬁnite-difference lattice Boltzmann methods. Both of the aforemen-
+                                                                                               equation. J Comput Phys 2001;171:336.
+tioned models were shown to be second-order accurate when                                 [17] Filippova O, Hänel D. Grid reﬁnement for lattice-BGK models. J Comput Phys
+quadratic interpolation in space is employed, while linear interpola-                          1998;147:219.
+tion is shown to degrade their order of accuracy to ﬁrst order.                           [18] Lin C-L, Lai Y-G. Lattice Boltzmann method on composite grids. Phys Rev E
+                                                                                               2000;62:2219.
+Although the SLBM was found to be slightly faster than the FDLBM,                         [19] Lagrava D, Malaspinas O, Latt J, Chopard B. Advances in multi-domain lattice
+it requires more computational memory to store the distribution                                Boltzmann grid reﬁnement. J Comput Phys 2012;231:4808.
+                                                         A. Fakhari, T. Lee / Computers & Fluids 107 (2015) 205–213                                                         213
+
+
+[20] Crouse B, Rank E, Krafczyk M, Tölke J. A LB-based approach for adaptive ﬂow         [32] Buick JM, Greated CA. Gravity in a lattice Boltzmann model. Phys Rev E
+     simulations. Int J Mod Phys B 2003;17:109.                                               2000;61:5307.
+[21] Tölke J, Freudiger S, Krafczyk M. An adaptive scheme using hierarchical grids       [33] Guo Z, Zheng C, Shi B. Discrete lattice effects on the forcing term in the lattice
+     for lattice Boltzmann multi-phase ﬂow simulations. Comput Fluids                         Boltzmann method. Phys Rev E 2002;65:046308.
+     2006;35:820.                                                                        [34] He X, Zou Q, Luo L-S, Dembo M. Analytic solutions of simple ﬂows and analysis
+[22] Wu J, Shu C. A solution-adaptive lattice Boltzmann method for two-                       of nonslip boundary conditions for the lattice Boltzmann BGK model. J Stat
+     dimensional incompressible viscous ﬂows. J Comput Phys 2011;230:2246.                    Phys 1997;87:115.
+[23] Chen Y, Kang Q, Cai Q, Zhang D. Lattice Boltzmann method on quadtree grids.         [35] Fakhari A, Lee T. Multiple-relaxation-time lattice Boltzmann method for
+     Phys Rev E 2011;83:026707.                                                               immiscible ﬂuids at high Reynolds numbers. Phys Rev E 2013;87:023304.
+[24] Matsumoto T. Self-gravitational magnetohydrodynamics with adaptive mesh             [36] Michalke A. On the inviscid instability of the hyperbolic-tangent velocity
+     reﬁnement for protostellar collapse. Publ Astron Soc Jpn 2007;59:905.                    proﬁle. J Fluid Mech 1964;19:543.
+[25] He X, Luo L-S. lattice Boltzmann model for the incompressible Navier–Stokes         [37] Fontane J, Joly L. The stability of the variable-density Kelvin–Helmholtz billow.
+     equation. J Stat Phys 1997;88:927.                                                       J Fluid Mech 2008;612:237.
+[26] Lallemand P, Luo L-S. Theory of the lattice Boltzmann method: dispersion,           [38] Davis RW, Moore EF. A numerical study of vortex shedding from rectangles. J
+     dissipation, isotropy, Galilean invariance, and stability. Phys Rev E                    Fluid Mech 1982;116:475.
+     2000;61:6546.                                                                       [39] Okajima A. Strouhal numbers of rectangular cylinders. J Fluid Mech
+[27] Dupuis A, Chopard B. Theory and application of an alternative lattice                    1982;123:379.
+     Boltzmann grid reﬁnement algorithm. Phys Rev E 2003;67:066707.                      [40] Sohankar A, Norberg C, Davidson L. Low-Reynolds-number ﬂow around a
+[28] Guo Z, Zheng C, Zhao TS. A lattice BGK scheme with general propagation. J Sci            square cylinder at incidence: study of blockage, onset of vortex shedding and
+     Comput 2001;16:569.                                                                      outlet boundary condition. Int J Numer Methods Fluids 1998;26:39.
+[29] Guzik SM, Weisgraber TH, Colella P, Alder BJ. Interpolation methods and the         [41] Saha AK, Muralidhar K, Biswas G. Transition and chaos in 2D ﬂow past a square
+     accuracy of lattice-Boltzmann mesh reﬁnement. J Comput Phys 2014;259:461.                cylinder. J Eng Mech 2000;126:523.
+[30] Mei R, Luo L-S, Lallemand P, d’Humiéres D. Consistent initial conditions for        [42] Pavlov AN, Sazhin SS, Fedorenko RP, Heikal MR. A conservative ﬁnite
+     lattice Boltzmann simulations. Comput Fluids 2006;35:855.                                difference method and its application for the analysis of a transient ﬂow
+[31] Tölke J, Krafczyk M. Second order interpolation of the ﬂow ﬁeld in the lattice           around a square prism. Int J Numer Methods H 2000;10:6.
+     Boltzmann method. Comput Math Appl 2009;58:898.
+

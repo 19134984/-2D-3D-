@@ -1,0 +1,1170 @@
+Moment–based boundary conditions for lattice
+Boltzmann simulations of natural convection in cavities
+
+         Rebecca Allen
+         Division of Physical Science and Engineering,
+         King Abdullah University of Science and Technology,
+         Thuwal,
+         Saudi Arabia.     E-mail: rebecca.allen@kaust.edu.sa
+
+         Tim Reis
+         School of Computing and Mathematics,
+         Plymouth University,
+         UK.     E-mail: timothy.reis@plymouth.ac.uk
+
+         Abstract: We study a multiple relaxation time lattice Boltzmann model for natural
+         convection with moment–based boundary conditions. The unknown primary
+         variables of the algorithm at a boundary are found by imposing conditions
+         directly upon hydrodynamic moments, which are then translated into conditions
+         for the discrete velocity distribution functions. The method is formulated so that
+         it is consistent with the second order implementation of the discrete velocity
+         Boltzmann equations for fluid flow and temperature. Natural convection in square
+         cavities is studied for Rayleigh numbers ranging from 103 to 108 . An excellent
+         agreement with benchmark data is observed and the flow fields are shown to
+         converge with second order accuracy.
+
+         Keywords: Lattice Boltzmann, moment–based boundary conditions, natural
+         convection, multiple relaxation times
+
+
+
+
+1 Introduction
+
+Natural convection occurs in a diverse range of phenomena, from thermal flows in the
+atmosphere [42] to small scale microfluidics [28]. Its significance has generated much
+interest in the scientific and engineering communities, including computational fluid
+dynamics (CFD) (see, for example, [10, 35, 26, 32, 25, 9]). The classic benchmark test for
+numerical methods is thermal flow in a square cavity comprised of two adiabatic horizontal
+walls (i.e., Neumann boundary conditions) and two thermally fixed vertical walls (i.e.,
+Dirichlet boundary conditions), where the left wall is hotter than the right. This flow is
+dictated by two non–dimensional numbers, namely the Prandtl number, P r, and Rayleigh
+number, Ra. The Prandtl number is the ratio of momentum to thermal diffusivity; the value
+P r = 0.71 is generally taken for air, and P r = 7 represents water near room temperature.
+
+Copyright © 2015 Inderscience Enterprises Ltd.
+2        R. Allen and T. Reis
+The onset of convection is determined by the critical Rayleigh number and its magnitude
+indicates whether the convection boundary layer is laminar or turbulent.
+     Traditional algorithms involve a direct discretisation of the highly non–linear partial
+differential equations of continuum fluid mechanics, namely the Navier–Stokes equations
+with a Boussinesq approximation for the buoyancy. An alternative to the more familiar
+methods of CFD is the lattice Boltzmann equation (LBE), which is based on a velocity–space
+truncation of the Boltzmann equation of classical kinetic theory [21]. By seeking solutions
+which vary slowly over hydrodynamic timescales much longer than the collision time, τν ,
+the (lattice) Boltzmann equation can be shown to approximate the Navier–Stokes equations
+[5, 39, 20]. This seemingly indirect method offers several computational advantages. The
+non–linear convection term in the macroscopic equations is replaced by linear, constant
+coefficient advection in the discrete velocity Boltzmann equation. Furthermore, all non–
+linearities are confined to an algebraic source term which can be updated locally, grid–point
+by grid–point. The locality of the algorithm allows for a natural parallelisation on modern
+computer architectures [6, 45, 1].
+     The application of the lattice Boltzmann model to thermal flows began two decades ago
+[2, 3, 15]. Alexander et al. [2] adopted a multi-speed approach to study Couette flow with an
+imposed temperature gradient and Bartoloni et al. [3] studied Rayleigh-Bénard convection
+by modelling the temperature as a passive scalar. To improve the numerical stability of
+thermal lattice Boltzmann models, McNamara et al. [36] used a Lax–Wendroff scheme to
+discretise the advection term. This method introduces greater artificial viscosity and the
+authors conclude that their method offered no advantages over finite difference methods.
+     Shan [41] studied Rayleigh-Bénard convection using a lattice Boltzmann model with
+two distribution functions, one for the fluid flow and another for the thermal transport.
+By comparing their simulation results with those of Clever and Busse [9], the authors
+concluded that the steady-state Nusselt numbers were in good agreement for Ra < 20000,
+but deviated at higher values. He et al. [19] evolved the temperature by an internal energy
+distribution function, rather than a passive-scalar approach. Similar to the model of Shan
+[41], this method was able to make predictions in good agreement with Clever and Busse’s
+[9] benchmark simulations for Ra < 20000 but gave quantitatively incorrect results at
+higher Rayleigh numbers.
+     Dixit et al. [14] combined the ‘double-population’ approach of He et al. [19] with both
+an interpolation-supplemented method [22] and an extension to Inamuro’s counter–slip
+technique [27] to accurately incorporate the boundary conditions. Laminar flow simulations
+were compared to the benchmark solution of de Vahl Davis [10] and an agreement within
+3% noticed. Turbulent flow simulations at Rayleigh numbers between 107 and 1010 were
+within a 5% agreement when compared to Le Quere [32] and Markatos et al. [35]. The
+authors credited their model’s accuracy to the their very fine grid resolution at the wall
+boundary.
+     The models of Guo et al. [17, 18] consist of two independent LBEs (one for
+hydrodynamics, one for the temperature) on separate lattices which are coupled together
+through a term added to the fluid distribution function. Li et al. [33] presented a coupled
+lattice Boltzmann model for thermal flows based on the double-distribution function of Guo
+et al. [18] using both the Bhatnagar–Gross–Krook (BGK) and multiple–relaxation–time
+(MRT) collision schemes. Their results show that the MRT collision operator offers greater
+numerically stability than the BGK scheme.
+     Hybrid thermal lattice Boltzmann models have been proposed or studied by Lallemand
+et al. [31], Mezrhab et al. [37], and Choi and Kim [7]. Lallemand et al. [31] argued that
+         Moment–based boundary conditions                                                     3
+previous thermal lattice Boltzmann models were based on a spurious coupling between the
+viscous and energy modes. To circumvent this, they evolved the hydrodynamics using an
+LBE and the temperature field using a finite difference algorithm.
+     Wang et al. [44] presented a thermal lattice Boltzmann model with multiple relaxation
+times for both the fluid and transport equations. The anti-bounce-back method is used
+to implement Dirichlet boundary conditions and bounce-back for the Neumann boundary
+conditions. The authors compared their results with several other methods in the literature
+[10, 26, 32, 17, 37] and provided the most detailed study of a lattice Boltzmann model for
+natural convection to date. By computing the L2 error norm for the flow fields (velocity,
+pressure, and temperature) Wang et al. [44] showed their algorithm converges with second
+order in space. The computed Nusselt numbers are in good agreement with benchmark
+solutions for a range of Rayleigh numbers and the authors emphasised the importance of
+using multiple relaxation times.
+     Part of the motivation for using multiple relaxation times in [44] is to eliminate the
+numerical slip error that plagues the bounce–back boundary condition method [16, 24].
+That is, the collision time for the third order moment is chosen so that, as accurately as
+possible, u = 0 at the walls. This places an additional restriction on the collision operator.
+Ideally one would choose the relaxation times purely on grounds of numerical stability and
+not according to the boundary conditions. In particular, the value of the collision time for the
+third order moment needed to minimise the numerical slip error is not necessarily optimal
+[13].
+     Similar in spirit to the original work of Noble et al. [38], Bennett [4] proposed a
+general methodology for implementing lattice Boltzmann boundary conditions in terms
+of the moments of the distribution functions. Unlike bounce-back and its variants, this
+‘moment–method’ assumes a wall to be located precisely at grid points. The method remains
+fully local and does not require any additional finite difference approximations nor any
+interpolation/extrapolation of quantities to or from neighbouring nodes. The drawback of
+the approach is evident: a lack of flexibility for flows in complicated geometries. It does,
+however, guarantee the satisfaction of hydrodynamic quantities at the boundaries, allowing
+for greater freedom in the choice of relaxation times. It is thus natural to inquire if the
+moment–method can be applied to natural convection and, if so, to assess its accuracy.
+     In this article we develop lattice Boltzmann boundary conditions for natural convection
+in the framework of the moment–method. We use a second–order–in–time discretisation [23]
+of two discrete velocity Boltzmann equations, one for the fluid flow and one for the thermal
+transport, coupled through a force term for the buoyancy (Boussinesq approximation). A
+multiple relaxation time collision operator is used for each, where the collision time for
+the third order moment of the fluid LBE is chosen according to numerical stability and the
+collision times for the thermal transport chosen so that the numerical diffusion is isotropic to
+fourth order [31]. The boundary conditions are imposed on the moments of each distribution
+function, and then translated into conditions for the primary variables of the algorithm. Our
+implementation does not lose the computational advantages of the lattice Boltzmann method
+and inherits its second order accuracy. The proposed model is assessed with the classic
+benchmark test of convection in a square cavity for Rayleigh numbers ranging from 103 to
+108 . It is also shown how the moment–method can be applied to the industrially-relevant
+problem of convection in partially open geometries.
+     The remainder of the article is organised as follows: Section 2 introduces the governing
+macroscopic equation of motion and Section 3 presents the lattice Boltzmann formulation of
+the problem. Section 4 develops the moment–based boundary conditions, and the multiple
+4          R. Allen and T. Reis
+relaxation time extension is discussed in Section 5. Numerical simulations of convection in
+a square cavity are presented in Sections 6 and 7, and for a partially heated cavity in Section
+8. Concluding remarks are left to Section 9.
+
+
+2 Governing macroscopic equations
+
+Natural convection is a buoyancy-driven flow which can be modelled with the Boussinesq
+approximation. This approximation assumes that density variations due to temperature can
+be neglected in all but the gravitational acceleration term, which is included as a body force
+in the Navier–Stokes equations,
+          h ∂u           i
+      ρ          + u · ∇u = −∇P + µ∇2 u + F,                                               (1)
+           ∂t
+                      ∇ · u = 0,                                                           (2)
+
+where ρ is the density, u is the flow velocity, P is pressure, µ is the dynamic viscosity,
+and F is the body force acting on the fluid. This force is given by F = ρα(φ − φ0 )g,
+where α is the thermal expansion coefficient, φ and φ0 are the temperature and reference
+temperature, respectively, and g = (0, g) is the gravitational acceleration. The temperature
+evolves according to the advection–diffusion equation,
+
+      ∂φ
+         + u · ∇φ = D∇2 φ,                                                                 (3)
+      ∂t
+where D is the thermal diffusion coefficient.
+   Equations (1)–(3) are non–dimensionalised by scaling
+
+                          D        x       uL           L2      (φ − φ0 )
+                 t0 = t    2
+                             , x0 = , u0 =    , P0 = P     , θ=           ,                (4)
+                          L        L       D           ρD2         ∆φ
+where ∆φ is the temperature difference (between the hot and cold walls in this study).
+Defining the Prandtl and Rayleigh numbers to be
+
+                                           ν        αg∆φL3
+                                    Pr =     , Ra =        ,                               (5)
+                                           D          νD
+allows us to write the governing equations in non-dimensional form:
+
+      ∂u
+         + u · ∇u = −∇P + P r∇2 u + RaP rθĝ;                                              (6)
+      ∂t
+            ∇ · u = 0;                                                                     (7)
+      ∂θ
+         + u · ∇θ = ∇2 θ,                                                                  (8)
+      ∂t
+where ĝ is a unit vector in the vertical direction and we have omitted primes for clarity.
+The kinematic viscosity, ν, and the diffusion coefficient, D, are given in terms of the non–
+dimensional numbers:
+                              r                        r
+                                 αg∆φL3 P r              αg∆φL3
+                         ν=                   ; D=                 .                      (9)
+                                      Ra                   P rRa
+           Moment–based boundary conditions                                                   5
+The characteristic velocity of the flow is
+                                               p
+                                        U=         αg∆φL.                                  (10)
+    The flow physics in natural convection are controlled by P r and Ra. Small Prandtl
+number flows, such as for air (P r = 0.71), are dominated by thermal diffusion, while
+large Prandtl numbers (P r = 7 for water near room temperature) correspond to momentum
+diffusion dominated flows. The onset of convection is governed by the Rayleigh number,
+where beyond some critical value the flow exhibits a Rayleigh–Bénard instability and the
+primary form of thermal transport changes from conduction to convection.
+
+
+3 The discrete Boltzmann formulation
+
+We postulate two discrete velocity Boltzmann equations (DBEs), one to describe the
+evolution of the fluid flow (fi ) and another for thermal transport (gi ):
+      ∂fi                1         (eq)
+                                         
+          + ci · ∇fi = −     fi − fi       + Ri ,                                          (11)
+      ∂t                 τν
+      ∂gi                 1        (eq)
+                                         
+          + ci · ∇gi = −      gi − gi      ,                                               (12)
+      ∂t                 τD
+where τν and τD are the relaxation times associated with viscous and thermal diffusion,
+respectively, and Ri is the forcing term. The discrete particle velocity set {ci } for fi is the
+D2Q9 lattice shown in Figure 1, while that for the (linear) advection–diffusion equation is
+                                                                     (eq)       (eq)
+the D2Q5 lattice model (i = 0, . . . 4). The equilibrium functions fi     and gi are given
+by
+                                                      
+        (eq)                         9        2    3
+      fi     = Wi ρ 1 + 3ci · u + (ci · u) − u2 ,                                          (13)
+                                     2             2
+       (eq)
+      gi      = Ti φ [1 + 3ci · u] ,                                                       (14)
+
+where the weights are W0 = 4/9, Wi = 1/9 for i = 1, . . . , 4, Wi = 1/36 for i = 5, . . . , 8,
+and T0 = 1/3, Ti = 1/6 for i = 1, . . . , 4.
+   The source term Ri introduces the body force F and must satisfy
+     X              X                 X
+          Ri = 0,      Ri ci = F,           Ri ci ci = Fu + uF.                         (15)
+       i                i                 i
+
+The first constraint in (15) is a statement of mass conservation and the second accounts for
+the buoyancy effect. The third condition ensures F does not appear in the viscous stress
+term in the Navier–Stokes equations (26). The explicit form of Ri is [34]
+
+      Ri = 3Wi [(ci − u) + 3ci · uci ] · F.                                                (16)
+
+    The hydrodynamic quantities, namely fluid density (ρ), momentum (ρu), momentum
+flux (Π), thermal density (φ), and thermal flux (Ψ) are defined by moments of the
+distribution functions:
+                             8
+                             X                 8
+                                               X                   8
+                                                                   X
+                        ρ=         fi ; ρu =         fi ci ; Π =         fi ci ci ;        (17)
+                             i=0               i=0                 i=0
+6         R. Allen and T. Reis
+                                      4
+                                      X                    4
+                                                           X
+                                 φ=         gi ; Ψ =              gi ci .                  (18)
+                                      i=0                   i=0
+
+Taking the 0th -, 1st -, and 2nd -order moments of equation (11) yields
+
+         ∂ρ
+            + ∇ · ρu = 0,                                                                  (19)
+         ∂t
+        ∂ρu
+            + ∇ · Π = F,                                                                   (20)
+         ∂t
+        ∂Π                1
+            + ∇ · Q = − (Π − Π(eq) ).                                                      (21)
+         ∂t               τν
+Equations (19) and (20) are the conservation laws for mass and momentum (with a body
+force). The momentum flux, Π, is not conserved by collisions and relaxes to equilibrium
+          P (eq)
+Π(eq) = i fi ci ci according to its ownP     partial differential equation (21). The third order
+moment in equation (21) is given by Q = i fi ci ci ci .
+    The Navier–Stokes equations can be obtained from the discrete Boltzmann equation
+(11) by looking for solutions that vary slowly over timescales much longer than the collision
+time τν [5]. Using the Chapman-Enskog expansion,
+                                 ∂     ∂        ∂
+                                    =     + τν     + ...,                                  (22)
+                                 ∂t   ∂t0      ∂t1
+                                 Π = Π(0) + τν Π(1) + ...,                                 (23)
+                                            (0)            (1)
+                                  Q=Q             + τν Q         + ...,                    (24)
+we find the (weakly compressible) Navier–Stokes equations to leading order,
+
+                     ∂ρ
+                        + ∇ · ρu = 0,                                                      (25)
+                     ∂t
+        ∂ρu                    
+            + ∇ · Π(0) + τν Π(1) = 0,                                                      (26)
+         ∂t
+where
+
+      Π(0) = P I + ρuu,                                                                    (27)
+               1
+      Π(1) = − ρ ∇u + (∇u)T + O(M a3 ),
+                           
+                                                                                           (28)
+               3
+and M a = is the Mach number. The kinematic viscosity is seen to be a function of the
+relaxation time, ν = τν /3, and the pressure is given by an ideal equation of state, P = ρ/3.
+    A similar procedure applied to the discrete Boltzmann equation (12) for gi with the
+expansion Ψ = Ψ(eq) + τD Ψ(1) + . . ., yields at leading order the convection–diffusion
+equation
+                                                  
+      ∂φ                                       ∂u
+          + ∇ · (φu) = D∇2 φ − τD ∇ · φ              + O(M a3 ),                         (29)
+       ∂t                                       ∂t
+
+where the diffusion coefficient is given by D = τD /3. The last term on the right hand side
+of equation (29) gives rise to a numerical (artificial) diffusion term which should ideally be
+eliminated or minimised. This will be addressed in Section 5.
+           Moment–based boundary conditions                                                      7
+3.1 The lattice Boltzmann equations
+
+Content that the discrete velocity Boltzmann equations (11) and (12) furnish the governing
+equations in the macroscopic and incompressible limit, we proceed to discretise the model
+in space and time. To simplify the procedure we define new equilibria
+
+       (0)         (eq)
+      fi     = fi         + τν Ri ,                                                            (30)
+
+so that the discrete Boltzmann equation (11) can be written as
+
+      ∂fi                1       (0)
+                                      
+          + ci · ∇fi = −    fi − fi     .                                                      (31)
+      ∂t                 τν
+
+   Integrating equation (31) along a characteristic for time yields
+                                                  Z ∆t
+      fi (x + ci ∆t, t + ∆t) − fi (x, t) =                Ωi (x + ci s, t + s)ds,              (32)
+                                                    0
+
+
+where Ωi represents the collision term on the right hand side of equation (31). It should
+be noted that the left hand side of equation (32) is exact. The right hand side can be
+approximated using the Trapezium rule, which yields a second order accurate but implicit
+system of algebraic equations:
+
+                                                ∆t 
+      fi (x+ci ∆t, t+∆t)−fi (x, t) =                 Ωi (x+ci ∆t, t+∆t)
+                                                2        
+                                              + Ωi (x, t) +O ∆t3 .
+                                                                   
+                                                                                               (33)
+
+Following He et al. [23], we introduce the new variables
+
+                               ∆t               (0)
+                                                         
+      f¯i (x, t) = fi (x, t) +      fi (x, t) − fi (x, t) .                                    (34)
+                               2τν
+
+The previous implicit scheme (33) can now be expressed as explicit formulae for the new
+variables, f¯i , at the new timestep:
+
+                                                            ∆t    
+                                                                                  (0)
+                                                                                          
+      f i (x + ci ∆t, t + ∆t) − f i (x, t) = −                      f i (x, t) − fi (x, t) .   (35)
+                                                        τν + ∆t/2
+
+We thus discard the fi and instead evolve the f i using (35). The hydrodynamic moments
+must be obtained from moments of f i . The equilibrium function (13) depends on moments
+of fi , not f i . Density is conserved and unaffected by the
+                                                           Psource Pterm, Ri , and can thus
+be obtained just as easily from f i as it can from fi : ρ = i fi = i f i . The velocity, u,
+however, must be reconstructed from the first-order moment of f i :
+
+              X                       ∆t
+      ρū =         f i ci = ρu −        F.                                                    (36)
+               i
+                                      2
+8        R. Allen and T. Reis
+The same method of discretisation applied to equation (12) yields the lattice Boltzmann
+equation for ḡi ,
+
+                                                    ∆t     
+                                                                           (eq)
+                                                                                   
+      ḡi (x + ci ∆t, t + ∆t) − ḡi (x, t) = −               ḡi (x, t) − gi (x, t) ,     (37)
+                                                 τD + ∆t/2
+
+where
+
+                                 ∆t              (eq)
+                                                          
+      ḡi (x, t) = gi (x, t) +       gi (x, t) − gi (x, t) ,                              (38)
+                                 2τD
+
+     (eq)
+and gi      is given in equation (14).
+
+
+4 Boundary conditions
+
+We consider solid boundaries to be located precisely at grid points. Each boundary lattice
+node must supply incoming distribution functions to the flow domian. For example, a
+horizontal wall located along the bottom row of the computational domain has three
+incoming (unknown) fluid distribution functions, f 2 , f 5 and f 6 , as shown in Figure 2.
+There is just one unknown temperature distribution function, ḡ2 , here. All other distribution
+functions at the boundary are known from the algorithms (35) and (37). To solve for the
+unknowns we need an equal number of linearly independent equations.
+     The moment-based method of Bennett [4] is an extension and generalisation of the
+method of Noble et al. [38] which formulates the boundary conditions in terms of the
+moments of the distribution functions, rather than on the distribution functions directly.
+Natural convection in a cavity (Figure 3) requires two types of boundary conditions:
+Dirichlet and Neumann. The solid boundaries are impermeable, rigid and stationary, and
+subjected to the no–slip condition. The combinations of the unknown f i that appear in
+each of the moments at horizontalP and vertical walls are shown in Table 1 and Table 2,
+respectively, where S̄xxyy = i f i c2ix c2iy . Our three linearly independent equations are
+obtained by choosing three moments, one from each row of the appropriate table, and
+imposing boundary conditions upon these moments. The three equations can then be solved
+for the three unknowns in terms of the moment constraints and the known distributions. Since
+we are computing the Navier–Stokes equations, it is logical to choose the hydrodynamic
+moments: the two components of momentum and the remaining independent component
+of the momentum flux. The no–slip and no–flow boundary conditions state ux = uy = 0,
+and require the tangential derivative of the tangential component of velocity to vanish at
+a solid boundary, ∂T uT = 0, where T denotes the tangential component. By equations
+(23), (27), (28), and remembering that uT = 0, this third condition can be expressed as
+             (0)
+ΠT T = ΠT T = ρ/3. It is now simple to solve the resulting equations for the three incoming
+distribution functions.
+     It is important to respect the variable transformation (34). That is, we place conditions
+on the flow variables, which must then be expressed in terms of ‘barred’ quantities. For a
+concrete example, let’s consider a southern boundary. Using the above system of equations
+and constraints, we can compute the unknown f i at a south wall by
+
+                                                              ρ ∆t
+                       f¯2 = f¯1 + f¯3 + f¯4 + 2(f¯7 + f¯8 ) − −   Fy ,                   (39)
+                                                              3  2
+         Moment–based boundary conditions                                                   9
+                                          ρ
+                        f¯5 = −f¯1 − f¯8 + ,                                             (40)
+                                          6
+                         ¯      ¯     ¯   ρ
+                        f6 = −f3 − f7 + .                                                (41)
+                                          6
+The density, ρ, at the wall can be found in terms of the imposed velocity and the known
+distribution functions:
+                                                     
+       ρ = ρūy + f 0 + f 1 + f 3 + 2 f 4 + f 7 + f 8 .                             (42)
+
+    Special attention must be paid to the corners, where there are five unknown f i . We
+simultaneously apply the conditions placed on the vertical and horizontal walls to give
+constraints on ρux , ρuy , Πxx and Πyy . The fifth constraint is Πxy = 0, which eliminates the
+shear stress. An example of a southwest corner with its 5 unknown distributions is shown
+in Figure 2. Here the unknown f i are found to be
+                                2ρ                  ∆t
+                          f¯1 =      − f¯0 − f¯3 −     Fy ,                              (43)
+                                 3                   2
+                                2ρ
+                          f¯2 =      − f¯0 − f¯4 ,                                       (44)
+                                 3
+                                   2ρ                       ∆t
+                          f¯5 = − + f¯0 + f¯3 + f¯4 + f¯7 +    Fy ,                      (45)
+                                    3                       4
+                                ρ
+                          f¯6 = − f¯3 − f¯7 ,                                            (46)
+                                6
+                                ρ                  ∆t
+                          f¯8 = − f¯4 − f¯7 +         Fy ,                               (47)
+                                6                  4
+where ρ is again found from known distribution functions at the wall.
+    The lattice Boltzmann equation for the thermal flow must supply one incoming ḡi at
+                  P the heated
+the boundaries. For        P walls the Dirichlet boundary condition can be realised by
+solving φwall = i gi = i ḡi for the incoming ḡi . The Neumann boundary condition
+for the adiabatic walls require ∂N φ = 0, where ∂N denotes the normal derivative. Since
+the temperature flux is found from the non–equilibrium
+                                                    P      part of gi , and remembering that
+u = 0, our one constraint is chosen to be ΨN = i gi ciN = 0, where ciN is the normal
+component of the particle velocity. This reduces to simple ‘bounce-back’ for ḡi , and once
+we have found the incoming ḡi we can compute the wall temperature needed for the force
+term in the boundary conditions for f i . We must supply two unknown ḡi at the corners of
+the cavity, and these are found by applying the conditions on the vertical and horizontal
+walls simultaneously. We note again that this method does not require constraints to be
+placed on the collision operator in order to satisfy hydrodynamic boundary conditions.
+
+
+5 Multiple relaxation times
+
+To improve accuracy and numerical stability one should use a multiple relaxation time
+(MRT) collision operator [12, 29, 30, 13]. The construction of the MRT scheme for f i
+presented here follows closely the model of Dellar [11], which forms an orthogonal basis
+in R9 by introducing the ghost moments
+             8
+             X                     8
+                                   X
+      N̄ =         Hi f i , J̄ =         Hi f i ci ,                                     (48)
+             i=0                   i=0
+10        R. Allen and T. Reis
+                                            T
+where Hi = (1, −2, −2, −2, −2, 4, 4, 4, 4) . The velocity distribution function f i can now
+be expressed in terms of the nine independent moments
+                                                          
+                                 9      ρ              1
+      f i = Wi ρ + 3ρu · ci +        Π − I : ci ci − I
+                                 2       3               3
+                                   
+                     1      3
+          + W i Hi     N̄ + ci · J̄ .                                                   (49)
+                     4      8
+                                                   (0)
+The equilibrium ghost moments are N (0) = Jα = 0, where α denotes the Cartesian
+components.
+    Each non–conserved moment is relaxed to equilibrium with its own collision time. In
+particular,
+                      ∆t               
+      Π̄0 = Π̄ −              Π̄ − Π(0) ,                                         (50)
+                  τν + ∆t/2
+                      ∆t                
+      N̄ 0 = N̄ −              N̄ − N (0) ,                                       (51)
+                  τN + ∆t/2
+         0            ∆t                
+      J̄ = J̄ −               J̄ − J (0) ,                                        (52)
+                  τJ + ∆t/2
+where the primes denote post–collisional moments. The general MRT algorithm with
+moment–based boundary conditions is summarised as follows:
+  1. construct the moments of f i ;
+  2. construct the equilibrium moments;
+  3. relax the non–conserved moments according to equations (50)–(51);
+  4. reconstruct the distribution function (49) using the post–collisional moments;
+  5. advect;
+  6. apply boundary conditions.
+    The moment–based boundary conditions discussed in Section 4 are free from numerical
+slip and allow us to choose the relaxation times for the ghost moments purely on the grounds
+of numerical stability. The numerical properties of the lattice Boltzmann algorithm are
+primarily controlled not by each individual relaxation time but by the product Λ = τν τJ
+[13]. One should determine τν according to the non–dimensional numbers that characterise
+the flow (here the Rayleigh and Prandtl numbers) and fix τJ according to Λ. The value
+Λ = 1/4 eliminates the recurrence of the non–equilibrium parts of the moments and gives
+the optimal stability [13]. Throughout this article we use Λ = 1/4 and τN = τν (that is, a
+two–relaxation–time model).
+    The multiple relaxation time model for ḡi is designed to minimise the numerical diffusion
+term in equation (29). We use the same model as Wang et al. [44] (but in terms of ḡi ) which
+constructs the moments
+                                                        
+                                 φ           1 1 1 1 1 ḡ0
+                                ¯  
+                              φu
+                              x   0 1 0 1 0 ḡ1 
+                                                           
+                                ¯  =  0 0 1 0 1 ḡ2 
+                              φu                                                         (53)
+                              y                         
+                             K̄xx  −4 1 1 1 1 ḡ3 
+                               K̄yy          0 1 −1 1 −1 ḡ4
+         Moment–based boundary conditions                                                     11
+with equilibria
+                                                        
+                                     φ, φux , φuy , Aφ, 0 .                                 (54)
+
+A Chapman–Enskog analysis shows that the diffusion coefficient is now a function of the
+parameter A as well as the relaxation time for the temperature flux, D = τD (4 + A)/10.
+Furthermore, to ensure
+                 √       that the numerical diffusion term is isotropic at fourth order, one
+should fix τD = 3/6 and adjust A according to √     the Rayleigh and Prandtl numbers. The
+relaxation times for the ghost moments are τK = 3/3 [44].
+
+
+6 Natural convection in a square cavity
+
+We study the benchmark problem of convection in a unit square cavity, as illustrated in
+Figure 3. The side walls have a fixed temperature and the top and bottom walls are insulated.
+All the walls are impermeable to fluid flow and are rigid, thus the no-slip boundary condition
+applies. To assess the accuracy of the proposed model we compute the volume averaged
+Nusselt number, the average Nusselt number along the hot wall, and the average Nusselt
+along the vertical centreline, which are defined to be
+              Z Z                       Z                           Z
+      Nu =          qx dydx, N u0 = qx dy|x=0 , N u1/2 = qx dy|x=1/2 ,                    (55)
+               x   y                      y                           y
+
+where qx is the heat flux in the horizontal direction. We also compute the maximum and
+minimum Nusselt number along the hot wall.
+    Tables 3 and 4 show the data obtained on successive meshes with M a = 0.017 and
+M a = 0.01 (corresponding to ∆t/∆x = 0.01 and 0.0058, respectively). In this section we
+study four different Rayleigh numbers, ranging from Ra = 1000 to Ra = 1000000. For a
+comparison with existing results in the literature we fixed the Prandtl number at P r = 0.71.
+The entries “/” indicate that no data was able to be obtained. For the Ra = 1000 case in
+Table 3, the inability to obtain data is believed to be the due to compressibility effects in the
+moment–method, where we must calculate ρ at the wall. For these Ra numbers, the only
+other time we could not obtain data was when Ra = 1000000 on a very coarse 17 × 17
+grid. The instability in this case is due to a negative value of the parameter A. Although
+some of the data obtained on the very coarse grids is clearly inaccurate, it is still interesting
+to note that the algorithm was stable and converged with such a large grid spacing, ∆x. A
+comparison of Tables 3 and 4 show us that the Mach number M a has little effect on the
+accuracy of the model at larger Ra (as also noted by Wang et al. [44]). The differences at
+smaller Ra are due to the residual compressibility (we note that the largest M a number
+used here is larger than that in Wang et al. [44]). The magnitude of these differences rapidly
+decreases when we lower the Mach number further.
+    The data given in Tables 3 and 4 show the expected increase of the Nusselt numbers
+with Rayleigh number. A similar trend is observed in Table 5, which gives the value of the
+streamfunction at the cavity midpoint and the maximum value of the streamfunction for
+different Ra numbers. These are identical for Ra = 1000 and Ra = 10000 but differ at
+larger Rayleigh numbers, as is to be expected. The numerical predictions discussed above
+are seen to converge with second order accuracy. This observation is confirmed by Table
+6, which shows the global L2 error norm for the velocity, pressure, and temperature. The
+global L2 error norm for velocity is defined to be
+12        R. Allen and T. Reis
+
+                                                             REF
+                                        P
+                                            i,j ||u(x) − u        (x)||2
+                            ||δu||2 =         P           REF
+                                                                                           (56)
+                                                  i,j ||u     (x)||2
+
+where uREF is the reference data obtained on the finest grid. The L2 error norms for pressure
+and temperature were computed in a similar way. The second order convergence rate shown
+in Table 6 for all flow fields confirms the consistency and robustness of our model.
+    Flow fields are plotted in Figure 4. The plots for the streamlines are coloured by the
+vertical component of velocity. Evidently, our lattice Boltzmann model is capturing the
+distinguishing flow patterns of natural convection in a cavity: at low Rayleigh numbers
+there is a dominant recirculating motion in the core region; and at higher Ra a prominent
+boundary layer develops along the wall. To assess the accuracy of the model we compare in
+Tables 7 and 8 our extrapolated results with benchmark data in the literature. An excellent
+agreement between the present and existing data sets is observed.
+
+
+7 Higher Rayleigh numbers
+
+We continue the verification of the lattice Boltzmann model with moment–based boundaries
+by considering flows with P r = 0.71 at Ra = 107 and 108 . Beyond this, the flow becomes
+unsteady in this configuration. Table 9 shows the Nusselt numbers at Ra = 107 and
+Ra = 108 . We were unable to obtain data on very coarse meshes and the smallest
+grid used was 65 × 65 for Ra = 107 and 257 × 257 for Ra = 108 . To enable us to
+conduct a mesh convergence study we simulated these flows in domains containing up
+to 10252 grid points. Our results are also compared with benchmark data. An excellent
+agreement is observed, especially with the highly accurate pseudo–spectral simulations of
+Le Quere [32]. We remind the reader that all data was obtained on uniform grids and no
+interpolation/extrapolation has been performed.
+     We present results for the streamfunction in Table 10 and plot the streamlines, isotherms,
+and pressure when Ra = 108 in Figure 5. Again, an excellent agreement with the pseudo–
+spectral data [32] is shown. The figures indicate a very thin boundary layer and little vertical
+motion far away from this in the bulk region. Convergence of the algorithm is observed in
+Table 11 to be second order, where the reference data is taken from a grid of size 10252
+lattice points.
+
+
+8 Convection in a partially heated cavity
+
+For a final study we consider natural convection inside an air–filled square cavity, partially
+heated from below and cooled from the left. The geometry is as Figure 3 but the left wall
+is cold (θ(0, y) = 0) and the right is perfectly insulated. The bottom wall is again adiabatic
+except in the region 1/2 − /2 ≤ x ≤ 1/2 + /2, where θ(x, 0) = 1 and  = 0.2. This flow
+is of relevance to the electronics industry and MEMS, where it is desirable to optimise the
+fluid circulation and cooling performance based on geometry in order the reduce the need
+for mechanical fans.
+    The flow fields are plotted in Figure 6. The background contours in the streamlines plot
+are coloured by the horizontal component of the velocity. The flow has a large roll-cell
+with a primary vortex region near the centre of the cavity and smaller internal vorticies
+         Moment–based boundary conditions                                                   13
+                                                                     R1
+off-centre. Table 12 shows the computed Nusselt number N uc = 0 ∂x φ|x=0 dy along the
+cold wall and the maximum value of both components of velocity for different mesh sizes.
+For comparison we also show the results obtained by Cianfrini et al. [8] on their finest
+mesh using a finite difference method. Once again, the lattice Boltzmann predictions are
+in good agreement with existing results. However, the difference between the two data sets
+is larger than in Section 6 and a few comments are in order. Firstly we should note that
+the percentage difference between our predictions on successive meshes is monotonically
+decreasing, whereas the grid sensitivity analysis in Cianfrini et al. [8] shows some non–
+monotonic behaviour. We would thus argue that our model is numerically robust to mesh
+refinements. Table 12 also shows that the maximum values of velocity converge with second
+order accuracy in space but the Nusselt number is converging with only first order. This
+is confirmed in Table 13 which gives the relative L2 error for the velocity, pressure, and
+temperature. One can see that the global velocity error is decreasing like O(∆x2 ), but the
+temperature like O(∆x). We are of the opinion that this decrease in accuracy of the φ is
+due to a lower order approximation of the temperature flux along the bottom wall, which
+is possibly enhanced by an insufficient initialisation procedure. This small but interesting
+anomaly is a topic for future research.
+
+
+9 Conclusion
+
+Boundary conditions for the lattice Boltzmann equation are most commonly applied using
+the bounce–back method. Despite its simplicity, bounce–back introduces a spurious slip
+velocity of order O(∆x2 ) [16, 24]. To minimise this error without excessive mesh resolution,
+one must adjust the relaxation time of the third order moment according to the ‘magic
+parameter’ [16]. If this relationship between the relaxation times for the second and third
+order moments is satisfied, the lattice Boltzmann method can accurately simulate flow
+phenomena, including natural convection [44]. However, the need to eliminate the numerical
+slip associated with bounce–back places a restriction on the collision operator. In particular,
+the value of the magic parameter Λ = 3/16 is not necessarily optimal in terms of numerical
+stability [13]. Furthermore, hydrodynamic boundary conditions more complicated than no–
+slip are not easily satisfied by bounce–back and its variants.
+     We have presented an application of moment–based boundary conditions for the lattice
+Boltzmann equation for natural convection up to a Rayleigh number of Ra = 108 . The
+moment–method was originally proposed by Bennett [4] and may be viewed as an extension
+and generalisation of Noble’s method for hexagonal lattices [38]. Unlike all existing lattice
+Boltzmann boundary conditions, the moment–method is formulated purely in terms of
+hydrodynamic variables at grid points. The constrained moments at the wall are solved in
+terms of the unknown (incoming) discrete velocity distribution functions. The moment–
+method does not compromise the locality nor the order of accuracy of the lattice Boltzmann
+equation and allows us to evaluate flow variables precisely at grid points. There is no
+numerical slip error in the moment–method.
+     The method has been applied to the two distribution functions for a thermal MRT
+lattice Boltzmann model. The ghost relaxation times have been chosen in accordance
+with numerical stability analysis [13] and not to satisfy the no–slip condition. We have
+evaluated the model for natural convection in square cavities and assessed its accuracy.
+Our results for the Nusselt numbers and the streamfunction are in excellent agreement with
+benchmark data for all tested Rayleigh numbers. The algorithm is numerically stable on
+14         R. Allen and T. Reis
+coarse meshes and has been shown to converge with second order accuracy. As a first step
+towards solving industrially–relevant convection problems, we have also shown how easily
+the moment–method can be applied to partially heated convection problems. Our numerical
+investigation has shown that the moment–method can be a viable alternative to bounce–
+back for thermal flows in planar geometries, offering the possibility to incorporate more
+complicated boundary conditions into the lattice Boltzmann framework.
+
+
+Acknowledgments
+
+R. Allen gratefully acknowledges the support of the university research fund from King
+Abdullah University of Science and Technology. This research was partially supported by
+Award No. KUK-C1-013-04 made by King Abdullah University of Science and Technology
+(KAUST). Support is acknowledged from the UK Consortium on Mesoscopic Engineering
+Sciences (UKCOMES) under EPSRC Grant No. EP/L00030X/1
+
+
+References
+
+ [1] C K. Aidun and J. R. Clausen. Lattice-Boltzmann Method for Complex Flows. Annual Review
+     of Fluid Mechanics, 42(1):439–472, 2010.
+ [2] F. J. Alexander, S. Chen, and J. D. Sterling. Lattice Boltzmann Thermohydrodynamics. Physical
+     Review E, 47(4):2249–2252, 1993.
+ [3] A. Bartoloni, C. Battista, S. Cabasino, P.S. Paolucci, J. Pech, R. Sarno, G.M. Todesco, M. Torelli,
+     W. Tross, and P. Vicini. LBE simulations of Rayleigh-Benard convection on the APE100 parallel
+     processor. International Journal of Modern Physics C, 4(5):993–1006, 1993.
+ [4] S. Bennett. A Lattice Boltzmann Model for Diffusion of Binary Gas Mixtures. PhD thesis,
+     University of Cambridge, 2010.
+ [5] S. Chapman and T.G. Cowling. The mathematical theory of non-uniform gases. Cambridge
+     University Press, 1939.
+ [6] S. Chen and G. D. Doolen. Lattice Boltzmann Method for fluid flows. Annual review of fluid
+     mechanics, 30(1):329–364, 1998.
+ [7] S-K Choi and S-O Kim. Comparative Analysis of Thermal Models in the Lattice Boltzmann
+     Method for the Simulation of Natural Convection in a Square Cavity. Numerical Heat Transfer,
+     Part B: Fundamentals, 60(2):135–145, 2011.
+ [8] C. Cianfrini, M. Corcione, E. Habib, and A. Quintino. Convective Transport in Rectangular
+     Cavities Partially Heated at the Bottom and Cooled at One Side. Journal of Thermal Science,
+     22(01):55–63, 2013.
+ [9] R. M. Clever and F. H. Busse. Transition to time-dependent convection. Journal of Fluid
+     Mechanics, 65(04):625–645, 1974.
+[10] G. de Vahl Davis. Natural convection of air in a square cavity: a benchmark numerical solution.
+     International Journal for Numerical Methods in Fluids, 3:249–264, 1983.
+[11] P. J. Dellar. Incompressible limits of lattice Boltzmann equations using multiple relaxation times.
+     Journal of Computational Physics, 190(2):351–370, 2003.
+[12] D. d’Humières. Generalized lattice Boltzmann equations. Progress in Aeronautics and
+     Astronautics, 159:450–458, 1992.
+[13] D. d’Humières and I. Ginzburg. Viscosity independent numerical errors for Lattice Boltzmann
+     models: From recurrence equations to “magic” collision numbers. Computers and Mathematics
+     with Applications, 58:823–840, 2009.
+          Moment–based boundary conditions                                                        15
+[14] H.N. Dixit and V. Babu. Simulation of high Rayleigh number natural convection in a square
+     cavity using the lattice Boltzmann method. International Journal of Heat and Mass Transfer,
+     49(3):727–739, 2006.
+[15] J. G. M. Eggels and J. A. Somers. Numerical simulation of free convective flow using the
+     lattice-Boltzmann scheme. International Journal of Heat and Fluid Flow, 16(5):357–364, 1995.
+[16] I. Ginzbourg and M. P. Adler. Boundary flow condition analysis for the three-dimensional lattice
+     Boltzmann model. Journal de Physique II, 4:191–214, 1994.
+[17] Z. Guo, B. Shi, and C. Zheng. A coupled lattice BGK model for the Boussinesq equations.
+     International Journal for Numerical Methods in Fluids, 39(4):325–342, 2002.
+[18] Z. Guo, C. Zheng, B. Shi, and T. Zhao. Thermal lattice Boltzmann equation for low Mach
+     number flows: Decoupling model. Physical Review E, 75(3):036704–1–036704–15, 2007.
+[19] X. He, S. Chen, and G. D. Doolen. A Novel Thermal Model for the Lattice Boltzmann Method
+     in Incompressible Limit. Journal of Computational Physics, 146(1):282–300, 1998.
+[20] X. He and L-S. Luo. Lattice Boltzmann Model for the Incompressible NavierâŁ“Stokes Equation.
+     Journal of Statistical Physics, 88(3/4):927–944, 1997.
+[21] X. He and L-S. Luo. Theory of the lattice Boltzmann method: From the Boltzmann equation to
+     the lattice Boltzmann equation. Physical Review E, 56:6811–6817, 1997.
+[22] X. He, L-S. Luo, and M. Dembo. Some Progress in Lattice Boltzmann Method. Part I.
+     Nonuniform Mesh Grids. Journal of Computational Physics, 129(2):357–363, 1996.
+[23] X. He, X. Shan, and G. Doolen. Discrete Boltzmann equation model for nonideal gases. Physical
+     Review E, 57(1):13–16, 1998.
+[24] X. He, Q. Zou, L-S. Luo, and M. Dembo. Analytic Solutions of Simple Flows and Analysis
+     of Nonslip Boundary Conditions for the Lattice Boltzmann BGK Model. Journal of Statistical
+     Physics, 87:115–136, 1997.
+[25] R. A. W. M. Henkes and C. J. Hoogendoorn. Scaling of the laminar natural-convection flow in
+     a heated square cavity. International Journal of Heat and Mass Transfer, 36(11):2913–2925,
+     1993.
+[26] M. Hortmann, M. Peric, and G. Scheuerer. Finite volume multigrid prediction of laminar natural
+     convection: benchmark solutions. International Journal for Numerical Methods in Fluids,
+     11:189–207, 1990.
+[27] T. Inamuro, M. Yoshino, and F. Ogino. A non-slip boundary condition for lattice Boltzmann
+     simulations. Physics of Fluids, 7(12):2928–2930, 1995.
+[28] S-J. Kim, F. Wang, M. Burns, and K. Kurabayashi. Temperature–Programmed Natural
+     Convection for Micromixing and Biochemical Reaction in a Single Microfluidic Chamber.
+     Analytical Chemistry, 11(81):4510–4516, 2009.
+[29] A.J.C. Ladd. Numerical simulations of particulate suspensions via a discretized Boltzmann
+     equation. Part 1. Theoretical foundation. Journal of Fluid Mechanics, 271:258–309, 1994.
+[30] P. Lallemand and L-S. Luo. Theory of the lattice Boltzmann method: Dispersion, dissipation,
+     isotropy, Galilean invariance, and stability. Physical Review E, 61:6546–6562, 2000.
+[31] P. Lallemand and L-S. Luo. Hybrid Finite-Difference Thermal Lattice Boltzmann Equation.
+     International Journal of Modern Physics B, 17(1-2):41–47, 2003.
+[32] P. Le Quere. Accurate solutions to the square thermally driven cavity at high Rayleigh number.
+     Computers & Fluids, 20(1):29–41, 1991.
+[33] Q. Li, K. H. Luo, Y. L. He, Y. J. Gao, and W. Q. Tao. Coupling lattice Boltzmann model for
+     simulation of thermal flows on standard lattices. Physical Review E, 85(1):016710, 2012.
+[34] L-S. Luo. Unified Theory of Lattice Boltzmann Models for Nonideal Gases. Physical Review
+     Letters, 81:1618–1621, 1998.
+[35] N.C. Markatos and K.A. Pericleous. Laminar and turbulent natural convection in an enclosed
+     cavity. International Journal of Heat and Mass Transfer, 27(5):755–772, 1984.
+16         R. Allen and T. Reis
+[36] G. R. McNamara, A. L. Garcia, and B. J. Alder. Stabilization of thermal lattice Boltzmann
+     models. Journal of Statistical Physics, 81(1-2):395–408, 1995.
+[37] A. Mezrhab, M. Bouzidi, and P. Lallemand. Hybrid lattice-Boltzmann finite-difference
+     simulation of convective flows. Computers & Fluids, 33(4):623–641, 2004.
+[38] D. R. Noble, S. Chen, J. N. Chen, J. H. Georgiadis, and R. O Buckius. A consistent hydrodynamic
+     boundary condition for the lattice Boltzmann method. Physics of Fluids, 7:203–209, 1995.
+[39] Y.H. Qian, D. d’Humières, and P. Lallemand. Lattice BGK Models for Navier-Stokes Equation.
+     Europhysics Letters, 17:479–484, 1992.
+[40] T Reis and P.J. Dellar. Lattice Boltzmann simulations of pressure-driven flows in microchannels
+     using Navier–Maxwell slip boundary conditions. Physics of Fluids, 24(11):112001, 2012.
+[41] X. Shan. Simulation of Rayleigh-Benard convection using a lattice Boltzmann method. Physical
+     Review E, 55(3):2780–2788, 1997.
+[42] J. M. Wallace and P. V. Hobbs. Atmospheric science: an introductory survey. Academic press,
+     second edition, 2006.
+[43] D.C. Wan, B.S.V. Patnaik, and G.W. Wei. A new benchmark quality solution for the buoyancy–
+     driven cavity by discrete singular convection. Numerical Heat Transfer Part B, 40:199–228,
+     2001.
+[44] J Wang, D Wang, P Lallemand, and L-S Luo. Lattice Boltzmann simulations of thermal
+     convective flows in two dimensions. Computers & Mathematics with Applications, 65(2):262–
+     286, 2013.
+[45] D. Yu, R. Mei, L-S. Luo, and W. Shyy. Viscous flow computations with the method of lattice
+     Boltzmann equation. Progress in Aerospace Sciences, 39(5):329–367, 2003.
+         Moment–based boundary conditions                                                      17
+
+
+
+
+Figure 1 The D2Q9 lattice. The D2Q5 lattice does not have the diagonal links. Figure adapted
+         from [40].
+
+
+
+
+Figure 2 Unknown (incoming) distributions at a south wall (left) and a southwest corner (right).
+
+
+
+
+Figure 3 Geometry and boundary conditions for square cavity problem.
+18        R. Allen and T. Reis
+
+
+
+
+                                             (a) Streamlines
+
+
+
+
+                                              (b) Isotherms
+
+
+
+
+                                              (c) Pressure
+Figure 4 Contours of flow fields for convection in a square cavity. From left to right, Ra = 1000,
+         Ra = 10000, Ra = 100000, Ra = 1000000.
+
+
+
+
+             (a) Streamlines               (b) Isotherms                 (c) Pressure
+Figure 5 Contours of flow fields for convection in a square cavity at Ra = 108 .
+          Moment–based boundary conditions                                             19
+
+
+
+
+               (a) Streamlines              (b) Isotherms               (c) Pressure
+Figure 6 Contours of flow fields for convection in a partially heated cavity.
+20        R. Allen and T. Reis
+
+                               Combination of unknowns        Combination of unknowns
+           Moments
+                                  at South boundary              at North boundary
+        ρ, ρūy , Π̄yy               f2 + f5 + f6                   f4 + f7 + f8
+      ρūx , Π̄xy , Q̄xyy               f5 − f6                        f7 − f8
+     Π̄xx , Q̄xxy , S̄xxyy              f5 + f6                        f7 + f8
+Table 1 Moment groups for a south and north boundary
+
+
+
+
+                               Combination of unknowns        Combination of unknowns
+           Moments
+                                  at East boundary               at West boundary
+        ρ, ρūx , Π̄xx             f3 + f6 + f7                    f1 + f5 + f8
+      ρūy , Π̄xy , Q̄xxy             f6 − f7                         f5 − f8
+     Π̄yy , Q̄xyy , S̄xxyy            f6 + f7                         f5 + f8
+Table 2 Moment groups for an east and west boundary
+
+
+
+
+       Ra     Nx × Ny        Nu         N u0       N u1/2       N umax        N umin
+              17×17          1.11472    1.11814    1.20071      1.61093       0.59740
+              33×33          1.11696    1.11754    1.11837      1.53025       0.66910
+              65×65          1.11757    1.11766    1.11793      1.60973       0.68610
+       103
+              129×129        1.11773    1.11774    1.11783      1.50716       0.68991
+              257×257        1.11777    1.11778    1.11780      1.50650       0.69089
+              513×513        /          /          /            /             /
+              17×17          2.24086    2.29969    2.24927      4.11321       -0.02887
+              33×33          2.24303    2.25693    2.24603      3.65732       0.44114
+              65×65          2.24426    2.24641    2.24512      3.56119       0.55175
+       104
+              129×129        2.24466    2.24495    2.24488      3.53808       0.57697
+              257×257        2.24476    2.24481    2.24480      3.53276       0.58286
+              513×513        2.24479    2.24481    2.24479      3.53148       0.58435
+              17×17          4.51430    4.66560    4.46220      8.71591       4.72630
+              33×33          4.52752    4.65051    4.51964      8.96233       0.27732
+              65×65          4.52250    4.54914    4.52166      8.01192       0.49053
+       105
+              129×129        4.52178    4.52575    4.52168      7.79032       0.67206
+              257×257        4.52165    4.52216    4.52163      7.73639       0.71423
+              513×513        4.52163    4.52172    4.52163      7.72402       0.72429
+              17×17          /          /          /            /             /
+              33×33          8.90696    9.30568    8.86264      18.98663      -9.05280
+              65×65          8.85030    9.07902    8.84397      20.33165      -0.65955
+       106
+              129×129        8.83097    8.87856    8.83037      18.28118      0.58184
+              257×257        8.82651    8.83367    8.82641      17.71768      0.88363
+              513×513        8.82539    8.82646    8.825289     17.57820      0.95559
+
+Table 3 Nusselt numbers for convection in a cavity with P r = 0.71 and M a = 0.017. ‘/’ denotes
+        no data could be obtained.
+         Moment–based boundary conditions                                                    21
+
+       Ra     Nx × Ny       Nu          N u0         N u1/2      N umax       N umin
+              17×17         1.11475     1.11817      1.12009     1.61096      0.68996
+              33×33         1.11695     1.11755      1.11830     1.53030      0.66940
+              65×65         1.11758     1.11766      1.11793     1.50971      0.68633
+       103
+              129×129       1.11774     1.11775      1.11782     1.50717      0.69004
+              257×257       1.11778     1.11778      1.11778     1.50652      0.69091
+              513×513       1.11779     1.11779      1.11779     1.50636      0.69116
+              17×17         2.24098     2.29983      2.24937     4.11339      -0.02687
+              33×33         2.24307     2.25699      2.24607     3.65742      0.44218
+              65×65         2.24427     2.24642      2.24513     3.56119      0.55228
+       104
+              129×129       2.24466     2.244967     2.24487     3.53808      0.57725
+              257×257       2.24477     2.24482      2.24481     3.53276      0.58301
+              513×513       2.24480     2.24482      2.24480     3.53148      0.58443
+              17×17         4.51470     4.6661       4.46250     8.71631      -4.4723
+              33×33         4.52764     4.65068      4.51976     8.96268      0.28395
+              65×65         4.52226     4.54914      4.52173     8.01197      0.4549
+       105
+              129×129       4.52179     4.52578      4.52168     7.79034      0.67295
+              257×257       4.52166     4.52220      4.52165     7.73640      0.71469
+              513×513       4.52164     4.52171      4.52164     7.72402      0.72451
+              17x17         /           /            /           /            /
+              33×33         8.90735     9.30616      8.86301     18.9873      -9.03869
+              65×65         8.85041     9.07916      8.84407     20.33220     -0.65411
+       106
+              129×129       8.83108     8.87860      8.83049     18.28123     0.58460
+              257×257       8.82667     8.83368      8.82668     17.71770     0.88506
+              513×513       8.82570     8.82646      8.82583     17.57820     0.95634
+
+Table 4 Nusselt numbers for convection in a cavity with P r = 0.71 and M a = 0.01. ‘/’ denotes
+        no data could be obtained. ‘/’ denotes no data was obtained.
+22        R. Allen and T. Reis
+
+                           Ra      Nx × Ny      |Ψmid |     |Ψmax |
+                                   17×17        1.1530      1.1530
+                                   33×33        1.1692      1.1692
+                                   65×65        1.1733      1.1733
+                           103
+                                   129×129      1.1743      1.1743
+                                   257×257      1.1746      1.1746
+                                   513×513      1.1746      1.1746
+                                   17×17        5.0093      5.0093
+                                   33×33        5.0569      5.0569
+                                   65×65        5.0694      5.0694
+                           104
+                                   129×129      5.0726      5.0726
+                                   257×257      5.0734      5.0734
+                                   513×513      5.0736      5.0736
+                                   17×17        8.9901      9.5510
+                                   33×33        9.0504      9.5770
+                                   65×65        9.0983      9.6044
+                           105
+                                   129×129      9.1113      9.6139
+                                   257×257      9.1145      9.6162
+                                   513×513      9.1153      9.6167
+                                   17×17        /           /
+                                   33×33        16.2595     16.6078
+                                   65×65        16.3197     16.7071
+                           106
+                                   129×129      16.3692     16.7839
+                                   257×257      16.3824     16.8038
+                                   513×513      16.3860     16.8098
+
+Table 5 The value of the streamfunction at the cavity midpoint and the maximum value of the
+        streamfunction for convection in a cavity. P r = 0.71, M a = 0.01. ‘/’ denotes no data
+        was obtained.
+         Moment–based boundary conditions                                                    23
+
+      Ra            103                104                105                106
+      Nx × Ny                          ||∂u||2
+      17×17         3.8378×10−3        9.1547×10−3        5.0138×10−2        /
+      33×33         9.9338×10−4        2.2051×10−3        1.0162×10−2        6.9697×10−2
+      65×65         2.4786×10−4        5.4122×10−4        2.4145×10−3        1.5226×10−2
+      129×129       5.9270×10−5        1.2735×10−4        5.7055×10−4        3.5222×10−3
+      257×257       1.0565×10−5        2.4951×10−5        1.1394×10−4        6.9953×10−4
+                                       ||∂p||2
+      17×17         1.9747×10−4        2.8808×10−4        5.6873×10−4        /
+      33×33         2.3928×10−5        5.4801×10−5        1.2527×10−4        2.3457×10−4
+      65×65         4.5027×10−6        1.0606×10−5        2.4002×10−5        5.4268×10−5
+      129×129       1.5225×10−6        2.2072×10−6        6.6312×10−6        1.2545×10−5
+      257×257       1.3833×10−7        4.1803×10−7        1.3608×10−6        2.3763×10−6
+                                       ||∂φ||2
+      17×17         5.7971×10−3        1.9711×10−2        5.5311×10−2        /
+      33×33         1.4877×10−3        5.1686×10−3        1.3157×10−2        4.1906×10−2
+      65×65         3.7060×10−4        1.2948×10−3        3.3174×10−3        9.9381×10−3
+      129×129       8.8551×10−5        3.0982×10−4        7.9399×10−4        2.3559×10−3
+      257×257       1.7869×10−5        6.2417×10−5        1.5892×10−4        4.7023×10−4
+
+Table 6 L2 error norms for velocity, pressure, and temperature for convection in a cavity.
+        P r = 0.71 and M a = 0.01. ‘/’ denotes no data was obtained.
+24         R. Allen and T. Reis
+
+     Ra     Study                    Nu          N u0       N u1/2    N umax      N umin
+            Present                  1.1178      1.1178     1.1178    1.5063      0.6914
+            Wang et al. [44]         1.1178      1.1178     1.1178    1.5063      0.6912
+     103    de Vahl Davis [10]       1.118       1.117      1.118     1.505       0.692
+            Guo et al. [17]          -           1.1168     -         1.5004      -
+            Dixit and Babu [14]      1.121       1.1272     1.118     -           -
+            Present                  2.2448      2.2448     2.2448    3.5302      0.5856
+            Wang et al. [44]         2.2448      2.2448     2.2448    3.5310      0.5849
+            de Vahl Davis [10]       2.243       2.238      2.243     3.528       0.586
+     104
+            Hortmann et al. [26]     2.24475     -          -         3.53087     -
+            Guo et al. [17]          -           2.2477     -         3.5715      -
+            Dixit and Babu [14]      2.286       2.247      2.256     -           -
+            Present                  4.5216      4.5212     4.5216    7.7116      0.7343
+            Wang et al. [44]         4.5216      4.5214     4.5216    7.7161      0.7279
+            Mezrab et al. [37]       4.521       -          -         -           -
+     105    de Vahl Davis [10]       4.519       4.509      4.519     7.717       0.729
+            Hortmann et al. [26]     4.52164     -          -         7.72013     -
+            Guo et al. [17]          -           4.5345     -         7.7951      -
+            Dixit and Babu [14]      4.5463      4.5226     4.519     -           -
+            Present                  8.8249      8.8192     8.8250    17.4387     0.9895
+            Wang et al. [44]         8.8253      8.8192     8.8254    17.5274     0.9769
+            Le Quere [32]            8.8252      -          8.8252    17.5360     0.97946
+            Mezrab et al. [37]       8.824       -          -         -           -
+     106
+            de Vahl Davis [10]       8.800       8.817      8.799     17.925      0.989
+            Hortmann et al. [26]     8.82513     -          -         17.536      -
+            Guo et al. [17]          -           8.7775     -         17.4836     -
+            Dixit and Babu [14]      8.652       8.805      8.5074    -           -
+
+Table 7 Comparison of Nusselt number results from different studies on square cavity convection.
+         Moment–based boundary conditions                                                     25
+
+                      Ra      Method                 |Ψmid |     |Ψmax |
+                              Present                1.1746      1.1746
+                      103     Wang et al. [44]       1.1746      1.1746
+                              de Vahl Davis [10]     1.174       1.174
+                              Present                5.0738      5.0738
+                      104     Wang et al. [44]       5.0737      5.0737
+                              de Vahl Davis [10]     5.0737      5.0737
+                              Present                9.1161      9.6721
+                      105     Wang et al. [44]       9.1157      9.6179
+                              de Vahl Davis [10]     9.111       9.612
+                              Present                16.3890     16.8158
+                              Wang et al. [44]       16.3868     16.8149
+                      106
+                              Le Quere [32]          16.3864     16.8111
+                              de Vahl Davis [10]     16.32       16.750
+
+Table 8 Comparison of streamfunction results from different studies on square cavity convection.
+
+
+
+
+ Ra     Nx × Ny                  Nu            N u0         N u1/2       N umax        N umin
+        65×65                    16.88755      17.57645     16.87737     43.79111      -2.32421
+        129×129                  16.60153      16.98110     16.59980     49.16712      -1.77141
+        257×257                  16.54184      16.62034     16.54164     43.33952      0.48276
+ 107    513×513                  16.52771      16.53985     16.52770     40.34342      1.41714
+        1025×1025                16.52496      16.52570     16.52546     39.62226      1.31032
+        Le Quere [32]            16.523        -            16.523       39.3947       1.36635
+        Dixit and Babu [14]      16.79         -            -            -             -
+        257×257                  30.37062      30.96480     30.36674     108.6155      -0.34501
+        513×513                  30.25930      30.37972     30.25897     97.25299      0.77426
+ 108    1025×1025                30.23339      30.25111     30.23347     89.68699      1.59352
+        Le Quere [32]            30.225        -            30.225       87.2355       1.91907
+        Dixit and Babu [14]      30.506        -            -            -             -
+
+Table 9 Nusselt numbers for convection in a cavity with P r = 0.71 and M a = 0.01.
+26         R. Allen and T. Reis
+
+                        Ra      Nx × Ny              |Ψmid |     |Ψmax |
+                                65×65                29.5343     30.1304
+                                129×129              29.3386     30.0820
+                                257×257              29.3541     30.1409
+                        107     513×513              29.3597     30.1583
+                                1025×1025            29.3639     30.1631
+                                Le Quere [32]        29.36       30.16
+                                Wang et.al. [43]     28.23       -
+                                257×257              52.2887     53.6390
+                                513×513              52.3133     53.7997
+                        108     1025×1025            52.3208     53.8352
+                                Le Quere [32]        52.2322     53.8475
+                                Wang et.al. [43]     50.81       -
+
+Table 10 The value of the streamfunction at the cavity midpoint and the maximum value of the
+         streamfunction for convection in a cavity. P r = 0.71, M a = 0.01.
+
+
+
+
+                    Ra            107                          108
+                    Nx × Ny                         ||∂u||2
+                    65×65         1.4522×10−1                  /
+                    129×129       4.0732×10−2                  /
+                    257×257       9.9766×10−3                  8.6717×10−2
+                    513×513       2.0087×10−3                  2.1006×10−2
+                                                    ||∂p||2
+                    65×65         1.1701×10−4                  /
+                    129×129       2.5446×10−5                  /
+                    257×257       5.7786×10−6                  9.5022×10−6
+                    513×513       1.1096×10−6                  1.8056×10−6
+                                                    ||∂φ||2
+                    65×65         7.6525×10−2                  /
+                    129×129       1.7937×10−2                  /
+                    257×257       4.2262×10−3                  1.5639×10−2
+                    513×513       8.4280×10−4                  3.1467×10−3
+
+Table 11 L2 error norms for velocity, pressure, and temperature for convection in a cavity at high
+         Rayleigh numbers. The reference solution is the results obtained on a 10252 mesh. ‘/’
+         denotes no data was obtained.
+          Moment–based boundary conditions                                                           27
+
+                       Nx × Ny                  N uc       Umax        Vmax
+                       21×21                    4.0676     268.32      307.67
+                       41×41                    3.9527     216.97      294.42
+                       81×81                    3.8656     201.57      287.11
+                       161×161                  3.8219     197.14      284.74
+                       321×321                  3.8041     195.81      284.13
+                       641×641                  3.7958     195.48      283.981
+                       Cianfrini et al. [8]     3.726      194.40      281.27
+
+Table 12 Average Nusselt number along the cold wall and maximum values for the velocity in a
+         partially heated cavity. The table also shows the dependency of the results on the mesh,
+         and a comparison with the finite difference results of Cianfrini et al. on their finest grid.
+         P r = 0.71, Ra = 1000000 and M a = 0.017.
+
+
+
+
+                   Nx × Ny       ||∂u||2            ||∂p||2           ||∂φ||2
+                   21×21         3.538×10−1         2.008×10−2        8.974×10−2
+                   41×41         8.177×10−2         3.037×10−3        3.510×10−2
+                   81×81         2.192×10−2         3.728×10−4        1.687×10−2
+                   161×161       6.451×10−3         7.144×10−5        7.645×10−3
+                   321×321       1.720×10−3         2.676×10−5        2.606×10−3
+
+Table 13 L2 error norms of velocity, pressure, and temperature in a partially heated cavity.
+

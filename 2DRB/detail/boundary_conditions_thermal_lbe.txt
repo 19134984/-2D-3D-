@@ -1,0 +1,1647 @@
+                                                  Journal of Computational Physics 237 (2013) 366–395
+
+
+
+                                               Contents lists available at SciVerse ScienceDirect
+
+
+                                         Journal of Computational Physics
+                                        journal homepage: www.elsevier.com/locate/jcp
+
+
+
+
+Boundary conditions for thermal lattice Boltzmann equation
+method
+Like Li, Renwei Mei ⇑, James F. Klausner
+Department of Mechanical and Aerospace Engineering, University of Florida, Gainesville, FL 32611-6250, United States
+
+
+
+
+a r t i c l e        i n f o                         a b s t r a c t
+
+Article history:                                     We propose a thermal boundary condition treatment based on the ‘‘bounce-back’’ idea and
+Received 15 May 2012                                 interpolation of the distribution functions for both the Dirichlet and Neumann (normal
+Received in revised form 5 October 2012              derivative) conditions in the thermal lattice Boltzmann equation (TLBE) method. The coef-
+Accepted 27 November 2012
+                                                     ﬁcients for the distribution functions involved are determined to satisfy the Dirichlet or
+Available online 14 December 2012
+                                                     Neumann condition with second-order accuracy. For the Dirichlet condition there is an
+                                                     adjustable parameter in the treatment and three particular schemes are selected for dem-
+Keywords:
+                                                     onstration, while for the Neumann condition the second-order accurate scheme is unique.
+Lattice Boltzmann equation (LBE)
+Convection–diffusion equation
+                                                     When applied to inclined or curved boundaries, the Dirichlet condition treatment can be
+Dirichlet boundary condition                         directly used, while the Neumann condition given in the normal direction of the boundary
+Neumann boundary condition                           should be converted into derivative conditions in the discrete velocity directions of the
+Curved-boundary                                      TLBE model. A spatially coupled formula relating the boundary temperature, boundary nor-
+                                                     mal heat ﬂux, and the distribution functions near the boundary is thus derived for the Neu-
+                                                     mann problems on curved boundaries. The applicability and accuracy of the present
+                                                     boundary treatments are examined with several numerical tests for which analytical solu-
+                                                     tions are available, including the 2-dimensional (2-D) steady-state channel ﬂow, the 1-D
+                                                     transient heat conduction in an inclined semi-inﬁnite solid, the 2-D steady-state and tran-
+                                                     sient heat conduction inside a circle and the 3-D steady-state circular pipe ﬂow. While the
+                                                     Dirichlet condition treatment leads to second-order accuracy for the temperature ﬁeld, it
+                                                     only gives a ﬁrst-order accurate boundary heat ﬂux because of the irregularity of the cuts
+                                                     by the curved boundary with the lattices. With the Neumann condition on the curved
+                                                     boundary, the accuracy for the temperature ﬁeld obtained is ﬁrst-order. When the tangen-
+                                                     tial temperature gradient on the boundary is decoupled, second-order convergence of the
+                                                     temperature ﬁeld can be obtained with Neumann conditions.
+                                                                                                         Ó 2012 Elsevier Inc. All rights reserved.
+
+
+
+
+1. Introduction
+
+   The lattice Boltzmann equation (LBE) method has become an attractive alternative numerical method for ﬂuid dynamics
+simulations because it is explicit in formulation, easy to implement and compatible with parallelization compared with the
+solvers for the Navier–Stokes equations. It has been successfully applied in a variety of ﬂuid ﬂow problems [1–4] and has
+been extended to complex ﬂows, such as multi-phase and multi-component ﬂows [5–9], turbulent ﬂows [9–11], micro-ﬂows
+[9,12], and ﬂows through porous media [13,14].
+   The LBE method simulates the particle interactions on a discrete phase space with a speciﬁc set of discrete velocities, and
+the particle dynamics is represented by the particle distribution functions (also called particle density distribution function
+
+
+ ⇑ Corresponding author. Tel.: +1 352 392 0888; fax: +1 352 392 1071.
+    E-mail addresses: likelichina@uﬂ.edu (L. Li), rwmei@uﬂ.edu (R. Mei), klaus@uﬂ.edu (J.F. Klausner).
+
+0021-9991/$ - see front matter Ó 2012 Elsevier Inc. All rights reserved.
+http://dx.doi.org/10.1016/j.jcp.2012.11.027
+                                      L. Li et al. / Journal of Computational Physics 237 (2013) 366–395                     367
+
+
+or particle velocity distribution function). The velocity distribution functions of the particles are governed by the LBE, from
+which the macroscopic Navier–Stokes equations can be recovered. Particle collision in the LBE method is approximated by a
+relaxation process toward the equilibrium state of the particle distributions. There are basically two collision models for the
+LBE methods: the ﬁrst and most commonly used single-relaxation-time (SRT), or the Bhatnagar–Gross–Krook (BGK) model
+[1,15] based on the work in [16]; and the multiple-relaxation-time (MRT), also known as the moment model [17–19]. The
+MRT–LBE model overcomes some obvious defects of the BGK model such as ﬁxed Prandtl number and ﬁxed ratio between
+the kinematic and bulk viscosities [18] and shows better numerical stability [19] and reduced numerical dispersion [4].
+    Because of the advantages of the LBE method, there have been continuous interest and effort in developing thermal LBE
+(TLBE) models for thermal transport problems [20–28]. In general, the existing TLBE models fall into four categories: the pas-
+sive scalar approach, the multispeed approach, the hybrid approach, and the double-population distribution function (DDF)
+approach.
+    In the passive-scalar-based TLBE model, temperature is considered as a passive scalar that is advected by the velocity ﬁeld
+and satisﬁes the convection–diffusion equation [21]. The main shortcoming of this model is that the temperature ﬁeld is dri-
+ven by the ﬂow velocity, while the temperature does not affect the ﬂow ﬁeld. The multispeed approach is a direct extension
+of the athermal LBE model so that only the velocity distribution function is used. In order to obtain the macroscopic tem-
+perature, additional discrete speeds and higher-order velocity expansion for the Maxwell–Boltzmann equilibrium distribu-
+tion are required [22]. In the hybrid approach, the mass and momentum conservation equations are solved with the
+athermal LBE model, whereas the advection–diffusion equation for the temperature is solved separately by using the ﬁ-
+nite-difference method or other conventional numerical techniques [23]. The DDF approach utilizes two different distribu-
+tion functions, one for the velocity ﬁeld and the other one for the temperature or energy distributions. With this approach,
+the interaction between the ﬂow ﬁelds (density and velocity) and the temperature ﬁeld can be properly accounted for. Based
+on the methods for deﬁning the temperature distribution functions, the DDF approach can be further classiﬁed into two sub-
+groups. The ﬁrst derives the temperature distribution function from the continuous Boltzmann equation as that in athermal
+LBE models. Thus these two sets of distribution functions are explicitly coupled in the thermal LBE. For example, He et al.
+[24] used an internal-energy-based distribution function and Guo et al. [25] used a total-energy-based distribution function
+to simulate thermal ﬂows. In the other sub-group of the DDF approach, however, the temperature distribution function is
+deﬁned with the objective of recovering the macroscopic convection–diffusion equation (CDE), in which other terms in
+the energy equation such as pressure work and heat dissipation are conveniently treated as source terms. With this approach
+the macroscopic velocities, rather than the velocity distribution functions, are included in the evolution equation of the tem-
+perature distribution functions. Thus no explicit coupling between the velocity- and temperature-distribution functions is
+needed. To this end, Shi and Guo [26] proposed a thermal LBE model for nonlinear CDE simulations, in which the equilibria
+of the temperature distribution functions are deﬁned to recover the correct CDE. Recognizing the advantages of the MRT
+model over the BGK model, Mezrhab et al. [27] and Yoshida and Nagaoka [28] proposed their MRT–TLBE models for the
+CDE. To recover the CDE, the equilibria of the thermal moments are speciﬁed in Mezrhab’s model [27] while the thermal
+equilibrium distribution functions are speciﬁed in Yoshida and Nagaoka’s model [28]. A detailed derivation of the macro-
+scopic CDE from the MRT–TLBE model can be found in [28]. The present work also uses the MRT–LBE model by Yoshida
+and Nagaoka [28].
+    Accurate boundary condition treatment is essential to the overall integrity of the LBE simulations. For the ﬂuid velocity
+ﬁeld, the ‘‘bounce-back’’ scheme has been intensively studied [29–35] and extended to curved-boundary situations [36–40].
+With appropriate modiﬁcations, some of the athermal boundary condition treatments have been extended to TLBE simula-
+tions as well. He et al. [24] extended the bounce-back rule of the non-equilibrium distributions proposed by Zou and He [34]
+for thermal boundary conditions. This non-equilibrium extrapolation approach was also applied by Tang et al. [41], Huang
+et al. [42] and Jeong et al. [43]. Liu et al. [44], however, used correction functions for the unknown energy distributions based
+on local known energy distributions, which is an extension of their hydrodynamic boundary condition treatment [45]. It is
+noted that the thermal boundary condition treatments in [41–44] were directly proposed for Dirichlet boundary conditions
+and the Neumann (ﬂux) condition was transformed into Dirichlet condition by various ﬁnite-difference schemes. This trans-
+formation will become inconvenient when mixed thermal boundary conditions are encountered. As a result, there naturally
+is a need for a direct boundary condition treatment for the Neumann condition. D’Orazio et al. [46] introduced a ‘‘counter-
+slip’’ thermal energy density to represent the given temperature or heat ﬂux condition on the boundary. Kuo and Chen [47]
+proposed a non-equilibrium ‘‘mirror-reﬂection’’ scheme to implement both the isothermal and adiabatic thermal boundary
+conditions. Ginzburg [48] extended the ‘‘multi-reﬂection’’ approach proposed in [32] to model both Dirichlet and Neumann
+boundary conditions. In the 2-D MRT–TLBE model by Mezrhab et al. [27], the bounce-back scheme was implemented to treat
+Dirichlet boundary conditions, where they provided an explicit formula to determine the unknown populations based on the
+distributions at the neighboring ﬂuid nodes and the temperature on the boundary; and a simple ‘‘mirroring’’ treatment was
+used for the adiabatic condition. In the MRT–TLBE model by Yoshida and Nagaoka [28] for both 2-D and 3-D cases, boundary
+condition treatments for both the Dirichlet and the Neumann conditions were provided for the ‘‘halfway’’ case where the
+physical boundary is placed in the center of the lattice cell.
+    Although thermal boundary condition treatment is an important issue, the discussions about the applicability and accu-
+racy of these treatments in curved-boundary situations in the literature are rather limited. Huang et al. [42] extended the
+non-equilibrium approach to treat curved boundary conditions, where the equilibrium part of the unknown population is
+evaluated according to the Dirichlet condition and linear extrapolation is used for the non-equilibrium component; for
+368                                        L. Li et al. / Journal of Computational Physics 237 (2013) 366–395
+
+
+Neumann conditions, they also transferred them into Dirichlet conditions with a ﬁnite difference scheme and a simple pro-
+jection rule was used to convert the normal boundary ﬂux into the heat ﬂuxes in the discrete velocity directions of the TLBE
+model. Second-order accuracy of the temperature ﬁeld was observed for a Dirichlet condition on the curved boundary while
+no examples were provided regarding their heat ﬂux conversion and the accuracy of the transferred Neumann condition
+treatment in their work. For curved boundaries with Neumann conditions, Yoshida and Nagaoka [28] realized that the ‘‘half-
+way’’ thermal bounce-back scheme leads to considerable disagreement between their simulation and analytical solutions.
+Thus they presented a modiﬁed scheme with the intersection area accounted for to alleviate the discrepancy. Noticeable
+improvement was achieved in their numerical example but the accuracy was not investigated in detail. In the ‘‘multi-reﬂec-
+tion’’ approach for arbitrarily shaped surfaces, Ginzburg [48] decomposed the equilibrium populations into the symmetric
+and anti-symmetric components. The symmetric part was tuned to build second-order and ‘‘third-order’’ accurate Dirichlet
+boundary conditions and the anti-symmetric part was used for Neumann conditions. It was also pointed out in [48] that the
+Neumann condition with zero tangential heat ﬂux yielded second-order accuracy while only linear convergence was
+achieved when non-zero tangential heat ﬂux exists. It is also noted that the heat ﬂux in one of the discrete velocity directions
+is required in [48] in order to remove the tangential ﬂux constraint and to obtain linear convergence. In principle, however,
+only the derivative in the normal direction is speciﬁed in Neumann problems. Reference [48] did not provide a means to
+evaluate the heat ﬂuxes in the discrete lattice velocity directions based on the normal derivative on the curved boundary.
+    The objectives of the present work are twofold. The ﬁrst one is to develop second-order accurate boundary condition
+treatments for both the Dirichlet and Neumann conditions on straight boundaries that can be placed at arbitrary locations
+in the lattice. The second is to extend the present boundary condition treatments into curved-boundary situations and to
+investigate the effect of curved-geometry on the accuracy of the present boundary condition treatments.
+    The present boundary condition treatments are independent of the speciﬁc TLBE model and the collision operator; thus
+for illustration purposes, we formulate the problem using Yoshida and Nagaoka’s MRT–TLBE model [28]. For the Dirichlet
+condition, there is an adjustable parameter in the treatment with second-order accuracy. Three particular choices are dis-
+cussed and their performances are examined. For the Neumann problem, the second-order accurate boundary scheme is un-
+ique. When the present boundary treatments are extended to inclined or curved boundary walls, the Dirichlet condition can
+be directly implemented. For Neumann problems on curved boundaries the given heat ﬂux condition in the normal direction
+alone cannot be used to determine the ﬂuxes in the discrete velocity directions in the TLBE model. Only for the special case
+where the tangential temperature gradient does not contribute to the ﬂuxes in the discrete directions, i.e., the tangential gra-
+dient is known to be zero or the boundary is perpendicular to one of the discrete velocity directions, can a simple formula for
+the distribution function be obtained with second order accuracy based on the normal derivative. For general cases the
+boundary heat ﬂuxes in the discrete velocity directions must be coupled with the unknown temperature value on the bound-
+ary which can be independently evaluated on each lattice velocity direction. An expression for the heat ﬂux determination in
+the discrete velocity directions is derived from the solution of the coupled equations. The accuracy of the proposed boundary
+condition treatments is examined using a series of numerical tests for which analytical solutions are available. The test cases
+include: (i) 2-D steady-state channel ﬂow with a constant and uniform velocity and a sinusoidal wall temperature or heat
+ﬂux boundary condition; (ii) 1-D transient heat conduction in an inclined semi-inﬁnite solid with a constant normal heat
+ﬂux at the end; (iii) 2-D steady-state heat conduction inside a circle with a sinusoidal wall temperature or heat ﬂux boundary
+condition; (iv) 2-D transient heat conduction inside a circle with a transient wall temperature boundary condition; and (v) 3-
+D steady-state circular pipe ﬂow with a constant and uniform velocity and a sinusoidal wall temperature or heat ﬂux bound-
+ary condition. Because of the irregularity of the lattice fractions cut by the curved boundary, second-order accuracy for the
+temperature ﬁeld is realized for Dirichlet problems, but only ﬁrst-order accuracy can be obtained for Neumann problems on
+curved boundaries.
+
+2. Thermal LBE method
+
+2.1. The convection–diffusion equation
+
+      Following [28], the standard convection–diffusion equation (CDE) can be written as
+                                      
+         @/   @            @       @/
+            þ   ðv j /Þ ¼      Dij       þ G;                                                                               ð1Þ
+         @t @xj           @xi      @xj
+where / is a scalar variable that can be either temperature in thermal simulations or mass concentration in mass transfer
+problems, vj is the velocity component in the xj direction, Dij is the diffusion coefﬁcient, and G represents the source term.
+   The Dirichlet boundary condition is
+         / ¼ Ud ;                                                                                                           ð2Þ
+and for the Neumann boundary condition involving normal derivative, it is in general written as
+                   @/
+         ni Dij       þ nj v j / ¼ Un ;                                                                                    ð3Þ
+                   @xj
+                                              L. Li et al. / Journal of Computational Physics 237 (2013) 366–395             369
+
+
+where Ud and Un are given functions of time and space on the boundary, ni and nj denote the i-th and j-th components,
+respectively, of the unit normal vector pointing inward to the domain.
+
+2.2. Thermal LBE model
+
+    The discrete phase space in the TLBE model is deﬁned by a regular lattice in D dimensions together with a set of discrete
+velocities {ea| a = 0, 1, . . ., m}. Analogous to the athermal MRT–LBE model, Yoshida and Nagaoka [28] proposed a D3Q7 ther-
+mal LBE model (Fig. 1) with an MRT collision operator for the CDE, in which they have carried out an asymptotic analysis
+based on diffusive scaling to show that the TLBE model is ﬁrst- and second-order accurate in time and space, respectively.
+This MRT–TLBE model is also used in the present work.
+    The TLBE governs the set of temperature distribution functions {ga(x, t)| a = 0, 1, . . ., m}, from which the leading-order
+                                                                    P
+solution of the macroscopic temperature is obtained with / ¼ m        a¼0 g a . In the D3Q7 TLBE model, the discrete velocity set
+is deﬁned as
+             
+                 ð0; 0; 0Þ                           ða ¼ 0Þ;
+      ea ¼                                                                                                                   ð4Þ
+                 ð1; 0; 0Þ; ð0; 1; 0Þ; ð0; 0; 1Þ; ða ¼ 1; 2; 3; 4; 5; 6Þ;
+   The evolution of the TLBE can be written as
+      g a ðx þ ea dt; t þ dtÞ  g a ðx; tÞ ¼ Lg a ðx; tÞ þ xa Gdt;                                                           ð5Þ
+where dt is the time step, xa is the weight coefﬁcient deﬁned to satisfy the CDE in Eq. (1), and L is the collision operator.
+  In the SRT–BGK model, the collision operator is approximated by
+                     1
+      Lg a ðx; tÞ ¼  ðg a ðx; tÞ  g eq
+                                      a ðx; tÞÞ;                                                                             ð6Þ
+                         s
+where s is a coefﬁcient that represents the relaxation time relative to the time step. In the BGK thermal model by Yoshida
+and Nagaoka [28], the following equilibrium distribution functions are proposed to recover the CDE:
+                                           
+                                dtv j
+      g eq
+        a ðx; tÞ ¼       xa þ         eaj xa /ðx; tÞ;                                                                        ð7Þ
+                                dxeD
+where dx is the grid spacing in the lattice. The weight coefﬁcients are set to be
+             
+                 1=4; ða ¼ 0Þ;
+      xa ¼                                                                                                                   ð8Þ
+                 1=8; ða ¼ 1; 2; 3; 4; 5; 6Þ;
+and the constant eD = 1/4 for the 3-D model.
+  In the MRT model [28], the collision operator is given by
+
+      Lg a ðx; tÞ ¼ M 1 SMQ g a ðx; tÞ:                                                                                     ð9Þ
+   Thus the evolution of the TLBE becomes
+
+      g a ðx þ ea dt; t þ dtÞ  g a ðx; tÞ ¼ M 1 SMQ g a ðx; tÞ þ xa Gdt;                                                  ð10Þ
+and the matrix Q is explicitly given as below based on Eq. (7)
+
+
+
+
+                                                Fig. 1. Discrete velocity set {ea} for the D3Q7 TLBE model.
+370                                                         L. Li et al. / Journal of Computational Physics 237 (2013) 366–395
+
+                                                                              
+                                     dtv j
+      Q ¼ ðx0 ; x1 ; . . . ; x6 ÞT þ       ðe0j x0 ; e1j x1 ; . . . ; e6j x6 ÞT ð1; 1; 1; 1; 1; 1; 1Þ  I 77 ;                  ð11Þ
+                                     dxeD
+with I77 being the 7  7 identity matrix. The transformation matrix M for the D3Q7 TLBE model was given in [28] as
+             2                             3
+            1            1            1 11          1        1
+          60             1              0 7
+                                      1 0          0        0
+          6                                7
+          6                                7
+          60             0  0  1  1 0  0 7
+          6                                7
+          6                                7
+      M ¼ 60             0  0  0  0  1  1 7:                                                                                    ð12Þ
+          6                                7
+          66             1 1 1 1 1 1 7
+          6                                7
+          6                                7
+          40             2  2  1 1 1 1 5
+                 0       0  0  1  1  1 1
+and the relaxation matrix S is
+                 2                                                       3
+               s0 0                    0       0        0     0     0
+             60 s                      sxy sxz 0              0     0 7
+             6     xx                                                 7
+             6                                                        7
+             6 0 sxy                   syy syz 0              0     0 7
+             6                                                        7
+             6                                                        7
+      S 1 ¼ 6 0 sxz                   syz szz 0              0     0 7:                                                         ð13Þ
+                 6                                                    7
+                 60          0         0   0   s4             0     0 7
+                 6                                                    7
+                 6                                                    7
+                 40          0         0       0        0     s5    0 5
+                     0       0         0       0        0     0     s6
+   As pointed out in [28], the off-diagonal components in the relaxation matrix can take non-zero values to account for
+anisotropic diffusion. The relaxation coefﬁcients are related to the diffusion coefﬁcient matrix as
+             1                   dt
+      sij ¼ dij þ                      Dij ;                                                                                     ð14Þ
+             2            eD ðdxÞ2
+in order to recover the solution of the CDE to the leading-order. In the above, dij is the Kronecker’s delta.
+    As in the athermal MRT–LBE model, the equilibria of the conserved ‘‘hydrodynamic’’ moments and the non-conserved
+‘‘kinetic’’ moments are explicitly deﬁned [18]; the equilibria of the conserved ‘‘thermal’’ moments and the non-conserved
+‘‘kinetic’’ moments {meq
+                       a | a = 0, 1, . . ., m} in the MRT–TLBE model can also be explicitly speciﬁed, as demonstrated in the
+D2Q5 model by Mezrhab et al. [27]. In the following we show that the D3Q7 TLBE model in [28] can be equivalently formu-
+lated with the equilibrium moments explicitly deﬁned.
+    The thermal LBE is rewritten as
+
+      g a ðx þ ea dt; t þ dtÞ  g a ðx; tÞ ¼ M 1 Sðma ðx; tÞ  meq
+                                                                  a ðx; tÞÞ þ xa Gdt;                                            ð15Þ
+where the transformation matrix M and the relaxation matrix S are the same as that in Eqs. (12) and (13), respectively; the
+thermal moments ma ðx; tÞ are related to the distribution functions g a ðx; tÞ by
+      m ¼ Mg;                                                                                                                    ð16Þ
+and the equilibria of the moments are deﬁned as
+                                            eq T                            T
+      meq ¼ ðmeq   eq   eq   eq   eq   eq
+              0 ; m1 ; m2 ; m3 ; m4 ; m5 ; m6 Þ ¼ ð0; uT; v T; wT; aT; 0; 0Þ ;                                                   ð17Þ
+where a is a constant related to the coefﬁcients xa by
+      a ¼ ð7x0  1Þ ¼ 3=4:                                                                                                       ð18Þ
+Now the conservation of the ﬁrst moment results in the macroscopic temperature
+                         X
+                         6
+      m0 ¼ T ¼             ga :                                                                                                  ð19Þ
+                         a¼0
+
+Comparing Eq. (15) with Eq. (10), we can relate these two equivalent forms of evolution by
+      ma ðx; tÞ  meq
+                   a ðx; tÞ ¼ MQ g a ðx; tÞ:                                                                                    ð20Þ
+   Similarly, keeping only the ﬁrst ﬁve discrete velocity components from Fig. 1 for the D2Q5 TLBE model yields the follow-
+ing from Eq. (8)
+             
+                 ð0; 0Þ;                           ða ¼ 0Þ;
+      ea ¼                                                               ;                                                       ð21Þ
+                 ð1; 0Þ; ð0; 1Þ; ða ¼ 1; 2; 3; 4Þ;
+                                                        L. Li et al. / Journal of Computational Physics 237 (2013) 366–395       371
+
+
+and the transformation from the distribution functions ga to the thermal moments ma now becomes
+            2         3       2                                    32        3
+                m0                1 1          1        1      1        g0
+          6    7 6                                76 7
+          6 m1 7 6 0                  1        0 76 g 1 7
+                                               1 0
+          6    7 6                                76 7
+      m ¼ 6 m2 7
+          6        6
+               7 ¼ 60                 0  0  1  1 76 7
+                                                  76 g 2 7 ¼ Mg:                                                                ð22Þ
+          6    7 6                                76 7
+          4 m3 5 4 4                  1 1 1 1 54 g 3 5
+            m4       0                1  1  1 1    g4
+The corresponding equilibria of the moments are deﬁned as
+                                  eq T                     T
+      meq ¼ ðmeq   eq   eq   eq
+              0 ; m1 ; m2 ; m3 ; m4 Þ ¼ ð0; uT; v T; aT; 0Þ :                                                                   ð23Þ
+In the D2Q5 model, the weight coefﬁcients are chosen to be
+             
+                  1=3; ða ¼ 0Þ;
+      xa ¼                                                                                                                      ð24Þ
+                  1=6; ða ¼ 1; 2; 3; 4Þ;
+so that the constant eD in Eq. (7) is eD = 1/3, and the constant a in Eq. (23) is determined by
+      a ¼ ð5x0  1Þ ¼ 2=3:                                                                                                      ð25Þ
+The relaxation matrix S for the D2Q5 model now becomes
+              2                                      3
+               s0 0 0 0                            0
+             6                                       7
+             6 0 sxx sxy 0                         0 7
+             6                                       7
+      S 1 ¼ 6
+             6 0 sxy syy 0                         0 7
+                                                     7;                                                                         ð26Þ
+             6                                       7
+             40 0    0   s3                        0 5
+                  0       0       0       0        s4
+and the conservation of the ﬁrst moment results in the macroscopic temperature
+                      X
+                      4
+      m0 ¼ T ¼          ga :                                                                                                    ð27Þ
+                      a¼0
+
+   For efﬁcient computation, the TLBE is solved in two steps:
+   collision step
+
+      g^a ðx; tÞ ¼ g a ðx; tÞ  M 1 Sðma ðx; tÞ  meq
+                                                    a ðx; tÞÞ þ xa Gdt;                                                         ð28Þ
+and
+  streaming step
+
+      g a ðx þ ea dt; t þ dtÞ ¼ g^a ðx; tÞ;                                                                                     ð29Þ
+      ^a represents the post-collision state.
+where g
+
+2.3. Boundary conditions
+
+    The lattice cut by the boundary wall with arbitrary intersection distance is illustrated in Fig. 2. In the present work, the
+lattice spacing is set to be unity (dx = dy = 1) and the fraction of the intersected link in the ﬁeld to be solved is denoted by
+D = ||xf  xw||/||xf  xe|| with 0 6 D < 1. Boundary condition treatment for the TLBE simulation is required during the stream-
+ing step when unknown populations from the undeﬁned exterior nodes (xe in Fig. 2) to the ‘‘ﬁeld’’ nodes (xf) are encountered.
+It should be noted that the CDE can also be used to govern the energy equation in the solid phase by setting the velocity to
+zero; thus the TLBE method can be extended to simulate the thermal ﬁeld in the solid phase. Hence we replace the conven-
+tional ‘‘ﬂuid’’ node with the more general ‘‘ﬁeld’’ node notation in the computational domain.
+
+
+
+
+                                                             e_i
+
+                                              Fig. 2. Schematic depiction of the lattice link intersected by a boundary wall.
+372                                                L. Li et al. / Journal of Computational Physics 237 (2013) 366–395
+
+
+   The standard momentum ‘‘bounce-back’’ scheme is derived for the case where the distance from the boundary wall to the
+nearest ﬁeld lattice node in the computational domain is equal to half of the lattice spacing. The basic idea of the momentum
+bounce-back can be applied to derive the thermal boundary conditions in TLBE. Considering the special case of D = 0.5,
+Yoshida and Nagaoka [28] proposed the following treatments for the Dirichlet and Neumann boundary conditions for walls
+perpendicular to one of the lattice velocity directions in the D3Q7 model. An asymptotic analysis was also given in their work
+to show that second-order accuracy is obtained for both conditions.
+   Dirichlet condition:
+
+        g a ðxf ; t þ dtÞ ¼ g^a ðxf ; tÞ þ eD Ud ;                                                                                 ð30Þ
+      Neumann condition:
+
+        g a ðxf ; t þ dtÞ ¼ g^a ðxf ; tÞ þ ðdt=dxÞUn ;                                                                              ð31Þ
+where n is parallel to ea and ea. If n is not parallel to ea , one would need to replace Un in Eq. (31) with Una , the heat ﬂux in ea
+direction which in turn involves the unknown heat ﬂux in the tangential direction normal to ea .
+   It is important to have second-order accurate boundary conditions for the Dirichlet and Neumann problems for arbitrary
+D values. Based on the bounce-back idea on the boundary and spatial interpolation, one can develop various boundary
+schemes with different number of neighboring ﬁeld nodes and their populations in different discrete directions. The schemes
+in Eqs. (30) and (31) above use only one post-collision value g^a ðxf ; tÞ at the node adjacent to the boundary in ea direction;
+thus it is considered as a ‘‘localized scheme’’. The ‘‘multi-reﬂection’’ schemes in [48] utilize ﬁve post-collision neighboring
+values involving three ﬁeld nodes, and thus up to ‘‘third-order’’ accurate boundary condition schemes were derived for
+the Dirichlet condition. In this work we show that second-order accuracy for both the Dirichlet and Neumann boundary con-
+ditions can be achieved by using only three post-collision neighboring values, g^a ðxf ; tÞ, g^a ðxff ; tÞ, and g^a ðxf ; tÞ for each un-
+known population g a ðxf ; t þ dtÞ. Furthermore, we compare the present second-order Dirichlet boundary condition
+treatment with the ‘‘third-order’’ scheme in [48] by examining the errors of the temperature ﬁelds, the boundary and interior
+heat ﬂuxes with numerical examples and observe that: (i) both show quadratic convergence since the TLBE model is second-
+order accurate in the interior space; (ii) the ‘‘third-order’’ scheme yields close, quantitatively even higher for some cases,
+numerical errors comparing with the present treatment under the same conditions; (iii) both give very similar performance
+for curved-boundary simulations such as quadratic convergence of the temperature ﬁeld and linear convergence of the heat
+ﬂux on the boundary; thus the degradation of the accuracy due to the curved-boundary cannot be mitigated by increasing
+the order-of-accuracy on the boundary by using more lattice nodes and populations in the ﬁeld. The construction of the pres-
+ent boundary condition treatment is given next in detail.
+
+
+2.3.1. Dirichlet boundary condition
+   As shown in Fig. 2, the present treatment for the Dirichlet boundary condition is given by
+
+        g a ðxf ; t þ dtÞ ¼ cd1 g^a ðxf ; tÞ þ cd2 g^a ðxff ; tÞ þ cd3 g^a ðxf ; tÞ þ cd4 eD Ud ;                                  ð32Þ
+where cd1, cd2, cd3, and cd4 are coefﬁcients related to the speciﬁc D value. To maintain second-order accuracy, the following
+relations are required, leaving cd1 adjustable (see Eq. (A19) in Appendix)
+         8
+         >
+         > cd2 ¼  2D2cDd1þ1þ1
+         >
+         >
+         < c ¼ cd1 þ2D
+             d3    2Dþ1        :                                                                                                     ð33Þ
+         >
+         > c    ¼ cd1 þ1
+         >
+         >   d4    2D þ1
+         :
+           cd1 – 1
+Furthermore, in order to minimize numerical instability one may intuitively require
+
+        jcdi j 6 1; ði ¼ 1; 2; and 3Þ;                                                                                             ð34aÞ
+so that the following constraint may be desired
+
+        1 6 cd1 < 1:                                                                                                              ð34bÞ
+    A stability study with a numerical example in Section 3.1.1 shows that (34b) would always guarantee numerical stability
+for reasonable parameters used. It is also shown that while the upper bound for the numerical stability region is indeed
+cd1 = 1, the lower bound can be extended from 1 to certain values depending on the relaxation coefﬁcient sij and the lattice
+fraction D.
+    Note that further effort can be devoted to construct more constraints on the parameter cd1 by using more distributions on
+extra lattice nodes in the interpolation, such as the local third-order Dirichlet schemes provided in [48]. However, consid-
+ering the LBE is second-order accurate in the interior, we aim at only obtaining a robust second-order boundary treatment
+scheme in this work. Furthermore, the choice of the relaxation coefﬁcients sij will affect the error terms in the TLBE solution.
+A comprehensive study on the effects of the relaxation coefﬁcients and optimization of the parameters in Eq. (32) is thus
+                                                   L. Li et al. / Journal of Computational Physics 237 (2013) 366–395                    373
+
+
+beyond the scope of this work. To demonstrate the applicability and the second-order accuracy of the present boundary con-
+dition treatment, we provide the following three particular choices for the Dirichlet condition treatment:
+   Scheme 1:
+                                 (
+                                     ð2DÞg^a ðxf ; tÞ þ ð2D  1Þg^a ðxff ; tÞ þ eD Ud ;      ð0 6 D 6 0:5Þ
+      g a ðxf ; t þ dtÞ ¼            1                                                                                          ð35aÞ
+                                       2D g^a ðxf ; tÞ þ 1  21D g^a ðxf ; tÞ þ 21D eD Ud ; ðD > 0:5Þ
+
+   Scheme 2:
+                                                                    !                                                
+                                                          ð2D  1Þ2                     2D  1                   3  2D
+      g a ðxf ; t þ dtÞ ¼ 2ðD  1Þg^a ðxf ; tÞ                     g^a ðxff ; tÞ þ 2          g^a ðxf ; tÞ þ          eD Ud ; and   ð35bÞ
+                                                           2D þ 1                       2D þ 1                   2D þ 1
+
+   Scheme 3:
+                                                                                                     
+                                                 2D  1                   2D  1                     2
+      g a ðxf ; t þ dtÞ ¼ g^a ðxf ; tÞ þ               g^a ðxff ; tÞ þ          g^a ðxf ; tÞ þ          eD Ud :                     ð35cÞ
+                                                 2D þ 1                   2D þ 1                   2D þ 1
+    The three schemes in Eq. (35) all have second-order accuracy in space and they reduce to the ordinary bounce-back
+scheme in Eq. (30) when D = 0.5. They are all computationally stable.
+    One may also observe that Scheme 1 is very similar to the hydrodynamic boundary condition treatment by Bouzidi et al.
+[39] which is based on the bounce-back rule and linear interpolation. The present analysis and the derivation in Appendix
+can also offer some insights into the understanding of the various interpolation schemes for velocity boundary conditions as
+those in [32,33,36–39]. We notice that, however, a rigorous second-order accurate scheme for the Dirichlet velocity bound-
+ary condition cannot be similarly formulated, even though for some special cases such as pressure-driven channel ﬂows sec-
+ond-order accuracy of the velocity ﬁeld can be obtained for arbitrary D with the coefﬁcients carefully chosen based on
+interpolation. The reason is that in athermal LBE simulations, in principle, the leading-order and ﬁrst-order moments of
+the velocity distribution functions must be able to recover the mass and momentum equations, respectively, which neces-
+sitates more constraints on the velocity distribution functions. Some of the relationships for the temperature distribution
+functions in TLBE do not have their corresponding forms for the velocity distribution functions in athermal LBE simulations.
+    Ginzburg [48] showed that with ﬁve populations incorporated, a ‘‘third-order’’ Dirichlet condition treatment can be con-
+structed with one adjustable coefﬁcient. With the present notation, the ‘‘one-parameter family of third-order conditions’’ in
+[48] becomes
+                                                                                                        
+                            1     1       1                      3 3                             1 1   1
+      g a ðxf ; t þ dtÞ ¼           D  D2 þ j g^a ðxf ; tÞ þ  þ D þ D2  2j g^a ðxff ; tÞ þ    D  D2 þ j g^a ðxfff ; tÞ
+                           jþ1 2          2                      2 2                             2 2   2
+                                                                                 
+                              1                       1 1                      1
+                        þ 1  D þ 2j g^a ðxf ; tÞ þ  þ D  j g^a ðxff ; tÞ þ eD Ud ;                                  ð36Þ
+                              2                       2 2                      2
+where xfff = xff + ea dt = xf + 2ea dt and j is an adjustable coefﬁcient. Two particular solutions were provided in [48] by
+choosing j = 0 and j = (1 + 2D + D2)/2 in Eq. (36). In addition, the particular second-order Dirichlet condition applied in
+[48] used the same three populations as in the present treatment and can be obtained with cd1 = (1/2  D) in Eq. (33), which
+yields
+                                      
+                                  1                                          1               1
+      g a ðxf ; t þ dtÞ ¼           D g^a ðxf ; tÞ þ ðD  1Þg^a ðxff ; tÞ þ g^a ðxf ; tÞ þ eD Ud :                                   ð37Þ
+                                  2                                          2               2
+
+
+2.3.2. Neumann boundary condition
+      In order to develop an appropriate boundary condition for a curved wall with an arbitrary D and arbitrary orientation, we
+ﬁrst consider the case when the wall normal is aligned with ea and ea as in (31). Hence, the boundary condition for
+g a ðxf ; t þ dtÞ can be represented as
+
+      g a ðxf ; t þ dtÞ ¼ cn1 g^a ðxf ; tÞ þ cn2 g^a ðxff ; tÞ þ cn3 g^a ðxf ; tÞ þ cn4 ðdt=dxÞUna ;                                 ð38Þ
+where cn1, cn2, cn3, and cn4 are coefﬁcients related to D, and Una ¼ Un .
+  Different from the adjustability of the treatment for the Dirichlet condition, the second-order accurate scheme for the
+Neumann boundary condition is determined by (see Eq. (A28) in Appendix)
+      8
+      >
+      > cn1 ¼ 1
+      >
+      >
+      < cn2 ¼  2D1
+                2Dþ1
+                             :                                                                                                          ð39Þ
+      >
+      > cn3 ¼ 22DD1
+      >
+      >           þ1
+      :
+        cn4 ¼ 2D2þ1
+374                                                     L. Li et al. / Journal of Computational Physics 237 (2013) 366–395
+
+
+      Thus Eq. (38) can be explicitly expressed as
+                                                                                                   
+                                                2D  1                   2D  1                     2     dt
+         g a ðxf ; t þ dtÞ ¼ g^a ðxf ; tÞ             g^a ðxff ; tÞ þ          g^a ðxf ; tÞ þ             Una :                                     ð40Þ
+                                                2D þ 1                   2D þ 1                   2D þ 1 dx
+Eq. (40) reduces to the ordinary bounce-back scheme in Eq. (31) when D = 0.5 and its coefﬁcients satisfy the stability require-
+ment jcni j 6 1 (i = 1, 2, and 3).
+
+Remark 1. The present Dirichlet and Neumann boundary condition treatments given by Eqs. (32) and (38) with their
+coefﬁcients determined by Eqs. (33) and (39), respectively, are derived for straight boundary surfaces with arbitrary D values
+and with their normal direction parallel to the discrete velocity direction ea . For curved boundaries, Eq. (32) can be directly
+extended for Dirichlet problems and Eq. (38) constitutes an excellent starting point for general Neumann problems.
+
+
+Remark 2. Eq. (38) is also valid for Dirichlet problems, and Eq. (32) is also applicable to Neumann problems. Thus the com-
+bination of Eqs. (32) and (38) gives a means to evaluate the heat ﬂux on the wall along ea direction for Dirichlet problems and
+to evaluate the wall temperature at the cuts for Neumann problems. With the coefﬁcients given by Eqs. (33) and (39), the
+following expressions can be obtained on the wall intersected by the lattice vector ea
+                                                                                                                
+                    1  cd1 dx                                 2                         2
+         Una ¼                ð2D þ 1Þg^a ðxf ; tÞ þ 2D           g^a ðxff ; tÞ þ           1 g^a ðxf ; tÞ þ eD Ud ;                              ð41aÞ
+                       2    dt                              1  cd1                   1  cd1
+or
+                                                                                                                        
+                  1                                    2                                2                         2     dt
+         Ud ¼              ð2D þ 1Þg^a ðxf ; tÞ þ            2D g^a ðxff ; tÞ þ 1           g^a ðxf ; tÞ þ              Una ;                     ð41bÞ
+                  eD                                1  cd1                          1  cd1                   1  cd1 dx
+where cd1 is the aforementioned adjustable variable in Eq. (32) and its values based on the three different choices in Eq.
+(35a–c) will be examined subsequently.
+
+
+Remark 3. The temperature gradient within the interior of the ﬁeld can be evaluated using the formula discussed in [28]
+
+               @/    v i dt       1 X   m
+         sij      ¼           /          e g :                                                                                                         ð42Þ
+               @xj eD ðdxÞ  2    eD dx a¼0 ai a
+This allows for an assessment of the error propagation in terms of heat ﬂux into the ﬁeld due to the boundary condition
+treatment.
+
+
+Remark 4. For Neumann problems with curved boundaries, the heat ﬂux Una in the discrete velocity direction must be
+obtained based on the given Un in the absence of explicit knowledge on the tangential derivative, Ut , along the wall for
+curved boundaries (see Fig. 3). A practical strategy for the numerical determination of Una is discussed next.
+
+
+
+
+Fig. 3. Layout of the rectangular lattice and a curved boundary (black circles: ﬁeld nodes; blue squares: boundary nodes; white circles: exterior nodes). (For
+interpretation of the references to colour in this ﬁgure legend, the reader is referred to the web version of this article.)
+                                                   L. Li et al. / Journal of Computational Physics 237 (2013) 366–395                                            375
+
+
+   Consider a curved boundary wall intersected by the lattice as shown in Fig. 3. The wall cuts the horizontal lattice link
+along ea direction between xe and xf at xw, and the heat ﬂux along the link direction (ea ) from exterior to interior, Una , is
+to be derived. The angles between ea and the wall tangent and normal are hta and hna , respectively. Along ea , the two neigh-
+boring ﬁeld lattice nodes are xf and xff; along the direction perpendicular to ea , we designate x0f ¼ xw and x0ff ¼ xw þ eb dt in
+which eb is the lattice vector from exterior to the interior along the direction perpendicular to ea .
+   The projection of the boundary ﬂuxes gives Una ¼ Un cos hna þ Ut cos hta . In general, Ut is needed in the calculation of Una ,
+unless cos hta ¼ 0 (i.e., the wall is perpendicular to ea ) or Ut ¼ 0 is implicitly known in very special cases. However, well-
+posedness of the mathematical problem for CDE does not even allow the speciﬁcation of Ut in addition to Un on the same
+boundary. Thus the Neumann boundary condition, or the more general mixed boundary condition in the form of
+
+             @/
+        r1      þ r2 / ¼ r3 ; ðr1 – 0Þ                                                                                                                          ð43Þ
+             @n
+involving the normal derivative on the boundary requires a fundamentally different approach than the Dirichlet problem. By
+rearranging Eq. (43), the boundary heat ﬂux in the normal direction can be written as
+                                                                              
+                      @/              r3 r2       r3 r2
+        Un ¼ Dt         ¼ Dt           / ¼ Dt    U :                                                                                                       ð44Þ
+                      @n              r1 r1       r1 r1 d
+where Dt is the thermal diffusion coefﬁcient on the boundary and the standard Neumann condition is recovered by setting
+r2 ¼ 0 in the above.
+   For brevity, only the D2Q5 TLBE model in 2-D is considered here as the extension to 3-D is straightforward. As in Fig. 3 the
+normal heat ﬂux can be expressed as
+
+        Una cos hna þ Unb cos hnb ¼ Un ;                                                                                                                    ð45Þ
+
+where hnb is the angle between eb and the normal n. Additionally, we can eliminate g a ðxf ; t þ dtÞ by combining Eqs. (32) and
+(38) to obtain a relation between Ud and the heat ﬂux Una in the discrete velocity direction ea on the boundary,
+
+        cd4 eD Ud ¼ ðcn1  cd1 Þg^a ðxf ; tÞ þ ðcn2  cd2 Þg^a ðxff ; tÞ þ ðcn3  cd3 Þg^a ðxf ; tÞ þ cn4 ðdt=dxÞUna :                                      ð46aÞ
+
+Eq. (46a) is actually an alternative form of Eq. (41). It is important to recognize that a similar relation can be derived between
+Ud and the heat ﬂux Unb in eb direction as well. That is
+
+        c0d4 eD Ud ¼ ðc0n1  c0d1 Þg^b ðx0f ; tÞ þ ðc0n2  c0d2 Þg^b ðx0ff ; tÞ þ ðc0n3  c0d3 Þg^b ðx0f ; tÞ þ c0n4 ðdt=dxÞUnb ;                           ð46bÞ
+
+where c0di , c0ni are the coefﬁcients corresponding to cdi , cni (i = 1, 2, 3, 4) deﬁned in Eqs. (33) and (39), respectively, with the
+fraction Db = 0 in eb direction. The distribution functions g   ^b ðx0f ; tÞ, g^b ðx0ff ; tÞ, and g^b ðx0f ; tÞ at x0f and x0ff can be obtained using
+a quadratic interpolation or extrapolation of the distributions at the closest interior lattice nodes. Further elimination of
+Ud from Eqs. (46a–b) results in the following relation between Una and Unb ,
+
+         1
+            ½ðcn1  cd1 Þg^a ðxf ; tÞ þ ðcn2  cd2 Þg^a ðxff ; tÞ þ ðcn3  cd3 Þg^a ðxf ; tÞ þ cn4 ðdt=dxÞUna 
+        cd4
+               1
+           ¼ 0 ½ðc0n1  c0d1 Þg^b ðx0f ; tÞ þ ðc0n2  c0d2 Þg^b ðx0ff ; tÞ þ ðc0n3  c0d3 Þg^b ðx0f ; tÞ þ c0n4 ðdt=dxÞUnb :                                 ð47Þ
+              cd4
+
+Finally, combining Eqs. (45) and (47) leads to the desired expression for Una in terms of the normal heat ﬂux and the post-
+collision distributions in the neighboring lattice nodes,
+              
+                 1
+       Una ¼ 0 ½ðc0n1  c0d1 Þg^b ðx0f ;tÞ þ ðc0n2  c0d2 Þg^b ðx0ff ;tÞ þ ðc0n3  c0d3 Þg^b ðx0f ;tÞsinhna
+                cd4
+                                                                                                                                                             
+                1                                                                                               c0 dt        cn4 dt           c0n4 dt
+              ½ðcn1  cd1 Þg^a ðxf ;tÞ þ ðcn2  cd2 Þg^a ðxff ;tÞ þ ðcn3  cd3 Þg^a ðxf ;tÞsinhna þ n4              Un          sinhna þ         coshna   : ð48Þ
+               cd4                                                                                              c0d4 dx      cd4 dx           c0d4 dx
+
+Eq. (48) can be directly applied to Neumann problems on curved boundaries. For the special case where Ut ¼ 0 or cos hta ¼ 0,
+a simpler formula can be used to relate Una to Un
+        Una ¼ Un cos hna :                                                                                                                                    ð49Þ
+   The above is equivalent to that used by Huang et al. [42], but it should not be used in general.
+   For mixed boundary conditions, Un is not speciﬁed. Instead, Un is related to Ud through Eqs. (44, 46). Substitution of Eq.
+(46a) into Eq. (44) yields
+                      r3         r2
+        Un ¼ Dt         þ Dt          ½ðc  c Þg^ ðx ; tÞ þ ðcn2  cd2 Þg^a ðxff ; tÞ þ ðcn3  cd3 Þg^a ðxf ; tÞ þ cn4 ðdt=dxÞUna :                         ð50Þ
+                      r1      r1 cd4 eD n1 d1 a f
+376                                           L. Li et al. / Journal of Computational Physics 237 (2013) 366–395
+
+
+Combining Eqs. (48) and (50) gives
+               
+               1                                                                                                        1
+      Una ¼      ½ðc0  c0d1 Þg^b ðx0f ; tÞ þ ðc0n2  c0d2 Þg^b ðx0ff ; tÞ þ ðc0n3  c0d3 Þg^b ðx0f ; tÞ sin hna      ½ðcn1  cd1 Þg^a ðxf ; tÞ
+              c0d4 n1                                                                                                  cd4
+                                                                                       c0 dt          r2
+            þ ðcn2  cd2 Þg^a ðxff ; tÞ þ ðcn3  cd3 Þg^a ðxf ; tÞ sin hna þ Dt n4                         ½ðcn1  cd1 Þg^a ðxf ; tÞ þ ðcn2  cd2 Þg^a ðxff ; tÞ
+                                                                                       c0d4 dx r1 cd4 eD
+                                                                 "                                                     2                   #
+                                              c0 dt r3            cn4 dt                  c0n4 dt                 c0n4 dt            cn4 r2
+            þ ðcn3  cd3 Þg^a ðxf ; tÞ  Dt n4                             sin  h na
+                                                                                      þ             cos   h na
+                                                                                                                             D t            :                     ð51Þ
+                                              c0d4 dx r1           cd4 dx                 c0d4 dx                 c0d4 dx          cd4 eD r1
+
+   Once Una is obtained the boundary condition treatment in Eq. (40) can be used to complete the streaming step. It is noted
+that Unb is not needed in Eq. (40) as xw in Fig. 3 is located on the link along ea direction. The same procedure can be applied to
+derive Unb when xw is located on the link along eb direction.
+   The accuracy of the present boundary condition treatments will be examined through a series of numerical tests in the
+next section, and the asymptotic analysis for the order-of-accuracy is given in Appendix. When the node xff is outside the
+ﬁeld, we recommend using the localized schemes by Yoshida and Nagaoka [28].
+
+3. Results and discussion
+
+    To verify the applicability and accuracy of the present thermal boundary condition treatments, we have conducted sev-
+eral numerical tests involving both 2-D and 3-D geometries. Both convection and diffusion are considered in the ﬁrst exam-
+ple, where the Dirichlet and Neumann boundary conditions are separately applied and investigated. The second example
+shows how to convert the Neumann condition in the normal direction of an inclined wall into the heat ﬂuxes in the discrete
+velocity directions when there is no tangential ﬂux. From the third example through the ﬁfth example, curved geometries are
+considered. Steady-state and transient boundary conditions are given in the third and fourth problems; while the ﬁfth test is
+for the simulation of steady-state convection and diffusion inside a circular (3-D) pipe.
+    In this study, only isotropic diffusion is considered, i.e., Dij = Dtdij; thus the off-diagonal components in the relaxation ma-
+trix are set to be zero, and the constraint for the diagonal coefﬁcients is maintained so that Eq. (14) can be rewritten as
+                                    !
+                       1    dt
+      sij ¼ sD dij ¼     þ        Dt dij :                                                                                                                        ð52Þ
+                       2 eD ðdxÞ2
+
+   The positivity of the diffusion coefﬁcient Dt requires that sD > 1/2. A typical value of sD = 0.75 is used in each of the numer-
+ical examples to demonstrate the accuracy of the present boundary condition treatments. Although no theoretical analysis
+on the numerical stability of the proposed Dirichlet and Neumann boundary schemes is given, we have investigated their
+stability by choosing sD that is close to 0.5 when numerical instability is most likely to occur. For brevity, the results at
+sD = 0.55 and sD = 0.51 are presented for numerous cases. Furthermore, a detailed stability study is carried out in Section 3.1.1
+to ﬁnd the stability bounds for the 2-D channel ﬂow with a Dirichlet condition; and all three schemes given by Eq. (35a–c)
+are well within the stability boundaries. The relaxation coefﬁcient s0 for the conserved quantity / has no effect on the
+numerical solution, and the remaining adjustable coefﬁcients do not contribute to the leading-order solution of the CDE
+since they only affect the higher-order error terms of the LBE solutions; thus s0 = 0, and sp = 1 (p = 4, 5, 6 in 3-D and
+p = 3, 4 in 2-D) are used in the rest of this work.
+
+
+
+
+                              Fig. 4. Schematic representation of the lattice in a 2-D channel with an arbitrary D value.
+                                              L. Li et al. / Journal of Computational Physics 237 (2013) 366–395                                         377
+
+
+3.1. Two-D steady-state channel ﬂow
+
+    First we consider a plug ﬂow of velocity U in a 2-D channel of constant height, H (Fig. 4). Each wall is placed at a distance
+of (Ddy) from the ﬁrst interior lattice in the y-direction. The CDE for the temperature inside the channel is
+                          !
+          @T      @2T @2T
+        U    ¼ Dt    þ      ;                                                                                                                          ð53Þ
+          @x      @x2 @y2
+
+   This thermal ﬂow problem is characterized by the Péclect number Pe = HU/Dt; and Pe = 20 is used in all the simulations.
+Periodic boundary conditions are imposed in the x-direction so that f(x + L) = f(x) for both the temperature T and distribution
+functions ga. Both Dirichlet and Neumann thermal boundary conditions on the walls are considered.
+
+
+3.1.1. Dirichlet boundary condition
+   On the walls at y = 0 and y = H,
+
+
+
+
+                                        (a)                                                                          (b)
+Fig. 5. (a) Lower stability bound of the adjustable parameter cd1 versus (sD  0.5), and (b) variations of cd1 as a function the lattice fraction, D, for the
+present Dirichlet schemes at sD = 0.50001 for the channel ﬂow Dirichlet problem (the lower and upper stability bounds are included).
+
+
+
+
+Fig. 6. Temperature contours in a 2-D channel with Dirichlet boundary condition using sD = 0.75, D = 0.5 and H = 64. All three schemes reduce to the
+‘‘bounce-back’’ condition.
+378                                             L. Li et al. / Journal of Computational Physics 237 (2013) 366–395
+
+
+
+
+                                          (a)                                                                           (b)
+
+
+
+
+                                          (c)                                                                           (d)
+
+
+
+
+                                          (e)                                                                             (f)
+Fig. 7. Relative L-2 error norm E2 versus the grid resolution, 1/H, for the channel ﬂow Dirichlet problem. (a) D = 0.50, 0.25, and 0.75 at sD = 0.51, (b) D = 0.50,
+0.01, and 0.99 at sD = 0.51, (c) D = 0.50, 0.25, and 0.75 at sD = 0.55, (d) D = 0.50, 0.01, and 0.99 at sD = 0.55, (e) D = 0.50, 0.25, and 0.75 at sD = 0.75, (f)
+D = 0.50, 0.01, and 0.99 at sD = 0.75.
+                                           L. Li et al. / Journal of Computational Physics 237 (2013) 366–395                                 379
+
+
+      Tðx; y ¼ 0Þ ¼ Tðx; y ¼ HÞ ¼ cosðkxÞ; with k ¼ 2p=L:                                                                                    ð54Þ
+   An analytical solution for the thermal ﬁeld can be obtained. When expressed with complex variables, the exact solution is
+                                                        
+                               1  ekH ky    1  ekH ky
+      T ex ðx; yÞ ¼ Real eikx kH        e              e   ;                                                                                ð55Þ
+                              e  ekH       ekH  ekH
+                                                                         qﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃ
+where ‘‘Real’’ means taking the real part of a complex variable and k ¼ k 1 þ DiUt k.
+
+    Before evaluating the accuracy of the present Dirichlet schemes, the numerical stability is investigated ﬁrst for this prob-
+lem. The work of [37] indicates that the numerical instability associated with boundary condition treatments in using the
+LBE method is more pronounced in channel ﬂows than in curved geometries. Hence guidance on numerical instability from
+solving the thermal problem in the channel ﬂow will be useful. Fig. 5(a) shows the lower stability bound for the adjustable
+coefﬁcient cd1 at Pe = 20 and Ny = 34 (Ny denotes the number of lattice nodes in y-direction). Very close results for the lower
+bound are obtained also for (Pe, Ny) = (20, 130), (100, 34) and (100, 130). The upper bound for cd1 is 1.0 for all cases, noting
+that cd1 – 1 as required in Eq. (33). An asymptotic lower bound of cd1 is noticed for each D value tested as sD approaches 0.5
+in Fig. 5(a). On the other hand, when sD increases, the lower bound drops, resulting in a broader stable region while the over-
+all relative error of the temperature ﬁeld increases (see Figs. 7 and 8 below). Fig. 5(b) shows the dependence of cd1 on D in the
+range of 0 6 D < 1 for the three schemes in relation to the lower stability bound for sD = 0.50001 and the upper stability
+bound. Clearly, all three schemes are well within the stable region.
+    As an illustration, Fig. 6 shows the temperature contours obtained using sD = 0.75, D = 0.5 and H = 64. To assess the accu-
+racy of the LBE solution of the temperature TLBE the following relative L-2 error norm is deﬁned:
+
+                                          !1=2
+              X                  X
+      E2 ¼     ðT LBE  T ex Þ2 = T 2ex          :                                                                                           ð56Þ
+               x;y                  x;y
+
+   Fig. 7(a–f) shows the log–log plots of E2 versus the dimensionless grid resolution, 1/H, over a complete range of D for the
+three schemes given in Eq. (35a–c). Three relaxation coefﬁcient values sD = 0.51, 0.55 and 0.75 are used. Second-order accu-
+racy is observed for all cases. At sD = 0.51, all three schemes give very close results as shown in Fig. 7(a and b). As sD in-
+creases, the differences among three schemes become more noticeable and Scheme 2 gives smallest relative error for
+each case as shown in Fig. 7(c–f). The variations of E2 in the range of D from 0 to 1 are shown in Fig. 8 with Ny = 34. It is
+noticed that with sD = 0.75, all the three schemes have minimum error at D = 0.5, where the standard thermal bounce-back
+scheme is applied. When sD increases to 1.0, the relative error also increases for each scheme when D 6 0:5; while for
+D > 0.5, the error behavior becomes more complicated. The results in Figs. 7 and 8 clearly verify the existence of the adjust-
+able parameter cd1 in using the TLBE method for CDE subjected to Dirichlet boundary conditions; and the proposed Dirichlet
+schemes are stable and of second-order accuracy for sD > 0.5.
+   For comparison purposes, the results of E2 obtained using the ‘‘third-order’’ and second-order schemes in [48] for
+D = 0.25, 0.50 and 0.75 are compared with that from Scheme 2 in Fig. 9(a and b), where the ‘‘Ginzburg 3rd-order # 1’’
+and ‘‘Ginzburg 3rd-order # 2’’ represent the two particular schemes whose coefﬁcients are constructed with j = 0 and
+j = ð1 þ 2D þ D2 Þ=2 in Eq. (36), respectively, and the coefﬁcients for the second-order scheme are given in Eq. (37).
+Fig. 9 demonstrates that the ‘‘third-order’’ Dirichlet schemes in [48] also lead to second-order convergence since the TLBE
+method is second-order accurate in the interior. In addition, Scheme 2 gives smaller error than the local ‘‘third-order
+schemes in [48] for each D value tested in Fig. 9(a and b).
+
+
+
+
+             Fig. 8. Relative L-2 error norm E2 versus the boundary lattice fraction, D, for the channel ﬂow Dirichlet problem at Ny = 34.
+380                                          L. Li et al. / Journal of Computational Physics 237 (2013) 366–395
+
+
+
+
+                                     (a)                                                                          (b)
+Fig. 9. Comparison of E2 obtained using Scheme 2 with those using Ginzburg’s schemes [48] for the channel ﬂow Dirichlet problem at sD = 0.75. (a) D = 0.50
+(all three schemes reduce to the ‘‘bounce-back’’ scheme), (b) D = 0.25 and 0.75.
+
+
+
+
+   To gain further insight into the impact of boundary condition treatments on the accuracy of TLBE solutions, we compute
+the boundary heat ﬂux and interior temperature gradient using the formulas given by Eqs. (41a) and (42), respectively. The
+relative L-2 error norms are computed using the respective derivatives obtained from the analytical solutions given by Eq.
+(55):
+
+                 "                      2                  2 #1=2
+                        X       @T        @T          X          @T
+       E2 qw ¼                                 =                         ;                                                                         ð57Þ
+               boundary nodes
+                                @y LBE    @y ex  boundary nodes
+                                                                 @y ex
+
+
+                  "                       2                       #1=2
+                        X         @T        @T          X @T 2
+       E2 grad ¼                                 =                          :                                                                      ð58Þ
+                 interior nodes
+                                  @y LBE    @y ex  interior nodes
+                                                                  @y ex
+
+   The results of E2_qw for the wall heat ﬂux and E2_grad for the interior temperature gradient at sD ¼ 0:75 are shown in
+Figs. 10 and 11, respectively.
+
+
+
+
+                                       (a)                                                                         (b)
+Fig. 10. Wall heat ﬂux error E2_qw versus the grid resolution, 1/H, for the channel ﬂow Dirichlet problem. (a) D = 0.50, 0.25, and 0.75 at sD = 0.75, (b)
+D = 0.50, 0.01, and 0.99 at sD = 0.75.
+                                               L. Li et al. / Journal of Computational Physics 237 (2013) 366–395                                          381
+
+
+
+
+                                        (a)                                                                           (b)
+Fig. 11. Interior gradient error E2_grad versus the grid resolution, 1/H, for the channel ﬂow Dirichlet problem. (a) D = 0.50, 0.25, and 0.75 at sD = 0.75, (b)
+D = 0.50, 0.01, and 0.99 at sD = 0.75.
+
+
+
+   It is clear that the numerical solutions for boundary heat ﬂux and interior temperature gradient are of second-order accu-
+racy for Dirichlet problems with straight boundary walls perpendicular to one of the lattice vectors. Scheme 2 gives slightly
+smaller error than the other two.
+
+3.1.2. Neumann boundary condition
+   For the Neumann problem, the normal heat ﬂux on the wall is given as
+                    @T
+        qw ¼ Dt           ¼ Dt cosðkxÞ=H:                                                                                                              ð59Þ
+                    @y y¼H
+
+   The exact solution for the temperature is
+                                                                                  
+                                    ekH þ 1            ekH þ 1
+        T ex ðx; yÞ ¼ Real eikx                eky þ                 eky               :                                                                ð60Þ
+                                  kHðe  e Þ
+                                      kH   kH       kHðekH  ekH Þ
+   Again, the numerical solution of the temperature ﬁeld at sD = 0.75, D = 0.5 and H = 64 is shown in Fig. 12 as an example; in
+addition to the interior temperature and temperature gradient error norms deﬁned in Eqs. (56), (58), the relative L-2 error
+norm for the boundary temperature is deﬁned as
+
+
+
+
+                 Fig. 12. Temperature contours in a 2-D channel with Neumann boundary condition using sD = 0.75, D = 0.5 and H = 64.
+382                                               L. Li et al. / Journal of Computational Physics 237 (2013) 366–395
+
+
+
+
+                                            (a)                                                                        (b)
+
+
+
+
+                                                                                              (c)
+Fig. 13. Relative L-2 error norm E2 versus the grid resolution, 1/H, for the channel ﬂow Neumann problem with various D. (a) sD = 0.51, (b) sD = 0.55, and (c)
+sD = 0.75.
+
+
+
+                  "                                   ,                            #1=2
+                        X                         2
+                                                              X
+        E2 tw ¼                     ðT LBE  T ex Þ                        T 2ex          :                                                             ð61Þ
+                   boundary nodes                         boundary nodes
+
+   Fig. 13(a–c) show E2 (Eq. (56)) versus 1/H for D ranging from 0.01 to 0.99 and sD = 0.51, 0.55 and 0.75 at Pe = 20, and
+Figs. 14 and 15 show E2_tw (Eq. (61)) and E2_grad (Eq.(58)), respectively, for sD = 0.75. The results conﬁrm that the present
+Neumann condition scheme is stable, and second-order accuracy is achieved for the temperature ﬁeld, boundary tempera-
+ture, and interior temperature gradient when the straight-wall is perpendicular to one of the lattice vectors. Extreme cases
+including sD = 0.501, 0.5001, 0.50001 and D = 0.001, 0.999, 0.0001, 0.9999 at Ny = 34 have also been examined. The compu-
+tations using present Neumann boundary scheme are all stable and give good numerical results for all cases.
+
+
+3.2. One-D transient conduction within an inclined semi-inﬁnite solid with a Neumann condition
+
+   In order to demonstrate the applicability of the present Neumann boundary condition treatment to inclined walls, we
+consider the transient heat conduction into an inclined semi-inﬁnite solid with a constant heat ﬂux supplied at the end
+as shown in Fig. 16. For a given wall inclination angle h with respect to the y-axis, the speciﬁc fractions of Dx and Dy are
+calculated for each ﬁeld point adjacent to the boundary. Note there is still no tangential variation in this case; the Neumann
+boundary condition with nonzero tangential gradient will be investigated in Section 3.3.
+                                             L. Li et al. / Journal of Computational Physics 237 (2013) 366–395                                       383
+
+
+
+
+                                       (a)                                                                         (b)
+Fig. 14. Wall temperature error E2_tw versus the grid resolution, 1/H, for the channel ﬂow Neumann problem. (a) D = 0.50, 0.25, and 0.75 at sD = 0.75, (b)
+D = 0.50, 0.01, and 0.99 at sD = 0.75.
+
+
+
+
+                     Fig. 15. Interior gradient error E2_grad versus the grid resolution, 1/H, for the channel ﬂow Neumann problem.
+
+
+
+
+                                          Fig. 16. Layout of the lattice around the inclined semi-inﬁnite solid.
+384                                                L. Li et al. / Journal of Computational Physics 237 (2013) 366–395
+
+
+      The initial temperature is zero in the ﬁeld (solid), and the constant heat ﬂux condition is imposed as
+                               pﬃﬃﬃﬃﬃﬃﬃﬃ
+                    @T          Dt p
+         qw ¼ Dt          ¼             :                                                                                                         ð62Þ
+                    @n l¼0       2
+      Hence the transient temperature along the solid is solved to be
+                                            pﬃﬃﬃ                
+                                2           l p             l
+         T ex ðt; lÞ ¼ t 1=2 el =ð4Dt tÞ  pﬃﬃﬃﬃﬃﬃﬃ erfc pﬃﬃﬃﬃﬃﬃﬃ ;                                                                               ð63Þ
+                                           2 Dt t         2 Dt t
+where l is the distance in the normal direction and ‘‘erfc’’ is the complementary error function. The temperature on the wall
+is f(t) = T(t, l = 0) = t1/2.
+    With no temperature variation along the tangential direction, the boundary heat ﬂuxes in the discrete velocity directions
+can be directly calculated using Eq. (49),
+                            pﬃﬃﬃﬃﬃﬃﬃﬃ
+                             Dt p
+         q2 ¼ qw cos h ¼              cos h                                                                                                       ð64aÞ
+                              2
+and
+                         pﬃﬃﬃﬃﬃﬃﬃﬃ
+                          Dt p
+         q3 ¼ qw sin h ¼           sin h:                                                                                                         ð64bÞ
+                           2
+    Fig. 17(a) shows the variations of the temperature with time at point P in Fig. 16 for inclination angles h = tan1(1.0),
+tan1(1.2), tan1(1.5), and tan1(2.0). For each inclination angle, the temperature proﬁle along the vertical line going through
+point P at t = 500dt is compared with the exact solution in Fig. 17(b), where the distance in the y coordinate has been
+projected into that in the normal direction of the physical boundary.
+    Very good agreement between the simulation and the analytical solution is noticed in Fig. 17(a and b). These results verify
+that Eq. (49) is correct when the tangential temperature gradient on the boundary is zero. This test also serves as a good
+example to show that the present Neumann boundary condition treatment can be readily implemented for a boundary that
+is intersected by the rectangular lattice with arbitrary link fractions, i.e., irregularly spaced D values, which is the subject of
+the next example.
+
+3.3. Two-D steady-state heat conduction inside a circle
+
+    Fig. 18(a) shows the schematic layout of the lattice covering the entire surface and the interior of a circle of radius r0. The
+speciﬁc Dx or Dy value of each boundary cut must be calculated ﬁrst. It should be noted that the D values are irregularly
+distributed along the azimuthal direction; as an example, the distribution of D values, including both Dx and Dy, as a function
+of the azimuthal angle u of the boundary nodes at r0 = 30.5 is depicted in Fig. 18(b).
+
+3.3.1. Dirichlet boundary condition
+   First we consider the steady-state Dirichlet boundary condition
+
+
+
+
+                                             (a)                                                                        (b)
+             Fig. 17. (a) Temperature variations with time at point P; (b) temperature proﬁles in the y-direction going through P at t = 500dt.
+                                              L. Li et al. / Journal of Computational Physics 237 (2013) 366–395                                          385
+
+
+
+
+                                            (a)                                                                        (b)
+            Fig. 18. (a) Schematic layout of the lattice around a circle; (b) distribution of D values along the azimuthal angle u at r0 = 30.5.
+
+
+
+        Tðr ¼ r 0 Þ ¼ f ðuÞ ¼ cosðnuÞ;        n ¼ integer:                                                                                              ð65Þ
+   The exact solution for the temperature ﬁeld is
+
+
+        T ex ðr; uÞ ¼ ðr=r 0 Þn cosðnuÞ:                                                                                                                ð66Þ
+    Fig. 19 shows the relative L-2 error norm of E2 deﬁned in Eq. (56) for all the interior nodes versus the grid resolution, 1/r0,
+on the log–log scale with n = 4 used in Eq. (65). The present Schemes 1, 2 and 3 are based on Eq. (35a–c), respectively, and the
+‘‘third-order’’ and second-order schemes proposed by Ginzburg [48] are used for comparison (those schemes are rewritten in
+Eqs. (36), (37)). Second-order accuracy for the temperature ﬁeld is observed in Fig. 19 for each scheme examined. It is seen
+that Scheme 2 gives better accuracy comparing with the other two given by Eq. (35).
+    The results for the error norm E2_qw of the boundary heat ﬂux Una according to Eq. (41a) are shown in Fig. 20, where on
+average only ﬁrst-order convergence is observed. It should be noted that in Fig. 20 the results of Ginzburg’s third- and sec-
+ond-order schemes are obtained by combining Eqs. (36) and (37) with our second-order Neumann scheme in Eq. (40),
+respectively, and following the same procedure as that for Eq. (41a). Fig. 21 gives the results of the error norm of the interior
+temperature gradient E2_grad deﬁned in Eq. (58). Realizing Scheme 2 has better accuracy than the other two given by Eq. (35)
+in the previous examples only the results using Scheme 2 are presented in Figs. 20 and 21. The ‘‘ﬁnite-difference’’ case
+
+
+
+
+Fig. 19. Relative L-2 error norm E2 versus the grid resolution, 1/r0, for the steady-state heat conduction inside a circle with a Dirichlet condition (results
+based on Ginzburg’s schemes [48] are included).
+386                                             L. Li et al. / Journal of Computational Physics 237 (2013) 366–395
+
+
+
+
+Fig. 20. Wall heat ﬂux error E2_qw versus the grid resolution, 1/r0, for the steady-state heat conduction inside a circle with a Dirichlet condition (results
+based on Ginzburg’s schemes [48] are included).
+
+
+
+
+Fig. 21. Interior gradient error E2_grad versus the grid resolution, 1/r0, for the steady-state heat conduction inside a circle with a Dirichlet condition (results
+based on Ginzburg’s schemes [48] are included).
+
+
+
+represents a quadratic ﬁnite-difference scheme based on the numerical values of the temperature ﬁeld at the lattice nodes
+and the given wall temperature.
+   One valuable insight to be gained from Figs. 20 and 21 is that for boundary heat ﬂux and interior temperature gradient
+computed from Eqs. (41a) and (42), respectively, these various Dirichlet schemes all yield linear convergence for the bound-
+ary heat ﬂux, and the error norm of the interior temperature gradient E2_grad is proportional to (1/r0)1.5, which are lower than
+the second-order convergence as shown in Figs. 10 and 11, respectively for straight boundaries. The degradation of the con-
+vergence orders for the derivative related physical quantities is due to the curved boundary on which the intersected link
+fractions (D values) are irregularly distributed (see Fig. 18(b)). On the whole, the present Dirichlet condition treatment on
+curved boundaries is able to produce second-order accurate temperature ﬁeld and ﬁrst-order boundary heat ﬂux, and the
+interior temperature gradient converges to its exact solution with a ‘‘superlinear’’ order close to 1.5. This observation also
+offers an insight into the accuracy of the Neumann boundary condition treatment on curved boundaries, which will be dis-
+cussed next.
+
+
+3.3.2. Neumann boundary condition
+   Now consider the following Neumann (ﬂux) condition applied on the boundary
+
+                    @T
+         qw ¼ Dt         ¼ nDt cosðnuÞ=r 0 :                                                                                                               ð67Þ
+                    @r r0
+
+      The solution of the temperature ﬁeld is the same as that in Eq. (66) and the case of n = 4 is used.
+                                            L. Li et al. / Journal of Computational Physics 237 (2013) 366–395                                       387
+
+
+
+
+  Fig. 22. Relative L-2 error norm E2 versus the grid resolution, 1/r0, for the steady-state heat conduction inside a circle with a Neumann condition.
+
+
+
+   To account for the contribution to Una from the tangential temperature gradient, Eq. (48) is used. After Una is obtained
+numerically, Eq. (40) is implemented to complete the streaming step for Neumann problems. The error norms E2, E2_tw
+and E2_grad of the interior temperature ﬁeld, the boundary temperature, and the interior temperature gradient as deﬁned
+in Eqs. (56), (61), and (58) versus the grid resolution, 1/r0, are shown in Figs. 22–24, respectively, where the ‘‘coupled
+Schemes 1, 2 and 3’’ represent the different coefﬁcient sets cdi and c0di in Eq. (46) determined by the three schemes given
+by Eq. (35a–c), respectively.
+   From the analytical solution for the temperature ﬁeld, Eq. (66), the exact boundary heat ﬂux Una in the discrete velocity
+direction ea can be obtained with projections of the normal and tangential heat ﬂuxes into the x- or y-coordinate. For com-
+parison, the results of the three types of error norms E2, E2_tw and E2_grad based on this exact boundary ﬂux are also presented
+in Figs. 22–24, respectively.
+   First of all, we notice that with the ‘‘exact boundary ﬂux’’ Una applied, the use of Eq. (40) for evaluation of the distribution
+function leads to second-order accuracy for all the three quantities, i.e., the interior and boundary temperatures and the inte-
+rior temperature gradients. However, only ﬁrst-order accuracy is obtained for both the interior and boundary temperatures
+for all the three ‘‘coupled’’ schemes. The average decrease of the error norms in Figs. 22 and 23 is proportional to the grid
+resolution, 1/r0, on the log–log scale and considerable oscillations are observed even at high grid resolution. The interior tem-
+perature gradient in Fig. 24 still converges with a ‘‘superlienar’’ order around 1.5, which is similar to the result of E2_grad in
+Fig. 21 with a Dirichlet condition. Compared with the second-order convergence in the case of exact boundary ﬂux, the deg-
+radation of order-of-accuracy in the coupled schemes is due to the heat ﬂux approximation of Una for irregularly distributed
+D values along the curved boundary. Recalling in Fig. 20 only a linear convergence of the boundary heat ﬂux is obtained for
+the Dirichlet problem, and the heat ﬂux formula Eq. (41a), (46a) is used in deriving the ultimate heat ﬂux approximation in
+Eq. (48), it is believed that some second-order errors terms O(d2x ), which are related to the local D values, are introduced in
+the heat ﬂux approximation. Those second-order errors cannot always be cancelled out due to the ‘‘random’’ distribution of
+
+
+
+
+ Fig. 23. Wall temperature error E2_tw versus the grid resolution, 1/r0, for the steady-state heat conduction inside a circle with a Neumann condition.
+388                                            L. Li et al. / Journal of Computational Physics 237 (2013) 366–395
+
+
+
+
+ Fig. 24. Interior gradient error E2_grad versus the grid resolution, 1/r0, for the steady-state heat conduction inside a circle with a Neumann condition.
+
+
+
+D values (Fig. 18 (b)), resulting in averaged linear convergence and persistent oscillations even at high resolution as shown in
+Figs. 22 and 23. Based on the ‘‘multi-reﬂection’’ approach, Ginzburg [48] also found that only linear convergence can be
+achieved for the Neumann condition on curved boundaries when tangential temperature gradient exists.
+   The orders of accuracy for the Dirichlet and Neumann conditions on straight and curved boundaries for the temperature
+and its derivative related quantities are summarized in Table 1 for 2-D steady thermal problems.
+
+3.4. Two-D transient heat conduction inside a circle
+
+   In this case, a transient boundary condition is applied on the curved boundary to examine the temporal accuracy of the
+present boundary condition treatment for time-dependent problems. The geometry is the same as that in Fig. 18(a).
+   The temperature is assumed uniform in the azimuthal direction and the transient Dirichlet boundary condition reads
+         Tðt; r ¼ r 0 Þ ¼ f ðtÞ ¼ sinðxtÞ;                                                                                                                ð68Þ
+where x is the frequency of the imposed thermal boundary condition. This transient problem is characterized by the Stokes
+number St deﬁned as
+                 r 20 x
+         St2 ¼          :                                                                                                                                 ð69Þ
+                 2pDt
+      The analytical solution for this 2-D problem can be found as [49]
+                                                                     Z t                     
+                           2X   1
+                                      J0 ðbn rÞ                 2               2
+         T ex ðr; tÞ ¼ f ðtÞ                        f ð0ÞeDt bn t þ     eDt bn ðtsÞ df ðsÞ
+                           r 0 n¼1 bn J 1 ðbn r 0 Þ                    0
+                                                          "                                        #
+                                 2   X1                       2                                 2
+                                           xJ0 ðbn rÞ Dt bn cosðxtÞ þ x sinðxtÞ  Dt b2n eDt bn t
+                   ¼ sinðxtÞ                                                                       ;                                                     ð70Þ
+                                 r 0 n¼1 bn J 1 ðbn r 0 Þ                  ðDt b2n Þ2 þ x2
+
+where Ji(br) (i = 0, 1) is the solution to the Bessel’s function of the ﬁrst kind of order i, and bn is determined by J0(bnr0) = 0.
+  For error assessment purposes we deﬁne the following error norms
+
+
+
+
+Table 1
+Accuracy of the TLBE simulations with Dirichlet/Neumann conditions.
+
+                                 Dirichlet condition                                  Neumann condition
+                                 Parallel straight          Curved boundary           Parallel straight             Curved        Curved boundary–
+                                 boundary                                             boundary                      boundary§
+  Interior temperature ﬁeld      2nd-order                  2nd-order                 2nd-order                     2nd-order     1st-order
+  Boundary heat ﬂux              2nd-order                  1st-order                                                           
+  Boundary temperature                                                              2nd-order                     2nd-order     1st-order
+  Interior temperature           2nd-order                  ‘‘superlinear’’ order     2nd-order                     2nd-order     ‘‘superlinear’’ order
+     gradient                                               1.5                                                                  1.5
+
+The boundary normal is parallel with a lattice vector. §Exact boundary heat ﬂux. –Coupled schemes.
+                                                 L. Li et al. / Journal of Computational Physics 237 (2013) 366–395                                  389
+
+                  "                             #1=2
+                1 X
+          
+       Eðt Þ ¼           ðT LBE  T ex Þ2              ;                                                                                            ð71Þ
+               Nx Ny x;y
+
+
+              "        Z 2p=x                                   #1=2       "Z                                         #1=2
+               x                 1 X                                            1
+                                                                                     1 X                          
+       E2 ¼                               ðT LBE  T ex Þ2 dt          ¼                      ðT LBE  T ex Þ2 dt            ;                      ð72Þ
+               2p       0       Nx Ny x;y                                   0       Nx Ny x;y
+
+where t⁄ = xt/2p and the product of (NxNy) accounts for the total number of lattice nodes inside the circle.
+   To eliminate the effect of initial transient, the computation is performed for a sufﬁciently long period of time (t⁄ > 1). The
+Stokes number St is set to be unity in all simulations. The results of E(t⁄) deﬁned in Eq. (71) at sD = 0.51 and 0.75 are
+presented in Fig. 25 using the three schemes in Eq. (35a–c). The grid resolution here is relatively poor as r0 = 5.8. The average
+error E2 deﬁned in Eq. (72) is evaluated over one single period after the dynamic steady state is reached. The results of E2
+with different resolution are shown in Fig. 26 as a function of 1/r0 for sD = 0.75. The decrease of the error norm E2 is propor-
+tional to (1/r0)2 on the log–log scale for each of the three schemes. It can also be observed in Fig. 26 that Schemes 1 and 2
+have very close errors and they are more accurate than Scheme 3 in general. When sD = 0.51 is used, the three schemes give
+almost identical results for E2 and the magnitude is very close to that in Fig. 26 for sD = 0.75 thus they are not shown here for
+brevity. Overall, Scheme 2 appears to give smaller error than the other two schemes given by Eq. (35).
+   It is thus conﬁrmed that the present Dirichlet boundary condition treatment can be applied in transient problems with
+curved-geometry, and second-order accuracy is preserved for the temperature ﬁeld.
+
+
+
+
+ Fig. 25. Comparison of the error norm E(t⁄) deﬁned in Eq. (71) for the transient heat conduction inside a circle using the three schemes with r0 = 5.8.
+
+
+
+
+                      Fig. 26. Relative L-2 error norm E2 versus the grid resolution, 1/r0, for the transient heat conduction inside a circle.
+390                                             L. Li et al. / Journal of Computational Physics 237 (2013) 366–395
+
+
+3.5. Three-D steady-state circular pipe ﬂow
+
+   To test the TLBE model and the boundary condition treatments in 3-D cases, the convection and diffusion inside a circular
+pipe are considered in this example. The temperature is assumed to be uniform in the azimuthal direction in order to obtain
+analytical solutions.
+
+3.5.1. Dirichlet boundary condition
+   A plug ﬂow with constant velocity U in the axial z-direction is assumed. The periodic boundary condition in the z-direc-
+tion is applied as
+      Tðr; z ¼ LÞ ¼ Tðr; z ¼ 0Þ;                                                                                                             ð73Þ
+and the Dirichlet boundary condition is imposed as
+      Tðr ¼ r 0 ; zÞ ¼ cosðkzÞ; with k ¼ 2p=L:                                                                                               ð74Þ
+   Following the same procedure for the 2-D channel ﬂow with Dirichlet boundary conditions in Section 3.1.1, the analytical
+solution for the temperature ﬁeld is solved to be
+                                        
+                               I0 ðkrÞ
+      T ex ðr; zÞ ¼ Real eikz              ;                                                                                                 ð75Þ
+                              I0 ðkr 0 Þ
+                                                                                   qﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃ
+where I0(kr) is the modiﬁed Bessel’s function of the ﬁrst kind of order 0 and k ¼ k 1 þ DiUt k.
+  The relative error norms E2 and E2_qw are extended from 2-D to 3-D cases
+             "                          #1=2
+              X                  X
+      E2 ¼     ðT LBE  T ex Þ2 = T 2ex      ;                                                                                               ð76Þ
+               r;h;z                   r;h;z
+
+                 "                          2 X  2 #1=2
+                        X @T            @T              @T
+      E2 qw ¼                                   =               :                                                                           ð77Þ
+                   r¼r0 ;h;z
+                                 @r LBE    @r ex  r¼r ;h;z
+                                                           @r ex
+                                                              0
+
+
+    Figs. 27 and 28 show the results of E2 and E2_qw for this 3-D case, respectively, versus the grid resolution, 1/r0, with the
+three schemes in Eq. (35a–c) implemented. The characteristic Péclect number is Pe = (2r0)U/Dt = 20 and the relaxation coef-
+ﬁcient is sD = 0.75.
+    Similar to the 2-D example in Section 3.1.1, this 3-D example with a Dirichlet condition on the curved boundary gives
+quadratic convergence of the temperature ﬁeld and linear convergence of the boundary heat ﬂux. The second-order accuracy
+of the present Dirichlet boundary condition treatment for temperature ﬁelds is therefore veriﬁed for 3-D thermal ﬂows with
+curved geometry.
+
+3.5.2. Neumann boundary condition
+   For the Neumann problem, the heat ﬂux is given as
+                       @T
+      qw ¼ Dt                 ¼ Dt cosðkzÞ=r 0 ;                                                                                           ð78Þ
+                       @r r¼r0
+
+
+
+
+                        Fig. 27. Relative L-2 error norm E2 versus the grid resolution, 1/r0, for the pipe ﬂow with a Dirichlet condition.
+                                                     L. Li et al. / Journal of Computational Physics 237 (2013) 366–395                 391
+
+
+
+
+                   Fig. 28. Wall heat ﬂux error E2_qw versus the grid resolution, 1/r0, for the pipe ﬂow with a Dirichlet condition.
+
+
+
+
+                  Fig. 29. Relative L-2 error norm E2 versus the grid resolution, 1/r0, for the pipe ﬂow with a Neumann condition.
+
+
+
+
+and other conditions are the same as in Section 3.5.1. The analytical solution for the temperature ﬁeld is
+
+
+                                              
+                                  I0 ðkrÞ
+      T ex ðr; zÞ ¼ Real eikz                    ;                                                                                     ð79Þ
+                                kr0 I1 ðkr 0 Þ
+where I1(kr) is the modiﬁed Bessel’s function of the ﬁrst kind of order 1. There is no azimuthal temperature gradient along
+the curved boundary; the non-zero tangential gradient is on the z-direction, which is aligned with e5 and e6 of the lattice
+velocity vectors. Thus the exact ﬂux conversion formula in Eq. (49) can be directly applied.
+   The error norm E2 deﬁned in Eq. (76) is again examined for the Neumann problem and the results at sD = 0.51, 0.55 and
+0.75 are shown in Fig. 29.
+   For each of the sD values tested, the present Neumann condition treatment leads to a stable computation. The decrease of
+the relative error E2 is proportional to (1/r0)2 on the log–log scale. The temperature ﬁeld obtained is thus second-order accu-
+rate. Comparing with the linear convergence of the temperature ﬁeld in Section 3.3.2, it is conﬁrmed that with zero temper-
+ature gradient along the curved boundary, second-order accuracy of temperature ﬁelds can be achieved with the present
+Neumann boundary condition treatment for 2-D and 3-D problems.
+392                                           L. Li et al. / Journal of Computational Physics 237 (2013) 366–395
+
+
+4. Conclusions
+
+   Thermal boundary condition treatments based on the ‘‘bounce-back’’ scheme and spatial interpolation are presented for
+both the Dirichlet and Neumann conditions. When second-order accuracy is pursued, there is an adjustable parameter for
+the Dirichlet problem, while the Neumann condition treatment is unique. Three particular schemes for the Dirichlet condi-
+tion treatment are presented and their stability and accuracy are examined. All three Dirichlet schemes are stable and
+Scheme 2 gives smaller error in most cases investigated.
+   When extended to curved boundaries, the present Dirichlet condition treatment can be applied directly and it leads to
+second-order accuracy of the temperature ﬁeld and ﬁrst-order accuracy of the boundary heat ﬂux. In contrast the proposed
+Neumann condition treatment requires the determination of heat ﬂuxes in the discrete velocity directions of the TLBE model.
+A general formula to convert the normal heat ﬂux into the ﬂuxes in the discrete velocity directions is derived. Different from
+the Dirichlet problem, only ﬁrst-order accuracy is obtained for the temperature ﬁeld with Neumann conditions due to the
+combined effect of the curved boundary and the heat ﬂux conversion. For the special case with no tangential variation of
+temperature along the curved boundary, the heat ﬂux conversion becomes exact and second-order accuracy of the temper-
+ature ﬁeld can be obtained.
+
+Acknowledgements
+
+      This paper was prepared with the support of the U. S. Department of Energy under Award No. DE-FE0001321.
+
+Appendix. Asymptotic analysis of second-order accurate boundary schemes
+
+   The asymptotic analysis and diffusive scaling in [28] are applied here with the following dimensionless parameter
+introduced
+         ¼ dx=L;                                                                                                                            ðA1Þ
+where L is the reference length. For details of the asymptotic analysis of the thermal LBE and the diffusive scaling please refer
+to the work in [28]. Here we focus on the asymptotic analysis for the present boundary condition treatments; some results
+given in [28] are used directly.
+   The distribution function ga and the macroscopic variable / can be expanded as (the arguments of (x, t) are dropped for
+simplicity)
+                            2 ð2Þ     3
+        g a ¼ g ð0Þ    ð1Þ
+                a þ g a þ  g a þ Oð Þ;                                                                                                    ðA2Þ
+
+        / ¼ /ð0Þ þ /ð1Þ þ 2 /ð2Þ þ Oð3 Þ;                                                                                                 ðA3Þ
+and the spatial vectors xf and xff in the ﬁeld are related to the boundary vector xw by (see Fig. 2)
+        xf ¼ xw  Dea  ¼ xw þ Dea ;                                                                                                      ðA4aÞ
+
+        xff ¼ xw  ð1 þ DÞea :                                                                                                             ðA4bÞ
+Please note that the spatial vector x and the time t throughout this Appendix are dimensionless variables normalized by the
+reference length and diffusion time scales, respectively. Based on the diffusive scaling in [28] the present boundary condition
+treatments in Eqs. (32) and (38) can be rewritten in terms of xw as follows
+   Dirichlet boundary condition:
+        g a ðxw þ Dea ; t þ 2 Þ ¼ cd1 g^a ðxw  Dea ; tÞ þ cd2 g^a ðxw  ð1 þ DÞea ; tÞ þ cd3 g^a ðxw þ Dea ; tÞ þ cd4 eD Ud ;      ðA5Þ
+and
+  Neumann boundary condition:
+        g a ðxw þ Dea ; t þ 2 Þ ¼ cn1 g^a ðxw  Dea ; tÞ þ cn2 g^a ðxw  ð1 þ DÞea ; tÞ þ cn3 g^a ðxw þ Dea ; tÞ þ cn4 Una =U;    ðA6Þ
+where U is a reference speed (U = dx/dt) for diffusive scaling as deﬁned in [28]. The source term does not affect boundary
+condition treatment; thus it is not considered here for simplicity. The post-collision distribution functions in Eqs. (A5),
+(A6) are manipulated with the collision operator, and after inserting the expansion (A2) into Eqs. (A5), (A6) each distribution
+                                                                         ðmÞ            ðmÞ
+can be expressed with respect to the boundary distribution function, g a (xw, t), or g a (xw, t) (m = 0, 1, and 2) using Taylor-
+series expansions as below
+                                                                                                     !
+          ðmÞ                           ðmÞ              @      @ 1                   @2                ðmÞ
+        g a ðxw þ Dea ; t þ 2 Þ ¼ g a þ Dea j        þ 2 þ D2 2 ea i ea j         þ Oð3 Þ g a ;                                ðA7aÞ
+                                                        @xj     @t 2                 @xi @xj
+
+        g^ðmÞ                   ðmÞ                    ðmÞ
+          a ðxw  Dea ; tÞ ¼ g a ðxw  Dea ; tÞ þ Lg a ðxw  Dea ; tÞ
+                                                                                                   !
+                                                                 @  1               @2
+                              ¼ ðg ðmÞ    ðmÞ
+                                   a þ Lg a Þ þ Deaj             þ D2 2 eai eaj         þ Oð3 Þ ðg ðmÞ    ðmÞ
+                                                                                                       a þ Lg a Þ;                          ðA7bÞ
+                                                                @xj 2              @xi @xj
+                                                   L. Li et al. / Journal of Computational Physics 237 (2013) 366–395                                393
+
+
+       g^ðmÞ                         ðmÞ                          ðmÞ
+         a ðxw  ð1 þ DÞea ; tÞ ¼ g a ðxw  ð1 þ DÞea ; tÞ þ Lg a ðxw  ð1 þ DÞea ; tÞ
+                                                                                                                                 !
+                                                                                         @  1                     @2
+                                        ¼ ðg ðmÞ    ðmÞ
+                                             a þ Lg a Þ þ ð1 þ DÞeaj                     þ ð1 þ DÞ2 2 eai eaj         þ Oð3 Þ ðg ðmÞ    ðmÞ
+                                                                                                                                     a þ Lg a Þ;   ðA7cÞ
+                                                                                        @xj 2                    @xi @xj
+
+         ðmÞ                     ð                          ðmÞ
+       g^a ðxw þ Dea ; tÞ ¼ g a mÞðxw þ Dea ; tÞ þ Lg a ðxw þ Dea ; tÞ
+                                                                                                            !
+                                      ðmÞ          ðmÞ                 @  1                  @2                 ðmÞ     ðmÞ
+                                ¼ ðg a þ Lg a Þ þ Deaj               þ D2 2 eai ea j         þ Oð3 Þ ðg a þ Lg a Þ;                      ðA7dÞ
+                                                                      @xj 2                 @xi @xj
+
+where the arguments (xw, t) on the right of the equations are skipped for brevity and the collision operator is (see Eq.
+(9))
+                     ð0Þ
+       Lg ðmÞ  1
+          a ¼ M SMðQ     þ Q ð1Þ Þg ðmÞ
+                                     a ;                                                                                                            ðA8Þ
+with
+
+       Q ð0Þ ¼ ðx0 ; x1 ; . . . ; x6 ÞT ð1; 1; . . . ; 1Þ  I 77 ;                                                                                ðA9aÞ
+and
+                  1
+       Q ð1Þ ¼          ð0; ux1 ; ux2 ; v x3 ; v x4 ; wx5 ; wx6 ÞT ð1; 1; 1; 1; 1; 1; 1Þ;                                                       ðA9bÞ
+                 eD U
+Substitution of Eqs. (A7a–A7d) into the boundary schemes given by Eqs. (A5), (A6) and by rearranging the relevant terms
+according to the power of e, one can obtain the required conditions to satisfy the Dirichlet and Neumann boundary condi-
+tions to second-order accuracy.
+   Dirichlet boundary condition:
+   The equation of zeroth-order in  is
+                      ð0Þ
+       ð1  cd3 Þg a  ðcd1 þ cd2 Þg ð0Þ
+                                      a ¼ cd4 eD Ud :                                                                                              ðA10Þ
+   In the power of 1, the equation is
+                                                   "                                                                                #
+                                                                                      ð0Þ                                     ð0Þ
+                      ð1Þ                                                           @g a                                   @g a
+       ð1  cd3 Þg a  ðcd1 þ cd2 Þg ð1Þ
+                                      a þ ðDð1  cd3 Þ  cd3 Þea j                       þ ððD  1Þðcd1 þ cd2 Þ þ cd2 Þeaj             ¼ 0;       ðA11Þ
+                                                                                     @xj                                     @xj
+
+   According to Yoshida and Nagaoka [28], the following relationships are noticed based on Eqs. (50), (51), and (57) in [28],
+respectively
+
+        ð0Þ
+       g a  g ð0Þ
+                a ¼ 0;                                                                                                                             ðA12Þ
+
+        ð0Þ             ð0Þ
+       g a þ g ð0Þ
+                a ¼ eD / ;                                                                                                                         ðA13Þ
+
+        ð1Þ             ð1Þ
+       g a þ g ð1Þ
+                a ¼ eD / :                                                                                                                         ðA14Þ
+
+   Eqs. (A12–A14) imply that the following relationships must hold for the coefﬁcients in Eqs. (A10) and (A11)
+       8
+       > 1  cd3 ¼ ðcd1 þ cd2 Þ
+       >
+       >
+       <1  c ¼ c
+               d3       d4
+                                                                                                                                                   ðA15Þ
+       >
+       > D ð1   c d3 Þ   cd3 ¼ ðD  1Þðcd1 þ cd2 Þ þ cd2
+       >
+       :
+         cd4 – 0;
+in order to satisfy
+
+       /ð0Þ ¼ Ud ;                                                                                                                                 ðA16Þ
+and
+
+       /ð1Þ ¼ 0:                                                                                                                                   ðA17Þ
+   Noting that the Dirichlet thermal boundary condition is given by
+       / ¼ Ud ;                                                                                                                                      ð2Þ
+                                             ð0Þ         ð1Þ         ð2Þ        3
+and recalling the expansion / = /                  + /        + /
+                                                                 2
+                                                                           + O( ) in (A3), the following is thus obtained
+         ð0Þ                2
+       /       ¼ Ud þ Oð Þ:                                                                                                                       ðA18Þ
+394                                                     L. Li et al. / Journal of Computational Physics 237 (2013) 366–395
+
+
+   Eq. (A18) veriﬁes that the Dirichlet boundary condition is satisﬁed up to second-order accuracy with the leading-order
+solution solved by /ð0Þ in TLBE simulations. The coefﬁcients in Eq. (A15) cannot be uniquely determined, and leaving cd1
+adjustable the constraints can be rewritten as
+         8
+         >
+         > cd2 ¼  2D2cDd1þ1þ1
+         >
+         >
+         < c ¼ cd1 þ2D
+             d3    2Dþ1                                                                                                                                           ðA19Þ
+         >
+         > c    ¼ cd1 þ1
+         >
+         >   d4    2Dþ1
+         :
+           cd1 – 1:
+   Neumann boundary condition:
+   The Neumann boundary condition is given by Eq. (3). For brevity, we assume the normal direction of the physical bound-
+ary is in the same direction as the discrete velocity direction ea ; thus Una ¼ Un can be directly applied.
+   Substitution of expansions (A7a–A7d) into the boundary scheme in (A6) gives the equation of zeroth-order in  as
+                      ð0Þ
+         ð1  cn3 Þg a  ðcn1 þ cn2 Þg ð0Þ
+                                        a ¼ 0;                                                                                                                    ðA20Þ
+                                1
+      In the power of  , the equation is
+                                                        "                                                                                    #
+                                                                                       ð0Þ                                             ð0Þ
+                      ð1Þ                                                           @g a                                   @g a                         Un
+         ð1  cn3 Þg a  ðcn1 þ cn2 Þg ð1Þ
+                                        a þ ðDð1  cn3 Þ  cn3 Þea j                      ðð1  DÞðcn1 þ cn2 Þ  cn2 Þeaj                      ¼ cn4        ;   ðA21Þ
+                                                                                     @xj                                     @xj                         U
+
+and proceeding further to O()2 yields
+                                                           "                                                                       #
+                                                                                       ð1Þ                                   ð1Þ
+                      ð2Þ                                          @g a                            @g a
+         ½ð1  cn3 Þg a  ðcn1 þ cn2 Þg ð2Þ
+                                         a  þ ðD  cn3 ð1 þ DÞÞea j     ðcn1  ðcn1 þ cn2 ÞDÞeaj
+                                                                    @xj                              @xj
+             "                                                                                 #
+                                               2 ð0Þ                                    2 ð0Þ
+              1 2                             @ g a  1                                @ ga
+           þ    ðD  cn3 ðD þ 1Þ2 Þea i eaj         ðcn1 ðD  1Þ2 þ cn2 D2 Þeai eaj
+              2                               @xi @xj 2                                @xi @xj
+           ¼ 0;                                                                                                                                                   ðA22Þ
+                                          (0)         (1)      2   (2)       3
+      With the expansion / = /                   + /       + /         + O( ) in (A3) one would expect that
+
+                @/ð0Þ
+         Dij         þ v i /ð0Þ ¼ Un ;                                                                                                                           ðA23Þ
+                 @xj
+so that the leading-order solution of /ð0Þ satisﬁes the Neumann boundary condition. Recalling the relationship between Dij
+and sij in Eq. (14) the above (A23) can be rewritten as
+                   
+                1       @/ð0Þ v i ð0Þ Un
+          sij þ dij eD      þ / ¼       :                                                                                                                        ðA24Þ
+                2        @xj  U       U
+      Besides Eqs. (A12–A14), the following relationships can be obtained from Eqs. (56) and (64) in [28], respectively
+
+          ð1Þ               v i ð0Þ              @/ð0Þ
+         g a  g ð1Þ
+                  a ¼           /      eD sij         ;                                                                                                          ðA25Þ
+                            U                     @xj
+
+          ð2Þ               v i ð1Þ              @/ð1Þ
+         g a  g ð2Þ
+                  a ¼           /      eD sij         :                                                                                                          ðA26Þ
+                            U                     @xj
+      Comparing Eq. (A20) with Eq. (A12) and combing Eqs. (A13, A21, A24, and A25) we obtain the requirements
+         8
+         > 1  cn3 ¼ cn1 þ cn2
+         >
+         >
+         < Dð1  c Þ  c ¼ ð1  DÞðc þ c Þ  c
+                    n3     n3                n1 n2 n2
+                                                                                                                                                                  ðA27Þ
+         >
+         > 1  c n3 ¼ 2½Dð1  c n3 Þ  c n3 
+         >
+         :
+           cn4 ¼ 1  cn3 ;
+      The unique solution to the coefﬁcients in Eq. (A27) is
+         8
+         >
+         > cn1 ¼ 1
+         >
+         >
+         < cn2 ¼  2D1
+                   2Dþ1
+                                                                                                                                                                  ðA28Þ
+         >
+         > cn3 ¼ 22DD1
+         >
+         >           þ1
+         :
+           cn4 ¼ 2D2þ1
+
+      With the above coefﬁcients and the relationships in Eqs. (A14) and (A26) the following can be derived from Eq. (A22)
+                                               L. Li et al. / Journal of Computational Physics 237 (2013) 366–395                                          395
+
+                  
+               1       @/ð1Þ v i ð1Þ
+         sij þ dij eD      þ / ¼ 0:                                                                                                                   ðA29Þ
+               2        @xj  U
+   As discussed in [28], since the condition for /ð1Þ is linear and homogeneous, /ð1Þ in (A29) has only a trivial solution of
+/ð1Þ  0. Thus we have veriﬁed that the Neumann boundary condition is satisﬁed to second-order accuracy.
+
+References
+
+ [1] Y.H. Qian, D. d’Humières, P. Lallemand, Lattice BGK models for Navior Stokes equation, Europhys. Lett. 17 (1992) 479–484.
+ [2] S. Chen, G.D. Doolen, Lattice Boltzmann method for ﬂuid ﬂows, Annu. Rev. Fluid Mech. 30 (1998) 329–364.
+ [3] S. Succi, The Lattice Boltzmann Equation for Fluid Dynamics and Beyond, Oxford University Press, New York, 2001.
+ [4] D. Yu, R. Mei, L.-S. Luo, W. Shyy, Viscous ﬂow computations with the method of lattice Boltzmann equation, Prog. Aerosp. Sci. 39 (2003) 329–367.
+ [5] H.W. Zheng, C. Shu, Y.T. Chew, A lattice Boltzmann model for multiphase ﬂows with large density ratio, J. Comput. Phys. 218 (2006) 353–371.
+ [6] K.N. Premnath, J. Abraham, Three-dimensional multi-relaxation-time (MRT) lattice-Boltzmann models for multiphase ﬂow, J. Comput. Phys. 224
+     (2007) 539–559.
+ [7] L.-S. Luo, S.S. Girimaji, Theory of the lattice Boltzmann method: two-ﬂuid model for binary mixtures, Phys. Rev. E 67 (2003) 036302.
+ [8] P. Asinari, Asymptotic analysis of multiple-relaxation-time lattice Boltzmann schemes for mixture modeling, Comput. Math. Appl. 55 (2008) 1392–
+     1407.
+ [9] C.K. Aidun, J.R. Clausen, Lattice-Boltzmann method for complex ﬂows, Annu. Rev. Fluid Mech. 42 (2010) 439–472.
+[10] J. Lätt, B. Chopard, S. Succi, F. Toschi, Numerical analysis of the averaged ﬂow ﬁeld in a turbulent lattice Boltzmann simulation, Physica A 362 (2006) 6–
+     10.
+[11] H. Yu, L.-S. Luo, S.S. Girimaji, LES of turbulent square jet ﬂow using an MRT lattice Boltzmann model, Comput. Fluids 35 (2006) 957–965.
+[12] Z. Guo, T.S. Zhao, Y. Shi, Physical symmetry, spatial accuracy, and relaxation time of the lattice Boltzmann equation for microgas ﬂows, J. Appl. Phys. 99
+     (2006) 074903.
+[13] Z. Guo, T.S. Zhao, Lattice Boltzmann model for incompressible ﬂows through porous media, Phys. Rev. E 66 (2002) 036304.
+[14] C. Pan, L.-S. Luo, C.T. Miller, An evaluation of lattice Boltzmann schemes for porous medium ﬂow simulation, Comput. Fluids 35 (2006) 898–909.
+[15] H. Chen, S. Chen, W.H. Matthaeus, Recovery of the Navier–Stokes equations using a lattice-gas Boltzmann method, Phys. Rev. A 45 (1992) R5339.
+[16] P.L. Bhatnagar, E.P. Gross, M. Krook, A model for collision processes in gases. I. Small amplitude processes in charged and neutral one-component
+     systems, Phys. Rev. 94 (1954) 511–525.
+[17] D. d’Humières, Generalized lattice Boltzmann equations. In rareﬁed gas dynamics: theory and simulations, Prog. Aeronaut. Astronaut. 159 (1992) 450–
+     458.
+[18] D. d’Humières, I. Ginzburg, M. Krafczyk, P. Lallemand, L.-S. Luo, Multiple-relaxtion-time lattice Boltzmann models in three dimensions, Philos. Trans. R.
+     Soc. Lond. A 360 (2002) 437–451.
+[19] P. Lallemand, L.-S. Luo, Theory of the lattice Boltzmann method: dispersion, dissipation, isotropy, Galilean invariance, and stability, Phys. Rev. E 61
+     (2000) 6546–6562.
+[20] F.J. Alexander, S. Chen, J.D. Sterling, Lattice Boltzmann thermohydrodynamics, Phys. Rev. E 47 (1993) R2249.
+[21] X. Shan, Solution of Rayleigh–Benard convection using a lattice Boltzmann method, Phys. Rev. E 55 (1997) 2780.
+[22] Y. Chen, H. Ohashi, M. Akiyama, Thermal lattice Bhatnagar–Gross–Krook model without nonlinear deviations in macrodynamic equations, Phys. Rev. E
+     50 (1994) 2776.
+[23] P. Lallemand, L.-S. Luo, Theory of the lattice Boltzmann method: acoustic and thermal properties in two and three dimensions, Phys. Rev. E 68 (2003)
+     036706.
+[24] X. He, S. Chen, G.D. Doolen, A novel thermal model for the lattice Boltzmann method in incompressible limit, J. Comput. Phys. 146 (1998) 282–300.
+[25] Z. Guo, C. Zheng, B. Shi, Thermal lattice Boltzmann equation for low Mach number ﬂows: decoupling model, Phys. Rev. E 75 (2007) 036704.
+[26] B. Shi, Z. Guo, Lattice Boltzmann model for nonlinear convection–diffusion equations, Phys. Rev. E 79 (2009) 016701.
+[27] A. Mezrhab, M.A. Moussaoui, M. Jami, H. Naji, M. Bouzidi, Double MRT thermal lattice Boltzmann method for simulating convective ﬂows, Phys. Lett. A
+     374 (2010) 3499–3507.
+[28] H. Yoshida, M. Nagaoka, Multiple-relaxation-time lattice Boltzmann model for the convection and anisotropic diffusion equation, J. Comput. Phys. 229
+     (2010) 7774–7795.
+[29] D.P. Ziegler, Boundary conditions for lattice Boltzmann simulations, J. Stat. Phys. 71 (1993) 1171–1177.
+[30] D.R. Noble, S. Chen, J.G. Georgiadis, R.O. Buckius, A consistent hydrodynamic boundary condition for the lattice Boltzmann method, Phys. Fluids 7
+     (1995) 203–209.
+[31] I. Ginzbourg, D. d’Humières, Local second-order boundary methods for lattice Boltzmann models, J. Stat. Phys. 84 (1996) 927–971.
+[32] I. Ginzburg, D. d’Humières, Multireﬂection boundary conditions for lattice Boltzmann models, Phys. Rev. E 68 (2003) 066614.
+[33] S. Chen, D. Martinez, R. Mei, On boundary conditions in lattice Boltzmann method, Phys. Fluids 8 (1996) 2527–2536.
+[34] X. He, Q. Zou, L.-S. Luo, M. Dembo, Analytic solutions of simple ﬂows and analysis of nonslip boundary conditions for the lattice Boltzmann BGK model,
+     J. Stat. Phys. 87 (1997) 115–136.
+[35] Q. Zou, X. He, On pressure and velocity boundary conditions for the lattice Boltzmann BGK model, Phys. Fluids 9 (1997) 1591–1598.
+[36] O. Filippova, D. Hänel, Grid reﬁnement for lattice-BGK model, J. Comput. Phys. 147 (1998) 219–228.
+[37] R. Mei, L.-S. Luo, W. Shyy, An accurate curved boundary treatment in the lattice Boltzmann method, J. Comput. Phys. 155 (1999) 307–330.
+[38] R. Mei, W. Shyy, D. Yu, L.-S. Luo, Lattice Boltzmann method for 3-D ﬂows with curved boundary, J. Comput. Phys. 161 (2000) 680–699.
+[39] M. Bouzidi, M. Firdaouss, P. Lallemand, Momentum transfer of a Boltzmann-lattice ﬂuid with boundaries, Phys. Fluids 13 (2001) 3452–3459.
+[40] Z. Guo, C. Zheng, B. Shi, An extrapolation method for boundary conditions in lattice Boltzmann method, Phys. Fluids 14 (2002) 2007–2010.
+[41] G.H. Tang, W.Q. Tao, Y.L. He, Thermal boundary condition for the thermal lattice Boltzmann equation, Phys. Rev. E 72 (2005) 016703.
+[42] H. Huang, T.S. Lee, S. Shu, Thermal curved boundary treatment for the thermal lattice Boltzmann equation, Int. J. Modern Phys. C 17 (2006) 631–643.
+[43] H.K. Jeong, H.S. Yoon, M.Y. Ha, M. Tsutahara, An immersed boundary-thermal lattice Boltzmann method using an equilibrium internal energy density
+     approach for the simulation of ﬂows with heat transfer, J. Comput. Phys. 229 (2010) 2526–2543.
+[44] C.H. Liu, K.H. Lin, H.C. Mai, C.A. Lin, Thermal boundary conditions for thermal lattice Boltzmann simulations, Comput. Math. Appl. 59 (2010) 2178–
+     2193.
+[45] C.F. Ho, C. Chang, K.H. Lin, C.A. Lin, Consistent boundary conditions for 2D and 3D laminar lattice Boltzmann simulations, CMES – Comput. Model. Eng.
+     Sci. 44 (2009) 137.
+[46] A. D’Orazio, S. Succi, C. Arrighettic, Lattice Boltzmann simulation of open ﬂows with heat transfer, Phys. Fluids 15 (2003) 2778–2781.
+[47] L.-S. Kuo, P.H. Chen, Numerical implementation of thermal boundary conditions in the lattice Boltzmann method, Int. J. Heat Mass Transfer 52 (2009)
+     529–532.
+[48] I. Ginzburg, Generic boundary conditions for lattice Boltzmann models and their application to advection and anisotropic dispersion equations, Adv.
+     Water Resour. 28 (2005) 1196–1216.
+[49] D.W. Hahn, M.N. Ozisik, Heat Conduction, third ed., John Wiley & Sons, New York, 2012.
+

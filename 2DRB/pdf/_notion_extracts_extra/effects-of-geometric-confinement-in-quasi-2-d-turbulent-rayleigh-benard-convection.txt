@@ -1,0 +1,931 @@
+                                                                                      J. Fluid Mech. (2016), vol. 794, pp. 639–654.   c Cambridge University Press 2016              639
+                                                                                      doi:10.1017/jfm.2016.181
+
+
+                                                                                        Effects of geometric confinement in quasi-2-D
+                                                                                            turbulent Rayleigh–Bénard convection
+
+                                                                                                                   Shi-Di Huang1 and Ke-Qing Xia1, †
+                                                                                            1 Department of Physics, The Chinese University of Hong Kong, Shatin, Hong Kong, China
+
+
+                                                                                                  (Received 9 November 2015; revised 26 January 2016; accepted 3 March 2016;
+                                                                                                                     first published online 6 April 2016)
+
+                                                                                      We report an experimental study of confinement effects in quasi-2-D turbulent
+                                                                                      Rayleigh–Bénard convection. The experiments were conducted in five rectangular
+                                                                                      cells with their height H and length L being the same and fixed, while the width
+                                                                                      W was different for each cell to produce lateral aspect ratios (Γ = W/H) of 0.6,
+                                                                                      0.3, 0.2, 0.15 and 0.1. Direct flow field measurements reveal that the large-scale
+                                                                                      flow slows down as Γ decreases and there are more plumes travelling through the
+                                                                                      bulk region. Moreover, the reversal frequency of the large-scale flow is found to
+                                                                                      increase drastically in smaller Γ cells, by more than 1000-fold for the highest value
+                                                                                      of Rayleigh number reached in the experiment. The reversal frequency can be well
+                                                                                      described by a stochastic model developed by Ni et al. (J. Fluid Mech., vol. 778,
+                                                                                      2015, R5) and the probability density functions (PDF) of the time interval between
+                                                                                      successive reversals are found to follow Poisson statistics as in the 3-D system.
+                                                                                      It is further observed that the bulk temperature fluctuation increases significantly
+                                                                                      and its PDF changes from exponential to Gaussian as Γ decreases. The influences
+                                                                                      of geometric confinement on the global heat transport are also investigated. The
+                                                                                      measured Nu–Ra relationship suggests that, as the lateral aspect ratio decreases,
+                                                                                      the relative weight of the boundary layer contribution in the global heat transport
+                                                                                      increases compared to that from the bulk. These results demonstrate that in the
+                                                                                      quasi-2-D geometry, geometric confinement has strong effects on both the global
+                                                                                      and local properties in turbulent convective flows, which are very different from the
+                                                                                      previous findings in 3-D and true 2-D systems.
+https://doi.org/10.1017/jfm.2016.181 Published online by Cambridge University Press
+
+
+
+
+                                                                                      Key words: Bénard convection, plumes/thermals, turbulent flows
+
+
+
+
+                                                                                      1. Introduction
+                                                                                        Thermal turbulence is ubiquitous in both nature and industrial applications.
+                                                                                      Turbulent Rayleigh–Bénard (RB) convection, a fluid layer heated from the bottom
+                                                                                      and cooled from the top has become a paradigm for the study of general convection
+                                                                                      phenomena. Over the years, there have been extensive studies addressing how the
+                                                                                      heat transport and flow dynamics of turbulent RB convection are determined by
+                                                                                      two control parameters, i.e. the Rayleigh number Ra = αg1TH 3 /νκ and the Prandtl
+                                                                                      number Pr = ν/κ, where 1T is the temperature difference across the fluid layer
+                                                                                      of height H, g is the acceleration due to gravity and α, ν and κ are the thermal
+
+                                                                                                          † Email address for correspondence: kxia@phy.cuhk.edu.hk
+                                                                                      640                            S.-D. Huang and K.-Q. Xia
+                                                                                      expansion coefficient, the kinematic viscosity and the thermal diffusivity of the
+                                                                                      working fluid, respectively (for reviews, see Ahlers, Grossmann & Lohse 2009; Lohse
+                                                                                      & Xia 2010; Chillà & Schumacher 2012; Xia 2013). In laboratory experiments, the
+                                                                                      convective flows are always confined in containers with different geometries. It is
+                                                                                      generally believed that different geometric configurations will result in different flow
+                                                                                      structures and thus different associated flow properties. Therefore, the third control
+                                                                                      parameter that characterizes the effects of geometric confinement, aspect ratio Γ
+                                                                                      (lateral dimension of the fluid layer over its height), comes into the problem.
+                                                                                         Most of the existing studies on the confinement effects in turbulent RB convection
+                                                                                      were made in 3-D geometry (Funfschilling et al. 2005; Nikolaenko et al. 2005; Sun
+                                                                                      et al. 2005a; Niemela & Sreenivasan 2006; du Puits, Resagk & Thess 2007; Xia,
+                                                                                      Sun & Cheung 2008; Bailon-Cuba, Emran & Schumacher 2010; Roche et al. 2010;
+                                                                                      Wu & Libchaber 2012; Zhou et al. 2012) and the general findings were: (i) the
+                                                                                      single-roll structure changes to a multi-roll pattern with increasing Γ ; (ii) the heat
+                                                                                      transfer efficiency, characterized by the Nusselt number Nu, decreases slightly as Γ
+                                                                                      increases and the asymptotic large-Γ behaviour may have been reached for Γ & 10.
+                                                                                      These findings have led one to conclude that the flow structures do not strongly
+                                                                                      influence the heat transport properties (Ahlers, Grossmann & Lohse 2009). Recently,
+                                                                                      there has been a growing interest in 2-D RB flow (Sugiyama et al. 2010; van der
+                                                                                      Poel, Stevens & Lohse 2011, 2013; van der Poel et al. 2012; Chandra & Verma
+                                                                                      2013; Huang & Zhou 2013; Podvin & Sergent 2015). It was found that such a
+                                                                                      geometry will result in a stronger and more complicated Γ -dependence of Nu, which
+                                                                                      was ascribed to the different flow structures in the 2-D system (van der Poel et al.
+                                                                                      2011, 2012, 2013). Although the flow dynamics in the 2-D system, which strictly can
+                                                                                      only be realized numerically, may share certain features with those in the quasi-2-D
+                                                                                      case (Sugiyama et al. 2010), a true 2-D system is fundamentally different from a
+                                                                                      quasi-2-D one. Indeed, recent studies by Huang et al. (2013) and Chong et al. (2015)
+                                                                                      found that simple geometric confinement in the quasi-2-D system can significantly
+                                                                                      enhance convective heat transport, which is brought about by the change in the
+                                                                                      dynamics and morphology of the thermal plumes. Such a striking phenomenon has
+                                                                                      not been observed in previous studies in 3-D and true 2-D systems. In this paper,
+                                                                                      we further investigate the confinement effects in quasi-2-D turbulent RB convection
+                                                                                      by experimentally studying various flow properties, including flow dynamics, local
+                                                                                      temperature fluctuation and global heat transport. The results will complement the
+https://doi.org/10.1017/jfm.2016.181 Published online by Cambridge University Press
+
+
+
+
+                                                                                      findings reported in Huang et al. (2013) and Chong et al. (2015). As will be shown
+                                                                                      in the paper, in the quasi-2-D geometry, the geometric confinement not only can
+                                                                                      strongly influence the local flow properties, but also has a significant effect on the
+                                                                                      global properties, which are very different from the previous findings in 3-D and
+                                                                                      true 2-D systems (Daya & Ecke 2001; Song & Tong 2010; van der Poel et al. 2011,
+                                                                                      2012, 2013; Chandra & Verma 2013).
+                                                                                         The rest of this paper is organized as follows. The experimental set-up and
+                                                                                      measurement techniques are described in § 2. The main results are presented in § 3,
+                                                                                      which is divided into three parts. We first show the results obtained from the flow
+                                                                                      field and reversal measurements in § 3.1. The influences of geometric confinement on
+                                                                                      the local temperature fluctuation and the global heat transport will be presented in
+                                                                                      §§ 3.2 and 3.3. A summary of our findings comes in § 4.
+
+                                                                                      2. Experimental apparatus and methods
+                                                                                        The experiments were conducted in the range 8.6 × 107 ⩽ Ra ⩽ 2.50 × 109 with the
+                                                                                      bulk temperature of the fluid (deionized and degassed water) Tc maintained at 40.0 ◦ C,
+                                                                                                   Geometric confinement in quasi-2-D turbulent convection                641
+                                                                                      corresponding to Pr = 4.3. The convection cells used in the experiments were similar
+                                                                                      to the one described in Xia, Sun & Zhou (2003). Briefly, they were of rectangular
+                                                                                      shape and were built independently with their own Plexiglas side walls and conducting
+                                                                                      plates (but of identical design), where the bottom plates were heated with constant
+                                                                                      power and the top plates were kept at constant temperature. The height H and length
+                                                                                      L of the cells were the same and fixed at 12.6 cm, thus the aspect ratio Γk (= L/H) in
+                                                                                      the plane parallel to the large-scale circulation (LSC) plane is one; whereas the width
+                                                                                      W of the cells had values 7.56, 3.84, 2.56, 1.92 and 1.27 cm, giving rise to aspect
+                                                                                      ratios in the plane perpendicular to the LSC plane (Γ⊥ = W/H, hereafter simply Γ )
+                                                                                      of 0.6, 0.3, 0.2, 0.15 and 0.1, respectively. With these geometric configurations, the
+                                                                                      confinement on the flow is expected to increase as Γ decreases. Having exactly the
+                                                                                      same height is one important feature of the present study, as it allows measurements in
+                                                                                      different cells to be made over exactly the same range of Ra, so that results obtained
+                                                                                      from different cells can be compared directly.
+                                                                                         To obtain an overall picture of the confinement effects on the flow dynamics, we
+                                                                                      made 2-D velocity measurements in the vertical plane midway between the front and
+                                                                                      back walls of the convection cell at two selected aspect ratios, i.e. Γ = 0.3 and 0.15,
+                                                                                      using a commercial particle image velocimetry (PIV) system that has been introduced
+                                                                                      elsewhere (Xia et al. 2003). In the PIV measurements, the fluid was seeded with
+                                                                                      polyamide particles of 50 µm in diameter. Each flow field contained 127 × 127
+                                                                                      velocity vectors and a total of 10 000 vector maps were acquired with a sampling
+                                                                                      rate ∼2 Hz. The statistical behaviour of flow reversal, a phenomenon that the LSC
+                                                                                      suddenly reverses its flow direction in an erratic manner (Sreenivasan, Bershadskii
+                                                                                      & Niemela 2002; Brown & Ahlers 2007; Xi & Xia 2007), were studied with the
+                                                                                      so-called temperature contrast method (Sugiyama et al. 2010; Ni, Huang & Xia 2015).
+                                                                                      For ease of presentation, the details of this technique will be described in § 3.1. The
+                                                                                      temperature fluctuations in the cell centre were measured with a small thermistor with
+                                                                                      a size of 200 µm. Except in the PIV measurements, where a transparent window was
+                                                                                      required, several layers of thermal insulation were wrapped to the whole convection
+                                                                                      cell to prevent the heat leakage. To minimize influence from the surroundings, all the
+                                                                                      measurements were made in a thermostat with a stability of better than 0.1 ◦ C.
+
+                                                                                      3. Results and discussions
+https://doi.org/10.1017/jfm.2016.181 Published online by Cambridge University Press
+
+
+
+
+                                                                                                                        3.1. Flow dynamics
+                                                                                      It is one’s intuition that the flow dynamics should strongly depend on geometry.
+                                                                                      To find out how the flow dynamics responds to geometric confinement, we show in
+                                                                                      figure 1(a–c) the PIV-measured mean velocity fields for Γ = 0.3 (the unconfined case)
+                                                                                      and 0.15. The first thing we can see is that there exists a well-defined LSC with two
+                                                                                      counter-rotating corner rolls in the Γ = 0.3 cell, as found in previous studies with
+                                                                                      similar aspect ratios (Xia et al. 2003; Sugiyama et al. 2010). For the Γ = 0.15 cell,
+                                                                                      however, one finds a quite different flow pattern in the long time-averaged field: The
+                                                                                      single-roll structure has disappeared, instead, we have a four-roll structure. One way
+                                                                                      such a four-roll pattern in the mean field can arise is for the LSC to frequently reverse
+                                                                                      its flow direction, which had been experimentally demonstrated in an earlier study
+                                                                                      (Sun, Xia & Tong 2005b). Indeed, by taking short time averages of the instantaneous
+                                                                                      velocity fields, we can obtain LSCs with both clockwise and counter-clockwise flow
+                                                                                      directions in the Γ = 0.15 cell (see figure 1c for the counter-clockwise case), which
+                                                                                      was also illustrated in a recent numerical study with a similar Γ (Kaczorowski,
+                                                                                      Chong & Xia 2014). The second difference between these two Γ cells is that the
+                                                                                      642                                                    S.-D. Huang and K.-Q. Xia
+
+                                                                                      (a)                                                    (b)                                           (c)
+                                                                                                     0   0.12 0.24 0.36 0.48 0.60 0.72              0   0.09 0.18 0.27 0.36 0.45 0.56             0   0.1   0.2    0.3   0.4   0.5 0.59
+                                                                                                6
+
+                                                                                                3
+                                                                                      z (cm)
+
+
+
+
+                                                                                                0
+
+                                                                                               –3
+
+                                                                                               –6
+                                                                                                    –6      –3          0       3        6         –6     –3          0       3        6         –6      –3         0          3          6
+                                                                                      (d)                                                    (e)                                           (f)
+                                                                                                     0    0.08   0.16   0.24   0.32   0.39          0   0.07   0.14   0.21   0.28   0.38          0   0.06 0.12 0.18 0.24 0.30 0.36
+                                                                                                6
+
+                                                                                                3
+                                                                                      z (cm)
+
+
+
+
+                                                                                                0
+
+                                                                                               –3
+
+
+                                                                                               –6           –3          0       3        6         –6     –3          0       3        6         –6      –3         0          3      6
+                                                                                                                  x (cm)                                        x (cm)                                            x (cm)
+
+                                                                                      F IGURE 1. (Colour online) Coarse-grained vector maps of mean velocity field (a–c) and
+                                                                                      the corresponding contour maps of the r.m.s. velocity field (d–f ) at Ra = 1.1 × 109 .
+                                                                                      (a,d) Γ = 0.3 cell by long time averaging; (b,e) Γ = 0.15 cell with a four-roll pattern
+                                                                                      by long time averaging; (c,f ) Γ = 0.15 cell with a well-identified LSC by short time
+                                                                                      averaging. The velocity is coded in both colour scale and vector length in units of cm s−1 .
+                                                                                      The r.m.s. velocity is represented by the colour coding in units of cm s−1 .
+
+
+                                                                                      magnitude of the time-averaged LSC is smaller for Γ = 0.15, as indicated clearly by
+                                                                                      the scale bar. While the increased drag force from the walls can certainly slow down
+                                                                                      the flow, a more fluctuating flow can also result in a smaller mean velocity. Larger
+https://doi.org/10.1017/jfm.2016.181 Published online by Cambridge University Press
+
+
+
+
+                                                                                      fluctuations in the flow field for small Γ are evident in the root-mean-square (r.m.s.)
+                                                                                      velocity field (see figure 1d–f ), which shows that the fluctuations in the bulk of the
+                                                                                      Γ = 0.15 cell become stronger and the region of strong fluctuations also becomes
+                                                                                      larger. It has been found in Xia et al. (2003) that larger velocity fluctuations are
+                                                                                      associated with plume clusters, therefore the r.m.s. velocity fields measured here
+                                                                                      indicate that there are more thermal plumes going through the bulk region in the
+                                                                                      highly confined geometry, rather than rising and falling along the side walls as is the
+                                                                                      case for larger Γ . Note that the reversal of the LSC could also contribute to a larger
+                                                                                      velocity fluctuation in the bulk region. However, we found that the r.m.s. velocity
+                                                                                      field in the Γ = 0.15 cell for the situation when a LSC can still be identified by short
+                                                                                      time averaging is quite similar to the one with a four-roll pattern (see figure 1e,f ),
+                                                                                      suggesting that the major contributors for larger fluctuations in the bulk flow are the
+                                                                                      thermal plumes.
+                                                                                         That flow reversals become more probable in quasi-2-D cells with smaller Γ was
+                                                                                      also observed in some previous studies (Vasilev & Frick 2011; Wagner & Shishkina
+                                                                                      2013; Kaczorowski et al. 2014), but their statistical properties have not been examined.
+                                                                                                    Geometric confinement in quasi-2-D turbulent convection                          643
+
+                                                                                                              (a)                                           (b)
+
+
+                                                                                                                              I                                         II
+
+
+
+
+                                                                                               (c) 0.30                                       (d )
+                                                                                                                                                                        d
+                                                                                                                                                     10–1
+                                                                                                   0.15
+                                                                                                                    I
+
+
+
+
+                                                                                                                                               PDF
+                                                                                                      0                                              10–2
+                                                                                                                              II                                   II        I
+                                                                                                  –0.15
+                                                                                                                                                     10–3
+                                                                                                  –0.30
+                                                                                                          0             5    10     15   20                  –6   –3    0    3   6
+                                                                                                                            t (h)
+
+                                                                                      F IGURE 2. (Colour online) A schematic sketch of the reversal process changing from (a)
+                                                                                      state I to (b) state II. (c) A typical time series of the temperature contrast δ between
+                                                                                      the two sensors embedded in the bottom plate for Ra = 1.1 × 109 . The red solid circles
+                                                                                      indicate detections of flow reversal events based on the criteria described in the text. The
+                                                                                      red dashed lines indicate the two flow states I and II shown in (a) and (b), respectively.
+                                                                                      (d) The corresponding PDF of the data shown in (c). The blue dashed lines are two
+                                                                                      independent Gaussian function fits to the data and the red solid line is the superposition
+                                                                                      of them. It is seen that the data can be excellently fitted with a double-Gaussian function.
+                                                                                      See text for the explanations of d and σ . Note that similar results were obtained from the
+                                                                                      top plate.
+
+
+                                                                                      Here, we used the temperature contrast method (Sugiyama et al. 2010; Ni et al. 2015)
+                                                                                      to detect flow reversal events over long time periods. This method is based on the
+                                                                                      idea that a region where cold plumes impinge should have a lower temperature than
+                                                                                      that where hot plumes emit. As illustrated in figure 2, when the LSC circulates in the
+                                                                                      counter-clockwise direction (state I as sketched in figure 2a), the temperature in the
+https://doi.org/10.1017/jfm.2016.181 Published online by Cambridge University Press
+
+
+
+
+                                                                                      left side of the bottom plate is lower than that in the right side; when the flow reverses
+                                                                                      its circulation directing and changes to state II (figure 2b), the temperature in the left
+                                                                                      side becomes higher. Therefore, the temperature contrast δ = Tright − Tleft will change
+                                                                                      its sign during a reversal event and thus is a good indicator of reversals (see figure 2c).
+                                                                                      Besides the sign change of δ, we set three more criteria to count true reversal events.
+                                                                                      The first one is that the two circulation states can be clearly distinguished from each
+                                                                                      other. This is quantified with the PDF of δ, as shown in figure 2(d). To be specific,
+                                                                                      the distance d between the two most probable values in the PDF should be larger
+                                                                                      than the r.m.s. value σ so that the two peaks can be clearly distinguished, where
+                                                                                      d and σ were obtained by a double-Gaussian function fit as shown in figure 2(d).
+                                                                                      The second criterion is that when the flow changes from one state to the other, δ
+                                                                                      should first crossover the peak, i.e. the value of δ should be larger (smaller) than the
+                                                                                      peak value in the PDF corresponding to state I (II). The third one is that the flow
+                                                                                      should stay at the new state for more than one turnover time tLSC of the LSC, which
+                                                                                      was obtained from the correlation function of the temperature signals inside the plates
+                                                                                      (Brown, Funfschilling & Ahlers 2007). With these criteria, we are ready to examine
+                                                                                      the flow reversals quantitatively.
+                                                                                      644                                   S.-D. Huang and K.-Q. Xia
+
+                                                                                            (a) 0.30                                      (b) 0.2
+
+                                                                                                   0.15                                           0.1
+
+                                                                                                     0                                             0
+
+
+                                                                                                  –0.15                                          –0.1
+
+                                                                                                                                                 –0.2
+                                                                                                  –0.30
+                                                                                                          0   5      10      15     20                  0          1    2             3   4          5
+                                                                                                                    t (h)                                                     t (h)
+                                                                                            (c)     0.2                                   (d )
+                                                                                                                                                 10–1
+                                                                                                    0.1
+                                                                                                                                             10–2
+                                                                                                     0
+                                                                                                                                             10–3
+                                                                                                   –0.1
+                                                                                                                                             10–4
+                                                                                                   –0.2
+                                                                                                          0   0.5    1.0     1.5    2.0                     0.10       0.15       0.20        0.30
+                                                                                                                    t (h)
+
+                                                                                      F IGURE 3. (Colour online) Examples of flow reversals at Ra = 1.1 × 109 for (a) Γ =
+                                                                                      0.3, (b) Γ = 0.2 and (c) Γ = 0.15. The red solid circles indicate detections of flow
+                                                                                      reversal events based on the criteria described in the text. (d) The normalized flow reversal
+                                                                                      frequency frev /fLSC as a function of Γ for different Ra, where frev = 1/hτ i, fLSC = 1/tLSC ,
+                                                                                      and hτ i is the mean time interval between successive reversals.
+
+
+                                                                                         We first show in figure 3(a–c) some examples of flow reversals at Ra = 1.1 × 109
+                                                                                      for Γ = 0.3, 0.2 and 0.15, respectively. It is seen clearly that the LSC reverses its
+                                                                                      circulating direction with a drastically increased frequency as Γ decreases, which is
+                                                                                      quantified in figure 3(d). However, when Γ is further reduced from 0.15 to 0.1, the
+https://doi.org/10.1017/jfm.2016.181 Published online by Cambridge University Press
+
+
+
+
+                                                                                      reversal frequency does not show a significant increase anymore, so we do not show
+                                                                                      the examples for Γ = 0.1 here. It is further observed in figure 3(d) that the increase
+                                                                                      in the reversal frequency is Ra-dependent: the higher Ra becomes, the larger the
+                                                                                      increase (by more than 1000-fold for the highest value of Rayleigh number reached
+                                                                                      in the experiment), suggesting that the impact of confinement on the LSC dynamics
+                                                                                      is stronger for higher Ra. Note that the measurements in smaller Γ cells did not
+                                                                                      go to lower Ra, because σ becomes comparable with d in these cases, thus the first
+                                                                                      criterion is not satisfied anymore. This is a limitation of the measurement technique.
+                                                                                      We also remark that no flow reversal was observed in the Γ = 0.6 cell, even with a
+                                                                                      long time measurement of up to 15 000tLSC (more than two weeks) at Ra = 2.8 × 108 ,
+                                                                                      at which flow reversals are supposed to have a higher probability of occurrence than
+                                                                                      at higher Ra (Sugiyama et al. 2010; Ni et al. 2015).
+                                                                                         In a recent study using quasi-2-D cells similar to the ones used in the present
+                                                                                      experiment, Ni et al. (2015) have shown that the mean time interval between
+                                                                                      successive reversals hτ i follows a stochastic process, i.e. hτ i/tLSC = Cp (Γ ) exp[(d/2σ )2 ],
+                                                                                      where d is taken as the relative strength of the LSC and σ is its fluctuation. Figure 4
+                                                                                      shows the data hτ i/tLSC versus (d/2σ )2 for different Γ cells in a semi-log plot.
+                                                                                                    Geometric confinement in quasi-2-D turbulent convection                      645
+
+
+                                                                                                             103
+
+
+
+
+                                                                                                             102                          17
+                                                                                                                                          13
+                                                                                                                                           9
+
+                                                                                                                                           5
+                                                                                                             101
+                                                                                                                                               0.10   0.15 0.20   0.30
+
+                                                                                                                   0       2          4               6           8
+
+
+
+                                                                                      F IGURE 4. (Colour online) A semi-log plot of the normalized mean time interval between
+                                                                                      successive reversals hτ i/tLSC as a function of (d/2σ )2 for different Γ . The solid lines
+                                                                                      are fittings to individual data sets according to the formula hτ i/tLSC = Cp (Γ ) exp[(d/2σ )2 ]
+                                                                                      obtained in a model developed by Ni et al. (2015) recently. Inset: The fitting coefficient
+                                                                                      Cp versus Γ .
+
+
+                                                                                      It is seen that the data can be nicely fitted with the formula above, with a strong
+                                                                                      Γ -dependent prefactor Cp , as shown in the inset, indicting that the model developed
+                                                                                      in Ni et al. (2015) can also well describe the reversal behaviours in a highly confined
+                                                                                      geometry. Since the value of d/σ can be used to characterize the stability of the
+                                                                                      LSC, we further examine their values separately to see how confinement affects the
+                                                                                      properties of the LSC. It is seen in figure 5 that as Γ decreases, d decreases on one
+                                                                                      hand, and σ increases on the other, which suggests that LSC becomes weaker and
+                                                                                      experiences stronger fluctuations in highly confined geometry, thus confirming the
+                                                                                      PIV-measured results. As d is essentially the temperature difference between the left
+                                                                                      and right sides of the conducting plates, smaller d also suggests that the temperature
+                                                                                      is more uniform in the plate for small Γ cells, consistent with the findings in Huang
+                                                                                      et al. (2013).
+https://doi.org/10.1017/jfm.2016.181 Published online by Cambridge University Press
+
+
+
+
+                                                                                         In figure 6, we show the PDFs of time interval between successive reversals τ /tLSC
+                                                                                      for Γ = 0.2 and 0.15 cells on a semi-log scale. It is seen that the data for both
+                                                                                      Γ are in good agreement with the exponential function p(τ /tLSC ) ∼ exp(−τ /tLSC ).
+                                                                                      (The levelling off of the PDFs at the large values of τ /tLSC is caused by the
+                                                                                      insufficient statistics.) These results indicate that flow reversals in the quasi-2-D
+                                                                                      geometry obey Poisson statistics as in the 3-D case (Sreenivasan et al. 2002; Brown
+                                                                                      & Ahlers 2007; Xi & Xia 2007), which suggests that it may be possible to develop
+                                                                                      a geometry-independent model to explain the apparently different LSC dynamics in
+                                                                                      different geometries.
+
+                                                                                                                3.2. Local temperature fluctuations
+                                                                                      In Huang et al. (2013), it was simply mentioned that with decreasing Γ the local
+                                                                                      temperature fluctuation in the cell centre increases significantly and its PDF changes
+                                                                                      from exponential to Gaussian. Here, we present the details. Figure 7(a,b) shows
+                                                                                      the time series of temperatures measured at the cell centre for Ra = 1.1 × 109
+                                                                                      and Ra = 8.6 × 107 , respectively. It is seen clearly that the fluctuations in small
+                                                                                      646                                               S.-D. Huang and K.-Q. Xia
+
+                                                                                        (a)                                                                (b)
+                                                                                              0.015
+                                                                                                                                                                 0.0022
+                                                                                              0.011
+                                                                                                                                                                 0.0020
+
+                                                                                              0.007                                                              0.0018
+
+                                                                                                                                                                 0.0016
+
+                                                                                              0.003                                                              0.0014
+                                                                                                         0.10        0.15        0.20         0.30                          0.10        0.15   0.20   0.30
+
+
+                                                                                      F IGURE 5. (Colour online) (a) The strength of the LSC d and (b) its fluctuation σ
+                                                                                      normalized by the global temperature difference 1T as a function of Γ for different Ra.
+                                                                                      Note that 1T for different Γ cells are the same for the same Ra, as they have the same
+                                                                                      height.
+
+                                                                                        (a)                                                                (b)
+                                                                                              10–1
+                                                                                                                                                                 10–1
+
+
+
+                                                                                              10–2
+                                                                                                                                                                 10–2
+
+
+                                                                                              10–3
+                                                                                                     0          30          60           90          120                0          15          30     45
+
+
+                                                                                      F IGURE 6. (Colour online) PDFs of the normalized time interval between successive flow
+                                                                                      reversals at Ra = 1.1 × 109 for (a) Γ = 0.2 and (b) Γ = 0.15, respectively. The straight
+                                                                                      lines indicate exponential fittings.
+https://doi.org/10.1017/jfm.2016.181 Published online by Cambridge University Press
+
+
+
+
+                                                                                      Γ cells are stronger than those in large ones. Besides the change in fluctuation
+                                                                                      magnitude, the corresponding PDFs (shown in figure 7c,d) also change their forms:
+                                                                                      as Γ is reduced, there is a transition from (stretched) exponential to Gaussian-like.
+                                                                                      The strong geometric dependency of the temperature fluctuation PDF found in the
+                                                                                      quasi-2-D system is consistent with a recent numerical simulation using similar
+                                                                                      geometries (Kaczorowski et al. 2014), but quite different from previous studies
+                                                                                      conducted in 3-D systems, in which a universal form for different geometries was
+                                                                                      observed (Daya & Ecke 2001; Song & Tong 2010). The functional form of the
+                                                                                      temperature fluctuation PDF is one important hallmark for different flow states
+                                                                                      (Heslot, Castaing & Libchaber 1987; Castaing et al. 1989; Massaioli, Benzi & Succi
+                                                                                      1993) and the plume distribution in the convection cell (Xia & Lui 1997), thus these
+                                                                                      changes confirm that the flow state has been changed and/or there are more plumes
+                                                                                      passing though the cell centre as a result of confinement.
+                                                                                         To examine these changes quantitatively, we plot the Ra-dependence of the
+                                                                                      normalized r.m.s. temperature σc /1T and their flatness values in figure 8. From
+                                                                                      figure 8(a), one can see that while the magnitude of σc /1T increases as Γ decreases,
+                                                                                      its Ra-scaling exponent in general decreases (see table 1 for detailed values).
+                                                                                                             Geometric confinement in quasi-2-D turbulent convection                                                                   647
+
+                                                                                        (a)                                                                       (b)
+                                                                                                                                                                          40.8
+                                                                                              46
+
+
+                                                                                              44                                                                          40.5
+
+
+                                                                                              42
+                                                                                                                                                                          40.2
+
+                                                                                              40
+                                                                                                                                                                          39.9
+                                                                                                    0         2         4              6             8       10                        0        2        4           6         8       10
+                                                                                                                            t (h)                                                                            t (h)
+
+                                                                                        (c) 102                                                                   (d ) 102
+                                                                                              101                                                                            101
+                                                                                              100
+                                                                                                                                                                             100
+                                                                                       PDF
+
+
+
+
+                                                                                             10–1
+                                                                                                                                                                          10–1
+                                                                                             10–2
+                                                                                             10–3                                                                         10–2
+
+                                                                                             10–4                                                                         10–3
+                                                                                                        –8         –4         0            4             8                                 –8       –4         0          4        8
+
+
+                                                                                      F IGURE 7. (Colour online) (a,b) Time series of temperatures measured at the cell centre
+                                                                                      for (a) Ra = 1.1 × 109 and (b) Ra = 8.6 × 107 . From top to bottom, Γ = 0.1, 0.15, 0.2,
+                                                                                      0.3 and 0.6. (c,d) The corresponding PDFs of temperature fluctuations shown in (a,b): (c)
+                                                                                      Ra = 1.1 × 109 and (d) Ra = 8.6 × 107 . Note that the data for different Γ have been
+                                                                                      upshifted for clarity. The green and orange lines represent exponential and Gaussian fits,
+                                                                                      respectively.
+
+                                                                                       (a) 0.035                                                                    (b) 12
+
+                                                                                                                                                                                   9
+https://doi.org/10.1017/jfm.2016.181 Published online by Cambridge University Press
+
+
+
+
+                                                                                              0.020
+                                                                                                                                                                        Flatness
+
+
+
+
+                                                                                              0.012                                                                                6
+
+
+
+                                                                                              0.005
+                                                                                                                                                                                   3
+                                                                                                             108                               109                                          108                          109
+                                                                                                                                  Ra                                                                          Ra
+                                                                                      F IGURE 8. (Colour online) (a) Normalized temperature fluctuation σc /1T at the cell
+                                                                                      centre as a function of Ra for different Γ . The solid lines represent power-law fits to
+                                                                                      the individual data sets. (b) The corresponding flatness versus Ra.
+
+
+                                                                                      Large variations in the Ra dependency of temperature fluctuations due to geometric
+                                                                                      effects have also been found in earlier studies (Daya & Ecke 2001; Song & Tong
+                                                                                      2010). We note that the scalings for the Γ = 0.6 and 0.3 cells are the same as
+                                                                                      648                                 S.-D. Huang and K.-Q. Xia
+
+                                                                                                Γ        A      α ± 0.002     C1 ± 0.005   C2 ± 0.02    B      β ± 0.01
+                                                                                                0.6    0.173      0.286         0.029        0.20       6.56    −0.35
+                                                                                                0.3    0.152      0.291         0.033        0.17      12.43    −0.35
+                                                                                                0.2    0.216      0.277         0.022        0.25       6.04    −0.30
+                                                                                                0.15   0.264      0.269         0.017        0.29       4.75    −0.27
+                                                                                                0.1    0.267      0.270         0.018        0.31       0.69    −0.17
+                                                                                      TABLE 1. Fitting coefficients for the single power law Nu = ARaα , the combined power
+                                                                                      law Nu = C1 Ra1/3 + C2 Ra1/4 and the normalized temperature fluctuation σc /1T = BRaβ
+                                                                                      measured in different Γ cells. For an easier data referring, the uncertainties presented here
+                                                                                      are the maximum values of the fitting errors among all the cells.
+
+
+
+                                                                                      those found in a recent simulation of turbulent RB convection in a cubic geometry
+                                                                                      (Kaczorowski et al. 2014), but very different from the value −0.49 reported in Daya
+                                                                                      & Ecke (2001) in a convection cell with square cross-section. The Γ = 0.3 cell also
+                                                                                      has similar flatness values with the Γ = 0.6 cell (see figure 8b), suggesting that the
+                                                                                      convective flow has not sensed the confinement effects from the walls for Γ = 0.3.
+                                                                                      However, when Γ is further reduced, there is a sudden drop in the flatness values;
+                                                                                      and these values gradually decrease to ∼3 (Gaussian case) for smaller Γ and lower
+                                                                                      Ra, which is consistent with the change in the form of temperature fluctuation PDF
+                                                                                      shown in figure 7. Special attention is paid to the abnormal Ra dependence of flatness
+                                                                                      in the Γ = 0.1 cell, which is also reflected in its very different time series signals and
+                                                                                      the bimodal shaped PDF at Ra = 8.6 × 107 . Based on the recent finding by Chong
+                                                                                      et al. (2015), these strange behaviours for Γ = 0.1 could be due to the fact that the
+                                                                                      LSC no longer exists in this case.
+
+                                                                                                                         3.3. Heat transport
+                                                                                      We now examine the influences of spatial confinement on the heat transport properties.
+                                                                                      Figure 9 shows a semi-log plot of the compensated Nu versus Ra for different Γ
+                                                                                      cells. As the heat transfer in a cubic cell (i.e. Γ = 1) is identical to that in a cylinder
+                                                                                      (Qiu & Xia 1998b), for clarity and easy comparison, we plot in figure 9 the results
+https://doi.org/10.1017/jfm.2016.181 Published online by Cambridge University Press
+
+
+
+
+                                                                                      measured in a cylindrical cell of Γ = 1 (Wei, Ni & Xia 2012), which is the most
+                                                                                      commonly used geometry in the study of turbulent RB convection. From figure 9, we
+                                                                                      find that: (i) the data for the Γ = 0.6 cell collapse well with those measured in the
+                                                                                      Γ = 1 cell; (ii) Nu first decreases a little when Γ is changed from 0.6 to 0.3 and then
+                                                                                      increases significantly afterwards, up to 17 % for the parameter range explored in the
+                                                                                      present study. Note that the Nu data have been reported in Huang et al. (2013). We
+                                                                                      plot them here in a different form to understand the confinement effects in turbulent
+                                                                                      thermal convection from a different point of view.
+                                                                                         The solid lines in figure 9 represent power-law fits Nu = ARaα to the measured
+                                                                                      data with the scaling exponent α varying from 0.27 to 0.29 (see table 1 for detailed
+                                                                                      values). These values are in general agreement with those found in previous studies
+                                                                                      in the same parameter ranges of Ra and Pr (Ahlers, Grossmann & Lohse 2009). We
+                                                                                      recall that the Grossmann–Lohse (GL) model splits the globally averaged dissipation
+                                                                                      rate into bulk and boundary layer (BL) contributions and suggests that different
+                                                                                      linear combinations of power laws for different parameter ranges should be used for
+                                                                                      the Nu–Ra fitting (Grossmann & Lohse 2000). Based on this idea, we fit to each
+                                                                                      set of data with a combination of two power laws proposed in the GL model, i.e.
+                                                                                                          Geometric confinement in quasi-2-D turbulent convection            649
+
+                                                                                                                     0.16
+
+
+
+                                                                                                                     0.15
+
+
+
+                                                                                                                     0.14
+
+
+
+                                                                                                                     0.13
+
+
+
+                                                                                                                     0.12
+                                                                                                                                   108               109
+                                                                                                                                                Ra
+
+                                                                                      F IGURE 9. (Colour online) Compensated Nu as a function of Ra from different Γ cells
+                                                                                      as indicated by different symbols. The solid lines are power-law fits to individual data
+                                                                                      sets. The solid hexagons are the results measured in a cylindrical cell of Γ = 1 (Wei, Ni
+                                                                                      & Xia 2012).
+
+
+                                                                                        (a)                                          (c)
+                                                                                                                                           5
+                                                                                              0.032
+                                                                                                                                           4
+                                                                                              0.024
+                                                                                                                                           3
+                                                                                              0.016
+                                                                                                      0.10 0.15 0.20 0.30   0.60
+                                                                                                                                           2
+                                                                                        (b)
+                                                                                               0.32
+
+                                                                                               0.24
+                                                                                                                                           1
+
+                                                                                               0.16
+https://doi.org/10.1017/jfm.2016.181 Published online by Cambridge University Press
+
+
+
+
+                                                                                                      0.10 0.15 0.20 0.30   0.60               108              109
+                                                                                                                                                           Ra
+
+                                                                                      F IGURE 10. (Colour online) Fitting coefficients for the combined power law Nu =
+                                                                                      C1 Ra1/3 + C2 Ra1/4 as a function of Γ : (a) C1 and (b) C2 . (c) The ratio between C2 Ra1/4
+                                                                                      and C1 Ra1/3 versus Ra in different Γ cells.
+
+
+                                                                                      Nu = C1 Ra1/3 + C2 Ra1/4 , in which C1 Ra1/3 and C2 Ra1/4 represent the contributions
+                                                                                      from the bulk and BLs, respectively. The obtained fitting coefficients C1 and C2
+                                                                                      for different Γ are plotted in figures 10(a) and 10(b), respectively (see table 1 for
+                                                                                      detailed values). It is seen that the Γ dependencies of C1 and C2 have an opposite
+                                                                                      trend: the decrease (increase) in C1 is accompanied by an increase (decrease) in C2 .
+                                                                                      Interestingly, the behaviour of C2 is similar to that of the global Nu: It first decreases
+                                                                                      when Γ is changed from 0.6 to 0.3 and then increases with decreasing Γ afterwards
+                                                                                      (see figure 1 in Huang et al. (2013)). This is because in the present parameter
+                                                                                      range, the heat transport, in terms of the energy dissipation rate, is dominated by
+                                                                                      650                             S.-D. Huang and K.-Q. Xia
+                                                                                      the contributions from the boundary layers, which is supported by comparing the
+                                                                                      magnitudes between C1 Ra1/3 and C2 Ra1/4 as shown in figure 10(c). The change in
+                                                                                      the ratio of C2 Ra1/4 over C1 Ra1/3 as Γ is decreased suggests that the confinement
+                                                                                      increases the contribution from the BLs in the global heat transport and weakens
+                                                                                      that from the bulk. This result is consistent with the finding in Huang et al. (2013),
+                                                                                      in which it was found that the confinement suppresses the large-scale turbulent flow
+                                                                                      in the bulk and enables thermal plumes (commonly viewed as detached thermal BLs)
+                                                                                      to pass through the entire cell, rather than being confined in its periphery.
+                                                                                         Why have such significant changes in Nu not been observed in previous studies
+                                                                                      in 3-D and true 2-D systems? Note that even for the smallest Γ explored in the
+                                                                                      present study, the width of the cell (its smallest dimension) is still much larger than
+                                                                                      the thermal boundary layer thickness, therefore it is unlikely that the geometric effects
+                                                                                      will directly lead to any change in the BLs and hence Nu. Thus, the reasons must be
+                                                                                      connected to the flow structures. It has been shown by Huang et al. (2013) that the
+                                                                                      confinement restricts the plume’s movement near the BLs into a 1-D motion, resulting
+                                                                                      in the formation of highly coherent plumes. These highly coherent plumes turn out to
+                                                                                      have a stronger interaction with the BLs, which is supported by the mean velocity
+                                                                                      fields as shown in figure 1. It is seen that in the Γ = 0.3 cell the mean flow near
+                                                                                      the boundary layers has a large horizontal component, whereas in the Γ = 0.15 case,
+                                                                                      the mean flow is largely perpendicular and thus perturbs the BLs directly. Therefore,
+                                                                                      geometric confinement in the quasi-2-D geometry not only changes the morphology
+                                                                                      and dynamics of thermal plumes, but also strengthens the interaction between the flow
+                                                                                      structures in the bulk and the BLs, both of which have not been observed in previous
+                                                                                      studies in 3-D systems. This explains why these studies found a weak Γ effect on heat
+                                                                                      transport. In the true 2-D case, there is no lateral confinement of the plumes when the
+                                                                                      aspect ratio is changed. As the coherent properties of plumes are not modified in this
+                                                                                      case but the flow structures are changed as a result of the aspect ratio variation, Nu
+                                                                                      is found to be sensitive to the nature of the flow structures in the 2-D geometry (van
+                                                                                      der Poel et al. 2011, 2012).
+                                                                                         In a recent numerical simulation of 2-D turbulent convection (Chandra & Verma
+                                                                                      2013), extremely large fluctuations and even negative values of global Nu were
+                                                                                      observed during the flow reversal processes, which was attributed to the strong
+                                                                                      geometric constraints to the flow. Since the confinement also leads to more frequent
+https://doi.org/10.1017/jfm.2016.181 Published online by Cambridge University Press
+
+
+
+
+                                                                                      flow reversals, it would be interesting to examine the instantaneous Nu for different
+                                                                                      Γ during reversals. As we can see in figure 11(a,b), neither negative values nor
+                                                                                      very large fluctuations are observed in the time series of instantaneous Nu for all
+                                                                                      the cases, which is also reflected by their PDFs, shown in figure 11(c,d). Although
+                                                                                      there is a trend that the fluctuations of instantaneous Nu increase as Γ decreases, the
+                                                                                      fluctuation values for all the Γ and the differences between them are so small that
+                                                                                      they are all within 1 % of the mean values. These results further suggest that the
+                                                                                      quasi-2-D geometry is different from the true 2-D case.
+
+                                                                                      4. Conclusion
+                                                                                        In summary, our experiments reveal rich physics in quasi-2-D turbulent RB flow
+                                                                                      under geometric confinement.
+                                                                                       (i) With the increasing degree of confinement, the large-scale flow slows down and
+                                                                                           there are more plumes traveling through the bulk region. Moreover, the LSC
+                                                                                           reverses its circulation direction more frequently in smaller Γ cells, by more than
+                                                                                           1000-fold for the highest value of Rayleigh number reached in the experiment.
+                                                                                                        Geometric confinement in quasi-2-D turbulent convection                                651
+
+                                                                                       (a) 77                                                   (b) 39
+
+
+                                                                                              72                                                    36
+
+
+
+                                                                                              67                                                    33
+
+
+
+                                                                                              62                                                    30
+                                                                                                    0    2      4           6         8    10             0   2      4           6         8    10
+                                                                                                                    t (h)                                                t (h)
+
+                                                                                       (c) 101                                                  (d) 101
+
+                                                                                             100
+                                                                                                                                                   100
+                                                                                       PDF
+
+
+
+
+                                                                                             10–1
+                                                                                                                                                   10–1
+                                                                                             10–2
+                                                                                                                                                  10–2
+                                                                                             10–3
+                                                                                               –0.8      –0.4        0          0.4       0.8        –0.8     –0.4        0          0.4       0.8
+
+
+                                                                                      F IGURE 11. (Colour online) (a,b) Time series of instantaneous Nu for (a) Ra = 1.1 × 109
+                                                                                      and (b) Ra = 8.6 × 107 . From top to bottom, Γ = 0.1, 0.15, 0.2, 0.6 and 0.3. (c,d) The
+                                                                                      corresponding PDFs of the Nu fluctuations shown in (a,b): (c) Ra = 1.1 × 109 and
+                                                                                      (d) Ra = 8.6 × 107 .
+
+
+                                                                                            Despite the significant changes in the flow pattern and dynamics, it is found that
+                                                                                            the reversal process still follows Poissonian statistics, as in the 3-D system, and
+                                                                                            the reversal frequency could be well described by the stochastic model of Ni
+https://doi.org/10.1017/jfm.2016.181 Published online by Cambridge University Press
+
+
+
+
+                                                                                            et al. (2015), which is closely related to the models used in other geometries
+                                                                                            (Brown & Ahlers 2007; Song et al. 2014). These common features are good
+                                                                                            circumstantial evidence for a potentially general model of LSC dynamics in
+                                                                                            different geometries.
+                                                                                       (ii) The impact of geometric confinement on the flow dynamics is also reflected in
+                                                                                            the local temperature fluctuation. It is found that the bulk temperature fluctuations
+                                                                                            in different Γ cells differ from each other not only in the magnitude and Ra-
+                                                                                            dependent scaling, but also in the PDF shapes. These changes are the outcome
+                                                                                            of the changes in the flow state and/or plume distribution in the convection cell.
+                                                                                      (iii) Despite a slower flow, remarkable enhancement of heat transport is observed. By
+                                                                                            analysing the Nu–Ra behaviours according to the GL model, our results suggest
+                                                                                            that as Γ decreases, the relative weight of the boundary layer contribution to
+                                                                                            the global heat transport increases and at the same time that from the bulk
+                                                                                            decreases. In addition, we did not observe large variations nor negative values
+                                                                                            in global Nu during the reversal processes as found in true 2-D systems, which
+                                                                                            provides another evidence for the difference between the quasi-2-D and the true
+                                                                                            2-D geometries.
+                                                                                      652                                S.-D. Huang and K.-Q. Xia
+                                                                                         These geometric confinement induced changes in quasi-2-D turbulent RB convection
+                                                                                      show that the interaction between the LSC, the thermal plumes and the BLs in thermal
+                                                                                      convection is more complicated than previous thought. These striking phenomena have
+                                                                                      not been observed in previous studies in 3-D and true 2-D systems, and could not
+                                                                                      be accounted for with the existing models for aspect ratio dependence (Grossmann &
+                                                                                      Lohse 2003; Ching & Tam 2006). We end by stressing that our present understanding
+                                                                                      of the confinement effects in quasi-2-D turbulent convection are 2-fold: the first is
+                                                                                      the changes in the morphology and dynamics of thermal plumes and the modification
+                                                                                      of the flow structures in the bulk; the second is the strengthening of the interaction
+                                                                                      between the flow structures in the bulk and the BLs. Given this, the influence of
+                                                                                      geometric confinement in the small-Γ limit would be an interesting topic for future
+                                                                                      studies.
+
+                                                                                      Acknowledgements
+                                                                                        We thank S.-Q. Zhou and X.-D. Shang for kindly making their PIV apparatus
+                                                                                      available to us. We also thank F. Wang and L. Qu for their help with the experiments.
+                                                                                      This work was supported by the Hong Kong Research Grants Council under grant
+                                                                                      nos CUHK 403712 and 404513.
+
+
+                                                                                                                                REFERENCES
+
+                                                                                      A HLERS , G., G ROSSMANN , S. & L OHSE , D. 2009 Heat transfer and large-scale dynamics in turbulent
+                                                                                             Rayleigh–Bénard convection. Rev. Mod. Phys. 81, 503–537.
+                                                                                      BAILON -C UBA , J., E MRAN , M. S. & S CHUMACHER , J. 2010 Aspect ratio dependence of heat transfer
+                                                                                             and large-scale flow in turbulent convection. J. Fluid Mech. 655, 152–173.
+                                                                                      B ROWN , E. & A HLERS , G. 2007 Large-scale circulation model for turbulent Rayleigh–Bénard
+                                                                                             convection. Phys. Rev. Lett. 98, 134501.
+                                                                                      B ROWN , E., F UNFSCHILLING , D. & A HLERS , G. 2007 Anomalous Reynolds-number scaling in
+                                                                                             turbulent Rayleigh–Bénard convection. J. Stat. Mech. 2007, P10005.
+                                                                                      C ASTAING , B., G UNARATNE , G., K ADANOFF , L. P., L IBCHABER , A. & H ESLOT, F. 1989 Scaling
+                                                                                             of hard thermal turbulence in Rayleigh–Bénard convection. J. Fluid Mech. 204, 1–30.
+                                                                                      C HANDRA , M. & V ERMA , M. K. 2013 Flow reversals in turbulent convection via vortex reconnections.
+                                                                                            Phys. Rev. Lett. 110, 114503.
+                                                                                      C HILLÀ , F. & S CHUMACHER , J. 2012 New perspectives in turbulent Rayleigh–Bénard convection.
+https://doi.org/10.1017/jfm.2016.181 Published online by Cambridge University Press
+
+
+
+
+                                                                                            Eur. Phys. J. E 35, 58.
+                                                                                      C HING , E. S. C. & TAM , W. S. 2006 Aspect-ratio dependence of heat transport by turbulent
+                                                                                             Rayleigh–Bénard convection. J. Turbul. 7, N72.
+                                                                                      C HONG , K.-L., H UANG , S.-D., K ACZOROWSKI , M. & X IA , K.-Q. 2015 Condensation of coherent
+                                                                                             structures in turbulent flows. Phys. Rev. Lett. 115, 264503.
+                                                                                      DAYA , Z. A. & E CKE , R. E. 2001 Does turbulent convection feel the shape of the container? Phys.
+                                                                                            Rev. Lett. 87, 184501.
+                                                                                      F UNFSCHILLING , D., B ROWN , E., N IKOLAENKO , A. & A HLERS , G. 2005 Heat transport by turbulent
+                                                                                             Rayleigh–Bénard convection in cylindrical samples with aspect ratio one and larger. J. Fluid
+                                                                                            Mech. 536, 145–154.
+                                                                                      G ROSSMANN , S. & L OHSE , D. 2000 Scaling in thermal convection: a unifying theory. J. Fluid Mech.
+                                                                                            407, 27–56.
+                                                                                      G ROSSMANN , S. & L OHSE , D. 2003 On geometry effects in Rayleigh–Bénard convection. J. Fluid
+                                                                                            Mech. 486, 105–114.
+                                                                                      H ESLOT, F., C ASTAING , B. & L IBCHABER , A. 1987 Transitions to turbulence in helium gas. Phys.
+                                                                                            Rev. A 36, 5870–5873.
+                                                                                      H UANG , S.-D., K ACZOROWSKI , M., N I , R. & X IA , K.-Q. 2013 Confinement-induced heat-transport
+                                                                                             enhancement in turbulent thermal convection. Phys. Rev. Lett. 111, 104501.
+                                                                                                     Geometric confinement in quasi-2-D turbulent convection                           653
+                                                                                      H UANG , Y.-X. & Z HOU , Q. 2013 Counter-gradient heat transport in two-dimensional turbulent
+                                                                                              Rayleigh–Bénard convection. J. Fluid Mech. 737, R3.
+                                                                                      K ACZOROWSKI , M., C HONG , K.-L. & X IA , K.-Q. 2014 Turbulent flow in the bulk of Rayleigh–
+                                                                                              Bénard convection: aspect-ratio dependence of the small-scale properties. J. Fluid Mech. 747,
+                                                                                              73–102.
+                                                                                      L OHSE , D. & X IA , K.-Q. 2010 Small-scale properties of turbulent Rayleigh–Bénard convection. Annu.
+                                                                                              Rev. Fluid Mech. 42, 335–364.
+                                                                                      M ASSAIOLI , F., B ENZI , R. & S UCCI , S. 1993 Exponential tails in two-dimensional Rayleigh–Bénard
+                                                                                              convection. Europhys. Lett. 21, 305–310.
+                                                                                      N I , R., H UANG , S.-D. & X IA , K.-Q. 2015 Reversals of the large-scale circulation in quasi-2D
+                                                                                              Rayleigh–Bénard convection. J. Fluid Mech. 778, R5.
+                                                                                      N IEMELA , J. J. & S REENIVASAN , K. R. 2006 Turbulent convection at high Rayleigh numbers and
+                                                                                              aspect ratio 4. J. Fluid Mech. 557, 411–422.
+                                                                                      N IKOLAENKO , A., B ROWN , E., F UNFSCHILLING , D. & A HLERS , G. 2005 Heat transport by turbulent
+                                                                                              Rayleigh–Bénard convection in cylindrical cells with aspect ratio one and less. J. Fluid Mech.
+                                                                                              523, 251–260.
+                                                                                      P ODVIN , B. & S ERGENT, A. 2015 A large-scale investigation of wind reversal in a square Rayleigh–
+                                                                                              Bénard cell. J. Fluid Mech. 766, 172–201.
+                                                                                      VAN DER P OEL , E. P., S TEVENS , R. J. A. M. & L OHSE , D. 2011 Connecting flow structures and
+                                                                                              heat flux in turbulent Rayleigh–Bénard convection. Phys. Rev. E 84, 045303.
+                                                                                      VAN DER P OEL , E. P., S TEVENS , R. J. A. M. & L OHSE , D. 2013 Comparison between two-and
+                                                                                              three-dimensional Rayleigh–Bénard convection. J. Fluid Mech. 736, 177–194.
+                                                                                      VAN DER P OEL , E. P., S TEVENS , R. J. A. M., S UGIYAMA , K. & L OHSE , D. 2012 Flow states
+                                                                                              in two-dimensional Rayleigh–Bénard convection as a function of aspect-ratio and Rayleigh
+                                                                                              number. Phys. Fluids 24, 085104.
+                                                                                      DU P UITS , R., R ESAGK , C. & T HESS , A. 2007 Breakdown of wind in turbulent thermal convection.
+                                                                                              Phys. Rev. E 75, 016302.
+                                                                                      Q IU , X.-L. & X IA , K.-Q. 1998b Viscous boundary layers at the sidewall of a convection cell. Phys.
+                                                                                              Rev. E 58, 486–491.
+                                                                                      ROCHE , P., G AUTHIER , F., K AISER , R. & S ALORT, J. 2010 On the triggering of the ultimate regime
+                                                                                              of convection. New J. Phys. 12, 085014.
+                                                                                      S ONG , H. & T ONG , P. 2010 Scaling laws in turbulent Rayleigh–Bénard convection under different
+                                                                                              geometry. Europhys. Lett. 90, 44001.
+                                                                                      S ONG , H., B ROWN , E., H AWKINS , R. & T ONG , P. 2014 Dynamics of large-scale circulation of
+                                                                                              turbulent thermal convection in a horizontal cylinder. J. Fluid Mech. 740, 136–167.
+                                                                                      S REENIVASAN , K. R., B ERSHADSKII , A. & N IEMELA , J. J. 2002 Mean wind and its reversal in
+                                                                                              thermal convection. Phys. Rev. E 65, 056306.
+https://doi.org/10.1017/jfm.2016.181 Published online by Cambridge University Press
+
+
+
+
+                                                                                      S UGIYAMA , K., N I , R., S TEVENS , R. J. A. M., C HAN , T. S., Z HOU , S.-Q., X I , H.-D., S UN ,
+                                                                                              C., G ROSSMANN , S., X IA , K.-Q. & L OHSE , D. 2010 Flow reversals in thermally driven
+                                                                                              turbulence. Phys. Rev. Lett. 105, 034503.
+                                                                                      S UN , C., R EN , L.-Y., S ONG , H. & X IA , K.-Q. 2005a Heat transport by turbulent Rayleigh–Bénard
+                                                                                              convection in 1 m diameter cylindrical cells of widely varying aspect ratio. J. Fluid Mech.
+                                                                                              542, 165–174.
+                                                                                      S UN , C., X IA , K.-Q. & T ONG , P. 2005b Three-dimensional flow structures and dynamics of turbulent
+                                                                                              thermal convection in a cylindrical cell. Phys. Rev. E 72, 026302.
+                                                                                      VASILEV, A. Y U . & F RICK , P. G. 2011 Reversals of large-scale circulation in turbulent convection
+                                                                                              in rectangular cavities. J. Expl Theor. Phys. Lett. 93, 330–334.
+                                                                                      WAGNER , S. & S HISHKINA , O. 2013 Aspect-ratio dependency of Rayleigh–Bénard convection in
+                                                                                              box-shaped containers. Phys. Fluids 25, 085110.
+                                                                                      W EI , P., N I , R. & X IA , K.-Q. 2012 Enhanced and reduced heat transport in turbulent thermal
+                                                                                              convection with polymer additives. Phys. Rev. E 86, 016325.
+                                                                                      W U , X.-Z. & L IBCHABER , A. 1992 Scaling relations in thermal turbulence: the aspect-ratio
+                                                                                              dependence. Phys. Rev. A 45, 842–845.
+                                                                                      X I , H.-D. & X IA , K.-Q. 2007 Cessations and reversals of the large-scale circulation in turbulent
+                                                                                              thermal convection. Phys. Rev. E 75, 066307.
+                                                                                      654                                 S.-D. Huang and K.-Q. Xia
+                                                                                      X IA , K.-Q. 2013 Current trends and future directions in turbulent thermal convection. Theor. Appl.
+                                                                                              Mech. Lett. 3, 052001.
+                                                                                      X IA , K.-Q. & L UI , S.-L. 1997 Turbulent thermal convection with an obstructed sidewall. Phys. Rev.
+                                                                                              Lett. 79, 5006–5009.
+                                                                                      X IA , K.-Q., S UN , C. & C HEUNG , Y.-H. 2008 Large scale velocity structures in turbulent thermal
+                                                                                              convection with widely varying aspect ratio. In Proceedings of the 14th International
+                                                                                              Symposium on Applications of Laser Techniques to Fluid Mechanics.
+                                                                                      X IA , K.-Q., S UN , C. & Z HOU , S.-Q. 2003 Particle image velocimetry measurement of the velocity
+                                                                                              field in turbulent thermal convection. Phys. Rev. E 68, 066303.
+                                                                                      Z HOU , Q., L IU , B.-F., L I , C.-M. & Z HONG , B.-C. 2012 Aspect ratio dependence of heat transport
+                                                                                              by turbulent Rayleigh–Bénard convection in rectangular cells. J. Fluid Mech. 710, 260–276.
+https://doi.org/10.1017/jfm.2016.181 Published online by Cambridge University Press
+

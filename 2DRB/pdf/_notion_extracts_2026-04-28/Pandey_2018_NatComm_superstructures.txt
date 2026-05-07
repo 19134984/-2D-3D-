@@ -1,0 +1,863 @@
+                  ARTICLE
+                  DOI: 10.1038/s41467-018-04478-0               OPEN
+
+                  Turbulent superstructures in Rayleigh-Bénard
+                  convection
+                  Ambrish Pandey            1, Janet D. Scheel         2 & Jörg Schumacher               1
+
+
+
+
+                  Turbulent Rayleigh-Bénard convection displays a large-scale order in the form of rolls and
+                  cells on lengths larger than the layer height once the ﬂuctuations of temperature and velocity
+1234567890():,;
+
+
+
+
+                  are removed. These turbulent superstructures are reminiscent of the patterns close to the
+                  onset of convection. Here we report numerical simulations of turbulent convection in ﬂuids at
+                  different Prandtl number ranging from 0.005 to 70 and for Rayleigh numbers up to 107. We
+                  identify characteristic scales and times that separate the fast, small-scale turbulent ﬂuc-
+                  tuations from the gradually changing large-scale superstructures. The characteristic scales of
+                  the large-scale patterns, which change with Prandtl and Rayleigh number, are also correlated
+                  with the boundary layer dynamics, and in particular the clustering of thermal plumes at the
+                  top and bottom plates. Our analysis suggests a scale separation and thus the existence of a
+                  simpliﬁed description of the turbulent superstructures in geo- and astrophysical settings.
+
+
+
+
+                  1 Institut für Thermo- und Fluiddynamik, Technische Universität Ilmenau, Postfach 100565, D-98684 Ilmenau, Germany. 2 Department of Physics, Occidental
+
+                  College, 1600 Campus Road, M21, Los Angeles, CA 90041, USA. Correspondence and requests for materials should be addressed to
+                  J.S. (email: joerg.schumacher@tu-ilmenau.de)
+
+                  NATURE COMMUNICATIONS | (2018)9:2118                    | DOI: 10.1038/s41467-018-04478-0 | www.nature.com/naturecommunications                      1
+ARTICLE                                                                     NATURE COMMUNICATIONS | DOI: 10.1038/s41467-018-04478-0
+
+
+
+
+L
+      arge temperature differences across a horizontally extended       be able to separate the fast, small-scale turbulent ﬂuctuations of
+      ﬂuid layer induce a turbulent convective ﬂuid motion which        velocity and temperature from the gradual variation of the large-
+      is relevant in numerous geo- and astrophysical systems1.          scale superstructure patterns. The determination of this averaging
+These ﬂows are typically highly turbulent with very large Rayleigh      time scale as a function of Ra and Pr is a second motivation for
+numbers Ra, the parameter that quantiﬁes the intensity of the           the present study.
+thermal driving in convection. From the classical perspective of           In the present work, we report an analysis of the characteristic
+turbulence one would expect a chaotic, irregular motion of dif-         spatial and temporal scales of turbulent superstructures in RBC
+ferently sized vortices and thermal plumes. Rather than such a          by means of three-dimensional direct numerical simulations
+featureless stochastic ﬂuid motion, some turbulent ﬂows in nature       (DNS) spanning more than four orders of magnitude in Pr and
+display an organization into prominent and regular ﬂow patterns         more than three orders in Ra. We identify the characteristic
+that persist for times longer compared to an eddy turnover time         averaging time scales, τ(Ra, Pr), which will be connected with a
+and extend over lengths which are more than the characteristic          characteristic spatial scale (or wavelength) that can be determined
+height scale. Examples are cloud streets in the atmosphere2 or          by a spectral analysis of the turbulent superstructures. Our study
+granulation networks at the solar surface3 and other stars4. Large-     of large-aspect-ratio turbulent RBC extends to very small Prandtl
+scale order that is greater than the height of the convection layer     numbers with values signiﬁcantly below 0.1, which have not been
+will be termed a turbulent superstructure for Rayleigh-Bénard           obtained before. We also clearly demonstrate the gradual evolu-
+convection. It thus extends a notion that originally stands for         tion of the turbulent superstructures at all Prandtl numbers. It is
+ﬂuctuation patterns in wall-bounded shear ﬂows5. Super-                 done by radially averaged, azimuthal power spectra that reveal a
+structures are observed in turbulent convection ﬂows with very          gradual switching of the orientation of the superstructures which
+different molecular dissipation properties. The Prandtl number          is reminiscent of cross-roll or skewed varicose instabilities that
+Pr = v/κ, another dimensionless parameter which relates kine-           are well-known from the weakly nonlinear regime of RBC. Fur-
+matic viscosity v to temperature diffusivity κ, is for example very     thermore, we compare the characteristic pattern scale in the bulk
+small for stellar convection, Pr ≲ 0.0016–8. It is 0.7 for atmo-        of the RBC ﬂow to the scales of plumes and plume clusters that
+spheric ﬂows and 7.0 for heat transport in the oceans. Rayleigh-        are present in the boundary layers in the vicinity of the top and
+Bénard convection (RBC) is the simplest turbulent convection            bottom walls. The temperature patterns in the bulk are found to
+ﬂow evolving in a planar ﬂuid layer of height H that is uniformly       be correlated with the most prominent ridges of the derivative of
+heated with a temperature T = Tb from below and cooled from             the temperature ﬁeld with respect to the vertical coordinate (at
+above with T = Tt such that Tb – Tt = ΔT > 0. The Rayleigh              the bottom and top plates) which in turn are correlated with the
+number is given by Ra = gαΔTH3/(vκ) with g being the accel-             wall stresses of the advecting velocity. Our analysis provides
+eration due to gravity and α the thermal expansion coefﬁcient.          characteristic separation time and length scales for turbulent
+RBC can be considered as a paradigm for many applications9, 10          convection ﬂows in extended domains and thus opens the pos-
+that usually contain further physical processes, such as radia-         sibility to describe the superstructure patterns in turbulent con-
+tion11 and phase changes12, 13, and additional ﬁelds such as            vection by effective and reduced models that separate the fast,
+magnetic ﬁelds14. Numerical simulations of convection15–21 have         small scales from the slow, large scales. These reduced models can
+enabled researchers to access the large-scale structure formation       advance our understanding of a variety of turbulent systems that
+in turbulent convection ﬂows. Long-term numerical investiga-            exhibit large-scale pattern formation, including mesoscale con-
+tions at very small Prandtl numbers Pr ≪ 0.1 for time spans of          vection and solar granulation.
+the order of 10 or more turnover times require simulations on
+massively parallel supercomputers in order to resolve the highly        Results
+inertial turbulence properly (a turnover time is deﬁned to be τ/3       Superstructure patterns. All simulations reported here are of the
+where τ is deﬁned later in the text.) Such simulations have not         Boussinesq equations of motion and performed in an extended
+been done before and this is a central motivation for the present       closed square cell of aspect ratio of 25:25:1. Further details are
+study.                                                                  found in Table 1 and the methods section. Figure 1 shows the
+   At the onset of convection, Rac = 1708, straight convection          velocity ﬁeld lines (top row) and the corresponding temperature
+rolls have a unique and Prandtl-number-independent wave-                contours in the midplane (bottom row) for a simulation at one of
+length, λc ≈ 2H22, 23. For Ra ≳ Rac, these rolls become susceptible     our lowest Prandtl numbers. While the instantaneous pictures
+to secondary linear instabilities causing modulations, such as          display the expected irregularity of a turbulent ﬂow as visible for
+Eckhaus, zig-zag or oscillatory patterns24–26. These secondary          example by the streamline tangle in Fig. 1a, the averaged data
+instabilities depend strongly on the Prandtl number of the              reveal a much more ordered pattern. We also see that the
+working ﬂuid and the wavenumber range of the plane-wave                 superstructure patterns are more easily discerned in temperature
+perturbation to the straight convection rolls in the layer24.           ﬁeld snapshots than in those of the velocity ﬁeld. Figure 2 con-
+Dependencies on Rayleigh and Prandtl numbers of the pattern             ﬁrms this observation. Here, we plot the root mean square (rms)
+wavelength for Ra > Rac have been studied systematically in RBC         values of the vertical velocity component uz and the temperature
+experiments in air, water and silicone oil by Willis et al27. Average   T. In agreement with Fig. 1, we split both ﬁelds into contributions
+roll widths tend to increase with Ra, which the authors attributed      coming from the time average over the time interval τ and the
+to increasingly unsteady three-dimensional motions. The trend           ﬂuctuations,
+with growing Pr is less systematic15 and accompanied by hys-
+tereses at Pr ≫ 127.                                                                         uz ðx; tÞ ¼ UðxÞ þ u0z ðx; tÞ;                      ð1Þ
+   Roll and cell patterns of the velocity ﬁeld in a turbulent RBC
+for Ra ≳ 105 that are reminiscent of the ﬂow structures in the                                Tðx; tÞ ¼ ΘðxÞ þ T 0 ðx; tÞ:                       ð2Þ
+weakly nonlinear regime at Ra ≲ 5 × 103 have been observed in
+recent DNS at Pr ≳ 119, 20. Their detection requires an averaging
+over a time interval that should be long enough to remove the             The averaging volume V    ~ is a slab around the midplane. See
+turbulent ﬂuctuations in the ﬁelds effectively and yet short            Eqs. (4) and (5) later in the text for deﬁnitions of U and Θ. It can
+enough to not wash away the large-scale structures20. A sliding         be seen that the rms values of the total and time averaged
+time average with an appropriate time window width should thus          temperature are always close together when Prandtl and Rayleigh
+
+2                        NATURE COMMUNICATIONS | (2018)9:2118                 | DOI: 10.1038/s41467-018-04478-0 | www.nature.com/naturecommunications
+NATURE COMMUNICATIONS | DOI: 10.1038/s41467-018-04478-0                                                                                                                                        ARTICLE
+
+
+ Table 1 Parameters of the different spectral element simulations
+
+           Pr             Ra                 Ne                    N        Nu                    Re                     urms                       Ns          τtotal         τ           tκ             tv
+ 1         0.005          105                2,367,488             11       1.9 ± 0.01            2491 ± 20              0.56 ± 0.004               63          60             21          22             4472
+ 2         0.021          105                2,367,488             7        2.6 ± 0.01            1120 ± 8               0.51 ± 0.004               69          156            27          46             2182
+ 3         0.7            105                2,367,488             3        4.2 ± 0.02            92 ± 0.4               0.24 ± 0.001               117         1159           57          265            378
+ 3a        0.7            105                1,352,000             5        4.3 ± 0.02            92 ± 0.4               0.24 ± 0.001               278         1108           57          265            378
+ 4         7              105                2,367,488             3        4.1 ± 0.01            11 ± 0.04              0.09 ± 0.001               150         2979           192         837            120
+ 4a        7              105                1,352,000             5        4.1 ± 0.01            11 ± 0.03              0.09 ± 0.001               268         2670           207         837            120
+ 5         35             105                1,352,000             5        4.5 ± 0.01            2.3 ± 0.005            0.04 ± 0.0001              343         3420           300         1871           53
+ 6         70             105                1,352,000             5        4.6 ± 0.01            1.2 ± 0.002            0.03 ± 0.0001              337         3360           375         2646           38
+ 7         0.7            2.3 × 103          2,367,488             3        1.3 ± 0.001           6.1 ± 0.04             0.11 ± 0.001               74          1460           93          40             57
+ 8         0.7            5.0 × 103          2,367,488             3        1.8 ± 0.005           14 ± 0.2               0.17 ± 0.002               51          250            54          59             85
+ 9         0.7            104                1,352,000             5        2.2 ± 0.01            24 ± 0.2               0.20 ± 0.002               240         1195           72          84             120
+ 10        0.7            106                2,367,488             7        8.1 ± 0.03            290 ± 1                0.24 ± 0.001               392         1292           66          837            1195
+ 11        0.7            107                2,367,488             11       15.5 ± 0.06           864 ± 3                0.23 ± 0.001               127         248            72          2646           3780
+ We display the Prandtl number Pr, the Rayleigh number Ra, the number of spectral elements Ne, the polynomial order of the expansion in each of the three space directions                  N1=2
+                                                                                                                                                                                                on each element, the
+ Nusselt number Nu, the Reynolds number Re. Their deﬁnitions are given by Eqs. (13) and (14) in the Methods section. Furthermore, the root mean square velocity urms ¼ u2i V;t , the number            pﬃﬃﬃﬃﬃﬃﬃﬃﬃ of
+ statistically independent snapshots Ns, p
+                                         and    the total runtime τtotal in units of the free-fall time Tf = H/Uf are shown. We also list the turnover time τ, the vertical diffusion time tκ ¼ H2 =κ ¼ RaPrTf , and
+                                           ﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃ
+ the vertical viscous time tν ¼ H =ν ¼ Ra=PrTf . The snapshot separation is found from τtotal/(Ns – 1) and t0 is given in these units. Runs 3a and 4a are conducted at different spectral resolution and
+                                 2
+
+ compared with runs 3 and 4, respectively
+
+
+
+
+                                                                                                             from Pr = 0.005 to 70 at Ra = 105 and at Rayleigh number
+ a                                                  b                                                        ranging from Ra = 5 × 103 to 107 for convection in air at Pr = 0.7.
+                                                                                                             All runs are chaotically time-dependent and show non-vanishing
+                                                                                                             velocity ﬂuctuations about the time-averaged ﬁelds. We also refer
+                                                                                                             to Supplementary Fig. 1 and Supplementary Note 1 for vertical
+                                                                                                             mean proﬁles of velocity ﬂuctuations. In most cases, the
+                                                                                                             magnitude of these velocity ﬂuctuations exceeds the value of
+                                                                                                             the mean ﬂow (see Fig. 2) and the system is thus fully turbulent.
+                                                                                                             In cases (e) at Ra = 105, Pr = 70, (f) at Ra = 5000, Pr = 0.7, and
+                                                                                                             (g) at Ra = 104, Pr = 0.7 this is not the case and we denote these
+                                                                                                             ﬂows as weakly turbulent. For the weakly turbulent cases the time
+                                                                                                             averaged data does not deviate signiﬁcantly from the instanta-
+                                                                                                             neous snapshots. If we look at the trends for all runs, we see
+                                                                                                             that the velocity ﬁeld lines form curved rolls for the lower Pr and
+ c                                                  d                                                        cell-like patterns for Pr ≥ 7. These structures ﬁll the whole
+                                                                                                             layer and are reminiscent of patterns at the onset of convection at
+                                                                                                             much smaller Rayleigh numbers26. The corresponding tempera-
+                                                                                                             ture averages in the midplane show alternating ridges of
+                                                                                                             cold downwelling and hot upwelling ﬂuid which are coarser
+                                                                                                             for the lowest Prandtl numbers and the highest Rayleigh
+                                                                                                             numbers, respectively. For Pr = 0.005 and 0.021, this is due
+                                                                                                             to the highly diffusive temperature ﬁeld that is in conjunction
+                                                                                                             with an inertia-dominated ﬂuid turbulence28–30. In case of the
+                                                                                                             highest Prandtl number, Pr = 70 at Ra = 105, the amplitude of
+                                                                                                             the turbulent velocity ﬁeld ﬂuctuations is signiﬁcantly smaller
+                                                                                                             and the temperature ﬁeld displays much ﬁner ﬁlaments.
+                   0.1                            0.5                             0.9
+                                                                                                             Coarser temperature patterns can also be observed for the highest
+                                                                                                             Rayleigh number at Ra = 107. While low-Prandtl-number
+                                                                                                             convection transports momentum very efﬁciently, the heat
+Fig. 1 Instantaneous and time-averaged ﬁelds. Field line plots of the                                        transport becomes signiﬁcantly larger at the higher Prandtl
+instantaneous (a) and time-averaged (b) velocity for Pr = 0.021 and Ra =                                     numbers as seen in Table 1. Figure 3 also demonstrates that the
+105. View is from the bottom. Corresponding instantaneous (c) and time-                                      characteristic mean width of the rolls and spirals varies with Pr
+averaged (d) temperature ﬁeld in midplane. Averaging time is 27 free-fall                                    and Ra.
+times (Tf). The three-dimensional simulation domain is resolved by more
+than 1.2 billion mesh cells
+                                                                                                             Characteristic times and scales. The free-fall time, Tf = (H/
+                                                                                                             gαΔT)1/2 is a characteristic convective time unit that stands for
+numbers are varied. This is in contrast to uz. Fluctuations                                                  the (relatively) fast dynamics of thermal plumes and vortices in a
+dominate here when the Prandtl numbers are low and the                                                       turbulent convection ﬂow. It differs from the turnover time, i.e.,
+Rayleigh numbers are sufﬁciently high. Time averaging is thus                                                the time it takes for a ﬂuid parcel to circulate in a convection roll.
+necessary to reveal the patterns for both turbulent ﬁelds.                                                   A slower time unit in the turbulent ﬂow is either a vertical viscous
+   Figure 3 displays velocity ﬁeld lines and temperature contours                                            (Pr < 1) or a vertical diffusive (Pr > 1) time composing an effective
+of time-averaged turbulent RBC ﬂows at Prandtl number ranging                                                dissipative time by Td = max(tv, tκ) with tv = H2/v and tκ = H2/κ.
+
+NATURE COMMUNICATIONS | (2018)9:2118                                            | DOI: 10.1038/s41467-018-04478-0 | www.nature.com/naturecommunications                                                                3
+ARTICLE                                                                                    NATURE COMMUNICATIONS | DOI: 10.1038/s41467-018-04478-0
+
+
+
+                           a       0.6                                                 b 0.6
+
+
+                                   0.4                                   1/2               0.4
+                                                                  T 2 V,
+                                                                      ˜
+                                                                       1/2
+                                                                  Θ2 Ṽ
+
+
+
+                               T
+                                                                       1/2
+                                   0.2                            T ′2 V,
+                                                                       ˜                   0.2
+
+
+
+                                   0.0                                                     0.0
+
+                           c    0.45                                                   d 0.20
+                                                                        1/2
+                                                                  uz2 V,˜
+                                                                        1/2
+                                                                  U 2 Ṽ                  0.15
+                                0.30                                       1/2
+                                                                  u z′ 2 V,
+                                                                           ˜
+                           uz
+
+
+
+
+                                                                                          0.10
+
+                                0.15
+                                                                                          0.05
+
+
+                                0.00                                                      0.00
+                                         10–2   10–1    100      101             102         103        104      105        106      107
+                                                       Pr                                                         Ra
+                                                                                                                          1=2       2 1=2
+Fig. 2 Magnitude of turbulent superstructures. The panels compare the root mean square (rms) values of the full ﬁeld, T 2 V;τ  ~ and uz V;τ
+                                                                                                                                          ~ , the temporal
+         2 1=2      2 1=2                                                                        2 1=2     2 1=2
+means Θ V~ and U V~ as deﬁned in Eqs. (4, 5), and the ﬂuctuations about the temporal mean, T′ V;τ        ~ and u′z V;τ~ , for the temperature T in a, b and
+for the vertical velocity component uz in c, d. The dependence on Pr at Ra = 105 is given in a, c and on Ra at Pr = 0.7 in b, d. The data for the temporal
+means are shown in Fig. 3
+
+
+A complete removal of the large-scale patterns would require an                        analysis is focussed on the symmetry plane at z = 1/2 where the
+averaging period of multiples of the horizontal dissipation time                       patterns are identiﬁed by upwelling hot and downwelling cold ﬂuid
+Γ2Td with Γ being the aspect ratio of the domain31, 32. This time                      (see Fig. 4a). The gradually varying ﬁelds are given by the following
+scale is the largest one that can be composed in the system by                         sliding time average with respect to τ
+dimensional arguments. For the present cases at hand, this hor-                                                      Z
+                                                                                                                    1 t0 þτ=2
+izontal dissipation time is larger than 104Tf and covers thus time                               U ðx; y; τ; t0 Þ ¼           u ðx; y; z ¼ 1=2; t′Þdt′;  ð4Þ
+spans which are not accessible in our massively parallel turbu-                                                     τ t0 τ=2 z
+lence simulations.
+   Thus, the averaging time τ that separates small-scale turbulence                                                     Z
+                                                                                                                       1 t0 þτ=2
+and superstructures should be bounded by                                                           Θðx; y; τ; t0 Þ ¼             θðx; y; z ¼ 1=2; t′Þdt′:       ð5Þ
+                                                                                                                       τ t0 τ=2
+                        Tf  τðRa; PrÞ  Td :                              ð3Þ
+                                                                                          Snapshot data is output periodically and t0 is the time scale for
+                                                                                       this output interval. Both ﬁelds are transformed onto a polar
+   This time τ should be considered as a representative                                wavevector grid in Fourier space giving Uðk;        ^ ϕk ; τ; t0 Þ and
+value of a ﬁnite range of times rather than an exact time and                          ^ ϕ ; τ; t0 Þ. The variable k stands for the magnitude of the
+                                                                                       Θðk;
+is expected to obey a dependence on our two system parameters,                                k
+                                                                                       wave vector, and ϕk is the angle the wavevector makes in
+Ra and Pr. In Supplementary Figs. 2 and 3 and Supplementary                            wavenumber space. Azimuthally averaged Fourier spectra (see
+Note 2 it is shown for two different Prandtl numbers how                               Fig. 4b) are given by
+the patterns change when the averaging time is varied. On                                                             Z
+the one hand, τ should be long enough to remove all small-scale                                                      1 2π
+                                                                                                   Eω ðk; τ; t0 Þ ¼        ωðk; ϕk ; τ; t0 Þj2 dϕk ;
+                                                                                                                          j^                               ð6Þ
+ﬂuctuations and to reveal the superstructures, in particular of                                                     2π 0
+velocity. On the other hand, τ has to be short enough such
+that the large-scale patterns are not removed completely.                              with ω ^ ¼ fU;  ^ The spectrum E(k) is also known as the
+                                                                                                     ^ Θg.
+Hence we deﬁne τ as the characteristic turnover time of                                structure function S(k) and is a useful way to ﬁnd the
+ﬂuid parcels in the circulation rolls or cells, the latter of                          wavenumber for a two-dimensional spectrum36. All spectra
+which extend across the whole layer from bottom to top and                             Eω(k; τ, t0) show a global maximum. An additional average over
+are considered as the building blocks of the superstructure                            all t0 yields a unique maximum wavenumber kU;Θ ¼ 2π=^λU;Θ
+velocity patterns.                                                                     which depends on Ra and Pr as shown in Fig. 4c, d. The
+   We decompose the RBC ﬁelds into a fast changing and gradually                       wavelength ^λU;Θ ðRa; PrÞ=2 is the characteristic mean width of the
+evolving contribution. This is inspired by asymptotic expansions                       superstructure rolls as sketched in panel a of Fig. 4. We note that
+that are developed for constrained turbulence33–35. Furthermore,                       the spectra Eω(k; τ, t0) do not vary signiﬁcantly with t0, in
+we substitute the full temperature ﬁeld, T(x, t), by its deviation from                particular in respect to the maximum wavenumber k*. The
+the linear diffusive equilibrium proﬁle, θ(x, t) = T(x, t) – Tlin(z) for               characteristic wavelengths in Fig. 4c, d are larger than the critical
+the following Fourier analysis. Our focus is on the horizontal                         wavelength ^λc ¼ 2π=kc  2 at the onset of convection with
+patterns in the system. Therefore, the subsequent superstructure                       Rac = 170823. It is seen that the wavelength grows with Ra at ﬁxed
+
+4                          NATURE COMMUNICATIONS | (2018)9:2118                              | DOI: 10.1038/s41467-018-04478-0 | www.nature.com/naturecommunications
+NATURE COMMUNICATIONS | DOI: 10.1038/s41467-018-04478-0                                                                                       ARTICLE
+
+    a                             b                              c                             d                             e
+
+
+
+
+    f                             g                              h                             i                             j
+
+
+
+
+                                              0.1                           0.5                            0.9
+
+
+
+Fig. 3 Turbulent superstructures at different Rayleigh and Prandtl numbers. For each of the simulations ﬁeld line plots of the time-averaged velocity (top
+rows) and the corresponding time-averaged temperature in the midplane (bottom rows) are displayed. Turbulent Rayleigh-Bénard convection at a Rayleigh
+number of Ra = 105 (a) at Pr = 0.005, (b) at Pr = 0.021 (see also Fig. 1b, d), (c) at Pr = 0.7, (d) at Pr = 7, and (e) at Pr = 70. Averaging times in a–e are 21
+free-fall times (Tf) for Pr = 0.005, 27 Tf for Pr = 0.021, 57 Tf for Pr = 0.7, 207 Tf for Pr = 7, and 375 Tf for Pr = 70. Turbulent Rayleigh-Bénard convection
+at a Prandtl number of Pr = 0.7 at (f) Ra = 5 × 103, (g) at Ra = 104, (h) at Ra = 105 (same panels as in c), (i) at Ra = 106, and (j) at Ra = 107. The averaging
+times are now 54 Tf for Ra = 5 × 103, 72 Tf for Ra = 104, 57 Tf for Ra = 105, 66 Tf for Ra = 106, and 72 Tf for Ra = 107. All shown cross sections are 25H ×
+25H with H being the height of the convection layer
+
+
+Pr. The dependence of the wavelength on the Prandtl number                        temperature patterns compared to those of the vertical velocity
+at ﬁxed Rayleigh number in our data indicates a growth up to                      component which manifests in a somewhat larger wavelength ^λΘ .
+Pr ~ 10 and a subsequent decrease for even higher values which is                 We quantiﬁed this effect by the calculation of a horizontal Péclet
+in agreement with ref. 15 for smaller Γ. In Supplementary Fig. 4                  number, which is given by Peh = vhH/κ. It relates the (horizontal)
+and Supplementary Note 3 we demonstrate that nearly the same                      advection of the temperature by the velocity ﬁeld to temperature
+scales can be obtained by an analysis of the two-point correlation                diffusion. Here, vh ðz ¼ 1=2Þ ¼ ðhu2x i þ hu2y iÞ1=2 . The Péclet
+functions in physical space.                                                      number is always larger than 10 which underlines a dominance
+   Interestingly, Fig. 4 also shows that ^λΘ ≳ ^λU . At the onset of              of convection in comparison to diffusion.
+convection, both wavelengths are exactly the same since both                         With the characteristic width of the superstructure rolls
+ﬁelds are perfectly synchronized in the midplane. Hot ﬂuid is                     (or cells) of ^λU =2 determined, we can now deﬁne the
+advected upwards (θ,uz > 0) while cold ﬂuid is brought down-                      characteristic turnover time for a ﬂuid parcel. We estimate this
+wards (θ,uz<0). This perfect synchronicity breaks down with                       time scale by an elliptical circumference, ℓ ≈ π(a + b) with a and b
+increasing Ra since the temperature ﬁeld is not only advected by                  (see again Fig. 4a) being the half-axes, and root mean square
+vertical velocity component across the midplane, but also by                      velocity of the turbulent ﬂow. The characteristic time scale of the
+rising horizontal velocity ﬂuctuations. They expand the                           turbulent superstructures, beyond which the gradual evolution of
+
+NATURE COMMUNICATIONS | (2018)9:2118                        | DOI: 10.1038/s41467-018-04478-0 | www.nature.com/naturecommunications                           5
+ARTICLE                                                                                                NATURE COMMUNICATIONS | DOI: 10.1038/s41467-018-04478-0
+
+
+
+                       a                                                                 b
+                                                                                                   105                                          EU (k)
+                                                     Superstructure rolls
+                                                                                                                                                EΘ (k)
+
+                                                                                                   103
+
+
+
+
+                                                                                         E (k )
+                                                                            b
+                                                     H
+                                                                      a
+                                                                                                   101
+
+                                            U       Θ
+                                                 ~
+                                            2          2
+                                                                                                   10–1
+                                                                                                                    100                 101               102
+                                                                                                                                 k
+
+                       c       7                                                         d             7
+                                        ^                  ^                                                  ^            ^
+                                        U                 Θ                                                U            Θ
+
+                               5                                                                       5
+                           
+
+
+
+
+                                                                                                   
+                         ^
+
+
+
+
+                                                                                               ^
+                               3                                                                       3
+
+
+
+                               1                                                                       1
+                               103               104            105        106   107                         10–2         10–1    100         101        102
+                                                                 Ra                                                              Pr
+
+                       e 103                                                             f         103
+
+
+
+                             102                                                                   102
+                       
+
+
+
+
+                                                                                             
+
+
+
+
+                                       Rac
+                             101                                                                   101
+
+
+                                                                 Tf                                                              Tf
+                             100                                                                   100
+                               103               104            105        106   107                         10–2         10–1    100         101        102
+                                                                 Ra                                                              Pr
+
+Fig. 4 Characteristic times and scales of turbulent superstructure patterns. a Sketch of the turbulent superstructure with the rolls (or cells) formed by
+upwelling hot and downwelling cold ﬂuid. The characteristic scale of the superstructures is half the roll pattern wavelength, ^λU;Θ . b Azimuthally averaged
+power spectra, EU(k) and EΘ(k). Data are for Pr = 0.021 and Ra = 105 as an example. The power spectra are determined for each snapshot and then
+averaged over all snapshots. Maximum wavenumbers of both power spectra are indicated by the vertical dotted line. c Rayleigh number dependence of
+characteristic wavelength ^λU;Θ of the superstructures for turbulent convection in air. d Prandtl number dependence of characteristic wavelength of
+superstructures at Ra = 105. All error bars are plotted though some are too small to see. The error bars are given by ± Δ^λU;Θ ¼ ð2π=kU;Θ       2
+                                                                                                                                                   ÞΔk with
+                                                                                              ^
+Δk ¼ maxðkU;Θ ðt0 ÞÞ  minðkU;Θ ðt0 ÞÞ. The solid lines in c, d mark the critical wavelength λc ¼ 2π=kc with kc = 3.117 at the onset of convection23. e
+Characteristic time τ as a function of Rayleigh number at Pr = 0.7. f Characteristic time as a function of the Prandtl number at Ra = 105. The free-fall time,
+Tf, is also indicated in both panels as a horizontal dashed line. The vertical dashed line in panel e stands for Ra = Rac = 1708. Characteristic wavelengths are
+given in units of height H, characteristic times in units of Tf
+
+
+the large-scale patterns proceeds, is given by                                            ﬁxed Ra, remaining however always well below the upper bound,
+                                                                                          the dissipation time scale Td (see Table 1).
+                                                     
+                                   ‘  π 14 ^λU þ 12 H
+             τ ðRa; PrÞ  3       3D                                                     Radially averaged power spectra. On time scales larger than τ
+                                                      E1=2 :                       ð7Þ    the turbulent superstructure patterns are found to evolve by slow
+                            urms
+                                      u2x þ u2y þ u2z                                     changes in orientation and topology. This can be quantiﬁed by an
+                                                                          V;t
+                                                                                          angular spectral analysis37. We take the radially averaged power
+                                                                                          spectrum of temperature Θ which is given by
+                                                                                                                        Z kmax
+                                                                                                                    1                     
+   Figure 4e, f displays these computed times as a function of Ra                                   EΘ ϕk ; τ; t0 ¼            ^ k; ϕ ; τ; t0 2 dk;
+                                                                                                                               Θ                         ð8Þ
+                                                                                                                                      k
+and Pr. The prefactor of 3 in Eq. (7) accounts for the fact that an                                                 kmax 0
+individual ﬂuid parcel is not perfectly circulating around in such a
+roll when the ﬂow is turbulent. We tested that different prefactors                       and plot the spectra in Fig. 5 versus time τ. The wavenumber kmax
+of same order of magnitude do not change the results                                      in Eq. (8) denotes a cutoff with kmax  kΘ . Local maxima in this
+qualitatively. The characteristic time τ is found to be nearly                            spectrum indicate now a preferential orientation of parallel rolls.
+unchanged at the ﬁxed Prandtl number. It increases with Pr at                             The slow evolution of the turbulent superstructures becomes
+
+6                              NATURE COMMUNICATIONS | (2018)9:2118                                     | DOI: 10.1038/s41467-018-04478-0 | www.nature.com/naturecommunications
+NATURE COMMUNICATIONS | DOI: 10.1038/s41467-018-04478-0                                                                                   ARTICLE
+
+                                        a         b                  c                  d                  e
+
+
+                                   15
+
+
+
+                        Time ()   10
+
+
+
+                                    5
+                                                                                                                                    Max
+
+                                    0
+                                        0       0                0                   0                 0             
+
+                                        f         g                  h                  i                  j
+
+
+
+                                   15
+                                                                                                                                    0
+                        Time ()
+
+
+
+
+                                   10
+
+
+
+                                    5
+
+
+                                    0
+                                        0       0                0                 0                   0              
+                                                               Orientation angle (k)
+
+Fig. 5 Slow time evolution of superstructures. Color density plot of the radially averaged temperature power spectrum EΘ(ϕk; τ, t0) as a function of time t0
+(in units of τ) and orientation angle ϕk. We plot the angle in wavenumber space, ϕk = arctan(ky/kx) between 0 and π. All panels are rescaled with their
+corresponding characteristic time τ. The top row shows data for Ra = 105. a Pr = 0.005, b Pr = 0.021, c Pr = 0.7, d Pr = 7, and e Pr = 70. The bottom row
+shows data for Pr = 0.7. f Ra = 5 × 103, g Ra = 104, h Ra = 105, i Ra = 106, and j Ra = 107
+
+
+
+visible by the slow variation of the local maxima in the spectrum               Pr ~ 1 which supports the maximum of ^λΘ (and thus in turn that
+in all presented runs. We can identify in all cases a small number              of ^λU ) in Fig. 4d.
+of local maxima that grow and then decay with time. As the old                     Figure 7 connects the time-averaged temperature ﬁeld structure
+maxima decay, new ones set in that are shifted by discrete angles               in the boundaries at the top and bottom plates with that in the
+from the old ones. This suggests secondary modulations of the                   midplane at z = 1/2 for two different Prandtl numbers. We display
+dominant roll pattern. We also see that for the highest Pr the                  the time-averaged vertical temperature derivative 〈∂T/∂z〉τ at z =
+maxima persist for a very long period while they switch more                    0,1 in Fig. 7a, e, f, j. This ﬁeld is one way to highlight the most
+rapidly in case of the lower Pr. This behavior is reminiscent of                prominent thermal plume ridges39. As expected, thinner ﬁlaments
+cross-roll or skewed varicose instabilities that have been studied              are observed for a higher Pr while the contours appear somewhat
+in detail in weakly nonlinear convection above onset26, 38.                     blurred and coarse grained for the lowest Prandtl number.
+   We have measured the duration of the global maxima in all                       Figure 7b, d, g, i displays a zoom of the same data together with
+plots in Fig. 5. A mean lifetime τspec is obtained by ﬁrst ﬁnding               the ﬁeld lines of the time-averaged skin friction ﬁeld 〈s〉τ = (〈∂ux/
+the global maxima of the spectra, EΘ(ϕk; τ, t0) at t0. Then the                 ∂z〉τ,〈∂uy/∂z〉τ) at the plates. The two-dimensional skin friction
+mean lifetime is determined from the duration of these maxima.                  ﬁeld is composed of the two non-vanishing components of the
+The angular position is monitored with a resolution of                          velocity gradient tensor at z = 0,1. It contains sources and sinks
+approximately 6 degrees. The results for τspec obtained by this                 and is fully determined by its critical points, s = 040, 41. These
+alternative method are shown in Fig. 6a, b in units of τ. The mean              critical points are either unstable nodes, stable nodes or saddles,
+lifetime is consistently of the order of τ (see Fig. 4e, f), except for         and much less frequently unstable and stable foci. Groups of
+the highest Pr.                                                                 saddles and stable nodes are correlated with local regions of the
+                                                                                formation of dominant plumes while unstable nodes are mostly
+                                                                                found where colder (hotter) ﬂuid impacts the bottom (top) plate.
+Connection to boundary layers. Figure 4c, d show that the                       This is still very clearly visible for the time average at Pr = 7 in the
+characteristic scale of the superstructures varies with Pr and Ra.              bottom row of the ﬁgure, but does also hold for the low-Prandtl-
+The trends with Prandtl number at ﬁxed Rayleigh number and                      number data displayed here. The structures at the top plate
+with Rayleigh number at ﬁxed Prandtl number can be explained                    display the same plume ridges, but are shifted by a roll-width
+with the horizontal Péclet number Peh again. We detect a growth                 when compared with those at the bottom plate, as is expected for
+of this number from Peh = 7 to 500 for Ra = 104 to 107 at Pr =                  a system of parallel rolls. Figure 8 shows an even stronger
+0.7. It is furthermore found that Peh grows by a factor of 4 from               magniﬁcation of temperature derivative and skin friction ﬁeld for
+Pr = 0.005 to 0.7 and falls off again by the same factor to Pr = 70.            instantaneous snapshots also indicating the determined critical
+The stirring of temperature by the horizontal ﬂow is maximal at                 points in Fig. 8c, g.
+
+NATURE COMMUNICATIONS | (2018)9:2118                      | DOI: 10.1038/s41467-018-04478-0 | www.nature.com/naturecommunications                         7
+ARTICLE                                                                                    NATURE COMMUNICATIONS | DOI: 10.1038/s41467-018-04478-0
+
+
+
+          a         101
+                                                                                          Fig. 7c, h shows the turbulent superstructure of temperature in
+                                                                                       the midplane with local maxima and minima exactly where the
+                                                                                       hot and cold plume ridges are present at the plates, respectively.
+                                                                                       These dominant ridges are the ones that persist as the
+                                                                                       superstructures when the time-averaging over τ is performed.
+         spec /
+
+
+                                                                                       Figure 7 thus demonstrates that the turbulent superstructures are
+                    100
+                                                                                       directly connected to the strongest thermal plumes in the
+                                                                                       boundary layers. This plume formation process is determined
+                                                                                       by two aspects: (i) the molecular diffusivity of the temperature
+                                                                                       ﬁeld (and the resulting differences in the thicknesses of thermal
+                    10–1                                                               and viscous boundary layers) and (ii) the typical variation scale of
+                            10–2       10–1          100       101   102               the horizontal velocity ﬁeld near the walls that forms the plume
+                                                    Pr                                 ridges by temperature ﬁeld advection. While the ﬁrst aspect will
+          b                                                                            affect the shape of the plume ridges and thus the characteristic
+                    101
+                                                                                       thickness scale of the local temperature maxima and minima in
+                                                                                       the midplane, the second one is directly connected to the spacing
+                                                                                       of the dominant temperature structures in the midplane and thus
+                                                                                       the width of the large-scale circulation rolls and cells that ﬁll the
+                                                                                       layer. The divergence of the time-averaged skin friction ﬁeld
+         spec /
+
+
+
+
+                    100
+                                                                                       which is obtained by
+
+                                                                                                                  ∂2 ux      ∂2 uy              ∂u2z
+                                                                                                        div s ¼            þ               ¼            ;      ð9Þ
+                                                                                                                  ∂x ∂z z¼0 ∂y ∂z               ∂z 2 z¼0
+                                                                                                                                     z¼0
+                    10–1
+                                 104          105            106     107
+                                                    Ra                                 (plus time averaging) can be considered as a blueprint of the
+                                                                                       alternating impact (source with div s > 0) and ridge formation
+Fig. 6 Mean lifetime of turbulent superstructure τspec in units of time                (sink with div s < 0) regions. The skin friction ﬁeld is thus a key to
+scale τ. The lifetime is obtained from the duration of global maxima                   understanding the clustering of thermal plumes near the wall, a
+of the radially averaged temperature spectra. a Mean lifetime versus                   phenomenon which has been reported for example in ref. 42. The
+Prandtl number at Ra = 105. b Mean lifetime versus Rayleigh number                     same picture holds at the top plate.
+at Pr = 0.7. The error bars correspond to the standard deviation of the                   Figure 9 underlines this correlation by means of the power
+lifetimes                                                                              spectra of the temperature in the midplane, the vertical
+                                                                                       temperature derivative at the plates and the divergence of the
+
+
+    a                                   b                              c                            d                                e
+
+
+
+
+                           –4          –2                0                 0.2   0.5          0.8                       0        2               4
+
+    f                                   g                              h                            i                                j
+
+
+
+
+                           –10         –5                0                 0.2   0.5          0.8                      0         5              10
+
+Fig. 7 Temperature ﬁeld structure averaged over time τ in boundary layer and midplane. The data in top row (a–e) of the ﬁgure are obtained for the
+case of Pr = 0.005, the data in bottom row (f–j) for Pr = 7, both at Ra = 105. a, f Contours of 〈∂T/∂z〉τ at z = 0. e, j Contours of −〈∂T/∂z〉τ at z = 1. Boxes in
+these plots indicate the magniﬁcation region which is a quarter of the full cross section. b, d and g, i are magniﬁcations of a, e and f, j, respectively. In
+addition, we display ﬁeld lines of the corresponding time-averaged skin friction ﬁeld 〈s〉τ in blue (white) for the bottom (top) plate. c, h show the
+corresponding time-averaged temperature ﬁeld Θ in the midplane at z = 1/2. Color bars are added to the corresponding ﬁgures. The size of b–d and g–i is
+the same
+
+8                                  NATURE COMMUNICATIONS | (2018)9:2118                      | DOI: 10.1038/s41467-018-04478-0 | www.nature.com/naturecommunications
+NATURE COMMUNICATIONS | DOI: 10.1038/s41467-018-04478-0                                                                                        ARTICLE
+
+                 a                               b                               c                              d
+
+
+
+
+                                     –5       –2.5       0                           0       100      200           –4000      0       4000
+
+                 e                               f                              g                               h
+
+
+
+
+                                     –12       –6        0                           0         1        2            –20       0        20
+
+Fig. 8 Instantaneous structure of the temperature derivative ∂T/∂z and skin friction ﬁeld s. Results at the bottom plate are displayed in magniﬁcation. a–d
+are for Pr = 0.005 and e–h for Pr = 7. Both data sets are obtained for Ra = 105. a, e show the derivative ∂T/∂z at the plate z = 0. b, f replot these data in the
+magniﬁed section. For b −1.6 ≤ x,y ≤ 1.6 and for f −3.1 ≤ x,y ≤ 3.1 are taken. c, g display the ﬁeld lines of the skin friction ﬁeld and the critical points as
+symbols. White circles correspond to saddles, cyan squares to unstable nodes or foci and red triangles to stable nodes or foci. The colored background
+stands for the magnitude s = |s|. d, h show contours of the divergence of the skin friction ﬁeld. Sizes of c, d are the same as b and those of g, h are the same
+as f
+
+
+
+skin friction ﬁeld. We have applied again the sliding time average                weakly nonlinear regime above the onset of convection at Ra =
+over τ. All three spectra are found to peak at the same scale                     Rac, as documented in the cited reviews24–26. Our study shows
+(except Pr ≥ 7 where the scales however are still comparable). Our                that patterns of rolls and cells continue to exist into the fully
+result is thus robust with respect to Pr and underlines that the                  turbulent and time-dependent ﬂow regime once the small-scale
+same dynamical processes are at work for all Prandtl numbers. As                  ﬂuctuations of the temperature and velocity ﬁelds are removed.
+seen in Fig. 9, the characteristic scale of the skin friction                        Prandtl numbers that vary here over more than four orders of
+divergence is expected to decrease when the Prandtl number gets                   magnitude change the character of convective turbulence drasti-
+smaller. This in turn is visually conﬁrmed by Fig. 8d, h where we                 cally from a highly inertia-dominated Kolmogorov-type turbu-
+note that the magniﬁcation section for Pr = 0.005 was chosen                      lence at the lowest Pr to a ﬁne-structured convection at the
+smaller in order to display features better. It is documented in                  highest Pr. This results in a strong dependence of the char-
+refs. 29, 30, that the Reynolds number increases signiﬁcantly when                acteristic spatial and temporal separation scales that are necessary
+Pr decreases at constant Ra thus indicating a much more vigorous                  to describe the gradual large-scale evolution of the ﬂow at hand.
+ﬂuid turbulence, both in the bulk and in the boundary layers.                     These spatial separation scales are found to continuously increase
+Thus the spatially extended advection patches of the horizontal                   up to Pr ≲ 10 and to decay for Pr ≳ 10 for the parameter values
+velocity ﬁeld, as visible in the magniﬁcation for the case for Pr = 7             that we were able to cover here which is in agreement with ref. 15.
+in Fig. 7g, i, will not persist for low-Prandtl-number convection.                A saturation of the characteristic scale might occur for the
+Finally, we stress that only a strong correlation between boundary                opposite limit, Pr → 0. Our data indicate such a behavior which is
+layer dynamics and patterns in midplane is shown. Our analysis                    supported by previous studies at zero-Prandtl convection by
+cannot determine if the observed characteristic scale of the                      Thual7. There they found only small differences between Pr =
+superstructure is a direct result of the boundary layer dynamics.                 0.025 and the singular limit Pr = 0. However these former studies
+                                                                                  have been conducted in much smaller boxes at signiﬁcantly
+                                                                                  smaller spectral resolutions.
+Discussion
+                                                                                     A further interesting observation that was made in the present
+Our main motivation was to study the large-scale patterns in
+                                                                                  study is the connection between the mean scales of the turbulent
+turbulent convection which are termed turbulent superstructures.
+                                                                                  superstructure patterns analyzed in the midplane and those of the
+We then analyzed the characteristic length and time scales
+                                                                                  near-wall ﬂows. Our analysis suggests that the characteristic
+associated with these turbulent superstructures as a function of
+                                                                                  scales of large-scale superstructures are correlated with the ther-
+Rayleigh and Prandtl numbers and found a separation between
+                                                                                  mal plume ridges in the boundary layers. We showed for all Pr
+large-scale, slowly evolving structures and small-scale, rapidly
+                                                                                  that the maximum wavenumber of the temperature spectrum in
+turning vortices and ﬁlaments. The system that we have chosen is
+                                                                                  the midplane kΘ nearly perfectly coincides with the wavenumber
+the simplest setting for a turbulent ﬂow that is initiated by tem-
+                                                                                  at which the power spectrum of the divergence of the skin friction
+perature differences, a Rayleigh-Bénard convection ﬂow between
+                                                                                  ﬁeld peaks. The latter wavenumber characterizes the mean dis-
+uniformly heated and cooled plates. This ﬂow has already been
+                                                                                  tance of impact (div s > 0) and ejection (div s < 0) regions at the
+studied intensively with respect to pattern formation in the
+
+NATURE COMMUNICATIONS | (2018)9:2118                         | DOI: 10.1038/s41467-018-04478-0 | www.nature.com/naturecommunications                           9
+ARTICLE                                                                              NATURE COMMUNICATIONS | DOI: 10.1038/s41467-018-04478-0
+
+
+
+          a             1011
+                                                                                rotating convection ﬂows or magnetoconvection in the presence
+                                                                                of strong external magnetic ﬁelds, the present RBC ﬂow permits a
+                                                                                mathematically rigorous asymptotic expansion that generates
+                        107
+                                                                                simpliﬁed equations for the dynamics of these patterns (see e.g.,
+                                                                                ref. 46). The unresolved dynamics at the ﬁne and fast scales below
+           EΘ (k)
+
+
+                                                                               ^λ
+                                                                                 Θ;U and τ will be modeled empirically. This is being further
+                        103                                                     investigated and will be reported elsewhere.
+
+                        10–1
+                                                                               Methods
+                                                                               Numerical simulations. We solve the coupled three-dimensional equations of
+          b 1015                                                               motion for velocity ﬁeld ui and temperature ﬁeld T in the Boussinesq approx-
+                                                                               imation of thermal convection:
+                                                                                                                          ∂ui
+                                                                                                                              ¼ 0;                               ð10Þ
+                        1010                                                                                              ∂xi
+           E⭸T/⭸z (k)
+
+
+
+
+                                                                                                                                      rﬃﬃﬃﬃﬃﬃﬃ 2
+                                                                                                    ∂ui     ∂u     ∂p                   Pr ∂ ui
+                        105                                                                             þ uj i ¼      þ                         þ Tδi3 ;        ð11Þ
+                                                                                                    ∂t      ∂xj    ∂xi                  Ra ∂xj2
+
+                        100
+                                                                                                            ∂T      ∂T       1 ∂2 T
+                                                                                                               þ uj     ¼ pﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃ 2 ;                       ð12Þ
+          c             1014                                                                                ∂t      ∂xj    RaPr ∂xj
+                                                       Pr = 0.005
+                                                       Pr = 0.021
+                                                       Pr = 0.7                with Rayleigh number Ra = gαΔTH3/(vκ) and Prandtl number Pr = v/κ. The
+                                                       Pr = 7
+                                                       Pr = 70
+                                                                                                                   y, ﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃ
+                                                                               indices i, j can have the values x, p   z. The equations are made dimensionless by cell
+           Ediv s (k)
+
+
+
+
+                                                                               height H, free-fall velocity Uf ¼ gαΔTH and the imposed temperature difference
+                        1010                                                   ΔT between the bottom and top plates. The aspect ratio Γ = L/H = 25 with the cell
+                                                                               length L. The variable g stands for the acceleration due to gravity, α is the thermal
+                                                                               expansion coefﬁcient, v is the kinematic viscosity, and κ is the thermal diffusivity.
+                                                                               No-slip boundary conditions for the ﬂuid are applied at all walls. The sidewalls are
+                                                                               thermally insulated and the top and bottom plates are held at constant dimen-
+                        106                                                    sionless temperatures T = 0 and 1, respectively. For a comparison with periodic
+                                100            101              102            boundary conditions at the sidewalls we refer to Supplementary Fig. 5, Supple-
+                                          k                                    mentary Table 1 and Supplementary Note 4. The equations are numerically solved
+                                                                               by the Nek5000 spectral element method package (https://nek5000.mcs.anl.gov).
+Fig. 9 Scale correlations of bulk and boundary layer. Time-averaged spectra       The turbulent heat and momentum transfer is quantiﬁed by the Nusselt Nu and
+of temperature Θ in the midplane (a), of vertical temperature derivative ∂T/   Reynolds number Re, respectively. They are deﬁned in dimensionless form as
+∂z at the bottom and top plates (b), and of skin friction ﬁeld divergence                                                     pﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃ
+                                                                                                             Nu ¼ 1 þ RaPrhuz T iV;t ;                           ð13Þ
+at the bottom and top plates (c) are compared for ﬁve different Prandtl
+numbers. The vertical dashed lines denote the maximum wavenumbers kΘ
+                                                                                                                 rﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃ
+                                                                                                                  D                           E Ra
+and are replotted in b and c. The dashed lines for Pr = 0.021 and 70 (blue
+                                                                                                          Re ¼       u2x þ u2y þ u2z                         ;   ð14Þ
+and cyan) collapse. Spectra are shifted vertically for better visibility                                                                         V;t Pr
+
+
+                                                                               with hiV;t being a full volume–time average. We have veriﬁed that the spectral
+                                                                               resolution is sufﬁcient in correspondence with criteria that are summarized in
+                                                                               ref. 47. We compared two pairs of runs at different spectral resolution and tested
+walls. It is thus the characteristic variation scale of the horizontal         that the results for the global transport of heat and momentum across the layer are
+                                                                               the same. These are runs 3 and 3a at Pr = 0.7 and Ra = 105 as well as runs 4 and 4a
+velocity ﬁeld that advects the hot (cold) ﬂuid together at the                 at Pr = 7 and Ra = 105 (see Table 1). We also veriﬁed that the vertical proﬁles of
+bottom (top) boundary to form prominent thermal plume ridges.                  the plane- and time-averaged kinetic energy and thermal dissipation rates exhibit
+The interplay between the thermal and viscous boundary layers of               smooth curves across the element boundaries47.
+different thicknesses could thus be responsible for the variation of
+the characteristic superstructure scale with growing Pr. The vis-              Data availability. Data that support the ﬁndings of this study are available from
+cous boundary layer becomes even thicker as Pr increases and                   the corresponding author on request.
+velocity ﬂuctuations decrease, thus generating more coherent
+advection patterns. Competing boundary layers that control                     Received: 10 January 2018 Accepted: 2 May 2018
+transport and structure formation in convection ﬂows have been
+discussed in other settings, for example in ref. 43 for rapidly
+rotating convection.
+   The characteristic superstructure scales which we have detected
+in the present work suggest a scale separation for convective                  References
+turbulence. There is the fast convective motion below the char-                1.   Kadanoff, L. P. Turbulent heat ﬂow: structures and scaling. Phys. Today 54,
+acteristic width of individual circulation rolls or cells on times                  34–39 (2001).
+smaller than several tens of free-fall times. Then after the removal           2.   Markson, R. Atmospheric electrical detection of organized convection. Science
+                                                                                    188, 1171–1177 (1975).
+of the small-scale turbulence, the large-scale patterns of rolls are           3.   Nordlund, Å., Stein, R. F. & Asplund, M. Solar surface convection. Living Rev.
+revealed and these ﬁll the whole layer and vary slowly on time                      Sol. Phys. 6, 2 (2009).
+scales larger than a few hundreds of free-fall times. The latter               4.   Michel, E. et al. CoRoT measures solar-like oscillations and granulation in
+dynamic processes can be of interest for a global effective                         stars hotter than the Sun. Science 322, 558–560 (2008).
+description of mesoscale convection phenomena in atmospheric                   5.   Marusic, I., Mathis, R. & Hutchins, N. Predictive model for wall-bounded
+                                                                                    turbulent ﬂow. Science 329, 193–196 (2010).
+turbulence44 or of pattern formation in a scale range between                  6.   Spiegel, E. A. Thermal turbulence at very small Prandtl number. J. Geophys.
+solar granulation and supergranulation45. In contrast to rapidly                    Res. 67, 3063–3070 (1962).
+
+10                             NATURE COMMUNICATIONS | (2018)9:2118                    | DOI: 10.1038/s41467-018-04478-0 | www.nature.com/naturecommunications
+NATURE COMMUNICATIONS | DOI: 10.1038/s41467-018-04478-0                                                                                                         ARTICLE
+
+7.    Thual, O. Zero-Prandtl-number convection. J. Fluid Mech. 240, 229–258               38. Cross, M. C., Meiron, D. & Tu, Y. Chaotic domains: a numerical investigation.
+      (1992).                                                                                 Chaos 4, 607–619 (1994).
+8.    Hanasoge, S., Gizon, L. & Sreenivasan, K. R. Seismic sounding of convection in      39. Shishkina, O. & Wagner, C. Analysis of thermal dissipation rates in turbulent
+      the Sun. Annu. Rev. Fluid Mech. 48, 191–217 (2016).                                     Rayleigh-Bénard convection. J. Fluid Mech. 546, 51–60 (2005).
+9.    Ahlers, G., Grossmann, S. & Lohse, D. Heat transfer and large scale dynamics        40. Chong, M. S., Monty, J. P., Chin, C. & Marusic, I. The topology of skin friction
+      in turbulent Rayleigh-Bénard convection. Rev. Mod. Phys. 81, 503–537 (2009).            and surface vorticity ﬁelds in wall-bounded ﬂows. J. Turb. 13, 6 (2012).
+10.   Chillà, F. & Schumacher, J. New perspectives in turbulent Rayleigh-Bénard           41. Bandaru, V., Kolchinskaya, A., Padberg-Gehle, K. & Schumacher, J. Role of
+      convection. Eur. Phys. J. E. 35, 58 (2012).                                             critical points of the skin friction ﬁeld in formation of plumes in thermal
+11.   Christensen-Dalsgaard, J. et al. The current state of solar modeling. Science           convection. Phys. Rev. E 92, 043006 (2015).
+      272, 1286–1292 (1996).                                                              42. Parodi, A., von Hardenberg, J., Passoni, G., Provenzale, A. & Spiegel, E. A.
+12.   Stevens, B. Atmospheric moist convection. Annu. Rev. Earth Planet. Sci. 33,             Clustering of plumes in turbulent convection. Phys. Rev. Lett. 92, 194503
+      605–643 (2005).                                                                         (2004).
+13.   Pauluis, O. & Schumacher, J. Self-aggregation of clouds in conditionally            43. King, E. M., Stellmach, S., Noir, J., Hansen, U. & Aurnou, J. M. Boundary layer
+      unstable moist convection. Proc. Natl. Acad. Sci. USA 108, 12623–12628                  control of rotating convection systems. Nature 457, 301–304 (2009).
+      (2011).                                                                             44. Randall, D., Khairoutdinov, M., Arakawa, A. & Grabowski, W. Breaking the
+14.   King, E. M., Soderlund, K. M., Christensen, U. R., Wicht, J. & Aurnou, J. M.            cloud parametrization deadlock. Bull. Am. Meteor. Soc. 84, 1547–1564 (2003).
+      Convective heat transfer in planetary dynamo models. Geochem. Geophys.              45. Rincon, F., Roudier, T., Schekochihin, A. A. & Rieutord, M. Supergranulation
+      Geosyst. 11, Q06016 (2010).                                                             and multiscale ﬂows in the solar atmosphere: global observations vs. a theory
+15.   Hartlep, T., Tilgner, A. & Busse, F. H. Large-scale structures in Rayleigh-             of anisotropic turbulent convection. A. & A. 599, A69 (2017).
+      Bénard convection at high Rayleigh numbers. Phys. Rev. Lett. 91, 064501             46. Stellmach, S. et al. Approaching the asymptotic regime of rapidly rotating
+      (2003).                                                                                 convection: boundary layers versus interior dynamics. Phys. Rev. Lett. 113,
+16.   Hartlep, T., Tilgner, A. & Busse, F. H. Transition to turbulent convection in a         254501 (2014).
+      ﬂuid layer heated from below at moderate aspect ratio. J. Fluid Mech. 554,          47. Scheel, J. D., Emran, M. S. & Schumacher, J. Resolving the ﬁne-scale structure
+      309–322 (2005).                                                                         in turbulent Rayleigh-Bénard convection. New J. Phys. 15, 113063 (2013).
+17.   Rincon, F., Lignières, F. & Rieutord, M. Mesoscale ﬂows in large aspect ratio
+      simulations of turbulent compressible convection. A & A 430, L57–L60
+      (2005).                                                                             Acknowledgements
+18.   von Hardenberg, J., Parodi, A., Passoni, G., Provenzale, A. & Spiegel, E. A.        A.P. and J.D.S. acknowledge support by the Deutsche Forschungsgemeinschaft within the
+      Large-scale patterns in Rayleigh Bénard convection. Phys. Lett. A 372,              Priority Programme Turbulent Superstructures under Grant no. SPP 1881. We
+      2223–2229 (2008).                                                                   acknowledge supercomputing time at the Blue Gene/Q JUQUEEN at the Jülich Super-
+19.   Bailon-Cuba, J., Emran, M. S. & Schumacher, J. Aspect ratio dependence of           computing Centre by large-scale project HIL12 of the John von Neumann Institute for
+      heat transfer and large-scale ﬂow in turbulent convection. J. Fluid Mech. 655,      Computing and at the SuperMUC Cluster at the Leibniz Supercomputing Centre
+      152–173 (2010).                                                                     Garching by large-scale project pr62se. We thank Eberhard Bodenschatz, Bruno
+20.   Emran, M. S. & Schumacher, J. Large-scale mean patterns in turbulent                Eckhardt, Keith Julien, Raymond A. Shaw, and Katepalli R. Sreenivasan for helpful
+      convection. J. Fluid Mech. 776, 96–108 (2015).                                      comments and discussions. We acknowledge support for the Article Processing Charge
+21.   Stevens, R. J. A. M., Blass, A., Zhu, X., Verzicco, R. & Lohse, D. Turbulent        by the Thuringian Ministry for Economic Affairs, Science and Digital Society and the
+      thermal superstructures in Rayleigh-Bénard convection. Phys. Rev. Fluids 3,         Open Access Publication Fund of the Technische Universität Ilmenau.
+      041501(R) (2018).
+22.   Jeffreys, H. Some cases of instability in ﬂuid motion. Proc. R. Soc. Lond. Ser. A   Author contributions
+      118, 195–208 (1928).                                                                All the three authors made signiﬁcant contributions to this work. All authors designed
+23.   Chandrasekhar, S. Hydrodynamic and Hydromagnetic Stability (Dover, New              the numerical experiments and analyzed the data. A.P. and J.S. ran the production
+      York, 1961).                                                                        simulations at the supercomputing sites in Garching and Jülich. All authors discussed the
+24.   Busse, F. H. Non-linear properties of thermal convection. Rep. Prog. Phys. 41,      results and wrote the paper together.
+      1929–1967 (1978).
+25.   Cross, M. C. & Hohenberg, P. C. Pattern formation outside equilibrium. Rev.
+      Mod. Phys. 65, 851–1112 (1993).                                                     Additional information
+26.   Bodenschatz, E., Pesch, W. & Ahlers, G. Recent developments in Rayleigh-            Supplementary Information accompanies this paper at https://doi.org/10.1038/s41467-
+      Bénard convection. Annu. Rev. Fluid Mech. 32, 709–778 (2000).                       018-04478-0.
+27.   Willis, G. E., Deardorff, J. W. & Somerville, R. C. J. Roll-diameter dependence
+      in Rayleigh convection and its effect upon the heat ﬂux. J. Fluid Mech. 54,         Competing interests: The authors declare no competing interests.
+      351–367 (1972).
+28.   Schumacher, J., Götzfried, P. & Scheel, J. D. Enhanced enstrophy generation         Reprints and permission information is available online at http://npg.nature.com/
+      for turbulent convection in low-Prandtl-number ﬂuids. Proc. Natl. Acad. Sci.        reprintsandpermissions/
+      USA 112, 9530–9535 (2015).
+29.   Schumacher, J., Bandaru, V., Pandey, A. & Scheel, J. D. Transitional boundary       Publisher's note: Springer Nature remains neutral with regard to jurisdictional claims in
+      layers in low-Prandtl-number convection. Phys. Rev. Fluids 1, 084402 (2016).        published maps and institutional afﬁliations.
+30.   Scheel, J. D. & Schumacher, J. Global and local statistics in turbulent
+      convection at low Prandtl numbers. J. Fluid Mech. 802, 147–173 (2016).
+31.   Ahlers, G., Cannell, D. S. & Steinberg, V. Time dependence of ﬂow patterns
+      near the convective threshold in a cylindrical container. Phys. Rev. Lett. 54,                        Open Access This article is licensed under a Creative Commons
+      1373–1376 (1985).                                                                                     Attribution 4.0 International License, which permits use, sharing,
+32.   Heutmaker, M. S., Fraenkel, P. N. & Gollub, J. P. Convective patterns:              adaptation, distribution and reproduction in any medium or format, as long as you give
+      evolution of the wave-vector ﬁeld. Phys. Rev. Lett. 54, 1369–1372 (1985).           appropriate credit to the original author(s) and the source, provide a link to the Creative
+33.   Julien, K. & Knobloch, E. Reduced models for ﬂuid ﬂows with strong                  Commons license, and indicate if changes were made. The images or other third party
+      constraints. J. Math. Phys. 48, 065405 (2007).                                      material in this article are included in the article’s Creative Commons license, unless
+34.   Klein, R. Scale-dependent models for atmospheric ﬂows. Annu. Rev. Fluid             indicated otherwise in a credit line to the material. If material is not included in the
+      Mech. 42, 249–274 (2010).                                                           article’s Creative Commons license and your intended use is not permitted by statutory
+35.   Malecha, Z., Chini, G. & Julien, K. A multiscale algorithm for simulating           regulation or exceeds the permitted use, you will need to obtain permission directly from
+      spatially-extended Langmuir circulation dynamics. J. Comp. Phys. 271,               the copyright holder. To view a copy of this license, visit http://creativecommons.org/
+      131–150 (2014).                                                                     licenses/by/4.0/.
+36.   Morris, S., Bodenschatz, E., Cannell, D. & Ahlers, G. Spiral defect chaos in
+      large aspect ratio Rayleigh-Bénard convection. Phys. Rev. Lett. 71, 2026–2029
+      (1993).                                                                             © The Author(s) 2018
+37.   Zhong, F. & Ecke, R. Pattern dynamics and heat transport in rotating
+      Rayleigh-Bénard convection. Chaos 2, 163–171 (1992).
+
+
+
+
+NATURE COMMUNICATIONS | (2018)9:2118                               | DOI: 10.1038/s41467-018-04478-0 | www.nature.com/naturecommunications                                       11
+

@@ -1,0 +1,1686 @@
+                                              Computers and Mathematics with Applications 72 (2016) 288–310
+
+
+
+                                                        Contents lists available at ScienceDirect
+
+
+                              Computers and Mathematics with Applications
+                                                journal homepage: www.elsevier.com/locate/camwa
+
+
+
+
+Designing correct fluid hydrodynamics on a rectangular grid
+using MRT lattice Boltzmann approach
+Yuan Zong a,b , Cheng Peng b , Zhaoli Guo c , Lian-Ping Wang b,c,∗
+a
+    State Key Laboratory of Chemical Engineering, East China University of Science and Technology, Shanghai, 200237, PR China
+b
+    Department of Mechanical Engineering, 126 Spencer Laboratory, University of Delaware, Newark, DE 19716-3140, USA
+c
+    National Laboratory of Coal Combustion, Huazhong University of Science and Technology, Wuhan, 430074, PR China
+
+
+
+
+article                 info                            abstract
+Article history:                                        While the lattice Boltzmann method (LBM) has become a powerful numerical approach
+Available online 13 June 2015                           for solving complex flows, the standard lattice Boltzmann method typically uses a square
+                                                        lattice grid in two spatial dimensions and cubic lattice grid in three dimensions. For
+Keywords:
+                                                        inhomogeneous and anisotropic flows, it is desirable to have a LBM model that utilizes
+Rectangular grid
+                                                        a rectangular grid. There were two previous attempts to extend the multiple-relaxation-
+Multiple-relaxation time
+Lattice Boltzmann method                                time (MRT) LBM to a rectangular lattice grid in 2D, however, the resulting hydrodynamic
+Navier–Stokes equations                                 momentum equation was not fully consistent with the Navier–Stokes equation, due to
+                                                        anisotropy of the transport coefficients. In the present work, a new MRT model with an
+                                                        additional degree of freedom is developed in order to match precisely the Navier–Stokes
+                                                        equation when a rectangular lattice grid is used. We first revisit the previous attempts
+                                                        to understand the origin and nature of anisotropic transport coefficients by conducting
+                                                        an inverse design analysis within the Chapman–Enskog procedure. Then an additional
+                                                        adjustable parameter that governs the relative orientation in the energy–normal stress
+                                                        subspace is introduced. It is shown that this adjustable parameter can be used to fully
+                                                        eliminate the anisotropy of transport coefficients, thus the exact Navier–Stokes equation
+                                                        can be derived on a rectangular grid. Our theoretical findings are confirmed by numerical
+                                                        solutions using three two-dimension benchmark problems, i.e. the channel flow, the cavity
+                                                        flow, and the decaying Taylor–Green vortex flow. The numerical results demonstrate that
+                                                        the proposed model shows remarkably good performance with appropriate choice of
+                                                        model parameters.
+                                                                                                           © 2015 Elsevier Ltd. All rights reserved.
+
+
+
+
+1. Introduction
+
+   As an alternative numerical method based on kinetic theory, the lattice Boltzmann method (LBM) has attracted a great
+deal of attention since its inception about 25 years ago [1,2]. The basic idea is to design a fully discrete version of the
+Boltzmann equation, with a minimum set of discrete microscopic velocities, that can yield the exact Navier–Stokes equation
+through the Chapman–Enskog analysis. From a computational viewpoint, the advantages of LBM include its algorithm
+simplicity, intrinsic data locality (thus straightforward to perform parallel computation), and capability to conveniently
+incorporate complex fluid–solid and fluid–fluid boundary conditions. Hence, LBM has been widely employed in simulations
+
+
+    ∗ Corresponding author at: Department of Mechanical Engineering, 126 Spencer Laboratory, University of Delaware, Newark, DE 19716-3140, USA.
+      E-mail addresses: zongyuan@ecust.edu.cn (Y. Zong), cpengxpp@udel.edu (C. Peng), zlguo@hust.edu.cn (Z. Guo), lwang@udel.edu (L.-P. Wang).
+
+http://dx.doi.org/10.1016/j.camwa.2015.05.021
+0898-1221/© 2015 Elsevier Ltd. All rights reserved.
+                                    Y. Zong et al. / Computers and Mathematics with Applications 72 (2016) 288–310         289
+
+
+of complex fluid systems, such as multiphase flows [3,4], complex viscous flows with deformable boundary and complex
+geometry such as porous media [5–7], and micro-scale flows [8,9].
+    Despite the success of LBM, the standard LBM is restricted to a square grid or hexagonal grid in two spatial dimensions
+(2D) and a cubic grid in three spatial dimensions (3D). This restriction is aligned with the set of microscopic velocities used
+and is desirable for model isotropy. However, this could result in a low computational efficiency when the flow field is highly
+nonuniform, inhomogeneous, and anisotropic, such as a boundary layer flow where the velocity gradients in one spatial
+dimension is much stronger than the other directions. To alleviate this problem within LBM, different approaches have
+been developed to allow the use of a nonuniform grid. One approach is to employ an interpolation method to decouple the
+grid associated with lattice Boltzmann microscopic velocities, from the numerical mesh. Pioneering work in this direction
+includes the studies of Filippova and Hänel [10,11] who reconstructed distribution functions at arbitrary locations using
+spatial and temporal interpolations. Another approach is to introduce local grid refinement or use different mesh densities
+for different regions of the flow (i.e., multi-block methods) [12]. Methods to communicate distribution functions, defined on
+coarse and fine grids, at the block interfaces have been developed. Other methods to use a non-uniform grid typically utilize
+a local interpolation scheme [13,14]. While these approaches have been actively extended and applied in many applications,
+their accuracy is limited by the interpolation scheme which may also introduce additional artificial dissipation. Therefore,
+it is desirable to construct a lattice Boltzmann method with a more flexible grid that is free of interpolation.
+    Inspired by the work of Koelman [15], Bouzidi et al. [16] made the first attempt to construct a multiple-relaxation-
+time (MRT) LBM on a two-dimensional rectangular grid. The model showed good performance with appropriate choice
+of model parameters, but the resulting hydrodynamic momentum equation is not fully consistent with the Navier–Stokes
+equations. Another attempt was made by Zhou [17] who redefined the moments so that the transformation matrix for
+a rectangular grid was identical to that for a standard MRT on a square grid. However, the modifications suggested in
+Zhou [17] led to anisotropic fluid viscosity. Hegele et al. [18] indicated some extra degrees of freedom should be employed
+to satisfy the isotropy conditions for rectangular lattice Boltzmann scheme. There are three possible approaches: decoupling
+the discretizations of the velocity space from spatial and temporal discretization, modification of a collision operator
+with additional parameter, and adoption of more discrete microscopic velocities. They introduced two extra microscopic
+velocities to extend the D2Q9 model with BGK collision operator and were able to restore, on a rectangular grid, the isotropy
+condition required for the Navier–Stokes equation. They also suggested that four new velocities are needed in order to
+correctly extend the D3Q19 model onto a noncubic 3D grid.
+    In the present work, we explore the possibility to restore the isotropy condition on a 2D rectangular grid without
+introducing any additional microscopic velocity. We take advantage of some of the flexibility within the MRT LBM
+scheme [19,20]. For this purpose, we will introduce an additional parameter in the energy–normal stress moment subspace.
+Before presenting our novel MRT LBM scheme on a rectangular grid, previous MRT schemes on a rectangular grid are firstly
+reviewed in Section 2. An inverse design analysis will be used to derive the equilibrium moments and the anisotropy of the
+transport coefficients for a rectangular grid is revealed. In Section 3, our new scheme with an additional free parameter is
+constructed in order to restore the isotropy for a rectangular grid, namely, the usual Navier–Stokes hydrodynamic equations
+are derived using a rectangular grid. Also, the coupling relationships between relaxations times and determination of
+computational parameters are re-interpreted, which enables the flexibility to choose computational parameters according
+to different flow problems. In Section 4, numerical validation of our new scheme is provided using a 2D channel flow, a 2D
+lid-driven cavity flow and 2D Taylor–Green vortex flow. Concluding remarks are provided in Section 5.
+
+2. An analysis of previous MRT LBM schemes on a rectangular grid
+
+2.1. The model of Bouzidi et al. [16]
+
+    We begin with the MRT LBM scheme [19] in 2D, which has been shown to provide more flexibility in relaxing different
+moments and to significantly improve computational stability and accuracy, while simplicity and computational efficiency
+of LBM are retained. However, we consider a rectangular grid as shown in Fig. 1, where the non-zero lattice velocity in the x
+direction is one, and in the y direction is a (a < 1). Following the spirit of the D2Q9 model but with the different velocities
+in x and y directions, the discrete velocities are defined as
+
+                 (0, 0)               i=0
+             
+      ei =       (±1, 0), (0, ±a)     i=1−4                                                                                 (1)
+                 (±1, ±a)             i = 5 − 8.
+The distribution functions in MRT LBM evolve as
+      fi (x + ei δ t ) − fi (x, t ) = Ωi                                                                                    (2)
+where fi is the distribution function associated with the molecular velocity ei at position x and time t , Ωi is the collision
+operator.
+   In MRT LBM, the streaming process takes place in the physical space while the collision process is performed in the mo-
+ment space. The nine distribution functions define nine degrees of freedom, which implies that nine independent moments
+290                                    Y. Zong et al. / Computers and Mathematics with Applications 72 (2016) 288–310
+
+
+
+
+                   Fig. 1. Discrete velocities of the D2Q9 MRT model on a rectangular grid. The aspect ratio of the grid is δy /δx = a.
+
+
+can be constructed. We first adopt the moments introduced in Bouzidi et al. [16] through a transformation matrix M
+
+      m = Mf                                                                                                                               (3)
+
+where f = (f0 , f1 , f2 , f3 , f4 , f5 , f6 , f7 , f8 ) . The transformation matrix M specifies the nature of the moments and is given
+                                                    T
+
+as [16]
+
+             1              1        1        1       1         1     1     1     1
+         −2r1              r2       r3       r2      r3        r1    r1    r1    r1 
+         
+             4            −2       −2       −2      −2          1     1     1     1
+                                                                                     
+             0              1        0      −1        0         1   −1    −1      1
+      M =    0            −2         0        2       0         1   −1    −1      1                                                      (4)
+                                                                                    
+         
+             0              0        a        0     −a          a     a   −a    −a 
+         
+             0              0     −2a         0     2a          a     a   −a    −a 
+           −2r4             r5       r6       r5      r6        r4    r4    r4    r4
+                       0     0        0        0       0         1   −1      1   −1
+
+where r1 = 1 + a2 , r2 = 1 − 2a2 , r3 = −2 + a2 , r4 = −1 + a2 , r5 = 2 + a2 , r6 = −1 − 2a2 . The row vectors are orthogonal
+and they define the following nine moments
+                                                     T
+      m = ρ, e, ε, jx , qx , jy , qy , pxx , pxy          ,
+             
+                                                                                                                                           (5)
+
+where ρ is the density, e is the kinetic energy, ε is the kinetic energy squared, jx and jy are the momentum density in the x
+and y directions, respectively. qx and qy are the x and y components of the energy flux, pxx and pxy are related to the diagonal
+and off-diagonal components of the viscous stress tensor.
+   The MRT collision operator Ωi is expressed as
+
+       = −M −1 SM f (x, t ) − f eq (x, t )
+                                                    
+                                                                                                                                           (6)
+
+where S is a non-negative diagonal relaxation matrix,
+
+      S = diag sρ , se , sε , sj , sq , sj , sq , sn , sc
+                                                           
+                                                                                                                                           (7)
+
+where sn and sc are the relaxation times for pxx and pxy , respectively. When all the relaxation times are set to be equal, the
+usual BGK model is recovered.
+   We shall now perform the Chapman–Enskog multiscaling analysis in order to derive the macroscopic hydrodynamic
+equations. To this end, we first expand the distribution function fi , the derivatives in time and space as [1,21]
+
+      m = m(0) + ϵ m(1) + ϵ 2 m(2) + · · · ,                                                                                              (8a)
+       ∂
+           = ϵ∂t1 + ϵ 2 ∂t2 ,                                                                                                             (8b)
+       ∂t
+        ∂
+            = ϵ∂1α ,                                                                                                                      (8c)
+       ∂ xα
+where ϵ is a small parameter which is proportional to the ratio of the lattice spacing to a characteristic macroscopic length.
+                                                      Y. Zong et al. / Computers and Mathematics with Applications 72 (2016) 288–310                                              291
+
+
+   Performing Taylor expansion for Eq. (2) and substituting the above expansions, the following equations at zeroth-, first-
+and second-order in ϵ can be obtained
+
+      O (ϵ 0 ) : m(0) = m(eq) ,                                                                                                                                                  (9a)
+                                                                      S
+      O (ϵ 1 ) : I ∂t1 + Ĉα ∂1α m(0) = −                                   m(1) ,                                                                                               (9b)
+                                                                       1t
+                                                                            S
+                                                                                   
+                                                                                                    S
+      O (ϵ 2 ) : ∂t2 m(0) + I ∂t1 + Cˆα ∂1α                               I−           m(1) = −          m(2) ,                                                                   (9c)
+                                                                               2                    1t
+
+where Ĉα = Mdiag(e0α , e1α , . . . , e8α )M −1 . Eq. (9c) has already been simplified by making use of Eq. (9b).
+  The first, fourth and sixth components of Eq. (9b) are
+
+      ∂t1 ρ + ∂1x j(xeq) + ∂1y j(yeq) = 0                                                                                                                                       (10a)
+
+                                     e(eq)         a2
+                                                                  
+                         2
+      ∂t1 j(xeq) + ∂1x     ρ+                                 (eq)
+                                                                     + ∂1y ap(xyeq) = 0
+                                                                                   
+                                              +             p                                                                                                                   (10b)
+                                  3(a + 1)      3(a + 1)
+                                      4            4          xx
+                         3
+                                                     a4 e(eq)
+                                          2
+                                                                        a2
+                                                                                       
+                                           2a
+      ∂t1 j(yeq) + ∂1x ap(xyeq) + ∂1y         ρ+                                  (eq)
+                                                                                         = 0.
+                              
+                                                                 −             p                                                                                                (10c)
+                                                  3(a4 + 1)          3(a4 + 1)
+                                                                                  xx
+                                            3
+
+   The design target at O (ϵ) is the Euler equations
+
+      ∂t1 ρ + ∂1x (ρ ux ) + ∂1y ρ uy = 0,
+                                 
+                                                                                                                                                                                (11a)
+
+      ∂t1 (ρ ux ) + ∂1x ρ cs2 + ρ u2x + ∂1y ρ ux uy = 0,
+                                                
+                                                                                                                                                                                (11b)
+
+      ∂t1 ρ uy + ∂1x ρ ux uy + ∂1y ρ cs2 + ρ u2y = 0,
+                                              
+                                                                                                                                                                                (11c)
+
+where the pressure has been written as p = ρ cs2 . Comparing Eq. (10) to Eq. (11), we obtain
+
+      j(xeq) = ρ ux ,                    j(yeq) = ρ uy ,                                                                                                                        (12a)
+
+       2                e(eq)                         a2
+           ρ+                             +                       p(eq) = ρ(cs2 + u2x ),                                                                                        (12b)
+       3        3 a4(       + 1)                (
+                                               3 a4    + 1) xx
+       2a2               a4 e(eq)                          a2
+             ρ+                               −                       p(xxeq) = ρ(cs2 + u2y ),                                                                                  (12c)
+        3           3(a4 + 1)                     3(a4 + 1)
+      ap(xyeq) = ρ ux uy .                                                                                                                                                      (12d)
+
+                                                                                                                      (eq)         (eq)
+These can be solved to yield three equilibrium moments in addition to jx                                                     and jy       as
+
+      e(eq) = ρ 2 3cs2 − r1 + 3u                            2
+                                                                  ,
+                                                           
+                                                                                                                                                                                (13a)
+                                                                                         
+                            r4                                                      u2y
+      p(xxeq) = ρ                    3r1 cs2 − 2a2 + 3 a2 u2x −                                 ,
+                                                            
+                                                                                                                                                                                (13b)
+                            a2                                                       a2
+                        ux uy
+      p(xyeq) = ρ                .                                                                                                                                              (13c)
+                         a
+                                                                                                              (eq)             (eq)
+At this point, the remaining three equilibrium moments, i.e, ε (eq) , qx                                              and qy          , are to be determined. As we will realize
+             (eq)                                                                                                                                           (eq)        (eq)
+soon that ε     does not affect the Navier–Stokes equations, it can be defined somewhat arbitrarily. qx                                                            and qy      will be
+         2  the hydrodynamic equation at O (ϵ ).
+                                                  2
+determined   by
+   At O ϵ , the first, fourth, and sixth components of Eq. (9c) yield
+
+      ∂t2 ρ = 0,                                                                                                                                                                (14a)
+
+                                 a (1 − 0.5sn )
+                                     2
+                                                                                                              1 − 0.5se
+      ∂t2 (ρ ux ) = −                                  ∂1x p(xx1) − a (1 − 0.5sc ) ∂1y p(xy1) −                             ∂1x e(1) ,                                      (14b)
+                                     3     a4   +1                                                           3 a4 + 1
+
+                            a2 (1 − 0.5sn )                                                                a4 (1 − 0.5se )
+      ∂t2 (ρ uy ) =                                 ∂1y p(xx1) − a (1 − 0.5sc ) ∂1x p(xy1) −                                ∂1y e(1) .                                      (14c)
+                                 3 a4 + 1                                                                    3 a4 + 1
+292                                             Y. Zong et al. / Computers and Mathematics with Applications 72 (2016) 288–310
+
+
+The design target at O (ϵ 2 ) is to potentially match the Navier–Stokes equation which may be stated in a more general form
+as:
+         ∂t2 (ρ ux ) = ∂1x ρζx ∂1x ux + ∂1y uy + ρνx ∂1x ux − ∂1y uy + ∂1y ρν ∂1y ux + ∂1x uy ,
+                                                                                     
+                                                                                                                                                      (15a)
+
+         ∂t2 (ρ uy ) = ∂1x ρν ∂1y ux + ∂1x uy + ∂1y ρζy ∂1x ux + ∂1y uy + ρνy ∂1y uy − ∂1x ux ,
+                                                                                     
+                                                                                                                                                      (15b)
+where ζx and ζy are bulk viscosities in x and y directions, respectively; νx and νy are two viscosities associated with normal
+viscous stress components, and ν is the shear viscosity.
+                                                               (1)       (1)
+   At this point, we need the explicit expressions for e(1) , pxx , and pxy which can be obtained from Eq. (9b). They are
+
+         −s′e e(1) = ∂t1 2ρ 3cs2 − r1 + 3ρ u2 + ∂1x j(xeq) + a2 qx(eq) + ∂1y a2 j(yeq) + q(yeq) ,
+                                                                                        
+                                                                                                                                                      (16a)
+                                                             
+            ′ (1)          ρ r4                           u2y
+         −sn pxx = ∂t1            3r1 cs − 2a + 3ρ a ux − 2
+                                       2     2       2 2
+                                                                    + ∂1x a2 j(xeq) − q(xeq) + ∂1y −jy(eq) + a2 q(yeq) ,
+                                                                                                                  
+                             2
+                                                                                                                                                      (16b)
+                                  a                                             a
+                              ρu u                     
+                                                             2 (eq)  1 (eq)
+                                                                                          
+                                                                                                 2a (eq) a
+                                                                                                                          
+              ′ (1)
+                                                                                                   jx + q(xeq)
+                                      x y
+         −sc pxy = ∂t1                          + ∂1x           jy +    qy         + ∂1y                                      ,                       (16c)
+                                      a                      3a      3a                          3       3
+where s′i = si /δ t. It is noted that the ∂t1 [. . .] terms in the above equations involve ∂t1 (ρ uα uβ ), which can be converted to
+spatial derivatives using the Euler equations as
+
+         ∂t1 ρ uα uβ = −uα ∂1β p − uβ ∂1α p + O (u3 ).
+                   
+                                                                                                                                                       (17)
+
+Since, at low Mach number, p = O (Ma2 ), we conclude that ∂t1 (ρ uα uβ ) = O (u3 ) and thus can be neglected.
+                                                                                           (1)
+      Comparing Eq. (15) with Eq. (16), it is obvious that only pxy contributes to the cross shear stress term. To match the
+                                                                                                                                        (eq)
+form of ∂1y ux + ∂1x uy required by the Navier–Stokes equations, we must demand that qx                 = γ1 j(xeq) /2 = γ1 ρ ux /2 and
+                                 
+ (eq)          (eq)
+qy = γ2 jy            /2 = γ2 ρ uy /2, where γ1 and γ2 are constants to be determined. Furthermore, the net coefficients for the ∂1y ux
+term and ∂1x uy term must be made identical, namely,
+
+          2           1          2a         a
+               +          γ2 =        + γ1 .                                                                                                           (18)
+       3a    6a        3    6
+This implies that γ1 can be determined in terms of γ2 as
+
+                   γ2 + 4(1 − a2 )
+         γ1 =                   .                                                                                                  (19)
+                     a2
+This is identical to Eq. (3.6) in Bouzidi et al. [16] since our γ1 and γ2 are denoted by c1 and c2 in their paper. In the following, we
+denote γ2 by γ . At this point, we have determined all necessary equilibrium moments which could affect the hydrodynamic
+equations.
+   Substituting Eq. (16) into Eq. (14) with the forms of the equilibrium moments already determined, we can derive the
+explicit expression of each transport coefficient that appears in Eq. (15). The results are
+
+                      1t                                               a2 1t                     γ                   a2 γ
+                                                                                                                                            
+                                                    1                                                      2                           1
+         νx =               (1 − a2 )                    − 0.5 +                       a2 −            −         −          +3              − 0.5 ,   (20a)
+                   2(a + 1)
+                      4                             se              6(a4 + 1)                 2a     2     a   2      2                sn
+                    1t
+                                                                    
+                                                        1
+         ζx =                      γ       2         2
+                                                                  .
+                           
+                             7  +     + 3a    −  12c         −  0  5
+                6(a4 + 1)
+                                                     s
+                                                          se
+                     a 1t
+                       2
+                                                   γ                   c2     a2 γ
+                                                                                                   
+                                           2                                               1
+                +  4          5a2 − 2 − 2 − 6a2 cs2 + 6 s2 +                     −3          − 0.5 ,                                                (20b)
+                  6 a +1                  a       2a                   a        2          sn
+
+                 a4 1t                                    a2 1t                 γ           a2 γ
+                                                                                                             
+                                        1                                             2                  1
+         νy =            ( a 2
+                               −  1)       −  0.5    +                 a  2
+                                                                            −      −    −        +   3      − 0.5   ,                                 (20c)
+               2(a4 + 1)               se               6(a4 + 1)              2a2   a2       2          sn
+                  a4 1 t 
+                                                                    
+                                                        1
+         ζy =                 7 + γ + 3a − 12cs
+                                            2        2
+                                                             − 0.5
+                6(a4 + 1)                                 se
+                     a 1t
+                      2
+                                                  γ                   cs2     a2 γ
+                                                                                                  
+                                          2                                               1
+                −                5a 2
+                                      −       −        − 6a 2 2
+                                                             c  +   6       +      − 3        −  0 .5  ,                                              (20d)
+                  6(a4 + 1)
+                                                              s
+                                          a2     2a2                  a2        2         sn
+              γ +4 1
+                                 
+         ν=               − 0.5 1t .                                                                                                                  (20e)
+                      6      sc
+     It can be seen from Eq. (20), the hydrodynamic transport coefficients on a rectangular grid depend on parameters
+cs , γ , se , sn , sc and the grid parameter a. The question here is whether we can achieve the isotropy conditions required
+                                              Y. Zong et al. / Computers and Mathematics with Applications 72 (2016) 288–310             293
+
+
+by the Navier–Stokes equations: ν = νx = νy and ζx = ζy (together they represent three conditions). Since the relaxation
+parameters are directly related to the various transport coefficients, Bouzidi et al. [16] attempted to approach the isotropy
+conditions by relating se and sn to sc , using a linearized dispersion analysis. Here we shall derive the same relationships from
+a very different perspective.
+   First, we define an average bulk viscosity as
+
+                ζx + ζy             7 + γ + 3a2 − 12cs2
+                                                                                     
+                                                                             1
+      ζ ≡                   =                                                      − 0.5 1t                                             (21)
+                     2                              12                       se
+which is identical to the expression of bulk viscosity in Bouzidi et al. [16]. In order to construct the coupling relationships
+between the relaxation parameters, we impose the following two conditions
+                νx + νy
+      ν=                   ,                                                                                                           (22a)
+                     2
+      ζx − ζy            νx − νy
+                     +                   = 0.                                                                                          (22b)
+            2                  2
+The first condition states that the average normal shear viscosity should be the same as the cross shear viscosity, which
+represents one step toward the isotropy conditions. The second condition amounts to νx + ζx = νy + ζy , namely, the net
+normal viscosities in the x and y directions are the same. Herein, we can build two coupling relationships between se , sn and
+sc . The true isotropy involves three conditions, here we impose two conditions first.
+     Substituting the expressions of the transport coefficients in Eq. (20) into Eq. (22), we can express se and sn in terms of sc
+as follows
+
+                                              2 (4 + γ )            12cs2 − γ
+                                                                                                                    
+                                                                                          1 + a2 − 2 5a2 + 2
+                                                                                     
+       1        1                                                              1    1
+            −        =                                                           −     ,                                               (23)
+              1 + a2 1 + γ − 3a2 γ + 10 − 12cs2 + 6 a4 (γ − 2) − 3 a2 − 1
+                                                                  
+      se  2                                                                    sc   2
+
+                     2 (4 + γ ) 12cs2 − γ 1 + a2 − 2 3a4 + 5a2 + 5
+                                                                             
+      1   1                                                                    1    1
+         − =                                                                     −     ,                                               (24)
+              1 + a2 1 + γ − 3a2 γ + 10 − 12cs2 + 6 a4 (γ − 2) − 3 a2 − 1
+                                                                   
+      sn  2                                                                    sc   2
+
+which are precisely the two relationships proposed in Bouzidi et al. [16] based on the linearized dispersion analysis.
+   An important detail should be noted. In the above derivation the limit of a → 1 is a singular limit. In this limit, the first
+condition, Eq. (22a), will yield
+
+      (2 − γ ) 1t                           (4 + γ ) 1t 1
+                                                            
+                               1
+                                    − 0.5 =               − 0.5 .                                                                       (25)
+                12             sn                              6              sc
+The second condition, Eq. (22b), leads to a condition
+                                                                                                       
+                                                                                          1
+           1 − a2          12cs2 − γ − 4                 1 − a4 − 6a2                          − 0.5
+                                                                           
+                                                                                          sn
+                                                                                                                    
+                                                                                                        1
+                     7 + γ + 3a2 − 12cs             2               2
+                                                                          + 3 1 + a2                         − 0.5
+                                                                                         
+            +                                            1+a                                                              =0            (26)
+                                                                                                        se
+which is automatically satisfied when a = 1. Further deriving the relationships, Eqs. (23) and (24), however, we did not use
+the condition of a = 1 but instead set
+                                                                                                                               
+                                                                    1                                                    1
+           12cs2 − γ − 4                1 − a4 − 6a2                      − 0.5 + 7 + γ + 3a2 − 12cs2 1 + a2 + 3 1 + a2      − 0.5 = 0. (27)
+                                                                                                     
+                                                                   sn                                                          se
+Therefore, we could have two possible routes to satisfy the Navier–Stokes equations in the limit of a = 1. The first possibility
+is to use the condition Eq. (25) only. This condition implies that γ can be left as a free parameter so that Eq. (25) becomes a
+required condition between sn and sc . A special case is to set sn = sc , then we have
+
+      2−γ                4+γ
+                     =              ,                                                                                                   (28)
+           12              6
+which leads to a specific requirement that γ must to be set to −2. The second possibility to achieve the Navier–Stokes
+equations in the limit of a = 1 is to use the conditions Eqs. (23) and (24), which with a = 1 become
+
+                        γ + 7 − 12cs2
+                         2(4 + γ )
+                                              
+       1        1                         1    1
+            −        =                       −                                                                                          (29)
+             (2 − γ ) γ + 13 − 12cs2
+                                         
+      se  2                               sc   2
+
+             2(4 + γ ) 1
+                              
+      1   1                  1
+         − =               −     .                                                                                                      (30)
+      sn  2  ( 2 − γ ) sc    2
+294                                            Y. Zong et al. / Computers and Mathematics with Applications 72 (2016) 288–310
+
+
+Eq. (30) is identical to Eq. (25), but Eq. (29) imposes a condition between se and sc that depends on both γ and cs , which
+is really unnecessary for a = 1. Still, Eq. (29) indicates the limiting relationship between se and sc when a is close to one,
+namely, on a rectangular grid, the relaxation of energy must be linked to the relaxation of cross shear stress moment. With
+Eqs. (23) and (24), we can show that the transport coefficients can now be simply written as
+      νx = ν + ∆B ,                                                                                                             (31a)
+      νy = ν − ∆ ,     B
+                                                                                                                                (31b)
+
+      ζx = ζ − ∆ ,     B
+                                                                                                                                (31c)
+      ζy = ζ + ∆ ,     B
+                                                                                                                                (31d)
+where the only remaining deviation ∆ from isotropy is    B
+
+
+                1 − a2
+                                        
+                               1
+      ∆B =                          − 0.5 1t .                                                                            (32)
+                   4      se
+Several observations can be made. First, when a = 1 or when the square grid is used, the isotropy conditions are
+automatically satisfied and the Navier–Stokes equation is recovered. Second, when a < 1 and 0 < se < 2, it is not possible
+to rigorously satisfy the Navier–Stokes equations or restore the isotropy. The bulk viscosity in the x direction is always less
+than that in the y direction, and the normal shear viscosity in the x direction is always larger than that in the y direction.
+Therefore, we have shown that Bouzidi et al.’s model does not satisfy the Navier–Stokes equations. Third, if a is close to one
+or if se is close to 2, the deviation from the Navier–Stokes equations is not significant.
+
+2.2. The model of Zhou [17]
+
+   Next, we briefly re-visit the model proposed by Zhou [17] also intended for a rectangular grid. He simply used the
+transformation matrix that is identical to what is used for a square grid, namely,
+          1                1              1        1     1      1    1     1      1
+          −4              −1       −1             −1   −1       2    2     2      2
+          4
+                          −2       −2             −2   −2       1    1     1      1
+                                                                                    
+          0                1        0             −1    0       1   −1    −1      1
+      M = 0               −2        0              2    0       1   −1    −1      1 .                                          (33)
+                                                                                   
+          0
+                           0        1              0   −1       1    1    −1     −1
+                                                                                    
+          0
+                           0       −2              0    2       1    1    −1     −1
+                                                                                    
+                   0        1       −1              1   −1       0    0     0      0
+                   0        0        0              0    0       1   −1     1     −1
+This amounts to a different set of definitions for the moments. Compared with the model of Bouzidi et al. [16], energy and
+normal shear stress moments were defined differently in Zhou [17], while the remaining 7 moments are essentially the
+same up to a constant factor. In these two-dimensional moment subspace, the energy and normal stress moments between
+the two models can be related to each other as
+               a2 + 1 Z  1 − a2
+      eB =           e +        · 3pZxx ,                                                                                       (34a)
+                  2        2
+              a2 − 1 Z     1 + a2
+      3pBxx =        e +            · 3pZxx ,                                                                       (34b)
+                 2            2
+where e , pxx and e , pxx refer to the energy and shear stress moments in Bouzidi’s model and Zhou’s model, respectively.
+         B  B      Z   Z
+
+Without the consideration of the external forcing term, the leading-order multiscaling expansion of Zhou’s model leads to
+the following hydrodynamic equations
+      ∂t1 ρ + ∂1x (ρ ux ) + ∂1y (ρ uy ) = 0,                                                                                    (35a)
+                                                   
+                          2      1           1
+      ∂t1 (ρ ux ) + ∂1x     ρ + eZ ,(eq) + pZxx,(eq) + ∂1y (ρ ux uy ) = 0,                                                      (35b)
+                                3              6             2
+                                2a2     a2         a2
+                                                                         
+      ∂t1 (ρ uy ) + ∂1y              ρ + eZ ,(eq) − pZxx,(eq)
+                                                           + ∂1x (ρ ux uy ) = 0.                                                (35c)
+                                   3    6          2
+The hydrodynamic equations at O ϵ are
+                                        2
+                                                                      
+                          1               Z ,(1)  1             Z ,(1)
+      ∂t2 (ρ ux ) + ∂1x     (1 − 0.5se )e        + (1 − 0.5sn )pxx       + a∂1y (1 − 0.5sc )pZxy,(1) = 0,
+                                                                                                   
+                                                                                                                                (36a)
+                               6                                 2
+                                                                                    
+       1                               1                        1
+           ∂t2 (ρ uy ) + a∂1y              (1 − 0.5se )eZ ,(1) − (1 − 0.5sn )pZxx,(1) + ∂1x (1 − 0.5sc )pZxy,(1) = 0.
+                                                                                                               
+                                                                                                                                (36b)
+       a                               6                             2
+                                                          Y. Zong et al. / Computers and Mathematics with Applications 72 (2016) 288–310                          295
+
+
+   Applying the similar inverse design analysis as done in Section 2.1, the following equilibrium moments are obtained
+                                                              ρ uy
+      jxZ ,(eq) = ρ ux ,                     jZy ,(eq) =                  ,                                                                                     (37a)
+                                                                  a
+                                                                                                     
+                                                                                    ω            u2y
+      eZ ,(eq) = ρ −4 +                           6ωa + 3u2x + 6                            +3 2                ,                                               (37b)
+                                                                                    a            a
+                                                                                   
+       Z ,(eq)                                                2ω              u2y
+      pxx        = ρ 2ωa +                        u2x   −             −                 ,                                                                       (37c)
+                                                              a               a2
+
+       Z ,(eq)            ρ ux uy
+      pxy      =                        ,                                                                                                                       (37d)
+                              a
+                          1 − 2a2
+      qZx ,(eq) =                            ρ ux ,                                                                                                             (37e)
+                               a2
+                              ρ uy
+      qZy ,(eq) = −                     ,                                                                                                                       (37f)
+                               a
+where ω is related to the speed of sound as 2ωa = cs2 . It is noted that our inverse design analysis provides the best scenario of
+                                                                                                                                                 (eq)
+the model toward satisfying the correct hydrodynamics. However, the definition of qx in Zhou’s work is incorrect according
+to the requirements of self-consistency, which was set as −ρ ux . While, the remaining equilibrium moments in Eq. (37) are
+identical to those in Zhou [17]. Substituting the above derived equilibrium moments into Eqs. (36), we obtain
+
+      ∂t2 (ρ ux ) = ∂1x ρζxZ ∂1x ux + ∂1y uy + ρνxZ ∂1x ux − ∂1y uy + ∂1y ρν Z ∂1y ux + ∂1x uy ,
+                                                                                      
+                                                                                                                                                                (38a)
+
+      ∂t2 (ρ uy ) = ∂1x ρν Z ∂1y ux + ∂1x uy + ∂1y ρζyZ ∂1x ux + ∂1y uy + ρνyZ ∂1y uy − ∂1x ux ,
+                                                                                      
+                                                                                                                                                                (38b)
+
+where ζ , ζ , ν
+        Z
+        x
+              Z
+              y
+                         Z
+                         x and          ν   Z
+                                            y are bulk and shear viscosities for x and y moment equation, respectively. Their explicit expressions
+are
+                                                                                             ω                                        ω        3a2 − 1
+                                                                                                                                                
+                      1                               1               7                                                  1
+      ζxZ =                − 0.5                          2
+                                                            +                 − ωa −                   1t +                   − 0.5     − ωa +      2
+                                                                                                                                                         1t ,   (39a)
+                     se                           12a              12                        a                           sn              a         12a
+                                                                                             ω                                        ω        3a2 − 1
+                                                                                                                                                
+                      1                               1               7                                                  1
+      ζyZ =                − 0.5                          2
+                                                            +                 − ωa −                   1t −                   − 0.5     − ωa +      2
+                                                                                                                                                         1t ,   (39b)
+                     se                           12a              12                        a                           sn              a         12a
+                                                                                                                           
+                     1             1                                                         1             1
+      ν =
+        Z
+                                        − 0.5                         2
+                                                                                  1t +                          − 0.5             7a2 − 1 1t ,
+                                                                                                                                      
+        x                                                    1−a                                                                                                (39c)
+                 12a2              se                                                       12a2           sn
+                                                                                                                       
+                          1             1                                                        1              1
+      νyZ = −                                − 0.5 1 − a2 1t +                                                       − 0.5 7a2 − 1 1t ,
+                                                                                                                               
+                                                                                                                                                                (39d)
+                      12a2              se                                                   12a2               sn
+                                       
+                  1           1
+      νZ =                         − 0.5 1t .                                                                                                                   (39e)
+                 3a           sc
+   Since the shear and bulk transfer coefficients in x and y moment are not identical, it is impossible to achieve isotropy
+when a < 1. The assumptions Zhou proposed in Eqs. (61) and (62) of his paper for the relaxation parameters also fail to
+satisfy the Navier–Stokes equations when a < 1.
+   If the same conditions, Eqs. (22a) and (22b), are imposed, we can obtain the following coupling relationships between
+the relaxation parameters
+
+                               4a 12ωa − 12ωa3 + 3a2 − 1
+                                                                                                                       
+       1                                                                                               1
+            − 0.5 =                                                                                        − 0.5 ,                                          (40a)
+       se                                      1 − a2             1 − 7a2                              sc
+                                                                  
+       1                                4a              1
+            − 0.5 =                                           − 0.5 .                                                                                           (40b)
+       sn                      7a2 − 1                  sc
+With these relationships, we can then express the transport coefficients
+
+      νxZ = ν + ∆Z ,                                                                                                                                            (41a)
+
+      ν =ν−∆ ,
+        Z
+        y
+                               Z
+                                                                                                                                                                (41b)
+
+      ζxZ = ζ − ∆Z ,                                                                                                                                            (41c)
+
+      ζ =ζ +∆ ,
+       Z
+       y
+                               Z
+                                                                                                                                                                (41d)
+296                                            Y. Zong et al. / Computers and Mathematics with Applications 72 (2016) 288–310
+
+
+
+
+                                                 Fig. 2. Sketch of the establishing of novel MRT LBM on rectangular grid.
+
+
+where the deviation from isotropy is
+
+               1 − a2
+                                          
+                                 1
+       ∆Z =                           − 0.5 1t                                                                                             (42)
+                 12a2            se
+and the bulk viscosity is
+
+             ζx + ζy                                             ω
+                                                                                 
+                                      7          1                        1
+       ζ =              =                  +         2
+                                                       − ωa −                  − 0.5 1t .                                                  (43)
+                 2                    12       12a               a        se
+
+   The presence of the extra term ∆Z indicates again that it is impossible to satisfy the full isotropy conditions as required
+by the Navier–Stokes equations with Zhou’s definitions of moments.
+   In summary, without introducing a new degree of freedom, it is impossible for MRT LBM to satisfy the Navier–Stokes
+equations when a rectangular grid is used.
+
+3. A new MRT LBM model for a rectangular lattice grid
+
+   From the above analysis, it becomes clear that both the values and the anisotropy of the hydrodynamic transport
+coefficients result mainly from their dependence on the definition and relaxation parameters of energy and stress moments.
+Inspired by the above inverse analysis, our new rectangular MRT scheme introduces a more flexible coupling between the
+energy moment and normal stress moment. Specifically, we modify the definitions of these two moments by a coordinate
+rotation of Bouzidi et al.’s definitions, as illustrated in Fig. 2. Such rotation will not change the orthogonality property of the
+nine moments. The relative orientation angle becomes a new adjustable parameter.
+   The new energy and normal stress moments are defined in terms of Bouzidi et al.’s definitions as
+
+       e = eB + θ pBxx                                                                                                                   (44a)
+
+       pxx =   pBxx   − θe   B
+                                                                                                                                         (44b)
+where θ ∼ − tan φ with φ is the angle of rotation, e and pxx refer to the new energy and normal viscous stress moments,
+respectively, while eB and pBxx represent the corresponding moments defined in Bouzidi et al. [16] for a rectangular grid, as
+indicated by the transformation matrix, Eq. (4). The other 7 moments are kept the same as that defined by Bouzidi et al. [16].
+   With these new definitions, the second and eighth rows of the transformation matrix will be modified accordingly
+            ⟨ρ|         1                          1      1        1         1    1    1      1      1
+            ⟨e|  −2R1                             R2     R3       R2        R3   R1   R1     R1     R1 
+            ⟨ε|         4                         −2     −2       −2        −2    1    1      1      1
+                                                                                                       
+            ⟨jx |       0                          1      0       −1         0    1   −1     −1      1
+       M =  ⟨qx |  =    0                         −2      0        2         0    1   −1     −1      1                                 (45)
+                                                                                                       
+            ⟨j |        0                          0      a        0        −a    a    a     −a     −a 
+            y                                                                                          
+            ⟨qy |       0                          0    −2a        0        2a    a    a     −a     −a 
+                                                                                                       
+             ⟨3pn |     −2R4                         R5     R6       R5        R6   R4   R4     R4     R4
+              ⟨pc |        0                          0      0        0         0    1   −1      1     −1
+where R1 = r1 + θ r4 , R2 = r2 + θ r5 , R3 = r3 + θ r6 , R4 = r4 − θ r1 , R5 = r5 − θ r2 , R6 = r6 − θ r3 , and r1 , r2 , r3 , r4 , r5 , r6 have
+been defined previously in Section 2.
+                                   Y. Zong et al. / Computers and Mathematics with Applications 72 (2016) 288–310                   297
+
+
+   By the same inverse design process using the Chapman–Enskog analysis presented in Section 2.1, it is found that two
+equilibrium moments (i.e., energy and normal viscous stress) are modified and the others are the same as in Section 2.1. The
+updated equilibrium moments are
+
+                                                                           1
+                                                                             
+                                                                                      
+                                           r4                     u2y      
+                2 3cs − r1 + 3 ux + uy + θ 2 3r1 cs − 2a + 3 a ux − 2
+                     2
+                              2    2
+                                                  2     2
+                                                              2 2            
+                                             a                       a
+                                                                              
+                                                                             
+                                                                             
+                                                                   α + βu 2
+                
+                
+                                                                          ux 
+                                                                             
+                
+                                                                 γ − 4r4 
+                                                                             
+                
+                                                                          u x
+      m(eq) = ρ                                                              .
+                                                                             
+                                                                   2a2                                                             (46)
+                                                                             
+                                                                         uy 
+                                                                        γ 
+                                                                             
+                
+                                                                         uy 
+                                                                     2 
+                                              2
+                                                                              
+                 r4                        u y                          
+                 2 3r1 cs − 2a + 3 a ux − 2 − θ 2 3cs − r1 ) + 3(ux + uy 
+                          2    2         2 2              2        2     2 
+                                                   
+                 a                          a                                
+                                                                                                        ux uy
+                                                                             
+                                                                                                         a
+The macroscopic equations for the new MRT scheme are structurally identical to that of those given in Section 2.1. The Euler
+equations are satisfied at O (ϵ). The explicit expressions at O (ϵ 2 ) are as follows:
+
+      ∂t2 ρ = 0,                                                                                                                  (47a)
+
+                        (a2 − θ )(1 − 0.5sn )                                        (θ a2 + 1)(1 − 0.5se )
+      ∂t2 (ρ ux ) = −                         ∂1x p(xx1) − a(1 − 0.5sc )∂1y p(xy1) −                        ∂1x e(1) ,            (47b)
+                         3(a + 1)(θ + 1)
+                            4        2                                                3(a4 + 1)(θ 2 + 1)
+             a2 (θ a2 + 1)(1 − 0.5sn )       (1)                      (1)   a2 (a2 − θ )(1 − 0.5se )
+      ∂ t 2 ρ uy =                       ∂ 1y p    − a (1 − 0.5sc )∂1x p    −                          ∂1y e(1) .                 (47c)
+                   3(a4 + 1)(θ 2 + 1)                                           3(a4 + 1)(θ 2 + 1)
+                                               xx                       xy
+
+
+   It follows that the transport coefficients resulting from the O (ϵ 2 ) analysis, as defined in Eqs. (15a) and (15b), are
+
+                   1t                      γ      a2 γ                               a2 − θ                      θ (θ a2 + 1)
+                                                                                                                       
+                                                             2          1                           1
+      νx =  4        3+a − 2 −    2
+                                                       − 2                − 0.5              +        − 0.5
+            6 a +1                    2a          2        a          sn             θ2 + 1       se                θ2 + 1
+                  1t                                    θa + 1                             a −θ
+                                                    2                                 2      
+                                         1                                    1
+           +              (1 − a2 )          − 0.5                  −θ           − 0.5               ,                            (48a)
+              2(a4 + 1)                  se              θ2 + 1              sn            θ2 + 1
+              a2 1t                    γ      a2 γ                                  θa + 1                          (a − θ )
+                                                                              2                             2          
+                                                           2         1                                1
+      νy =                3+a − 2
+                                            −         − 2                − 0.5                −θ         − 0.5
+            6(a4 + 1)               2a
+                                         2      2         a          sn              θ2 + 1           se            θ2 + 1
+                 a 1t
+                  4
+                                                            a −θ
+                                                             2
+                                                                                                θa + 1
+                                                                                                   2
+                                                                                         
+                                          1                                       1
+           +              (a2 − 1)           − 0.5 2  2                +θ           − 0.5 2 2                ,                  (48b)
+              2(a4 + 1)                  se              a θ +1                   sn           a (θ + 1)
+
+               1t                                                        θa + 1                          a −θ
+                                                                    2                              2         
+                                                          1                                 1
+      ζx =              7 + γ + 3a − 12cs
+                                       2         2
+                                                             − 0.5                   −θ        − 0.5
+                                                  
+            6(a4 + 1)                                     se             θ2 + 1                          θ2 + 1
+                                                                                          sn
+                  1t                                γ                       2       2
+                                                                                      γ
+                          
+                                     2                                    c       a
+           +                5a2 − 2 − 3 −                − 6a2 cs2 + 6 s2 +
+              6(a4 + 1)             a             2a2
+                                                              2 a                 2
+                               a −θ                             θa + 1
+                           2               
+                  1                              1
+           ×         − 0.5               +θ          − 0.5                     ,                                                  (48c)
+                  sn           θ2 + 1            se              θ2 + 1
+              a4 1t                                                     θ (θ a2 + 1)                        a2 − θ
+                                                                                                                    
+                                                          1                                  1
+      ζy =            ( 7 +  γ  +  3a 2
+                                         −  12c 2
+                                                  )          −  0 .5                     +      − 0 .5
+            6(a4 + 1)                                                   a2 (θ 2 + 1)                      a2 (θ 2 + 1)
+                                               s
+                                                         sn
+                                                                                           se
+                 a 1t
+                  2
+                                                       γ                       2
+                                                                                     a γ
+                                                                                       2
+                          
+                                        2                                    c
+           +                −5a2 + 2 + 3 + 2 + 6a2 cs2 − 6 s2 −
+              6(a4 + 1)                a              2a                     a         2
+                               θa + 1                             a −θ
+                           2                                2          
+                  1                                 1
+           ×         − 0.5                 −θ          − 0.5                   ,                                                  (48d)
+                  sn            θ2 + 1             se             θ2 + 1
+          γ +4 1
+                            
+      ν=             − 0.5 1t .                                                                                                   (48e)
+               6        sc
+298                                            Y. Zong et al. / Computers and Mathematics with Applications 72 (2016) 288–310
+
+
+At this moment, they look rather complicated. Clearly, when θ = 0, Eqs. 48(a–e) reduce to Eqs. 20(a–e) as expected. We
+adopt the same procedure by first imposing part of the isotropy requirements, given by Eqs. (22a) and (22b). The following
+coupling relationships can then be derived,
+
+                   2(γ + 4)(a4 + 1)(1 + θ 2 )C22 1
+                                                        
+          1
+           − 0.5 =                                    − 0.5                                                                     (49a)
+        se               C11 C22 − C12 C21        sc
+                     2(γ + 4)(a + 1)(1 + θ )C21 1
+                                 4           2
+                                                          
+        1
+           − 0.5 = −                                    − 0.5                                                                   (49b)
+        sn                 C11 C22 − C12 C21         sc
+where
+                                       γ           a2 γ
+                                                                   
+                                                                2
+      C11 =          3+a − 2
+                                               −          −             (2θ 2 a2 + θ − a4 θ ) + 3(1 − a2 )(2θ a2 + 1 − a4 ),
+                                   2a2              2          a2
+                                       γ           a2 γ
+                                                                   
+                                                                2
+      C12 =          3+a − 2
+                                          (2a2 − θ + a4 θ ) + 3(1 − a2 )(θ 2 − 2a2 θ − a4 θ 2 ),
+                                               −          −
+                                   2a2              2          a2
+                                                                                                  γ    a2 γ
+                                                                                                                
+                                                                                                              2
+      C21 = 2a2 θ 7 + γ + 3a2 − 12cs2 + (1 − a4 )(7 + γ + 3a2 − 12cs2 ) + (a4 + 1) 3 + a2 −                        θ
+                                     
+                                                                                                     −      −
+                                                                                                 2a2    2     a2
+                                                                             γ
+                                                                                       
+                                                         2                            1
+            + 3(a4 + 1)(1 − a2 ) + (1 − a4 )(1 − a2 ) − 2 − 5 + 6cs2 −           1+ 2          θ
+                                                         a                   2        a
+            + (1 − a2 ) 12cs2 − γ − 4 1 + a2 − 6a2 θ 2 ,
+                                                  
+
+      C22 = −2a2 θ 7 + γ + 3a2 − 12cs2 + (1 − a4 )(7 + γ + 3a2 − 12cs2 )θ 2
+                                       
+
+                                   γ      a2 γ
+                                                    
+                                                  2
+            − (a + 1) 3 + a − 2 −
+                 4            2
+                                               − 2 θ + 3(a4 + 1)(1 − a2 )θ 2 − (1 − a4 )(1 − a2 )
+                                  2a  2          a
+                                    γ
+                                                 
+                    2                        1
+            × − 2 − 5 + 6cs2 −                       θ + (1 − a2 ) (12cs2 − γ − 4)(1 + a2 ) − 6a2 .
+                                                                                                 
+                                          1+ 2
+                               a                               2             a
+   It is important to note that the coefficients C11 , C12 , C21 , and C22 are functions of a, cs , γ , θ only; they do not depend
+on the relaxation parameters. When θ = 0, the coupling relationships in Eqs. 48(a–b) reduce precisely to the coupling
+relationships Eqs. (23) and (24). Furthermore, with the above conditions, the transport coefficients can now be rewritten in
+the similar way as in Eqs. (25) and (34) as
+                      νx − νy
+      νx = ν +                                                                                                                  (50a)
+                           2
+                      νx − νy
+      νy = ν −                                                                                                                  (50b)
+                           2
+                      νx − νy
+      ζx = ζ −                                                                                                                  (50c)
+                           2
+                      νx − νy
+      ζy = ζ +                                                                                                                  (50d)
+                           2
+where
+        νx − νy             θ 1t               γ   a2 γ                     (1 − a2 )1t
+                                                                                                               
+                                                          2     1    1                     1                  1
+                     =               3 + a2 − 2 −      −          −      +                   − 0. 5  + θ 2
+                                                                                                                 − 0. 5   .      (51)
+                         12 1 + θ 2                                         4 1 + θ2
+                                                                                    
+            2                                 2a    2     a2    se   sn                    se                 sn
+
+Now the final condition for matching the Navier–Stokes equations is simply to require
+        νx − νy
+                      =0                                                                                                         (52)
+             2
+which leads to
+                           γ           a2 γ
+                                                                                             
+                                                     2  1   1                   1               1
+            3+a − 2
+                                   −           − 2   θ    −      + 3(1 − a )
+                                                                          2
+                                                                                  − 0.5 + θ 2
+                                                                                                  − 0.5 = 0.                     (53)
+                         2a2               2        a               se      sn                      se                 sn
+   Now recall Eq. (49), which states the coupling relationship: (s−   e − 0.5) ∼ (sc
+                                                                       1           −1
+                                                                                       − 0.5) and (s−n − 0.5) ∼ (sc
+                                                                                                       1              −1
+                                                                                                                         − 0.5).
+This implied that all the relaxation parameters se , sn , sc can be removed from Eq. (53) if we substitute Eqs. (49) into it. The
+relationship between a, cs , γ , θ is
+
+                           γ           a2 γ
+                                                         
+                                                     2
+            3 + a2 −           2
+                                 −             −              (C21 + C22 )θ + 3(1 − θ 2 )(C22 − C21 θ 2 ) = 0.                   (54)
+                         2a                2        a2
+                                     Y. Zong et al. / Computers and Mathematics with Applications 72 (2016) 288–310         299
+
+
+   Substituting the expressions of C11 , C12 , C21 , and C22 , we can rewrite Eq. (53) in the following form
+
+      (1 − a2 ) 1 + θ 2 (Aθ 2 + Bθ − A) = 0,
+                      
+                                                                                                                           (55)
+where
+      A = 3(a2 − 1) (γ − 12cs2 )(1 + a2 ) + 2(5a2 + 2) ,
+                                                                   
+
+                                                      c2
+      B = a2 (12γ − 108cs2 + 66) + 18a6 (cs2 − 1) + 18 s2 + 18(a4 − 1).
+                                                      a
+Several interesting observations are now in order. First, in the limit of a → 1, Eq. (55) is automatically satisfied for any
+θ . Namely, the Navier–Stokes equations emerge. In this limit, any value of θ would work, with the formulation of Bouzidi
+et al. [16] and Zhou [17] as two special examples. In this limit, the coupling relationships, Eqs. (49a–b), are not related with
+θ and become se = sn = sc . Second, when a ̸= 1, then we must require
+
+      Aθ 2 + Bθ − A = 0,                                                                                                   (56)
+which is a surprising simple second-order equation for setting θ in terms of a, cs , and γ , so that the full isotropy can be
+realized on a rectangular grid to yield the Navier–Stokes equations. This equation has two solutions θ1 and θ2 = −1/θ1 . The
+relationship θ2 = −1/θ1 stems from the fact that the last coefficient (−A) differs from the first coefficient (A) by a sign. The
+second solution θ2 represents the result of rotating the direction of the e − pxx axes in the first solution by 90°. Therefore,
+without the loss of generality, we may restrict our discussions below to only the solution of θ > 0, which is given as
+                          √
+                 B            4A2 + B2
+      θ1 = −          +                  .                                                                                 (57)
+                2A             2A
+   The above analysis indicates that the free parameter θ provides the feasibility to eliminate the anisotropy in the transport
+coefficients. Such feasibility does not exist in the models of Bouzidi et al. [16] and Zhou [17], which is the reason why
+their models fail to rigorously satisfy the Navier–Stokes equations. We have derived the explicit requirement for setting
+this parameter in terms of the model parameters cs , γ , a. Under this condition, Eq. (47) can be inverted to express the
+macroscopic stress components in terms of the mesoscopic non-equilibrium moments as
+
+                     ∂ ux   ∂ uy
+                                
+        1
+            τxy ≡ ν       +         = −a (1 − 0.5sc ) p(xy1)                                                             (58a)
+        ρ0            ∂y    ∂x
+                                 ∂ ux   ∂ uy       (−2a2 + θ − θ a4 )(1 − 0.5sn ) (1) (−2θ a2 − 1 + a4 )(1 − 0.5se ) (1)
+                                            
+        1           1
+           τxx = − τyy ≡ ν            −        =                                   pxx +                            e (58b)
+        ρ0         ρ0             ∂x     ∂y               6(1 + a4 )(1 + θ 2 )             6(1 + a4 )(1 + θ 2 )
+                               ∂ ux   ∂ uy      θ (1 − 0.5sn ) (1) (1 − 0.5se ) (1)
+                                          
+        1 V      1 V
+           τ = τyy ≡ ζ              −        =                 pxx −               e .                                   (58c)
+        ρ0 xx    ρ0            ∂x      ∂y         6(1 + θ 2 )          6(1 + θ 2 )
+   We stress that, in principle, for a given lattice aspect ratio a, cs and γ are two free parameters in the model, which can
+be tuned to achieve the best numerical stability of our proposed MRT LBM model on a rectangular grid.
+
+4. Numerical validations
+
+   We shall now confirm our new MRT LBM scheme on a rectangular grid, by considering two flow problems: a 2D channel
+flow and a 2D lid-driven cavity flow. For a given value of a ̸= 1, the values of the model parameters should be chosen to
+keep the simulation numerically stable. The range of the relaxation parameters should be 0 < si < 2. Here we consider
+steady-state flows. The simulation ends when the following condition
+            
+             [ux (i, j, t + dt ) − ux (i, j, t )]2 + [uy (i, j, t + dt ) − uy (i, j, t )]2
+            
+             i,j
+      Err =                                                                                < 10−8                         (59)
+                                       [ux (i, j)2 + uy (i, j)2 ]
+                                  
+                                             i ,j
+
+
+is reached.
+
+4.1. The 2D channel flow
+
+    In these cases, the numerical simulations are conducted by the new MRT LBM model with several different values of the
+grid aspect ratio a and the results are compared with the exact solution. The periodic boundary conditions are applied to
+the flow inlet and outlet, the half-way bounce back conditions are imposed on the channel walls. The model parameters are
+listed in Table 1. Note that the value of θ is determined from Eq. (56) after cs and γ are chosen. The relaxation parameter sc
+300                                  Y. Zong et al. / Computers and Mathematics with Applications 72 (2016) 288–310
+
+
+
+
+                       Fig. 3. The relative difference of the maximum velocity at x/L = 0.5 between two adjacent time steps.
+
+
+
+
+                                          Fig. 4. Velocity profiles obtained with different grid aspect ratios.
+
+
+Table 1
+Summary of the model parameters used for the 2D channel flow simulations.
+ a              γ              cs2                Nx × Ny             θ                 sc                 se           sn       Viscosity
+
+ 0.80           −2.3           0.3333             4 × 125             0.0261            1.1724             1.8877       1.0665   0.10
+ 0.65           −2.0           0.3333             4 × 154             0.4215            1.2500             1.2508       0.3652   0.10
+ 0.50           −3.0           0.16               4 × 200             0.2977            0.9091             1.2859       0.3155   0.10
+ 0.30           −3.8           0.04               4 × 334             0.0757            0.7143             1.8091       0.6504   0.03
+ 0.20           −3.9           0.01               4 × 500             0.0494            0.4348             1.7394       0.3214   0.03
+
+
+
+is chosen according to the set-up of the flow problem, and se and sn are obtained by Eqs. (49a–b). Besides, for all the cases
+studied here, the relaxation times sρ , sj are set to be 0, the other two relaxation times are chosen to be sε = 1.4, sq = 1.5.
+    Fig. 3 shows the time evolution of the relative difference of the maximum velocity between two adjacent time steps
+at x/L = 0.5, where L is the channel length. The relative difference decreases monotonically in time, showing that the
+flow has reached the steady state. Only the simulated, steady-state velocity distribution is discussed next. Fig. 4 shows the
+dimensionless velocity profiles (normalized by the channel center velocity) for 5 different values of the grid aspect ratio a,
+as well as the theoretical velocity profile. We observe that the results from our new model are in excellent agreement with
+the exact solution. It also should be noted here that extremely smaller grid ratio will lead to numerical instability.
+    Next, in Fig. 5, we compare the relative errors between the computed and exact results at different resolutions (Ny ) in
+the y direction for a = 0.8, 0.5, 0.3 and a = 0.2, in which the Reynolds number varies with the resolutions and viscosity
+remains the same. The relative error is employed for comparison and defined as: (ux,simulated − ux,theory )/U at x/L = 0.5,
+where ux,theory is the theoretical velocity of the Poiseuille flow. The two dash-dotted lines denote the slope of −2. Clearly, it
+proves the new scheme is of second-order accuracy for a = 0.8 though the error seems to be larger if a smaller a is used. It
+                                   Y. Zong et al. / Computers and Mathematics with Applications 72 (2016) 288–310                301
+
+
+
+
+                        Fig. 5. The relative error between the simulated results and the exact resolution at the steady state.
+
+
+
+
+                                            Fig. 6. A schematic of lid-driven cavity flow in a square cavity.
+
+
+is well known that mid-way bounce back boundary results to the second-order accuracy for standard LBM models [22,23].
+Here we confirm that the same is true on a rectangular grid.
+
+4.2. The 2D lid-driven cavity flow
+
+   The 2D lid-driven cavity flow (Fig. 6) has been studied as a standard benchmark case to test many numerical methods, in
+which D, H are the width and height of the cavity, respectively. Depending on the flow Reynolds number, the flow pattern
+and the number of corner vortices are different. This flow has also been extensively used to study the performance of LBM
+solutions [24–26]. We consider a square cavity of width H. At the top boundary, uy = 0 and ux = U. Since the equilibrium
+distributions depend on a, we need to obtain f(eq) from m(eq) by f(eq) = M −1 m(eq) . The lattice node is placed half-way from
+the top wall, and the bounce back on the top wall is implemented as
+                                            (eq)
+                                                − f4(eq) = f˜2 (xf , t )
+                                                        
+      f4 (xf , t + 1t ) = f˜2 (xf , t ) − f2
+                                         
+                                           (eq)     (eq)
+                                                                              (γ + 4)
+      f7 (xf , t + 1t ) = f˜5 (xf , t ) − f5 − f7          = f˜5 (xf , t ) − ρ         U
+                                                                                 12a2
+                                         
+                                           (eq)     (eq)
+                                                                              (γ + 4)
+      f8 (xf , t + 1t ) = f˜6 (xf , t ) − f6 − f8          = f˜6 (xf , t ) + ρ      2
+                                                                                       U
+                                                                   12a
+where the nearly incompressible formulation is used, with ρ = ρ0 + δρ and ρ0 = 1. Note that the above half-way bounce-
+back relations for a moving wall reduce to the standard forms when a = 1 and γ = −2. The value of ρ in the above is simply
+set to ρ0 . On the other three walls, the half-way bounce back scheme is applied. The governing parameter of the flow is the
+Reynolds number defined as Re = UH /ν . The number of lattice nodes in x direction is fixed to 100 and that in y direction is
+adjusted according to different grid aspect ratios a.
+302                              Y. Zong et al. / Computers and Mathematics with Applications 72 (2016) 288–310
+
+
+                                   a
+
+
+
+
+                                   b
+
+
+
+
+                    Fig. 7. Comparison of ux at the mid-plane with Re = 100. (a) Our new model; (b) Bouzidi et al.’s scheme.
+
+
+    In Figs. 7 and 8, we show the steady-state velocity profiles at x/D = 0.5 and y/H = 0.5 respectively, using both our
+new model and the model of Bouzidi et al., for the cavity flow at Re = 100. The computational parameters for the former
+are listed in Table 2. For the latter case the parameters are listed in Table 3 which are taken from Table 4.1 in Bouzidi
+et al. [16] and the coupled relaxation times are obtained from Eqs. (23) and (24). The other relaxation times are set as:
+sρ = 0, sε = 1.4, sj = 0, sq = 1.5. The results from a previous study [27] are also shown for comparison which employed
+the multigrid procedure and finite-difference solution.
+    In Figs. 7(a) and 8(a), the steady-state ux and uy velocity profiles along the centerline from our new model for four different
+values of a are plotted. The smallest a is 0.3 and the new model is still numerically stable. These clearly demonstrate that the
+results are not affected by a and are in excellent agreement with the work of Ghia et al. [27]. The corresponding results for
+the model of Bouzidi et al. [16] are shown in Figs. 7(b) and 8(b). The code based on their model became unstable at a = 0.3,
+so no results for a = 0.3 are shown. Interesting, for a ≥ 0.5, their results are also in good agreement with one another
+and with those of Ghia et al. [27], although a closer inspection shows some minor differences in the uy profiles. The good
+agreement for the model of Bouzidi et al. [16] is somewhat coincidental, which can be explained by the deviation term of the
+transport coefficients in Eq. (32). When a = 0.8 and Re = 100, this departure is around 0.015, which is significantly less than
+the shear viscosity ν = 0.1. For a = 0.5, the departure term is 0.056, again is relatively small when compared to ν = 0.1.
+It also found ∆B should be less than a certain value in order to keep the numerical stability and accuracy, otherwise the
+computation by the Bouzidi et al. scheme will be unstable. Further study is needed to investigate the effect of the departure
+term on the simulation.
+    Moreover, the computations based on Bouzidi’s scheme were found to be unstable when the Reynolds number is higher.
+Our model, on the other hand, remains stable. Fig. 9 shows velocity profiles at x/H = 0.5 and a = 0.8 with different flow
+Reynolds numbers. The parameters are listed in Table 2. In general, the agreement for the new model is good at most of the
+flow Reynold numbers, except at Re = 3200, which may be due to the low resolution adopted in the simulation. For the
+scheme of Bouzidi et al., the computation became unstable when Re > 1000. These tests show that the new model with
+the additional parameter θ can improve numerical stability, in addition to rigorous consistency with the Navier–Stokes
+                                    Y. Zong et al. / Computers and Mathematics with Applications 72 (2016) 288–310                                303
+
+
+                                     a
+
+
+
+
+                                     b
+
+
+
+
+                      Fig. 8. Comparison of uy at the mid-plane with Re = 100. (a) Our new model; (b) Bouzidi et al.’s scheme.
+
+
+Table 2
+Summary of the computational parameters for the updated MRT scheme on rectangular grid.
+ a           γ             cs2           θ            Re           sc             se             sn                U           Nx × Ny     Viscosity
+
+ 0.80        −2.3          0.3333        0.0261            100     1.1724         1.8878         1.0665            0.1         100 × 125   0.10
+ 0.65        −2.0          0.3333        0.4215            100     1.2500         1.2508         0.3652            0.1         100 × 154   0.10
+ 0.50        −3.0          0.16          0.2977            100     0.9091         1.2859         0.3155            0.1         100 × 200   0.10
+ 0.30        −3.8          0.04          0.0757            100     0.7143         1.8091         0.6504            0.03        100 × 334   0.03
+ 0.80        −2.3          0.16          1.5549        400         1.6749         1.6747         1.3063            0.11        100 × 125   0.02750
+ 0.80        −2.3          0.16          1.5549       1000         1.8559         1.8558         1.6496            0.11        100 × 125   0.01100
+ 0.80        −1.7          0.16          2.1351       3200         1.9870         1.9774         1.4218            0.04        100 × 125   0.00125
+
+
+                     Table 3
+                     Summary of the computational parameters for Bouzidi et al.’s scheme [16].
+                       a             γ               cs2                sc             se                 sn              ∆B
+                       0.80          −0.90           0.3398             1.4419         1.4889             0.7572          0.015
+                       0.65          −1.70           0.2267             1.3143         1.3278             0.5963          0.036
+                       0.50          −2.55           0.1421             1.0943         1.2498             0.4132          0.056
+
+
+equation. A full discussion of the optimization of the model parameters and their impact on numerical stability is beyond
+the scope of the current paper, and will be reported in a separate paper.
+   In Fig. 10, we plot the velocity contours and streamlines for the cavity flows at four different Reynolds numbers by the
+new model. The structure of the flow depends on the flow Reynolds number. With increasing flow Reynolds number, the
+primary vortex moves toward the left and downward gradually and becomes increasing circular. The size, number, and
+intensity of the corner vortices all increase with Re. The secondary corner eddies appear initially near the corners. Their
+centers move slowly toward the cavity center with the increase of Reynolds number. Finally, in Fig. 11 we compare the
+304                                           Y. Zong et al. / Computers and Mathematics with Applications 72 (2016) 288–310
+
+
+                                                  a
+
+
+
+
+                                                  b
+
+
+
+
+                   Fig. 9. Comparison of ux at the mid-plane with different Reynolds number. (a) New model; (b) Bouzidi et al.’s scheme.
+
+
+locations of the primary vortex center at different Reynolds numbers against the data from Ghia et al. [27]. The agreement
+is satisfactory. These tests validate our new model on a rectangular grid, in terms of both accuracy and numerical stability.
+
+4.3. 2D Taylor–Green vortex flow
+
+   In order to further probe the isotropy of the new MRT model, a two-dimensional (2D) decaying Taylor–Green vortex
+flow is considered here, which was adopted to probe the anisotropy of Zhou’s model [17] by Chikatamarla [28]. This flow
+has an analytical solution of the incompressible Navier–Stokes equation, residing in a domain of size Lx × Ly . The velocity
+and pressure fields are
+
+         ux (x, y, t ) = −U0 cos(kx x) sin(ky y)e−k ν t ,
+                                                                    2
+                                                                                                                                           (60a)
+                              kx                                  −k2 ν t
+         uy ( x , y , t ) =        U0 sin(kx x) cos(ky y)e                  ,                                                              (60b)
+                              ky
+                                                                      2                       
+                               1                                  kx
+                                                                                cos(2ky y) e−2k ν t + P0
+                                                                                                           2
+         p(x, y, t ) = − ρ          U02   cos(2kx x) +                                                                                     (60c)
+                        4                                         ky
+
+where U0 is the initial velocity amplitude, ν is the shear viscosity, kx = 2π /Lx and ky = 2π /Ly are the wave numbers in x
+                                                      
+and y directions, respectively, k =                       k2x + k2y and P0 is the mean reference pressure.
+      The analytical solutions of the stress components can be obtained from Eq. (59), which are given here
+                          ∂ ux   ∂ uy                                           2π x                 2π y
+                                                                                                       
+                                                             U0
+                                                                                                                e−k ν t ,
+                                                                                                                    2
+         τxx = ρν              −                  = 4π ρν         sin                      sin
+                          ∂x     ∂y                          Lx                  Lx                   Ly
+                                              Y. Zong et al. / Computers and Mathematics with Applications 72 (2016) 288–310                                                  305
+
+
+           a u (m/s)            100                                                                b u (m/s)             100
+                 0.16                                                                                       0.16
+                 0.15                                                                                       0.15
+                 0.14            80                                                                         0.14          80
+                 0.13                                                                                       0.13
+                 0.12                                                                                       0.12
+                 0.11                                                                                       0.11
+                 0.1             60                                                                         0.1           60
+                 0.09                                                                                       0.09
+
+
+
+
+                                                                                                                    y
+                           y
+
+
+                 0.08                                                                                       0.08
+                 0.07                                                                                       0.07
+                 0.06            40                                                                         0.06          40
+                 0.05                                                                                       0.05
+                 0.04                                                                                       0.04
+                 0.03                                                                                       0.03
+                 0.02
+                                 20                                                                         0.02
+                                                                                                                          20
+                 0.01                                                                                       0.01
+                 0.0                                                                                        0.0
+                 -0.01                                                                                      -0.01
+                 -0.02                       20       40          60         80        100                  -0.02                        20          40       60   80   100
+                 -0.03                                       x                                              -0.03                                         x
+
+           c u (m/s)            100
+                                                                                                   d u (m/s)             100
+                 0.16                                                                                       0.16
+                 0.15                                                                                       0.15
+                 0.14            80                                                                         0.14
+                                                                                                                          80
+                 0.13                                                                                       0.13
+                 0.12                                                                                       0.12
+                 0.11                                                                                       0.11
+                 0.1             60                                                                         0.1           60
+                 0.09                                                                                       0.09
+
+
+
+
+                                                                                                                    y
+                           y
+
+
+
+
+                 0.08                                                                                       0.08
+                 0.07                                                                                       0.07
+                 0.06            40                                                                         0.06          40
+                 0.05                                                                                       0.05
+                 0.04                                                                                       0.04
+                 0.03                                                                                       0.03
+                 0.02
+                                 20                                                                         0.02
+                                                                                                                          20
+                 0.01                                                                                       0.01
+                 0.0                                                                                        0.0
+                 -0.01                                                                                      -0.01
+                 -0.02                       20       40           60        80        100                  -0.02                        20          40       60   80   100
+                 -0.03                                       x                                              -0.03                                         x
+
+  Fig. 10. Velocity contour and streamlines for the flows with different Reynolds numbers. (a) Re = 100, (b) Re = 400, (c) Re = 1000, (d) Re = 3200.
+
+
+
+
+                                         Fig. 11. Comparison of the primary vortex location at different Reynolds numbers.
+
+                                                                                          2 
+                               ∂ ux   ∂ uy                                                                  2π x                  2π y
+                                                                                                                                   
+                                                             U 0 Ly                   Lx
+                                                                                                                                             e−k ν t ,
+                                                                                                                                                 2
+          τxy = ρν                  +             = 2π ρν                    1−                   cos                   cos
+                               ∂y     ∂x                         Lx Lx                Ly                     Lx                    Ly
+                               ∂ uy   ∂ ux
+                                            
+          τyy = ρν                  −             = −τxx .
+                               ∂y     ∂x
+
+Since the velocity field of the Taylor–Green vortex flow is divergence-free, it follows that the bulk stress τxx
+                                                                                                              V
+                                                                                                                 = τyy
+                                                                                                                    V
+                                                                                                                       =
+                ∂u
+                      
+         ∂ ux
+ρζ        ∂x
+              + ∂ yy       = 0.
+306                                          Y. Zong et al. / Computers and Mathematics with Applications 72 (2016) 288–310
+
+
+
+
+Fig. 12. The converged normal stress (τxx /ρ0 U02 ) profiles at t = 0 by the iterative approach for the Taylor–Green vortex flow, obtained with different a
+values, are compared to the analytical curve.
+
+
+Table 4
+Summary of the model parameters used for the 2D Taylor–Green vortex flow.
+ a                 γ                cs2                Nx × Ny           θ               sc               se                  sn           Re      u0
+
+ 0.80              −2.0             0.3333             200 × 250         0.6400          1.9084           1.9084              1.8110       100     0.100
+ 0.65              −2.0             0.3333             200 × 308         0.4225          0.9091           0.9091              0.2006       100     0.100
+ 0.50              −3.1             0.09               200 × 400         0.4070          1.5789           1.7567              0.9494       100     0.010
+ 0.30              −3.7             0.04               200 × 666         0.1115          1.5151           1.9208              1.0890       100     0.004
+
+
+   Here we consider the special case of kx = ky = 2π /L and set P0 = 0. The Reynolds number is defined as Re = ρ Lu0 /ν .
+The flow is then isotropic and the average kinetic energy in the x-direction is identical to that in the y-direction, which is
+given as
+      1 2                1 2             1
+                              uy (x, y, t ) = U02 e−2k ν t .
+                                                      2
+         ux ( x , y , t ) =                                                                                           (61)
+      2                     2                8
+Here the angle brackets denote spatial average at a given time. We shall define the corresponding normalized quantities as
+Kx = 4 u2x (x, y, t ) /U02 and Ky = 4 u2y (x, y, t ) /U02 , and theoretically they both vary in time as e−2k ν t . The computed ratio
+                                                                                                                                   2
+
+
+of ⟨Kx ⟩ / Ky from a LBM model may be compared to the analytical value of one, as a check whether the physical isotropy of
+              
+the flow is satisfied.
+    In our LBM simulations, the periodic boundary conditions are applied to both directions. The computational parameters
+are given in Table 4. The initial condition for the distribution functions must be specified properly. There are two general
+methods to specific the correct initial condition. The first method is to describe both equilibrium moments and non-
+equilibrium moments according to the results from the Chapman–Enskog analysis, here only the non-equilibrium moments
+for e, pxx , and pxy are relevant according to Eqs. (47) and (58). The moments are then inverted to obtain the distribution
+functions fi at t = 0. Alternatively, we can use iterations to converge the initial non-equilibrium moments after the
+equilibrium moments are constrained by the velocity and pressure fields. Clearly, the first method is preferred. Fig. 12 shows
+the results of converged normal stress by the iterative method for different a, along with the analytical solution. It shows
+an excellent agreement between the LBM result and the analytical solution at all a values. The derivations of the computed
+shear stress from the LBM simulations are in the range of 10−7 –10−11 for different a values, again in excellent agreement
+with the zero value according to the analytical solution.
+    In addition to the velocity, pressure, the stress fields, Kx and Ky , we also compute the following normalized projection of
+the pressure field [29]
+                               8
+        P2 ( t ) = −               ⟨p(x, y, t ) cos [kL (x + y)] cos [kL (x − y)]⟩ .                                                                    (62)
+                          ρ0 U02
+And P2 (t ) evolves as e−2k ν t for the analytic solution.
+                                     2
+
+
+    In Fig. 13, we show P2 (t ) obtained from the LBM simulations, as a function of dimensionless time, for different a values.
+The curves contain low-level acoustic oscillations initially for some a values, similar in magnitude to what was observed
+in [29]. In the cases with smaller a, the oscillations are relatively weaker, as seen in Fig. 13(a). The acoustic oscillations
+gradually disappear at long times for all cases, leading to an excellent agreement of the simulated P2 values with its analytical
+solution, as seen in Fig. 13(b).
+                                     Y. Zong et al. / Computers and Mathematics with Applications 72 (2016) 288–310                                 307
+
+
+       a                                                                     b
+
+
+
+
+Fig. 13. P2 (t ) as a function of dimensionless time, obtained from the LBM simulations using different a values. The analytical solution is also shown.
+(a) Short time; (b) long time.
+
+
+       a                                                                    b
+
+
+
+
+Fig. 14. The component kinetic energy as a function of time, obtained from our LBM simulations with different a values: (a) Kx ; (b) Ky . The analytical
+solution is also shown.
+
+
+    On the other hand, the simulated Kx and Ky values are smooth at all times and are consistent with the analytic solution,
+as shown in Fig. 14. These demonstrate that the non-equilibrium moments have been properly initialized.
+    Motivated by the  discussions in [28], we next demonstrate the isotropy property of our new model by plotting the time
+evolution of ⟨Kx ⟩ / Ky in Fig. 15 for the case of a = 0.5 and Re = 100. Furthermore, the results from Bouzidi’s model
+                        
+are also included. The parameters for Bouzidi’s model are: a = 0.50, Re = 100, U0 = 0.055, and the relaxation times
+are se = 1.5195, sn = 0.4966, and sc = 0.9091. These      parameters lead to ν = 0.1100, νx = 0.1396, and νy = 0.0804
+in Bouzidi’s model. Clearly, Fig. 15 shows that ⟨Kx ⟩ / Ky from Bouzidi’s model oscillates around 1.0, which is related to
+the anisotropy of the transport coefficients. Since the flow is incompressible, any deviation from isotropy in the velocity
+                                                                                                      field and pressure field
+field leads to pressure redistribution, which restores isotropy. This interaction between the velocity
+caused oscillations in both velocity and pressure fields, and therefore oscillations in the ⟨Kx ⟩ / Ky ratio. The magnitude of
+the oscillations increases with increasing
+                                     √                                                                          377 LBM time
+                                            time as the kinetic energy decays. The period of oscillations is about
+steps, which is roughly equal to L/ 2cs = 375, where cs = 0.377. However, for our new θ model, ⟨Kx ⟩ / Ky is always close
+to one; the maximum relative deviation is around 2 × 10−4 . This demonstrates convincingly that the isotropy property is
+satisfied by our new θ model.
+    Fig. 16 shows the velocity and pressure profiles at x/L = 0.5 for the case of a = 0.5 at Re = 100. The simulated results
+agree well with the analytical solution at all four selected times. Again, it illustrates that the velocity components in the x
+and y directions decay at the same rate. The excellent agreement between the LBM and the analytical solution is further
+shown for the normal stress field in Fig. 17.
+
+5. Summary and concluding remarks
+
+   In this paper, we have shown, for the first time, that the D2Q9 MRT LBM model can be used on a rectangular grid to
+produce viscous flows that are fully consistent with the Navier–Stokes equations. The basic idea is to introduce a new
+308                                    Y. Zong et al. / Computers and Mathematics with Applications 72 (2016) 288–310
+
+
+
+
+Fig. 15. The ratio ⟨Kx ⟩ / Ky plotted as a function of time from our new model for the case of a = 0.5 and Re = 100. The corresponding result for Bouzidi’s
+                          
+model is also shown.
+
+
+       a                                                                        b
+
+
+
+
+                                            c
+
+
+
+
+Fig. 16. The velocity and pressure profiles at x/L = 0.5 at several different dimensionless times (the time is normalized by ν t /L2 ): (a) ux /U0 ; (b) uy /U0 ;
+(c) p/ρ0 U02 . The LBM results are shown by symbols and the analytical solutions are shown as lines. a = 0.5 and Re = 100.
+
+
+adjustable parameter into the previous model of Bouzidi et al. [16]. This parameter amounts to a rotation in the 2D
+energy–normal stress moment subspace. We first re-derived the hydrodynamic equations of the two previous models
+[16,17] intended for a rectangular grid. By inverse design using the Chapman–Enskog multi-scaling analysis, we showed that
+these two previous models are unable to satisfy all isotropy conditions of the transport coefficients. At the Euler equation
+level, the two previous models are equivalent. Zhou’s model could also be viewed as a rotation in the 2D energy–normal
+stress moment subspace relative to Bouzidi et al. [16]. But such rotation was fixed by Zhou’s definition of the moments in
+order to use the a-independent transformation matrix. In our model, this rotation does not fix the transformation matrix,
+                                Y. Zong et al. / Computers and Mathematics with Applications 72 (2016) 288–310              309
+
+
+
+
+                      Fig. 17. Profile of normalized normal stress at ν t /L2 = 0.04 and x/L = 0.5. a = 0.5 and Re = 100.
+
+
+
+which provides the necessary flexibility to restore the full isotropy of transport coefficients as required by the Navier–Stokes
+equation. Clearly, the success of our new model rests in part on the flexibility of relaxation parameters in the MRT LBM
+approach. Namely, the BGK LBM uses the same relaxation parameter for all moments, and is clearly unable to produce the
+necessary isotropy on a rectangular grid.
+    We showed, by the inverse design, that all equilibrium moments can be determined, except that for the energy squared
+moment which plays no role in the Navier–Stokes equation. Two conditions required to partially meet isotropy (the full
+isotropy has three conditions) are identified, and are shown to yield the two coupling relationships derived previously in
+Bouzidi et al. [16] using a very different approach. These partial conditions allow all departures from isotropy be expressed
+in terms of a single quantity. The additional parameter θ in our model is then used to eliminate this term. We believe our
+inverse design and the partial isotropy conditions provide new insights into previous models as well as to better explain
+how our new model works from the theoretical perspective.
+    Our new model contains two adjustable parameters, the speed of sound cs , and a parameter γ defining the energy flux.
+Their values can be optimized for the use of smaller aspect ratio a, the best numerical stability, or for achieving a higher
+flow Reynolds number. In this paper, we have demonstrated that a = 0.2 may be used (see Section 4.1). However, we find
+that, in general, the model tends to be unstable when a < 0.2. The smallest value of a that can be achieved also depends on
+the nature of the flow and the flow Reynolds number, and the relaxation parameters for non-essential modes. A systematic
+study of the numerical stability for the parameter space formed by cs , γ , and the relaxation parameters for non-essential
+modes, for a given a, is beyond the scope of this paper, and will be reported in a future paper.
+    We have also validated our new model using the 2D channel flow, 2D lid-driven cavity flow, and 2D decaying
+Taylor–Green vortex flow. We showed that the new model yields excellent results that are independent of the value of
+the grid aspect ratio a. For the channel flow, the second-order accuracy is confirmed with mid-way bounce back boundary
+conditions. For the cavity flow, we showed how to treat a moving wall within our new model. In the case of the Taylor–Green
+vortex flow, the results show that our new MRT model can ensure the isotropy of the transport coefficients on a rectangular
+lattice. Again our results are in excellent agreement with those reported in the literature. Numerical tests show that our
+model is numerically stable for small a and for high flow Reynolds numbers.
+    Finally, we note that there are alternative methods to restore isotropy. For example, by using two more microscopic
+velocities, Hegele et al. [18] were able to meet this goal in 2D. However, our model does not require any addition of
+microscopic velocities. We also believe that our idea can be applied in 3D to allow the use of non-cubic grids, instead of
+the cubic grid for standard models. This possibility will be reported in the near future.
+
+
+Acknowledgments
+
+
+   This work has been supported by the US National Science Foundation (NSF) under grants CBET-1235974 and AGS-
+1139743 and by Air Force Office of Scientific Research under grant FA9550-13-1-0213. LPW also acknowledges support
+from the Ministry of Education of PR China and Huazhong University of Science and Technology through Chang Jiang Scholar
+Visiting Professorship (J2011028). YZ also acknowledges support from 973 project of Ministry of Science and Technology of
+China (No. 2012CB720500) and the National Natural Science Funds of China (NSF21406059). YZ also acknowledges support
+by the Fundamental Research Funds for the Central University (WA222201314020).
+310                                   Y. Zong et al. / Computers and Mathematics with Applications 72 (2016) 288–310
+
+
+References
+
+ [1] S. Chen, G. Doolen, Lattice Boltzmann method for fluid flows, Annu. Rev. Fluid Mech. 30 (1998) 329–364.
+ [2] D. Yu, R. Mei, L.-S. Luo, W. Shyy, Viscous flow computations with the method of lattice Boltzmann equation, Prog. Aerosp. Sci. 39 (2003) 329–367.
+ [3] T. Inamuro, T. Ogata, S. Tajima, et al., A lattice Boltzmann method for incompressible two-phase flows with large density differences, J. Comput. Phys.
+     10 (2004) 628–644.
+ [4] M.E. McCracken, J. Abraham, Multiple-relaxation-time lattice Boltzmann model for multiphase flow, Phys. Rev. E 71 (2005) 036701.
+ [5] H.P. Fang, Lattice Boltzmann method for simulating the viscous flow in large distensible blood vessels, Phys. Rev. E 5 (2002) 051925.
+ [6] L.-P. Wang, B. Afsharpoya, Modeling fluid flow in fuel cells using the lattice Boltzmann approach, Math. Comput. Simul. 72 (2006) 242–248.
+ [7] H. Gao, C.Q. Qiu, D. Fan, Y. Jin, L.-P. Wang, Three-dimensional microscale flow simulation and colloid transport modeling in saturated soil porous
+     media, Comput. Math. Appl. 59 (2010) 2271–2289.
+ [8] X.B. Nie, G.D. Doolen, S.Y. Chen, Lattice–Boltzmann simulations of fluid flows in MEMS, J. Stat. Phys. 107 (2002) 279–289.
+ [9] J.F. Zhang, Lattice Boltzmann method for microfluidics: models and applications, Microfluid. Nanofluid. 10 (2011) 1–28.
+[10] O. Filippova, D. Hänel, Boundary-fitting and local grid refinement for lattice-BGK models, Internat. J. Modern Phys. C 9 (1998) 219–228.
+[11] O. Filippova, D. Hänel, Grid refinement for lattice-BGK models, J. Comput. Phys. 147 (1998) 1271–1279.
+[12] D. Yu, R. Mei, W. Shyy, A multi-block lattice Boltzmann method for viscous fluid flows, Internat. J. Numer. Methods Fluids 39 (2002) 99–120.
+[13] X. He, L.-S. Luo, M. Dembo, Some progress in lattice Boltzmann method. 1. Nonuniform mesh grids, J. Comput. Phys. 129 (1996) 357–363.
+[14] X.D. Niu, Y.T. Chew, C. Shu, Simulation of flows, around an impulsively started circular cylinder by Taylor series expansion- and least squares-based
+     lattice Boltzmann method, J. Comput. Phys. 188 (2003) 176–193.
+[15] J.M.V.A. Koelman, A simple lattice Boltzmann scheme for Navier–Stokes fluid flow, Europhys. Lett. 15 (1991) 603–607.
+[16] M. Bouzidi, D. d’Humières, P. Lallemand, L.S. Luo, Lattice Boltzmann equation on a two-dimensional rectangular grid, J. Comput. Phys. 172 (2001)
+     704–717.
+[17] J.G. Zhou, MRT rectangular lattice Boltzmann method, Internat. J. Modern Phys. C 23 (2012) 1250040-1–1250040-17.
+[18] L.A. Hegele Jr., K. Mattila, P.C. Philippi, Rectangular lattice-Boltzmann schemes with BGK-collision operator, Phys. Rev. E 83 (2011) 048701.
+[19] P. Lallemand, L.S. Luo, Theory of the lattice Boltzmann method: Dispersion, dissipation, isotropy, Galilean invariance, and stability, Phys. Rev. E 61
+     (2000) 6546.
+[20] D. d’Humières, I. Ginzburg, M. Krafczyk, et al., Multiple-relaxation-time lattice Boltzmann models in three-dimensions, Philos. Trans. R. Soc. Lond. Ser.
+     A Math. Phys. Eng. Sci. 360 (2002) 437–451.
+[21] Z. Guo, C. Zheng, B. Shi, Discrete lattice effects on the forcing term in the lattice Boltzmann method, Phys. Rev. E 65 (2002) 046308.
+[22] Q. Zou, X.Y. He, On pressure and velocity boundary conditions for the lattice Boltzmann BGK model, Phys. Fluids 9 (1997) 1591–1598.
+[23] I. Ginzbourg, P.M. Adler, Boundary flow condition analysis for the three-dimensional lattice Boltzmann model, J. Phys. II France 4 (1994) 191–214.
+[24] M. Cheng, K.C. Hung, Vortex structure of steady flow in a rectangular cavity, Comput. & Fluids 35 (2006) 1046–1062.
+[25] A.A. Mohamad, A. EI-Ganaoui, R. Bennacer, Lattice Botlzmann simulation of natural convection in an open ended cavity, Int. J. Therm. Sci. 48 (2009)
+     1870–1875.
+[26] Y. Peng, C. Shu, Y.T. Chew, A 3D incompressible thermal lattice Boltzmann model and its application to simulation natural convection in a cubic cavity,
+     J. Comput. Phys. 193 (2004) 260–274.
+[27] U. Ghia, K.M. Ghia, C.T. Shin, High-Re solution for incompressible flow using Navier–Stokes equations and a multigrid method, J. Comput. Phys. 48
+     (1982) 387–411.
+[28] S. Chikatamarla, I. Karlin, Comment on ‘‘Rectangular lattice Boltzmann method’’, Phys. Rev. E 83 (2011) 048701.
+[29] R.W. Mei, L.S. Luo, P. Lallemand, D. d’Humieres, Consistent initial conditions for lattice Boltzmann simulations, Comput. & Fluids 35 (2006) 855–862.
+

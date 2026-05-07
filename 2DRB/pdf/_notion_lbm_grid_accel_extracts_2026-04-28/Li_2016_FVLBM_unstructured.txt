@@ -1,0 +1,1314 @@
+                           Commun. Comput. Phys.                                                                                     Vol. 20, No. 2, pp. 301-324
+                           doi: 10.4208/cicp.211015.040316a                                                                          August 2016
+
+
+
+
+                          Finite Volume Lattice Boltzmann Method for Nearly
+                          Incompressible Flows on Arbitrary Unstructured Meshes
+                          Weidong Li1,2 and Li-Shi Luo2,1, ∗
+                          1 Department of Mathematics & Statistics, Old Dominion University,
+
+                          Norfolk, Virginia 23529, USA.
+                          2 Computational Science Research Center, Beijing 100193, China.
+
+
+                          Received 21 October 2015; Accepted (in revised version) 4 March 2016
+
+
+                                           Abstract. A genuine finite volume method based on the lattice Boltzmann equation
+                                           (LBE) for nearly incompressible flows is developed. The proposed finite volume lat-
+                                           tice Boltzmann method (FV-LBM) is grid-transparent, i.e., it requires no knowledge of
+                                           cell topology, thus it can be implemented on arbitrary unstructured meshes for effec-
+                                           tive and efficient treatment of complex geometries. Due to the linear advection term in
+                                           the LBE, it is easy to construct multi-dimensional schemes. In addition, inviscid and
+                                           viscous fluxes are computed in one step in the LBE, as opposed to in two separate steps
+                                           for the traditional finite-volume discretization of the Navier-Stokes equations. Because
+                                           of its conservation constraints, the collision term of the kinetic equation can be treated
+                                           implicitly without linearization or any other approximation, thus the computational
+                                           efficiency is enhanced. The collision with multiple-relaxation-time (MRT) model is
+                                           used in the LBE. The developed FV-LBM is of second-order convergence. The pro-
+                                           posed FV-LBM is validated with three test cases in two-dimensions: (a) the Poiseuille
+                                           flow driven by a constant body force; (b) the Blasius boundary layer; and (c) the steady
+                                           flow past a cylinder at the Reynolds numbers Re = 10, 20, and 40. The results verify the
+                                           designed accuracy and efficacy of the proposed FV-LBM.
+
+                          AMS subject classifications: 76M12, 76M28, 76D05, 82C40
+                          PACS: 47.11.Df, 47.11.Qr, 47.10.ad, 51.10.+y
+                          Key words: Finite volume method, lattice Boltzmann equation, arbitrary unstructured mesh,
+                          complex geometry, multi-dimensional scheme.
+
+
+
+                          1 Introduction
+                          In its simplest form, the orthodox lattice Boltzmann method (LBM) is associated with
+                          uniform Cartesian meshes due to its tightly coupled discretizations of phase space and
+
+                          ∗ Corresponding author. Email addresses: lwd 1982.4.8@163.com (W. D. Li),
+                          lluo@odu.edu, lluo@csrc.ac.cn (L.-S. Luo)
+
+
+                          http://www.global-sci.com/                                               301                                  c 2016 Global-Science Press
+
+
+
+
+Downloaded from https:/www.cambridge.org/core. University of Florida, on 12 Jan 2017 at 08:51:04, subject to the Cambridge Core terms of use, available at https:/www.cambridge.org/core/terms.
+http://dx.doi.org/10.4208/cicp.211015.040316a
+                302                                            W. D. Li and L.-S. Luo / Commun. Comput. Phys., 20 (2016), pp. 301-324
+
+
+                time [1, 2]. In spite of its accuracy and algorithmic simplicity [3–7], the capability for the
+                LBM to accurately treat flows with complicated geometries is limited. To overcome this
+                limitation, there have been continuous attempts to develop the lattice Boltzmann equa-
+                tion (LBE) based on finite volume (FV) formulation with unstructured meshes [8–17].
+                The finite-volume method (FVM) for solving the Navier-Stokes equations is a matured
+                technique (cf., e.g., the review [18] and monograph [19]). A key feature of the FVM is its
+                use of unstructured meshes to treat complex geometries with ease [18]. With edge-based
+                (2D) or face-based (3D) data structure, cell-centered FVM can be efficiently implemented.
+                The characteristics of the FVM is much determined by its reconstruction step, in which
+                the fluxes are reconstructed at the cell boundaries from the hydrodynamic variables at
+                cell centers, and the hydrodynamic variables are also allowed to be discontinuous at cell
+                boundaries. This reconstruction step distinguishes FVM from other methods, such as
+                finite difference method (FDM) and finite element method (FEM) and so on.
+                    To justify the present work, we begin with a brief survey of existing work on the de-
+                velopment of finite-volume lattice Boltzmann method (FV-LBM) for nearly incompress-
+                ible flows with low Mach numbers. In the work by Nannelli and Succi [8], the fluxes
+                of the distribution functions at cell boundaries are directly computed from their values
+                at cell centers through interpolations without the aforementioned reconstruction step.
+                Though this scheme increases geometrical flexibility, it is only implemented on meshes
+                of quadrilateral cells. To remove this limitation, Peng et al. [9, 10] extend the scheme to a
+                vertex-centered FV-LBM on triangular meshes. However, none of these schemes [8–10]
+                and their variants [11–13, 15, 17] is bona fide FVM for they lack the centerpiece of the FVM
+                — the reconstruction of fluxes at cell boundaries; they are essentially some recasts of
+                some finite difference schemes [13]. These schemes are severely limited in time step size,
+                thus they are computationally inefficient [13].
+                    More recently, Patil and Lakshmisha developed a genuine FV-LBM on triangular un-
+                structured meshes [16]. The reconstruction in this work uses the least-square method to
+                obtain the gradients at cell centroids and Roe’s flux-difference splitting scheme to com-
+                pute the fluxes at cell boundaries. In addition, the techniques of total variation dimin-
+                ishing (TVD) and limiters are used in the scheme. While Roe’s flux-difference splitting
+                scheme is effective for high speed flows, it is problematic for nearly incompressible flows
+                with the Mach number Ma ≪ 1, because the numerical dissipation is inversely propor-
+                tional to the local Mach number Ma [20]. Consequently the scheme is too dissipative and
+                thus inaccurate for nearly incompressible flows when the Mach number Ma ≪ 1.
+                    In this work we will develop a finite-volume lattice Boltzmann method on arbitrary
+                unstructured meshes with second-order convergence. The gradients at cell centers and
+                the fluxes at cell boundaries are computed by using the least-square method and the low-
+                diffusion Roe scheme, respectively. In addition, the collision term in the LBE is treated
+                implicitly, and the edge-based data structure is adopted in our implementation. These
+                features of the proposed FV-LBM greatly enhance its computational efficiency.
+                    The remainder of the paper is organized as follows. Section 2 describes the finite-
+                volume formulation of the LBE in sufficient details in four parts. Specifically, Section 2.1
+
+
+
+
+Downloaded from https:/www.cambridge.org/core. University of Florida, on 12 Jan 2017 at 08:51:04, subject to the Cambridge Core terms of use, available at https:/www.cambridge.org/core/terms.
+http://dx.doi.org/10.4208/cicp.211015.040316a
+                          W. D. Li and L.-S. Luo / Commun. Comput. Phys., 20 (2016), pp. 301-324                                                                        303
+
+
+                          reviews the LBE with the multiple-collision-times (MRT) collision model, which is used
+                          in our FV-LBE formulation for its numerical stability and efficiency. Section 2.2 dis-
+                          cusses the finite-volume discretization of the LBE. Section 2.3 discusses the time marching
+                          method and the implicit treatment of the collision term in the LBE. Section 2.4 describes
+                          the ghost cell method used to realize the boundary conditions in the proposed FV-LBM.
+                          Section 3 presents the numerical results of this work. Three two-dimensional test cases
+                          are used to validate the proposed FV-LBM: (a) Poiseuille flow between two parallel plate
+                          driven by a constant body force; (b) Blasius boundary layer over a semi-infinite flat plate;
+                          and (c) steady flow past a cylinder in free space with the Reynolds number Re = 10, 20,
+                          and 40. Finally, Section 4 concludes the paper.
+
+
+
+                          2 Formulation of the FV-LBE
+                          In this section, we will first provide a brief introduction of the LBE with the multiple-
+                          time-relaxation collision model due to d’Humières [21], which is the governing equation
+                          to be solved. We will then proceed to discuss the finite volume spatial discretization of
+                          the LBE, and time marching scheme, and the ghost cell method for boundary conditions.
+
+
+                          2.1 The lattice Boltzmann equation
+
+                          Our starting point is the Boltzmann equation with the discrete velocity set {ξ α } and the
+                          collision term from the lattice Boltzmann equation (LBE):
+
+                                                                                   ∂t f α + ξ α ·∇ f α = Ωα ,                                                         (2.1)
+
+                          where f α := f α ( x, t) is the distribution function corresponding to the discrete velocity ξ α ,
+                          and Ωα is the collision term to be specified latter. In the literature of LBE, the notation
+                          DdQq denotes a model with q discrete velocities in d dimensional physical space. To be
+                          concrete, in this work we will use D2Q9 model of which the discrete velocities are:
+                                                                           
+                                                                           (0, 0),
+                                                                                                                 α = 0,
+                                                                      ξ α = (±1, 0)c, (0, ±1)c,                   α = 1 – 4,                                          (2.2)
+                                                                           
+                                                                             (±1, ±1)c,                           α = 5 – 8,
+                                                                           
+
+                                     √
+                          where c:= 3RT = 1 is the lattice velocity. It is important to note that because the discrete
+                          velocity set {ξ α |α = 0, 1, ··· , (q − 1)} is a constant one, thus ξ α ·∇ f α = ∇·(ξ α f α ). Eq. (2.1)
+                          can be written more concisely in the following vector form:
+
+                                                                                        ∂t f +∇· J = Ω,                                                               (2.3)
+
+
+
+
+Downloaded from https:/www.cambridge.org/core. University of Florida, on 12 Jan 2017 at 08:51:04, subject to the Cambridge Core terms of use, available at https:/www.cambridge.org/core/terms.
+http://dx.doi.org/10.4208/cicp.211015.040316a
+                304                                            W. D. Li and L.-S. Luo / Commun. Comput. Phys., 20 (2016), pp. 301-324
+
+
+                where symbols in bold and bold sans serif fonts denotes a vector in q dimensions and a
+                tensor, and specifically for the D2Q9 model,
+                                                                                                              
+                                                               f0                    Ω0                     ξ 0 f0
+                                                              f1                  Ω1                  ξ 1 f1 
+                                                         f =  . ,            Ω =  . ,             J =  . .                                            (2.4)
+                                                                                                              
+                                                              ..                  ..                   . .
+                                                               f8                         Ω8                    ξ 8 f8
+
+                   We will use the collision model with multiple relaxation times (MRT) due to
+                d’Humiéres [21], which can be written as
+                                                                                      h          i
+                                                                     Ω = − M − 1 · S · m − m ( 0) ,                                                         (2.5)
+
+                where m and m(0) are the vectors of the moments and their equilibria, respectively, M is
+                the q × q transformation matrix which maps the distributions f the to the moments m, i.e.,
+
+                                                                      m = M · f,          m = M−1 · m,                                                      (2.6)
+
+                and S is the q × q diagonal matrix of relaxation rates {sα }.
+                   There are nine moments in the D2Q9 model:
+
+                                                                m = (ρ, e, ε, jx , q x , jy , qy , pxx , pxy )† ,                                           (2.7)
+
+                where † denotes transpose; ρ is zeroth-order moment of the mass density of the flow, e is
+                the second-order moment related to energy, ε is fourth-order moment related to energy
+                square, jx := ρu x and jy := ρuy are the first-order moments corresponding to the x and y
+                components of the flow momentum, respectively, q x and qy are the third-order moments
+                related to the x and y components of the energy fluxes, respectively, and pxx and pxy are
+                the second-order moments related to the stresses. The equilibrium moments are
+
+                                                                        ( 0)
+                                                                     m1 := e(0) = −ρ(2 − 3u2 ),                                                           (2.8a)
+                                                                        ( 0)
+                                                                     m2 := ε(0) = ρ(1 − 3u2 ),                                                            (2.8b)
+                                                                        ( 0)       ( 0)
+                                                                     m4,6 := q x,y = −ρu x,y ,                                                            (2.8c)
+                                                                        ( 0)       ( 0)
+                                                                     m7 := pxx = ρ(u2x − u2y ),                                                           (2.8d)
+                                                                      ( 0)  ( 0)
+                                                                     m8 := pxy = ρu x uy .                                                                (2.8e)
+
+                Note that the equilibria of the conserved moments, i.e., ρ and j := ρ(u x , uy ) := ( jx , jy ), are
+                themselves, and the LBE model used here is athermal, thus the thermal energy, which is
+                related to the moment m1 ≡ e, is not a conserved quantity.
+
+
+
+
+Downloaded from https:/www.cambridge.org/core. University of Florida, on 12 Jan 2017 at 08:51:04, subject to the Cambridge Core terms of use, available at https:/www.cambridge.org/core/terms.
+http://dx.doi.org/10.4208/cicp.211015.040316a
+                          W. D. Li and L.-S. Luo / Commun. Comput. Phys., 20 (2016), pp. 301-324                                                                        305
+
+
+                             According to the (arbitrary) ordering of moments stipulated in Eq. (2.7), the transfor-
+                          mation matrix M is:
+                                                     1    1    1    1   1 1      1    1    1
+                                                                                            
+                                                −4 −1 −1 −1 −1 2                2    2    2 
+                                                                                            
+                                                4 −2 −2 −2 −2 1                 1    1    1 
+                                                                                            
+                                                0
+                                                         1    0 −1     0 1 −1 −1          1 
+                                                                                             
+                                          M=   0 −2          0    2   0 1 −1 −1            .
+                                                                                           1                  (2.9)
+                                                0
+                                                         0    1    0 −1 1       1 −1 −1    
+                                                0
+                                                         0  − 2    0   2  1     1 −1 −1    
+                                                0        1 −1      1 −1 0       0    0    0 
+                                                     0    0    0    0   0 1 −1        1 −1
+
+                          It is obvious that M−1 ∝ M† , because M is orthogonal. The diagonal matrix of relaxation
+                          rates, S, is
+                                                        S = diag(0, se , sε , 0, sq , 0, sq , sν , sν ),     (2.10)
+                          where the zeros correspond to the conserved modes, and the unit of sα is δt.
+                            With the equilibria given by Eqs. (2.8), the speed of sound in the system is
+                                                                                                 1
+                                                                                            cs = √ c,                                                               (2.11)
+                                                                                                  3
+                          and the shear viscosity ν and the bulk viscosity ζ are
+                                                                                         1 2                 1 2
+                                                                                  ν=        c ,       ζ=        c .                                                 (2.12)
+                                                                                        3sν                 3se
+                          Note that because both space and time are continuous in Eq. (2.1), thus the viscosities are
+                          proportional to 1/sk , and not to (1/sk − 1/2). Also, the unit of the relaxation rates, {sα },
+                          is inverse of time. Because the system obeys the equation of state for the ideal gas, thus
+                          the pressure is p = ρcs 2 .
+                              The (conserved) macroscopic variables can be obtained from the distributions { f α } as
+                          the following:                                 
+                                                                      ρ
+                                                             Q :=  ρu x  = C · f,                              (2.13)
+                                                                     ρuy
+                          where C projects the distributions to the conserved moments:
+                                                                        
+                                                       1    1 ··· 1
+                                              C :=  ξ 0x ξ 1x ··· ξ 8x 
+                                                      ξ 0y ξ 1y ··· ξ 8y
+                                                                                        
+                                                      1 1 1       1    1 1     1  1    1
+                                                 =  0 1 0 −1          0 1 −1 −1       1 ,                                                                         (2.14)
+                                                      0 0 1       0 −1 1       1 −1 −1
+
+
+
+
+Downloaded from https:/www.cambridge.org/core. University of Florida, on 12 Jan 2017 at 08:51:04, subject to the Cambridge Core terms of use, available at https:/www.cambridge.org/core/terms.
+http://dx.doi.org/10.4208/cicp.211015.040316a
+                306                                            W. D. Li and L.-S. Luo / Commun. Comput. Phys., 20 (2016), pp. 301-324
+
+
+                the rows in C are the first, fourth, and sixth rows in the transform matrix M. Because the
+                conserved moments are the collisional invariants, therefore
+
+                                                                                   C · Ω = 0.                                                             (2.15)
+
+                2.2 The finite volume discretization of the lattice Boltzmann equation
+                One of the most distinctive features of the finite-volume method is unstructured mesh.
+                To be concrete, we will restrict this work to two dimensions only. Fig. 1 illustrates two ad-
+                jacent triangular cells i and j with volumes Vi and Vj , respectively. The interface between
+                the two cells are represented by Sij := Sij n̂ij , where Sij and n̂ij are the surface area and the
+                out-normal unit vector at the interface center Rij with respect to the cell i. Immediately,
+                we have S ji = −Sij with respect to the cell j.
+
+
+
+
+                                                                                                         j
+                                                                          i
+
+
+                Figure 1: Illustration of two cells and the interface between them. The cell “i” and the cell “j” are on the left
+                and the right side of their interface “ij”, respectively. The cell centroids are marked with •. The arrow marks
+                the vector n̂ ij sitting at the interface center Rij marked by ◦.
+
+                      We integrate Eq. (2.3) over the cell i with cell volume Vi and boundary ∂Vi :
+                                                                      Z                I                 Z
+                                                                 ∂t            fdV +             FdS =            ΩdV,                                    (2.16)
+                                                                          Vi               ∂Vi               Vi
+
+                where F := J · n̂ is the convective flux, J is defined in Eq. (2.4), and n̂ is the unit vector out
+                normal to the surface element dS, to obtain the following equation
+                                                                "          #
+                                                              1 NS
+                                                              Vi j∑
+                                                   ∂ t fi = −       Fij Sij − Ωi ,                          (2.17)
+                                                                  =1
+
+                where the variables with subscript i and ij are the quantities averaged over either the
+                cell volume Vi and the cell boundary Sij , respectively; and NS is the total number of the
+                discretized boundary surface elements of the cell i.
+                    To determine the fluxes at a cell interfaces Sij , we need to reconstruct the variables
+                at both sides of the interface, denoted by fL and fR , to compute the fluxes on both sides
+                of the interface. Before calculating fL and fR with high order (≥ 2), we need to obtain
+                the space derivatives of the distribution functions at the cell center. In this work, to
+                get second order reconstruction, the piecewise linear approximation is adopted in a cell
+
+
+
+
+Downloaded from https:/www.cambridge.org/core. University of Florida, on 12 Jan 2017 at 08:51:04, subject to the Cambridge Core terms of use, available at https:/www.cambridge.org/core/terms.
+http://dx.doi.org/10.4208/cicp.211015.040316a
+                          W. D. Li and L.-S. Luo / Commun. Comput. Phys., 20 (2016), pp. 301-324                                                                        307
+
+
+                          and the inverse distance weighted least-square method is used to compute the gradients
+                          of the distribution functions at the cell center. In this method, the derivatives of fi are
+                          obtained through the following minimization procedure:
+                                                                                          !
+                                                             NS
+                                                                 1                      2
+                                                      min ∑
+                                                                            
+                                                                     fj − fi − rij ·∇fi     ,                  (2.18)
+                                                      ∇f i      r
+                                                            j=1 ij
+                                                                    q
+                          where rij := r j − ri , and rij = krij k = ( x j − xi )2 +(y j − yi )2 is the distance between centers
+                          of the cell i and cell j. The result of the above minimization procedure, Eq. (2.18), leads to
+                          the following equation for ∇fi :
+                                                                                 † 
+                                                                           †        Bix
+                                                                    A ·∇ fi =              ,                               (2.19)
+                                                                                    B†iy
+
+                          where A is a d × d matrix, Biα , α ∈ { x, y}, is a q dimensional vector:
+                                                                               NS                            NS
+                                                                                  rijα rijβ                     rijα
+                                                                   Aαβ := ∑                       Biα := ∑
+                                                                                                                             
+                                                                                            ,                        f j − fi ,                                     (2.20)
+                                                                              j=1
+                                                                                     rij                        r
+                                                                                                             j=1 ij
+
+                          and rijα is the α-th component of rij and α, β ∈{1, 2}, i.e., rij =( xij , yij ), rij1 = xij and rij2 = yij .
+                              Clearly, the elements of the matrix A are determined purely by the coordinates of
+                          their centroids, thus they only need to be computed once and to be stored for later use.
+                          As for the elements of Biα , α ∈{ x, y}, can be computed with the edge-based data structure
+                          to enhance computational efficient. After obtaining the gradients ∇fi at the cell i from
+                          Eq. (2.18), we can reconstruct fL and fR . Suppose that the cell i and the cell j are at the
+                          left and right to the cell boundary Sij = Sij n̂ij with its center position Rij := ( xij , yij ), as
+                          illustrated in Fig. 1, then we have:
+                                                                                   
+                                                               fL = fi + Rij − ri ·∇fi ,                                     (2.21a)
+                                                                                   
+                                                               fR = fj + R ji − r j ·∇fj ,                                   (2.21b)
+                          where Rij = R ji is the position vector of the center of the cell boundary Sij = −S ji . It
+                          should be noted that limiter is not needed in the reconstruction for incompressible flows,
+                          of which flow fields are continuous.
+                              With fL and fR available, the fluxes at cell interfaces can be computed by the low-
+                          diffusion Roe scheme [20], which is given as:
+                                                                       1                                              
+                                                               Fij =      F(fL )+ F(fR )− U |ξ α · n̂ij |max (fR − fL ) ,                                           (2.22)
+                                                                       2
+                          where ξ α is discrete particle velocity, F(fL ) and F(fR ) are flux functions on the left and
+                          right sides of cell interface, respectively. n̂ij is the out-normal unit vector with respect to
+                          the cell i, and the local characteristic velocity U is defined by
+                                                                        U = max [min (kkuk,1.0) , ν/∆x, ǫ] ,                                                        (2.23)
+
+
+
+
+Downloaded from https:/www.cambridge.org/core. University of Florida, on 12 Jan 2017 at 08:51:04, subject to the Cambridge Core terms of use, available at https:/www.cambridge.org/core/terms.
+http://dx.doi.org/10.4208/cicp.211015.040316a
+                308                                            W. D. Li and L.-S. Luo / Commun. Comput. Phys., 20 (2016), pp. 301-324
+
+
+                where ǫ is a cut-off parameter and is 1.0 · 10−5 in this work, and k is an adjustable param-
+                eter and k = 1.0 is used in what follows unless otherwise stated.
+                    Generally, one can define the integration of fluxes as
+                                                                                        NF
+                                                                               Ri := ∑ Fij Sij .                                                          (2.24)
+                                                                                       j=1
+
+                With the edge-based data structured [18], the flux integration can be efficiently calculated
+                by two steps as:
+                      1. Initialization of all convective flux integration by zero:
+                         Do i = 1, all cells
+                            Ri = 0
+                          Enddo
+
+                      2. Looping all surfaces to get convective flux integration:
+                          Do Iface = 1, all interfaces
+                              i = the cell number for the cells left to the interfaces
+                              j = the cell number for the cells right to the interfaces
+                                  Ri = Ri + Fij Sij
+                              R j = R j − Fij Sij
+                          Enddo
+                Note that Fij Sij is computed only once per time step in the calculations. Obviously the
+                algorithm described above requires no geometric information of a cell, i.e., the shape of a
+                cell, which can be triangular or quadrilateral in two dimensions, thus the present method
+                is grid-transparent and can be easily implemented on arbitrary unstructured meshes.
+
+                2.3 The time marching method
+                To enhance the stability and accelerate the convergence, the collision term is treated im-
+                plicitly in the proposed scheme. Specifically, integrated with time from tn to tn+1 and
+                with explicit convection term, the Eq. (2.17) becomes
+
+                                                                                     ∆t n     t n +1
+                                                                                                  Z
+                                                                fin+1 − fni = −         Ri +         Ωi dt,                                               (2.25)
+                                                                                     Vi      tn
+
+                where ∆t := tn+1 − tn is the time step size and the superscript n and n + 1 denote the vari-
+                ables at times tn and tn+1 , respectively. Applying the trapezoidal rule to the integration
+                term of Ωi in the above equation yields:
+                                                                               ∆t n ∆t  n         
+                                                            fin+1 = fni −         Ri +   Ωi + Ωin+1 .                                                     (2.26)
+                                                                               Vi      2
+
+
+
+
+Downloaded from https:/www.cambridge.org/core. University of Florida, on 12 Jan 2017 at 08:51:04, subject to the Cambridge Core terms of use, available at https:/www.cambridge.org/core/terms.
+http://dx.doi.org/10.4208/cicp.211015.040316a
+                          W. D. Li and L.-S. Luo / Commun. Comput. Phys., 20 (2016), pp. 301-324                                                                        309
+
+
+                          Because of Ωin+1 , the collision term in the proposed scheme is therefore implicit. The
+                          proposed scheme does not need to linearize the collision term Ωi , which requires calcu-
+                          lations of the Jacobian, because of the conservation of the mass and momentum can be
+                          realized by:
+                                                                          ∆t
+                                                             Qin+1 = Qni − C · Rni ,                         (2.27)
+                                                                          Vi
+                          where C is the matrix of the collisional invariants defined in Eq. (2.13). After obtaining the
+                          (conserved) macro-variables at the time tn+1 , we have the equilibrium moments [m(0) ]in+1
+                          by the definition of m(0) , Eqs. (2.8), so, from Eq. (2.26), the distribution function fin+1 can
+                          be computed:
+                                                           −1                                             
+                                                              ∆t    ∆t          ∆t n                 (0) n+1/2
+                                            fin+1 =        I − S̃           n               −1
+                                                               · I + S̃ · fi − Ri − ∆tM · S ·[m ]i
+                                                              2     2           Vi
+                                                           −1                                       
+                                                        ∆t          △t       n  ∆t n           (0) n+1/2
+                                                   = I − S̃    · I+    S̃ · fi − Ri − ∆t S̃ ·[f ]i         ,                                                        (2.28)
+                                                        2            2          Vi
+
+                          where I is the q × q identity matrix, S̃ := M−1 · S · M, and
+
+                                                                                      1                                       
+                                                                     [m(0) ]in+1/2 :=              [m(0) ]in+1 +[m(0) ]ni          ,                              (2.29a)
+                                                                                      2
+                                                                     [f(0) ]in+1/2 := M−1·[m(0) ]in+1/2 .                                                         (2.29b)
+
+                             For steady flows, the local time stepping method is often used to accelerate conver-
+                          gence. The local time-step in cell i is defined as [19]:
+
+                                                                                                        Vi
+                                                                                           ∆ti = σ         ,                                                        (2.30)
+                                                                                                        Λi
+
+                          where Λi and σ denote the convective spectral radius and the CFL number, respectively.
+                          In the case of cell-centered FVM, the convective spectral radius is defined by [19]:
+                                                                                                                           
+                                                                                                      N
+                                                                       Λi =         max             ∑ j=F1 |ξ α · n̂ij |∆Sij .                                      (2.31)
+                                                                               α∈{0,1, ···,8}
+
+
+                          2.4 Boundary conditions
+                          We will use the ghost cell method [19] to realize both the Dirichlet and the Neumann
+                          boundary conditions for the macro-variables ρ and u. Fig. 2 illustrates the ghost cell
+                          method. The cell “abc” with its centroid located at point i is next to the boundary — its
+                          edge “ab” is a part of the boundary. The cell “abd” with centroid located at point i′ is the
+                          reflective image of the cell “abc” about the boundary segment “ab”. The point Wab is the
+                          intersection between edge ii ′ and edge “ab”.
+
+
+
+
+Downloaded from https:/www.cambridge.org/core. University of Florida, on 12 Jan 2017 at 08:51:04, subject to the Cambridge Core terms of use, available at https:/www.cambridge.org/core/terms.
+http://dx.doi.org/10.4208/cicp.211015.040316a
+                310                                            W. D. Li and L.-S. Luo / Commun. Comput. Phys., 20 (2016), pp. 301-324
+
+
+
+
+                Figure 2: Illustration of the ghost cell method. The boundary cell “abc” and its ghost cell abd with their
+                centroids located at point i and point i ′ , respectively.
+
+
+                    Based on the ghost cell method, we can obtain the macro-variables at the cell bound-
+                ary “ab”. For instance, we assume the boundary ab is the wall, on which the veloc-
+                ity at Wab should satisfy the no-slip boundary conditions and the normal gradient of
+                pressure, i.e., ∂n̂ p := n̂ ·∇ p = 0. Therefore, with the central-difference approximation, the
+                macro-variables at i ′ and Wab can be obtained. Consequently, the equilibrium moments
+                m(0) (Wab ) at the point Wab can also be calculated. To compute the moments m(Wab ) at
+                Wab , we write m(Wab ) in two parts, their equilibria and non-equilibrium part:
+
+                                                                              m = m(0) + δm,                                                              (2.32)
+
+                where δm denotes the non-equilibrium part. The non-equilibrium moments can be ob-
+                tained by exploration [22]. From this scheme, the non-equilibrium part of the moments
+                at i is taken as a good approximation of the counterpart at Wab . Namely, the moments at
+                Wab are given by:                                        
+                                                                                                           ( 0)
+                                                                 mi ≈ m(0) (Wab )+ mi − mi                        .                                       (2.33)
+
+                Finally, the moments st i′ are obtained by the central difference scheme:
+
+                                                                         mi′ = 2m(Wab )− mi ,                                                             (2.34)
+
+                and then, the distribution functions at i′ should be given as:
+
+                                                                               fi ′ = M − 1 · m i ′ .                                                     (2.35)
+
+
+                3 Results and discussions
+                In this Section, several well-known cases for incompressible flow in two-dimensions are
+                used to validate the proposed finite volume lattice Boltzmann method. Unless otherwise
+                stated, we will fix the CFL number σ = 0.1, and set se = sǫ = sν and sq = 1.3sν in what
+                follows.
+
+
+
+
+Downloaded from https:/www.cambridge.org/core. University of Florida, on 12 Jan 2017 at 08:51:04, subject to the Cambridge Core terms of use, available at https:/www.cambridge.org/core/terms.
+http://dx.doi.org/10.4208/cicp.211015.040316a
+                          W. D. Li and L.-S. Luo / Commun. Comput. Phys., 20 (2016), pp. 301-324                                                                        311
+
+
+                              It should be noted that for the FV-LBE, there is no special (magic) relationship be-
+                          tween sq and sν [23–25]. So long as the scheme is stable, the relaxation rate sq does not
+                          have a strong influence on the FV-LB scheme as it does on the original LB scheme [25–27].
+                          In fact, we have tested the values of sq in the range of 0.5sν ≤ sq < 5.0sν , and found that
+                          the FV-LBE is rather insensitive to the value of sq , provided that sq is not too close to zero
+                          or much larger than sν . This fact may be closely tied to the specific implementation of the
+                          boundary conditions. The value of sq = 1.3sν is chosen empirically based on numerical
+                          tests. A thorough analysis of the effect of sq in the proposed FV-LBE is deferred to future
+                          investigation.
+
+                          3.1 Poiseuille flow
+                          The first case we consider is the incompressible Poiseuille flow between two parallel no-
+                          slip walls driven by a constant body force, and with the periodic boundary conditions
+                          along the streamwise direction, as illustrated in Fig. 3. This flow can be solved analyti-
+                          cally; the streamwise velocity u x is given by
+
+                                                                                           4y2
+                                                                                              
+                                                                                                               H     H
+                                                                   u x (y) = U0          1− 2 ,            −     ≤y≤+ ,                                               (3.1)
+                                                                                           H                   2     2
+
+                          where U0 := gH 2 /8ν is the maximal velocity along the channel center line, H is the chan-
+                          nel width, and g is the constant acceleration due to external force. We will set H = 10.0,
+                          U0 = 0.1, and g = 0.004. Since the analytic solution of velocity profile u x (y) is a parabola,
+                          it is often used to verify the accuracy of a numerical scheme.
+
+
+
+
+                                Figure 3: Sketch of Poiseuille flow driven by a constant body force between two parallel plates in 2D.
+
+                              We use uniform meshes of the size Nx × Ny , with Nx = 1, and Nx = 10, 20, 40, and
+                          80. Of course, we need one additional layer in x direction as the buffer layer for the
+                          periodic boundary conditions along the streamwise direction. Fig. 4 shows the analytic
+                          results of u x (y) given by Eq. (3.1) and the numerical result with Ny = 80. Table 1 shows
+                          the L2 -normed errors of the velocity u x (y) and the order of convergence n obtained by the
+                          Richardson extrapolation.
+
+
+
+
+Downloaded from https:/www.cambridge.org/core. University of Florida, on 12 Jan 2017 at 08:51:04, subject to the Cambridge Core terms of use, available at https:/www.cambridge.org/core/terms.
+http://dx.doi.org/10.4208/cicp.211015.040316a
+                312                                                    W. D. Li and L.-S. Luo / Commun. Comput. Phys., 20 (2016), pp. 301-324
+
+
+
+                                                            1
+
+
+
+
+                                                    U/U 0
+
+                                                        0.5
+
+
+
+
+                                                                                              Analytic solution
+                                                                                              Present FVLBM
+
+
+                                                            0
+                                                                -0.5                           0                           0.5
+                                                                                              y/H
+
+
+                Figure 4: Poiseuille flow. Comparison of the numerical result (circles) of the velocity u x (y) obtained by the
+                FV-LBM with Ny = 90 with the analytic formula of Eq. (3.1) (solid line).
+
+
+                    The designed order of convergence for the proposed FV-LBM is 2, and it is indeed ver-
+                ified by the results given in Table 1. It should be pointed out that the traditional LBE
+                with the MRT collision model can yield exact result for the Poiseuille flow. In addition,
+                the stress is also second-order accurate in the traditional LBE. But, clearly, the necessary
+                interpolations and extrapolations in the proposed FV-LBE method affect its accuracy. The
+                symmetry of the discrete velocity set and a uniform Cartesian mesh lead cancellation of
+                some errors in the LBE. The FV-LBE no longer has this advantage because of its unstruc-
+                tured mesh.
+
+                Table 1: Poiseuille flow. The Ny -dependence of the L2 -normed error of the velocity u x (y) and the order of
+                convergence n obtained by the Richardson extrapolation.
+
+                                                                          Ny    L2 -normed error              n
+                                                                          10          2.51 × 10−3             –
+                                                                          20          5.76 × 10−4            2.13
+                                                                          40          1.38 × 10−4            2.05
+                                                                          80         3.855 × 10−5            1.84
+
+
+
+                3.2 Blasius boundary layer over a semi-infinite flat plate
+                The second case we consider is the Blasius boundary layer over a semi-infinite flat plate
+                (cf. [28, 29]). The self-similar solution for the Blasius boundary layer is well known — the
+                thickness of the boundary layer grows as
+
+                                                                                   x                              U∞ x
+                                                                   δ( x) := p             ,        Re( x) :=           ,                                    (3.2)
+                                                                                 Re( x)                            ν
+
+
+
+
+Downloaded from https:/www.cambridge.org/core. University of Florida, on 12 Jan 2017 at 08:51:04, subject to the Cambridge Core terms of use, available at https:/www.cambridge.org/core/terms.
+http://dx.doi.org/10.4208/cicp.211015.040316a
+                          W. D. Li and L.-S. Luo / Commun. Comput. Phys., 20 (2016), pp. 301-324                                                                        313
+
+
+
+
+                                         Figure 5: An illustration of the Blasius laminar boundary layer over a semi-infinite plate.
+
+
+                          where U∞ is constant speed of the free-flow, and x is the distance along the plate, as
+                          illustrated in Fig. 5. The streamwise velocity u x is a function of
+                                                                                                    y
+                                                                                            η :=         .                                                            (3.3)
+                                                                                                   δ( x)
+
+                          The streamwise velocity u x (η ) grows very quickly from zero at the plate (η = 0) to 0.99U∞
+                          at η ≈ 5. Clearly, the flow is highly anisotropic, i.e., u x ≫ uy in downstream when the
+                          boundary layer has developed. In fact, uy ( x, y) has to be rescaled by
+
+                                                                                                     U∞
+                                                                                       V∞ := p                 ,                                                      (3.4)
+                                                                                                     Re( x)
+
+                          that is, the magnitude of the normal velocity uy ( x, y) is weaker than that of the stream-
+                                                                        p
+                          wise velocity u x ( x, y) by about a factor of Re( x).
+                             The Reynolds number of the Blasius is defined as
+
+                                                                                                   U∞ L
+                                                                                           Re =         ,                                                             (3.5)
+                                                                                                    ν
+                          where U∞ is the speed of the far-field free-stream flow and L is the length of the flat plate.
+                          In our simulations, we set the Reynolds number Re = 105 with L = 100.0 and U∞ = 0.1, so
+                          the flow is nearly incompressible.
+                              Fig. 6 sketches the flow domain used in the calculations with the boundary conditions
+                          and the mesh. The domain size is L x × Ly = 122.5 × 50. The origin of the coordinate system
+                          is set at the tip of the flat plate, so ( x, y) ∈ [−22.5, 100.0]×[0, 50]. On the left edge of
+                          the domain, the inflow boundary conditions are specified with the constant velocity U =
+                          (U∞ , 0) and the pressure calculated by interpolation from interior of the flow field. On the
+                          right edge, the outflow boundary conditions are specified with zero gradients conditions.
+                          On the top edge, normally, the far-field boundary conditions should be given. Here, we
+
+
+
+
+Downloaded from https:/www.cambridge.org/core. University of Florida, on 12 Jan 2017 at 08:51:04, subject to the Cambridge Core terms of use, available at https:/www.cambridge.org/core/terms.
+http://dx.doi.org/10.4208/cicp.211015.040316a
+                314                                            W. D. Li and L.-S. Luo / Commun. Comput. Phys., 20 (2016), pp. 301-324
+
+
+
+
+                            Figure 6: The mesh and boundary conditions configuration of the plate boundary layer case.
+
+
+                simply set it as the inflow boundary conditions as the left edge of the domain. On the
+                bottom edge, the no-slip boundary conditions are imposed along the flat plate located at
+                y = 0 and 0 ≤ x ≤ 100, and the symmetric boundary conditions are given in front of the flat
+                plate at y = 0 and −22.5 ≤ x ≤ 0. All the boundary conditions are realized by the ghost cell
+                method when appropriate.
+                    The nonuniform meshes to be used in our simulations are specified by three parame-
+                ters: the minimal grid spacing h0 at the first layer of mesh at the flat plate, the maximum
+                grid spacing hmax , and the the grid spacing stretching factor r. Thus, the grid spacing is
+                stretched geometrically until it reaches the maximum hmax , i.e.,
+
+                                                               h i = h0 r i ,    i ≥ 1, and hi ≤ hmax ,
+
+                then the grid spacing becomes a constant with the spacing of hmax . The value of hmax is
+                set to 1.2 unless otherwise stated. The fine meshes are used near the flat plate in the y
+                direction, and around the tip of the flat plate along the x in both direction. We use five
+                meshes with different mesh parameters h0 , hmax , and r, which are given in Table 2.
+
+                 Table 2: The height of the first layer, h0 /L, and the height growth factor of the meshes for the Blasius flow.
+
+                                                                     Mesh               h0 /L            r
+                                                                     Mesh-1          1.0 × 10−4        1.15
+                                                                     Mesh-2          1.0 × 10−4        1.10
+                                                                     Mesh-3          1.0 × 10−4        1.05
+                                                                     Mesh-4          5.0 × 10−4        1.05
+                                                                     Mesh-5          1.0 × 10−3        1.05
+
+                    Fig. 7 shows the mesh dependence of the numerical results of the normalized veloci-
+                ties u x (η )/U∞ and uy (η )/V∞ at x = 40.0. With x = 40, Re( x) = 4.0 × 104 , thus the normal
+                velocity uy (η ) is about 200 times weaker than the streamwise velocity u x (η ) at the same
+
+
+
+
+Downloaded from https:/www.cambridge.org/core. University of Florida, on 12 Jan 2017 at 08:51:04, subject to the Cambridge Core terms of use, available at https:/www.cambridge.org/core/terms.
+http://dx.doi.org/10.4208/cicp.211015.040316a
+                          W. D. Li and L.-S. Luo / Commun. Comput. Phys., 20 (2016), pp. 301-324                                                                        315
+
+
+
+                                               1
+
+                                                                                                                1
+                                     ux /U ∞
+
+
+
+
+                                                                                                      ux /U ∞
+                                        0.5
+
+                                                                                      Mesh 1                                                           Mesh 1
+                                                                                      Mesh 2                                                           Mesh 2
+                                                                                      Mesh 3                                                           Mesh 3
+                                                                                      Mesh 4                                                           Mesh 4
+                                                                                      Mesh 5                                                           Mesh 5
+                                                                                      Analytic           0.9                                           Analytic
+                                               0
+                                                   0               5                       10                            5                                10
+                                                                       η                                                              η
+
+
+                                               1
+
+
+
+                                                                                                         0.9
+                                     uy /V∞
+
+
+
+
+                                                                                                      uy /V∞
+
+
+
+
+                                        0.5                                                              0.8
+
+                                                                                      Mesh 1                                                           Mesh 1
+                                                                                      Mesh 2                                                           Mesh 2
+                                                                                      Mesh 3                                                           Mesh 3
+                                                                                      Mesh 4             0.7                                           Mesh 4
+                                                                                      Mesh 5                                                           Mesh 5
+                                                                                      Analytic                                                         Analytic
+                                               0
+                                                   0         5                  10                                   5                       10
+                                                                       η                                                              η
+
+
+                          Figure 7: The mesh dependence of the numerical solutions for the Blasius boundary layer. Top row: u x (η )/U∞ ,
+                          0 ≤ η ≤ 11 (left) and 3 ≤ η ≤ 11 (right). Bottom row: u y (η )/V∞ , 0 ≤ η ≤ 14 (left) and 3 ≤ η ≤ 14 (right). x = 40.0,
+                          Re = 105 . The figures right column are used to magnifying differences due to different meshes.
+
+
+                          location. Therefore, accurately calculating uy is far more challenging than accurately cal-
+                          culating u x . First, we note that all the meshes are adequate to capture the boundary
+                          layer near the plate for η < 2. The slopes of both u x (η ) and uy (η ) at η = 0 are accurately
+                          computed with all five meshes, which is important for accurate estimation of the stress
+                          at the plate. Second, both u x (η ) and uy (η ) are computed with about the same accuracy
+                          with the meshes, even though uy (η ) is much weaker than u x (η ) by a factor about 200
+                              √
+                          (= Re). This indicates that the FV-LBE scheme is in fact a second-order scheme and
+                          the meshes are adequate to resolve the boundary layer, thus the numerical dissipation is
+                          well controlled. And third, the discrepancies due to the meshes depend mainly on the
+                          stretching factor r but not much on the first grid spacing h0 , as the relative L2 errors for
+
+
+
+
+Downloaded from https:/www.cambridge.org/core. University of Florida, on 12 Jan 2017 at 08:51:04, subject to the Cambridge Core terms of use, available at https:/www.cambridge.org/core/terms.
+http://dx.doi.org/10.4208/cicp.211015.040316a
+                316                                            W. D. Li and L.-S. Luo / Commun. Comput. Phys., 20 (2016), pp. 301-324
+
+
+
+                            Table 3: The relative L2 errors of u x (η )/U∞ and u y (η )/V∞ at x = 40.0 for the Blasius flow.
+
+                                                    mesh           Error in u x (η )/U∞            Error in uy (η )/V∞
+                                                    Mesh 1             1.50372 × 10−2                  5.30702 × 10−2
+                                                    Mesh 2             7.05944 × 10−3                  3.30806 × 10−2
+                                                    Mesh 3             3.43120 × 10−3                  1.01322 × 10−2
+                                                    Mesh 4             3.42317 × 10−3                  1.08417 × 10−2
+                                                    Mesh 5             3.45917 × 10−3                  9.48680 × 10−3
+
+
+                both u x (η )/U∞ and uy (η )/V∞ in Table 3. The stretching factor r determines the total
+                number of grid points within the boundary layer beyond the first grid spacing. Further-
+                more, the stretching factor r determines the number of grid points in the vicinity near the
+                edge of the boundary layer, where |u′′x (η )| and |u′′y (η )| attain their maxima. In this region,
+                resolution is needed to accurately catch the velocity profiles.
+
+
+                3.3 Steady laminar flow past a circular cylinder in 2D
+                The third case to be considered in this work is the steady laminar flow past a circular
+                cylinder in a two dimensional bounded domain [30]. In the previous two cases, quadri-
+                lateral structured meshes have been used. To demonstrate the mesh transparency of
+                the proposed FV-LBE scheme, hybrid unstructured meshes combining both quadrilateral
+                and triangular elements will be used in this case. Because of the symmetry in transverse
+                direction of the flow, as illustrated in Fig. 8, the computational domain only uses the
+                upper half of the flow domain. The Reynolds number for the flow is defined as:
+
+                                                                                         U∞ D
+                                                                                 Re =         ,                                                             (3.6)
+                                                                                          ν
+                where U∞ is the free flow speed and D = 2R, R is the radius of the cylinder. Only the
+                steady flows with Re = 10, 20, and 40 are considered here.
+
+
+
+
+                                   Figure 8: Schematic of the computational domain for the flow past a 2D cylinder.
+
+
+
+
+Downloaded from https:/www.cambridge.org/core. University of Florida, on 12 Jan 2017 at 08:51:04, subject to the Cambridge Core terms of use, available at https:/www.cambridge.org/core/terms.
+http://dx.doi.org/10.4208/cicp.211015.040316a
+                          W. D. Li and L.-S. Luo / Commun. Comput. Phys., 20 (2016), pp. 301-324                                                                        317
+
+
+                              The size of the computational domain is L × H = 120R × 40R. On the top and left
+                          edges of the computational domain, the constant pressure p∞ and velocity U =(U∞ , 0) are
+                          imposed through the equilibrium distribution functions. On the left and top edges, the
+                          inlet boundary conditions are used. At the bottom edge, the no-slip boundary conditions
+                          are imposed on the surface of the cylinder, and the symmetric boundary conditions are
+                          imposed on the two straight segments. All the boundary conditions are realized by the
+                          ghost cell method.
+                              Fig. 9 depicts a hybrid mesh used in the calculation. To accurately capture the details
+                          of the flow separation near the cylinder, the mesh consists of a body-fitted structured O-
+                          mesh of quadrilateral cells, which is fine enough to resolve the boundary layer about the
+                          cylinder, and a unstructured mesh of nearly isotropic triangle cells outside the region of
+                          the boundary layer, as shown in Fig. 9. Immediately outside of the O-mesh of quadri-
+                          lateral cells about the cylinder, an unstructured fine mesh of triangular cells covers the
+                          flow domain of (5R + 25R)× 12R, i.e., 5R before and 25R behind the cylinder center in the
+                          streamwise direction x and 12R in spanwise direction y, excluding the area of O-mesh.
+                          This fine mesh ensures that the flow field about the rear stagnation point and the en-
+                          tire recirculation zone is well resolved. There are Nθ grid points uniformly placed along
+                          the circumference of the semi-circle, i.e., the angular resolution around the cylinder is
+                          δθ = π/Nθ . We use a number of meshes with different values of δθ, the grid size of the first
+                          layer along the radial direction, h0 , and the grid stretching factor, r, for the body-fitted
+                          mesh around the cylinder in our calculations. The values of δθ, h0 and r for the meshes
+                          are given in Table 4. Mesh-1, Mesh-2, and Mesh-3 vary the value of stretching factor, r,
+                          whereas Mesh-1 and Mesh-4 vary the size of the first grid, h0 , and Mesh-1, Mesh-5 and
+                          Mesh-6 vary the angular resolution δθ. These meshes allow us to conduct a comprehen-
+
+
+
+
+                                      Figure 9: The configuration of the hybrid unstructured mesh for the flow past a 2D cylinder.
+
+
+
+
+Downloaded from https:/www.cambridge.org/core. University of Florida, on 12 Jan 2017 at 08:51:04, subject to the Cambridge Core terms of use, available at https:/www.cambridge.org/core/terms.
+http://dx.doi.org/10.4208/cicp.211015.040316a
+                318                                            W. D. Li and L.-S. Luo / Commun. Comput. Phys., 20 (2016), pp. 301-324
+
+
+
+                Table 4: The height of the first layer, h0 /D, the grid stretching factor, r, for the body-fitted meshes about the
+                cylinder, and the total number of cells, Ncell .
+
+                                                          Mesh             h0 /D             δθ         r        Ncell
+                                                          Mesh-1         1.0 × 10−5         1.8◦      1.10      33 382
+                                                          Mesh-2         1.0 × 10−5         1.8◦      1.15      16 984
+                                                          Mesh-3         1.0 × 10−5         1.8◦      1.20       9 880
+                                                          Mesh-4         5.0 × 10−5         1.8◦      1.10      30 392
+                                                          Mesh-5         1.0 × 10−5         0.9◦      1.10      54 174
+                                                          Mesh-6         1.0 × 10−5         0.6◦      1.10      58 644
+
+
+                sive convergence study and to detect the effects of h0 , δθ and r on the interested quantities
+                to be computed.
+                    The quantities to be computed are the drag coefficient Cd , the separation length Ls ,
+                and the separation angle θs for the stationary symmetric recirculation eddies behind the
+                cylinder, as illustrated in Fig. 10. Fig. 11 depicts the streamlines around the cylinder for
+                Re = 10, 20 and 40, obtained with Mesh-6 described in Table 4.
+
+
+
+
+                      Figure 10: Schematic of the flow past a cylinder with the separation eddies of length Ls and angle θs .
+
+                    The drag coefficient Cd is computed as follows. The force F on the cylinder wall due
+                to the flow field is given by:      I
+                                                                       F=           (− pI + τ)· n̂dA,                                                       (3.7)
+                                                                               ∂Ω
+                where p, τ and n̂ denote the pressure, the shear stress tensor and the unit vector out-
+                normal to the cylinder circumference A, respectively. In the LBE, p = ρ/3. The shear force
+                tangent to the boundary surface is given by:
+
+                                                                τ · n̂ = µ∂n̂ [ u −(u · n̂) n̂] := µ∂n̂ ut̂ .                                               (3.8)
+
+                Therefore, the drag coefficient Cd is given by:
+                                                                                       x̂ · F
+                                                                           Cd = 1               ,                                                           (3.9)
+                                                                                              2
+                                                                                    2 ρ ∞ U∞
+
+
+
+
+Downloaded from https:/www.cambridge.org/core. University of Florida, on 12 Jan 2017 at 08:51:04, subject to the Cambridge Core terms of use, available at https:/www.cambridge.org/core/terms.
+http://dx.doi.org/10.4208/cicp.211015.040316a
+                          W. D. Li and L.-S. Luo / Commun. Comput. Phys., 20 (2016), pp. 301-324                                                                        319
+
+
+                                                      0.015
+
+
+
+
+                                                       0.01
+
+
+
+
+                                                      0.005
+
+
+
+
+                                                         0
+                                                         -0.01                 0              0.01              0.02               0.03
+
+
+
+                                                      0.015
+
+
+
+
+                                                       0.01
+
+
+
+
+                                                      0.005
+
+
+
+
+                                                         0
+                                                         -0.01                 0              0.01              0.02               0.03
+
+
+
+                                                      0.015
+
+
+
+
+                                                       0.01
+
+
+
+
+                                                      0.005
+
+
+
+
+                                                         0
+                                                         -0.01                 0              0.01              0.02               0.03
+
+
+
+
+                                        Figure 11: Streamlines of the 2D cylinder flow. From top to bottom: Re = 10, 20 and 40.
+
+
+                          where x̂ is the unit vector along the x-axis, i.e., the streamwise direction of the flow. Be-
+                          cause m(0) is known at the boundary (cf. Section 2.4, the pressure p is readily available
+                          at the boundary. The velocity field u is known at the boundary because of the boundary
+                          conditions, thus the shear force τ · n̂ in Eq. (3.8) is approximated by:
+
+                                                                              [u −(u · n̂) n̂]( xi )−[uw −(uw · n̂ ) n̂]( xw )
+                                                                 τ · n̂ ≈ µ                                                    ,                                    (3.10)
+                                                                                                 k x i − xw k
+                          where xi is the position of a cell centroid next to boundary (cf. Fig. 2), and xw is a point
+                          on the boundary such that ( xi − xw ) is parallel to the unit vector n̂ out normal to the
+                          boundary. The separation length Ls and the separation angle θs are obtained by using the
+                          CFD visualization and analysis software Tecplot R .
+                              The results for the drag coefficient Cd , the normalized separation length Ls /R, and
+                          the separation angle θs are tabulated in Table 4. Among the computed quantities, the
+                          separation length Ls /R appears to be most sensitive to the mesh resolution quantita-
+                          tively and clearly exhibits a monotonic dependence on the mesh resolution. As the mesh
+                          becomes finer with decreasing h, Ls /R increases monotonically (cf. the results obtained
+                          with Mesh-3, Mesh-2, and Mesh-1 in Table 4). When the grid size of the first layer de-
+
+
+
+
+Downloaded from https:/www.cambridge.org/core. University of Florida, on 12 Jan 2017 at 08:51:04, subject to the Cambridge Core terms of use, available at https:/www.cambridge.org/core/terms.
+http://dx.doi.org/10.4208/cicp.211015.040316a
+                320                                            W. D. Li and L.-S. Luo / Commun. Comput. Phys., 20 (2016), pp. 301-324
+
+
+                creases, h, Ls /R also increases (cf. the results obtained with Mesh-4 and Mesh-1 in Ta-
+                ble 4). We observe that the results obtained with two largest meshes with fines grid sizes,
+                i.e., Mesh-1 and Mesh-2, agree with each other for at least two significant digits. The
+                results in Table 4 indicate that the results obtained with the largest mesh and finest grid
+                size, i.e., Mesh-1, may be accurate for two or three significant digits.
+                     We now compare our results with some existing ones [31, 32] with convergence stud-
+                ies. We note that, while the steady flow past a cylinder in 2D is a well studied case (cf.,
+                e.g., [30]), mesh-independent results are rarely available in literature. The results [31, 32]
+                chosen here have been obtained with convergence check. Before we compare our results
+                with the existing ones [31, 32], some discussion on the meshes used in the previous stud-
+                ies is in order. In the work by He and Doolen [31], the angular resolution δθ is uniform
+                along the cylinder circumference, whereas in the work of Hejranfar and Ezzatneshan [32],
+                the angular resolution is non-uniform with 0.7668◦ . δθ . 6.744◦ , and the finest resolution
+                is about the rear stagnation point of the cylinder. Another detail to be noted is that the
+                first grid spacing in these meshes are not adequate to resolve the boundary layer with
+                the given Reynolds number Re. To properly resolve the boundary layer, it is a common
+                practice to use h0 ∼ 10−5 D and to have sufficient grid points within the boundary layer.
+                However, the values of h0 used in these previous studies [31, 32] are far less than ade-
+                quate, as shown in our results given in Table 5. Also, with a constant stretching factor r,
+                these meshes become rather coarse about the location where the separation length Ls is
+                measured. These factors all affect the accuracy of the results. The finest meshes used in
+                this study ensure that the boundary layer is adequately resolved, the angular resolutions
+                are sufficiently fine, and the recirculation zone is adequately resolved, as shown by the
+                results given in Table 5.
+                     The results of He and Doolen [31] were obtained with the interpolation-supplemented
+                LBE (IS-LBE) [33, 34]. The more recent results of Hejranfar and Ezzatneshan [32] were
+                obtained with a high-order compact finite-difference LBE (FD-LBE). These results [31,
+                32] were obtained with grid-convergence verification. The values of Cd , Ls /R, and θs
+                obtained by IS-LBE [31], FD-LBE [32], and the proposed FV-LBE are tabulated in Table 6,
+                along with the values of the parameters pertaining to the meshes used, including the
+                finest grid size along the radial direction, h0 , the finest angular resolution, δθ, the total
+                number of grid points Ncell = Nr × Nθ or cells used in the calculations, and the normalized
+                diameter of the flow domain D∞ /D for the O-meshes used in the previous studies [31,32].
+                     The differences among the results shown in Table 6 are apparent. Some dissection
+                and discussion regarding certain critical details in the numerics of the previous stud-
+                ies [31, 32] are in order. First of all, the flow domain in all these previous studies [31, 32]
+                are a punched disk, thus the meshes are structured body-fitted O-meshes with polar co-
+                ordinates (r, θ ), while the flow domain in the present work is a rectangle with a hybrid
+                of a structured body-fitted O-mesh of quadrilateral elements about the cylinder and a
+                unstructured mesh of triangular elements (cf. Fig. 8). There is no non-uniform local mesh
+                refinement in the structured O-meshes used in the previous studies [31, 32], while in the
+                unstructured meshes used in this study, non-uniform local mesh refinements are used to
+
+
+
+
+Downloaded from https:/www.cambridge.org/core. University of Florida, on 12 Jan 2017 at 08:51:04, subject to the Cambridge Core terms of use, available at https:/www.cambridge.org/core/terms.
+http://dx.doi.org/10.4208/cicp.211015.040316a
+                          W. D. Li and L.-S. Luo / Commun. Comput. Phys., 20 (2016), pp. 301-324                                                                        321
+
+
+
+                          Table 5: Flow past a cylinder in 2D at Re = 10, 20, and 40. The mesh dependence of the drag coefficient Cd ,
+                          the normalized separation length Ls /R, and the separation angle θs . The results with Mesh-1, which has the
+                          finest grid size and the largest number of cells, are used as the reference to compute the relative differences
+                          given in parenthesis.
+
+                                             Re      Mesh            Cd          (∆Cd )         Ls /R        (∆( Ls /R))           θs          (∆θs )
+                                                     Mesh-1         3.037       (1.13%)         0.6217       (6.50%)             31.26◦       (1.82%)
+                                                     Mesh-2         3.036       (1.10%)         0.6075       (8.63%)             31.20◦       (2.01%)
+                                                     Mesh-3         3.041       (1.27%)         0.5791       (12.9%)             31.23◦       (1.92%)
+                                             10
+                                                     Mesh-4         3.140       (4.56%)         0.5956       (10.4%)             30.86◦       (3.08%)
+                                                     Mesh-5         3.011       (0.27%)         0.6654       (0.08%)             31.82◦       (0.06%)
+                                                     Mesh-6         3.003          —            0.6649           —               31.84◦          —
+                                                     Mesh-1         2.132       (0.66%)         1.9504       (4.28%)             44.43◦       (0.60%)
+                                                     Mesh-2         2.128       (0.47%)         1.9005       (6.73%)             44.45◦       (0.56%)
+                                                     Mesh-3         2.132       (0.66%)         1.7982       (11.8%)             44.52◦       (0.40%)
+                                             20
+                                                     Mesh-4         2.168       (2.36%)         1.9184       (5.85%)             44.22◦       (1.07%)
+                                                     Mesh-5         2.124       (0.28%)         2.0332       (0.22%)             44.60◦       (0.22%)
+                                                     Mesh-6         2.118          —            2.0376           —               44.70◦          —
+                                                     Mesh-1         1.573       (0.31%)         4.5092       (4.11%)             54.37◦       (0.51%)
+                                                     Mesh-2         1.567       (0.06%)         4.4960       (4.40%)             54.43◦       (0.40%)
+                                                     Mesh-3         1.570       (0.13%)         4.1289       (12.2%)             54.13◦       (0.95%)
+                                             40
+                                                     Mesh-4         1.585       (1.08%)         4.4809       (4.72%)             54.41◦       (0.44%)
+                                                     Mesh-5         1.569       (0.06%)         4.7121       (0.20%)             54.55◦       (0.18%)
+                                                     Mesh-6         1.568          —            4.7027           —               54.65◦          —
+
+
+                          Table 6: Flow past a cylinder in 2D with Re = 10, 20, and 40. The drag coefficient Cd , the normalized separation
+                          length Ls /R, the separation angle θs obtained with IS-LBE [31], FD-LBE [32], and the proposed FV-LBE. The
+                          values of the finest grid spacing in radial direction, h0 , the finest angular resolution δθ, the number of grid
+                          nodes Ncell = Nr × Nθ for the structured O-meshes used in the previous studies [31, 32], or the number of cells
+                          used in the present study, and the flow domain size in terms of D∞ /D or L x /D × L y /D are also given. Note
+                          that in FV-LBE, Ncell is for one half of the flow domain.
+
+                                 Re        Method               Cd          Ls /R          θs             h0                δθ            Ncell            D∞ /D
+                                         IS-LBE [31]           3.170       0.474         26.89◦           0.0378             1.5◦       181 × 241           111.3
+                                 10      FD-LBE [32]           2.810       0.4891        29.83◦           0.0274         0.7668◦         51 × 101             60.0
+                                         FV-LBE                3.003       0.6649        31.84◦       1.0 × 10−5             0.6◦          58 644         120 × 80
+                                         IS-LBE [31]           2.152       1.842         42.96◦           0.0378             1.5◦       181 × 241           111.3
+                                 20      FD-LBE [32]           2.021       1.8480        43.58◦           0.0274         0.7668◦         51 × 101             60.0
+                                         FV-LBE                2.118       2.0376        44.70◦       1.0 × 10−5             0.6◦          58 644         120 × 80
+                                         IS-LBE [31]           1.499       4.490         52.84◦           0.0212             1.2◦       226 × 301           111.3
+                                 40      FD-LBE [32]           1.515       4.510         51.86◦           0.0274         0.7668◦         51 × 101             60.0
+                                         FV-LBE                1.568       4.7027        54.65◦       1.0 × 10−5             0.6◦          58 644         120 × 80
+
+
+
+
+Downloaded from https:/www.cambridge.org/core. University of Florida, on 12 Jan 2017 at 08:51:04, subject to the Cambridge Core terms of use, available at https:/www.cambridge.org/core/terms.
+http://dx.doi.org/10.4208/cicp.211015.040316a
+                322                                            W. D. Li and L.-S. Luo / Commun. Comput. Phys., 20 (2016), pp. 301-324
+
+
+                resolve both the boundary layer around the cylinder and the recirculation zone behind
+                the cylinder. Secondly, the finest angular resolution used in the present study is finer that
+                the ones used in the other studies [31, 32], and the total number of cells is also far greater
+                than those in the previous studies [31,32]. And thirdly and most crucially, the sizes of the
+                finest grid spacing, h0 , used in the recent studies [31, 32] are much larger than what are
+                used in the present work by at least three orders of magnitudes (between ca. 2,120 and
+                3,780). A rough estimate shows that the meshes used in these previous studies [31, 32]
+                cannot adequately resolve the boundary layer with the given Reynolds numbers. In ad-
+                dition, our meshes ensure that the entire separation region is adequately resolved with
+                fine enough resolutions, as shown in Fig. 9, and such is not the case in the recent stud-
+                ies [31, 32]. Our results in Table 5 clearly show that the values of Cd , θs , and particularly
+                Ls /R, depend on the resolution of mesh, and our results do show convergence in terms
+                of both h0 and δθ. In summary, the evidence indicates that the finest mesh we used can
+                resolve the flow adequately and the results obtained with the finest mesh are accurate for
+                at least two or three digits.
+
+
+                4 Conclusion
+                In this work, a genuine finite volume method is developed to discrete the lattice Boltz-
+                mann equation for the nearly incompressible flows with complex boundaries. The accu-
+                racy of the proposed FV-LBE is of second-order convergence. The proposed FV-LBE is
+                grid-transparent, thus it independent of the element type and can be easily implemented
+                on arbitrary unstructured meshes, and it naturally includes the flexibility of local grid
+                refinement. In addition, the implicit treatment of the collision term in the proposed FV-
+                LBE greatly enhances the numerical stability hence the efficiency. These features greatly
+                enhance the ability of the proposed FV-LBE to treat complex geometries encountered in
+                realistic engineering applications.
+                    The proposed FV-LBE has been validated with three cases of steady flows in two-
+                dimensions: (a) the Poiseuille flow driven by a constant body force, (b) the Blasius bound-
+                ary layer over a flat plate, and (c) laminar flow past a cylinder in a bounded domain. The
+                Poiseuille flow is used to verify the order of convergence of the proposal FV-LBE; and the
+                proposed FV-LBE is indeed of second-order convergence. The Blasius boundary layer
+                is used to demonstrate the advantages of using highly anisotropic non-uniform meshes.
+                The proposed FV-LBE is capable to accurately capture the transverse component of the
+                velocity field, which is difficult to achieve without adequate resolution within the bound-
+                ary layer region. The flow past a cylinder in 2D is used to show the advantages of grid
+                transparency and flexible arbitrary and non-uniform local mesh refinement implemented
+                in the proposed FV-LBE. The meshes used in this case are hybrid ones with both quadri-
+                lateral and triangular cells, and can easily couple structured and unstructured meshes
+                together. The tests demonstrate the potential of the proposed FV-LBE to simulate viscous
+                flows with complex geometries.
+
+
+
+
+Downloaded from https:/www.cambridge.org/core. University of Florida, on 12 Jan 2017 at 08:51:04, subject to the Cambridge Core terms of use, available at https:/www.cambridge.org/core/terms.
+http://dx.doi.org/10.4208/cicp.211015.040316a
+                          W. D. Li and L.-S. Luo / Commun. Comput. Phys., 20 (2016), pp. 301-324                                                                        323
+
+
+                              The proposed FV-LBE can be extended to three dimensions (3D) easily and this is
+                          also an inherent advantage of kinetic methods due to the linearity of the advection term.
+                          Development of 3D FV-LBE will be considered in our future work. In addition, fully
+                          implicit and high-order techniques will be considered in the future development of the
+                          proposed FV-LBE.
+
+
+                          Acknowledgments
+                          The authors are grateful to Professor Manfred Krafczyk of The Institute for Computa-
+                          tional Modeling in Civil Engineering (iRMB), Technische Universität Braunschweig, Ger-
+                          many, for providing computational resources with which part of this work is carried out.
+                          The authors would like to thank an anonymous referee for his/her thoughtful comments
+                          which help us improve the manuscript. The support from the Richard F. Berry Jr. En-
+                          dowment at Old Dominion University is also gratefully acknowledged.
+
+
+                          References
+
+                            [1] X. He and L.-S. Luo. A priori derivation of the lattice Boltzmann equation. Phys. Rev. E,
+                                55(6):R6333–R6336, 1997.
+                            [2] X. He and L.-S. Luo. Theory of lattice Boltzmann method: From the Boltzmann equation to
+                                the lattice Boltzmann equation. Phys. Rev. E, 56(6):6811–6817, 1997.
+                            [3] D.Z. Yu, R. Mei, L.-S. Luo, and W. Shyy. Viscous flow computations with the method of
+                                lattice Boltzmann equation. Prog. Aerospace Sci., 39(5):329–367, 2003.
+                            [4] L.-S. Luo, M. Krafczyk, and W. Shyy. Lattice Boltzmann method for computational fluid dy-
+                                namics. In R. Blockley and W. Shyy, editors, Encyclopedia of Arospace Engineering, chapter 56,
+                                pages 651–660. Wiley, New York, 2010.
+                            [5] W.-A. Yong and L.-S. Luo. Accuracy of the viscous stress in the lattice Boltzmann equation
+                                with simple boundary conditions. Phys. Rev. E, 86:065701R, 2012.
+                            [6] P. J. Dellar. An interpretation and derivation of the lattice Boltzmann method using Strang
+                                splitting. Comput. Math. Appl., 65:129–141, 2013.
+                            [7] P. J. Dellar and L.-S. Luo. Lattice Boltzmann methods. In B. Engquist, editor, Encyclopedia of
+                                Applied and Computational Mathematics, pages 774–778. Springer, Berlin, 2015.
+                            [8] F. Nannelli and S. Succi. The lattice Boltzmann-equation on irregular lattices. J. Stat. Phys.,
+                                68(3-4):401–407, 1992.
+                            [9] G.W. Peng, H.W. Xi, C. Duncan, and S.H. Chou. Lattice Boltzmann method on irregular
+                                meshes. Phys. Rev. E, 58(4):R4124–R4127, 1998.
+                           [10] G.W. Peng, H.W. Xi, C. Duncan, and S.H. Chou. Finite volume scheme for the lattice Boltz-
+                                mann method on unstructured meshes. Phys. Rev. E, 59(4):4675–4682, 1999.
+                           [11] H.W. Xi, G.W. Peng, and S.H. Chou. Finite-volume lattice Boltzmann method. Phys. Rev. E,
+                                59(5B):6202–6205, 1999.
+                           [12] H.W. Xi, G.W. Peng, and S.H. Chou. Finite-volume lattice Boltzmann schemes in two and
+                                three dimensions. Phys. Rev. E, 60(3):3380–3388, 1999.
+                           [13] M. Stiebler, J. Tölke, and M. Krafczyk. An upwind discretization scheme for the finite vol-
+                                ume lattice Boltzmann method. Comput. Fluids, 35(8-9):814–819, 2006.
+
+
+
+
+Downloaded from https:/www.cambridge.org/core. University of Florida, on 12 Jan 2017 at 08:51:04, subject to the Cambridge Core terms of use, available at https:/www.cambridge.org/core/terms.
+http://dx.doi.org/10.4208/cicp.211015.040316a
+                324                                            W. D. Li and L.-S. Luo / Commun. Comput. Phys., 20 (2016), pp. 301-324
+
+
+                 [14] F. Dubois and P. Lallemand. On lattice Boltzmann scheme, finite volumes and boundary
+                      conditions. Prog. Comput. Fluid Dym., 8(1-4):11–24, 2008.
+                 [15] S. Ubertini and S. Succi. A generalised lattice Boltzmann equation on unstructured grids.
+                      Commun. Comput. Phys., 3(2):342–356, FEB 2008.
+                 [16] D. V. Patil and K. N. Lakshmisha. Finite volume TVD formulation of lattice Boltzmann
+                      simulation on unstructured mesh. J. Comput. Phys., 228(14):5262–5279, 2009.
+                 [17] S. E. Razavi, J. Ghasemi, and A. Farzadi. Flux modelling in the finite-volume lattice Boltz-
+                      mann approach. Int. J. Comput. Fluid Dyn., 23(1):69–77, 2009.
+                 [18] D. J. Mavriplis. Unstructured grid techniques. Annu. Rev. Fluid Mech., 29:473–514, 1997.
+                 [19] J. Blazek. Computational Fluid Dynamics: Principles and Applications. Elsevier, New York, 2nd
+                      edition, 2005.
+                 [20] W.D. Li, M. Kaneda, and K. Suga. A stable, low diffusion up-wind scheme for unstruc-
+                      tured finite volume lattice Boltzmann method. In Proceedings of The 4th Asian Symposium on
+                      Computational Heat Transfer and Fluid Flow, 2013. June 3–6, 2013, Hong Kong, China.
+                 [21] D. d’Humières. Generalized lattice-Boltzmann equations. In B. D. Shizgal and D. P. Weave,
+                      editors, Rarefied Gas Dynamics: Theory and Simulations, volume 159 of Prog. Astronaut. Aero-
+                      naut., pages 450–458, Washington, D.C., 1992. AIAA.
+                 [22] Z.L. Guo, C.G. Zheng, and B.C. Shi. An extrapolation method for boundary conditions in
+                      lattice Boltzmann method. Phys. Fluids, 14(6):2007–2010, 2002.
+                 [23] I. Ginzbourg. Boundary Conditions Problems in Lattice Gas Methods for Single and Multiple
+                      Phases. PhD thesis, Universite Paris VI, France, 1994.
+                 [24] I. Ginzbourg and P. M. Adler. Boundary flow condition analysis for the three-dimensional
+                      lattice Boltzmann model. J. Phys. II, 4(2):191–214, 1994.
+                 [25] I. Ginzburg and D. d’Humières. Multireflection boundary conditions for lattice Boltzmann
+                      models. Phys. Rev. E, 68(6):066614, 2003.
+                 [26] C. Pan, L.-S. Luo, and C.T. Miller. An evaluation of lattice Boltzmann schemes for porous
+                      medium flow simulation. Comput. Fluids, 35(8/9):898–909, 2006.
+                 [27] L.-S. Luo, W. Liao, X. Chen, Y. Peng, and W. Zhang. Numerics of the lattice Boltzmann
+                      method: Effects of collision models on the lattice Boltzmann simulations. Phys. Rev. E,
+                      83(5):056710, 2011.
+                 [28] H. Schlichting and K. Gersten. Boundary Layer Theory. Springer, Berlin, 8th revised and
+                      enlarged edition, 2000.
+                 [29] F. M. White. Viscous Fluid Flow. McGraw-Hill Higher Education, New York, 3rd edition,
+                      2006.
+                 [30] M. M. Zdravkovich. Flow Around Circular Cylinders: Volume I: Fundamentals. Oxford Univer-
+                      sity Press, Oxford, 1997.
+                 [31] X. He and G. D. Doolen. Lattice Boltzmann method on curvilinear coordinates systems:
+                      Flow around a circular cylinder. J. Comput. Phys., 134:306–315, 1997.
+                 [32] K. Hejranfar and E. Ezzatneshan. Implementation of a high-order compact finite-difference
+                      lattice Boltzmann method in generalized curvilinear coordinates. J. Comput. Phys., 267:28–49,
+                      2014.
+                 [33] X. He, L.-S. Luo, and M. Dembo. Some progress in lattice Boltzmann method: Part I. Nonuni-
+                      form mesh grids. J. Comput. Phys., 129(2):357–363, 1996.
+                 [34] X. He, L.-S. Luo, and M. Dembo. Some progress in lattice Boltzmann method: Enhancement
+                      of Reynolds number in simulations. Physica A, 239(1–3):276–285, 1997.
+
+
+
+
+Downloaded from https:/www.cambridge.org/core. University of Florida, on 12 Jan 2017 at 08:51:04, subject to the Cambridge Core terms of use, available at https:/www.cambridge.org/core/terms.
+http://dx.doi.org/10.4208/cicp.211015.040316a
+

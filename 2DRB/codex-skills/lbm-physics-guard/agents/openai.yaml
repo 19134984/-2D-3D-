@@ -1,0 +1,7 @@
+interface:
+  display_name: "LBM Physics Guard"
+  short_description: "Check LBM physics consistency after solver edits."
+  default_prompt: "Use $lbm-physics-guard to review this LBM change for physical or numerical consistency."
+
+policy:
+  allow_implicit_invocation: true

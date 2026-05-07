@@ -1,0 +1,1459 @@
+                                                Journal of Computational Physics 228 (2009) 6479–6495
+
+
+
+                                                    Contents lists available at ScienceDirect
+
+
+                                        Journal of Computational Physics
+                                        journal homepage: www.elsevier.com/locate/jcp
+
+
+
+
+Optimal preconditioning of lattice Boltzmann methods
+Salvador Izquierdo, Norberto Fueyo *
+Fluid Mechanics Group (University of Zaragoza) and LITEC (CSIC), María de Luna 3, 50018 Zaragoza, Spain
+
+
+
+a r t i c l e        i n f o                        a b s t r a c t
+
+Article history:                                    A preconditioning technique to accelerate the simulation of steady-state problems using
+Received 20 January 2009                            the single-relaxation-time (SRT) lattice Boltzmann (LB) method was ﬁrst proposed by
+Received in revised form 19 May 2009                Guo et al. [Z. Guo, T. Zhao, Y. Shi, Preconditioned lattice-Boltzmann method for steady
+Accepted 27 May 2009
+                                                    ﬂows, Phys. Rev. E 70 (2004) 066706-1]. The key idea in this preconditioner is to modify
+Available online 6 June 2009
+                                                    the equilibrium distribution function in such a way that, by means of a Chapman–Enskog
+                                                    expansion, a time-derivative preconditioner of the Navier–Stokes (NS) equations is
+                                                    obtained. In the present contribution, the optimal values for the free parameter c of this
+Keywords:
+Lattice Boltzmann
+                                                    preconditioner are searched both numerically and theoretically; the later with the aid of
+Multi-relaxation-times                              linear-stability analysis and with the condition number of the system of NS equations.
+Preconditioning                                     The inﬂuence of the collision operator, single- versus multiple-relaxation-times (MRT), is
+Linear-stability analysis                           also studied. Three steady-state laminar test cases are used for validation, namely: the
+Acceleration of convergence                         two-dimensional lid-driven cavity, a two-dimensional microchannel and the three-dimen-
+Steady state                                        sional backward-facing step. Finally, guidelines are suggested for an a priori deﬁnition of
+Microﬂow                                            optimal preconditioning parameters as a function of the Reynolds and Mach numbers.
+Smoother
+                                                    The new optimally preconditioned MRT method derived is shown to improve, simulta-
+                                                    neously, the rate of convergence, the stability and the accuracy of the lattice Boltzmann
+                                                    simulations, when compared to the non-preconditioned methods and to the optimally pre-
+                                                    conditioned SRT one. Additionally, direct time-derivative preconditioning of the LB equa-
+                                                    tion is also studied.
+                                                                                                       Ó 2009 Elsevier Inc. All rights reserved.
+
+
+
+
+1. Introduction
+
+    Lattice Boltzmann (LB) methods [1–5] encompass those schemes developed to solve the Boltzmann equation restricted to
+a ﬁnite (and minimal) number of microscopic velocities which fulﬁll some lattice-symmetry properties, preserving spatial
+invariance up to a speciﬁed order and allowing the conservation of some deﬁned macroscopic moments (e.g. mass and
+momentum) [6,7]. The standard lattice Boltzmann method [8] is an explicit-time-step solver for isothermal compressible
+ﬂows within the continuum and incompressible limit. It splits each temporal step in a propagation step, which accounts
+for advection, and in a collision step, to represent inter-particle interactions.
+    Due to the poor computational performance of the standard explicit collision–propagation algorithm for steady-state
+computations, many different approaches to accelerate lattice Boltzmann simulations have been described in the literature.
+To provide an overview of these techniques, ﬁrst the methods to solve the discrete Boltzmann equation (DBE) are divided in
+lattice and non-lattice methods. Within lattice methods, only those based on the explicit collision–propagation algorithm
+(which is the approach used in this paper) are considered. The approaches for the acceleration of this scheme may be clas-
+siﬁed into three groups, viz.: (i) body force approaches, ﬁrst proposed in [9], which apply a body force at each lattice node,
+proportional to the temporal variation of momentum, to accelerate the convergence to the steady state; (ii) preconditioning
+
+ * Corresponding author. Tel.: +34 976762153; fax: +34 976761882.
+   E-mail addresses: Salvador.Izquierdo@unizar.es (S. Izquierdo), Norberto.Fueyo@unizar.es (N. Fueyo).
+
+0021-9991/$ - see front matter Ó 2009 Elsevier Inc. All rights reserved.
+doi:10.1016/j.jcp.2009.05.040
+6480                            S. Izquierdo, N. Fueyo / Journal of Computational Physics 228 (2009) 6479–6495
+
+
+of the recovered Navier–Stokes equations [10], relating the preconditioning techniques applied in Computational Fluid
+Dynamics to lattice Boltzmann methods; and (iii) grid-based techniques, such as multi-block [11,12], grid reﬁnement [13]
+or multigrid [14,15], among others, which exploit different concepts related to the grid construction and resolution to reduce
+the time and memory usage needed for a speciﬁc simulation. Notice here that these techniques are conditioned by the
+space–time coupling existing in lattice Boltzmann methods.
+    A method for the acceleration of lattice Boltzmann steady-state computations should have the following desirable prop-
+erties: (a) ideal acceleration ratio, which implies a linear relation between acceleration and resolution; (b) generalized for-
+mulation, so that it can be applied to all ﬂow conditions and to any lattice Boltzmann method; (c) preservation of the
+collision–propagation algorithm, which confers some of the most appealing properties to the LB approach for ﬂuid ﬂow sim-
+ulations (e.g. local computation of the collision); (d) simplicity in its implementation, because among two techniques with
+similar properties the simplest one will be preferentially adopted; and (e) ﬂexibility to be combined with other acceleration
+or stabilization techniques, or to be ported to variable time-step and/or non-lattice schemes.
+    Existing acceleration techniques for the collision–propagation lattice Boltzmann scheme do not fulﬁll every one of these
+ideal conditions. Body force approaches present some problems for their generalization to recirculating or to complex-ﬂow
+conﬁgurations; they also provide acceleration ratios which are far from the ideal ones. Grid-related techniques are based on
+quite different principles. For example, multi-block and grid-reﬁnement methods save time by adapting the resolution of the
+grid only where it is necessary, their acceleration rate depends on the ﬂow conﬁguration, and a trade-off between computing
+time and accuracy can be reached. Multigrid techniques applied to lattice Boltzmann are promising but, as it is the case in
+traditional CFD techniques, problems in the prolongation and restriction steps near complex walls have not yet been fully
+addressed. Finally, preconditioning emerges as a well balanced approach to fulﬁll most of the ideal properties, its major
+drawback being the lack of knowledge about its actual stability limits and about the acceleration potential.
+    Preconditioning is deﬁned, in a general sense, as the change, or conditioning, of the eigenvalues of a system of equa-
+tions in order to obtain an improvement in its behavior. Therefore, preconditioning can adopt different meanings depend-
+ing on the system considered or on the improvement desired. In the case of lattice Boltzmann simulations of ﬂuid ﬂow, a
+deﬁnition of preconditioning is needed to avoid ambiguity. Indeed, three different cases of preconditioning are analyzed in
+this work: (i) time-derivative preconditioning of Navier–Stokes equations for ﬂuid ﬂow acceleration and its correct asymp-
+totic recovering of the incompressible solution; this is the classical application in CFD, and is applied in lattice Boltzmann
+methods through a modiﬁcation of the equilibrium distribution function; (ii) time-derivative preconditioning of the lattice
+Boltzmann equation, which is compared in this work to under-relaxed schemes; and (iii) the multi-relaxation-times col-
+lision operator, which can be seen as a preconditioning of the collision operator in order to improve the stability of the
+system.
+    The use of time-derivative preconditioners in CFD was initially applied to compressible non-viscous ﬂows [16]; the works
+by Turkel [17] and by Choi and Merkle [18] extended its application to viscous-ﬂow solvers. In the case of viscous ﬂows it
+becomes essential for compressible, low-Mach-number ﬂows, as those addressed in many lattice Boltzmann simulations. At
+this low-compressibility limit, the stiffness arises from the disparity between the mean velocity of the ﬂow and the speed of
+sound. The review by Turkel [19] presents a comprehensive insight into this technique. (In classical CFD, preconditioning is
+also applied when solving the linear problem in implicit methods; but this is a different use of preconditioning from the one
+studied in this work.)
+    Relevant previous work about preconditioners for the lattice Boltzmann equation include: the ﬁrst proposal of the link
+between the modiﬁed equilibrium distribution function and the time-derivative preconditioner used in Navier–Stokes equa-
+tions [10]; the generalization and extension to MRT [20]; and the detailed analysis of preconditioning of the lattice Boltz-
+mann equation with a forcing term [21]. In the former work [10] a modiﬁcation of the quadratic terms u2 of the
+equilibrium distribution functions is proposed (c-preconditioner). A brief stability analysis is performed and the acceleration
+to the steady state is veriﬁed. In [20] a new preconditioner based on the modiﬁcation of the linear terms u of the equilibrium
+distribution function (b-preconditioner) is proved to improve c-preconditioning results at very low-Mach numbers
+ðMa < 0:05Þ. Additionally the method is extended to the generalized MRT collision operator, and a theoretical analysis is per-
+formed based on the condition number of the Navier–Stokes system recovered from the lattice Boltzmann equation. In the
+latter work [21], the c-preconditioned MRT method is extended by considering a generalized form of the forcing term, and
+the method developed is applied to the simulation of a magnetohydrodynamic ﬂow which involves the solution of a system
+of coupled lattice Boltzmann equations.
+    The main objective of the present paper is to provide theoretical and numerical results which allow to deﬁne the optimal
+use of the c-preconditioner [10]. We select the c-preconditioner due to its efﬁciency and simplicity: it works as well as the b-
+preconditioner [20] for most of the Mach numbers and, most importantly, the implementation of boundary conditions is
+simpler as it does not involve the rescaling of the u-terms. For the sake of simplicity, the study performed is for the two-
+dimensional D2Q 9, but it can be straightforwardly extended to other lattices.
+    The paper is organized as follows: ﬁrst, in Section 2, a description is given of the preconditioned lattice Boltzmann method
+with the multi-relaxation-time collision operator and the recovered Navier–Stokes equations. In Section 3, results are shown
+for the linear-stability analysis of the Navier–Stokes-based preconditioning of the lattice Boltzmann equation. This linear-
+stability analysis serves as a guide in the selection of optimal preconditioning parameters. Sections 4–6 present and discuss
+the results for the test cases, both 2D (lid-driven cavity and a microchannel) and 3D (backward-facing step). Finally, the con-
+clusions of the work, suggestions for further improvements of the method and possible extensions are presented.
+                                        S. Izquierdo, N. Fueyo / Journal of Computational Physics 228 (2009) 6479–6495                      6481
+
+
+2. Lattice Boltzmann method with preconditioning
+
+   The lattice Boltzmann equation can be derived from the Boltzmann one [7,6], which is an equation for the evolution of the
+particle–velocity distribution, by discretizing the velocity space using a ﬁnite set of velocity vectors:
+       @f       @
+          þ ei     f ¼ X;                                                                                                                    ð1Þ
+       @t      @xi
+where f is the particle distribution function, ei is the discrete set of velocities and X is the collision operator. A particular
+scheme is obtained by using an Euler time discretization and an upwind spatial one:
+                                                    ei dt
+       fðxi þ ei dt; t þ dtÞ  fðxi þ ei dt; tÞ þ         fðxi þ ei dt; tÞ  fðxi ; tÞ ¼ Xðxi ; tÞ;                                          ð2Þ
+                                                     dx
+where, when ðei dtÞ=dx ¼ 1, then CFL ¼ 1. In the classical LB method, the discrete temporal and spatial steps are unity (dt ¼ 1
+and dx ¼ 1), and they determine the lattice units. Therefore, the second and the third terms cancel each other out and it is
+possible to split the collision and the propagation steps as shown below.
+
+2.1. Preconditioned multi-relaxation-time lattice Boltzmann method
+
+   A multi-relaxation-time (MRT) collision operator [22,23] is used in this work. With the usual terminology in lattice Boltz-
+mann methods, a DdQq model features d dimensions and q velocities. The velocity set is fei  eia 2 Vg with
+V ¼ Rq ja ¼ 0; 1; . . . ; N and N ¼ q  1. Then, a set of velocity distribution functions ff  fa 2 V ¼ Rq ja ¼ 0; 1; . . . ; Ng is deﬁned
+at each node fxi 2 dxZd ji ¼ 1; . . . ; dg. The MRT-LB evolution equation for f, at discrete time t 2 dtN, is the following:
+
+       fðxi þ ei dt; t þ dtÞ  fðxi ; tÞ ¼ M1  S  ½mðxi ; tÞ  meq ðxi ; tÞ;                                                            ð3Þ
+
+where S is a q  q diagonal relaxation matrix; and M is a q  q matrix which linearly transforms the velocity distribution
+functions f to the macroscopic moments: m ¼ M  f. Equivalently, this transformation applies also for the equilibrium quan-
+                                                                                             eq
+tities of the macroscopic moments and of the velocity distribution functions: meq ¼ M  f . The right-hand-side of Eq. (3)
+results from considering the collision operator as a relaxation of the velocity distribution function toward the equilibrium
+(the BGK collision operator), and transforming these velocity distribution functions in their equivalent moments.
+    To solve the evolution equation for the particle distribution function, Eq. (3), two steps are performed:
+
+       collision : ~fðxi ; tÞ ¼ fðxi ; tÞ  M1  S  ½mðxi ; tÞ  meq ðxi ; tÞ;                                                           ð4aÞ
+       propagation : fðx þ e dt; t þ dtÞ ¼ ~fðx ; tÞ:
+                              i     i                    i                                                                                 ð4bÞ
+where ~f represents the post-collision state.
+   Two lattice models are used in this paper: the D2Q 9 and D3Q 19 models. For simplicity, the following description applies
+to the two-dimensional case ðD2Q 9Þ. The details of the D3Q 19 model can be found in [24].
+   The set of velocities for D2Q 9 are: eD2Q    x
+                                                    9
+                                                        ¼ ð0; 1; 0; 1; 0; 1; 1; 1; 1Þ and eD2Q
+                                                                                              y
+                                                                                                  9
+                                                                                                    ¼ ð0; 0; 1; 0; 1; 1; 1; 1; 1Þ. Moments for
+                                                             T
+this model are: m ¼ ðq; e; ; jx ; qx ; jy ; qy ; pxx ; pxy Þ . The only macroscopic conserved variables of the ﬂow ﬁeld are density,
+q ¼ q0 þ dq, and momentum,        ðj ; j Þ ¼ ðq0 u; q0 v Þ, which are obtained by integrating the distribution function f over the
+                     P        P x y                         P          P
+velocity space: q ¼ a fa ¼ a faeq ; and q0 ui ¼ a eia fa ¼ a eia faeq , where q0 is a constant density, and dq the density varia-
+                                                                                P
+tion. As a general rule, moments are computed as mab ¼ a ðaeia Þðbeia Þfa , where a; b ¼ 0; 1; 2. Thus, for example,
+m00 ¼ q; m10 ¼ q0 ux and m01 ¼ q0 uy . Starting from the D2Q 9 lattice there are only nine possible linearly independent mo-
+ments because the lattice itself dictates the closure for the moment equations.
+   The relaxation matrix for the D2Q 9 is: S ¼ diagð0; se ; s ; 0; sq ; 0; sq ; sm ; sm Þ; and the transformation matrix is:
+             0                                                            1
+                 1      1     1         1       1   1   1      1      1
+         B 4 1 1 1 1 2 2
+         B                      2 2 CC
+         B                           C
+         B 4 2 2 2 2 1 1    1 1  C
+         B                           C
+         B                           C
+         B 0   1  0 1 0 1 1 1 1 C
+         B                           C
+       M¼B
+         B 0 2 0    2  0 1 1 1 1 CC:                                                                                                      ð5Þ
+         B                           C
+         B  0  0 1   0 1 1  1 1 1 C
+         B                           C
+         B 0
+         B     0 2 0   2 1 1 1 1 CC
+         B                           C
+         @ 0   1 1 1 1 0 0    0  0 A
+            0  0  0  0  0 1 1 1 1
+   The equilibrium moments meq for non-conserved quantities are the following:
+
+                      3q0 ðu2 þ v 2 Þ
+       eeq ¼ 2q þ                          ;                                                                                               ð6aÞ
+                              c
+6482                                        S. Izquierdo, N. Fueyo / Journal of Computational Physics 228 (2009) 6479–6495
+
+
+                   3q0 ðu2 þ v 2 Þ
+       eq ¼ q                         ;                                                                                     ð6bÞ
+                              c
+       qeq
+        x ¼ q0 u;                                                                                                            ð6cÞ
+        y ¼ q0 v ;
+       qeq                                                                                                                    ð6dÞ
+             q0 ðu2  v 2 Þ
+       peq
+        xx ¼                and                                                                                               ð6eÞ
+                   c
+             q0 uv
+       peq
+        xy ¼       :                                                                                                          ð6fÞ
+               c
+where we have introduced a new parameter, c, whose role as a preconditioning parameter in the Navier–Stokes equations
+will be shown below. c must be greater than 0 from stability criteria (see Section 3); and, for c ¼ 1, the standard lattice Boltz-
+mann MRT method [23] is recovered, as are the original Navier–Stokes equations
+   The equilibrium distribution functions faeq ¼ M1  eq
+                                                  ab ma equivalent to the previous equilibrium moments have the form:
+                                                                
+                         1           1 1            2
+       faeq ¼ wa q þ q0 2 ðea  uÞ þ        ðea  uÞ    c 2
+                                                           s u  u    ;                                                        ð7Þ
+                        cs           c 2c4s
+              pﬃﬃﬃ
+where cs ¼ 1= 3 is the sound speed (in the D2Q 9 and D3Q 19 models) and weighting factors wa are: w0 ¼ 4=9; w1—4 ¼ 1=9
+and w5—8 ¼ 1=36. Both Eqs. (6) and (7) assume the so called ‘incompressible’ approximation [25], where the density is split as
+q ¼ q0 þ dq and the dqui and dqu2i terms are neglected. For c ¼ 1 the expression of faeq is derived from a Taylor series expan-
+sion of the Maxwell–Boltzmann equilibrium distribution function.
+   By selecting the same value for all relaxation parameters in Eq. (3): se ¼ s ¼ sq ¼ sm ¼ 1=sp , the single-relaxation-time
+(SRT) evolution equation is recovered:
+                                                    1                 eq
+       fðxi þ ei dt; t þ dtÞ  fðxi ; tÞ ¼             ½fðxi ; tÞ  f ðxi ; tÞ;                                              ð8Þ
+                                                   sp
+where, now, sp is the only relaxation factor. The preconditioning parameter c relates the standard and the preconditioning
+relaxation parameter in the following way:
+             ss  1=2
+       c¼             ;                                                                                                        ð9Þ
+             sp  1=2
+where ss is the relaxation factor of the standard SRT lattice Boltzmann method. For c ¼ 1, when no preconditioning is per-
+formed, sp ¼ ss .
+
+2.2. Equivalent Navier–Stokes equations
+
+    Employing the Chapman–Enskog procedure [26] an expansion in terms of the Knudsen ðKnÞ and the Mach ðMaÞ numbers
+is performed. It is applied to Eq. (1) with the MRT collision operator and the equilibrium moments Eq. (6). For the continuum
+and incompressible limit (low Kn and Ma), the continuity and momentum equations are recovered:
+
+       @q
+           þ r  ðq0 uÞ ¼ 0                                                                                                  ð10aÞ
+        @t
+         @ðq0 uÞ
+       b         þ cr  ðq0 uuÞ ¼ rp þ r  ðq0 mSÞ:                                                                         ð10bÞ
+           @t
+These equations are a modiﬁcation of the Navier–Stokes equations that, for convenience, we expressed in vector form:
+
+            @Uc   @E @Uc   @F @Uc @Ev @Fv
+       Pc       þ        þ        ¼    þ    :                                                                                 ð11Þ
+             @t   @Uc @x   @Uc @y   @x   @y
+where Pc is the preconditioning matrix, Uc are the conserved variables, Uv the viscous variables; in conjunction with E, F, Ev
+and Fv , they are deﬁned as:
+
+       Uc ¼ ðq; q0 u; q0 v ÞT ;                                                                                              ð12aÞ
+       Uv ¼ ðp; u; v Þ ;T
+                                                                                                                             ð12bÞ
+       E ¼ ðq0 u; q0 v þ p; q0 uv Þ ;
+                          2                 T
+                                                                                                                             ð12cÞ
+       F ¼ ðq0 v ; q0 uv ; q0 v 2 þ pÞT ;                                                                                    ð12dÞ
+       Ev ¼ ð0; sxx ; sxy ÞT      and                                                                                        ð12eÞ
+       Fv ¼ ð0; syx ; syy ÞT ;                                                                                               ð12fÞ
+sij being the stress tensor. The resulting preconditioned matrix in viscous variables is:
+                                                S. Izquierdo, N. Fueyo / Journal of Computational Physics 228 (2009) 6479–6495   6483
+
+                     0                                       1
+                        3                      0        0
+            @Uc      B                                    C
+       Pv ¼     Pc ¼ @ 3u                     q0 c      0 A:                                                                     ð13Þ
+            @Uv
+                       3v                      0      q0 c
+                                                                      modiﬁed
+This set of equations is closed by the state equation, in this case a pﬃﬃﬃﬃﬃﬃﬃﬃ equation for a perfect gas obtained from the
+Chapman–Enskog expansion, p ¼ qc2                               
+                                      s , with a speed of sound cs ¼   c=3. The kinematic viscosity of the ﬂow is related to
+the preconditioned relaxation coefﬁcient, sm ¼ 1=sp , by the equation m ¼ c=3ð1=sm  1=2Þdt. From Eq. (9):
+             1                         1
+      sm ¼        ¼                                     :                                                                        ð14Þ
+             sp       c1 ðss  1=2Þ þ 1=2
+In Eq. (14) ss is computed from the deﬁnition of the Reynolds number:
+             u0 N            3Ma N
+      Re ¼            ¼ pﬃﬃﬃ         ;                                                                                           ð15Þ
+                 m       3ðss  1=2Þ
+where Ma ¼ u0 =cs is the Mach number, N is the number of lattice points in the characteristic length and u0 is the reference
+velocity of the ﬂow.
+   Due to compressibility, a bulk viscosity of the ﬂow appears, which is deﬁned by the se relaxation parameter:
+lB ¼ 1=6ð1=se  1=2Þ. For simulations performed in this work, if no other value is speciﬁed, we select the following relaxa-
+tion coefﬁcients: se ¼ s ¼ 1:0.
+   To study the advantages introduced by the preconditioning, an analysis of the eigenvalues of the C matrices can be per-
+formed [20]. These matrices are deﬁned from Eq. (11), and are:
+                     @E
+      Cx ¼ P1
+            c            ;                                                                                                       ð16Þ
+                     @Uc
+and similarly for Cy . The basic aim of preconditioning is to scale the eigenvalues of C appropriately, in order to reduce the
+stiffness of the system. To quantify the stiffness reduction the condition number ðCNÞ is used:
+
+                         ki ðCÞ
+      CN ¼ max                  ;                                                                                                ð17Þ
+                         kj ðCÞ
+where ki and kj are two different eigenvalues of C. A CN close to 1 means a well balanced system with no stiffness.
+  The eigenvalues of Cx are:
+                                      qﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃ
+      kx ¼ c1 u; u=2                 ðu=2Þ2 þ c=3 :                                                                            ð18Þ
+
+  Therefore, the condition number depends on the preconditioning parameter c and on u. Considering the deﬁnition of
+Mach p
+     number
+      ﬃﬃﬃﬃﬃﬃﬃﬃ Ma ¼ u=cs , Eq. (17) can be approximated for eigenvalues in Eq. (18), in the range 0 < c < 1 and
+Ma < c=2, by:
+                      sﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃ
+          1            1           c
+      CN ¼ þ               þ              :                                                                                      ð19Þ
+          2            4 Ma2
+
+To obtain CN ! 1; Ma ! 1 or c ! 0 is needed. Ma > 0:3 is not possible due to incompressibility restrictions; therefore, we
+study the lowest possible values for c.
+
+
+3. Linear-stability analysis
+
+    The linear-stability, or von Neumann, analysis is a standard tool to study the stability of linear and linearized systems, and
+has been used previously to study the stability of lattice Boltzmann methods [27], and to optimally construct new lattice
+Boltzmann models [23]. Additionally, it has been used as supplementary tool within the design of preconditioners for both
+Euler and Navier–Stokes systems of equations [18,19]. In this section we apply this technique to the selection of optimal
+parameters for preconditioned lattice Boltzmann schemes.
+    It is well known that all lattice Boltzmann models have stability limits [27]. The general stability behavior is as follows: (i)
+the relaxation time ss (with the SRT collision operator) must be grater than one-half; (ii) the mean ﬂow speed must be smal-
+ler than a maximum stable one that is function of the other parameters; and (iii) as ss increases from one-half, the maximum
+stable speed increases monotonically until a limit is reached. Often, the high Reynolds numbers encountered in real appli-
+cations bring the method close to its stability limits, viz., a relaxation factor very close to one-half and mean speed greater
+than the maximum stable one.
+    To perform the von Neumann linearized stability analysis we restrict ourselves to a steady ﬂow, in two dimensions, with
+constant density ðq0 ¼ 1Þ, velocity u0 ¼ ðu0 ; 0Þ and wave numbers k ¼ ðkx ; 0Þ parallel to the constant velocity u0 . These set-
+tings provide the worst stability conditions [27] (see [28] for further discussion).
+6484                                      S. Izquierdo, N. Fueyo / Journal of Computational Physics 228 (2009) 6479–6495
+
+
+   The distribution function may be expressed as its equilibrium value and a small superimposed ﬂuctuation:
+                   eq
+       fðxi ; tÞ ¼ f þ dfðxi ; tÞ:                                                                                              ð20Þ
+                                          eq
+This formulation implies that f have constant values, which do vary neither in space nor in time, and depend only on q0 and
+u0 . The ﬂuctuating quantities dfðxi ; tÞ differ from the non-equilibrium values of f because the linearization around equilib-
+rium is based on mean values.
+     Combining Eqs. (3) and (20) with the equilibrium moments of Eq. (6) a linearized lattice Boltzmann equation for the ﬂuc-
+tuations is obtained:
+
+       dfðxi þ ei dt; t þ dtÞ ¼ dfðxi ; tÞ þ Xeq  dfðxi ; tÞ ¼ dfðxi ; tÞ þ M1  C  M  dfðxi ; tÞ:                          ð21Þ
+The last term is the linearized collision operator, where C can be written as:
+
+            ðn  nÞb
+       C¼            G:                                                                                                         ð22Þ
+            ðn  nÞa
+
+Here, n is a row vector of M, M ¼ fn0 ; . . . ; nq1 gT ; and G is the variation of the moments due to collision. Using the collision
+formulation of Eq. (3), this variation can be expressed as:
+                          @meq
+       G ¼ SI þ SI                   :                                                                                         ð23Þ
+                           @m    ab
+
+For the D2Q 9 model, with preconditioning equilibrium expressions, Eq. (6), we obtain:
+               0                                                                                    1
+                    0       0        0            0         0         0          0      0       0
+             B 2s
+             B    e        se       0         6se u0 =c    0     6se v 0 =c     0      0       0 C
+                                                                                                  C
+             B                                                                                    C
+             B s
+             B              0    s           6s u0 c    0    6s v 0 =c     0      0       0 C
+                                                                                                  C
+             B                                                                                    C
+             B 0            0        0            0         0         0          0      0       0 C
+             B                                                                                    C
+       Gab ¼ B
+             B 0            0        0           sq       sq        0          0      0       0 C
+                                                                                                  C:                            ð24Þ
+             B                                                                                    C
+             B 0            0        0            0         0         0          0      0       0 C
+             B                                                                                    C
+             B 0
+             B              0        0            0         0        sq        sq     0       0 C
+                                                                                                  C
+             B                                                                                    C
+             @ 0            0        0         2sm u0 =c    0    2sm v 0 =c     0     sm      0 A
+                    0       0        0         sm v 0 =c    0      sm u0 =c      0      0     sm
+   In Fourier space, Eq. (21) can be expressed as:
+
+       A  dfðki ; t þ 1Þ ¼ ½I þ M1 CM  dfðki ; tÞ;                                                                          ð25Þ
+where A ¼  expðiei ki ÞI is the advection operator. Therefore, the evolution equation may be rewritten in this form:
+dfðki ; t þ 1Þ ¼ L  dfðki ; tÞ, with the following expression for the linearized evolution operator:
+
+       L ¼ A1 ½I þ M1 CM:                                                                                                    ð26Þ
+The linear-stability analysis performed in this work relies on the value of the maximum moduli of the eigenvalues of the
+linearized evolution operator L,
+       kmax ¼ Max:jLðki Þj;
+which must be less than one for the system to be stable. It has been computed numerically with Mathematica [29].
+
+3.1. SRT vs. MRT preconditioning
+
+   After the work by Guo et al. [10], the general guidelines for the stability criteria of preconditioned SRT lattice Boltzmann
+methods are known. These are: (i) sp must be greater than one-half; (ii) c must be greater than a certain value which de-
+pends on the other parameters ðui ; ki ; ss Þ; and (iii) as c increases, so does the maximum speed for a stable method.
+   The values kmax are ﬁrst analyzed for the whole range of wave numbers kx 2 ½0; p, and for c 2 ½0; 1. Results for
+U ¼ ð0:0577; 0Þ and ss ¼ 0:5017, which are equivalent to Rex ¼ ðu0 dxÞ=m ¼ 100 and Ma ¼ 0:1, are plotted in Fig. 1 for the
+SRT collision operator and also for the MRT one. The SRT relaxation parameter ss is computed with N ¼ 1; and the MRT relax-
+ation coefﬁcients are: sm ¼ 1=sp and se ¼ s ¼ sq ¼ 1:0. Fig. 1 displays the isocontours of kmax , and the areas with kmax > 1
+(unstable) are shaded in light gray. A ﬁrst remark is that there exists a stability limit for cðcmin Þ, which is approximately
+the same for SRT and MRT. This cmin is deﬁned by the upper limit of the isocontour kmax ¼ 1:0; and it depends on local Rey-
+nolds number Rex and Mach number Ma. The main difference between the SRT and MRT collision operators is that for values
+of c equal to or greater than the stability limit, kmax will be smaller for MRT at every wave number, which means a better
+stability condition.
+                                           S. Izquierdo, N. Fueyo / Journal of Computational Physics 228 (2009) 6479–6495                                                                                   6485
+
+
+                                1                                                                                    1
+                                      SRT                                                                                  MRT                                               0.992
+                                                                               0.992
+
+
+
+
+                                            0.998
+
+                                                      5
+                               0.8                                                                                 0.8
+
+
+
+
+                                                                                                                                    0.998
+                                                    0.99
+
+
+
+
+                                                                                                                                              95
+                                                                                                                                                                         0.989
+
+
+
+
+                                                                                                                                             0.9
+                               0.6                                         0.989                                   0.6
+                                                                                                                                                                     0.981
+
+
+
+                        γ
+
+
+
+
+                                                                                                              γ
+                               0.4                                                                                 0.4                                               0.966
+                                                                          0.981
+                                                                                                                                                                    0.925
+                               0.2                                     0.966                                       0.2
+                                                                                         1.000                                                                     0.804                  1.000
+                                                                 0.925
+                                                                                           1.573                                                                                          1.573
+                                0                                                                                    0
+                                 0                         1                        2                   3             0                            1                                  2               3
+                                                                       kx                                                                                           kx
+
+              Fig. 1. Isocontours of maximum eigenvalue kmax on the c—kx plane for the SRT (left) and MRT (right) collision operators.
+
+
+
+3.2. Minimum values for the preconditioning parameter
+
+    To analyze the inﬂuence of the velocity ui on the stability, kmax values for different Ma and c are plotted in Fig. 2. The value
+of ss is ﬁxed at 0.502, and sp is computed as a function of c and ss ; the MRT relaxation parameters, other than sm ¼ 1=sp , are
+ﬁxed to 1.0. Results are plotted within the incompressibility limit Ma 2 ½0; 0:3. For a given Ma number, the cmin limit turns
+out to be approximately the same for both collision operators, but with better stability conditions for MRT. Additionally, the
+plots reveal that the relation between the cmin limit and the Mach number is nearly linear.
+    Applying the stability analysis to the SRT and MRT preconditioned schemes, based on the preconditioned equilibrium dis-
+tribution function, the stability criteria [10] can be redeﬁned in the following way: (i) as kmax ¼ 1  1=sp in the limit when
+ki ¼ 0, the preconditioned relaxation parameter sp must be greater than one-half, or equivalently, ss > 1=2 and c > 0, to have
+a stable preconditioned lattice Boltzmann scheme; (ii) there exists a cmin point close to the stability limit (Fig. 1) where the
+kmax is the lowest, meaning grater stability, and this stability is better for MRT; (iii) there is a nearly linear relation between
+the cmin limit and the Mach number (Fig. 2).
+
+3.3. Optimal preconditioning parameters
+
+   To analyze a possible a priori selection of an optimal value for the preconditioning parameter, cop , a graphical represen-
+tation of the relationship between c; ss and sp is depicted in Fig. 3. Two superimposed relations are plotted: the ﬁrst one is
+from the linear-stability analysis and it shows the maximum eigenvalue of L as a function of the preconditioning relaxation
+parameter sp and of c; the second relationship is the one arising from Eq. (9).
+   While an analytical expression for cop could be useful, it is not possible to obtain one from linear-stability analysis, and
+only indications, based on the results, can be provided. Thus, cop may be restricted between the minimum allowable precon-
+ditioning parameter cmin due to stability criteria, and the set of all points on the sp —c plane where for each ﬁxed ss the min-
+imum value of kmax is found. This may be expressed as:
+      cop ðRex ; MaÞ 2 fcmin ; c½ss ðRex ; MaÞ; min:kmax ðRex ; Ma; sa Þg:                                                                                                                                 ð27Þ
+
+   In preconditioned lattice Boltzmann simulations using the scheme proposed, the gain obtained can be viewed as a change
+from the relaxation parameter, ss , which determines the actual Reynolds number of the ﬂow, to a ﬁctitious preconditioning
+relaxation parameter, sp , which accounts for the behavior of the simulation. Thus, the larger sp is, the more stable and better
+
+
+
+                               0.30                                                                                0.30
+                                                                                                   SRT                                                                                          MRT
+                                                                                                                           1.8000
+
+
+
+
+                               0.25                                                                                0.25
+                                       1.8000
+
+
+
+
+                                                                                                                                    1.4000
+                                       1.4000
+
+
+
+
+                                                                                                                                                              00
+                                                            00
+
+
+
+
+                               0.20                                                                                0.20
+                                                                                                                                                      91 1.00
+                                                       1.00
+
+                                                         4
+                                                      91
+
+
+
+
+                                                                                                              Ma
+                          Ma
+
+
+
+
+                                                                                                                                                        4
+
+
+
+
+                               0.15                                                                                0.15
+                                                          0.9
+
+                                                                  60
+                                                                  99
+
+
+
+
+                                                                                                                                             0.9
+
+                                                                                                                                                   60
+                                                                0.
+
+
+
+
+                                                                               1
+                                                                                                                                                99
+
+
+
+
+                                                                           8                                                                                             1
+                                                                       .99                                                                                          98
+                                                                                                                                              0.
+
+
+
+
+                               0.10                                                                                0.10
+                                                                   0            1                                                                             0.9                 1
+                                                                             99                                                                                              99
+                                                                         0.9                                                                                         0.9
+                                                                                  96                                                                                              96
+                               0.05                                         0.99                                   0.05                                                      0.99
+                                                                                     8                                                                                               98
+                                                                              0.999                                                                                             0.99
+                                                                                                   99                                                                                            99
+                                                                                            0.99                                                                                          0.99
+                                     0.0            0.2          0.4               0.6      0.8         1.0              0.0             0.2               0.4                 0.6        0.8         1.0
+                                                                         γ                                                                                           γ
+
+             Fig. 2. Maximum eigenvalue in the whole range of kx for different c—Ma values for the SRT and MRT collision operators.
+6486                                      S. Izquierdo, N. Fueyo / Journal of Computational Physics 228 (2009) 6479–6495
+
+
+                                 2.0                                                                                                               2.0
+                                                                                                       0.948                         1.
+                                                                                                                                       80                                                                                                                     1.
+                                                                                                                                                                                                                                                                80
+                                                                                                                                                                                                        0.957
+                                 1.8                                               0.953                                     1.
+                                                                                                                               60                  1.8                                                                                                1.
+                                                                                                                                                                                                                                                        60
+
+                                                                                                                                                                                       0.9
+                                                                                                                           1.4                                                               62
+                                 1.5                                                                                             0                 1.5                                                                                              1.4
+                                                                                                                                                                                                                                                          0
+                                                                      0.961
+
+
+
+
+                                       1.200
+
+
+
+
+                                                                                                                                                         1.200
+                                                                                                                 1.2                                                                                                                      1.2
+
+
+
+
+                                                                                                                                                                 1.000
+                                                                                                                       0                                                                                                                        0
+                                                                                             τs =
+
+
+                            τp
+                                 1.3                                                                                                                                                                              τs =
+
+
+
+
+                                                                                                                                              τp
+                                                                                                                                                   1.3
+
+
+
+
+                                               1.000
+                                                                                                       1.0                                                                     0.972                                            1.0
+                                                                                                             0                                                                                                                        0
+                                                              0.974                              0.9
+                                                                                                       0                                                                                                                  0.9
+                                                                                                                                                                                                                                0
+                                 1.0                                                       0.8                                                     1.0                                                          0.8
+                                                                                                 0                                                                                                                    0
+                                                                                      0.70                                                                                                                 0.70
+                                                                                                                                                                               0.985
+                                 0.8                      0.987                0.60
+                                                                                                                                                   0.8                                              0.60
+
+                                                       0.51
+                                                                        0.55
+                                                                                                                       SRT                                                0.51
+                                                                                                                                                                                             0.55
+                                                                                                                                                                                                                                                MRT
+                                 0.5                                                                                                               0.5
+                                    0.0          0.2                  0.4           0.6                    0.8                          1.0           0.0                0.2           0.4                0.6                       0.8                              1.0
+                                                                               γ                                                                                                                    γ
+
+Fig. 3. Maximum eigenvalue in the whole range of kx for different c—sp values for the SRT and MRT collision operators. Isocontours of ss as a function of c
+and sp are plotted with dotted lines.
+
+
+
+preconditioned the system will be; however, large sp for a given ss fall beyond the stability limit. On the other hand, for large
+ss values, the optimal point could be displaced to c values larger than cmin because a compromise between large sp and small
+kmax must be reached. This is the case of the microchannel analyzed in Section 5.
+
+3.4. Global map of stability limits
+
+   In this section the limits of the MRT preconditioned scheme are explored by means of a more general stability analysis
+ðc 2 ð0; 1ÞÞ, and a study of the condition number (CN) of the recovered Navier–Stokes equation.
+
+
+
+
+Fig. 4. (top) Global map of kmax for different values of Ma and ss and for the whole range of c (above). (bottom) Isocontours of the ratio between the
+condition number ðCNÞ and the condition number for c ¼ 1ðCN0 Þ for the same Ma and c interval.
+                                      S. Izquierdo, N. Fueyo / Journal of Computational Physics 228 (2009) 6479–6495                                 6487
+
+
+    Fig. 4 summarizes the results from the analysis. First, in the top-right part of Fig. 4 we plot stability maps of ss vs. c 2 ð0; 1Þ
+for different Mach numbers between Ma ¼ 0 and Ma ¼ 1:2. The analysis performed above is for the incompressible area of
+this part of the diagram. Isocontours of kmax are plotted in a gray shade where the method is stable (darker shades indicating
+more stable schemes), and unstable regions are drawn in white. The main observation is that as the Mach number increases,
+the stable area is reduced and cmin linearly increases. Additionally, for Ma ! 0 the stability contour becomes linear. To com-
+plement this information, the ratio between the condition number of each Ma—c point and the condition number for this
+point at c ¼ 1ðCN=CN 0 Þ is plotted below the stability map. Grey areas indicate acceleration regions, and the convergence rate
+to the steady state is faster the darker the shade is. The zone of greater acceleration is the same as the one for cmin , and there-
+fore, stabilization and acceleration can be achieved at the same time.
+    On the left-hand-side of Fig. 4, the same relations are plotted for c 2 ð1; 1Þ. It is worth noting that the stability of the
+method is now greater, as it remains stable beyond Ma ¼ 1; however, for the incompressible limit, the method is ill-condi-
+tioned, and no acceleration is obtained. As the ﬂow is isothermal, the high-Ma region has no physical interest, albeit its study
+can assist in the development of stabilized lattice Boltzmann methods for compressible ﬂows.
+
+4. Two-dimensional test case I: lid-driven cavity
+
+   A lid-driven cavity ﬂow is chosen as two-dimensional test case due to its well-researched steady-state solution [30], and
+to the absence of open boundaries. The present analysis focuses on three aspects: convergence rate, stability and accuracy.
+Additionally, the inﬂuence of the Reynolds number on the performance of the preconditioner is studied, as is the effect of the
+under-relaxation of f within the preconditioned scheme. The domain dimensions and other ﬂow characteristics are deﬁned
+below for each case. As wall boundary conditions, the half-way bounce-back scheme is used, with the momentum transfer
+correction of Bouzidi et al. [31] for the moving lid.
+
+4.1. MRT vs. SRT preconditioned LBE
+
+    The performance of the MRT and SRT preconditioned methods is ﬁrst compared. A detailed previous analysis of the per-
+formance of MRT and SRT in a lid-driven cavity can be found in [32]. The study of the convergence behavior is here done by
+monitoring the residual errors of the velocity ﬁeld between each temporal step and the previous one, the residual being com-
+puted with the L2 -norm. These residuals are shown in Fig. 5 for four lattice Boltzmann schemes for the comparison of the
+convergence rate. As reference case the following is chosen: Re ¼ 1000; Ma ¼ 0:1 and an N  N domain with
+N ¼ N x ¼ 129. Therefore u0 ¼ 0:057735 and ss ¼ 0:501732. The main conclusion from Fig. 5 is that the optimally precondi-
+tioned MRT is indeed the method which ﬁrst reaches convergence to machine accuracy (after approximately 4  104 time
+steps), while SRT methods remain far from this goal after 105 time steps.
+    As a result of the algorithmic differences between the SRT and MRT methods, the smaller number of time steps required
+by the MRT does not necessarily imply greater efﬁciency than SRT. The millions of lattice nodes updated per second (MLUPS)
+is used as a measure to compare performance. MLUPS include the time needed to calculate the collision, the propagation and
+the velocity residuals. The comparison between MRT and SRT for this two-dimensional problem is shown in Fig. 6. Simula-
+tions to compare performances were carried out on an AMD Athlon 64 at 1.8 GHz and with 512 KB of cache memory. Results
+indicate that the SRT collision operator is approximately 4% faster on average than MRT. This is not a signiﬁcant difference,
+therefore the comparison between SRT and MRT on the same time scale in Fig. 5 is representative of the gain in overall per-
+formance. From Fig. 6, it can be concluded that efﬁciencies of MRT and preconditioned MRT are similar over the entire range
+
+
+                                                                     0
+                                                                10
+                                                                     -1
+                                                                              Grid=129x129                        Ma=0.1
+                                                                10                                               Re=1000
+                                                                     -2
+                                                                10
+                                            Velocity Residual
+
+
+
+
+                                                                     -3
+                                                                10
+                                                                     -4
+                                                                10
+
+                                                                10
+                                                                     -5                                          SRT γ=1
+
+                                                                     -6
+                                                                10                              MRT γ=1
+                                                                     -7
+                                                                10
+                                                                     -8       MRT γop=0.13     SRT γop=0.18
+                                                                10
+                                                                     -9
+                                                                10
+                                                                          0         25000     50000           75000    100000
+                                                                                             Time Steps
+
+Fig. 5. Velocity residuals for the lattice Boltzmann equation with SRT and MRT, and optimal preconditioned versions of both collision operators. The values
+of c used in each case are indicated.
+6488                                 S. Izquierdo, N. Fueyo / Journal of Computational Physics 228 (2009) 6479–6495
+
+
+                                                   6
+                                                                                               pMRT
+                                                                                               relaxed pMRT
+                                                                                               MRT
+                                                   5                                           SRT
+
+
+
+
+                                           MLUPS
+                                                   4
+
+
+
+
+                                                   3
+
+
+
+
+                                                   2
+                                                                100                      400       700 1000
+                                                                               Nx
+
+         Fig. 6. Millions of lattice update per second (MLUPS) as a function of the number of cells. The total number of cells is: N total ¼ N 2x .
+
+
+
+of N, which indicates that the preconditioning method suggested does not add any additional signiﬁcant algorithmic com-
+plexity. The remaining results shown in Fig. 6 are for the under-relaxed scheme that will be discussed in Section 4.3.
+   A visual indication of the stability improvement achieved with preconditioning is shown in the pressure contours of Fig. 7.
+Using either the preconditioned SRT, the MRT or the preconditioned MRT schemes results in a very signiﬁcant reduction in
+the pressure oscillations. However, with both preconditioned SRT and standard MRT some small oscillations do remain close
+to some the cavity corners; these are completely suppressed with the preconditioned MRT scheme proposed.
+
+
+
+                                           SRT (γ=1.0)                                            MRT (γ=1.0)
+
+
+
+
+                                            SRT (γop=0.18)                                         MRT (γop=0.13)
+
+
+
+
+        Fig. 7. Pressure contours taken at a velocity-residual level of 105 for the same cases as in Fig. 5. N ¼ 129; Re ¼ 1000 and Ma ¼ 0:1.
+                                            S. Izquierdo, N. Fueyo / Journal of Computational Physics 228 (2009) 6479–6495                                        6489
+
+
+    The accuracy of the results is measured against the benchmark simulations by Botella and Peyret [33]. This comparison is
+shown in Fig. 8. A relatively coarse lattice dimension of N ¼ 129 was chosen to highlight differences in accuracy between
+non-preconditioned and preconditioned schemes, the latter ones providing more accurate results.
+    It is worth pointing that the values selected for the relaxation parameters ðse ; s Þ are not optimal in the sense that they
+provide the maximum grade of dissipation through the bulk viscosity. The optimal values can be approximated by means
+of linear-stability analysis, as in [32]; however, they will be always an approximation to the optimal ones. If quasi-optimal
+relaxation parameters were used instead in this analysis, the conclusions could slightly vary in either directions when com-
+paring the SRT and the MRT collision operators.
+
+4.2. Effect of Re on the preconditioning performance
+
+    To study the effect of parameters that deﬁne the ﬂow (Re; Ma; N and sm ) on the MRT preconditioning performance, the
+time steps needed to reach machine accuracy are analyzed for each Reynolds number as a function of Ma; N and ss . This
+accuracy is 5  109 for the conserved macroscopic variables q and ui . Three parametric studies are performed, for the var-
+iation respectively of the number of lattice nodes, of the Ma number, and of sm ¼ 1=ss . Additionally, the dependence of the
+optimal value of c as a function of these parameters is also analyzed.
+    Fig. 9(left) displays the time needed to reach machine accuracy as the number of lattice nodes is increased (for Ma ¼ 0:1
+and sm ¼ 1=ss ¼ 1=0:55). This time increases with the number of nodes for both preconditioned ðcop Þ and non-preconditioned
+ðc ¼ 1:0Þ MRT methods, but the time is always longer for the non-preconditioned scheme and the difference increases as the
+dimension does. For the case of the Ma dependency, with N ¼ 120 and sm ¼ 1=ss ¼ 1=0:55, Fig. 10(left), the trend is different
+for preconditioned and non-preconditioned schemes. The latter requires a larger Ma number to reduce the computational
+time, but this implies loosing accuracy due to compressibility effects. The preconditioned method reduces the calculation
+time as the Mach number decreases, and therefore the difference between both is maximal when Ma ! 0. From
+Fig. 11(left) it can be concluded that time needed to reach machine accuracy increases for both methods with sm , for
+Ma ¼ 0:1 and N ¼ 120, with the preconditioning MRT providing the shortest times along the entire range.
+    Summarizing from these results, the best improvements with the MRT preconditioner are obtained at moderate Reynolds
+numbers, ss ¼ 1=sm ¼ ð0:53; 0:55Þ, with low velocities, Ma < 0:1, and high-resolution meshes. With these parameters, the er-
+rors due to compressibility and discretization will also be reduced, and the problem remains well within the stability region
+ss > 0:5.
+    The evolution of cop as a function of N; Ma and sm ¼ 1=ss is shown on the right-hand-side plots of Figs. 9–11. The optimal
+value has no dependence on sm ¼ 1=ss , a weak dependence on N and linear dependence on Ma. The nearly linear relation ob-
+tained from the stability analysis, Fig. 2, is plotted for comparison in Fig. 10, as well as the line cop ¼ Ma.
+
+4.3. Under-relaxation effect on preconditioner performance
+
+    Starting from Eq. (2), the viability of a direct time-marching preconditioning of the lattice Boltzmann equation is now
+studied, as an alternative to ﬁnd lattice Boltzmann equations which lead to preconditioned Navier–Stokes systems. To mod-
+ify this scheme, the temporal term of each equation is multiplied by a constant factor / equal for all f, which is expected to
+modify the convergence behavior without introducing any modiﬁcation to the steady-state solution. The following modiﬁed
+discretization results:
+                                                                    ei dt
+        /½fðxi þ ei dt; t þ dtÞ  fðxi þ ei dt; tÞ þ                     fðxi þ ei dt; tÞ  fðxi ; tÞ ¼ dtM1  S  ½mðxi ; tÞ  meq ðxi ; tÞ:                 ð28Þ
+                                                                     dx
+
+
+
+                                    1                                                                       0.4
+                                                 Botella & Peyret (1998)                                                            Botella & Peyret (1998)
+                                   0.9           MRT (γop= 0.13)                                            0.3                     MRT (γ= 1.0)
+                                                 MRT (γ= 1.0)                                                                       SRT (γmin= 0.18)
+                                   0.8           SRT (γop= 0.18)                                            0.2                     SRT (γ= 1.0)
+                                                 SRT (γ= 1.0)                                                                       MRT (γop=0.13)
+                                   0.7                                                                      0.1
+                                   0.6                       0.25                                             0
+                                                                                                     v/u0
+                             y/L
+
+
+
+
+                                   0.5                       0.20
+                                                                                                            -0.1
+                                   0.4                                                                      -0.2
+                                                             0.15
+
+                                   0.3                                                                      -0.3
+                                                             0.10
+                                   0.2                                                                      -0.4
+                                                             0.05
+                                   0.1                                                                      -0.5
+                                                                -0.4       -0.3    -0.2   -0.1
+                                    0                                                                       -0.6
+                                     -0.5               0                    0.5                 1                 0   0.25   0.5          0.75               1
+                                                                u/u0                                                          x/L
+
+Fig. 8. Comparison with calculated reference data [33], for the same cases as in Figs. 5 and 7, of horizontal velocity component u (left), and vertical velocity
+component v (right).
+6490                                                S. Izquierdo, N. Fueyo / Journal of Computational Physics 228 (2009) 6479–6495
+
+
+                                      1000000
+                                                             MRT - γop                      Ma=0.1            1000           Ma=0.1
+                                                             MRT - γ=1.0                    τs=0.55                          τs=0.55
+                                      800000
+
+
+
+
+                         Time Units
+                                                                                                                  800
+                                      600000
+                                                                                                                  600
+
+
+
+
+                                                                                                             N
+                                      400000
+                                                                                                                  400
+
+                                      200000                                                                      200
+
+                                                                                                                    0
+                                                      200       400         600       800     1000                      0     0.05      0.1 0.15 0.2 0.25 0.3 0.35
+                                                                       Re(N)                                                                    γop
+
+Fig. 9. (left) Time units (referred to N ¼ 120 for normalization) needed to reach machine accuracy, as a function of Reynolds number which varies by
+changing N; (right) optimal value of the preconditioning parameter, cop , as a function of the number of cells.
+
+
+
+                                      200000                                                                      0.25
+                                                              MRT - γop                     N=120                             N=120
+                                                              MRT - γ=1.0                   τs=0.55                           τs=0.55
+                                                                                                                   0.2                       γop= Ma
+                                      150000
+                         Time Units
+
+
+
+
+                                                                                                                  0.15
+                                                                                                                                                       γop=1.5 Ma
+
+
+
+
+                                                                                                             Ma
+                                      100000                                                                                                           (linear stability analysis)
+                                                                                                                   0.1
+
+                                       50000
+                                                                                                                  0.05
+
+                                            0                                                                        0
+                                                0       200        400          600     800           1000               0     0.05 0.1 0.15 0.2 0.25 0.3 0.35
+                                                                       Re(Ma)                                                                   γop
+
+Fig. 10. (left) Time units needed to reach machine accuracy versus Reynolds number, computed as a function of Mach number; (right) optimal value of the
+preconditioning parameter, cop , as a function of Mach number.
+
+
+
+                                      200000
+                                                             MRT - γop                      N=120                   1                                                N=120
+                                                             MRT - γ=1.0                    Ma=0.1                                                                   Ma=0.1
+
+                                      150000                                                                      0.9
+                         Time Units
+
+
+
+
+                                                                                                                  0.8
+                                                                                                             τs
+
+
+
+
+                                      100000
+                                                                                                                  0.7
+                                       50000                                                                      0.6
+
+                                                                                                                  0.5
+                                            0
+                                                0      200       400     600          800      1000                     0     0.05 0.1 0.15 0.2 0.25 0.3 0.35
+                                                                       Re(τs)                                                                   γop
+
+Fig. 11. Time units needed to reach machine accuracy versus Reynolds number, computed as a function of relaxation factor sm ¼ 1=ss (left); optimal value of
+the preconditioning parameter, cop , as a function of relaxation factor (right).
+
+
+
+
+Simple algebraic manipulation of this equation leads to the following collision–propagation algorithm:
+
+       collision : ~fðxi ; tÞ ¼ ½/fðxi ; tÞ þ ð1  /Þfðxi ; t  dtÞf ðxi ; tÞ  M1  S  ½mðxi ; tÞ  meq ðxi ; tÞ;
+                                                                     
+                                                                                                                                                                                     ð29aÞ
+       propagation : fðx þ e dt; t þ dtÞ ¼ ~fðx ; tÞ;
+                                        i       i                           i                                                                                                        ð29bÞ
+          
+where f ðxi ; tÞ ¼ /fðxi ; t  dtÞ þ ð1  /Þfðxi ; t  2dtÞ. This scheme can be viewed as a standard collision–propagation algo-
+rithm plus a temporal under-relaxation of f variables. It is actually a Jacobi iteration. The scheme can be improved by using
+other classic iterators, as the Gauss–Seidel one, but losing locality in the collision step.
+    An under-relaxation coefﬁcient / ¼ 0:8 is selected, and results for the c-preconditioned versions of the SRT and MRT col-
+lision operators are shown in Fig. 12. In the SRT case, when adding under-relaxation to the optimal c-preconditioning
+ðc ¼ 0:18Þ, it is possible to reach lower residual values. The under-relaxation modiﬁes the stability behavior and, therefore
+it also is possible to select smaller values of c; thus, using a newly-found optimal value of the preconditioning parameter
+ðc ¼ 0:11Þ, less time is needed to reach machine accuracy. In the case of MRT (right plot in Fig. 12), these improvements
+are not so obvious, and under-relaxation can even worsen convergence if the value of c is maintained. However, a new
+                                                             S. Izquierdo, N. Fueyo / Journal of Computational Physics 228 (2009) 6479–6495                                                                        6491
+
+                                              -2                                                                                                     -2
+                                            10                                                                                                     10
+                                                                                                             SRT                                                                                       MRT
+                                              -3                                                                                                     -3
+                                            10                                                                                                     10
+
+
+
+
+                        Velocity Residual
+
+
+
+
+                                                                                                                               Velocity Residual
+                                            10-4                                                                                                   10-4
+                                              -5
+                                            10                                                                                                     10-5
+                                                                                                                                                                           φ =1.0; γop=0.13
+                                              -6
+                                            10                                                                                                     10-6
+                                                                                           φ =1.0; γop=0.18
+                                                                                                                                                                                              φ =0.8; γ=0.13
+                                            10-7          φ =0.8; γop=0.11                                                                         10-7
+                                                                                              φ =0.8; γ =0.18
+                                                                                                                                                              φ =0.8; γop=0.10
+                                            10-8                                                                                                   10-8
+                                              -9                                                                                                     -9
+                                            10                                                                                                     10
+                                                   0                  25000                  50000                 75000                                  0             25000            50000             75000
+
+                                                                         Time Steps                                                                                        Time Steps
+
+                                                       Fig. 12. Effect of under-relaxation for SRT (left) and MRT collision operators (right).
+
+
+
+cop ¼ 0:10 is found, which slightly improves the convergence behavior. A drawback of the relaxation modiﬁcation is that it
+slightly decreases (by 15%) the computational efﬁciency of the scheme, because of the increase in the number of operations
+needed. MLUPS ﬁgures for the under-relaxed scheme have been plotted in Fig. 6 alongside those for the previous schemes.
+
+5. Two-dimensional test case II: microchannel
+
+   The simulation of the ﬂow of gases in channels or tubes within the microscale is relevant in the design of micro-electro-
+mechanical systems. These ﬂows are characterized by non-negligible Knudsen numbers ðKn > 0:001Þ and very low Reynolds
+and Mach numbers. Although Ma is very small, the compressibility effects are important and, thus, the lattice Boltzmann
+method requires some modiﬁcations [34] for the simulation of microdevices [35,36]. The ﬂow in many of these microﬂow
+conﬁgurations is in steady state; therefore preconditioning, as presented in this work, can be applied.
+   The ﬂow of a gas in a channel is simulated within the slip regime ð0:1 > Kn > 0:001Þ. The length of the microchannel is
+L ¼ 1000dx and its height is H ¼ 20dx. The Reynolds number is set to Re ¼ 1 and the Knudsen number varies from Kn ¼ 0:01
+to Kn ¼ 0:15. This last value is slightly outside the slip regime but it is used only to validate the preconditioner effect on the
+ﬂow. The Mach number is deﬁned by the relation Ma ¼ Kn Reðp=2Þ1=2 [37]. The boundary conditions applied are: for inlet
+and outlet, a prescribed pressure is set in order to recover the desired Kn at the outlet; and at the walls, the boundary con-
+dition by Sbragaglia and Succi [38] is adapted to incorporate the preconditioning effect. This boundary condition is a linear
+                                           s                        bc
+combination of the specular reﬂection f and the bounce-back f and it can be expressed as:
+      ~f ¼ sf s þ ð1  sÞf bc ;                                                                                                                                                                                    ð30Þ
+where s is computed from the analytical solution of the ﬂow in a microchannel:
+              1
+      s¼         m ;                                                                                                                                                                                               ð31Þ
+           1 þ H3Kn
+with m ¼ c=3ðss  0:5Þ. This formulation of the boundary condition allows to recover the corresponding slip at the wall as a
+function of the Knudsen number OðKnÞ, while preserving the correct effect of c. The lattice Boltzmann method applied is a
+D2Q 9 MRT with and without preconditioning and with the following relaxation factors: se ¼ s ¼ sm ¼ 1=sp and
+sq ¼ 8ð2  sm Þ=ð8  sm Þ.
+   Isothermal gas microﬂows exhibit rarefaction and compressibility effects [39]. These are modeled through the slip bound-
+ary condition and a density dependence of the relaxation factor (and, therefore, of the viscosity):
+          1 s  1=2
+      sp ¼ þ s      :                                                                                                                                                                                              ð32Þ
+          2    qc
+The analytical solution of the viscous ﬂow in a channel with the above conditions leads to the following expression for the x-
+component of the velocity [37]:
+
+      uðX; YÞ   dp=dX Y  Y 2 þ Kn
+              ¼                    ;                                                                                                                                                                               ð33Þ
+        uo      dpo =dX 1=4 þ Kno
+
+where X ¼ x=L and Y ¼ y=H are the normalized coordinates, and subscript o refers to the outlet. The pressure proﬁle along
+the channel is given by:
+                                                   qﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃ
+      pðXÞ=po ¼ 6Kno þ                             ð6Kno Þ2 þ ð1 þ 12Kno ÞX þ ðP2 þ 12Kno PÞð1  XÞ;                                                                                                             ð34Þ
+
+where P ¼ pi =po is the ratio between the inlet and outlet pressures. These analytical expressions are used to validate the ef-
+fect of the preconditioner.
+6492                                     S. Izquierdo, N. Fueyo / Journal of Computational Physics 228 (2009) 6479–6495
+
+
+     The velocity proﬁle along the x direction from the lattice Boltzmann simulation is shown in Fig. 13 to illustrate the non-
+linear behavior of the gas ﬂow in a microchannel. As the gas moves downstream the pressure drop increases, and so does the
+Knudsen number; therefore, the slip becomes larger and the mass ﬂow increases.
+     In Fig. 14 the normalized velocity proﬁles at outlet are plotted for different Knudsen numbers, as well as the normalized
+pressure proﬁles along the channel. Results from the non-preconditioned lattice Boltzmann method differ slightly from those
+obtained from the preconditioned one. However, as it can be seen in Fig. 15(left) the accuracy is always better with the pre-
+conditioned lattice Boltzmann approach.
+     Due to the compressibility effects described above a variable viscosity is used, which serves also the purpose of validating
+the method for these situations. The optimal values of c are for this reason very different from those derived from the linear-
+stability analysis (Fig. 15(right)). The optimal c value is conditioned by the maximum ss in the domain, and for large values of
+ss ; cop increases as predicted by the linear-stability analysis (Fig. 3). In this Fig. 3, for values ss > 0:8 the region with lower
+kmax is no longer close to the stability limit.
+
+
+6. Three-dimensional test case: backward-facing step
+
+    The previous results and analysis for the D2Q 9 model can be extended for other lattice geometries. Here, the application
+to the D3Q 19 model is presented. The description of the D3Q 19 model can be found in [24], the corresponding equilibrium
+moments are in Appendix A, and in this section some salient results are brieﬂy described.
+    The backward-facing step is the selected test case. At wall boundaries, the half-way bounce-back condition is used; at the
+inlet a constant velocity ðu0 Þ is set using [31]; and at the outlet a convective condition for f is applied [40]. Based on results of
+Armaly et al. [41] a Reynolds number equal to 100 has been chosen; therefore, the ﬂow remains laminar. The geometry,
+streamlines and recirculation length for the test case are plotted in Fig. 16; and in Fig. 17 a comparison between numerical
+and experimental results is shown. The reattachment length is xr =L ¼ 3:2, which agrees well with the experimental value of
+Armaly et al. [41] xr =L ¼ 3:1.
+
+
+
+
+                                                                                                                                     Pressure
+                                             0.02                                                                                         1.76
+                                                                                                                                          1.68
+                                        ux
+
+
+
+
+                                                                                                                                          1.60
+                                             0.01                                                                                         1.52
+                                                                                                                                          1.44
+                                                                                                                                          1.36
+                                               0                                                                                          1.28
+                                               0                                                                                20        1.21
+                                                      200                                                                                 1.13
+                                                                400                                                     10                1.05
+                                                                                                                                Y
+
+
+
+
+                                                                             600
+                                                                        X              800
+                                                                                                      1000 0
+
+                               Fig. 13. Velocity proﬁles for the whole microchannel with superimposed pressure isocontours.
+
+
+
+
+                                 1                                                              1.8                                              LB
+                                                                                                                                                 pLB
+                                                                                                                     Kn
+                                                                                                                        =0
+                               0.8                                                              1.6                        .1
+                                                                                       p/pout
+                      p/pout
+
+
+
+
+                               0.6                                                                       Kn=
+                                                                                                1.4          0.0
+                                                                                                                      75
+
+                               0.4                    LB - Kn=0.01
+                                                      LB - Kn=0.05                                     Kn=0
+                                                      LB - Kn=0.1
+                                                                                                1.2         .0   5
+                                                      pLB - Kn=0.01
+                               0.2                                                                    Kn=0.025
+                                                      pLB - Kn=0.05
+                                                      pLB - Kn=0.1                               1    Kn=0.01
+                                 0
+                                  0          0.25      0.5            0.75         1              0         0.25                    0.5      0.75      1
+                                                      y/H                                                                           x/L
+
+                                      Fig. 14. Velocity (left) and pressure (right) proﬁles obtained for the microchannel.
+                                                           S. Izquierdo, N. Fueyo / Journal of Computational Physics 228 (2009) 6479–6495                                             6493
+
+
+                                             1.8E-05                                                                           0.5
+                                             1.4E-05                                                                                                                γ=1.5Ma
+                                                                                                                                                                    γop
+                                             1.0E-05                                                                           0.4
+
+
+
+
+                         Velocity Residual
+                                             6.0E-06
+                                                                                                                               0.3
+
+
+
+
+                                                                                                                         γ
+                                                                                                                               0.2
+                                             2.0E-06
+
+                                                                                                                               0.1
+                                                                                                                LB
+                                                                                                                pLB
+
+                                                                                                                        Ma
+                                                                                                                               0.0                                              Ma
+                                                       0     0.02 0.04 0.06 0.08 0.1                           0.12                  0     0.02 0.04 0.06 0.08 0.1      0.12
+
+                                                       0     0.02 0.04 0.06 0.08 0.1 0.12 0.14 0.16 Kn                               0    0.02 0.04 0.06 0.08 0.1 0.12 0.14 0.16 Kn
+
+
+              Fig. 15. Accuracy with (pLB) and without (LB) preconditioning for the microchannel (left); and optimal values for c (right).
+
+
+
+
+                         L
+                         L
+                                                                                                                                                                         y
+                                                                                                                                                                               z
+                                                            xr/L=3.2                                                                                                           x
+                                                L                                                                         15L
+
+                                                    Fig. 16. Backward-facing step: domain dimensions and streamlines for Re ¼ 100.
+
+
+
+
+                                                               1
+                                                              1.0
+
+
+
+
+                                                       y/L 0.0
+                                                            0
+
+
+
+
+                                                             -1.0
+                                                               -1
+                                                                   0.0                    2.55   3.06 3.57 4.18                4.80 5.41 6.12            7.76
+                                                                                                                         x/L
+
+Fig. 17. Velocity proﬁles at different dimensionless lengths x=L (black lines); and experimental results for Re ¼ 100 from Armaly et al. [41] (white dots).
+
+
+
+
+                                                                                         0
+                                                                                    10
+
+                                                                                    10-1
+                                                                                         -2
+                                                                                    10
+                                                                Velocity Residual
+
+
+
+
+                                                                                         -3
+                                                                                    10
+
+                                                                                    10-4
+                                                                                         -5
+                                                                                    10
+                                                                                         -6
+                                                                                    10                                                   MRT (γ=1.0)
+                                                                                                 MRT (γ=0.2)
+                                                                                         -7
+                                                                                    10
+
+                                                                                    10-8
+
+                                                                                    10-9
+                                                                                        0                 10000                  20000                  30000
+                                                                                                                      Time Steps
+
+Fig. 18. Evolution of velocity residual for two MRT simulations of the backward-facing step: preconditioned ðcop ¼ 0:2Þ and non-preconditioned ðc ¼ 1Þ.
+6494                                 S. Izquierdo, N. Fueyo / Journal of Computational Physics 228 (2009) 6479–6495
+
+
+    As in the two-dimensional test case, the residual evolutions are plotted, Fig. 18, to evaluate the improvement in the
+convergence performance. As for the D2Q 9 model, preconditioning makes it possible to reduce the time needed to attain
+a target accuracy. For the D3Q 19 lattice the optimal value for the preconditioner parameter is found numerically to be
+cop ¼ 2Ma.
+
+7. Conclusions
+
+    The stabilization of the solution of the lattice Boltzmann equation was an early [22] but nowadays very active research
+topic [42–44] and it seems to be paramount for the emergence of LBM as a competitive CFD technique. Additionally, accel-
+eration is necessary for the efﬁcient explicit computation of steady states. The optimal preconditioned lattice Boltzmann
+equation allows to achieve these two desired properties with an additional improvement in accuracy. In summary, the fol-
+lowing conclusions can be derived from the work done.
+    Optimal equilibrium-based preconditioners for lattice Boltzmann methods deﬁned with the aid of the Chapman–Enskog
+expansion, a linear-stability analysis, and the condition number of the equivalent Navier–Stokes equations, are proved to be
+a simple and efﬁcient technique to accelerate steady-state computations. The main advantage is that, by switching to an MRT
+collision operator and adding a minor modiﬁcation to the standard LB algorithm, it is possible to reduce by about an order of
+magnitude the computational time for steady-state simulations. This time reduction varies with the ﬂow parameters, and
+could be even greater. Additionally, better accuracy and stability are obtained. The local deﬁnition of the free parameter
+could improve the preconditioner behavior; however this is not trivial in the standard scheme due to the spatio-temporal
+constraints which relate all the information within the domain.
+    The optimal values for c depend on the characteristics of the ﬂow conﬁguration but lie in the range cop ¼ ð1:0Ma; 1:5MaÞ,
+as obtained from linear-stability analysis and simulations for the D2Q 9 LB method. From simulations, cop ¼ 2:0Ma is ob-
+tained for the D3Q 19 method. For very low Reynolds numbers ðss > 2Þ; cop increases from this values.
+    Direct preconditioning of the lattice Boltzmann equation can be also applied, but the attempt made in this direction indi-
+cates it is less effective than Navier–Stokes-based preconditioning. A direct time-derivative lattice Boltzmann preconditioner
+can be viewed as an under-relaxation which introduces no signiﬁcant improvement in the behavior of preconditioned
+schemes proposed in this work. Results obtained point to the possibility of successfully replacing under-relaxation by the
+c-preconditioner as a smoother in spatial multigrid solvers for the LB method [15].
+    Future work regarding preconditioning for LB methods should focus on its extension to the solution of non-isothermal
+ﬂows and of transient ﬂows. Extensions for unsteady ﬂows would be possible with a dual-time stepping. The design of
+new preconditioning methods is another interesting research direction; this could be effected through a search of the equiv-
+alent lattice Boltzmann preconditioners of well-known Navier–Stokes ones. A global mapping between NS preconditioning
+schemes and modiﬁed equilibrium distribution functions would be useful to determine possible new directions in this ﬁeld
+and possible improvements of NS methods through the Boltzmann equation analysis. This mapping would be necessary for
+the formulation of hybrid NS–LB schemes for multiscale and/or multiphysics problems, where time-derivative NS precondi-
+tioning needs to be applied. The study of boundary-condition effects in preconditioning schemes could be addressed with the
+aid of the asymptotic analysis of the lattice Boltzmann equation [45,46].
+
+
+Acknowledgments
+
+   S.I. is supported by the I3P CSIC Programme ﬁnanced by the European Social Fund. This work was partially funded by the
+Spanish Government under Project ENE2007-67217/ALT.
+
+
+Appendix A. D3Q19 preconditioned MRT lattice Boltzmann model
+
+    The D3Q 19 lattice Boltzmann model used in this work is the one deﬁned by Tölke et al. [24]. These are the non-zero equi-
+librium moments for the preconditioned D3Q19 method:
+
+              q0 ðu2 þ v 2 þ w2 Þ
+       eeq ¼                      ;                                                                                     ð35aÞ
+                       c
+              3q ðu2 þ v 2 þ w2 Þ
+       eq ¼ 0                      ;                                                                                   ð35bÞ
+                        c
+               q0 ð2u2  v 2  w2 Þ
+       3peq
+          xx ¼                        ;                                                                                 ð35cÞ
+                          c
+              q0 ðv 2  w2 Þ
+       peq
+        zz ¼                 ;                                                                                          ð35dÞ
+                     c
+              q0 uv
+       peq
+        xy ¼         ;                                                                                                  ð35eÞ
+                c
+                                       S. Izquierdo, N. Fueyo / Journal of Computational Physics 228 (2009) 6479–6495                                 6495
+
+              q0 v w
+        peq
+         yz ¼          and                                                                                                                           ð35fÞ
+                c
+              q0 uw
+        peq
+         xz ¼        :                                                                                                                               ð35gÞ
+                c
+
+References
+
+ [1] R. Benzi, S. Succi, M. Vergassola, The lattice Boltzmann equation: theory and applications, Phys. Rep. 222 (1992) 3.
+ [2] S. Chen, G. Doolen, Lattice Boltzmann method for ﬂuid ﬂows, Annu. Rev. Fluid Mech. 30 (1998) 329–364.
+ [3] D. Wolf-Gladrow, Lattice-Gas Cellular Automata and Lattice Boltzmann Models. An Introduction, Lecture Notes in Mathematics, Lecture Notes in
+     Mathematics, vol. 1725, Springer, Berlin, 2000.
+ [4] S. Succi, The Lattice Boltzmann Equation for Fluid Dynamics and Beyond, Oxford, 2001.
+ [5] D. Yu, R. Mei, L.-S. Luo, W. Shyy, Viscous ﬂow computations with the method of lattice Boltzmann equation, Prog. Aerosp. Sci. 39 (2003) 329–367.
+ [6] X. He, L.-S. Luo, Theory of lattice Boltzmann method: from the Boltzmann equation to the lattice Boltzmann equation, Phys. Rev. E 56 (1997) 6811–
+     6817.
+ [7] S.S. Chikatamarla, I.V. Karlin, Entropy and Galilean invariance of lattice Boltzmann theories, Phys. Rev. Lett. 97 (2006) 190601.
+ [8] Y. Qian, D. d’Humières, P. Lallemand, Lattice BGK models for Navier–Stokes equation, Europhys. Lett. 17 (1992) 479–484.
+ [9] D. Kandhai, A. Koponen, A. Hoekstra, M. Kataja, J. Timonen, P. Sloot, Implementation aspects of 3D lattice-BGK: boundaries accuracy and a fast
+     relaxation method, J. Comput. Phys. 150 (1999) 1–20.
+[10] Z. Guo, T. Zhao, Y. Shi, Preconditioned lattice-Boltzmann method for steady ﬂows, Phys. Rev. E 70 (2004) 066706-1.
+[11] C. Lin, Y. Lai, Lattice Boltzmann method on composite grids, Phys. Rev. E 62 (2000) 2219–2225.
+[12] D. Yu, R. Mei, W. Shyy, A multi-block lattice Boltzmann method for viscous ﬂuid ﬂow, Int. J. Numer. Method Fluid 39 (2002) 99–120.
+[13] O. Filippova, D. Hänel, Acceleration of lattice-BGK schemes with grid reﬁnement, J. Comput. Phys. 165 (2000) 407–427.
+[14] J. Tölke, M. Krafczyk, E. Rank, A multigrid solver for the discrete Boltzmann equation, J. Stat. Phys. 107 (2002) 573–591.
+[15] D.J. Mavriplis, Multigrid solution of the steady-state lattice Boltzmann equation, Comput. Fluid 35 (2006) 793–804.
+[16] H. Viviand, Numerical Methods for the Euler Equations of Fluid Dynamics, SIAM, 1985.
+[17] E. Turkel, Preconditioned methods for solving the incompressible and low-speed compressible equations, J. Comput. Phys. 72 (1987) 277–298.
+[18] Y. Choi, C. Merkle, The application of preconditioning in viscous ﬂows, J. Comput. Phys. 105 (1993) 207–223.
+[19] E. Turkel, Preconditioning techniques in computational ﬂuid dynamics, Annu. Rev. Fluid Mech. 31 (1999) 385–416.
+[20] S. Izquierdo, N. Fueyo, Preconditioned Navier–Stokes schemes from the generalized lattice Boltzmann equation, Prog. Comput. Fluid Dynam. 8 (1–4)
+     (2008) 189–196.
+[21] K.N. Premnath, M.J. Pattison, S. Banerjee, Steady state convergence acceleration of the generalized lattice Boltzmann equation with forcing term
+     through preconditioning, J. Comput. Phys. (2008), doi:10.1016/j.jcp.2008.09.028.
+[22] D. d’Humières, Generalized lattice-Boltzmann equations, AIAA rareﬁed gas dynamics: theory and simulations, Prog. Astronaut. Aeronaut. 59 (1992)
+     450–548.
+[23] P. Lallemand, L.-S. Luo, Theory of the lattice Boltzmann method: dispersion, dissipation, isotropy, Galilean invariance and stability, Phys. Rev. E 61
+     (2000) 6546–6562.
+[24] J. Tölke, S. Freudiger, M. Krafczyk, An adaptive scheme using hierarchical grids for lattice Boltzmann multi-phase ﬂow simulation, Comput. Fluid 35
+     (2006) 820–830.
+[25] X. He, L.-S. Luo, Lattice Boltzmann model for the incompressible Navier–Stokes equation, J. Stat. Phys. 88 (1997) 927–944.
+[26] S. Chapman, T. Cowling, The Mathematical Theory of Non-uniform Gases, third ed., Cambridge University Press, Berlin, 1991.
+[27] J. Sterling, S. Chen, Stability analysis of lattice Boltzmann methods, J. Comput. Phys. 123 (1996) 196–206.
+[28] D.N. Siebert, L.A. Hegele Jr., P.C. Philippi, Lattice Boltzmann equation linear stability analysis: thermal and athermal models, Phys. Rev. E 77 (2008)
+     026707.
+[29] Mathematica, Wolfram Research Inc., Version 5.0 Edition, Wolfram Research Inc., Champaign, IL, 2003.
+[30] P.N. Shankar, M.D. Deshpande, Fluid mechanics in the driven cavity, Annu. Rev. Fluid Mech. 32 (2000) 93–136.
+[31] M. Bouzidi, M. Firdaouss, P. Lallemand, Momentum transfer of a Boltzmann-lattice ﬂuid with boundaries, Phys. Fluid 13 (11) (2001) 3452–3459.
+[32] D. d’Humières, I. Ginzburg, M. Krafczyk, P. Lallemand, L.-S. Luo, Multiple-relaxation-time lattice Boltzmann models in three-dimensions, Philos. Trans.
+     R. Soc. Lond. 360 (2002) 437–451.
+[33] O. Botella, R. Peyret, Benchmark spectral results on the lid-driven cavity ﬂow, Comput. Fluid 27 (1998) 421–433.
+[34] X. Niu, C. Shu, Y. Chew, A thermal lattice Boltzmann model with diffuse scattering boundary condition for microthermal ﬂows, Comput. Fluid 36 (2007)
+     273–281.
+[35] C.M. Ho, Y.C. Tai, Micro-electro-mechanical-systems (MEMS) and ﬂuid ﬂows, Annu. Rev. Fluid Mech. 30 (1998) 579–612.
+[36] G. Karniadakis, A. Beskok, N.R. Aluru, Microﬂows and Nanoﬂows: Fundamentals and Simulation, Springer-Verlag, New York, 2005.
+[37] E.B. Arkilic, M.A. Schmidt, K.S. Breuer, Gaseous slip ﬂow in long microchannels, J. Microelectromech. Syst. 6 (2) (1997) 167–178.
+[38] M. Sbragaglia, S. Succi, Analytical calculation of slip ﬂow in lattice Boltzmann models with kinetic boundary conditions, Phys. Fluid 17 (2005) 093602.
+[39] T. Lee, C.-L. Lin, Rarefaction and compressibility effects of the lattice-Boltzmann-equation method in a gas microchannel, Phys. Rev. E 71 (2005)
+     046706.
+[40] D. Yu, R. Mei, W. Shyy, Improved treatment of the open boundary in the method of lattice Boltzmann equation, Prog. Comput. Fluid Dynam. 5 (1/2)
+     (2005) 3–12.
+[41] B. Armaly, F. Durst, J. Pereira, B. Schnung, Experimental and theoretical investigation of backward-facing step ﬂow, J. Fluid Mech. 127 (1983) 473–496.
+[42] R.A. Brownlee, A.N. Gorban, J. Levesley, Stability and stabilization of the lattice boltzmann method, Phys. Rev. E 75 (2007) 036711.
+[43] M. Geier, A. Greiner, J.G. Korvink, Cascaded digital lattice Boltzmann automata for high Reynolds number ﬂow, Phys. Rev. E 73 (6) (2006) 066705.
+[44] J. Latt, B. Chopard, Lattice Boltzmann method with regularized pre-collision distribution functions, Math. Comput. Simul. 72 (2–6) (2006) 165–168.
+[45] M. Junk, A. Klar, L.-S. Luo, Asymptotic analysis of the lattice Boltzmann equation, J. Comput. Phys. 210 (2005) 676–704.
+[46] I. Ginzburg, F. Verhaeghe, D. d’Humières, Two-relaxation-time lattice boltzmann scheme: about parametrization, velocity, pressure and mixed
+     boundary conditions, Commun. Comput. Phys. 3 (2) (2008) 427–478.
+

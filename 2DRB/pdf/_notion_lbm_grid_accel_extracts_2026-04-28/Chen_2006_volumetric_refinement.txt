@@ -1,0 +1,579 @@
+                                                   ARTICLE IN PRESS
+
+
+
+                                               Physica A 362 (2006) 158–167
+                                                                                                    www.elsevier.com/locate/physa
+
+
+
+
+        Grid reﬁnement in lattice Boltzmann methods based on
+                       volumetric formulation
+H. Chena,, O. Filippovaa, J. Hocha, K. Molvigb, R. Shocka, C. Teixeirac, R. Zhanga
+                              a
+                               Exa Corporation, 3 Burlington Woods Drive, Burlington, MA 01803, USA
+                                   b
+                                    MIT, NW16-243, 167 Albany St., Cambridge, MA 02139, USA
+                  c
+                   Information Systems Laboratories, Inc., 8130 Boone Boulevard Suite 500, Vienna, VA 22182, USA
+                                                    Available online 7 October 2005
+
+
+
+Abstract
+
+  We describe a general algorithmic concept for grid reﬁnement in the lattice Boltzmann method. Unlike most of the
+previously known approaches, the present one is based on volumetric formulation so that conservation laws are exactly
+guaranteed.
+r 2005 Elsevier B.V. All rights reserved.
+
+Keywords: Lattice Boltzmann methods; Grid reﬁnement; Conservation laws; Numerical accuracy
+
+
+
+
+1. Introduction
+
+   Whereas the original lattice Boltzmann (LB) method [1–5] is inherently connected with using uniform grids,
+mesh reﬁnement is necessary for computational hydrodynamics. In order for the lattice kinetic approach to
+compete with conventional CFD, both in academic studies and, especially, in practical applications, this
+limitation of the original LB algorithm had to be circumvented. A number of grid reﬁnement concepts for LB
+schemes have been proposed [6–10].
+   In general, there are two different approaches to grid reﬁnement within the LB methods. The ﬁrst one is
+based on decoupling of the LB lattice and numerical mesh [6,7]. This necessarily involves interpolation from
+the neighboring nodes as an additional algorithmic step. As a result the existing schemes of this kind do not
+guarantee exact satisfaction of the conservation laws. Another issue with this method is that on non-uniform
+numerical meshes their accuracy is determined by the interpolation accuracy (see Ref. [9]).
+   The second approach [8–12] introduces locally embedded grids, namely the grids with the identical structure
+whose lattice spacing and time-stepping are reﬁned or coarsened locally in the same manner. In this approach,
+it is essential that the grid nodes coincide with the LB lattice nodes. These multiscale LB schemes with a
+reﬁnement factor of 2 between each two adjacent regions have been used in the lattice Boltzmann based
+
+
+  Corresponding author.
+   E-mail addresses: hudong@exa.com (H. Chen), olga@exa.com (O. Filippova), hoch@exa.com (J. Hoch), molvig@MIT.EDU
+(K. Molvig), rshock@exa.com (R. Shock), cmt@isl-inc.com (C. Teixeira), raoyang@exa.com (R. Zhang).
+
+0378-4371/$ - see front matter r 2005 Elsevier B.V. All rights reserved.
+doi:10.1016/j.physa.2005.09.036
+                                                   ARTICLE IN PRESS
+                                           H. Chen et al. / Physica A 362 (2006) 158–167                           159
+
+software PowerFLOW for almost 10 years now. Representative sets of embedded grids used for computation
+of complex engineering ﬂows are shown in, cf., Refs. [13–15].
+   Multiscale LB schemes with an arbitrary parameter of reﬁnement were proposed in Ref. [10]. Although the
+approaches of Refs. [8,9] and [10] use similar spatial and temporal discretization, they differ in the treatment of
+particles number density and the interface between grids with different lattice spacings. The algorithm
+developed in PowerFLOW is based on a volumetric formulation of the LB equation [9]. In this approach, a
+node of the uniform Cartesian 3D numerical mesh is at the center of the cubical mesh cell. Particles of unit
+mass are classiﬁed by their type i according to their lattice speeds ~
+                                                                     ci that belong to a certain ﬁnite set [1,2]. It is
+implied that type i particles are uniformly distributed inside each cell (voxel). At each mesh node, N i is deﬁned
+as the number density for the type i particles at the surrounding voxel. An interface between two grids
+with different mesh spacings is a layer of overlapping coarse/ﬁne voxels [8]. Below we are focusing on DdQq
+models [5]. For these models, the interface has a thickness of one coarse voxel. This algorithm ensures
+exact conservation of mass, momentum, and energy (MME) of the particles in the coarse voxels belonging to
+the interface.
+   The algorithm developed in Ref. [10] deals with the LB equation in its original ﬁnite-difference form. The
+spatial distribution of type i particles is assumed to be continuous. The number of type i particles in an
+inﬁnitesimal volume dV surrounding a point ~      r at a time instant t is equal to N i ð~r; tÞ dV . The nodes of a
+uniform Cartesian numerical mesh are at cell corners. If desired, the spatial distribution N i ð~rÞ can be recovered
+through interpolation of N i from the corners. The interfaces are treated as surfaces of the overlapping faces of
+two different grids (for one of the grids, these faces must be the boundary faces). There are two different
+interfaces: for particle transition coarse-to-ﬁne and ﬁne-to-coarse grids. A volume overlapped by two
+grids can be quite large. Rescaling formulas for N i at the interfaces [10] provide smooth (within the order of
+accuracy) connection of hydrodynamic quantities obtained on the grids with different lattice spacings
+in the low-frequency limit. It is natural for the ﬂuxes of mass and momentum obtained at the interface
+of two grids with different mesh spacing to differ slightly (in the measure of the accuracy of the numerical
+scheme) from the ﬂuxes obtained in the same region of the interface in a simulation that uses only ﬁne (coarse)
+grid. When conventional ﬁnite-difference and ﬁnite-volume methods are used on similar grids, similar
+behavior is observed and the difference at the interface ﬁne-to-coarse grid, for instance, can be estimated as
+OðDcx =LÞm , where m is the scheme order of accuracy, Dcx is the coarse mesh spacing, L is a local ﬂow
+characteristic length.
+   The volumetrically formulated LB algorithm presented here is constructed in such a way that in the coarse
+voxels of the interface mass, momentum, and energy of the particles are precisely conserved in the transition
+from one grid level to another. This conservation is made possible because of the uniform distribution of
+particles inside each cell and a special arrangement of the grids. It can be shown that the uniform distribution
+in the coarse voxels ensures the ﬁrst order of accuracy of the hydrodynamic solution for the interface
+algorithm [9]. Whereas this scheme developed 10 years ago [8] has been successfully applied for many ﬂow
+simulations (cf. [13–15]), accuracy improvements are desirable. For example, linear interpolation at the
+interface can be incorporated into the original scheme. As shown in Ref. [9], linear interpolation within the
+volumetric formulation leads to the second order numerical accuracy, while still preserving the exact
+conservation laws.
+   This paper is organized as follows. First, the basic version of the grid reﬁnement scheme that was originally
+presented in the patent [8] is described. We proceed by outlining our recent improvements to this algorithm
+and discussing the accuracy of the resulting scheme and some remaining issues. Finally, numerical examples
+are shown in order to demonstrate the effects introduced by the new algorithm.
+
+2. Basic algorithm
+
+  Our starting point is the LB formulation for ﬂuid dynamics [1–5]:
+           r þ~
+      N i ð~                          r; tÞ þ oðN eq
+              ci Dt ; t þ Dt Þ ¼ N i ð~                           r; tÞÞ,
+                                                     r; tÞ  N i ð~
+                                                  i ð~                                                              (1)
+           r; tÞ is the number density of particle species moving with the discrete speed ~
+where N i ð~                                                                              ci at the position
+~
+r and time t. Here, we only focus on describing the volumetric grid reﬁnement scheme and do not touch
+                                                 ARTICLE IN PRESS
+160                                       H. Chen et al. / Physica A 362 (2006) 158–167
+
+on basic properties of the LB equation that can be found in many sources including the original papers
+cited here.
+   The basic algorithm of grid reﬁnement can be now speciﬁed as follows.
+   Notation definition:
+
+ Indices f and c denote variables from the ﬁne and coarse grids, accordingly.
+ Neighboring voxel
+  The one that has overlapping face, edge or vertex with the considered voxel. Faces and edges can overlap
+  only partially. The following pairs can exist: coarse voxel/coarse voxel; coarse voxel/ﬁne voxel; ﬁne voxel/
+  coarse voxel; ﬁne voxel/ﬁne voxel.
+ Interface
+  A layer of coarse voxels having at least one ﬁne neighboring voxel. Each coarse voxel from this set is
+  divided into nD ﬁne voxels where n is a parameter of reﬁnement and D is the dimension of space. Therefore,
+  one can speak of a layer of overlapping coarse and ﬁne voxels. See Fig. 1, n ¼ 2; D ¼ 2; D2Q9 lattice.
+ Inner ﬁne voxels
+  Fine voxels not belonging to the interface.
+ First layer voxels
+  Fine voxels that belong to the interface and have at least one inner ﬁne neighboring voxel.
+ State i
+  A collection of type i particles inside of the considered voxel.
+ Exploded state
+  A post-collision state i from the coarse voxel belonging to the interface. This deﬁnition implies that for the
+  corresponding coarse voxel V (typical examples are V 1 ; V 2 ; V 3 or V 4 shown in Fig. 1), the coarse
+  neighboring voxel centered at ~  rV þ ~ci Dct does not exist. The state i from the coarse voxel V is distributed
+  among the underlying ﬁne voxels in such a way that mass, momentum, and energy of the type i particles are
+  precisely conserved.
+ Coalesced state
+  This deﬁnition is relative to a certain exploded state j from a coarse voxel V belonging to the interface. The
+  pre-collision state i from a ﬁne voxel that is a subset of V will be called a coalesced state if ~
+                                                                                                   ci ¼ ~
+                                                                                                         cj . After n
+  advections on the ﬁne grid, the states i from inner ﬁne voxels ﬁll ﬁne voxels of the interface (some of them
+  only partially, see V 6 in Fig. 1). After one advection on the coarse grid, these states are gathered in the
+  corresponding coarse voxel of the interface. This completes updating of the voxel V.
+
+
+
+
+Fig. 1. An interface of coarse and ﬁne grid at a parameter of reﬁnement 2. Exploded and coalesced states for the particular case of
+D2Q9 model.
+                                                           ARTICLE IN PRESS
+                                                     H. Chen et al. / Physica A 362 (2006) 158–167                           161
+
+  Algorithm description:
+  The algorithmic steps at an interface are speciﬁed below.
+
+(1) Explode
+    Exploded states in coarse voxels of the interface are distributed among underlying ﬁne voxels as ﬁne states,
+    with a conservation of mass, momentum, and energy in the considered coarse voxel. These exploded states
+    are removed from the coarse voxels dynamics.
+(2) Advect ﬁne
+    1 advection of the ﬁne states
+(3) Collide ﬁne
+    Collision in inner ﬁne voxels
+(4) Repeat 2.+3. n  1 times
+(5) Advect coarse
+    1 advection of the coarse states
+(6) Coalesce
+    Coalesced states advected to ﬁne voxels of the interface at the steps 2.–4. are collected in the corresponding
+    coarse voxel as coarse states and are removed from the ﬁne voxels dynamics.
+(7) Collide coarse
+    Collision in coarse voxels.
+(8) ¼ 1.
+
+3. Extension and analysis
+
+  In the Explode procedure the exploded post-collision states can be distributed among underlying ﬁne voxels
+in many ways, the only constraint being the local conservation of mass, momentum and energy. As a
+consequence, there is a certain freedom for algorithm optimization. In the original PowerFLOW algorithm,
+the states are distributed uniformly, which is simple algorithmically and performs robustly in complex
+geometry/physics ﬂow situations. The extensions described in this Section are aimed at improving the accuracy
+of this scheme, without sacriﬁcing its beneﬁcial features. It has been previously observed [9] that the accuracy
+                                                                                        f
+can be improved by using a linear distribution of the exploded post-collision states N_ i from the coarse voxel
+centered at ~  rc among the underlying ﬁne voxels whose centers are at ~rf :
+         f             c
+      N_ ð~
+        i  rf ; tÞ ¼ N_ ð~
+                         rc ; tÞ þ ð~
+                          i         rf  ~      ~i ð~
+                                         rc Þ  F   rc ; tÞ.                                                  (2)
+  As long as the ﬁne voxels centers are placed symmetrically in respect to the coarse voxel center, the
+distribution Eq. (2) satisﬁes precise conservation of MME in the coarse voxels of the interface. Interestingly
+enough, the conservation of mass, momentum, and energy of the exploded state can be achieved by using an
+arbitrary vector function F~i ð~rc ; tÞ in Eq. (2).
+                                                                         f
+  Let us now discuss the continuous nature of the N fi and N_ i -distributions. Consider some ﬂow region solved
+                               f
+on the ﬁne grid. Although N i ð~  rf ; tÞ represents the number density of type i particles uniformly distributed in a
+ﬁne voxel with the center at ~   rf , (hence on a ﬁxed grid, it is only deﬁned at voxel centers), one can imagine
+ensemble simulations on the set of ﬁne grids shifted by ððDfx  l x ; Dfx  l y ; Dfx  l z Þ; 0ol x o1; 0ol y o1; 0ol z o1Þ
+in respect to the existing ﬁne grid. In this way, a continuous spatial function N fi ð~            r; tÞ is obtained, which is
+                                                                                                            c
+appropriately smooth given the resolution is sufﬁcient. The same applies to the N ci and N_ i -distributions.
+                                           c              f
+  We now use the smoothness of N_ i ð~       r; tÞ and N_ i ð~
+                                                             r; tÞ-functions in order to improve accuracy of the Explode
+procedure in the coarse voxels of the interface. From the ﬁrst glance, it would seem natural to set F~i ð~          rc ; tÞ as an
+                                                     c
+approximation to the physical gradient rN_ i , as, for instance,
+                           c                        c
+                        N_ i ð~    ea Dca ; tÞ  N_ i ð~
+                              rc þ ~                        ea Dca ; tÞ
+                                                       rc  ~
+      F ia ð~
+            rc ; tÞ ¼                                                   .                                                    (3)
+                                             2Dca
+  (a ¼ x; y; z and Dcx ¼ Dcy ¼ Dcz for DdQq LB models). If the neighboring coarse voxel does not exist, the
+                                                                 c
+collection of ﬁne voxels covering its image is considered and N_ i ð~
+                                                                    rc ; tÞ is computed by an arithmetic average
+                                      f
+                                    _
+of the particle number densities N ð~   rf ; tÞ. i
+                                                        ARTICLE IN PRESS
+162                                             H. Chen et al. / Physica A 362 (2006) 158–167
+
+   Nevertheless, there is an additional constraint of consistency of the interface updating algorithm with the
+steady-state solution procedure. In the framework of the basic algorithm with n times repeated advection in
+the ﬁne voxels of the interface, the exploded states i in the ﬁrst layer voxels should reoccur after the jth
+advection on the ﬁne grid when 1pjon. Clearly, Eq. (2) with F    ~i from Eq. (3) does not satisfy this condition if
+                               c
+the spatial distribution of N_ i is not uniform.To make this interface updating algorithm consistent with steady
+                                                        c
+state solution, the transformed ﬁnite differences of N_ i should be used in the Explode procedure Eq. (2), rather
+than the F~i ’s from Eq. (3). First, set
+                           rc ; tÞ
+           rc ; tÞ ¼ F ia ð~
+      Cia ð~                                                                                                                        (4)
+                                                                                  rc þ Dcx~
+when the a-Cartesian direction is ‘‘parallel’’ to the interface, that is both the ~              rc  Dcx~
+                                                                                          ea and ~       ea are the
+centers of coarse voxels belonging to the interface; otherwise:
+           rc ; tÞ ¼ 0.
+      Cia ð~                                                                                                                        (5)
+  Second, set
+                           ~iÞ
+      F      ~i  ~
+      ~new ¼ C        ci  C
+                  ci ð~
+                               .                                                                                                    (6)
+        i                2
+                       ci
+  The states are exploded as
+         f               c                           new
+      N_ i ð~
+            rf ; tÞ ¼ N_ i ð~               rc Þ  F~i ð~
+                                       rf  ~
+                            rc ; tÞ þ ð~                 rc ; tÞ                                                                    (7)
+in all voxels of the interface except the concave corners, where the states are exploded uniformly.
+   The next remark concerns the value of the parameter of reﬁnement n. In the above description of the grid
+reﬁnement algorithm, n was treated as an arbitrary integer value. Let us now check whether the overall
+accuracy of a hydrodynamic solution is conserved under the coalesce procedure on the grids with an arbitrary
+reﬁnement factor n. During the coalesce procedure we set the unknown N ci ð~ rc ; tÞ in the coarse interface voxels
+                                 f
+to the arithmetic average of N  e from the underlying ﬁne voxels (see voxels V 5 ; V 6 in Fig. 1). The particle
+                                          i
+                        f
+number density N   e differs from N f at the same spatial location because the algorithm does not involve
+                    i                  i
+collisions in the ﬁne voxels of the interface. The states i from the ﬁrst layer voxels are advected to the ﬁne
+                                            ci . According to our previous remark on the continuous nature of N fi ,
+voxels of the interface in the direction of ~
+in the center of the ﬁne voxel ~  rf belonging to the coarse voxel of the interface centered at ~rc , the following
+relations hold:
+                                                    e f ð~
+                                                   qN                               e f ð~
+                                                                                 q2 N
+      e f ð~                        e f ð~            i rc ; tÞ                       i rc ; tÞ
+      N i  r c þ  r
+                 ð~ f  ~
+                        r c Þ; tÞ ¼ N i  rc ; tÞ þ              ðr f  r c Þ a þ                ðrf  rc Þa ðrf  rc Þb þ    .
+                                                     qxa                          2qxa qxb
+  Since these ﬁne voxel centers are placed symmetrically around the center of the coarse voxel ~
+                                                                                               rc , after
+summation in the Coalesce procedure all terms containing ﬁrst and mixed derivatives vanish and
+                        f                      f
+      N ci ð~         e ð~
+            rc ; tÞ ¼ N                   e rc ; tÞOð2 Þ.
+                        i rc ; tÞ þ maxa ½N i a ð~
+
+  Here  ¼ Dcx =L, Dcx is a lattice spacing of the coarse grid, L is a characteristic length of the ﬂow at ~
+                                                                                                           rc at
+instant t (i.e., the minimal distance on which the hydrodynamic quantities are substantially changed) and
+ e f a ð~
+½N                              e f over the characteristic length along the Cartesian direction a.
+         rc ; tÞ is a change of N
+   i                              i
+  In order to simplify the discussion, only steady-state solutions are considered below. As far as the grid
+reﬁnement algorithm implies
+
+      e f ð~
+      N            f
+                      rc  a  Dct  ~
+        i rc Þ ¼ N i ð~              ci Þ;         a ¼ ðn  1Þ=2n,
+
+the following relation holds
+                                      f
+      e f ð~       f                 rc Þ
+                               qN i ð~
+      N i rc Þ ¼ N i ð~
+                      rc Þ  a            cia  Dct þ maxa ½N fi a Oð2 Þ.                                                         (8)
+                                qxa
+                                                            ARTICLE IN PRESS
+                                                    H. Chen et al. / Physica A 362 (2006) 158–167            163
+
+  Let us now apply the Coalesce procedure, i.e., set
+
+     N ci ð~      e f ð~
+           rc Þ ¼ N                e f rc ÞOð2 Þ
+                    i rc Þ þ maxa ½N i a ð~
+
+
+for the case of an arbitrary reﬁnement factor n ¼ Dcx =Dfx ¼ Oð1Þ. Taking the zeroth and the ﬁrst moments of
+Eq. (8) and using the macroscopic equations connected to the LB scheme on the ﬁne grid
+
+      X qN f               X 1 q2 N f
+               i
+                   cia þ                    i
+                                                cia cib Dft þ    ¼ 0,
+        i
+            qxa              i
+                                  2 qxa qxb
+      X qN f                     X 1 q2 N f
+               i
+                   cia cig þ                    i
+                                                    cia cib cig Dft þ    ¼ 0,
+        i
+            qxa                   i
+                                      2 qxa qxb
+
+we obtain
+
+     rc ¼ rf þ maxa ½N fi a Oð2 Þ,                                                                         (9)
+
+
+     uc ¼ uf þ maxa ½N fi a Oð2 Þ.                                                                        (10)
+
+  Hence the N eq                                                                      f
+                                                                                            rc ÞOð2 Þ.
+                i distributions obtained on both grids differ by the quantity maxa ½N i a ð~
+  As it is well known, on any single grid LB schemes solve for the Navier–Stokes equation with the second
+order accuracy in space, i.e.,
+     u ¼ uNS ð1 þ Oð2 ÞÞ;              r ¼ rNS ð1 þ Oð2 ÞÞ.
+  When considering ﬂows with ru0:1 (in lattice units), Eqs. (9)–(10) can be rewritten as
+     rc ¼ rNS ð1 þ Oð2 ÞÞ;               uc ¼ uNS ð1 þ Oð2 ÞÞ.
+  All the moving states in the above formulas are assumed to be the coalesced ones. In fact, at least one of the
+moving states in each coarse voxel of the interface has to be a regular coarse state. Note that this does not
+distort the solution accuracy at the interface as long as
+
+                      qN fi ð~
+                             rc Þ
+     N fi ð~
+           rc Þ  a               cia Dct ¼ N ci ð~
+                                                  rc Þ þ Oð3 Þ.                                            (11)
+                       qxa
+  The LB equation on the coarse and ﬁne grids reads as
+                                      1 qN ci ð~
+                                               rc Þ
+           rc Þ ¼ N eq;c
+     N ci ð~        i ð~ rc Þ                      cia Dct þ    ,                                       (12)
+                                      oc qxa
+
+                                       1 qN fi ð~
+                                                rc Þ
+           rc Þ ¼ N eq;f
+     N fi ð~        i     rc Þ 
+                         ð~                          cia Dct þ    .                                      (13)
+                                      of n qxa
+  Here o is a relaxation parameter in the LBGK equation which is different for the ﬁne and coarse grids [10]:
+                   2
+     of ¼                   ,                                                                               (14)
+            1 þ nð2=oc  1Þ
+where n is a parameter of reﬁnement.
+                                                                           ci Dct =oc we obtain
+  Subtracting Eq. (13) from Eq. (12) and shifting the spatial argument by ~
+                                       
+                                  1   1 qN fi ð~
+                                               rc Þ
+           rc Þ  N fi ð~
+     N ci ð~            rc Þ ¼                     cia Dct þ Oð3 Þ.
+                                 nof oc   qxa
+                                                         ARTICLE IN PRESS
+164                                              H. Chen et al. / Physica A 362 (2006) 158–167
+
+     Since by Eq. (14),
+         1   1
+              þ a ¼ 0,                                                                                         (15)
+        nof oc
+     Eq. (11) is correct.
+     Let us show now that non-equilibrium parts of N ci ð~
+                                                         rc Þ are obtained correctly in the Coalesce procedure.
+     It follows from the LBGK equation that
+                 Dt cia qN i
+        N neq
+          i   ¼             þ maxa ½N i a Oð2 Þ.                                                             (16)
+                  o qxa
+     Replacing coalesced states N c by N    e f yields
+                                          i          i
+
+                                  qN fi ð~
+                                         rc Þ
+        N neq;c
+          i      N neq;f
+                    i     ¼ a                  cia  Dct þ maxa ½N fi a Oð2 Þ.
+                                    qxa
+     At the same time, one can obtain from Eq. (16)
+                                  
+          neq;c    neq;f     1   1 qN fi ð~
+                                          rc Þ
+        Ni       Ni     ¼                    ca  Dct þ maxa ½N fi a Oð2 Þ
+                            nof oc     qxa
+or
+                   
+           1   1
+                þ a maxa ½N fi a OðÞ þ maxa ½N fi a Oð2 Þ ¼ 0.
+          nof oc
+   Eq. (15) shows that N neq;c
+                          i    in the coarse voxels of the interface are obtained correctly in the leading order for
+an arbitrary value of n. It was also shown above that the overall spatial accuracy of the hydrodynamic solution
+on the coarse grid at the interface is not distorted in the steady-state (and low-frequency) limits. Notice that
+setting of N ci in the Coalesce procedure to an arithmetic average of N fi ’s rather than of Ne f ’s would invalidate
+                                                                                                i
+the correctness of non-equilibrium distributions on the coarse grid.
+   Nevertheless, we consider n ¼ 2 to be the optimal choice for the following reasons. A set of embedded grids
+with the parameter of reﬁnement 2 is a ﬂexible and economical numerical mesh which enables us to maintain
+the desirable value of 0:1 in the entire computational domain. Also, the aforementioned reoccurrence of the
+exploded N fi ’s from the ﬁrst layer voxels during n advections on the ﬁne grid can in principle decrease the
+solution time accuracy when n is large. As a possible further reﬁnement of the present approach, an algorithm
+with one advanced time step on the coarse grid could be used in order to overcome this drawback for an
+arbitrary value of n. A challenging problem for designing these algorithm improvements is to conserve MME
+at the interface.
+
+4. Numerical examples
+
+  To demonstrate the effects of interface updating algorithm, we choose as a benchmark the simulations of
+2D ﬂow around circular cylinder in a channel [16].
+  The velocity proﬁle at the channel inlet ðx ¼ 0; 0pypHÞ is set as
+        ux ð0; y; tÞ ¼ cðtÞ  4umax yðH  yÞ=H 2 ,
+
+        uy ð0; y; tÞ ¼ 0.
+     The Reynolds number Re ¼ umean D=n is deﬁned based on umean ¼ 2umax =3.
+     There are three different 2D test cases [16]:
+     2D1(steady-state):
+        Re ¼ 20;      cðtÞ ¼ 1;      umax ¼ 0:3 m=s;
+     2D2(unsteady):
+        Re ¼ 100;      cðtÞ ¼ 1;       umax ¼ 1:5 m=s;
+                                               ARTICLE IN PRESS
+                                         H. Chen et al. / Physica A 362 (2006) 158–167                             165
+
+Table 1
+(a) 2D1 case, NR ¼ 51, (b) 2D2 case, NR ¼ 101, (c) 2D3 case, NR ¼ 101
+
+(a)
+case                       CD                          CL                          Lr ðmÞ            DPðPaÞ
+
+lin                        5.69                        0.0186                      0.0825            0.1197
+un                         5.73                        0.0254                      0.0760            0.1210
+ref. values                5.57–5.59                   0.010–0.011                 0.0842–0.0852     0.1172–0.1176
+(b)
+case                       C Dmax                      C Lmax                      DPðPaÞ            Str
+
+lin                        3.22                        1.03                        2.53              0.302
+un                         3.2                         0.93                        2.52              0.303
+ref. values                3.22–3.24                   0.99–1.01                   2.46–2.50         0.295–0.305
+(c)
+case                       C Dmax                      C Lmax                      DPðPaÞ
+
+lin                        2.94                        0.526                       0.1117
+un                         2.95                        0.457                       0.1104
+ref. values                2.93–2.97                   0.47–0.49                   0.1150–0.1050
+
+
+
+
+   2D3(unsteady):
+       Re ¼ 100;     cðtÞ ¼ sinðpt=8Þ;     0ptp8s;
+
+       umax ¼ 1:5 m=s.
+   In our simulations, three rectangular regions for consequently reﬁned grids are placed around the cylinder.
+For the 2D1 case, the largest region is removed. For the 2D2 and 2D3 cases, all three regions are used. The
+resolution NR is deﬁned as the number of lattice links along the characteristic length D (the cylinder diameter)
+on the ﬁnest grid. The global Mach number of M mean ¼ umean =cs is set to 0.06 for all these cases. Since the ﬂow
+above and below the cylinder accelerates up to about 2:3umean , the local Mach number M loc ¼ uloc =cs can be as
+high as 0.14. We would like to emphasize that the original benchmark simulations were performed using
+different incompressible ﬂow solvers. Since here we are using a compressible ﬂow solver at small Mach
+numbers, we expect a small deviation (of the order of M 2loc;max ) of our results from the reference values of [16].
+   The following quantities are compared with the reference values [16]:
+   2D1 case: drag (C D ) and lift (C L ) coefﬁcients; DP, the pressure difference between the front and the end
+points of the cylinder; Lr , the recirculation zone length;
+   2D2 case: maximal values of drag (C D ) and lift (C L ) coefﬁcients in the periodic regime; Strouhal number
+Str ¼ Df =umean , where f is the frequency of separation; pressure difference between the front and end points of
+the cylinder DP at a time instant t ¼ t0 þ 1=2f (t0 corresponds to the ﬂow state with C Lmax );
+   2D3 case: maximal values of drag (C D ) and lift (C L ) coefﬁcients; pressure difference in the front and end
+points of the cylinder DP at a time instant t ¼ 8 s.
+   The results of computations using the PowerFLOW versions based on the original and new, higher accuracy
+grid reﬁnement algorithms described above are presented in Table 1a, b, c. Data labeling in the column case
+uses notations un and lin corresponding to the simulations with uniformly (original scheme) and linearly (new
+scheme) exploded states at the interface, accordingly.
+   In Table 1a, b, c, observe that results obtained with linearly exploded states at the interface are in general
+closer to the reference values than those obtained with uniformly exploded states. Typical isolines of pressure
+(black lines) and rate-of-strain tensor magnitude (red lines) obtained in the 2D1 case, NR ¼ 50, are presented
+in Fig. 2 (uniformly exploded states) and Fig. 3 (linearly exploded states). The distributions in Fig. 3 show
+virtually no numerical artifacts around the interfaces (green-colored areas).
+                                                ARTICLE IN PRESS
+166                                      H. Chen et al. / Physica A 362 (2006) 158–167
+
+
+
+
+         Fig. 2. Isolines of pressure and rate-of-strain tensor magnitude in the outer voxels (uniformly exploded states).
+
+
+
+
+          Fig. 3. Isolines of pressure and rate-of-strain tensor magnitude in the outer voxels (linearly exploded states).
+
+
+
+5. Conclusions
+
+   A general concept for grid reﬁnement in the lattice Boltzmann methods is presented. Unlike most of the
+previous approaches, the present one is based on a volumetric formulation so that conservation laws at the
+interface between the grids of different sizes are exactly guaranteed. These MME conserving interface
+treatment schemes have been robust for dealing with highly oscillating distributions. In its basic form, this
+algorithm has been successfully used in the lattice Boltzmann based software PowerFLOW for fundamental
+ﬂuid dynamics studies as well as for simulating complex engineering ﬂows such as those encountered in
+automotive aerodynamics.
+
+
+Acknowledgements
+
+  Authors are grateful to Ilya Staroselsky and Alex Konstantinov for useful discussions.
+                                             ARTICLE IN PRESS
+                                       H. Chen et al. / Physica A 362 (2006) 158–167                                  167
+
+References
+
+ [1] S. Chen, H. Chen, D. Martinez, W. Matthaeus, Phys. Rev. Lett. 67 (1991) 3776.
+ [2] H. Chen, S. Chen, W. Matthaeus, Phys. Rev. A 45 (1992) R5339.
+ [3] F. Higuera, S. Succi, R. Benzi, Europhys. Lett. 9 (1989) 345.
+ [4] F. Higuera, J. Jimenez, Europhys. Lett. 9 (1989) 663.
+ [5] Y.H. Qian, D. d’Humieres, P. Lallemand, Europhys. Lett. 17 (6) (1992) 479.
+ [6] F. Nannelli, S. Succi, J. Stat. Phys. 68 (N3/4) (1992) 401.
+ [7] X. He, L.-S. Luo, M. Dembo, J. Comput. Phys. 129 (1996) 357.
+ [8] Kim Molvig, et al., Particle interaction processing system, Patent 5,377,129, 1994.
+ [9] H. Chen, Phys. Rev. E 58 (3) (1998) 3955.
+[10] O. Filippova, D. Hänel, J. Comput. Phys. 147 (1998) 219.
+[11] M. Rohde, Extending the Lattice-Boltzmann method, Dissertation, TU Delft, 2004.
+[12] A. Dupius, B. Chopard, Phys. Rev. E 67 (2003) 066707.
+[13] M. Pervaiz, C.M. Teixeira, Proceedings of ASME PVP Division Conference: Second International Symposium on Computation
+     Technology for Fluid/Thermal/Chemical Systems with Industrial Applications, August 1–5, 1999, Boston, MA, USA.
+[14] K. Uchida, K. Okumura, SAE Technical Paper Series 1999-01-1127.
+[15] R.A. Shock, S. Mallick, H. Chen, V. Yakhot, R. Zhang, J. Aircraft 39 (3) (2002).
+[16] M. Schaefer, S. Turek, Notes in Numerical Fluid Mechanics, Vieweg Verlag, Braunschweig 52 (1996) 547.
+

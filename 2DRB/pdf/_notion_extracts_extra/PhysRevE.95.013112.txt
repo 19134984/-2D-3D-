@@ -1,0 +1,1352 @@
+                                                  PHYSICAL REVIEW E 95, 013112 (2017)
+
+
+                               Precursor for wind reversal in a square Rayleigh-Bénard cell
+
+                                                 Bérengère Podvin1,* and Anne Sergent1,2
+                           1
+                            CNRS, LIMSI, UPR3251, BP 133, 91403 Orsay Cedex, Université Paris-Saclay, France
+                          2
+                            Universite Pierre et Marie Curie-Paris 6, 4 Place Jussieu, 75252 Paris, Cedex 05, France
+                                              (Received 8 April 2016; published 26 January 2017)
+                   We investigate large-scale circulation reversals in a two-dimensional Rayleigh-Bénard cell using a proper
+                orthogonal decomposition (POD)-based, five-mode model. The Rayleigh number considered is Ra = 5 × 107
+                and the Prandtl number is Pr = 4.3. A precursor event, corresponding to the action of a mode L∗ which disconnects
+                the core region from the boundary layers before the onset of the reversal, is identified in the simulation. The
+                five-mode model predicts correctly the behavior of the POD modes observed in the simulation, and in particular
+                that of mode L∗ . The presence of mode L∗ , which was not included in an earlier, lower-dimensional version of
+                the model [Podvin and Sergent, J. Fluid Mech. 766, 172 (2015)], is found to be instrumental for the reversal
+                dynamics of the model, which suggests that it may also be important for those of the simulation. Reversals can
+                therefore be characterized by three time scales: the transition duration, the interreversal time, and the precursor
+                duration, which separates the precursor event from the onset of the reversal. The distribution of the time scales
+                is found to agree well with the simulation when small-scale intermittency is taken into account through the
+                introduction of noise in the model coefficients.
+
+                DOI: 10.1103/PhysRevE.95.013112
+
+                        I. INTRODUCTION                                     be connected to the development of vortex filaments along the
+                                                                            walls [10]. Alternatively, reversals can be seen as a large-scale
+    Many physical systems are characterized by intermittent
+                                                                            restoration process of the statistical symmetry of the flow:
+dynamics where the flow settles down for long periods of times
+                                                                            while instantaneous realizations of the turbulent flow are not
+near different quasistationary states separated by rapid, violent
+                                                                            symmetric, the assumption of ergodicity requires that the
+excursions. A well-known geophysical example is the Earth’s
+                                                                            flow trajectory in phase space should be symmetric [11]. One
+magnetic field which has reversed its polarity several times
+                                                                            question is then to determine if and how large-scale symmetry
+throughout its history. Similar reversals have been reproduced
+                                                                            breaking occurs during reversals.
+in magnetohydrodynamic experiments [1]. Another example
+                                                                                Different approaches have led to a wide diversity of models
+of multistability can be found in aerodynamics, where the
+                                                                            that describe reversals. Araujo et al. [12] have computed the
+recirculation flow behind a bluff body, such as an automobile,
+                                                                            force and thermal balance on a single plume detached from
+shifts over long time scales between two symmetry-breaking
+                                                                            the boundary layer and have derived from it a nonlinear set of
+positions, while the averaged flow corresponds to a statistically
+                                                                            equations, which is similar to Lorenz’s model and exhibits de-
+symmetric wake [2]. In Rayleigh-Bénard convection, thermal
+                                                                            terministic chaotic reversals. However, many approaches rely
+fluctuations organize themselves into large-scale rolls which
+                                                                            on models where the turbulent background fluctuations are rep-
+change orientation in an intermittent fashion [3,4]. In
+                                                                            resented by stochastic noise. Sreenivasan et al. [9] relied on the
+cylindrical cells, the main axis of the roll can drift slowly
+                                                                            concept of metastable states separated by an energy barrier to
+but radical reorientations can also occur in an intermittent
+                                                                            describe the physics. Benzi [13] used an energy cascade model
+fashion. These reorientations can be led by rotations of
+                                                                            that reproduced some statistical properties of the Navier-
+the main circulation or cessations (suppression of the main
+                                                                            Stokes equations. Another example is the model of Brown
+circulation) [5]. In two-dimensional (2D) or nearly 2D
+                                                                            and Ahlers [5,14], which is based on the strength and the
+domains, reversals of the large-scale circulation can also take
+                                                                            orientation of the large-scale circulation. Recent versions of the
+place [6,7]. In addition, the large-scale circulation sometimes
+                                                                            model can take into account the influence of the geometry [15].
+disappears and is replaced temporarily by a two-roll mode,
+                                                                                All these models are based on physical modeling of varying
+which creates a cessationlike event [6].
+                                                                            complexity and rely on fundamental assumptions about the
+    A long-standing question is the origin of the reversal. The
+                                                                            dominant patterns of the flow. In contrast, proper orthogonal
+physical mechanism identified so far involves the development
+                                                                            decomposition (POD) provides an unbiased framework which
+of corner flows, which are observed to grow during rever-
+                                                                            extracts spatial modes from the data using an energy-based
+sals [3,8]. Reversals can be interpreted as the consequence
+                                                                            criterion. POD modes can be compared with other classical
+of a thermal imbalance in the cell [9], and their initiation is
+                                                                            decompositions such as Fourier modes [6,16,17]. In addition,
+therefore dependent on the dynamics of small-scale thermal
+                                                                            for a given set of POD modes, one can derive a model from
+plumes, which form in the horizontal boundary layers at small
+                                                                            projection of the Navier-Stokes equations that predicts the
+scales and are transported into the bulk. We note that the
+influence of small scales remains essential even in the absence             temporal evolution of the amplitudes of the modes. Since
+of thermal convection: reversals in a 2D cell were found to                 POD modes constitute an orthogonal, hierarchically ordered
+                                                                            (in the energy sense) basis, the projection of the field onto
+                                                                            these modes converges towards the full field as the number of
+                                                                            modes increases, and the dynamics of the model is expected
+ *
+     Corresponding author: podvin@limsi.fr                                  to converge towards those of the Navier-Stokes equations if
+
+2470-0045/2017/95(1)/013112(17)                                     013112-1                                  ©2017 American Physical Society
+BÉRENGÈRE PODVIN AND ANNE SERGENT                                                            PHYSICAL REVIEW E 95, 013112 (2017)
+
+the truncation is large enough. However, it is not possible to          equations based on the nondimensional reference units are
+determine a priori how many modes are necessary to capture
+the dynamics of the flow.                                                                   ∇ · u = 0,                               (1)
+    As pointed out by Rempfer [18], the restriction to a                          ∂u    ∂u    ∂u     ∂p   Pr
+low-dimensional basis can affect the domain of validity of                           +u    +w    =−     + 1/2 u,                    (2)
+                                                                                  ∂t    ∂x    ∂z     ∂x  Ra
+the model, as only a partial view of the full dynamics is
+provided. We emphasize that the connection between the                        ∂w    ∂w    ∂w    ∂p   Pr
+                                                                                 +u    +w    =−    + 1/2 w + Prθ,                   (3)
+mathematical predictions of models and the physical processes                 ∂t    ∂x    ∂z    ∂z  Ra
+they describe is not one to one, as (i) POD modes do not                               ∂θ    ∂θ    ∂θ    1
+unequivocally correspond to physics-based coherent structures                             +u    +w    =       θ.                    (4)
+                                                                                       ∂t    ∂x    ∂z   Ra1/2
+(see the discussion in [19]), and (ii) the details of the interaction
+scenario representing a given physical mechanism depend on                  The velocity is zero on all walls. The temperature is set
+the POD modes selected in the truncation.                               to 0.5 and −0.5 respectively on the bottom and top walls.
+    Reversals were recently investigated in a paper using               Adiabatic conditions are used on the side walls.
+proper orthogonal decomposition (POD) [8]. A description                    Taking the origin of the axes (x ∗ ,z∗ ) to be set in the
+of the large-scale reversal process was provided by a model             center of the cell, the velocity and the temperature fields obey
+based on the three most energetic POD modes. A good                     the following statistical symmetries for the problem: (i) the
+agreement was observed with experimental and numerical                  reflexion symmetry Sx with respect to the vertical axis x ∗ = 0
+studies [6,20,21]. It was shown that reversals in the three-mode        which leaves all physical quantities invariant,
+model were associated with the instability of a two-cell,                              ⎡ ⎤                ⎡ ⎤
+                                                                                         u                 −u
+symmetry-breaking mode. The model reproduced reversals                                 ⎣w⎦(x ∗ ,z∗ ) → ⎣ w ⎦(−x ∗ ,z∗ );
+and cessations observed in the Direct Numerical Simulation                               θ                  θ
+(DNS) under the condition that noise was added to the model.
+    In the present paper we consider two additional POD                 (ii) the reflexion symmetry Sz with respect to the horizontal
+modes. A scenario for reversals is presented: it involves as a          axis z∗ = 0 which leaves the velocity invariant and transforms
+key player one of these extra modes, which controls the transfer        the temperature variation into its opposite,
+between the core region and the boundary layer and precedes                            ⎡ ⎤              ⎡    ⎤
+the reversal. The paper is organized as follows: we first present                        u                 u
+                                                                                       ⎣w ⎦(x ∗ ,z∗ ) → ⎣−w ⎦(x ∗ , − z∗ );
+the numerical configuration, then detail the behavior of POD
+modes in the simulation. A comparison of the latter with the                             θ                −θ
+predictions of the POD-based model is provided. We show that            (iii) the centrosymmetry or rotation of origin of the cell center
+the model predicts regular reversals in the absence of noise and        (x ∗ ,z∗ ) = (0,0) Rπ = Sx ◦ Sz = Sz ◦ Sx ,
+in the absence of symmetry-breaking modes. The influence of                            ⎡ ⎤              ⎡    ⎤
+symmetry-breaking modes and noise on the time scales of the                              u                −u
+reversals is then examined.                                                            ⎣w ⎦(x ∗ ,z∗ ) → ⎣−w ⎦(−x ∗ , − z∗ ).
+                                                                                         θ                −θ
+                     II. CONFIGURATION                                  Along with the identity, this forms a four-dimensional sym-
+                     A. Equations of motion                             metry group.
+                                                                            In the paper we will refer to a mode as symmetry breaking
+   The configuration is similar to that used in [8]. The domain         if it is not centrosymmetric with respect to Rπ . We note that if
+is a 2D square filled with water (Pr = ν/κ = 4.3), heated at            a mode is symmetric or antisymmetric with respect to both Sx
+the bottom and cooled at the top. The flow is characterized by          and Sz then it is centrosymmetric with respect to Rπ . However
+the Rayleigh number                                                     if is symmetric with respect to one and antisymmetric with
+                               α̃gT h3                                 respect to the other, then the symmetry is broken.
+                         Ra =           ,
+                                  νκ
+where α̃ is the volumetric thermal expansion coefficient, g                                  B. Numerical method
+is the gravity, T is the temperature difference between                   The simulations are carried out with a multidomain spectral
+both isothermal horizontal plates, h is the height between              code. Spectral collocation is used for spatial discretization.
+the horizontal plates, and ν and κ are respectively the fluid           Details of the method can be found in [22]. The domain
+kinematic viscosity and thermal diffusivity. The Rayleigh               decomposition in the horizontal direction x is carried out by
+number in the study is set to Ra = 5 × 107 , which corresponds          the Schur complement method and implemented with the MPI
+to a flow regime where intermittency is expected [20].                  library. Chebyshev modes are used in all directions. We use
+   The flow equations are based on the Boussinesq approxi-              384 points or polynomials in the horizontal direction and 158
+mation. The reference length and velocity units used to make            points in the vertical direction.
+the equations nondimensional   √ are the height between the                Time integration of the governing equations (1)–(4) is
+plates h and the velocity κh Ra. The temperature is made                performed through a second-order semi-implicit scheme. It
+dimensionless with T . The horizontal and vertical directions          combines a second-order backward Euler scheme with an
+will respectively be labeled x and z. If u is the velocity vector       implicit treatment for the diffusion terms and an explicit
+[u = (u,w)] and θ is the dimensionless temperature, then the            second-order Adams-Bashforth extrapolation for the nonlinear
+
+                                                                  013112-2
+PRECURSOR FOR WIND REVERSAL IN A SQUARE . . .                                                PHYSICAL REVIEW E 95, 013112 (2017)
+
+terms. The time step is equal to 0.0006 convective time unit.        TABLE I. Eigenvalues and symmetries obeyed by the POD modes.
+Incompressibility is imposed by a projection method which
+retains second-order accuracy of the time integration. The code      Mode
+has been validated and verified for resolution [8].                  index          λn                   Sx                 Sz
+                                                                     1             1.1             antisymmetric       antisymmetric
+     III. PROPER ORTHOGONAL DECOMPOSITION                            2             0.26              symmetric           symmetric
+                                                                     3             0.18              symmetric         antisymmetric
+                          A. Definition
+                                                                                                                         (velocity)
+   The approach used to derive the POD-based model has               4             0.06            antisymmetric       antisymmetric
+been described in [8]. Proper orthogonal decomposition ([19])        5             0.05            antisymmetric         symmetric
+consists of decomposing the flow variables q as a superposition                                      (velocity)
+of spatial structures or empirical eigenfunctions φ(x) whose
+amplitude varies in time, which means that
+                              ∞                                      eigenfunctions can be written as the linear combination of
+                              
+                   q(x,t) =          a (t)φ nq (x).
+                                      n
+                                                              (5)    these N snapshots,
+                               n=1                                                          φ nq (x) = Anp q(x,tp ),             (7)
+The POD modes are hierarchically organized according to
+their energies λ1 > λ2 > . . . λn . The spatial eigenfunctions are   to rewrite the eigenvalue problem. One can show that Anp
+orthogonal. If the empirical eigenfunctions are normalized, we       represents the temporal amplitude of the mode φ n at time
+have a n (t)a m (t) = δnm λn where δnm is the Kronecker symbol     tp , i.e.,
+and   is a time average. More details can be found in [19].                                   Anp = a n (tp ).                 (8)
+   We use a joint velocity and temperature decomposition,
+with a rescaling factor of 1 for the temperature.                    The set of snapshots consisted exclusively of realizations
+   To carry out the proper orthogonal decomposition of a set         extracted from the simulation (no additional symmetry was
+of variables q, one solves the following eigenvalue problem:         applied to the set).
+             
+                 q(x,t)q(x ,t)φ q (x )dx = λφ q (x),         (6)                        B. Spatial eigenfunctions
+                                                                        Proper orthogonal decomposition was applied to both
+where q(x,t)q(x ,t) is the spatial autocorrelation tensor. The     velocity and temperature variables. The dataset included 40%
+spatial autocorrelation tensor is computed from N individual         more snapshots than in [8]. The time separation between
+snapshots obtained at instants tn , q(x,tn ):                        two snapshots was six time units. The eigenvalues of the
+                                                                     five most energetic modes, which capture 90% of the joint
+                               1 
+                                      N
+                                                                     kinetic and thermal energy, are given in Table I. The shapes
+           q(x,t)q(x ,t) =         q(x,tn )q(x ,tn ).
+                               N n=1                                 of the modes can be seen in Fig. 1 and as expected are
+                                                                     very similar to the modes obtained in [8]. For the joint
+   Due to the size of the physical grid, O(50 000), the method       velocity and temperature decomposition, the most energetic
+of snapshots [23] was used to extract empirical eigenfunctions.      mode is a single roll (denoted L) associated with a dominant
+The method of snapshots [23] is based on the fact that the           thermal flux along the middle portion of the vertical boundary
+
+
+
+
+   FIG. 1. POD modes for the new dataset. Top: Velocity modes. Bottom: Temperature mode isocontours at −0.2, −0.15, −0.1, 0.1, 0.15,
+0.2. Dashed lines indicate negative values.
+
+                                                               013112-3
+BÉRENGÈRE PODVIN AND ANNE SERGENT                                                          PHYSICAL REVIEW E 95, 013112 (2017)
+
+   TABLE II. Linear coefficients Ldnp and Lbnp respectively corre-      TABLE III. Quadratic coefficients Qnmp . Only the upper part of
+sponding to the dissipation and the buoyancy force term.             the symmetric matrix is represented. The coefficients are multiplied
+                                                                     by a factor of 10 for reading convenience.
+Ldnp       p=1         p=2          p=3         p=4        p=5
+                                                                     10 × Q1mp      p=1        p=2       p=3         p=4         p=5
+m=1       −0.28        −0.09        0.02        0.44      −0.057
+m=2       −0.02        −1.79        0.13        0.10      −0.10      m=1           −0.0001     6.55       0.41      −0.04        0.069
+m=3        0.003        0.097      −0.37       −0.03      −0.03      m=2                      −0.42       0.31       2.48        0.13
+m=4        0.02         0.02       −0.01       −0.78      −0.006     m=3                                  0.068      0.28       −0.035
+m=5       −0.0025      −0.02       −0.009      −0.004     −0.43      m=4                                             0.15        0.15
+                                                                     m=5                                                         0.0326
+Lbnp       p=1         p=2          p=3         p=4        p=5
+n=1        0.08         0.14        0.015       0.20       0.077     10 × Q2mp  p=1            p=2     p=3          p=4         p=5
+n=2        0.002        1.85       −0.185      −0.10      −0.075     m=1       −28.33          1.84   −3.00        −15.92        1.23
+n=3        0.0146      −0.10        0.20       −0.08       0.093     m=2                      −0.0097 −0.79         −0.49        0.0065
+n=4       −0.13        −0.016       0.022       0.40       0.018     m=3                              −3.66          0.92       −0.38
+n=5       −0.0042       0.019       0.0198      0.006      0.38      m=4                                             2.41       −0.92
+                                                                     m=5                                                         0.21
+                                                                     10 × Q3mp     p=1         p=2       p=3        p=4         p=5
+                                                                     m=1           −2.54       2.32     −0.41       −1.24      −22.23
+                                                                     m=2                      −0.99      5.14       −0.99       −1.50
+layers. The second most energetic mode is a quadrupolar
+                                                                     m=3                                 0.0001      0.26        1.26
+velocity mode (Q) associated with the mean temperature field,        m=4                                             0.065       8.81
+with a heat flux which is maximal in the top and bottom              m=5                                                         0.12
+sections of the vertical boundary layers. The third mode is
+a two-roll, symmetry-breaking mode S. These three modes              10 × Q4mp      p=1        p=2       p=3        p=4         p=5
+were examined in detail in [8].                                      m=1             0.82     20.88     −1.33       −2.59        6.17
+    We now consider the next two most energetic modes.               m=2                      −1.99     −0.84       −9.69        0.63
+The fourth mode, which consists of two corotating stacked            m=3                                 0.75       −0.19        1.89
+                                                                     m=4                                            −0.0005     −3.07
+rolls, is entirely antisymmetric with respect to Sz and Sx .
+                                                                     m=5                                                         0.096
+The associated temperature field consists of fluctuations of
+opposite signs on each vertical half of the cavity, and is           10 × Q5mp     p=1         p=2       p=3         p=4        p=5
+characterized by a strong intensity in the boundary layers, in       m=1           −1.57      −9.43     82.28      −11.36       −0.74
+particular close to the center section of the vertical boundary      m=2                       0.05      7.62         3.99      −1.08
+layers. The fifth mode is constituted by two vertical rolls. It      m=3                                −4.70       -35.41      −0.46
+appears to be symmetric with respect to Sz and antisymmetric         m=4                                              4.92      −0.12
+with respect to Sx . Although the velocity field is symmetric        m=5                                                        −0.0007
+with respect to Sx , and antisymmetric with respect to Sz , the
+temperature field only obeys the Sx symmetry, not the Sz
+symmetry: the field in the top horizontal boundary layer has         extracted from the simulation and represented in Fig. 2 over
+an opposite sign to that in the bottom boundary layer, while it      a restricted time period, chosen to illustrate representative
+remains of constant sign along the largest part of the vertical      reversals. Corresponding histograms computed over several
+walls. The symmetries of the different modes are summarized          more reversals are also included. Figure 2 shows that reversals
+in Table I. We can note that modes 1, 2, and 4 have the same         are characterized by rapid excursions for all the POD modes.
+symmetry with respect to both reflexions, which means that           The large-scale circulation mode L switches between two
+they are all symmetric with respect to the central symmetry,         nearly constant and opposite values. At the onset of reversals,
+while modes 3 and 5 have opposite symmetries, which means            the quadrupolar mode Q increases then collapses before
+that the velocity field is antisymmetric with respect to the         increasing again. The two-roll mode S is nearly zero between
+central symmetry. We therefore adopt the following notations         reversals, but increases sharply with positive and negative
+for the modes 4 and 5: mode 4 is denoted L∗ since it is fully        values during reversals.
+antisymmetric like the mode L, while mode 5 is called S∗ since          In contrast, the antisymmetric mode L∗ is never close to
+it is a symmetry-breaking mode with opposite symmetries to           zero for large amounts of time between reversals. This is
+the mode S for Sx and Sz (see Table I).                              confirmed by its distribution shown in Fig. 2(d), which is much
+                                                                     wider than that associated with S or S∗ . The mode changes sign
+                                                                     several times during a reversal cycle. In the quasistationary
+                          C. Histories                               state following a reversal, if L is positive, then L∗ is negative
+   In all that follows, for clarity and whenever there is            (for instance at t = 80–130, t = 250–300; t = 400–450 in
+no ambiguity, we will refer to the amplitude of the nth              Fig. 2), which means—see Fig. 1—that the mode tends to
+POD mode a n (t) as a mode itself, i.e., L will refer to             decelerate the center of the roll and accelerate the flow in its
+the temporal amplitude of the first mode a 1 , Q to that of          outer part. At least one sign change of L∗ was observed before
+the second mode a 2 , and so forth. √
+                                    The time histories of the        every reversal. The change occurred on the order of several
+POD normalized amplitudes a n (t)/ λn for 1 ⩽ n ⩽ 5 were             O(10) convective units before the collapse of mode L, i.e.,
+
+                                                               013112-4
+PRECURSOR FOR WIND REVERSAL IN A SQUARE . . .                                                                  PHYSICAL REVIEW E 95, 013112 (2017)
+
+(a) 1.5                                              (f) 0.12
+
+       1                                                  0.1
+
+      0.5                                                0.08
+
+       0                                                 0.06
+L
+
+
+
+
+  −0.5                                                   0.04
+
+      −1                                                 0.02
+
+  −1.5                                                      0
+            0   100   200   300    400   500   600          −5    −4   −3   −2   −1   0    1   2   3   4   5
+                            time                                                      L
+(b) 2                                                (g) 0.14
+
+                                                         0.12
+      1.5
+                                                          0.1
+       1                                                 0.08
+ Q
+
+
+
+
+      0.5                                                0.06
+
+                                                         0.04
+       0
+                                                         0.02
+
+    −0.5                                                    0
+            0   100   200   300    400   500   600          −5    −4   −3   −2   −1   0    1   2   3   4   5
+                            time                                                      Q
+(c)    3                                             (h) 0.14
+
+       2                                                 0.12
+
+       1                                                   0.1                                                                 √ of the normalized POD
+                                                                                                                  FIG. 2. Behavior
+                                                                                                               amplitudes a n / λn during reversals. Left:
+       0                                                 0.08
+                                                                                                               time evolution. Right: histograms computed
+S
+
+
+
+
+      −1                                                 0.06                                                  over a longer time sequence: (a) and (f)
+                                                                                                               n = 1(L); (b) and (g) n = 2(Q); (c) and (h)
+      −2                                                 0.04
+                                                                                                               n = 3(S); (d) and (i) n = 4(L∗ ); (e) and (j)
+      −3                                                 0.02                                                  n = 5(S∗ ).
+      −4                                                     0
+            0   100   200   300    400   500   600           −5   −4   −3   −2   −1    0   1   2   3   4   5
+                            time                                                       S
+(d) 3                                                (i) 0.045
+                                                         0.04
+       2
+                                                        0.035
+       1
+                                                         0.03
+       0                                                0.025
+ L*
+
+
+
+
+      −1                                                 0.02
+                                                        0.015
+      −2
+                                                         0.01
+      −3
+                                                        0.005
+      −4                                                    0
+            0   100   200   300    400   500   600          −5    −4   −3   −2   −1   0    1   2   3   4   5
+                            time                                                      L
+                                                                                       *
+(e)    4                                             (j) 0.09
+                                                         0.08
+       3
+                                                         0.07
+       2
+                                                         0.06
+       1                                                 0.05
+ S*
+
+
+
+
+       0                                                 0.04
+                                                         0.03
+      −1
+                                                         0.02
+      −2
+                                                         0.01
+      −3                                                    0
+        0       100   200   300    400   500   600          −5    −4   −3   −2   −1   0    1   2   3   4   5
+                            time                                                      S1
+
+
+
+
+                                                                             013112-5
+BÉRENGÈRE PODVIN AND ANNE SERGENT                                                                 PHYSICAL REVIEW E 95, 013112 (2017)
+
+
+      2                                                                    section we will show how the model is able to reproduce the
+                                                                           dynamics of L and L∗ observed in the simulation.
+      0
+ L
+
+
+
+
+                                                                               The S∗ mode behaves in a very similar manner to the mode
+     −2
+                                                                           S: it is also nearly zero between reversals, and experiences
+       0       50         100            150    200    250        300      sharp excursions during reversals. We can therefore propose
+                                         time
+                                                                           the following description of the simulation:
+      1
+                                                                               (i) Between reversals: mode L is constant, mode Q is
+                                                                           positive, and mode L∗ is nonzero (L∗ is negative when L
+ Q
+
+
+
+
+      0
+                                                                           is positive immediately following a reversal), while modes S
+     −1                                                                    and S∗ are close to zero. The variations of all modes are small,
+       0       50         100            150    200    250        300
+                                         time                              except those of mode L∗ which changes sign at least once. This
+      1                                                                    indicates that some large-scale changes do take place between
+                                                                           reversals. The first sign change of L∗ is taken to constitute a
+ *
+
+
+
+
+      0
+L
+
+
+
+
+                                                                           precursor of the reversal.
+     −1                                                                        (ii) During reversals: mode L collapses, while mode
+       0       50         100            150    200    250        300      Q increases and modes L∗ , S, and S∗ experience sharp
+                                         time
+                                                                           excursions. Mode L∗ then changes sign several times while
+                                                                           mode Q decreases then increases again.
+      1
+                                                                               The evolution of the POD coefficients during a single
+                                                                           reversal event is represented in Fig. 3. The time origin is
+      0                                                                    arbitrary and corresponds to a moment preceding a reversal
+ S
+
+
+
+
+                                                                           (i.e., L∗ has already changed sign and has the same sign
+     −1                                                                    as L). The corresponding instantaneous velocity field and
+       0       50         100            150    200    250        300
+                                         time                              temperature field are shown in Fig. 5 at the times corresponding
+      1                                                                    to the dashed vertical lines in Fig. 3. These times respectively
+                                                                           correspond to (i) a positive value of L∗ , (ii) a maximum of L∗ ,
+ *
+
+
+
+
+      0
+S
+
+
+
+
+                                                                           (iii) a zero of L, (iv) a maximum of Q, (v) a minimum of Q,
+     −1                                                                    and (vi) an return to a quasistationary state.
+       0       50         100            150    200    250        300
+                                         time                                  As expected, the flow before the reversal at t = 30 is
+                                                                           constituted by a main roll along with two corner vortices. The
+FIG. 3. Evolution of the POD coefficients during a reversal event.         corner vortices grow, squeezing the main vortex in its middle
+                                                                           part at t = 112, and pinching it into two vortices at t = 123,
+                                                                           yielding a quadrupolar flow. The flow gives way through vortex
+before the reversal took place. This sign change means that the            reconnection to a main roll (see t = 135) which will eventually
+boundary layer wind decreases, while the flow is accelerated               reorient around the diagonal opposite the initial state (see
+in the bulk. However, this motion cannot be self-sustained as              t = 162). At t = 201, the flow is relaxing towards the new
+the flow tends to be well mixed in the bulk: the large-scale               quasistationary state. This description is similar to what was
+circulation is sustained by the transport of thermal plumes                proposed by [20] and can be connected to the Fourier-based
+originating from the horizontal boundary layers and driven into            approach proposed by [6].
+the bulk by the shear layer. The intensity of mode L∗ remains                  To show that the single reversal event selected from the
+strong until L goes through zero. At least two or more sign                DNS represents typical behavior, we represented in Fig. 4 the
+changes are observed again for the mode L∗ before it settles               phase portraits in the L,L∗ space. We represented in Fig. 4(a)
+down towards a positive value as L is now negative. In the next            the trajectories corresponding to the transition times, which
+
+                     1                                                          1
+
+                                L −> −L
+                                 0          0
+                    0.5         −L −> L                                        0.5
+                                     0      0
+             L*
+
+
+
+
+                                                                           *
+
+
+
+
+                     0                                                          0
+                                                                         L
+
+
+
+
+                −0.5                                                         −0.5
+
+
+
+                    −1                                                         −1
+                     −2         −1              0        1           2          −2          −1           0           1           2
+                                                L                                                        L
+
+           FIG. 4. Phase portraits of the POD coefficients in the (L,L∗ space (a) during the transitions, (b) outside the transitions.
+
+                                                                   013112-6
+PRECURSOR FOR WIND REVERSAL IN A SQUARE . . .                                                  PHYSICAL REVIEW E 95, 013112 (2017)
+
+
+
+
+   FIG. 5. Velocity and temperature field during a reversal event at selected times indicated in Fig. 3. Top: velocity streamlines. Bottom:
+temperature contours 0.2, 0.15, 0.1, −0.1, −0.15, −0.2 (dashed lines indicate negative values).
+
+were defined as time intervals of the form [tr − t,tr + t],              D. Adequacy of the large-scale description during reversals
+where tr corresponds to a crossing of the L = 0 axis and t                The fields shown in Fig. 5 were projected onto the first five
+is taken to be large enough to capture most of the transitions         POD modes and are represented in Fig. 6. Comparing Figs. 5
+(for the figure, we took t = 18, which is slightly larger than        and 6 allows us to evaluate the capacity of the POD modes
+the average transition duration of 16 time units as will be seen       to represent the phenomena taking place during reversals.
+in the Sec. IV D). One can see that the quadrants LL∗ > 0 are          The POD focuses mostly on the large-scale field, leaving out
+predominantly occupied during the transitions. Moreover, a             small-scale components. This means that the projection fails to
+distinction was made between the transitions from positive to          capture individual ejections of thermal plumes into the bulk, as
+negative L and from negative to positive L, and it can be seen         can be seen by comparing the bottom rows of Figs. 5 and 6. The
+that each type of transition occupies a well-defined portion of        orientation of the roll can be inferred from the relative height
+phase space: L∗ < 0 when L crosses the zero axis from left             of the temperature contours, but details of the temperature field
+to right (negative to positive) and L∗ > 0 when the switch is          within the bulk are absent.
+from positive to negative values. This is in agreement with the            In contrast, the velocity field in Fig. 6 shows similarities
+scenario proposed above. The phase portraits at times other            with Fig. 5 and confirms the scenario proposed in Sec. III C:
+than these transition times are represented in Fig. 4(b). The          the quadrupolar flow is clearly apparent in the projection at
+flow spends most of these times near the quasi-steady state            t = 111 and t = 123. We note that, after the reversal, the
+|L| = 1. Following a transition, the flow state is located in          flow does not settle immediately into the symmetric state. At
+the quadrant space LL∗ < 0 however one can see that after              t = 162 the main roll appears to be oriented along the “wrong”
+some time (but still well before a new reversal has occurred)          diagonal (i.e., the one opposite to that corresponding to the
+the mode L∗ crosses the axis and the state moves to the                quasistationary state). At this time the projected temperature
+quadrant LL∗ > 0. At least one axis crossing of L∗ outside             field consists of cold fluid in the bottom and hot fluid in the
+the transitions was observed before each reversal - in 80% of          top boundary layers, which is in opposition to the DNS field
+the reversals L∗ crossed the axis only once. This constitutes          in the boundary layers (compare Figs. 5 and 6 at t = 162).
+the precursor event of reversals.                                      This temperature inversion reflects the fact that cold and hot
+
+
+
+
+   FIG. 6. Projected field from the DNS onto the first five POD modes at the same times as in Fig. 5. Top: velocity streamlines. Bottom:
+temperature contours 0.2, 0.15, 0.1, 0.05, −0.05, −0.1, −0.15, −0.2 (dashed lines indicate negative values).
+
+
+                                                                013112-7
+BÉRENGÈRE PODVIN AND ANNE SERGENT                                                                               PHYSICAL REVIEW E 95, 013112 (2017)
+
+                                                       TABLE IV. Values of the model coefficients.
+
+c1          c2              c3            c4            c5         c6              c7            c8              c9         c10
+1.16       1.20            3.01          1.08          4.04       6.81            0.98        0.95              3.97        7.20
+α          χ           α          χ             β             μ         γ          ν         δ              δ           ξ           ξ              ω
+0.24     −0.26        0.12        0.06         24.12     15.31     0.10           0.05      0.035        0.0035        0.018       −0.44   0.035   0.018
+
+
+plumes are being rotated about by the large-scale circulation                       This requires that c4 c9 = c10 c3 which is verified within the
+independently from the horizontal boundary layers. The strong                       precision with which the coefficients are computed.
+reorganization of the plumes indicates that smaller scales                              The linear part of the model is characterized by a single off-
+become important in the latter part of the reversal. As the flow                    diagonal term representing a coupling between the L and the
+reaches the quasistationary state at t = 171, the large-scale                       L∗ modes, which share the same symmetries. The (L,Q,L∗ )
+features of the full flow are again captured correctly by the                       subspace corresponding to centrosymmetry preserving modes
+projection. The dynamics of the flow can therefore be well                          is an invariant subspace of the model, while the modes S and
+described by the low-dimensional representation except for                          S∗ form a symmetry-breaking subspace. The two subspaces
+the latter part of the reversal.                                                    are coupled through the cubic feedback term and the quadratic
+                                                                                    interaction between mode S and mode Q. The model depends
+                     IV. MODEL DYNAMICS                                             on 14 adjustable, linear, and cubic parameters. The value of the
+                                                                                    model coefficients used in the integration are given in Table IV.
+                        A. Model derivation
+   Following the approach described in [8], we derive a low-                                          B. Dynamical behavior of the model in
+dimensional model by projecting the Navier-Stokes equations                                              the rotation-invariant subspace
+onto the first five spatial eigenfunctions, which capture 90%
+of the total energy. The general form of the model is                                  We first study the dynamics of the model in the three-
+                                                                                    dimensional, centrosymmetric space, which remains invariant
+                 ȧ n = Lmn a m + Qmpn a m a p + Tn ,                       (9)     by the model equations. In the invariant subspace the equations
+                                                                                    are of the form
+where details of the model are given in the Appendix. The
+form of the model is obtained by computing the linear and
+quadratic coefficients (see Tables II and III) and retaining only                             L̇ = (χ − αr 2 )L + (χ − α r 2 )L∗ + c1 LQ,          (15)
+the largest terms in the evolution equations. The effect of the
+unresolved scales is represented by modified linear and cubic                                         Q̇ = (μ − βr 2 )Q − c2 L2 − c3 LL∗ ,         (16)
+coefficients. The model can thus be written as follows:
+                                                                                              L˙∗ = (ξ − δr 2 )L∗ + (ξ − δ r 2 )L + c8 LQ,         (17)
+         L̇ = (χ − αr )L + (χ − α r )L∗ + c1 LQ,
+                           2                     2
+                                                                        (10)        where
+
+         Q̇ = (μ − βr 2 )Q − c2 L2 − c3 LL∗ − c4 S 2 ,                  (11)                                     r = L2 + Q2 + L2∗ .
+                                                                                       The parameters were adjusted so that the system admits two
+        Ṡ = (ν − γ r 2 )L + c5 SQ + c6 LS∗ − c7 L∗ S∗ ,                (12)
+                                                                                    equilibria (L0 ,Q0 , − L0∗ ) and (−L0 ,Q0 ,L0∗ ) corresponding
+                                                                                    to the quasistationary states observed in the simulation.
+         L˙∗ = (ξ − δr 2 )L∗ + (ξ − δ r 2 )L + c8 LQ,                   (13)
+                                                                                    L0 ,Q0 ,L0∗ are taken equal to the rms of the corresponding
+                                                                                    POD mode eigenvalues. The linear cross-coupling α between
+               S˙∗ = (ω − r 2 )S∗ − c9 LS + c10 L∗ S,                  (14)
+                                                                                    the L and L∗ modes was found to be instrumental for the
+where                                                                               dynamics of the model. For lower values of α < 0.11, the
+                                                                                    equilibria are nodes. As α increases, the nodes bifurcate to
+                  r = L2 + Q2 + L2∗ + S 2 + S∗2 .                                   saddles and a heteroclinic cycle linking the two equilibria
+    The coefficient ci appearing in the evolution equation for                      appears. The unstable manifold is one dimensional and located
+mode a n characterizes the interaction between modes a p and                        primarily along the L∗ direction. However, the heteroclinic
+a q and is obtained from the quadratic coefficient Qnmp using                       cycle rapidly bifurcates towards a robust limit cycle. The model
+                                                                                   therefore predicts reversals which occur in the absence of
+                                 λp λp 1/2                                          noise and involve only centrosymmetric modes. Other models
+                    ci = Qnmp              .
+                                  λn                                                have been shown to predict reversals in the absence of noise
+                                                                                    (for instance [12]) so this is not in itself a new result. The
+These quadratic coefficients constitute the nonadjustable pa-
+                                                                                    significant contribution brought here by the model is the idea
+rameters of the model. We checked that the selected quadratic
+                                                                                    that the centrosymmetric mode L∗ plays a determinant role in
+terms are energy preserving, i.e., that
+                                                                                    reversals.
+1       1       c3 ˙           c4          c4 c6 ˙                                     Histories of the POD amplitudes predicted by the model
+   L̇L + Q̇Q +       L∗ L ∗ +       ṠS +          S∗ S∗ = 0.                       in the invariant subspace are illustrated in Fig. 7 and can be
+c1      c2     c8 c2          c2 c5       c2 c5 c9
+
+                                                                            013112-8
+PRECURSOR FOR WIND REVERSAL IN A SQUARE . . .                                                      PHYSICAL REVIEW E 95, 013112 (2017)
+
+(a) 2                                                                     which is dominated by small scales. However the quasisteady
+                                                                          states, as well as the early part of the reversal, are all correctly
+      0
+ L
+
+
+
+
+                                                                          captured by the model.
+     −2                                                                      The process which initiates the reversal in the model
+       0                 500                 1000               1500      physically corresponds to a deceleration of the wind coupling
+                                    time
+      1
+                                                                          the boundary layer with the bulk. It is represented by the L∗
+                                                                          mode, which is a centrosymmetric (nonsymmetry-breaking)
+                                                                          mode. To illustrate this interaction between L∗ and L, we
+Q
+
+
+
+
+     0.5
+                                                                          represented the projection of the flow onto these two modes
+      0                                                                   for different flow states in Fig. 8. We also represented the
+       0                 500                 1000               1500
+                                    time                                  total heat transfer associated with the modes L, L∗ , and Q
+      1                                                                   for the same flow states in Fig. 9. Near a quasisteady state, L
+                                                                          and L∗ have opposite signs [Fig. 8(a)]. As mentioned before,
+L*
+
+
+
+
+      0
+                                                                          this indicates that L∗ reinforces the wind at the edges of the
+     −1                                                                   boundary layers associated with L. The roll fills out the cavity
+       0                 500                 1000               1500
+                                    time                                  almost entirely. Figure 9(a) shows that the heat flux is maximal
+                                                                          and almost constant in the vertical boundary layers (we recall
+(b) 2                                                                     that mode L contributes mostly in the center part, while
+                                                                          the contribution of Q is predominant in the top and bottom
+      0
+ L
+
+
+
+
+                                                                          parts).
+     −2                                                                      As the intensity of mode L∗ gradually decreases, it
+      40          60           80          100       120         140      eventually switches sign, which corresponds physically to a
+                                    time
+      1                                                                   deceleration, and eventually a reversal of the circulation in the
+                                                                          upper edge of the layer, while creating motion in the opposite
+                                                                          direction. The effect is to isolate the bulk region from the
+Q
+
+
+
+
+     0.5
+                                                                          horizontal boundary layers, as can be seen in Fig. 8(b) for a
+      0
+      40          60           80          100       120         140      value of L∗ = L0∗ (before the reversal starts) and Fig. 8(c) for
+                                    time                                  L∗ = 2L0 (i.e., at the onset of reversal). As the intensity of
+      1                                                                   L∗ increases (with now the same sign as L), the large-scale
+                                                                          circulation becomes more disconnected from the boundary
+ *
+
+
+
+
+      0
+L
+
+
+
+
+                                                                          layers. This disconnection has two consequences: On the
+     −1                                                                   one hand, a double shear layer of opposite sign (“squashed
+      40          60           80          100       120         140
+                                    time                                  vortices”) can be observed in Fig. 8(c). It isolates the roll
+                                                                          from both horizontal layers and prevents efficient transport
+   FIG. 7. (a) Evolution of the coefficients in the (L,Q,L∗ ) sub-        of thermal plumes originating there by creating a wind of
+space; (b) blow-up during a single reversal event.                        opposite direction in the inner wall region, from which
+                                                                          the opposite large-scale circulation will be able to grow. On
+compared to the DNS values in Fig. 3(a). The model was                    the other hand, the roll encroachment on the vertical boundary
+integrated from an initial condition close to the quasistationary         layers is reduced, which inhibits the heat transfer between the
+state in the DNS. Some similarity with the evolution of the               bottom and the top of the cavity [Fig. 9(c)].
+DNS amplitudes is observed for the early part of the reversal,               The physical process described above is observed
+such as the increase in Q and the first sign switch and increase          in the simulation and is captured by the evolution equations
+in L∗ [compare Figs. 7(b) and 3]. We note in particular                   of the model, which predict that the sign switch in L∗ leads
+that L∗ > 0 (respectively < 0) when L crosses the axis and                to the decrease of mode L, and its eventual collapse. In the
+becomes negative (respectively positive), which agrees with               model, reversals are therefore triggered by the decoupling of
+the observations made in Sec. III C. As mentioned previously,             the boundary layers from the bulk, which in turn affects the
+the agreement is not as good for the latter part of the reversal,         heat transfer.
+
+
+
+
+       FIG. 8. Streamlines corresponding to a combination of the modes L and L∗ ; L = L0 ; (a) L∗ = −L0∗ , (b) L∗ = L0∗ , (c) L∗ = 2L0∗ .
+
+                                                                   013112-9
+BÉRENGÈRE PODVIN AND ANNE SERGENT                                                               PHYSICAL REVIEW E 95, 013112 (2017)
+
+
+
+
+ FIG. 9. Heat transfer associated with a combination of the modes L, Q, L∗ : L = L0 ,Q = Q0 ; (a) L∗ = −L0∗ , (b) L∗ = L0∗ , (c) L∗ = 2L0∗ .
+
+    The signature of the decoupling is given by the sign switch          energy. The evolution equations for (S,S∗ ) read
+of L∗ , which precedes the reversal (i.e., the sharp decrease and
+sign change of L) by a significant amount of time (the most                       Ṡ = (ν − γ r 2 )S + c5 SQ + (c6 L − c7 L∗ )S∗ ,         (18)
+probable value in the DNS is on the order of 40 convective
+units). The connection between the boundary layer and the                             S˙∗ = (ω − r 2 )S∗ − (c9 L − c10 L∗ )S.             (19)
+bulk, which are two regions characterized by very different
+                                                                         Since the quadratic coefficients ci ,i = 6,7,9,10 are large
+physical processes and scaling laws [24], appears therefore
+                                                                         and L and L∗ have opposite signs near the equilibria, the
+as a key player for the reversal dynamics of the model, and
+                                                                         off-diagonal terms are large and of opposite sign. This means
+could be instrumental in triggering the reversals observed in
+                                                                         that a strong oscillatory behavior should be expected for the
+the simulation.
+                                                                         symmetry-breaking modes. One can also show that in the
+    A reconstruction of the fields corresponding to the single
+                                                                         absence of a coupling term, there cannot be a heteroclinic
+reversal depicted in Fig. 7(b) was carried out and is shown
+                                                                         cycle in the (S,S∗ ) subspace and a nonzero equilibrium in that
+in Fig. 10 for the times identified by dashed lines in the
+                                                                         same subspace (which would correspond to cessations). The
+histories of the coefficients. The dashed lines also respectively
+                                                                         reason is as follows: for the equilibrium (L0 ,Q0 ,L0∗ ) to be a
+correspond to a sign change of L∗ , a maximum of L∗ , a zero
+                                                                         saddle in the (S,S∗ ) subspace we need
+value for L, a maximum of Q, and a value of L close to L0 .
+The quasistationary state at t = 62 corresponds to a main roll               (ν − γ r 2 ) ω − r02 + (c6 L − c7 L∗ )(c10 L − c9 S∗ ) < 0,
+surrounded by two corner vortices. We observe that the center
+of the main roll shifts along the diagonal as it is squeezed             where r0 = (L0 )2 + (Q0 )2 + (L0∗ )2 . Since c6 L − c7 L∗ is pro-
+along its main axis at t = 72. The corner rolls grow and                 portional to c10 L − c9 S∗ , this requires (ν − γ r02 ) and (ω − r02 )
+develop (see at t = 75) into a quadrupolar flow. The vortices            to be large and of opposite sign. However, if there is a nonzero
+reconnect at t = 78 into a roll aligned on the opposite diagonal         equilibrium in the symmetry-breaking subspace (S,S∗ ), then
+at t = 81. We note that the pinching of the main roll by the             this equilibrium verifies
+corner vortices occurs in a symmetric fashion since it occurs                                            γ
+in the centrosymmetric subspace.                                                   ν − γ (S 2 + S∗2 ) = [ω − (S 2 + S∗2 )] = 0,
+                                                                                                          
+                                                                         which means that ν/γ = ω/, which implies that (ν − γ r 2 )
+                                                                         and (ω − r 2 ) cannot be of opposite signs. As a consequence
+        C. Influence of the symmmetry-breaking modes                     there cannot be both one unstable and one stable direction in
+   We now examine how the presence of symmetry-breaking                  the symmetry-breaking subspace in the absence of a coupling
+modes affects the dynamics of the model. We note that if these           term.
+modes are set to zero in the model, they cannot grow since the              Integration of the model over a couple of reversals from
+other three form an invariant subspace. The centrosymmetric              an initial condition close to one of the quasistationary states
+and the symmetry-breaking subspaces are coupled through                  is shown in Fig. 11. The behavior of the model in the
+a single quadratic term, through which S and Q exchange                  centrosymmetric invariant subspace is similar to that of its
+
+
+
+
+   FIG. 10. Reconstructed field from the model in the centrosymmetric subspace modes at the times corresponding to the vertical lines in
+Fig. 7(b). Legend as in Fig. 6.
+
+
+                                                                 013112-10
+PRECURSOR FOR WIND REVERSAL IN A SQUARE . . .                                                              PHYSICAL REVIEW E 95, 013112 (2017)
+
+            2                                                                             2
+                                                                         L
+ R modes
+
+
+
+                                                                         Q                0
+
+
+
+
+                                                                                    L
+            0                                                            L
+                                                                         *
+                                                                                         −2
+           −2                                                                              0      50       100       150       200       250       300
+             0        50     100    150    200     250     300    350    400                                         time
+                                           time
+            1                                                                             1
+
+            0
+
+
+
+
+                                                                                    Q
+                                                                                         0.5
+ S
+
+
+
+
+           −1                                                                             0
+             0        50     100    150    200     250     300    350    400               0      50       100       150       200       250       300
+                                           time                                                                      time
+            1                                                                             1
+S1
+
+
+
+
+            0
+
+
+
+
+                                                                                     *
+                                                                                          0
+
+
+
+
+                                                                                   L
+           −1                                                                            −1
+             0        50     100    150    200     250     300    350    400               0      50       100       150       200       250       300
+                                           time                                                                      time
+
+                 FIG. 11. Histories of the model in the full subspace.                    1
+
+restriction to that subspace, which was studied in the previous                           0
+
+
+                                                                                    S
+section. The amplitudes of the symmetry-breaking modes S
+and S∗ increase sharply during the reversal and roll collapse,                           −1
+                                                                                           0      50       100       150       200       250       300
+in agreement with observations in the DNS [see Fig. 2(c)].                                                           time
+The high oscillation frequency of the modes is not observed in                            1
+the DNS, which is presumably an effect of the truncation—a
+                                                                                     *
+
+
+
+
+                                                                                          0
+                                                                                   S
+
+
+
+
+continuous range of high frequencies was observed in the
+DNS for mode S (results not shown here). However the mean                                −1
+                                                                                           0      50       100       150       200       250       300
+amplitude of the symmetry-breaking modes√in the model is                                                             time
+close to the expected value from the DNS λn : it is about
+90% for mode S and about 180% for mode S∗ . Reconstruction                            FIG. 12. Evolution of the coefficients in the full 5D model for a
+of fields during the single reversal event shown in Fig. 12 is                     single reversal.
+plotted in Fig. 13 for selected times and displays the same
+sequence of events as in Figs. 6 and 10. The main roll apparent
+at t = 33 is squeezed in its middle part at t = 105. We can see                    brought forth by the model. In contrast, there did not seem to
+that corner flows form either on the top or the bottom of the                      be any strong correlation between Ttr and Trev in the simulation.
+cell in an asymmetric manner which is closer to what is seen                       This suggests that the different stages of the reversal might
+in the simulation (compare for instance Fig. 12 at t = 105                         be governed by different processes and is therefore consistent
+with Fig. 6 at t = 111 or t = 93). The quadrupolar flow is                         with the idea that small scales become important in the late part
+apparent at t = 120 and vortex reconnection takes place at                         of the transition. The values reported in Table IV were chosen
+t = 129. A new quasisteady state forms at t = 162. The main                        such that the period in the model without symmetry-breaking
+features of the reversal process are therefore captured by the                     modes was found to be 130 time units, which is close to
+model. The addition of symmetry-breaking modes results in                          the period observed in the numerical simulation (about 110)
+more physically realistic reversals.                                               and the transition time is 12 convective time units (in the
+                                                                                   simulation the mean and most probable value of the transition
+                           D. Time scales of the reversal                          time are respectively 16 and 12 time units). The corresponding
+    Essential characteristics of the dynamics are the duration                     precursor duration was 85 units in the model (versus an average
+and frequency of the reversals. The time between reversals                         value of 73 in the simulation).
+Tir is defined here as the time between two zeros of L and                            Figure 14 shows how the characteristic times of the model
+the duration of the reversal (also called transition time Ttr ) is                 are modified when nonzero symmetry-breaking modes are
+defined as the time spent by L in the region [−0.75L0 ,0.75L0 ]                    included in the model. In the absence of these modes, for
+where ±L0 are the quasisteady states. In addition, a new time                      given values of the model coefficients, the period of the limit
+scale corresponding to the time separating the disconnection                       cycle is constant, so that the interreversal and transition times
+of the core and boundary layer (sign switch of L∗ ) from                           are fixed. When these modes are included, fluctuations are
+the reversal (zero of L) can be defined. We will call it the                       introduced in these time scales, as can be see in Fig. 14(a) for
+precursor duration and denote it Tprec . In the simulation, when                   the transition time, which increases slightly, and in Fig. 14(b)
+more than one axis crossing took place (20% of the cases)                          for the interreversal period, which decreases down to 90
+Tprec was defined as the time between the first sign change                        convective units. The precursor time scale [Fig. 14(c)] also
+of L∗ when LL∗ < 0 and the sign change of L. We found                              decreases down to 60 convective units.
+that the correlation between Tprec and Tir was about 0.6 in                           The evolutions of Ttr , Tir , and Tprec are consistent with
+the simulation, which supports the scenario of a limit cycle                       the idea that the effect of symmetry-breaking modes is
+
+                                                                             013112-11
+BÉRENGÈRE PODVIN AND ANNE SERGENT                                                                                              PHYSICAL REVIEW E 95, 013112 (2017)
+
+
+
+
+   FIG. 13. Reconstructed field from the model in the full subspace at the times corresponding to the vertical lines in Fig. 12. Legend as in
+Fig. 6.
+
+destabilizing. However the distribution spread of Tir (and                                       A good agreement with the DNS seems to correspond to
+Tprec ) is smaller than in the simulation, with respective                                  a noise level of 5–15%, which is on the order of the energy
+standard deviation of 22 versus 74 convective time units in                                 fraction represented by the unresolved scales (10%). This is
+the simulation for Tir and 13 against 63 convective units for                               evidenced in Fig. 16 which compares the distributions of Ttr ,
+Tprec , which again supports the idea that the distribution of the                          Tir , and Tprec for the model with a noise level of 10% with
+interreversal Tir is influenced by small scales, which are not                              their counterparts in the simulation. We also represented in
+included explicitly in the model.                                                           Figs. 16(d) and 16(e) (insets) the equivalent interreversal and
+   To account for the effect of unresolved small scales, Gaus-                              transition times for standard reversals computed from the total
+sian noise was introduced in the adjustable model coefficients                              angular momentum L2D , which were respectively defined as
+which characterize the rate of small-scale energy extraction                                (i) the time separating zeros of L2D for the interreversal time,
+from the large scales. The statistics of the reversals were com-                            and (ii) the time during which |L2D | crossed the zero axis once
+puted as follows: for a given noise level, a few thousand sets of                           and remained smaller than its maximum value by a standard
+coefficients were generated; the model corresponding to each                                deviation for the transition time.
+set of coefficients was then integrated from an initial condition                                Despite the crudeness of small-scale modeling, which
+taken from the DNS in the centrosymmetric subspace over a                                   assumes a separation between the resolved and unresolved
+time corresponding to several reversals. The mean and standard                              scales, there is evidence of some statistical agreement, as the
+deviations of the transition and interreversal times are reported                           range of characteristic time scales found in the simulation
+in Fig. 15 for different noise levels and can be compared to the                            is also present in the model. It is likely that more realistic
+values measured in the DNS (indicated as lines on the figure).                              modeling of the small scales could result in an even better
+Trends observed show some robustness with respect to the                                    statistical agreement, however this is outside the scope of the
+noise level. The mean transition time and its standard deviation                            present paper.
+σ (Ttr ) tend to increase slightly with the noise level, which
+supports the idea that small scales have a destabilizing effect.
+                                                                                                                                 V. DISCUSSION
+The average interreversal period Tir  and precursor duration
+Tprec  decrease as the noise level increases, which indicates                                In this section we discuss how our model represents the
+that higher small-scale intermittency will tend to make rever-                              physics of the flow and we compare it with other models. As
+sals more frequent. For low noise levels, the standard deviation                            mentioned in the Introduction, several physically motivated
+σ (Tir ) increases at first, but as the noise increases it decreases                        models [5,9,12,13] have been proposed to describe reversals.
+like Tir . For higher noise levels the average interreversal                              These models are targeted at specific physical phenomena,
+period and its standard deviation seem to converge towards                                  which have been extracted from the full problem. For instance,
+equal values, as well as the precursor duration.                                            Brown and Ahlers derived a model for the large-scale circula-
+                                                                                            tion in the cylinder using two physically motivated equations
+
+                                 (a)                                                      (b)                                                      (c)
+               0.3                                                      0.25                                                     0.14
+
+              0.25                                                                                                               0.12
+                                                                         0.2
+                                                                                                                                  0.1
+               0.2
+probability
+
+
+
+
+                                                          probability
+
+
+
+
+                                                                                                                   probability
+
+
+
+
+                                                                        0.15                                                     0.08
+              0.15
+                                                                         0.1                                                     0.06
+               0.1
+                                                                                                                                 0.04
+              0.05                                                      0.05
+                                                                                                                                 0.02
+
+                0                                                         0                                                        0
+                     0   50       100         150   200                    0   100   200 300 400 500         600                    0      50       100        150   200
+                              transition time                                         interreversal period                                      precursor time
+
+   FIG. 14. Influence of the symmetry-breaking modes on the time scales of the reversal (a) transition time, (b) interreversal time, (c) precursor
+time.
+
+
+                                                                                     013112-12
+PRECURSOR FOR WIND REVERSAL IN A SQUARE . . .                                                                                                               PHYSICAL REVIEW E 95, 013112 (2017)
+
+                         160                                                                                       160
+
+                         140                                                                                       140
+
+                         120                                                                                       120
+
+                         100                                                                                       100
+
+                          80                                                                                           80
+
+                          60                                                                                           60
+
+                          40                                                                                           40
+
+                          20                                                                                           20
+
+                           0                                                                                           0
+                               0             0.05        0.1       0.15                       0.2         0.25          0        0.05         0.1       0.15                0.2         0.25
+                         (a)                               noise level                                             (b)                          noise level
+
+    FIG. 15. (a) Evolution of the time scales as a function of the noise level. Dashed lines: mean values in the DNS; dotted line: standard
+deviation of Tir in the DNS; solid line: standard deviation of Ttr in the DNS. (b) Evolution of the precursor time Tprec . Dashed line: mean value
+in the DNS; dotted line: standard deviation
+
+for the strength and azimuthal component of the large-scale                                                        phenomena. In contrast, our POD-based model is based on the
+circulation. The model was able to reproduce cessations and                                                        extraction of a complete eigenfunction basis from empirical
+rotations. Arujo et al. produced a three-dimensional model                                                         data and straightforward projection of the full Navier-Stokes
+based on a deterministic balance between the drag and the                                                          equations onto this basis. As noted in the Introduction, these
+buoyancy force to reproduce reversals. The form of their                                                           eigenfunctions are objective but artificial constructions which
+system is analogous to the Lorenz equations, with coefficients                                                     do not necessarily represent physical coherent structures of
+which can be made explicitly dependent on the Rayleigh and                                                         the flow. The POD-based model provides evolution equations
+Prandtl numbers (via modeling of the Nusselt number). The                                                          for the amplitudes of the spatial eigenfunctions or modes. The
+model predicts the existence of reversals (regular or chaotic)                                                     first steps of the derivation of the (data-dependent) model do
+depending on the value of these parameters.                                                                        not therefore require any kind of a priori assumption about the
+   As noted above, the evolution equations of these models                                                         problem: in particular, the procedure is entirely independent
+are based on selected modeling of already identified physical                                                      of the geometry or boundary conditions. We emphasize that
+
+
+                                       (a)                                                                       (b)                                                              (c)
+               0.5                                                                 0.25                                                                     0.16
+              0.45                                                                                                                                          0.14
+               0.4                                                                  0.2
+                                                                                                                                                            0.12
+              0.35
+probability
+
+
+
+
+                                                                     probability
+
+
+
+
+                                                                                                                                              probability
+
+
+
+
+               0.3                                                                 0.15                                                                      0.1
+              0.25                                                                                                                                          0.08
+               0.2                                                                  0.1                                                                     0.06
+              0.15
+                                                                                                                                                            0.04
+               0.1                                                                 0.05
+                                                                                                                                                            0.02
+              0.05
+                 0                                                                   0                                                                        0
+                     0   50            100         150         200                        0         100    200 300 400           500    600                        0   50   100   150      200   250   300
+                                   transition time                                                          interreversal time                                                    Tprec
+
+                                       (d)                                                                       (e)                                                              (f)
+               0.5                                                                 0.14                                                                     0.35
+              0.45
+                                                                                   0.12                                                                      0.3
+               0.4
+              0.35                                                                  0.1                                                                     0.25
+probability
+
+
+
+
+                                                                     probability
+
+
+
+
+                                                                                                                                              probability
+
+
+
+
+               0.3                                                                 0.08                                                                      0.2
+              0.25
+               0.2                                                                 0.06                                                                     0.15
+              0.15                                                                 0.04                                                                      0.1
+               0.1
+                                                                                   0.02                                                                     0.05
+              0.05
+                 0                                                                   0                                                                        0
+                     0   50            100         150         200                        0         100    200 300 400 500              600                        0   50   100 150 200          250   300
+                                    transition time                                                         interreversal duration                                            precursor time
+
+    FIG. 16. Time scales of the reversals. Top row: model with a noise level of 10% in the coefficients: (a) transition time, (b) interreversal time,
+(c) precursor time. Bottom row: DNS: (d) transition time, (e) interreversal time, (f) precursor time—the inset pictures in (d) and (e) correspond
+to equivalent statistics performed on the global angular momentum L2D over a time of 38 000 convective time units.
+
+
+                                                                                                          013112-13
+BÉRENGÈRE PODVIN AND ANNE SERGENT                                                          PHYSICAL REVIEW E 95, 013112 (2017)
+
+the POD eigenfunctions characterize the full problem, which             TABLE V. Values of the coefficients of the three-mode model
+can then be simplified by considering only the most energetic        [Eq. (22)].
+modes. Typically, these modes obey a set of symmetries
+which depend on the configuration considered. As pointed out         c̃1   c̃2   c̃3   c̃4   χ    μ     ν    ν    α     β    γ     γ
+by [19], mode symmetry constitutes a primary constraint for          1.22 1.25 0.51 0.27 −0.47 6.35 0.58 0.24 0.11 8.72 0.44 0.004
+the temporal evolution of the mode amplitudes. In particular,
+the quadratic terms in the model characterizing the interactions
+between the amplitudes of the eigenfunctions are uniquely
+determined by the shape of these eigenfunctions and therefore        change in the dynamics was found when a comparison of this
+reflect the specific symmetries of the POD modes associated          model with that described in [8] was carried out (for suitable
+with the configuration.                                              small-scale parameters) and the conclusions of [8] were not
+    Approximations are required once a particular truncation         modified. The model coefficients are given in Table V for the
+has been chosen for the model. These approximations are              sake of completeness.
+the result of two processes: (i) the selection of the largest            The dynamics of the 3D model consists of heteroclinic
+linear and quadratic coefficients, ensuring that the selection       connections between fixed points. Fixed points are either of
+is compact yet consistent with pure redistribution of energy         LQ type, i.e., they are close to the S = 0 plane and represent a
+through the quadratic terms—which explains why the models            quasisteady unique roll or of S type, i.e., they are close to the
+corresponding to nested truncations will not be necessarily          S axis and represent a two-roll mode. Both LQ- and S-type
+nested within each other; (ii) the addition of modified linear       equilibria consist of nodes and saddles. Each heteroclinic
+and cubic coefficients which represent the action of the unre-       connection linked a saddle of LQ type (respectively S type) to
+solved scales (i.e., POD modes excluded from the truncation).        a node of S type (respectively LQ type). When the effect
+Moreover, owing to symmetry, invariant subspaces may be              of unresolved scales is taken into account into the model
+found in the model: this is a key issue because of the constraints   by the addition of a random perturbation, the system can be
+they induce for the dynamics of the modes. In particular, any        kicked away from one of the nodes through random motion
+trajectory originating in the invariant subspace will remain         and reach the basin of attraction of the nearby saddle, from
+within this invariant subspace. This is not only of interest for     which it gets attracted towards another node, and so forth.
+a better understanding and possible further reduction of the         The deterministic heteroclinic connections then form a noisy
+dynamics, but also for control purposes.                             heteroclinic cycle linking all equilibria. It is important to note
+    To sum up, proper orthogonal decomposition provides              that noise is required to establish a dynamical connection
+objective identification of an energy-based hierarchy of flow        between the two opposite large-scale circulations ±L0 . The
+patterns (POD eigenfunctions). Each truncation of any dimen-         possibility of reversals in the 3D model is therefore conditioned
+sion can be associated with an interaction scenario for the          on the presence of noise.
+relevant POD modes which attempts to model the physical                  In contrast, with the five-mode model, creating the connec-
+processes occurring in the flow. The interaction scenarios           tion between the states ±L0 does not require explicit noise,
+depend on the symmetry and shape of the eigenfunctions               but involves a new mode L∗ . This mode is absent from the
+retained in the truncations, and produce complementary               three-mode model, so there is no inconsistency between the
+representations of reversals. This provides a theoretically          two model predictions. The occurrence of reversals was found
+robust, unbiased framework where physical approximations             to depend on the intensity of the coupling between mode L
+in the model are reduced to the introduction of a closure            and the additional mode L∗ , which controls the connection
+scheme for the modes excluded from the truncation. However,          between the boundary layer and the core region. Reversals
+the dependence of the eigenfunctions with respect to the             correspond to the existence of a limit cycle in the invariant
+configuration parameters is itself strongly implicit, which          subspace (L,Q,L∗ ), close to an unstable heteroclinic cycle,
+hampers the predictive capabilities of the models. Variations        and linking the quasisteady states ±L0 . A change in the sign
+in the flow parameters (Rayleigh number, Prandtl number) are         of the mode L∗ is identified as a precursor for the reversal.
+expected to lead to changes in the POD large-scale patterns,         The inclusion of modes S and S∗ makes the time between
+but are also likely to modify the action of the small scales on      reversals variable and on average shorter (just as in the 3D
+these patterns: additional modeling effort is therefore needed       model, the S mode represents a direction of destabilization for
+to extend the range of validity of the models.                       the quasisteady states). The variability is still increased when
+    In [8], we considered a three-mode truncation with modes         random variations are allowed in the model coefficients.
+L, Q, and S. The model is of the form                                    Both 3D and 5D models predict reversals of the large-scale
+                                                                     circulation in a consistent manner. At the onset of the reversal,
+                  L̇ = (χ − αr 2 )L + c1 LQ,                 (20)    all modes experience sharp variations: growth of the S mode
+                                                                     is observed, while the quadrupolar mode Q collapses with
+              Q̇ = (μ − βr 2 )L − c2 L2 + c3 LS,             (21)    the large-scale circulation L. The duration of the reversal
+                                                                     as well as the mean period between reversals are found
+          Ṡ = (ν − γ r 2 )S + (ν − γ r 2 )L − c4 LQ.        (22)    to match the times measured in the simulation when the
+                                                                     effect of the unresolved modes is represented with additional
+   We note that, owing to a previous error, the signs in front       model coefficients and noise perturbations. The mean time
+of the coefficients c1 and c2 are opposite to those given in [8]     between reversals decreases as the noise level increases in the
+(and consistent with those in the present model). No significant     model. We note that the POD-based scenarios (which are by
+
+                                                               013112-14
+PRECURSOR FOR WIND REVERSAL IN A SQUARE . . .                                               PHYSICAL REVIEW E 95, 013112 (2017)
+
+construction global) are not inconsistent with the observations     average transition time slightly increases, while the average
+of Sugiyama et al. [20] who propose that the onset of reversal      interreversal period and precursor duration decrease with the
+is associated with the local growth of corner flows (see Figs. 7    noise level. This is consistent with the idea that higher small-
+and 10). It is important to realize that the localized motions      scale intermittency will increase the likelihood of large-scale
+associated with the corner flows correspond to a mixture of         destabilization. The distributions of the characteristic time
+many POD modes, so that direct comparison with Sugiyama’s           scales are found to agree relatively well with the DNS for
+observations is not straightforward.                                noise levels of about 10%, which corresponds to the fraction
+    One major difference between the models is the addition         of energy contained in the unresolved scales.
+of mode L∗ , through which a direct connection between the
+states ±L0 can be established. The large-scale, deterministic                           ACKNOWLEDGMENTS
+part of the five-mode model captures the entire transition
+process, while only part of the transition could be reproduced        This work was performed using HPC resources from
+in the three-mode model in the absence of noise. Moreover,          CNRS (IDRIS-GENCI) (Grant No. 2013-2a0326). We thank J.
+it was shown that in the simulation, unlike other POD modes,        Chergui and S. Xin for their assistance with the computations.
+mode L∗ significantly varies between transitions, a behavior        We are very thankful to the referees for their helpful comments
+which is correctly captured by the five-mode model. This            when revising the paper
+led to the definition of a precursor event as the first axis
+crossing of L∗ following a reversal. The precursor event was                       APPENDIX: MODEL DERIVATION
+successfully reproduced by the model, which supports the
+idea that reorganizations of the large-scale circulation in the           The general form of the model is
+simulation are not purely random occurrences, but could be                          ȧ n = Lmn a m + Qmpn a m a p + Tn ,           (A1)
+part of a cycle reminiscent of the one displayed in the model.
+This opens up the possibility that reversals could be anticipated   where Tn represents the effect of the unresolved modes.
+to some extent, and perhaps even controlled at the large-scale         (i) Linear coefficients: The linear term Lnm contains a
+level, which is a new and enticing prospect brought about by        dissipative part Ldmn and a buoyancy part Lbmn , defined as
+                                                                                       
+the five-mode model.                                                              1                       T
+                                                                       Lmn =
+                                                                         d
+                                                                                   1/2
+                                                                                          Pr∇φ nu : ∇φ mu
+                                                                                                            + ∇φθn · ∇φθm dx,
+                                                                                Ra
+                                                                                                                                (A2)
+                      VI. CONCLUSION
+                                                                    where T represents the transposition operator, and
+    We have studied a new POD-based, five-mode model to                                          
+represent the dynamics of the large-scale circulation in a 2D                             Lmn = (φθn φwm ) dx
+                                                                                           b
+                                                                                                                                (A3)
+square Rayleigh-Bénard cell. It was shown that the large-scale
+description provided by POD is able to describe the velocity        of the inner and outer sections of the large-scale circulation.
+field at all times except during the latter part of the reversal.      (ii) Quadratic coefficients: The quadratic terms Qmpn
+    The major result of this study is that a POD mode that          (which cannot be confused with the quadrupolar mode Q)
+becomes dynamically active before reversals was identified          are defined as
+                                                                                      
+in the DNS. In particular, the mode changes sign between
+reversals, which we termed a precursor event. This event                     Qmpn =         φm
+                                                                                             u
+                                                                                                · ∇φ pu + φ pu · ∇φum · φ nu
+was correctly reproduced by the model and was found to be
+essential for the model reversal dynamics, which suggests that                          + φm
+                                                                                           u
+                                                                                             · ∇φ pθ + φ pu · ∇φθm φθn dx.         (A4)
+it could also be important for the reversals observed in the
+                                                                    They correspond to the transport of the Reynolds stress as well
+simulation. The effect of the sign change is to decelerate the
+                                                                    as that of the convective heat flux. The structure of the model is
+wind in the region connecting the bulk and the boundary layers,
+                                                                    determined by the values of the largest quadratic coefficients.
+limiting heat transfer between the top and bottom of the cavity.
+                                                                        Only one quadratic coupling term is retained between
+As a consequence, the main roll is isolated from the boundary
+                                                                    the invariant, centrosymmetric subspace and the symmetry-
+layers, while a new shear layer of opposite sign is created
+                                                                    breaking subspace, in order to constitute the simplest model
+in the horizontal boundary layers. A new time scale, which
+                                                                    that provides quadratic coupling between the two subspaces.
+we call the precursor duration, can be defined: it corresponds
+                                                                        (iii) Small-scale modeling T : Due to nonlinearity, unre-
+to the interval between the precursor event and the onset
+                                                                    solved modes appear in the model and need to be accounted
+of the reversal, and appears to be well correlated with the
+                                                                    for. In the absence of convection, the turbulent eddy viscosity
+interreversal period in the simulation.
+                                                                    is assumed to be proportional to the local strain rate sij ,
+    The model predicts excursions of the symmetry-breaking
+(noncentrosymmetric) modes during reversals, in agreement                                   νT ∼ C|sij sij |1/2 .
+with the numerical simulation and the simpler, 3D model
+studied previously. The presence of symmetry-breaking modes         This approximation is consistent with [25] which makes
+in the model leads to fluctuations in the time scales of            the case for a nonlinear subscale representation in low-
+the reversal, but the amplitude of the fluctuations remains         dimensional models of the form
+inferior to those of the simulation. However the agreement                                   νT ∼ C |k< |1/2 ,                     (A5)
+is significantly improved when noise representing small-scale
+                                                                                                                               n
+intermittency is introduced in the model coefficients. The          where k< represents the energy of the resolved modes a .
+
+                                                              013112-15
+BÉRENGÈRE PODVIN AND ANNE SERGENT                                                                   PHYSICAL REVIEW E 95, 013112 (2017)
+
+    In the case of natural convection, a simple gradient diffusion            deviation was less than 0.2 for the first five modes. Using
+hypothesis for the turbulent heat fluxes is generally not
+                                                                                                      k(t) = k + k̃(t)
+acceptable [26]. A better mode for the turbulent heat fluxes
+is given by [27]                                                              with |k̃(t)| k, we can make the approximation
+                                                                                                                        1 k̃(t)
+                                 k         ∂θ                                     k(t) = k[1 + k̃(t)/k]1/2 ∼ k 1 +
+                    θ ui  = −Cθ ui uk        ,                   (A6)                                                   2 k
+                                          ∂xk                                             √ 
+                                                                                             k      k(t)
+                                                                                         =       1+        .
+where k is the turbulent kinetic energy and  is the dissipation.                            2        k
+The evolution of the unresolved turbulent heat fluxes is                      This leads to an affine representation for the eddy viscosity,
+therefore related to that of the unresolved turbulent stresses.               which is in fact consistent with the optimal approach derived
+   We generalize the approach of Osth et al. to thermal                       by [28] for transient flows. The eddy viscosity is therefore
+convection flows, using Eq. (A5), and we make one further                     made up of a constant and a quadratic part, which yields
+simplification by expressing the fact that the temporal vari-                 linear terms and cubic terms in the equations. The cubic
+ations of the energy of the first POD modes are typically                     terms are taken to be positive to ensure global stability of
+small compared to its mean value—the normalized standard                      the model.
+
+
+ [1] M. Berhanu, B. Gallet, R. Monchaux, M. Bourgoin, P. Odier, J.-                bulent Rayleigh-Bénard convection, Phys. Fluids 20, 075101
+     F. Pinton, N. Plihon, R. Volk, S. Fauve, N. Mordant, F. Pétrélis, S.        (2008).
+     Aumatre, A. Chiffaudel, F. Daviaud, B. Dubrulle, and F. Ravelet,         [15] K. Bai, D. Ji, and E. Brown, Abiliy of a low-dimensional model
+     Bistability between a stationary and an oscillatory dynamo in a               to predict geometry-dependent dynamics of large-scale coherent
+     turbulent flow of liquid sodium, J. Fluid. Mech. 641, 217 (2009).             structures in turbulence, Phys. Rev. E 93, 023117 (2016).
+ [2] M. Grandemange, M. Gohlke, and O. Cadot, Turbulent wake                  [16] M. Chandra and M. Verma, Dynamics and symmetries of flow
+     past a three-dimensional blunt body. part 1 - global modes and                reversals in turbulent convection, Phys. Rev. E 83, 067303
+     bi-stability, J. Fluid Mech. 722, 51 (2013).                                  (2011).
+ [3] H. Xi and K. Xia, Flow mode transition in turbulent thermal              [17] M. Verma, S. Ambhire, and A. Pandey, Flow reversals in
+     convection, Phys. Fluids 20, 055104 (2008).                                   turbulent convection with free-slip walls, Phys. Fluids 27,
+ [4] B. Podvin and A. Sergent, Proper orthogonal decomposition                     047102 (2015).
+     investigation of turbulent Rayleigh-Bénard convection in a              [18] D. Rempfer, On low-dimensional Galerkin models for fluid flow,
+     rectangular cavity, Phys. Fluids 24, 105106 (2012).                           Theor. Comput. Fluid Dyn. 14, 75 (2000).
+ [5] E. Brown and G. Ahlers, Large-Scale Circulation Model for                [19] P. Holmes, J. Lumley, and G. Berkooz, Turbulence, Coherent
+     Turbulent Rayleigh-Bénard Convection, Phys. Rev. Lett. 98,                   Structures, Dynamical Systems and Symmetry (Cambridge
+     134501 (2007).                                                                University Press, Cambridge, England, 1996).
+ [6] M. Chandra and M. Verma, Flow Reversals in Turbulent                     [20] K. Sugiyama, R. Ni, R. Stevens, T. Chan, S.-Q. Zhou, H.-D. Xi,
+     Convection Via Vortex Reconnections, Phys. Rev. Lett. 110,                    C. Sun, S. Grossmann, K.-Q. Xia, and D. Lohse, Flow Reversals
+     114503 (2013).                                                                in Thermally Driven Turbulence, Phys. Rev. Lett. 105, 034503
+ [7] J. Bailon-Cuba and J. Schumacher, Low-dimensional model of                    (2010).
+     turbulent Rayleigh-Bénard convection in a cartesian cell with a         [21] K. Petschel, M. Wilczek, M. Breuer, R. Fredrich, and U.
+     square domain, Phys. Fluids 23, 077101 (2011).                                Hansen, Statistical analysis of global wind dynamics in vigorous
+ [8] B. Podvin and A. Sergent, A large-scale investigation of wind                 Rayleigh-Bénard convection, Phys. Rev. E 84, 026309 (2011).
+     reversal in a square Rayleigh-Bénard cell, J. Fluid Mech. 766,          [22] S. Xin, J. Chergui, and P. L. Quéré, 3D spectral parallel
+     172 (2015).                                                                   multi-domain computing for natural convection flows, Par-
+ [9] K. Sreenivasan, A. Berdshadskii, and J. Niemelak, Mean wind                   allel Computational Fluid Dynamics 2008, Lecture Notes in
+     and its reversal in thermal convection, Phys. Rev. E 65, 056306               Computational Science and Engineering, Vol. 74, edited by
+     (2002).                                                                       D. Tromeur-Dervout, G. Brenner, D. R. Emerson, and J. Erhel
+[10] D. Molenaar, H. Clercx, and G. C. Heijst, Angular momentum                    (Springer, Berlin, Heidelberg, 2010), pp. 163–171.
+     of forced 2d turbulence in a square no-slip domain, Physica D            [23] L. Sirovich, Turbulence and the dynamics of coherent structures
+     196, 329 (2004).                                                              part i: Coherent structures, Q. Appl. Math. 45, 561 (1987).
+[11] U. Frisch, Turbulence: The legacy of A. N. Kolmogorov (Cam-              [24] S. Grossmann and D. Lohse, Scaling in thermal convection: A
+     bridge University Press, Cambridge, England, 1995).                           unifying theory, J. Fluid Mech. 407, 27 (2000).
+[12] F. Araujo, S. Grossmann, and D. Lohse, Wind Reversals in                 [25] J. Östh, B. R. Noack, S. Krajnocić, D. Barros, and J. Borée,
+     Turbulent Rayleigh-Bénard Convection, Phys. Rev. Lett. 95,                   On the need for a nonlinear subscale turbulence term in POD
+     084502 (2005).                                                                models as exemplified for a high Reynolds number flow over an
+[13] R. Benzi, Flow Reversal in a Simple Model of Turbulence, Phys.                Ahmed body, J. Fluid Mech. 747, 518 (2014).
+     Rev. Lett. 95, 024502 (2005).                                            [26] S. Choi and S. Kim, Turbulent modeling of natural convection
+[14] E. Brown and G. Ahlers, A model of diffusion in a potential                   in enclosures: A review, J. Mech. Science Technol. 26, 283
+     well for the dynamics of the large-scale circulation in tur-                  (2012).
+
+
+                                                                       013112-16
+PRECURSOR FOR WIND REVERSAL IN A SQUARE . . .                                                    PHYSICAL REVIEW E 95, 013112 (2017)
+
+[27] N. Ince and B. Launder, On the computation of buoyancy-driven       [28] B. Protas, B. Noack, and J. Osth, Optimal nonlinear eddy
+     turbulent flows in rectangular enclosures, Int J. Heat Fluid Flow        viscosity in Galerkin models of turbulent flows, J. Fluid Mech.
+     10, 110 (1989).                                                          766, 337 (2015).
+
+
+
+
+                                                                   013112-17
+

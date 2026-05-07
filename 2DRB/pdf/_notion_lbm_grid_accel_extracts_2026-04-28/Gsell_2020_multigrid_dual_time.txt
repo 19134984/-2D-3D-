@@ -1,0 +1,1170 @@
+                                        PHYSICAL REVIEW E 101, 023309 (2020)
+
+
+
+                                Multigrid dual-time-stepping lattice Boltzmann method
+                                          Simon Gsell ,* Umberto D’Ortona, and Julien Favier
+                                   Aix-Marseille Univ., CNRS, Centrale Marseille, M2P2, Marseille, France
+
+                               (Received 11 September 2019; accepted 28 January 2020; published 18 February 2020)
+
+                   The lattice Boltzmann method often involves small numerical time steps due to the acoustic scaling (i.e.,
+                scaling between time step and grid size) inherent to the method. In this work, a second-order dual-time-stepping
+                lattice Boltzmann method is proposed in order to avoid any time-step restriction. The implementation of the dual
+                time stepping is based on an external source in the lattice Boltzmann equation, related to the time derivatives of
+                the macroscopic flow quantities. Each time step is treated as a pseudosteady problem. The convergence rate of
+                the steady lattice Boltzmann solver is improved by implementing a multigrid method. The developed solver is
+                based on a two-relaxation time model coupled to an immersed-boundary method. The reliability of the method
+                is demonstrated for steady and unsteady laminar flows past a circular cylinder, either fixed or towed in the
+                computational domain. In the steady-flow case, the multigrid method drastically increases the convergence rate
+                of the lattice Boltzmann method. The dual-time-stepping method is able to accurately reproduce the unsteady
+                flows. The physical time step can be freely adjusted; its effect on the simulation cost is linear, while its impact
+                on the accuracy follows a second-order trend. Two major advantages arise from this feature. (i) Simulation
+                speed-up can be achieved by increasing the time step while conserving a reasonable accuracy. A speed-up of
+                4 is achieved for the unsteady flow past a fixed cylinder, and higher speed-ups are expected for configurations
+                involving slower flow variations. Significant additional speed-up can also be achieved by accelerating transients.
+                (ii) The choice of the time step allows us to alter the range of simulated timescales. In particular, increasing
+                the time step results in the filtering of undesired pressure waves induced by sharp geometries or rapid temporal
+                variations, without altering the main flow dynamics. These features may be critical to improve the efficiency and
+                range of applicability of the lattice Boltzmann method.
+
+                DOI: 10.1103/PhysRevE.101.023309
+
+
+                        I. INTRODUCTION                                     where tNS is the time step, n is the grid size, U is the
+                                                                            typical flow velocity, and C is the CFL number that must sat-
+    The lattice Boltzmann method, issued from the discretiza-
+                                                                            isfy C ⩽ 1. In constrast, the lattice Boltzmann time step tLB
+tion of the Boltzmann equation, has become a popular ap-
+                                                                            must scale with the grid size through the acoustic scaling,
+proach to simulate fluid flows [1,2]. In contrast to the Navier-
+                                                                            namely n/tLB = c, where c is the lattice speed. In addition,
+Stokes equations, the Boltzmann equation statistically de-
+                                                                            the method relies on a low-velocity assumption, which can
+scribes the dynamics of microscopic fluid particles. It is said
+                                                                            be expressed as U/c = κ, where κ is a small parameter.
+that the flow is described at the mesoscopic scale. In the lattice
+                                                                            Substituting c by n/tLB , this condition is equivalent to a
+Boltzmann method, fluid particle distribution functions, also
+                                                                            time-step restriction,
+called particle populations, are transported on a spatial lattice
+composed of nodes connected by a discretized velocity space.                                         tLB = κn/U.                        (2)
+Despite the differences between the Navier-Stokes and lattice
+                                                                            As κ  1, it appears that the lattice Boltzmann time step is
+Boltzmann approaches, they have proved to similarly predict
+                                                                            generally smaller than a Navier-Stokes time step for a given
+the flow behavior at the macroscopic scale [3–5]. In addition,
+                                                                            grid size and a given flow velocity. In practice, the value
+the analogy between the discretized Boltzmann and Navier-
+                                                                            κ = 0.05 is expected to be small enough to ensure numerical
+Stokes equations can be formally shown by a multiscale
+                                                                            accuracy [2]. In this case, the lattice Boltzmann time step is
+Chapman-Enskog analysis [6].
+                                                                            20 times smaller than a Navier-Stokes time step with C = 1.
+    As any explicit method, the lattice Boltzmann method
+                                                                                Time-step restrictions of explicit solvers can lead to sig-
+involves restrictions on the numerical time step. These re-
+                                                                            nificant computational costs when simulating flows involving
+strictions may, however, be more important than for other
+                                                                            small length scales (i.e., small value of n) and relatively
+methods. In the case of explicit Navier-Stokes solvers, the
+                                                                            large timescales, as in large-eddy simulations of wall-bounded
+time step is often set according to a Courant-Friedrichs-Lewy
+                                                                            turbulent flows or in many multiscale problems (e.g., porous
+(CFL) stability condition, which can be expressed as [7]
+                                                                            media, bubble flows, flow over canopies, etc.). Moreover, due
+                          tNS = Cn/U,                            (1)      to the scaling between the time step and other numerical
+                                                                            parameters, as in expressions (1) and (2), it is often difficult
+                                                                            to vary physical parameters as the Reynolds number without
+                                                                            altering the computational performance. Finally, time-step
+ *
+     simon.gsell@univ-amu.fr                                                restrictions prevent the free control of the numerical time
+
+2470-0045/2020/101(2)/023309(16)                                     023309-1                                 ©2020 American Physical Society
+GSELL, D’ORTONA, AND FAVIER                                                              PHYSICAL REVIEW E 101, 023309 (2020)
+
+accuracy and generally limit the degrees of freedom of the         where ρ, U = (u, v)T , P, and μ designate the fluid density,
+numerical setup. The present work aims at avoiding these           velocity, pressure, and viscosity, and t is the time. More
+restrictions through a dual-time-stepping (DTS) procedure.         generally, Eqs. (3) may be rewritten as
+    Dual-time-stepping methods, first introduced for Navier-                                ∂q
+Stokes solvers [8,9], are implicit time-integration methods                                     + N(q) = 0,                        (4)
+                                                                                            ∂t
+that avoid any time-step restriction. At each time step, the
+flow solution is computed by solving a pseudosteady problem,       where q is the solution vector (ρ, ρu, ρv)T and N(q) des-
+where the flow unsteadiness is taken into account as an exter-     ignates the steady Navier-Stokes operator. The dual-time-
+nal forcing in the steady flow equations. The pseudosteady         stepping method is based on a pseudosteady formulation of
+solution is obtained by integrating the solution over a pseudo-    (4),
+time. While the pseudo time step may be subjected to stability                            ∂q
+                                                                                               + N(q) = S(q),                      (5)
+restriction, the physical one is only determined by the desired                          ∂t ∗
+time accuracy of numerical simulations. It allows us to set        where t ∗ is a pseudotime variable and S(q) = −∂q/∂t. The
+the time step as a function of the expected flow timescale,        solution of (4) at time t is found by integrating (5) over the
+regardless of the spatial discretization. This method remains      pseudotime t ∗ until a steady solution is reached, i.e., ∂q/∂t ∗ =
+to be extended to lattice Boltzmann solvers; this is addressed     0. In this steady-state problem, the flow-unsteadiness plays
+in this work.                                                      the role of an external forcing. Time and pseudotime spaces
+    The efficiency of a dual-time-stepping method is closely       are discretized as t = nt and t ∗ = lt ∗ , where n and l are
+related to the performance of the pseudosteady flow solver.        integers designating the time and pseudotime iterations and
+Therefore, Navier-Stokes dual-time-stepping methods are of-        t and t ∗ are the associated time steps. The time-discretized
+ten coupled to convergence acceleration techniques as precon-      pseudosteady problem reads
+ditionning [10–12] and multigrid [13,14]. Similar techniques                                
+have been developed for lattice Boltzmann methods [15–20].                              ∂q l
+                                                                                               + N(ql ) = S(ql ),                  (6)
+In the present algorithm, a multigrid technique similar to that                        ∂t ∗ 
+proposed by Mavriplis [19] for steady flows is employed to         where S(ql ) is computed implicitly as a function of time t
+improve the efficiency of the dual-time-stepping algorithm.        through a second-order backward scheme [13,14],
+It is extended to a very generic numerical framework, built
+using a two-relaxation-time lattice Botzmann method coupled                                    3ql − 4qn + qn−1
+                                                                                    S(ql ) = −                  .              (7)
+to an immersed-boundary method [21], thus allowing the sim-                                           2t
+ulation of a large variety of physical configurations involving    After convergence, the new time-accurate flow solution is
+moving and/or deformable solid bodies immersed in a fluid.         obtained by qn+1 ← ql .
+    The present paper is organized as follows. The proposed           The pseudotime step t ∗ is only involved in the integration
+numerical method is presented in Sec. II. The reliability of the   of (6). Depending on the employed numerical method, it may
+method is analyzed in the cases of the steady and unsteady         be subjected to stability or accuracy restrictions. On the
+flows past a circular cylinder, either fixed or towed in the       other hand, the physical time step t, which only affects the
+computational domain; these results are presented in Sec. III.     computation of the time derivative of the solution vector (7),
+The main conclusions of this work are summarized in Sec. IV.       may be chosen without restrictions. This allows us to set t in
+                                                                   accordance with the desired time accuracy, regardless of the
+                 II. NUMERICAL METHOD                              spatial discretization. Several approaches may be considered
+                                                                   to integrate (5). In the present work, a steady lattice
+    The numerical method is described in the following. First,     Boltzmann solver is employed. It is described in the
+the pseudosteady formulation of the physical problem, based        following.
+on the Navier-Stokes equations, is presented in Sec. II A. The
+resulting steady problem is solved using a lattice Boltzmann
+method, described in Sec. II B, coupled to an immersed-                             B. Lattice Boltzmann method
+boundary method detailed in Sec. II C. In Sec. II D, the               Equation (5), which is equivalent to the Navier-Stokes
+multigrid method employed to accelerate the steady solver          equations with an external forcing, can be numerically solved
+is introduced. Finally, the overall algorithm is summarized in     using a lattice Boltzmann method [2]. At the mesoscopic
+Sec. II E.                                                         level, the flow is described by the flow particle distribution
+                                                                   function f (x, ξ, t ∗ ), which represents the density of flow
+                                                                   particles with velocity ξ at location x and time t ∗ . Here only
+                A. Dual-time-stepping method
+                                                                   the pseudotime t ∗ is considered, following (5). The velocity
+   In the following, the flow is assumed to be two dimensional     space is discretized on a set of velocity vectors {cα , α =
+and nearly incompressible. It is modeled by the Navier-Stokes      0, . . . , Q − 1}. In the present work, which only focuses on
+equations,                                                         two-dimensional physical configurations, a D2Q9 velocity set
+                 ∂ρ                                                is used; the velocity space is discretized by nine velocities,
+                    + ∇ · (ρU ) = 0,                       (3a)    namely
+                 ∂t
+           ∂ (ρU )                                                         c0 = 0                       c1 = cex ,
+                   + ∇ · (ρUU ) = −∇P + μ∇ 2U ,            (3b)
+              ∂t                                                           c2 = cey ,                   c3 = −cex ,
+
+                                                             023309-2
+MULTIGRID DUAL-TIME-STEPPING LATTICE …                                                               PHYSICAL REVIEW E 101, 023309 (2020)
+
+
+         c4 = −cey ,                     c5 = c(ex + ey ),                   parameter      relating both relaxations times [24],
+                                                                                                                     
+         c6 = c(−ex + ey ),              c7 = c(−ex − ey ),                                           = τ − 21 τ̂ − 21 .                     (13)
+         c8 = c(ex − ey ),                                            (8)    In the following, is set to 1/4. The source term Fα involved
+                                                                             in the lattice Boltzmann equation (9) is expressed as
+where c is the lattice speed and ex and ey are unit vectors
+in the x and y directions. The particle densities at velocities                                         1             1
+                                                                                         Fαl = 1 −        S l+ + 1 −     S l− ,              (14)
+{cα } are represented by the discrete-velocity distribution func-                                      2τ α          2τ̂ α
+tions { fα (x, t ∗ )}, also called particle populations. The physical
+space is discretized using a uniform and Cartesian grid; the                 where Sα+ = (Sα + Sα )/2 and Sα− = (Sα − Sα )/2 are the sym-
+grid spacing is denoted by n. The time discretization ensures               metric and antisymmetric parts of Sα and
+                                                                                                                                          
+that particle populations are transported from a node to a                                         cα − U l    (cα · U l )cα   l        
+neighboring one during one time step, namely n/t ∗ = c.                      Sα = wα Sρ +
+                                                                                 l          l
+                                                                                                            +                · SρU + B .
+                                                                                                                                       l
+
+This is the acoustic scaling mentioned in Sec. I. As commonly                                         cs2           cs4
+done in lattice Boltzmann formulations, all numerical quan-                                                                                (15)
+tities are normalized by c and t ∗ , so that n = t ∗ = 1.                 In Eq. (15), Sρ = −∂ρ/∂t and SρU = −∂ (ρU )/∂t are the
+Using this normalization, the lattice Boltzmann equation reads               mass and momentum sources related to the dual-time-
+                                                                             stepping method, and B is the momentum source issued from
+            fαl+1 (x + cα ) − fαl (x) = lα (x) + Fαl (x),            (9)    the immersed-boundary method (see Sec. II C). In the absence
+where the superscript l relates to the pseudotime discretiza-                of local mass variation (∂ρ/∂t = 0), Eq. (15) reduces to the
+tion, α designates the collision operator, and Fα accounts for              forcing scheme proposed by Guo [25]. The additional term
+external forcing, i.e., the mass and momentum sources related                related to Sρ in (15)
+                                                                                                    is a simple local mass source, since
+to the dual-time-stepping and immersed-boundary methods.                           w
+                                                                                α α ρS =   S  ρ and   α wα cα Sρ = 0.
+The left-hand side of (9) describes the streaming step, dur-                     The macroscopic flow quantities are moments of the par-
+ing which the particle populations are transported from one                  ticle populations in the velocity space. In particular, the flow
+node to a neighboring one; the right-hand side relates to the                momentum and density are written as follows [2]:
+collision step. Equation (9) is explicit, so the streaming and                                        
+                                                                                                      8
+                                                                                                                  1
+collision steps can be treated separately.                                                  (ρU ) =
+                                                                                                 l
+                                                                                                          fαl cα + (SlρU + Bl ),            (16a)
+                                                                                                      α=0
+                                                                                                                  2
+   A simple and commonly used collision model is the
+Bhatnagar-Gross-Krook (BGK) model [22]. In the present                                                
+                                                                                                      8
+                                                                                                               1
+work, a two-relaxation-time (TRT) collision model [23,24] is                                   ρl =       fαl + Sρl .                      (16b)
+employed to ensure the viscosity independence of the solver                                           α=0
+                                                                                                               2
+[21]. This model is based on a decomposition of populations
+into symmetric and antisymmetric parts, namely                                  Expressions (16) are implicit, as the source terms Sρl and
+                                                                             SρU depend on ρ l and U l . Following Eq. (7), these terms are
+                                                                              l
+                fα + fα                fα − fα
+       fα+ =            ,      fα− =           ,                    (10a)    expressed as
+                   2                      2
+                                                                                                   3(ρU )l − 4(ρU )n + (ρU )n−1
+                fα(eq) + fα(eq)                 fα(eq) − fα(eq)                          SlρU = −                                        ,   (17a)
+    fα(eq)+ =                   ,   fα(eq)− =                   ,   (10b)                                        2t
+                       2                               2
+                                                                                                   3ρ l − 4ρ n + ρ n−1
+where the index α is defined such that cα = −cα and { fα(eq) }                            Sρl = −                        .                   (17b)
+                                                                                                           2t
+are the equilibrium functions given by
+                                                                                Consequently, the macroscopic quantities can be computed
+                                                 
+                       U · cα    (U · cα )2 U · U                            as follows:
+     fα(eq) = wα ρ 1 +        +            −       .    (11)                                  8
+                         cs2       2cs4      2cs2                                                                      (ρU )n     (ρU )n−1
+                                                                                                α=0 f α cα + 2 B + t − 4t
+                                                                                                       l     1 l
+                                                                                   (ρU ) =
+                                                                                        l
+                                                                                                                                           ,  (18)
+The weights {wα } are specific to the velocity set. In the present                                           1 + 4t
+                                                                                                                   3
+case (D2Q9 velocity set), w0 = 4/9, w1 = w2 = w3 = w4 =                                              8
+                                                                                                             f l + ρ − ρ4t
+                                                                                                                     n        n−1
+
+1/9, and w5 = w6 = w7 = w8 = 1/36. The TRT collision is                                        ρ l = α=0 α t                     .           (19)
+performed by relaxing symmetric and antisymmetric parts                                                      1 + 4t
+                                                                                                                   3
+
+separately,
+                                                                             It should be emphasized that mass conservation is ensured in
+             1    l+            1  l−                                    expression (19). The computation of the immersed-boundary
+     lα = −      fα − fαl (eq)+ −    fα − fαl (eq)− ,       (12)
+               τ                   τ̂                                        forcing B is detailed in the next section.
+where τ is the standard relaxation time, which relates to
+the fluid kinematic viscosity through ν = cs2 (τ − 21 ), with cs                              C. Immersed-boundary method
+                                        √
+denoting the sound speed equal to 1/ 3 using the present                        The present numerical method is coupled to an immersed-
+normalization. The second relaxation time τ̂ is introduced                   boundary method that allows us to simulate the flow around
+to relax antisymmetric populations. In contrast to τ , τ̂ does               arbitrary-shaped and moving solid bodies. The principle of
+not directly relate to macroscopic fluid properties; it is a free            the method is schematized in Fig. 1. A solid boundary ,
+numerical parameter. In practice, τ̂ is often set through the                discretized by a set of Lagrangian markers {X k } = {(Xk , Yk )},
+
+                                                                       023309-3
+GSELL, D’ORTONA, AND FAVIER                                                                   PHYSICAL REVIEW E 101, 023309 (2020)
+
+                                                                        where Si = xy = 1 is the cell surface. The kernel func-
+                                                     Ψ                  tion is expressed as δ(x) = δ̂(x)δ̂(y), with [27]
+                                                                                                        
+                                  Γ             xi                                            1
+                                                                                                 1 + cos πr     ,    |r| ⩽ d,
+                                                                                   δ̂(r) =   2d            d
+                                                                                                                              (24)
+                                                                                             0,                      |r| > d,
+                                       Xk
+                                                                        and d the radius of the kernel function, set to 3/2 in the
+           y                                                            following. The quantity κ, involved in expression (22), is
+                                                                        equal to κ = 3/(4d ) using the present kernel function [21].
+                                                                            At each time step, the body force on the immersed bound-
+                    x                                                   ary is computed on the basis of expression (22). The force is
+                                                                        then spread to the lattice nodes, using the same kernel function
+    FIG. 1. Schematic view of the immersed-boundary method. A           as that employed for the interpolation. The spread force on a
+boundary , discretized by Lagrangian markers {X k }, is immersed in     lattice node xi reads
+the fluid domain , discretized by the lattice nodes {xi }. The shaded                               
+blue area represents the region where the immersed-boundary forcing         B(xi ) = S[B∗ ](xi ) =      B∗ (X k )δ(xi − X k )Sk , (25)
+is applied, determined by the radius of the employed kernel function                               X k∈
+(24). Reproduced from Ref. [21].
+                                                                        where S is the spreading operator and Sk is a local surface
+                                                                        element; it is often expressed as Sk = lk , with lk the
+is immersed in the flow domain discretized by the Eulerian              local distance between two neighboring boundary markers
+lattice nodes {xi } = {(xi , yi )}. The no-slip condition on the        and  a boundary width generally set to unity—as done in
+solid boundary is enforced through a body force B applied on            the present work—or in some cases computed explicitly [28].
+the neighboring lattice nodes. The computation of B is based
+on a correction of the flow momentum interpolated on the                                      D. Multigrid method
+solid boundary. This correction is expressed as a body force                The efficiency of the above-described lattice Boltzmann
+B∗ on the Lagrangian markers. Based on expression (16), the             dual-time-stepping method is closely related to the conver-
+relation between the body force B∗ and the prescribed wall              gence rate of the lattice Boltzmann method for steady-state
+velocity U b on a boundary marker X k is expressed as                   problems. However, as discussed in Sec. III B, the explicit
+                                                                        lattice Boltzmann scheme (9) may be poorly efficient for this
+                           
+                           8
+                                    1               1                   type of problem. Therefore, a multigrid strategy, similar to that
+I[ρ](X k )U b (X k ) = I    fα cα + SρU (X k ) + B∗ (X k ),
+                                    2               2                   proposed by Mavriplis [19] but coupled for the first time to an
+                        α=0
+                                                          (20)          immersed-boundary method, is employed in the following to
+where I denotes the interpolation operator, detailed hereafter.         accelerate the steady solver.
+Consequently, a direct computation of the momentum correc-                  The multigrid method consists in computing corrections
+tion B may be expressed as                                              of the flow solution on coarse grids in order to accelerate
+                                                                        the smoothing of low-frequency errors [29]. The numerical
+                                                  
+                                8
+                                            1                           domain is discretized on a series of recursively coarsening
+         ∗
+        B = 2 I[ρ]U b − I           fα cα + SρU .         (21)          grids. The finest grid corresponds to the lattice of reference.
+                                α=0
+                                            2                           Consecutive grids are constructed so that the scale ratio
+                                                                        between grids is equal to two, with the coarse-grid nodes
+However, as analyzed in Ref. [21], expression (21) does not al-         coinciding with the fine-grid ones, as schematized in Fig. 2.
+low to ensure the viscosity independence of the computations,           Considering the populations fαi on the ith grid, the steady
+resulting in velocity-slip errors [26] or spurious oscillations         lattice Boltzmann operator Lαi [ fαi (x)] can be expressed as
+when the relaxation time is varied. To avoid these effects, the                                                              
+IB force should be rescaled according to the relaxation time,                   Lαi fαi (x) = fαi (x) − fαi x − ciα − iα x − ciα
+namely                                                                                                      
+                                                                                              − Fαi x − ciα .                         (26)
+                                                         
+               2λ                       8
+                                                     1                  Note that in the following the exponent i will be generally
+    ∗
+  B =                    I[ρ]U b − I        fα cα + SρU ,
+         1 + κ (λ − 1)                  α=0
+                                                     2                  used to designate variables and operators on the ith grid level.
+                                                           (22)         Using this operator, the steady-state problem on each grid
+where κ is an analytically derived quantity that depends on             reads
+the interpolation kernel function and λ = 2τ − 1. It should be                                           
+                                                                                               Lαi fαi (x) = Dαi .                 (27)
+emphasized that expression (22) reduces to expression (21)
+when τ = 1.                                                             The right-hand-side term in (27) is called the defect correc-
+   The interpolation of a physical quantity φ is performed              tion. It vanishes on the first grid, Dα1 = 0, i.e., the solution of
+using a discrete Dirac function δ, namely                               (27) is the steady solution of the original physical problem (9).
+                                                                       In contrast, grid levels i = 1 operate on a correction equation
+            I[φ](X k ) =      φ(xi )δ(xi − X k )Si ,      (23)         (see Ref. [19]) determined by the defect correction, which
+                           xi ∈                                         is computed during the transfer of the solution from a fine
+
+                                                                  023309-4
+MULTIGRID DUAL-TIME-STEPPING LATTICE …                                                                  PHYSICAL REVIEW E 101, 023309 (2020)
+
+                                                                                 [19],
+                                                                                                                                   
+                                                              Grid i                          Dαi+1 = Lαi+1 Iˆii+1 f˜αi − 2Iii+1 Rαi f˜αi ,     (32)
+                                                                                 where Iˆii+1 and Iii+1 denote the restriction operators, which
+                                                              Grid i + 1         respectively transfer solution variables and residuals from
+                                                                                 the fine grid to the coarse one. In this work, Iˆii+1 is defined
+                                                                                 as a pointwise injection and Iii+1 is a bilinear interpolation
+                                                              Grid i + 2         operator [19]. After several sweeps on grid i + 1, the coarse-
+                                                                                 grid solution fαi+1 may be used to compute the coarse-grid
+                                                                                 correction on the finer grid,
+                                                              Grid i + 3
+                                                                                                               i+1           
+                                                                                                   Cαi = Ii+1
+                                                                                                           i
+                                                                                                               fα − Iˆii+1 fαi ,             (33)
+                                                                                           i
+                                                                                 where Ii+1    denotes the prolongation operator, which is a
+                                                                                 bilinear interpolation from the coarse grid to the fine grid. The
+                                                                                 fine-grid solution is updated accordingly, fαi ← fαi + Cαi , and
+                                                                                 additional fine-grid sweeps may be performed to smooth the
+    FIG. 2. Schematic view of three consecutive grid levels with a               solution.
+scale factor equal to two and coarse-grid nodes coinciding with the                  The convergence of the coarse grid problem can also be
+fine-grid ones.
+                                                                                 improved by performing coarse-grid corrections on an addi-
+                                                                                 tional coarse-grid level. This nested procedure is the main
+grid to a coarser one, as detailed hereafter. Considering an                     principle of the multigrid method. Several approaches may
+approximate solution f˜αi (x), the residual is defined as                        be considered to perform a multigrid cycle, i.e., a series of
+                                                                             sweeps on different grid levels leading to the computation
+                  Rαi f˜αi = Lαi f˜αi − Dαi .             (28)                   of the coarse-grid correction of the finest grid. A simple
+The residual tends to zero as f˜αi (x) converges to the exact                    multigrid cycle, called the V cycle, is described in Fig. 3(a).
+solution of (27). The iteration procedure on the ith grid is                     A four-grid method is considered in this example. Steps 1
+composed of three steps:                                                         to 3 are restriction steps. On each grid level, a number of
+   (i) collision step:                                                           smoothing sweeps are performed and the resulting defect
+                                                                                 correction Dαi is transferred to the coarser grid level. At
+             f˜αi (x)|∗ = f˜αi (x)|l + 
+                                       ˜ iα (x)|l + F̃αi (x)|l ,       (29)      steps 2, 3, and 4, the flow solution fαi is initialized by a
+                                                                                 restriction of the finer-grid solution, namely fαi = Iˆi−1
+                                                                                                                                          i
+                                                                                                                                              fαi−1 .
+   (ii) propagation or streaming step:
+                                             ∗                                 At step 4, a series of sweeps is performed on the coarsest
+                  f˜αi (x)|∗∗ = f˜αi x − ciα ) ,                      (30)      grid level. Then the coarse-grid corrections are recursively
+                                                                                 transferred up to the finest grid level (steps 4 to 6). A series
+   (iii) relaxation step:                                                        of final sweeps is performed on each grid level to smooth the
+                                      
+     f˜αi (x)|l+1 = γ f˜αi (x)|∗∗ + Dαi + (1 − γ ) f˜αi (x)|l ,        (31)      solution after correction. Finally, final sweeps are performed
+                                                                                 on grid 1 before updating the flow solution (step 7). It should
+where  ˜ iα and F̃αi are the collision and source terms associ-                 be noted that the defect corrections, computed during the
+ated with the approximate solution f˜αi and γ is a relaxation                    restriction steps, remain unchanged during the prolongation
+parameter, set to 0.6 in the following. The collision and                        steps. Other multigrid cycles have been proposed in prior
+streaming steps are similar to those performed in a standard                     works; they are based on the same principle as the V cycle
+lattice Boltzmann method. In addition to expression (30), the                    but involve additional transfers between coarse-grid levels in
+streaming step is accompanied by the treatment of boundary                       order to improve the convergence of the correction problem.
+conditions, which is not altered by the multigrid method. This                   In particular, a W cycle is employed in the present work; it is
+iteration procedure, called smoothing sweep, is repeated until                   schematized in Fig. 3(b).
+the problem is transferred to a coarser grid level i + 1. The                        On each grid level, the steady-state problem (27) is con-
+transfer consists in the computation of the defect correction                    nected to the forcing term Fαi , which is composed of two
+
+                   (a)                                                 (b)                                                  Grid 1
+                            1                                 7
+
+                          2
+                         Dα                                   Cα1
+                                   2                    6                                                                   Grid 2
+
+                               3
+                              Dα                        Cα2
+                                        3        5                                                                          Grid 3
+
+                                    4
+                                   Dα             Cα3
+                                            4                                                                               Grid 4
+
+      FIG. 3. Schematic view of four-grid (a) V and (b) W cycles. Dashed and solid arrows indicate restriction and prolongation steps.
+
+                                                                           023309-5
+GSELL, D’ORTONA, AND FAVIER                                                                          PHYSICAL REVIEW E 101, 023309 (2020)
+
+                                     TABLE I. Summary of the multigrid dual-time-stepping algorithm.
+
+1. Fine-grid solution fα1 |n and associated macroscopic quantities are know at time step n
+2. Update position and velocity of the immersed-boundary markers
+3. Initialize fα1 |l=0 = fα1 |n , compute macroscopic quantities (16)
+4. Loop on pseudo time steps l
+ 4.1. Loop on grid levels i (multigrid cycle)
+  4.1.1. Loop on grid sweeps
+   4.1.1.1. Collision (29), streaming (30), and boundary conditions
+   4.1.1.2. Relaxation (31)
+   4.1.1.3. If i = 1, update the IB forcing (25)
+   4.1.1.4. Compute macroscopic quantities (18) and (19)
+   4.1.1.5. Update dual-time-stepping source terms (17)
+  4.1.2. If necessary, perform restriction (32) or prolongation (33)
+ 4.3. New fα1 |l+1
+ 4.4. Compute the fine-grid residual R (34)
+ 4.5. Exit if R < Rc or if l > lc
+5. New fine-grid time-accurate solution fα1 |n+1 = fα1 |l
+
+contributions [see Eq. (15)]: the dual-time-stepping source                                                             1
+                                                                           where N is the number of lattice nodes and Rα,i is the fine-grid
+term and the immersed-boundary source term. The dual-time-                 residual (28) on the ith node.
+stepping forcing is updated at each smoothing sweep, follow-                  It should be mentioned that the immersed-boundary up-
+ing expressions (18) and (19), on every grid levels. During the            date, corresponding to step 2 in Table I, may be performed
+restriction steps, it is initialized on coarse-grid levels through a       at different instants, depending on body motion features. The
+restriction of the finer-grid solution. In contrast, the IB forcing        algorithm proposed in the table corresponds to a forced body
+is only updated during the finest-grid sweeps, and it is trans-            motion, as considered in the present paper, i.e., the body
+ferred to the coarse grids through simple pointwise injections.            position and velocity are known at each physical time step.
+As shown in the following, this procedure is suitable for the              In flow-structure interaction problems, where body motion is
+coupling of the immersed-boundary and multigrid methods.                   fully coupled to the flow dynamics, the immersed-boundary
+   Setting the number of grids as well as the number of                    update may be performed iteratively during the pseudotime
+sweeps performed on each level of the multigrid cycle may be               loop (step 4), so that both flow and body dynamics are treated
+the object of a detailed parametric study in order to optimize             implicitly [30]. This aspect, which is beyond the scope of the
+the convergence rate of the method. Such optimization, which               present study, will be addressed in future works.
+may depend on the considered physical configuration, is left
+for future works. These parameters are thus fixed in the
+following. First, the number of grid levels is set to four. It                    (a)
+is generally recommended to perform more sweeps on the
+coarse grid levels than on the fine ones. Here the number of                                                 Ly /2
+sweeps performed on grids 1, 2, 3, and 4 are equal to 1, 2,
+3, and 4, respectively. It should be noted that these sweeps                                  Uin
+                                                                                                      D                       y
+are performed during the restriction and prolongations phases.                                               Ly /2
+Therefore, the total number of sweeps performed on grids 1,
+                                                                                                                                    x
+2, 3, and 4, using the V cycle described in Fig. 3(a), is equal
+to 2, 4, 6, and 8, respectively.
+                                                                                                  Lx /3              2Lx /3
+                E. Algorithm and implementation
+   The time-marching algorithm is summarized in Table I.                          (b)
+Compared to a standard lattice Boltzmann solver, the new
+steps are mainly the relaxation steps, the restriction and pro-                                                      Uc
+longation steps, and the steps related to the update of the dual-                            Ly
+                                                                                                                              y
+time-stepping source terms. Otherwise, collision, streaming,                                                D
+and immersed boundary steps are very similar to those per-
+formed in an explicit lattice Boltzmann solver, allowing us to                                                                      x
+integrate routines issued from an existing code. In practice, the
+pseudotime loop can be controlled by setting the maximum                                                        Lx
+number of inner iterations lc or using a convergence threshold
+                                                                              FIG. 4. Schematic view of the considered test cases: (a) Flow
+based on the L2 norm of the fine-grid residuals,
+                                                                          past a fixed circular cylinder immersed in a cross flow, and (b) cylin-
+                              N 8
+                           1                                            der towed in still fluid. Boundaries of the computational domain are
+                     R=                R1 ,                 (34)          represented by a black rectangle and the dashed line indicates the
+                           N i=1 α=0 α,i                                   immersed boundary.
+
+                                                                   023309-6
+MULTIGRID DUAL-TIME-STEPPING LATTICE …                                                                 PHYSICAL REVIEW E 101, 023309 (2020)
+
+
+                (a)     10−06
+                                                Single grid
+                        10−08                      V-cycle
+                                                   W-cycle
+                        10−10
+
+                        10−12
+              R
+                        10−14
+
+                        10−16
+
+                        10−18
+
+                                0       1          2     3         4       5            0        0.1         0.2       0.3         0.4
+                                                                        (×105 )                                                (×105 )
+                                            Fine-grid iterations                                    Fine-grid iterations
+
+                (b)     10−06
+                                                Single grid
+                        10−08                      V-cycle
+                                                   W-cycle
+                        10−10
+
+                        10−12
+              R
+                        10−14
+
+                        10−16
+
+                        10−18
+
+                                0             10             20            30           0       1        2         3       4        5
+                                            CPU time (hours)                                        CPU time (hours)
+
+   FIG. 5. Simulation of the steady flow past a circular cylinder at Re = 40: Evolution of the residual as a function of (a) fine-grid iterations
+and (b) CPU time for the single- and multigrid solvers.
+
+
+                          III. RESULTS                                         solution is examined in comparison with the solution issued
+                                                                               from a standard explicit solver. The influence of the time step,
+    The above-described method is applied to the simulation
+                                                                               which is not restricted by any stability or accuracy condition,
+of the laminar flow past a circular cylinder. The physical
+                                                                               on the flow solution is analyzed. Finally, the ability of the
+configuration is described in Sec. III A. The accuracy of the
+                                                                               dual-time-stepping method to simulate flows past moving
+immersed-boundary lattice Boltzmann method in this config-
+                                                                               geometries is illustrated in Sec. III D for an impulsively started
+uration has already been thoroughly examined in previous
+                                                                               cylinder.
+works [27,31], including Ref. [21], where the same explicit
+LB solver was employed.
+    Additional validation results are also provided in Ap-                                      A. Description of the test cases
+pendix. In the following, the focus is placed on the speedup                       Schematic views of the physical configurations are pre-
+and possible alteration of the flow solution when using the                    sented in Fig. 4. In the first set-up [Fig. 4(a)], a circular
+multigrid and dual-time-stepping techniques, compared to the                   boundary of diameter D, modeled by the immersed-boundary
+standard lattice Boltzmann method. Three cases are consid-                     method, is immersed in an oncoming flow Uin . A velocity
+ered, namely the steady and unsteady flows past a fixed                        Dirichlet condition Uin is set at the left boundary of the do-
+cylinder immersed in a cross flow, and the flow past an                        main, using a bounce-back method [32,33]. Periodic boundary
+impulsively started cylinder in still fluid. The steady flow past              conditions are set on the upper and lower boundaries. A pres-
+a fixed cylinder, addressed in Sec. III B, is simulated using                  sure Dirichlet condition, ensured by a nonequilibrium bounce-
+the steady flow solver (multigrid lattice Boltzmann) described                 back method [34], is set on the right boundary to model
+in Sec. II D. The reliability of the multigrid solution as well                an outflow condition. The flow is initialized with a uniform
+as the associated speedup, compared to an explicit lattice                     flow velocity equal to Uin . In the second case [Fig. 4(b)], the
+Boltzmann solver, are analyzed. The unsteady cylinder wake                     cylinder is towed in the x direction at velocity Uc . Periodic
+is considered in Sec. III C; it is simulated using the unsteady                boundary conditions are set on all boundaries of the compu-
+flow solver (multigrid dual-time-stepping lattice Boltzmann,                   tational domain. The flow is initialized with a uniform flow
+see Sec. II A and Sec. II D). The accuracy of the predicted flow               velocity equal to zero, and the body is impulsively started at
+
+                                                                       023309-7
+GSELL, D’ORTONA, AND FAVIER                                                                   PHYSICAL REVIEW E 101, 023309 (2020)
+
+the first time step of the computation. The streamwise and                 (a)     1.2
+cross-flow lengths of the computational domain are denoted                         1.1              Single grid
+by Lx and Ly . In the following, Lx and Ly are set to Lx /D = 64                     1                 V-cycle
+and Ly /D = 32, in both configurations.                                            0.9                 W-cycle
+    The Reynolds number, based on the cylinder diameter and                 u      0.8
+a typical flow velocity U0 , is Re = U0 D/ν, where ν is the kine-                  0.7
+matic viscosity of the fluid. In the fixed cylinder case, U0 =                     0.6
+Uin ; in the case of the towed cylinder, the typical velocity is                   0.5
+the towing velocity, U0 = Uc . The streamwise and cross-flow                       0.4
+fluid force coefficients are defined as Cx = 2Fx /(ρ0U0 2 D) and                         −3    −2    −1    0      1     2      3
+Cy = 2Fy /(ρ0U02 D), where ρ0 is the reference fluid density
+and Fx and Fy are the sectional fluid forces in the x and y                                               y/D
+directions computed on the basis of the immersed-boundary                  (b)    0.04
+forcing on the Lagrangian markers, namely
+                                                                                 0.02
+                   Cx =        B∗ (X k ) · ex Sk ,         (35a)
+                        Xk∈
+                        
+                                                                            v        0
+                 Cy =         B∗ (X k ) · ey Sk .         (35b)
+                        Xk∈
+                                                                                 −0.02
+
+   The flow is expected to remain steady for low values of the                   −0.04
+Reynolds number. In contrast, an unsteady wake associated                                −3    −2    −1    0      1     2      3
+with vortex shedding is generally observed for Re > 48, ap-
+proximately. Both steady (Re = 40) and unsteady (Re = 100)
+                                                                                                          y/D
+regimes are considered in the following.                               FIG. 6. Simulation of the steady flow past a circular cylinder at
+                                                                    Re = 40: Cross-flow evolution of the (a) streamwise and (b) cross-
+              B. Steady flow past a fixed cylinder                  flow flow velocities at x/D = 1, predicted by the single- and multi-
+                                                                    grid solvers.
+    The steady flow over a circular cylinder is computed for
+Re = 40, D/n = 10, U0 /c = 0.05, and τ = 0.5375. The
+evolution of the residual (34) during the computation is plot-      from 10−10 to 10−14 for the single- and multigrid algorithms.
+ted in Fig. 5(a), for the single- and multigrid solvers. The two    In the present case [Fig. 5(b)], the speedup obtained for the V
+multigrid cycles introduced in Sec. II D, namely the V and          and W cycles are equal to S ≈ 7 and S ≈ 35.
+W cycles, are considered. Moreover, in order to emphasize              After convergence, the flow solution predicted by the
+the effect of the multigrid method on the convergence, the          single- and multigrid solvers are identical. This is illustrated
+employed single-grid solver follows the same iterative proce-       in Fig. 6, which shows the cross-flow evolution of the stream-
+dure as that described by (29)–(31); in particular, it involves     wise and cross-flow flow velocities in the cylinder wake after
+the same relaxation step as that performed in the multigrid         convergence. In this plot, and in the following, the (x, y)
+solver. In all cases, the residual decreases monotonically until    frame has been centered on the cylinder axis. It is noted
+it reaches a plateau associated with round-off errors. Using        that single- and multigrid solutions are superimposed. The
+the single-grid solver, complete convergence is achieved after      computed streamwise fluid force Cx is also the same in all
+4 × 105 iterations, approximately. A reasonably converged           cases.
+state can be obtained before complete convergence; here the
+entire convergence history is shown for illustrative purpose.
+Nevertheless, the convergence rate of the single-grid lattice                     C. Unsteady flow past a fixed cylinder
+Boltzmann solver remains too small to allow the efficient               The unsteady flow past a circular cylinder is simulated for
+implementation of a dual-time-stepping method. The effect of        Re = 100, D/n = 20, U0 /c = 0.05, and τ = 0.53. As the
+coarse-grid corrections on the convergence is well illustrated,     flow is initialized with a uniform velocity, all computations
+since the convergence of the multigrid solvers is drastically       exhibit a transient associated with the development of the
+faster than that of the single-grid one, in terms of fine-grid      unsteady flow. This transient is not addressed here, and the
+iterations. In addition, it is clearly noted that the W cycle       focus is placed on the flow after statistical convergence of
+performs better than the V cycle. However, the computational        the solution, when the unsteady wake is fully developed. Two
+cost of the coarse-grid sweeps, even though smaller than fine-      algorithms are considered in the following: a standard ex-
+grid iterations, is not negligible. The real computational time     plicit lattice Boltzmann method and the multigrid dual-time-
+required to achieve convergence is thus depicted in Fig. 5(b),      stepping lattice Boltzmann method described in Sec. II. Two
+which represents the evolution of the residual as a function        approaches may be considered to control the inner iterations
+of the CPU time. It is confirmed that the multigrid solvers         of the dual-time-stepping method: setting the number of inner
+converge faster than the single-grid one. The convergence           iterations lc performed at each time step or fixing a minimum
+acceleration is measured by the speedup S = tmg /tsg , where        global residual R that must be reached before updating the
+tsg and tmg are the CPU times required to decrease the residual     physical solution. As done in Ref. [8], the first approach is
+
+                                                              023309-8
+MULTIGRID DUAL-TIME-STEPPING LATTICE …                                                               PHYSICAL REVIEW E 101, 023309 (2020)
+
+
+ (a)       2                                                                       (a)   10−07
+                                   Standard LBM
+                   Cx                  DTS LBM
+         1.5                                                                             10−08
+                                             1.53
+
+           1
+                                                                                   R
+                                             1.52
+Cx ,                                         1.51
+                                                                                         10−09
+Cy
+         0.5                                  1.5
+                   Cy                               245 250 255 260
+                                                                                         10−10
+                                                                                                                      vortex-shedding
+           0                                                                                                               period
+                                                                                         10−11
+                                                                                             20000                 20500                21000
+       −0.5
+           200          220       240         260         280         300                                      Iterations
+                                   tUin /D                                         (b)   10−07
+                                                                                                                      physical
+ (b)                                                                                       −08
+                                                                                                                     time step
+
+          4                                                                              10
+          2
+  y                                                                                R     10−09
+          0
+  D
+        −2
+                                                                                         10−10
+        −4
+                                                                                         10−11
+ (c)                                                                                         20100                 20150                20200
+          4
+                                                                                                               Iterations
+          2
+  y                                                                              FIG. 8. Dual-time-stepping simulation of the unsteady flow past
+          0
+  D                                                                           a circular cylinder at Re = 100: Evolution of the residual (34) as
+        −2                                                                    inner iterations are performed. A typical history is presented in (a),
+                                                                              and a blue dashed rectangle indicates the region magnified in (b).
+        −4
+
+               0              5         10           15          20           between force frequencies may be noted in the time history
+                                   x/D                                        of Cy . The fluid force fluctuations are mainly sinusoidal. The
+                                                                              Strouhal frequency fst = fy D/U , where fy is the cross-flow
+    FIG. 7. Overview of the unsteady flow past a circular cylinder at         force frequency, is computed on the basis of a fast-Fourier
+Re = 100 simulated by the standard and dual-time-stepping lattice             transform of the Cy signal; it corresponds to the vortex-
+Boltzmann methods: (a) Time histories of the fluid force coefficients         shedding frequency. In both cases, fst is close to 0.16. This
+in both cases and [(b) and (c)] instantaneous isocontours of the              frequency corresponds to a time discretization of 2500 and
+nondimensional flow vorticity issued from the (b) standard and                50 time steps per vortex-shedding period for the standard and
+(c) dual-time-stepping simulations.                                           dual-time-stepping (t/t ∗ = 50) methods. Instantaneous
+                                                                              visualizations of the flow are presented in Figs. 7(b) and 7(c).
+employed in the present computations, allowing us to easily                   The visualizations are based on instantaneous contours of the
+control the cost of the simulations. It is recommended that lc                nondimensional flow vorticity, ω = (∂u/∂y − ∂v/∂x)D/Uin .
+is adjusted as a numerical parameter, according to the desired                Overall, the qualitative aspect of the flow is very similar in
+numerical accuracy, as the time step and mesh size. The effect                both cases. The main differences are noted in the far wake
+of lc will be addressed hereafter.                                            (x/D > 10), where some variations can be noted in partic-
+    An overview of the flow predicted by both methods is                      ular in the region of vorticity trails connected to the wake
+presented in Fig. 7. In this example, the time step of the                    vortices.
+dual-time-stepping algorithm is set to t/t ∗ = 50, and 10                       The evolution of the solution residual during the computa-
+multigrid W cycles are performed at each time step to solve                   tion, for the dual-time-stepping algorithm, is plotted in Fig. 8.
+the pseudosteady problem. It is recalled that t ∗ corresponds                The x axis indicates the number of performed inner iterations
+to the lattice Boltzmann time step and equals 1 using the                     (i.e., multigrid cycles). The residual exhibits a periodic evolu-
+present normalization (lattice units). Figure 7(a) shows time                 tion. Two periods can be noted; the smaller one, equals to 10
+histories of the fluid force coefficients in the streamwise and               iterations, is associated with the inner loop performed at each
+cross-flow directions. The results issued from both methods                   physical time step. During a physical time step, the residual
+are very similar. In particular, force magnitudes and fre-                    decreases by approximately two orders of magnitude. The sec-
+quencies are in agreement, even though a small difference                     ond identified period is associated with the vortex-shedding
+
+                                                                        023309-9
+GSELL, D’ORTONA, AND FAVIER                                                                          PHYSICAL REVIEW E 101, 023309 (2020)
+
+
+                (a)       5                                               (b)     0.17
+                                                   V-cycle
+                                                   W-cycle                        0.16
+                          4
+                                                                                  0.15
+
+                          3                                                       0.14
+                      ∗
+                  t                                                        fst    0.13
+                          2                                                       0.12
+                                                                                  0.11
+                          1
+                                                                                   0.1
+                          0                                                       0.09
+                              0       5       10 15 20 25 30 35 40                       0    5   10 15 20 25 30 35 40
+                                                    lc                                                       lc
+                (c)       1.55                                            (d)     0.36
+
+                          1.54
+                                                                                  0.32
+
+                          1.53
+               Cx                                                          Cy     0.28
+                          1.52
+
+                                                                                  0.24
+                          1.51
+
+                           1.5                                                     0.2
+                                  0       5    10 15 20 25 30 35 40                      0    5   10 15 20 25 30 35 40
+                                                     lc                                                      lc
+    FIG. 9. Dual-time-stepping simulation of the unsteady flow past a circular cylinder at Re = 100: Influence of multigrid cycle and number
+of inner iterations lc on (a) the normalized CPU time t ∗ and on the computed fluid forces, quantified by (b) the Strouhal frequency, (c) the
+time-averaged streamwise force coefficient, and (d) the amplitude of the cross-flow force coefficient. In all plots, a solid line indicates the value
+issued from standard explicit method. The computation using a W cycle and lc = 2 is unstable; therefore, the data are not reported for this
+case. In all cases, the time step is t/t ∗ = 50.
+
+frequency, indicating that the mininum residual may vary                     volves more sweeps of coarse-grid levels as well as more
+from one time step to the other. The convergence achieved                    restriction and prolongation operations. The number of inner
+during each physical time step depends on the multigrid                      iterations also affects the accuracy of the computations, as
+cycle. In this example, the W cycle described in Sec. II D is                depicted in Figs. 9(b)–9(d), which show the evolutions of the
+employed. As expected from the steady analysis performed                     vortex-shedding frequency and fluid force statistics, namely
+in Sec. III B, a lower convergence rate is achieved when a                   the time-averaged streamwise force coefficient Cx and the
+V cycle is employed (not shown here). For a given number                     amplitude of the cross-flow force coefficient C    y . All quan-
+of inner iterations, this affects the accuracy of the computed               tities exhibit converging evolutions: They tend to a plateau
+flow. The effect of the multigrid cycle on the computational                 value as lc increases. These plateau values are close to the
+cost and accuracy is examined hereafter.                                     physical quantities issued from the standard explicit method,
+   The numerical cost of the simulations is quantified using                 supporting the reliability of the dual-time-stepping method.
+the normalized CPU time t ∗ = tdts /texp , where texp and tdts are           Using the V cycle, it is noted that a reasonable convergence of
+the computational times required to advance the flow solution                the physical quantities is obtained for lc = 10; this set-up may
+over one convective timescale D/Uin for the explicit and                     thus be employed to perform accurate simulations. However,
+dual-time-stepping solvers. For the case presented in Fig. 7                 a lower number of inner iterations is needed if the W cycle
+and Fig. 8 (t/t ∗ = 50, W cycle, lc = 10), t ∗ ≈ 1.15, i.e.,               is employed, as suggested by the higher convergence rates
+the dual-time-stepping simulation is slightly more expensive                 observed in the steady-flow analysis performed in Sec. III B.
+than the explicit simulation. However, the simulation cost is                In this case, a reasonable convergence is obtained for lc = 5.
+closely related to the employed multigrid cycle and to the                   Based on Fig. 9(a), it can be noted that the normalized CPU
+number of inner iterations lc . This is depicted in Fig. 9(a).               time associated with this set-up is t ∗ ≈ 0.58, corresponding to
+The increase of the computational time as a function of lc                   a 40% speed-up compared to the explicit method.
+is close to linear. In addition, it is noted that simulations                    A major advantage of the dual-time-stepping method is
+employing a W cycle are significantly more expensive than                    that it allows us to freely vary the physical time step t.
+the V-cycle simulations, as expected since the W cycle in-                   As expected, variations of t impact the computational cost
+
+                                                                    023309-10
+MULTIGRID DUAL-TIME-STEPPING LATTICE …                                                                                 PHYSICAL REVIEW E 101, 023309 (2020)
+
+
+      (a)        3                                           (b)   1.54                                          (c)    0.32
+                              lc = 5                                               lc = 5                                              lc = 5
+                2.5                                                1.53
+                            lc = 10                                              lc = 10                                0.28         lc = 10
+                 2                                                 1.52
+            ∗
+        t       1.5                                      Cx        1.51                                      Cy         0.24
+                 1                                                  1.5
+                                                                                                                         0.2
+                0.5                                                1.49
+                 0                                                 1.48                                                 0.16
+                      0     50    100        150      200                 0     50       100         150   200                 0    50    100        150   200
+                                         ∗                                                      ∗                                                ∗
+                                 Δt/Δt                                               Δt/Δt                                               Δt/Δt
+
+                          (d)
+
+                                  0.16
+
+
+
+                                  0.15
+                                                         1
+
+
+
+                          fst
+                                  0.14
+                                                 Efst 10−2
+                                                                                     2
+                                                                               Δt
+                                  0.13                                    ∼    Δt∗
+
+                                                      10−4
+
+                                                                                               200
+                                  0.12
+                                             0                     50                100                    150                    200
+                                                                                               ∗
+                                                                                 Δt/Δt
+    FIG. 10. Dual-time-stepping simulation of the unsteady flow past a circular cylinder at Re = 100, using a multigrid W cycle: Influence
+of the normalized time step t/t ∗ on (a) the normalized CPU time, (b) the time-averaged streamwise force coefficient, (c) the cross-flow
+force coefficient amplitude, and (d) the cross-flow force frequency for lc = 5 and lc = 10. In (d), the inset shows the evolution of the frequency
+relative error, defined by (36).
+
+
+of the simulations; this is illustrated in Fig. 10(a), which                             where fst,ref is the frequency issued from the explicit compu-
+shows the important decrease of t ∗ as the time step increases.                          tation. As E fst relates to the temporal variation of the flow,
+Figures 10(b) and 10(c) show the influence of the time step                              it is expected to be connected to the accuracy of the dual-
+on the fluid force statistics. Variations of the time-averaged                           time-stepping integration, described by expression (7). The
+streamwise force remain limited, as its relative difference with                         nominal second-order accuracy of the method is supported by
+the value issued from the explicit computation does not exceed                           the evolution noted in Fig. 10(d): For both lc = 5 and lc = 10,
+2% over the considered range of normalized time steps. Yet a                             the relative error exhibits a trend E fst ∼ (t/t ∗ )2 .
+converging trend is clearly noted: As the time step decreases,                               Based on Fig. 10, an optimal numerical set-up can be
+the time-averaged drag tends to a plateau value independent                              identified. Indeed, using t/t ∗ = 100 and lc = 5, the rel-
+to the number of inner iterations and close to the value issued                                               y , and fst are respectively equal to 0.003,
+                                                                                         ative errors on Cx , C
+from the explicit computation. A similar trend is noted in the                           0.017, and 0.030, while the normalized CPU time is equal
+evolution of Cy , which exhibits larger variations than Cx . The                        to 0.23. In summary, the relative variation of the physical
+effect of the number of inner iterations is also clearly noted,                          quantities is less than 5% while the computation is 4 times
+as the variation of the error as a function of the time step                             faster, compared to the explicit solver, confirming the practical
+is less pronounced for lc = 10 than for lc = 5. Finally, the                             interest of the method. This value of the speed-up is indicative;
+evolution of the wake frequency fst is examined in Fig. 10(d).                           it corresponds to a straightforward implementation of the pro-
+The observed trend is consistent with the above analysis.                                posed method, tested on a standard unsteady test case. Higher
+In addition, the figure shows the evolution of the relative                              speed-up may be achieved by optimizing the convergence
+frequency error,                                                                         rate of the multigrid method as well as its implementation.
+                                                                                         High speed-up is also expected in configurations involving
+                                                                                         low-frequency fluctuations, since the physical time step might
+                                       fst − fst,ref                                     be further increased in theses cases. In addition to the direct
+                            E fst =                  ,                        (36)       speed-up commented above, a major extra speed-up can be
+                                           fst,ref
+
+                                                                               023309-11
+GSELL, D’ORTONA, AND FAVIER                                                               PHYSICAL REVIEW E 101, 023309 (2020)
+
+obtained by increasing the time step during flow transitions        fluctuation amplitude tends to decrease as a function of time,
+(e.g., initial development of an unsteady wake) if temporal         they deteriorate the drag-force signal over large time periods,
+accuracy is only required during the fully developed state.         as their effect remain significant after 60 convective periods in
+Detailed examination of these aspects, which is beyond the          Fig. 11(a). These spurious oscillations are suppressed by the
+scope of the present paper, will be developed in future works.      dual-time-stepping method.
+    In this section, the analysis of the dual-time-stepping             Figure 11(b) shows the temporal evolution of the stream-
+method has allowed us to emphasize two important points: (i)        wise flow velocity at (x/D, y/D) = (0, 0). Since this point
+the DTS method is able to accurately predict the unsteady flow      corresponds to the initial position of the cylinder, the flow
+and (ii) it can significantly speed up the computations. The        velocity rapidly increases after the impulsive start of the body.
+free setting of the time step provides other beneficial features.   Afterward, the velocity decreases as the cylinder moves away,
+In particular, using a large time step allows the damping           until it almost vanishes for tU0 /D > 20, and it increases
+of undesired high-frequency fluctuations, often observed in         again when the cylinder gets back to its initial position due
+lattice Boltzmann simulations for configurations involving          to the periodicity of the computational domain. This global
+sharp temporal variations. This important feature is addressed      evolution is identical for both methods, supporting that the
+in the next section.                                                dual-time-stepping method can accurately describe the flow
+                                                                    unsteadiness. It is noted that the high-frequency fluctuations
+                                                                    observed in the drag-force signal also alter the flow velocity,
+          D. Flow past an impulsively started cylinder              especially when using the explicit method. These fluctuations
+    So far, simulations have been performed considering fixed       are mostly damped by the dual-time-stepping method. Some
+geometries. Nevertheless, the extension of the present method       residual oscillations, of lower amplitude and lower frequency,
+to moving geometries is straightforward, since the proposed         are, however, still visible in the velocity signal, as emphasized
+algorithm (see Table I) involves the update of the position         by the inset in Fig. 11(b).
+and velocity of the immersed-boundary markers. This is illus-           The high-frequency fluctuations noted in Figs. 11(a) and
+trated in the following by considering the flow past a cylinder     11(b) are related to the propagation of pressure waves in
+towed in still fluid. The configuration is similar to that em-      the computational domain. This is examined in Figs. 11(c)
+ployed in Sec. III B, i.e., Re = 40, D/n = 10, U0 /c = 0.05,       and 11(h), which show the spatial evolution of the nondi-
+and τ = 0.5375. Even though the cylinder wake is expected           mensional fluid density, ρ ∗ = (ρ − ρ0 )/ρ0 , at different times
+to remain steady for this value of the Reynolds number, this        indicated in Figs. 11(a) and 11(b). The explicit simulation is
+set-up is considered to be unsteady, since the cylinder is          considered first. At the initialization of the computation, a
+moving in the computational frame and attention will be paid        well-defined pressure wave is generated by the impulsive start
+to the transient response of the fluid. Therefore, the dual-time-   of the cylinder and propagates toward the boundaries of the
+stepping method is employed and compared to the solution            computational domain [Fig. 11(c)].
+predicted by a standard explicit lattice Boltzmann method.              A similar phenomenon has been reported in prior works
+The DTS computations are run using a multigrid W cycle,             on lattice Boltzmann simulations of an impulsively started
+with t/t ∗ = 40 and lc = 5. Using this set-up, the DTS            cylinder [35].
+and explicit computations have a comparable computational               At this time, no high-frequency fluctuations are noted
+cost. Besides its illustrative purpose concerning simulations of    in the drag-force signal, since the pressure wave does not
+flows around moving bodies, this set-up is chosen to address        interact directly with the body. After some time, the pressure
+a common problem in lattice Boltzmann simulations: the              fluctuations cross the periodic boundaries of the domain and
+emergence of undesired acoustic waves due to sharp variations       propagates toward the body [Fig. 11(e)]. At time t2 , the first in-
+of the flow solution. Indeed, in this test case, the cylinder       teractions between the body and the pressure perturbations is
+is impulsively started, i.e., its velocity instantaneously in-      accompanied by the emergence of the high-frequency fluctua-
+creases from zero to Uc during the first time step of the           tions in the drag force signal. Even though the pressure waves
+simulation. As the simulated flow is weakly compressible,           tend to dissipate with time, they still alter the global pressure
+this may generate sound waves that can deteriorate the global       filed in the computation domain after 60 convective periods
+solution.                                                           [Fig. 11(g)]. The solution issued from the dual-time-stepping
+    Similar rapid variation of body momentum is expected in         method exhibits a different behavior. At the initialization of
+other flow-body interaction problems, as in systems involving       the computation, no clear pressure wave can be identified;
+collision between solid particles, for instance.                    instead, a long-range pressure perturbation appears to prop-
+    The time histories of the streamwise fluid force coefficient,   agate in the domain [Fig. 11(d)]. Consequently, the solution
+simulated using the explicit and dual-time-stepping methods,        rapidly tends to a smooth pressure distribution [Fig. 11(f)]. At
+are plotted in Fig. 11(a). During the first time steps of the       time t3 , the solution is not altered by any pressure perturbation
+computation, a very large drag is exerted on the cylinder. This     [Fig. 11(h)].
+can be attributed to the major added mass effect resulting from         The damping of the high-frequency pressure waves using
+the impulsive start of the body. Afterward, the streamwise          the DTS method can be attributed to a filtering effect due to
+force rapidly converges to a steady value close to Cx ≈ −1.5.       the large value of the time step. An additional computation
+This global evolution is very similar for both methods. How-        has been performed, using the DTS method with a time step
+ever, the drag issued from the explicit simulation also exhibits    t/t ∗ = 1. The resulting time history of Cx is very close to
+high-frequency oscillations; these fluctuations relate to unde-     that issued from the explicit computation (not shown here). In
+sired pressure waves, as discussed afterward. Even tough the        particular, the fluid force exhibits high-frequency fluctuations.
+
+                                                              023309-12
+MULTIGRID DUAL-TIME-STEPPING LATTICE …                                                                             PHYSICAL REVIEW E 101, 023309 (2020)
+
+
+                (a)       0                                                            (b)          1
+                                                         Explicit
+                        −1
+                                                                                                                     0.1
+                                                           DTS                                 0.8                 0.09
+                                                                                                                   0.08
+                        −2
+                                       t2
+                                                                               t3      u       0.6                 0.07
+
+               Cx                                        -1                                                        0.06
+
+                        −3        t1                   -1.2
+                                                       -1.4                            U0      0.4
+                                                                                                                   0.05
+                                                                                                                   0.04
+                                                       -1.6
+                                                                                                                   0.03
+                        −4                             -1.8
+                                                         -2
+                                                                                               0.2                 0.02
+                                                                                                                           40       45   50   55    60
+                                                              40 45 50 55 60
+
+                        −5                                                                          0
+                              0          10       20     30      40   50       60                       0     10     20        30        40    50        60
+                                                        tU0 /D                                                             tU0 /D
+
+                        15
+                                  (c)                                                         (d)
+                        10
+                         5
+              y/D         0
+                         -5
+                        -10
+                        -15
+
+                        15
+                                  (ec)                                                        (f)
+                        10
+                         5
+              y/D         0
+                         -5
+                        -10
+                        -15
+
+                        15
+                                  (g)                                                         (h)
+                        10
+                          5
+              y/D         0
+                         -5
+                        -10
+                        -15
+                              -30           -20        -10       0     10       20    30     -30        -20    -10         0         10       20         30
+                                                              x/D                                                      x/D
+    FIG. 11. Flow past an impulsively started cylinder in a periodic domain: [(a) and (b)] Time histories of the (a) streamwise fluid force
+coefficient and (b) streamwise flow velocity at (x/D, y/D) = (0, 0), and (c)–(h) isocontours of the nondimensional fluid density at times
+[(c) and (d)] t1 , [(e) and (f)] t2 , and [(g) and (h)] t3 , computed using the [(c), (e), and (g)] explicit and [(d), (f), and (h)] dual-time-stepping
+methods. The initial position of the cylinder is (x/D, y/D) = (0, 0), and it is moving from left to right. In [(c)–(h)], the body is indicated by
+a gray circle, and the isocontours are linearly distributed in the range [−0.004, 0.004]. Time histories end at tU0 /D = 64, when the body has
+been towed over one domain length.
+
+This supports that the low-pass filtering relates to the time step                    efficient in this context. This is the extra speed-up related to
+and that it is not a multigrid effect.                                                flow transitions, as already mentioned in Sec. III C. On the
+    The results depicted in Fig. 11 illustrate several beneficial                     other hand, the explicit method does not allow to analyze
+features of the dual-time-stepping method. Based on the tem-                          the transient regime, as high-amplitude pressure waves are
+poral evolution of Cx in Fig. 11, two regimes may be iden-                            propagating in the flow domain, affecting the flow velocity
+tified: the transient regime, for tU0 /D < 20, and the steady                         and the fluid forces. This illustrates that the standard lattice
+regime, for tU0 /D > 20. In order to analyze the flow during                          Boltzmann method may be poorly suited for the study of
+the steady regime, the computation has to be continued until                          incompressible flows involving sharp temporal variations. In
+the pressure waves caused by the initialization are damped.                           contrast, the transient regime can be accurately analyzed using
+As these pressure waves are suppressed when using a large                             the DTS method, without any additional computational cost (it
+time step, the dual-time-stepping method is therefore more                            is recalled that the direct speed-up is close to one in this case).
+
+                                                                                023309-13
+GSELL, D’ORTONA, AND FAVIER                                                                 PHYSICAL REVIEW E 101, 023309 (2020)
+
+Indeed, if timescales associated with the main flow dynamics                   2
+are large compared to those related to pressure waves, as
+expected for low-Mach-number configurations, the time step
+                                                                             1.9
+can be set according to the expected dominant timescales, thus
+filtering undesired high-frequency fluctuations. As the gener-
+ation of pressure waves is a critical issue in many simulations,             1.8
+this feature may be useful for future developments, improving       Cx
+the robustness and reliability of the lattice Boltzmann method.              1.7
+
+
+                      IV. CONCLUSION                                         1.6
+
+    A multigrid dual-time-stepping approach has been pro-
+posed to avoid time-step restrictions in the lattice Boltzmann               1.5
+method. The multigrid procedure is based on the method                             0   10    20   30    40   50     60    70   80   90
+proposed by Mavriplis [19], extended here to take into account                                         D/Δn
+the presence of immersed boundaries in the flow. The coupling
+between the dual-time-stepping and lattice Boltzmann meth-             FIG. 12. Mesh convergence analysis for the steady flow past a
+ods is ensured by an external forcing in the lattice Boltzmann     circular cylinder at Re = 40: Evolution of the drag coefficient Cx as
+equation, related to the time derivatives of the macroscopic       a function of the mesh resolution D/.
+flow quantities.
+    In the case of the steady flow past a fixed cylinder
+                                                                   related to sharp geometries or rapid temporal variations. This
+(Re = 40), the proposed multigrid lattice Boltzmann solver
+                                                                   effect limits the range of application of the lattice Boltzmann
+drastically accelerates the convergence of the flow solution,
+                                                                   method or implies the implementation of artificial damp-
+confirming the efficiency of the multigrid approach and its
+                                                                   ing. In low-Mach-number computations, main flow-dynamics
+suitable coupling with the immersed-boundary method. The
+                                                                   timescales are expected to be large compared to timescales
+unsteady flow characterized by the alternate shedding of
+                                                                   related to pressure waves. By setting the physical time step
+vortices and developing for a higher value of the Reynolds
+                                                                   according to the main flow timescales, pressure waves tend
+number (Re = 100) has been simulated using the dual-time-
+                                                                   to be naturally damped by the computations. This feature is
+stepping method. The proposed approach is able to accurately
+                                                                   essential for the future development of robust and reliable
+simulate the unsteady solution, as supported by the compari-
+                                                                   lattice Boltzmann solvers.
+son with the solution issued from an standard explicit solver.
+The effect of the time step and number of inner iterations on
+the numerical cost and accuracy has been analyzed in detail,                           ACKNOWLEDGMENTS
+and the nominal second-order temporal accuracy of the dual
+                                                                      The work was supported by the project MACBION. This
+time stepping is supported by the evolution of the simulated
+                                                                   work received funding from the Excellence Initiative of Aix-
+vortex-shedding frequency. Finally, the analysis of the flow
+                                                                   Marseille UniversityA*MIDEX, a French Investissements
+around an impulsively started cylinder has shown that using
+                                                                   d’Avenir programme, the LABEX MEC, and the SINUMER
+a larger time step allows us to efficiently suppress undesired
+                                                                   project (ANR-18-CE45-0009-01) of the French National Re-
+high-frequency pressure waves arising from sharp temporal
+                                                                   search Agency (ANR).
+variations in the system.
+    In summary, the proposed dual-time-stepping approach is a
+robust and accurate method allowing to vary the physical time        APPENDIX : ADDITIONAL VALIDATION RESULTS ON
+step. Two major advantages resulting from this feature have         THE FLOW PAST A CYLINDER AT Re = 40 AND Re = 100
+been identified.                                                      Additional results are provided in the following concerning
+    a. Speed-up of the computations. Direct speed-up is            simulations of the flow past a circular cylinder. First, a focus is
+achieved by increasing the physical time step. The potential       placed on simulations performed at Re = 40 with the present
+speed-up depends on the physical configuration and on the          multigrid immersed-boundary lattice Boltzmann method. A
+desired numerical accuracy. In this paper, a direct speed-up
+equal to 4 has been obtained for the unsteady flow past a
+cylinder, while keeping the error on fluid forces below 5%.           TABLE II. Drag coefficient on a cylinder immersed in a flow at
+Higher speed-up may be achieved in configurations involving        Re = 40 from previous works and in the present simulations.
+slow flow variations, since larger time steps may be employed
+in these cases. Major indirect speed-up may also be achieved       Study                                       Method               Cx
+by accelerating initial flow developments through the increase     Tritton [36]                                   Expt.             1.58
+of the time step. Finally, the computation of fully developed      Niu et al. [37]                                Num.              1.59
+flow regime is drastically accelerated through the damping of      Sen et al. [38]                                Num.              1.51
+high-frequency pressure waves that may arise from initializa-      Bharti et al. [39]                             Num.              1.53
+tion.                                                              Posdziech and Grundmann [40]                   Num.              1.49
+    b. Damping of high-frequency fluctuations. Lattice Boltz-      Present                                        Num.              1.55
+mann simulations often involve undesired pressure waves
+
+                                                             023309-14
+MULTIGRID DUAL-TIME-STEPPING LATTICE …                                                          PHYSICAL REVIEW E 101, 023309 (2020)
+
+
+             3                                                              TABLE III. Fluid forces on a cylinder immersed in a flow
+                                                                         at Re = 100 from previous numerical works and in the present
+             2                                                           simulations.
+             1
+                                                                         Study                               Cx            Cym            fst
+     y/D
+
+
+
+             0
+                                                                         Braza et al. [41]                 1.28           0.29          0.16
+           −1                                                            Saiki and Biringen [42]           1.26            —            0.17
+           −2                                                            Zhang et al. [43]                 1.43            —            0.17
+                                                                         Zhou et al. [44]                  1.48           0.31          0.16
+           −3                                                            Lai and Peskin [45]               1.45           0.33          0.16
+                   −2         0        2         4        6              Talley et al. [46]                1.34           0.33          0.16
+                                     x/D                                 Stansby and Rainey [47]           1.32           0.35          0.17
+                                                                         Kim et al. [48]                   1.33           0.32          0.16
+   FIG. 13. Streamlines of the flow past a circular cylinder at          Le et al. [49]                    1.37           0.32           —
+Re = 40.                                                                 Shen et al. [50]                  1.38           0.33          0.17
+                                                                         Present                           1.41           0.34          0.17
+
+mesh convergence analysis is reported in Fig. 12, which shows
+the evolution of the drag coefficient Cx as a function of D/n.              Then the accuracy of the dual-time-stepping algorithm is
+In these simulations, the size of the numerical domain is set            illustrated for the unsteady flow past a cylinder at Re = 100.
+to Lx /D = Ly /D = 64. The multigrid setup is the same as that           In accordance with the analysis carried out in Sec. III C,
+employed in Sec. III B: Computations are performed using W               the simulation is performed using t/t ∗ = 100 and lc = 5,
+cycles on four grids, and the number of sweeps is equal to 1,            ensuring both time accuracy and computational efficiency.
+2, 3, and 4 on grids 1, 2, 3, and 4, respectively. Figure 12             A reasonably fine numerical mesh is employed, corresponding
+indicates that the drag coefficient converges to Cx = 1.55.              to D/n = 80, in order to achieve high spatial accuracy. The
+This value is in agreement with previous experimental and                size of the computational domain is set to Lx /D = 64 and
+numerical works, as detailed in Table II.                                Ly /D = 32, as in Sec. III C. The predicted fluid force statistics
+   The flow solution issued from the case D/n = 40 is                   are reported in Table III and compared to data reported in
+visualized using streamlines in Fig. 13. The flow pattern is             prior works. In this table, Cx designates the time-averaged
+very similar to that issued from the high-resolution finite-             drag force coefficient, Cym is the amplitude of the fluctuating
+element simulations reported by Sen et al. [38]. In particular,          lift coefficient, and fst is the nondimensional vortex-shedding
+no flow penetration is observed across the body and well-                frequency. Overall, the present results are in agreement with
+defined streamlines are computed along the cylinder surface.             previous studies.
+
+
+
+ [1] Z. Guo and C. Shu, Lattice Boltzmann Method and Its Applica-        [12] Y.-H. Choi and C. L. Merkle, J. Comp. Phys. 105, 207
+     tions in Engineering, Vol. 3 (World Scientific, Singapore, 2013).        (1993).
+ [2] T. Krüger, H. Kusumaatmaja, A. Kuzmin, O. Shardt, G. Silva,         [13] A. Belov, L. Martinelli, and A. Jameson, in Proceedings of the
+     and E. M. Viggen, The Lattice Boltzmann Method: Principles               33rd Aerospace Sciences Meeting and Exhibit (AIAA, Reno,
+     and Practice (Springer, Berlin, 2017).                                   NV, USA, 1995), p. 49.
+ [3] S. Chen and G. D. Doolen, Annu. Rev. Fluid Mech. 30, 329            [14] C. Liu, X. Zheng, and C. Sung, J. Comp. Phys. 139, 35
+     (1998).                                                                  (1998).
+ [4] Y. Qian, D. d’Humières, and P. Lallemand, Europhys. Lett. 17,       [15] Z. Guo, T. S. Zhao, and Y. Shi, Phys. Rev. E 70, 066706
+     479 (1992).                                                              (2004).
+ [5] X. Shan, X.-F. Yuan, and H. Chen, J. Fluid Mech. 550, 413           [16] S. Izquierdo and N. Fueyo, J. Comp. Phys. 228, 6479 (2009).
+     (2006).                                                             [17] K. N. Premnath, M. J. Pattison, and S. Banerjee, J. Comp. Phys.
+ [6] S. Chapman and T. G. Cowling, The Mathematical Theory of                 228, 746 (2009).
+     Non-uniform Gases (Cambridge University Press, Cambridge,           [18] J. Tölke, M. Krafczyk, and E. Rank, J. Stat. Phys. 107, 573
+     1952).                                                                   (2002).
+ [7] J. H. Ferziger and M. Peric, Computational Methods for Fluid        [19] D. J. Mavriplis, Comp. Fluids 35, 793 (2006).
+     Dynamics (Springer Science & Business Media, New York,              [20] D. V. Patil, K. N. Premnath, and S. Banerjee, J. Comp. Phys.
+     2012).                                                                   265, 172 (2014).
+ [8] A. Jameson, in Proceedings of the 10th Computational Fluid          [21] S. Gsell, U. D’Ortona, and J. Favier, Phys. Rev. E 100, 033306
+     Dynamics Conference (AIAA, Honolulu, HI, USA, 1991),                     (2019).
+     p. 1596.                                                            [22] P. L. Bhatnagar, E. P. Gross, and M. Krook, Phys. Rev. 94, 511
+ [9] J. M. Weiss and W. A. Smith, AIAA J. 33, 2050 (1995).                    (1954).
+[10] A. J. Chorin, J. Comp. Phys. 2, 12 (1967).                          [23] I. Ginzburg, F. Verhaeghe, and D. d’Humieres, Commun.
+[11] E. Turkel, J. Comp. Phys. 72, 277 (1987).                                Comp. Phys. 3, 519 (2008).
+
+
+                                                                   023309-15
+GSELL, D’ORTONA, AND FAVIER                                                                  PHYSICAL REVIEW E 101, 023309 (2020)
+
+[24] D. d’Humières and I. Ginzburg, Comput. Math. Appl. 58, 823       [37] X. Niu, C. Shu, Y. Chew, and Y. Peng, Phys. Lett. A 354, 173
+     (2009).                                                               (2006).
+[25] Z. Guo, C. Zheng, and B. Shi, Phys. Rev. E 65, 046308 (2002).    [38] S. Sen, S. Mittal, and G. Biswas, J. Fluid Mech. 620, 89 (2009).
+[26] G. Le and J. Zhang, Phys. Rev. E 79, 026701 (2009).              [39] R. P. Bharti, R. Chhabra, and V. Eswaran, Can. J. Chem. Eng.
+[27] T. Seta, R. Rojas, K. Hayashi, and A. Tomiyama, Phys. Rev. E          84, 406 (2006).
+     89, 023307 (2014).                                               [40] O. Posdziech and R. Grundmann, J. Fluids Struct. 23, 479
+[28] J. Favier, A. Revell, and A. Pinelli, J. Comp. Phys. 261, 145         (2007).
+     (2014).                                                          [41] M. Braza, P. Chassaing, and H. H. Minh, J. Fluid Mech. 165, 79
+[29] W. L. Briggs, S. F. McCormick, and V. E. Henson, A Multigrid          (1986).
+     Tutorial, 2nd ed., Vol. 72 (SIAM, Philadelphia, 2000).           [42] E. Saiki and S. Biringen, J. Comp. Phys. 123, 450 (1996).
+[30] S. Gsell, R. Bourguet, and M. Braza, J. Fluids Struct. 67, 156   [43] H.-Q. Zhang, U. Fey, B. R. Noack, M. König, and H.
+     (2016).                                                               Eckelmann, Phys. Fluids 7, 779 (1995).
+[31] Z. Li, J. Favier, U. D’Ortona, and S. Poncet, J. Comp. Phys.     [44] C. Zhou, R. So, and K. Lam, J. Fluids Struct. 13, 165 (1999).
+     304, 424 (2016).                                                 [45] M.-C. Lai and C. S. Peskin, J. Comp. Phys. 160, 705 (2000).
+[32] A. J. Ladd, J. Fluid Mech. 271, 311 (1994).                      [46] S. Talley, G. Iaccarino, G. Mungal, and N. Mansour, Ann. Res.
+[33] I. Ginzburg and D. d’Humières, Phys. Rev. E 68, 066614                Briefs, CTR, 51 (2001).
+     (2003).                                                          [47] P. Stansby and R. Rainey, J. Fluid Mech. 439, 87 (2001).
+[34] Q. Zou and X. He, Phys. Fluids 9, 1591 (1997).                   [48] J. Kim, D. Kim, and H. Choi, J. Comp. Phys. 171, 132 (2001).
+[35] Y. Li, R. Shock, R. Zhang, and H. Chen, J. Fluid Mech. 519,      [49] D.-V. Le, B. C. Khoo, and J. Peraire, J. Comp. Phys. 220, 109
+     273 (2004).                                                           (2006).
+[36] D. J. Tritton, J. Fluid Mech. 6, 547 (1959).                     [50] L. Shen, E.-S. Chan, and P. Lin, Comp. Fluids 38, 691 (2009).
+
+
+
+
+                                                                023309-16
+

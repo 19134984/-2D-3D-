@@ -1,0 +1,691 @@
+                                           Available online at www.sciencedirect.com
+                                           Available online at www.sciencedirect.com
+                                     Available online at www.sciencedirect.com
+
+
+                                                ScienceDirect
+                                            Procedia Computer Science 00 (2025) 000–000
+                                            Procedia
+                                          Procedia   Computer
+                                                   Computer   Science
+                                                            Science   00(2025)
+                                                                    267         000–000
+                                                                         (2025)52–61                          www.elsevier.com/locate/procedia
+                                                                                                              www.elsevier.com/locate/procedia
+
+
+                                       Proceedings of the Third EuroHPC user day
+                                       Proceedings of the Third EuroHPC user day
+   Multi-GPU porting of
+   Multi-GPU porting        phase-change cascaded
+                      of aa phase-change           lattice Boltzmann
+                                         cascaded lattice  Boltzmann
+        method for three-dimensional  pool boiling  simulations
+        method for three-dimensional pool boiling simulations
+  Alessandro Gabbanaa,b,∗, Linlin Feic , Xander M. de Witd , Ziqi Wangd , Daniel Livescua ,
+  Alessandro Gabbanaa,b,∗, Linlin Feic , Xander M. ded,eWitd , Ziqi Wangd , Daniel Livescua ,
+                                    Federico Toschid,e
+      a
+                                    Federico Toschi
+          Computational Physics and Methods Group (CCS-2), Los Alamos National Laboratory, Los Alamos, 87545 New Mexico, USA
+         a Computational Physics and Methods Group (CCS-2), Los Alamos National Laboratory, Los Alamos, 87545 New Mexico, USA
+                b Center for Nonlinear Studies (CNLS), Los Alamos National Laboratory, Los Alamos, 87545 New Mexico, USA
+                b Center for Nonlinear Studies (CNLS), Los Alamos National Laboratory, Los Alamos, 87545 New Mexico, USA
+ c Key Laboratory of Thermo-Fluid Science and Engineering of Ministry of Education, School of Energy and Power Engineering, Xi’an Jiaotong
+ c Key Laboratory of Thermo-Fluid Science and Engineering of Ministry of Education, School of Energy and Power Engineering, Xi’an Jiaotong
+                                                    University, Xi’an, Shaanxi 710049, China
+                                                  Education, Xi’an,
+      d Department of Applied Physics and Science University,       Shaanxi
+                                                              Eindhoven     710049,ofChina
+                                                                        University   Technology, 5600 MB Eindhoven, The Netherlands
+      d Department of Applied Physics and Science Education, Eindhoven University of Technology, 5600 MB Eindhoven, The Netherlands
+                                                      e CNR-IAC, I-00185 Rome, Italy
+                                                      e CNR-IAC, I-00185 Rome, Italy
+
+
+
+
+Abstract
+Abstract
+The Lattice Boltzmann method (LBM) has proven effective in simulating phase-change phenomena, such as melting, solidification,
+The Lattice Boltzmann
+evaporation,              In this(LBM)
+                        method
+             and boiling.                 hasdevelop
+                                   work, we           a highly in
+                                              proven effective                phase-change
+                                                                  simulatingmulti-GPU
+                                                                parallelized                 phenomena, of
+                                                                                         implementation    such
+                                                                                                             LBMas melting, solidification,
+                                                                                                                    for three-dimensional
+evaporation, and boiling. In this  work,  we develop  a highly  parallelized multi-GPU   implementation   of LBM    for three-dimensional
+pool boiling simulations. The code is based on the OpenACC programming model, which enables the code to be deployed efficiently
+pool boiling simulations.
+on multi-core  CPUs, GPUs,Theand
+                               code  is based on
+                                   potentially       OpenACC programming
+                                                 the accelerators,
+                                               other                            model,
+                                                                   without the need  forwhich  enables the coderewrites.
+                                                                                         architecture-specific  to be deployed  efficiently
+                                                                                                                         To support  large-
+on multi-core
+scale          CPUs,
+      simulations, theGPUs,
+                       domainandis potentially
+                                   decomposed  other
+                                                 andaccelerators,  without
+                                                      distributed across    the needcompute
+                                                                          multiple           nodes using MPI.rewrites.
+                                                                                     for architecture-specific           To supportthat
+                                                                                                                 We demonstrate      large-
+                                                                                                                                        the
+code exhibits excellent scaling properties, with ideal strong-scaling running with up to 256 GPUs on the MareNostrum5 cluster.the
+scale simulations, the domain   is decomposed    and  distributed across  multiple  compute  nodes  using  MPI.  We  demonstrate   that
+code exhibits excellent scaling properties, with ideal strong-scaling running with up to 256 GPUs on the MareNostrum5 cluster.
+© 2025
+© 2025 The   Authors. Published
+         The Authors.  Published by  Elsevier B.V.
+                                  by Elsevier B.V.
+© 2025 The Authors. Published by Elsevier B.V.
+This is an open access article under the CC BY license    (https://creativecommons.org/licenses/by-nc-nd/4.0/)
+                                                  4.0 license (https://creativecommons.org/licenses/by/4.0)
+This is an open
+Peer-review     access
+             under     article under
+                   responsibility    the CC  BY license
+                                         scientific
+                                     the scientific
+                                  of the                  (https://creativecommons.org/licenses/by-nc-nd/4.0/)
+                                                    committee
+                                                    committee   of the
+                                                               of   the Proceedings of the
+                                                                        Proceedings of  the Third
+                                                                                            Third EuroHPC user day.
+                                                                                                  EuroHPC user day
+Peer-review under responsibility of the scientific committee of the Proceedings of the Third EuroHPC user day.
+Keywords: Pool Boiling; Lattice Boltzmann Method; OpenACC; Multi-GPU;
+Keywords: Pool Boiling; Lattice Boltzmann Method; OpenACC; Multi-GPU;
+
+
+
+1. Introduction
+1. Introduction
+   Boiling is a highly efficient heat transfer mechanism with widespread applications, from everyday uses such as
+   Boiling
+cooking   to is  a highly
+              critical     efficient
+                       industrial     heat transfer
+                                  systems    such asmechanism    with widespread
+                                                     nuclear reactors,              applications,
+                                                                        heat exchangers,            from everyday
+                                                                                           and electronic   cooling uses  suchDe-
+                                                                                                                                as
+                                                                                                                    devices.
+cooking   to  critical industrial systems    such as nuclear  reactors, heat  exchangers,  and  electronic  cooling devices.
+spite its ubiquity, the boiling process remains a subject of intense research because of its inherently multiscale and         De-
+spite its ubiquity,
+multiphysics          thewhich
+                nature,   boiling  process
+                                involves     remainsinteractions
+                                          complex     a subject of  intensefluid
+                                                                 between     research because
+                                                                                 dynamics,      of its
+                                                                                            phase      inherently
+                                                                                                   change,        multiscale
+                                                                                                                      transfer and
+                                                                                                            and heat           [1].
+multiphysics    nature,  which  involves  complex   interactions between   fluid dynamics,  phase  change,  and
+   Among the different boiling configurations, pool boiling, where buoyancy is the sole driving force for fluid heat  transfer [1].
+                                                                                                                          motion,
+   Among     the  different boiling  configurations,  pool boiling,  where  buoyancy  is the sole driving force for
+offers a relatively simple setup to study the fundamental mechanisms of bubble nucleation, growth, departure, and   fluid motion,
+offers a relatively simple setup to study the fundamental mechanisms of bubble nucleation, growth, departure, and
+
+ ∗ Corresponding author.
+ ∗ Corresponding author.
+   E-mail address: agabbana@lanl.gov
+   E-mail address: agabbana@lanl.gov
+1877-0509 © 2025 The Authors. Published by Elsevier B.V.
+1877-0509
+This        © 2025
+     is an open     Thearticle
+                         Authors.
+                access             Published
+                               under the CC BYby Elsevier
+                                                  license  B.V.
+                                                          (https://creativecommons.org/licenses/by-nc-nd/4.0/)
+1877-0509   © 2025   The Authors.    Published    by  Elsevier  B.V.
+This is an open
+Peer-review     access
+             under     article under
+                   responsibility    the scientific
+                                  of the  CC BY license   (https://creativecommons.org/licenses/by-nc-nd/4.0/)
+                                                    committee         Proceedings of the Third EuroHPC user day.
+                                                               of the(https://creativecommons.org/licenses/by/4.0)
+This  is an open  access  article under   the CC BY     4.0 license
+Peer-review under
+Peer-review   underesponsibility  of the
+                     responsibility      scientific
+                                      of the        committee
+                                             scientific        of theof
+                                                        committee     Proceedings of the Third
+                                                                         the Proceedings  of theEuroHPC user day. user day
+                                                                                                 Third EuroHPC
+10.1016/j.procs.2025.08.232
+                                           Alessandro Gabbana et al. / Procedia Computer Science 267 (2025) 52–61                               53
+2                                       A. Gabbana et al. / Procedia Computer Science 00 (2025) 000–000
+
+    (a)                                                                     (b)
+
+
+
+
+Fig. 1. Snapshot from a pool boiling simulation on a 10243 domain, in the nucleate boiling regime. (a) Iso-surface representation of the liquid-vapor
+interface, colored by the local temperature field. (b) Cross-sectional slices of the temperature field.
+
+
+
+
+coalescence. Understanding these phenomena is essential to improve heat transfer efficiency and predict performance
+limits, such as the critical heat flux (CHF), in engineering systems. However, accurately capturing these dynamics re-
+quires high-fidelity numerical simulations that resolve both the microscale vapor-liquid interfaces and the macroscale
+thermal convection.
+   To address this challenge, numerical methods like the lattice Boltzmann method (LBM) have emerged as promis-
+ing tools due to their algorithmic simplicity, scalability, and ability to naturally handle complex boundary conditions.
+In particular, the pseudopotential multiphase LBM, enhanced by thermal coupling via finite-difference solvers and
+non-ideal equations of state, has proven effective in simulating phase-change phenomena, including nucleate boil-
+ing and transitions to film boiling. The model developed by Fei et al. [2], which extends the hybrid LBM to fully
+three-dimensional domains using the cascaded collision operator for improved numerical stability, has successfully
+reproduced the entire boiling curve and boiling regimes with hundreds of interacting bubbles.
+   Despite these advances, most existing numerical studies on boiling remain limited to two-dimensional simulations
+or coarse three-dimensional models, which significantly restrict their applicability to real-world scenarios. Further-
+more, the computational cost of resolving a fully 3D boiling process at realistic scales has, until recently, remained
+prohibitive [3].
+   In this work, we take a major step forward by developing a highly parallelized multi-GPU implementation of LBM
+for three-dimensional pool boiling simulations. By leveraging massively parallel GPU architectures, our code enables
+simulations involving millions of grid points, offering the possibility of simulations with unprecedented fidelity and
+throughput, making it possible to quantitatively study bubble nucleation, bringing us closer to quantitatively matching
+experimental observations and validating theoretical models. A qualitative example is shown in Figure 1, where we
+provide the snapshot from a simulation in the nucleate boiling regime on a 10243 domain.
+   The remainder of this paper is organized as follows. In Section 2 we provide a short overview on the numerical
+method. Section 3 outlines the key aspects of porting the LBM code to multi-GPU clusters. Performance results and
+scalability analysis are presented in Section 4. Finally, Section 5 offers concluding remarks and discusses possible
+future developments.
+54                                          Alessandro Gabbana et al. / Procedia Computer Science 267 (2025) 52–61
+                                       A. Gabbana et al. / Procedia Computer Science 00 (2025) 000–000                               3
+
+2. Numerical Method
+
+   In this section we provide details on the numerical methods employed for the simulation of pool boiling. We
+couple two methods, with a hybrid cascaded lattice Boltzmann model (CLBM) addressing the liquid-vapor phase-
+change process, and a finite difference method for the evolution of the temperature field, and with the two components
+coupled via a non-ideal equation of state [2].
+
+2.1. Solution of the flow field
+
+   The lattice Boltzmann method (LBM) has proven to be a highly efficient and flexible mesoscopic approach for
+simulating a wide variety of fluid flows [4]. Unlike traditional Navier-Stokes solvers which explicitly discretize the
+macroscopic equations, LBM is a mesoscopic approach that models the evolution of particle distribution functions
+over a discrete lattice. At its core, LBM solves a discretized form of the Boltzmann equation:
+      fi (x + ei δt, t + δt) − fi (x, t) = Ω( fi ) + Fi ,                                                                           (1)
+where fi denotes the particle distribution function along the i-th discrete velocity direction ei , Ω is the collision
+operator, Fi is a source term accounting for internal and external forces, and δt is the time-step size. The left-hand side
+represents the streaming step, which moves information from one lattice node to its neighbors, while the right-hand
+side captures local changes in the particle distributions due to collisions and forcing effects.
+
+                                                                               12
+                                                        16
+                                                                       5
+                                                                                      15
+                                                                 11
+
+                                                                  10
+                                                                                  2
+                                                          4                                     8
+                                                                       0
+                                                9                                      3
+                                                                  1
+                                                                              7
+
+                                                                               14
+                                                        18
+                                                                       6
+                                                                                      17
+                                                                 13
+
+
+                Fig. 2. D3Q19 velocity stencil used for the discretization of the velocity space in the lattice Boltzmann method.
+
+   We use the D3Q19 model (see Fig. 2) for the discretization of the continuum velocity space, employing a set of 19
+discrete velocities, defined as:
+      ei = [| eix  , | eiy  , | eiz ],   i = 0, . . . , 18,
+with the specific components given by:
+      | eix  = [0, 1, −1, 0, 0, 0, 0, 1, −1, 1, −1, 1, −1, 1, −1, 0, 0, 0, 0] ,
+      | eiy  = [0, 0, 0, 1, −1, 0, 0, 1, 1, −1, −1, 0, 0, 0, 0, 1, −1, 1, −1] ,                                                   (2)
+      | eiz  = [0, 0, 0, 0, 0, 1, −1, 0, 0, 0, 0, 1, 1, −1, −1, 1, 1, −1, −1] .
+Here, |· denotes√a 19-dimensional column vector. The lattice speed is defined as c = δx/δt = 1, and the lattice sound
+speed is c s = 1/ 3, with δx = δt = 1.
+    In this study, we employ a central-moment-based LBM, which offers enhanced numerical stability and the possi-
+bility to independently tune the relaxation rate of the different transport parameters. In CLBM the post-collision state
+is defined as
+                          eq
+                                                    eq
+                                                          
+        fi∗ = Ω( fi ) = fi + 1 − M−1 N−1 SNM fi − fi                                                                 (3)
+                                                          Alessandro Gabbana et al. / Procedia Computer Science 267 (2025) 52–61                                     55
+4                                                       A. Gabbana et al. / Procedia Computer Science 00 (2025) 000–000
+             eq
+where fi is the (discrete) local equilibrium distribution, M is the transformation matrix mapping the particle dis-
+tributions to moment space, N is the transformation matrix shifting from raw moments to central moments, and S
+is the relaxation matrix, dictating the relaxation rate of the different moments. Therefore, in the CLBM framework,
+the collision operator is defined in terms of a set of raw and central moments of the particle distribution functions fi ,
+respectively
+                                                                               
+                      n p
+       kmnp = fi em
+                  ix eiy eiz , k̃mnp = fi (eix − u x )m (eiy − uy )n (eiz − uz ) p ,                                 (4)
+where m, n, p are non-negative integers and u x , uy , uz are the components of the macroscopic velocity vector u.
+  Following the work of Fei et al. [5], we consider the following non-orthogonal set of central moments:
+      
+      T̃ = [k̃ , k̃ , k̃ , k̃ , k̃ , k̃ , k̃ , k̃ , k̃ , k̃ , k̃ , k̃ , k̃ , k̃ , k̃ , k̃ , k̃ , k̃ , k̃ ] ,
+          i           000    100       010      001          110       101       011   200   020    002    120    102    210    201    012   021   220   202   022    (5)
+with
+                                                                            
+       |T i  = M | fi  = [T 0 , T 1 , ..., T 18 ] ,                      T̃ i = N |T i  = NM | fi  = [T̃ 0 , T̃ 1 , ..., T̃ 18 ] .                             (6)
+   This choice leads to a sparse transformation matrix [5], which allows for enhanced computational efficiency.
+   The collision process can then be expressed as the independent relaxation of each central moment towards its
+equilibrium counterpart as:
+       ∗           
+       T̃ = T̃ − S T̃ − T̃ eq + (I − S/2)δt |C  ,
+          i            i               i            i                                    i                      (7)
+where |Ci  represents the forcing terms in moment space.
+  The choice for the set of moments in Eq. 5 implies the following block-diagonal form for the relaxation matrix:
+                                                                                                                   
+                
+                
+                                                     s+ s− s−                                                  
+                                                                                                                      
+                                                                                                                      
+                                                                                                               
+     S = diag   s0 , s1 , s1 , s1 , sν , sν , sν ,     
+                                                          s− s+ s −   
+                                                                        , s3 , s3 , s3 , s3 , s3 , s3 , s4 , s4 , s4 
+                                                                                                                       , (8)
+                
+                                                                                                                   
+                                                                                                                      
+                                                           s s s       −     −     +
+
+with s+ = (s2b + 2s2 )/3, s− = (s2b − s2 )/3, enabling independent control of normal stress components and bulk
+viscosity [5].
+   The equilibrium central moments are matched to those of the continuous Maxwell-Boltzmann distribution:
+       eq 
+       T̃i   = [ρ, 0, 0, 0, 0, 0, 0, ρc2 , ρc2 , ρc2 , 0, 0, 0, 0, 0, 0, ρc4 , ρc4 , ρc4 ] .
+                                                         s         s         s                        s     (9)
+                                                                                                            s      s
+
+    The forcing term in moment space is:
+       |Ci  = [0, F x , Fy , Fz , 0, 0, 0, 0, 0, 0, F x c2s , F x c2s , Fy c2s , Fz c2s , Fy c2s , Fz c2s , 0, 0, 0] .                                             (10)
+    After the collision step, the post-collision distribution functions are reconstructed by:
+        ∗              
+         f = M−1 N−1 T̃ ∗ ,
+         i                         i
+
+and propagated via the streaming step:
+       fi (x + ei δt, t + δt) = fi∗ (x, t).                                                                                                                          (11)
+    The macroscopic variables are recovered as:
+                                                             δt
+       ρ=             fi ,   ρu =              fi ei +          F.                                                                                                   (12)
+                  i                        i
+                                                             2
+    The kinematic viscosity ν and bulk viscosity ξ are related to the relaxation parameters via:
+                  1 1 2                                 2 1    1 2
+       ν=           −  c δt,                   ξ=            −   c δt.                                                                                               (13)
+                  s2 2 s                                3 s2b 2 s
+   In order to incorporate phase-change phenomena, the pseudopotential model is adopted [6, 7], with the interaction
+force:
+       Fint = −Gψ(x)                   w(|ei |2 )ψ(x + ei δt)ei .                                                                                                    (14)
+                               i
+56                                             Alessandro Gabbana et al. / Procedia Computer Science 267 (2025) 52–61
+                                           A. Gabbana et al. / Procedia Computer Science 00 (2025) 000–000                    5
+
+     The pseudopotential ψ is defined by:
+            
+              2(pEOS − ρc2s )
+       ψ=                     ,                                                                                            (15)
+                   Gc2
+where G = −1 ensures the positivity of the expression under the square root.
+  To address thermodynamic inconsistency, Li et al. [8, 9] proposed modifying the forcing term:
+       |Ci  = [0, F x , Fy , Fz , 0, 0, 0, η, η, η, F x c2s , F x c2s , Fy c2s , Fz c2s , Fy c2s , Fz c2s , 0, 0, 0] ,   (16)
+where:
+                2σ|Fint |2
+       η=     2
+                            ,                                                                                              (17)
+                 e − 0.5)δt
+             ψ (s−1
+with σ used for tuning η. By applying a Chapman-Enskog analysis, the following macroscopic equations are recovered
+in the low-Mach limit:
+        ∂t ρ + ∇ · (ρu) = 0,                                                                                        (18)
+                                                                                          
+        ∂t (ρu) + ∇ · (ρuu) = −∇(ρc2s ) + ∇ · ρν(∇u + (∇u) ) − 23 ρν(∇ · u)I + ∇ ρξ(∇ · u) + F − 2G2 c4 σ∇ · |∇ψ|2 I
+where the final term arises from the thermodynamic correction via η. Note that for σ = 0, the standard Navier-Stokes
+equations are recovered.
+
+2.2. Solution of the Temperature Field
+
+     The temperature evolution in the liquid-vapor phase-change process is governed by the following equation [10]:
+                                                
+       ∂T                              T ∂pEOS
+           = −u · ∇T + ∇ · (λ∇T ) −                 ∇ · u,                                                       (19)
+        ∂t                            ρcv ∂T ρ
+where T is the temperature, u is the fluid velocity, λ is the thermal conductivity, ρ is the density, and cv is the specific
+heat at constant volume. The term involving ∂pEOS /∂T accounts for the thermodynamic coupling due to the non-ideal
+equation of state.
+   To numerically solve Eq. 19, spatial derivatives must be discretized appropriately. In this work, a central difference
+scheme based on lattice directions is employed to approximate both the gradient and Laplacian operators [11]. The
+discretization is given as:
+            ∂φ       1   2
+                = 2         ω |ei | eiα φ (x + ei δt) ,
+           ∂xα     c s δt i
+                                                                                                                       (20)
+         ∂2 φ        2   2                          
+                = 2         ω |ei | φ (x + ei δt) − φ(x) ,
+       ∂xα ∂xα     c s δt i
+
+where α ∈ {x, y, z} denotes the spatial coordinate direction, φ is a scalar physical quantity (e.g., temperature), ei are
+the discrete lattice velocities, and ω is a weight function associated with the magnitude of ei .
+   In order to conserve the heat flux, particularly across the liquid-vapor interface where sharp gradients may occur,
+the diffusion term ∇ · (λ∇T ) is discretized using a finite volume method [12]. This approach provides better accuracy
+and stability when handling discontinuities and steep gradients, which are common in phase-change phenomena.
+   For temporal discretization, the right-hand side of Eq. 19 is denoted as K(T ), representing all spatially discretized
+contributions to the temperature evolution. The time integration is carried out using a fourth-order Runge-Kutta (RK4)
+method:
+        T t+δt = T t + δt6 (h1 + h2 + h3 + h4 ),
+                      t
+           h1 = K(T  ),        
+           h2 = K T t + δt2 h1 ,                                                                                           (21)
+                               
+           h3 = K T t + δt2 h2 ,
+                                
+           h4 = K T t + δt h3 .
+                                     Alessandro Gabbana et al. / Procedia Computer Science 267 (2025) 52–61                 57
+6                                  A. Gabbana et al. / Procedia Computer Science 00 (2025) 000–000
+
+2.3. Non-ideal equation of state
+
+   The pseudopotential CLBM described in Section 2.1 is coupled with the finite-difference temperature solver in-
+troduced in Section 2.2 through a non-ideal equation of state. Specifically, temperature variations affect the local
+thermodynamic pressure pEOS , which in turn modifies the interparticle interaction force in the pseudopotential CLBM
+via Eqs. 14 and 15.
+   To model the non-ideal thermodynamic behavior of the fluid, various equations of state—such as the van der Waals,
+Carnahan-Starling, or Peng-Robinson EOS—can be incorporated into the framework through the square-root form of
+the pseudopotential defined in Eq. 15. Following a previous study [2], the Peng-Robinson EOS is employed:
+                ρRT      aϕ(T )ρ2
+      pEOS =         −                ,                                                                                    (22)
+               1 − bρ 1 + 2bρ − b2 ρ2
+where the temperature-dependent function ϕ(T ) is defined as:
+                                                         2
+     ϕ(T ) = 1 + 0.37464 + 1.54226 − 0.269922 1 − T/T c ,
+and the parameters a = 2/49, b = 2/21 have been established following the analysis in Refs. [13, 9], with  = 0.344
+and R = 1. The corresponding critical temperature and pressure are computed as T c = 0.07292 and pc = 0.05957,
+respectively.
+   Furthermore, in the simulation of pool boiling phenomena, the motion of vapor bubbles and surrounding liquid is
+significantly influenced by buoyancy forces arising from density differences. The buoyancy force is modeled as:
+      Fb = −(ρ − ρ̄)gk̂,                                                                                                   (23)
+where ρ̄ is the average density in the computational domain, g is the gravitational acceleration, and k̂ is the unit vector
+in the vertical (gravity) direction.
+    As a result, the total body force acting on the system is given by the sum of the interparticle interaction force and
+the buoyancy force:
+      F = Fint + Fb .
+    This coupling strategy ensures that both temperature-induced pressure variations and gravitational effects are con-
+sistently incorporated into the fluid dynamics, enabling accurate simulation of liquid-vapor phase-change processes
+such as boiling and condensation.
+
+3. Implementation
+
+   To achieve simultaneously high performance and portability across heterogeneous computing architectures, our
+LBM code is implemented using the OpenACC programming model. OpenACC enables incremental parallelization
+of existing C/C++ and Fortran codebases and supports a broad range of accelerators and CPUs. The primary goal of
+this implementation is to ensure that the same codebase can be deployed efficiently on NVIDIA GPUs, multi-core
+CPUs, and potentially other accelerators, without requiring architecture-specific modifications.
+   The core compute routines, such as streaming, collision, macroscopic moment computation, boundary conditions
+and the Runge-Kutta solver for the temperature fields, are offloaded to the accelerator using OpenACC directives.
+Loop-level parallelism is expressed through the kernels construct, allowing the compiler to generate optimized code
+for the target architecture.
+   To support parallel updates of all grid points during both streaming and collision operations, we store two copies of
+the lattice for the particle distribution functions fi , following the so-called A-A pattern. The lattice data is transferred to
+the accelerator memory at the beginning of the time-stepping loop, and an OpenACC data region is used to minimize
+communication between the host and the device, restricting data transfers to essential operations such as disk writes
+and MPI communications.
+   The code adopts a Structure of Arrays (SoA) data layout, which aligns with memory coalescing requirements on
+GPUs and supports efficient vectorization on CPUs. In this layout, the particle distribution functions are stored with
+58                                  Alessandro Gabbana et al. / Procedia Computer Science 267 (2025) 52–61
+                                A. Gabbana et al. / Procedia Computer Science 00 (2025) 000–000                          7
+
+spatial indices contiguously in memory. This organization enhances memory bandwidth utilization, which is a key
+performance factor in LBM algorithms due to their memory-bound nature. Although more sophisticated data struc-
+tures for LBM have been proposed, offering performance benefits on architectures with large cache hierarchies [14],
+they often introduce additional complexity. For the sake of simplicity and maintainability, we opt not to adopt them in
+the current implementation.
+   To support large-scale simulations, the computational domain is decomposed and distributed across multiple com-
+pute nodes using MPI. For simplicity, we adopt a one-dimensional domain decomposition, where each MPI rank
+handles a subdomain. Halo regions (ghost layers) are exchanged at each time step to maintain data consistency across
+subdomain boundaries. The code is designed for multi-node execution, with one MPI process assigned to each GPU
+when running on GPU clusters.
+   Inter-process communication is implemented using non-blocking MPI routines, enabling the overlap of computa-
+tion and communication. Specifically, the interior nodes of each subdomain are updated while halo data is exchanged
+asynchronously. This overlap is explicitly managed by partitioning the domain into interior and halo regions and
+launching separate OpenACC kernels for each subdomain. When possible, the kernels are executed on different CUDA
+streams to further reduce potential overheads introduced by small kernels reserved to the preparation of buffers used
+in MPI communications and kernels operating on the boundary layers.
+   We leverage a CUDA-aware MPI library, which allows communication buffers to reference device memory directly.
+This enables efficient pipelining of data movement between host and device memory, reducing overhead and improv-
+ing scalability, and also enables seamless use of NVLink for direct GPU-to-GPU data transfers between devices on
+the same node.
+
+
+
+4. Results
+
+    In this section we provide a brief overview of the performances of the code.
+    All results are obtained using a realistic physical configuration that replicates the pool boiling setup illustrated in
+Fig. 1. We perform three-dimensional simulations where the bottom plate is maintained at a fixed temperature, with a
+small perturbation applied at t = 0 to trigger bubble nucleation. At the top boundary, we impose a constant pressure
+condition along with a Neumann boundary condition for velocity, enforcing that the normal derivative of the velocity
+field is set to zero. Periodic boundary conditions are applied in the remaining directions. The initial condition consists
+of a domain half-filled with liquid and half with vapor. The flow field is solved using the D3Q19 LBM (cf. Fig. 2),
+while the temperature field is evolved using a fourth-order Runge-Kutta method.
+    We begin by analyzing the performance obtained on a single GPU. As a representative case, we consider the
+performance of the two main computational kernels: streaming and collide. The streaming kernel is responsible for
+moving pseudo-particles between neighboring grid points and is thus entirely memory-bound. On a single NVIDIA
+A100 GPU, this kernel achieves a bandwidth of 1245.31 GB/s, which corresponds to approximately 62% of the
+theoretical peak. In contrast, the collide kernel is the most compute-intensive component of the code. On the same
+A100 GPU, it reaches 2745.43 GFLOP/s, about 28% of the theoretical peak performance, comparing well against
+results of previous LBM implementations from the literature [15, 16]. These figures nearly double when running on a
+single H100 GPU at the MareNostrum 5 supercomputer (BSC), achieving 2659.13 GB/s for the streaming kernel and
+5616.93 GFLOP/s for the collide kernel. These figures show that the code allows to extract a significant fraction of
+the performance peak on some of the latest GPU cards.
+    Moving now to the evaluation of the multi-GPU implementation, Fig. 3a reports on the strong scalability and
+corresponding parallel efficiency achieved on the MareNostrum 5 cluster.
+    We consider three representative domain sizes: a small domain of size 1536 × 512 × 512, a medium domain of
+3072 × 1024 × 1024, and a large domain of 6144 × 2048 × 2048. In the strong scalability test, the domain is partitioned
+along the x-dimension as L x /p, where p is the number of GPUs. We evaluate performance for p = 4, 8, . . . , 512 GPUs.
+    We compare two code variants: one where communication and computation are overlapped, and another where
+they are executed synchronously. The plot clearly shows the benefit of overlapping, which brings performance close
+to ideal scaling up to 256 GPUs. At p = 512, execution times of the two variants converge, suggesting that the
+execution time becomes dominated by the cost of MPI communications. Since this overhead is roughly constant
+                                                         Alessandro Gabbana et al. / Procedia Computer Science 267 (2025) 52–61                           59
+
+8                                                     A. Gabbana et al. / Procedia Computer Science 00 (2025) 000–000
+           (a)                                                                         (b)
+                                                                                               100
+                       2
+                  10
+                                                                                                        90
+
+                                                                                                        80
+    Time/iter [ms]
+
+
+
+
+                                                                                        Efficiency[%]
+                                                                                                        70
+
+
+                  101                                                                                   60
+                                overlap
+                                no-overlap                                                              50
+                                ideal scaling
+                                                                                                        40
+                                1536 × 5122
+                                3072 × 10242
+                                                                                                        30
+                                6144 × 20482
+                  100
+                           4     8        16      32     64   128     256    512                             4   8   16      32     64   128   256   512
+                                               Number of GPUs                                                             Number of GPUs
+
+Fig. 3. (a) Strong scalability results for three domain sizes on the MareNostrum 5 cluster, using up to 512 GPUs. Two code variants are compared:
+with and without overlapping of communication and computation. (b) Parallel efficiency corresponding to the strong scaling test, with baseline
+GPU counts of 4, 32, and 256 for the small, medium, and large domains, respectively.
+
+
+with respect to p under 1D partitioning, scalability plateaus. Higher-dimensional domain decompositions could help
+alleviate this bottleneck, albeit at the cost of added code complexity.
+   In Fig. 3b, we show the corresponding parallel efficiency, defined as:
+                                T (b) p
+                       E(p) =                                                                                                                        (24)
+                                T (p) b
+where T (p) is the execution time using p GPUs, and b is the minimum number of GPUs required to fit a given problem
+size in memory (4 for the small domain, 32 for the medium, 256 for the large).
+   Remarkably, for the medium-size domain, efficiency remains close to 100% up to 256 GPUs. Minor super-linear
+speedups can be observed and are attributed to runtime kernel scheduling on CUDA streams. These effects are difficult
+to predict a priori and depend on available GPU resources. When the workload per GPU decreases (at higher p), the
+potential for concurrent kernel execution increases, which may yield slight performance boosts.
+
+5. Conclusions and future work
+
+   We have presented a multi-GPU implementation of a Lattice Boltzmann Method (LBM) code designed for large-
+scale simulations of pool boiling.
+   The code exhibits excellent strong scaling, reaching near-ideal performance up to 256 GPUs on representative
+three-dimensional domains. This opens up the possibility of performing high-resolution numerical studies of the
+complex dynamics of boiling at scales that were previously computationally prohibitive.
+   Extended details on the implementation, validation strategy, and performance analysis will be provided in an ex-
+tended version of this work. Moreover we plan to use the code for studying in detail the transition between boiling
+regimes as a function of wall superheat, the spatiotemporal evolution and distribution of bubble footprint areas, and
+the influence of geometrical and thermophysical properties on boiling curves. Work along these lines is in progress.
+
+Acknowledgments
+
+  We acknowledge HPC-Europe computational facilities and allocation on the MareNostrum 5 supercomputer (BSC,
+Spain) through grant EHPC-EXT-2023E02-035, and the Karolina cluster (IT4I, Czech Republic) through grant
+60                                        Alessandro Gabbana et al. / Procedia Computer Science 267 (2025) 52–61
+                                      A. Gabbana et al. / Procedia Computer Science 00 (2025) 000–000                                  9
+
+EHPC-DEV-2023D04-032. A.G. gratefully acknowledges the support of the U.S. Department of Energy through the
+LANL/LDRD Program under project number 20240740PRD1 and the Center for Non-Linear Studies for this work.
+
+Appendix A. Scaling performance Data
+
+     For completeness, in Table A.1 we report the data presented in Fig. 3.
+
+Table A.1. Scaling performance: time per iteration [ms], speedup, and parallel efficiency for different problem sizes and GPU counts
+                                                    No overlap                                          With overlap
+         nGPUs       nNodes
+                                  Time [ms]        Speedup        Efficiency [%]       Time [ms]        Speedup       Efficiency [%]
+                                                Small problem size: 1536 × 512 × 512
+            4            1           152.87           1.00             100.0              141.69          1.00              100.0
+            8             2           77.23           1.98              99.0              70.92           2.00              100.0
+           16            4            38.48           3.97              99.3              35.15           4.03              100.8
+           32            8            20.56           7.44              92.9              17.71           8.00              100.0
+           64           16            11.63          13.14              82.1               8.74           16.21             101.3
+           128           32           7.40           20.66             64.6                4.70           30.15              94.0
+           256           64           5.24           29.17             45.6                3.11           45.56              71.2
+           512          128           4.57           33.44             26.1                4.29           33.04              25.8
+                                              Medium problem size: 3072 × 1024 × 1024
+           32            8           163.74           1.00             100.0              145.61           1.00             100.0
+            64           16           84.72           1.93              96.7              71.48            2.04             102.0
+           128           32           45.99           3.56              89.0              35.66            4.08             102.0
+           256           64           27.65           5.92              74.0              18.14            8.03             100.4
+           512          128           19.45           8.42              52.6              18.76            7.76              48.5
+                                               Large problem size: 6144 × 2048 × 2048
+           256          64           194.34           1.00             100.0              140.57           1.00             100.0
+           512          128          115.54           1.68              84.0              107.87           1.30              65.0
+
+
+
+Appendix B. EuroHPC Supercomputers
+
+   In this appendix, we provide detailed hardware specifications for the supercomputing systems employed in this
+study.
+
+Karolina Cluster – Accelerated Compute Nodes
+
+    The accelerated partition of the Karolina Cluster, hosted at IT4Innovations National Supercomputing Center (Czech
+Republic), comprises 72 GPU-accelerated nodes equipped with NVIDIA A100 GPUs. This system was primarily
+utilized for early-stage benchmarking and development of the code.
+
+     • Total Nodes: 72
+     • Processor: 2× AMD EPYCTM 7763 (2.45 GHz, 64 cores each) per node
+     • CPU Cores per Node: 128 (9,216 cores in total)
+     • Main Memory: 1,024 GB DDR4 3200 MT/s per node
+     • GPU Configuration: 8× NVIDIA A100 GPUs per node (320 GB HBM2 memory per node)
+     • Peak Performance: 361.27 TFLOPS
+     • Interconnect: 4× 200 Gb/s InfiniBand ports per node
+                                            Alessandro Gabbana et al. / Procedia Computer Science 267 (2025) 52–61                              61
+ 10                                       A. Gabbana et al. / Procedia Computer Science 00 (2025) 000–000
+
+ MareNostrum 5 ACC (Accelerated Partition)
+
+    The accelerated partition of MareNostrum 5, operated by the Barcelona Supercomputing Center (Spain), consists
+ of 1120 nodes based on the latest Intel Sapphire Rapids processors and NVIDIA Hopper GPUs. This system was used
+ for large-scale performance evaluation and production runs.
+
+      • Total Nodes: 1,120
+      • Processor: 2× Intel Sapphire Rapids 8460Y+ (2.3 GHz, 40 cores each) per node
+      • CPU Cores per Node: 80
+      • Main Memory: 512 GB DDR5 per node
+      • GPU Configuration: 4× NVIDIA Hopper GPUs with 64 GB HBM2 memory each
+      • Storage: 480 GB NVMe (scratch space)
+      • Interconnect: 4× NDR200 ports (800 Gb/s per node)
+      • Peak Performance: 260 PFLOPS
+      • Network Topology: Fat-tree topology with full non-blocking 160-node islands and 2:1 contention between
+        islands
+
+
+ References
+
+ [1] V. Dhir, Boiling heat transfer, Annual review of fluid mechanics 30 (1) (1998) 365–401. doi:10.1146/annurev.fluid.30.1.365.
+ [2] L. Fei, J. Yang, Y. Chen, H. Mo, K. H. Luo, Mesoscopic simulation of three-dimensional pool boiling based on a phase-change cascaded lattice
+     Boltzmann method, Physics of Fluids 32 (10) (2020) 103312. doi:10.1063/5.0023639.
+ [3] H. Jiang, Y. Liu, H. Chu, A review of numerical investigation on pool boiling, Journal of Thermal Analysis and Calorimetry 148 (17) (2023)
+     8697–8745. doi:10.1007/s10973-023-12292-0.
+ [4] S. Succi, The Lattice Boltzmann Equation: For Complex States of Flowing Matter, OUP Oxford, 2018. doi:10.1093/oso/9780199592357.
+     001.0001.
+ [5] L. Fei, K. H. Luo, Q. Li, Three-dimensional cascaded lattice boltzmann method: Improved implementation and consistent forcing scheme,
+     Physical Review E 97 (5) (2018) 053309. doi:10.1103/PhysRevE.97.053309.
+ [6] X. Shan, H. Chen, Lattice boltzmann model for simulating flows with multiple phases and components, Physical Review E 47 (3) (1993) 1815.
+     doi:10.1103/PhysRevE.47.1815.
+ [7] X. Shan, H. Chen, Simulation of nonideal gases and liquid-gas phase transitions by the lattice boltzmann equation, Physical Review E 49 (4)
+     (1994) 2941. doi:10.1103/PhysRevE.49.2941.
+ [8] Q. Li, K. H. Luo, X. Li, Forcing scheme in pseudopotential lattice boltzmann model for multiphase flows, Physical Review E 86 (1) (2012)
+     016709. doi:10.1103/PhysRevE.86.016709.
+ [9] Q. Li, K. H. Luo, X. Li, Lattice boltzmann modeling of multiphase flows at large density ratio with an improved pseudopotential model,
+     Physical Review E 87 (5) (2013) 053301. doi:10.1103/PhysRevE.87.053301.
+[10] Q. Li, Q. Kang, M. M. Francois, Y. He, K. H. Luo, Lattice boltzmann modeling of boiling heat transfer: The boiling curve and the effects of
+     wettability, International Journal of Heat and Mass Transfer 85 (2015) 787–796. doi:10.1016/j.ijheatmasstransfer.2015.01.136.
+[11] T. Lee, C.-L. Lin, A stable discretization of the lattice boltzmann equation for simulation of incompressible two-phase flows at high density
+     ratio, Journal of Computational Physics 206 (1) (2005) 16–47. doi:10.1016/j.jcp.2004.12.001.
+[12] R. Huang, H. Wu, N. A. Adams, Lattice boltzmann model with self-tuning equation of state for multiphase flows, Physical Review E 99 (2)
+     (2019) 023303. doi:10.1103/PhysRevE.99.023303.
+[13] P. Yuan, L. Schaefer, Equations of state in a lattice boltzmann model, Physics of Fluids 18 (4) (2006) 042101. doi:10.1063/1.2187070.
+[14] E. Calore, A. Gabbana, S. F. Schifano, R. Tripiccione, Optimization of lattice boltzmann simulations on heterogeneous computers, The Inter-
+     national Journal of High Performance Computing Applications 33 (1) (2019) 124–139. doi:10.1177/1094342017703771.
+[15] E. Calore, A. Gabbana, J. Kraus, E. Pellegrini, S. Schifano, R. Tripiccione, Massively parallel lattice–boltzmann codes on large gpu clusters,
+     Parallel Computing 58 (12) (2016) 1–24. doi:10.1016/j.parco.2016.08.005.
+[16] E. Calore, A. Gabbana, J. Kraus, S. F. Schifano, R. Tripiccione, Performance and portability of accelerated lattice Boltzmann applications with
+     OpenACC, Concurrency and Computation: Practice and Experience 28 (12) (2016) 3485–3502. doi:10.1002/cpe.3862.
+

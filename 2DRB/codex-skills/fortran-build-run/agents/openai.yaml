@@ -1,0 +1,7 @@
+interface:
+  display_name: "Fortran Build Run"
+  short_description: "Compile and smoke-test repo Fortran baselines."
+  default_prompt: "Use $fortran-build-run to compile and smoke-test 3DRB.F90 in this repo."
+
+policy:
+  allow_implicit_invocation: true

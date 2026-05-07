@@ -1,0 +1,1198 @@
+                                                 International Communications in Heat and Mass Transfer 155 (2024) 107525
+
+
+                                                                    Contents lists available at ScienceDirect
+
+
+                              International Communications in Heat and Mass Transfer
+                                                           journal homepage: www.elsevier.com/locate/ichmt
+
+
+
+
+A hybrid lattice Boltzmann/immersed boundary method/finite-difference
+model for thermal fluid-solid interactions
+Farshad Gharibi a, *, Seyed Ali Hosseini b, Dominique Thévenin a
+a
+    Laboratory of Fluid Dynamics and Technical Flows, University of Magdeburg “Otto von Guericke”, Magdeburg D-39106, Germany
+b
+    Department of Mechanical and Process Engineering, ETH Zurich, 8092 Zurich, Switzerland
+
+
+
+
+A R T I C L E I N F O                                     A B S T R A C T
+
+Keywords:                                                 Particulate flows are frequently observed in both industrial and natural environments, and their simulation
+Lattice Boltzmann method                                  becomes particularly challenging when heat transfer is involved. This study introduces a hybrid numerical
+Hybrid solver                                             approach, combining the lattice Boltzmann Method (LBM), Immersed Boundary Method (IBM), and Finite Dif­
+Heat transfer
+                                                          ference (FD) energy solver to alleviate the limitations observed in double distributed lattice Boltzmann methods
+Central moments
+                                                          and classical Computational Fluid Dynamics (CFD). The model incorporates an enhanced Hermite polynomial-
+                                                          based central moments collision operator. This enhancement boosts stability and overcomes the Galilean-
+                                                          invariant issues observed in classical LBM. For heat transfer, a Finite-Difference technique is employed for
+                                                          resolving the energy equation, discretizing the advection term through a Weighted Essentially Non-Oscillatory
+                                                          (WENO) approach. The Boussinesq approximation handles buoyancy forces, while the direct-forcing IBM man­
+                                                          ages fluid-particle interaction. Validation across various test cases confirms the model’s accuracy, showcasing its
+                                                          ability to account for variations in thermal properties like specific heat capacity Cp over a wide range. The model
+                                                          is further utilized to investigate a reactor containing 300 catalyst particles. In summary, this hybrid methodology
+                                                          is found to be a promising tool for comprehensively studying and designing particle-laden systems with thermal
+                                                          effects.
+
+
+
+
+1. Introduction                                                                               problems has emerged within the lattice Boltzmann method (LBM)
+                                                                                              framework. LBM provides significant advantages in comparison to
+    Particle-laden flows have a substantial impact in different engi­                         traditional methods relying on the Navier-Stokes-Poisson relations.
+neering and natural contexts, including but not limited to sediment                           These advantages encompass numerical simplicity, outstanding paral­
+transportation, aerosol dispersion, control of pollution, fluidized bed,                      lelism with entirely localized operations, and the avoidance of in­
+and catalyst particles in reactors, to cite a few. In different engineering                   tricacies associated with solving pressure equation issues [3–5]. As a
+applications, such as fluidized and packed beds, particle-fluid heat ex­                      consequence, LBM has been now widely applied for fluid flow systems,
+change represents a fundamental and crucially important phenomenon.                           including medical flows, particulate flows, flows through porous mate­
+Simulating particulate flows numerically involves a considerable level of                     rials, heat and mass transfer, multiphase and multicomponent flows, and
+complexity; the problem is amplified when the consideration of heat                           turbulent flows [5–15]. Over the years, numerous numerical enhance­
+transfer is necessary at the same time [1,2].                                                 ments have been proposed to enhance the effectiveness of this approach.
+    In the past, empirical and experimental research was the primary                              Within the context of particulate flows, the Immersed Boundary
+approach for investigating and designing particle systems. However,                           Method (IBM) has been effectively integrated with the LBM to address
+with the increased computational power and the development of                                 solid-fluid interactions by including the force density term within the
+advanced modeling techniques over the past few decades, the study of                          LBM [16]. The IBM, introduced by Peskin [17], has gained acclaim for
+particulate flows through numerical methods has gained increasing in­                         its capability to simulate scenarios involving elastic structures and
+terest among multiple research groups. While most studies on fluid dy­                        viscous incompressible fluids. Feng and Michaelides conducted one of
+namics have been conducted using conventional Computational Fluid                             the pioneering research that employed LBM as an alternative method to
+Dynamics (CFD) techniques, an alternative tool for solving CFD                                the Navier-Stokes (NS) solver for simulating particulate flows with IBM
+
+
+    * Corresponding author.
+      E-mail address: farshad.gharibi@ovgu.de (F. Gharibi).
+
+https://doi.org/10.1016/j.icheatmasstransfer.2024.107525
+
+Available online 3 May 2024
+0735-1933/© 2024 The Authors. Published by Elsevier Ltd. This is an open access article under the CC BY-NC license (http://creativecommons.org/licenses/by-
+nc/4.0/).
+F. Gharibi et al.                                                                                International Communications in Heat and Mass Transfer 155 (2024) 107525
+
+
+[18]. Jeong et al. [19] employed a method that combined dual distri­             function. They later extended the applicability of this method to handle
+bution LBM for equilibrium velocity and internal energy with IBM to              more complex thermal flow scenarios [48].
+model flows involving heat transfer around bluff bodies. However, the                To the best of the authors’ knowledge, investigations have not been
+utilization of the feedback-forcing method for momentum and energy               published yet regarding the utilization of a hybrid Immersed Boundary
+evaluation relies on a complex procedure to select corresponding nu­             central moment lattice Boltzmann solver with Finite-Difference energy
+merical parameters, and can lead to stability issues [19,20]. Kang and           discretization for a comprehensive analysis of thermal particulate flows.
+Hassan [20] proposed an approach called direct-forcing IBM (DF-IBM),             The present work aims to develop such a numerically efficient hybrid
+which incorporates a sharp interface scheme into the thermal lattice             model (LB/IB/FDM) to solve coupled heat transfer phenomena for
+Boltzmann method (TLBM) for simulating heat transfer phenomena.                  thermal particulate flows.
+Eshghinejadfard and Thévenin [1] introduced a thermal IBM double-                   In this study, a collision operator employing a multiple relaxation
+population lattice Boltzmann method able to describe solid particle              times scheme is utilized within a modified central Hermite space. This
+motion in fluids, even when confronted with substantial heat transfer            approach, which was initially presented in [49], enables independent
+fluxes. Their scheme involves calculating the momentum force and heat            control of bulk viscosity. In addition, employing a thorough expansion of
+force in the double-distributed lattice Boltzmann equation employing a           the discrete equilibrium [50] along with a term to rectify the diagonal
+direct-heating and direct-forcing method [1]. Amiri et al. [21] utilized a       elements within the tensor of third-order equilibrium moments (see
+combined approach incorporating a direct-forcing IBM and a non-                  among others [37,39,51–53] for more details) allows for a realization
+Newtonian LBM with a split-forcing algorithm to model interactions               with Galilean-invariant Navier-Stokes-level kinematic and bulk viscos­
+among thermal particles and the fluid. Chen et al. [22] introduced a             ities. The final form of the solver, as detailed in [49], allows for a more
+simplified thermal LBM integrated with the IBM to simulate immersed              robust and stable solver with a much wider operation range by regu­
+objects in incompressible thermal flows, aiming to reduce memory cost            lating the dissipation rate of normal modes. Finally, the FD technique is
+and enhance numerical stability. Mohammadi and Gandjalikhan Nassab               employed to solve the energy equation. For discretizing the advection
+[23] simulated heat transfer involving radiation and convection in               term in the energy balance, the third-order Weighted Essentially Non-
+irregular geometries. They employed a hybrid IBM-LBM approach, uti­              Oscillatory (WENO) approach is utilized [54], ensuring higher stabil­
+lizing the double multiple-relaxation-time scheme for calculating the            ity range. To handle the diffusion term within the energy equation, a
+energy and momentum equations. Furthermore, they applied the finite              fourth-order central finite difference (FD) approximation is utilized for
+volume technique to numerically address radiative heat transfer. Tao             spatial discretization. In the temporal domain, a first-order explicit Euler
+et al. [24] introduced a correction of the distribution function near the        discretization is applied for updating the corresponding fields.
+interface for simulating incompressible thermal flows. Jiang et al. [25]
+employed a DF-IBM method with multiple distribution functions LBM                2. Numerical methods
+for simulating low-Mach reactive flows. Ma et al. [26] simulated thermal
+fluid flow around a starfish-inspired cylinder using a novel method built           This section describes the numerical methods utilized to investigate
+upon the boundary-simplified thermal LBM. As evident from this liter­            the dynamics of particulate fluid flows and the associated heat transfer
+ature survey, the double-population model is the most commonly used              phenomena. Firstly, an enhanced central moment lattice Boltzmann
+thermal LBM model for solving energy conservation. However, the                  method that efficiently addresses momentum balance for incompressible
+double-population model has some limitations [27]. For example, the              flows as first discussed in [49] is introduced. Then, the energy balance
+classical advection-diffusion lattice Boltzmann solver for temperature           equation governing thermal behavior is presented. For accurately
+exhibits flux mismatch at interfaces and is only correct under conditions        monitoring particle trajectories within the fluid, the implementation of
+of constant specific heat capacity and density across the simulation             the Direct-Force Thermal Immersed Boundary Method is detailed. The
+domain [28]. Corrections for this issue have been applied in several             emphasis of this section is on the the introduction of the hybrid meth­
+studies [29,30]; however, they lead to a high level of complexity in             odology that optimally combines the strengths of both LBM and classical
+irregular geometries [28]. Still, the double-population methods have             CFD, with the aim of alleviating the limitations observed in classical CFD
+undergone significant development, enhancing stability and accuracy.             or double-distribution LBM.
+Central moment methods have played a key role in this improvement
+[31,32]. On the other hand, the hybrid approach, which solves the en­            2.1. Mass and momentum balance: Lattice Boltzmann solver
+ergy equation using conventional numerical techniques like Finite Dif­
+ferences (FD), offers noticeable advantages. These include lower                     Employing the LBM, this study conducts flow field simulations. Using
+memory consumption compared to double-population methods [33],                   a finite-order spectral method with Hermite polynomials, the Boltzmann
+good numerical stability [33,34], easy implementation of high-order              equation is discretized in phase space. The ensuing system of inter­
+schemes, and accommodation of variable properties like heat capacity             connected hyperbolic equations is resolved by integrating along the
+[35].                                                                            characteristics, yielding the “stream-collide” equation for discrete pop­
+    The accuracy and numerical stability of flow predictions by LBM              ulations fi :
+heavily rely on the chosen collision operator [36]. The BGK collision
+term coupled with a bounce-back method for boundary condition stands             fi (x + ei δt, t + δt) = fi (x, t) + Ωi + Fiext ,                                      (1)
+as the most commonly used approach for simulating fluid flows with
+LBM. However, at high Reynolds numbers and high velocity gradients,              where x represents the fluid node’s spatial location, t denotes time, Fiext
+this model becomes numerically unstable due to its reliance on one               describes the external forces, and ei corresponds to the discrete velocity
+single relaxation time. Additionally, it is known that standard LBMs lack        vectors, determined based on the lattice structure chosen. Throughout
+Galilean invariance, causing several challenges when simulating flows            this investigation, the focus will be exclusively set on the D3Q27 and
+at high Reynolds numbers and multiphase or multicomponent flows                  D2Q9 stencils (third-order quadrature). Consequently, the discrete ve­
+[36–40]. Geier et al. [41] proposed a collision model based on central           locity vectors will be determined in accordance with Eq. (2) for 2D and
+moments, exhibiting superior stability when compared to BGK and MRT              Eq. (3) for 3D, where ei δt denotes the positional shift in different
+methods. This model has undergone continuous development,                        directions.
+enhancement,        and    application       across   diverse    domains         ei = {(0, 0, 0), (1, 0, 0), (0, 1, 0), ( − 1, 0, 0), (0, − 1, 0), (1, 1, 0), ( − 1, 1, 0),
+[31,32,40,42–46]. To address three-dimensional (3D) thermal flow dy­                                          ( − 1, − 1, 0), (1, − 1, 0)}.
+namics, Hajabdollahi and Premnath [47] developed the central-moment
+                                                                                                                                                                         (2)
+lattice Boltzmann method for thermal flows using a double distribution
+
+                                                                             2
+F. Gharibi et al.                                                                                                              International Communications in Heat and Mass Transfer 155 (2024) 107525
+
+
+ei = {(0, 0, 0), (1, 0, 0), ( − 1, 0, 0), (0, 1, 0), (0, − 1, 0), (0, 0, 1), (0, 0, − 1),                 the framework of this solver, Ei is denoted as [49]:
+    (1, 1, 0), ( − 1, 1, 0), (1, − 1, 0), ( − 1, − 1, 0), (1, 0, 1), ( − 1, 0, 1),                             (          )            ( (             ) ∑           )
+                                                                                                                    ωb ωs    wi                3p
+           (1, 0, − 1), ( − 1, 0, − 1), (0, 1, 1), (0, − 1, 1), (0, 1, − 1),                              Ei = 1 −              ∇H2 : ρuα            2
+                                                                                                                                                  + uα −      3 eq
+                                                                                                                                                             ei,α fi  ,                                                                     (10)
+         (0, − 1, − 1), (1, 1, 1), ( − 1, 1, 1), (1, − 1, 1), ( − 1, − 1, 1)                                       ωb + ωs 2c4s                ρ           i
+           (1, 1, − 1), ( − 1, 1, − 1), (1, − 1, − 1), ( − 1, − 1, − 1)}.
+                                                                                         (3)              where α is space coordinate and ωs is shear relaxation frequency. ωb
+                                                                                                          represents the relaxation frequency associated with bulk viscosity;
+    In Eq. (1), Ωi is the discrete collision operator. In this study, a                                   within the scope of this study it is set to ωb = 1.0. Defined as follows, the
+modified Hermite central moments space collision operator is utilized,                                    moments transformation tensor T is constructed using a series of
+which allows to control bulk viscosity independently. Unlike the tradi­                                   modified central Hermite polynomials:
+tional Hermite polynomial space, this modified formulation allows for
+the independent relaxation of trace-free and trace components of the                                      T = [|T 0 〉, …, T N 〉],                                                                                                           (11)
+second order moments [49],
+                                                                                                          where column vectors ∣T i 〉 for the D2Q9 stencil based on Hermite
+Ωi = T − 1 ST (fieq − fi ) + Ei ,                                                               (4)       polynomials using Eq. (5) are specified as follows:
+                                                                                                                         〉
+where S corresponds to the diagonal matrix of the relaxation rates, T                                     |T 0 〉 = ‖ei |0 ,                                           (12a)
+represents the transform tensor for moments, while T − 1 represents its
+                                                                                                              〉       〉
+inverse, which are determined based on the following set of Hermite                                       ∣T 1 = ∣ex,i ,                                                                                                                   (12b)
+polynomials in 2D and 3D, respectively:
+                                                                                                                 〉          〉
+         {                                                          }                                     ∣T 2       = ∣ey,i ,                                                                                                             (12c)
+2D : H ∈ H0 , Hx , Hy , Hxy , Hx2 − Hy2 , Hx2 + Hy2 , Hx2 y , Hx2 y2 , (5)
+                                                                                                              〉            〉
+          {                                                                                               ∣T 3 = ∣ex,i ey,i ,                                                                                                              (12d)
+3D : H ∈ H0 , Hx , Hy , Hz , Hxy , Hxz , Hyz , Hx2 − Hy2 , Hx2 − Hz2 , Hx2 +
+ Hy2 + Hz2 , Hx2 y , Hx2 z , Hxy2 , Hy2 z , Hxz2 , Hxyz , Hx2 y2 , Hx2}z2 , Hy2 z2 , Hx2 yz ,   (6)           〉                〉
+              Hxy2 z , Hxyz2 , Hx2 y2 z , Hx2 yz2 , Hxy2 z2 , Hx2 y2 z2 .                                 ∣T 4 = ∣e2x,i − e2y,i ,                                                                                                          (12e)
+
+    In Eq. (4), fieq is the discrete equilibrium distribution. The equilib­                                   〉                       〉
+rium distribution function in discrete form is determined through an                                      ∣T 5 = ∣e2x,i + e2y,i − 2c2s ,                                                                                                   (12f)
+expansion at a given reference temperature of the Maxwell-Boltzmann
+                                                                                                              〉                        〉
+distribution, equivalently reference isothermal speed of sound cs , via                                   ∣T 6 = ∣e2x,i ey,i − c2s ey,i ,                                                                                                  (12g)
+Hermite polynomials. The expansion allows then the use of the Gauss-
+Hermite quadrature to satisfy exact recovery of the desired number of                                         〉                        〉
+moments of the distribution function on the selected set of discrete ve­                                  ∣T 7 = ∣e2y,i ex,i − c2s ex,i ,                                                                                                  (12h)
+locity vectors leading to [55]:                                                                               〉   (                       )(           )〉
+                                 (                                                                        ∣T 8 = ∣ e2x,i −          c2s     e2y,i − c2s ,                                                                                  (12i)
+          ∑N
+                1                     p)
+fieq = wi           H (e ) : aeq
+                  2n n i      n ρ, u,    ,                                                      (7)
+              n!c                     ρ
+                                                                                                          where ei takes the form of [58]:
+          n=0     s
+
+
+where “:” represents the Frobenius inner product, wi represents the                                       ei = ei − u.                                                                                                                      (13)
+lattice weight factor based on Eq. (8) for two-dimensional cases and Eq.
+                                                                                                              The transform matrix for the D3Q27 structure case can be calculated
+(9) for three-dimensional cases. Hn denotes the Hermite polynomial
+tensor of rank n. For the detailed and complete expressions of the Her­                                   using the same approach, utilizing the basis defined in Eq. (6).The def­
+                                                                                                          initions for the diagonal tensor of relaxation rates S pertaining to the
+mite polynomials, we direct readers to [56]. The quantity aeq     n is the
+                                                                                                          D2Q9 structure are as follows:
+corresponding equilibrium Hermite coefficient, u corresponds to veloc­
+ity, p signifies pressure, ρ represents fluid density, and N indicates the                                S = diag(1, 1, 1, ωs , ωs , ωb , ωa , ωa , ωa ).                                                                                  (14)
+expansion order. For 2D scenarios, N is assigned a value of four, whereas
+                                                                                                              For the D3Q27 stencil they read:
+for 3D cases, it takes on a value of six. The highest number of supported
+terms by the structures determines these values.                                                          S = diag(1, 1, 1, 1, ωs , ωs , ωs , ωs , ωs , ωb , ωa , …, ωa ),                                                                  (15)
+      {                             }
+              4        1          1
+wi = w0 = , w1− 4 = , w5− 8 =         .                                (8)                                where ωa is a freely adjustable frequency that is set to 1.0 in this study.
+              9        9         36
+                                                                                                          To implement external forces in LBM, the Exact Difference Method
+       {                                          }                                                       (EDM) force scheme [59] is utilized. After setting P = ρc2s and per­
+            8          2          1            1
+wi =    w0 = , w1− 6 = , w7− 18 = , w19− 26 =      .                                            (9)       forming algebraic simplifications, the central moment force equations
+            27        27         54           216
+                                                                                                          (∣Fim 〉 = T ∣Fiext 〉) are as follows:
+    Unlike traditional second-order polynomial expansions, employing
+                                                                                                                                                                          Fx Fy                       Fx Fz                    Fy Fz
+the complete expansion as described in [50] maintains the Galilean                                        F1m = Fx , F2m = Fy , F3m = Fz , F4m =                                  , F5m =                     , F6m =                  ,    (16)
+                                                                                                                                                                           ρ                           ρ                          ρ
+invariance of the shear mode dissipation rate at the Navier-Stokes level.
+In Eq. (4), Ei is a term that takes into account variations in the diagonal
+                                                                                                                     Fx2 − Fy2               Fx2 − Fz2                    Fx2 + Fy2 + Fz2                                Fx2 Fy
+elements of the equilibrium third-order moments. This term ensures that                                   F7m =                  , F8m =                     , F9m =                                      m
+                                                                                                                                                                                                       , F10 =                    ,         (17)
+Galilean invariance is maintained in the discretized representation. In
+                                                                                                                          ρ                        ρ                                     ρ                                 ρ2
+fact, the lack of independent support for diagonal terms in third-order
+                                                                                                                     Fx2 Fz               Fx Fy2                 Fy2 Fz                      Fx Fz2                      Fy Fz2
+moments by standard lattices (such as D2Q9 and D3Q27) causes vis­                                          m
+                                                                                                          F11 =                  m
+                                                                                                                              , F12 =                 m
+                                                                                                                                                   , F13 =                   m
+                                                                                                                                                                          , F14 =                        m
+                                                                                                                                                                                                      , F15 =                     ,         (18)
+cosity to exhibit an unconventional dependence on fluid velocity, i.e.,                                               ρ   2                ρ   2                   ρ2                         ρ   2                       ρ2
+non-Galilean-invariant (GI) viscous stress [39]. Further elaboration on                                                        /
+this non-Galilean-invariant viscous stress error and the corresponding                                                                                 Fx2 Fy2                 Fx2 Fz2                     Fy2 Fz2
+                                                                                                           m
+                                                                                                          F16 = Fx Fy Fz           ρ2 , F17
+                                                                                                                                         m
+                                                                                                                                            =                       m
+                                                                                                                                                                 , F18 =                        m
+                                                                                                                                                                                             , F19 =                 ,                      (19)
+correction term can be found in detailed discussions [39,49,57]. Within                                                                                  ρ                       ρ                            ρ3
+                                                                                                                                                             3                       3
+
+
+
+
+                                                                                                      3
+F. Gharibi et al.                                                                                                             International Communications in Heat and Mass Transfer 155 (2024) 107525
+
+
+                                                                                                            computed using Eq. (29):
+        Fx2 Fy Fz                   Fx Fy2 Fz             Fx Fy Fz2             Fx2 Fy2 Fz
+ m
+F20 =                        m
+                          , F21 =                  m
+                                                , F22 =                  m
+                                                                      , F23 =                ,   (20)
+              ρ   3                    ρ3                    ρ3                    ρ   4                            ρf Uc Dp
+                                                                                                            Re =             ,                                                                  (29)
+                                                                                                                        μ
+     F2 Fy F2                     Fx Fy2 Fz2            Fx2 Fy2 Fz2
+ m
+F24 = x 4 z,                 m
+                            F25 =            ,     m
+                                                  F26 =             ,                            (21)       where the velocity Uc can be calculated by balancing inertia and
+              ρ                       4ρ                     5ρ
+                                                                                                            buoyancy [62]:
+                                                                                                                 √̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅
+                                                                                                                            (                )
+2.2. Energy balance: Finite-difference solver                                                                     4Dp g ρp − ρf
+                                                                                                            Uc =                               .                         (30)
+                                                                                                                             3ρf
+    The energy equation for incompressible flows but variable proper­
+ties, when disregarding viscous heating, can be simplified to:
+ (       )                                                                                                  2.3. Immersed boundary method
+∂ ρC p T       (       )
+           + ∇. u ρCp T = ∇.(k∇T) + Q,                           (22)
+    ∂t                                                                                                         In this study, the Direct-Force IBM is employed to represent the fluid-
+                                                                                                            particle interaction forces including heat transfer. Following the
+in which T denotes temperature, k signifies thermal conductivity, Cp                                        approach introduced by Uhlmann [63] and later extended to thermal
+represents the specific heat capacity, and Q represents the heat source                                     IBM by [1,64], the force term (Qb ) at each Lagrangian node (Xb ) is
+term. A Finite-Difference (FD) technique is employed here for solving
+                                                                                                            computed based on the desired velocity (Ud ), as outlined in Eq. (31). At
+the energy equation. The third-order WENO approach [54] is employed
+                                                                                                            each Lagrangian node, the heat source term (Qnb ) is computed using the
+for discretizing the advection term in the energy equation, ensuring
+                                                                                                            same way based on the desired particle temperature (Tpd ) using Eq. (32):
+stability even in regions with large gradients. For handling the diffusion
+terms, a fourth-order central finite difference (FD) scheme is used for                                             Ud − UnoF
+spatial discretization, while a first-order explicit Euler discretization is                                Fnb =             ,                                                                 (31)
+                                                                                                                        Δt
+applied in time to update the relevant fields. The WENO scheme effec­
+tively minimizes numerical oscillations and enhances the accuracy of                                                Tpd − T noH
+the discretization [60,61].                                                                                 Qnb =               ,                                                               (32)
+                                                                                                                         Δt
+    The term for buoyancy force (FB ) within the flow-field equation is
+computed using the Boussinesq approximation in this investigation. This                                     in which Δt is the time step, n denotes current time step, and UnoF de­
+approximation assumes a linear relationship between the buoyancy                                            notes the velocity at next time step that would be calculated in the
+term and the temperature difference. As a result, the momentum and                                          absence of any external forcing (noF, for no forcing). For simulations
+energy relations become coupled, as expressed by:                                                           conducted in three dimensions, the computation of UnoF is based on Eq.
+                                                                                                            (33), relying on velocity values at Eulerian points (ui,j,k ).
+FB = ρf ,0 gβ(T − T0 ),                                                                          (23)
+                                                                                                                 In the same way, regarding heat source term computations at each
+involving the temperature difference ΔT = T − T0 . The thermal                                              Lagrangian node, the “no heat source” temperature TnoH can be calcu­
+expansion coefficient β, reference temperature T0 , gravity acceleration                                    lated using Eq. (34) according to the temperature at the Eulerian points
+g, and fluid density at the specified reference temperature ρf,0 appear in                                  (Ti,j,k ). This leads finally to:
+                                                                                                                       ∑
+this equation. The Exact Difference Method (EDM) force scheme [59] is                                       UnoF =
+                                                                                                                                  (           )
+                                                                                                                          ui,j,k D xi,j,k − Xb (Δh)3 ,                          (33)
+used to incorporate the bulk forces F and buoyancy force FB arising from                                              i,j,k
+particle-fluid interaction through IBM into Eq. (1).                                                                ∑        (           )
+    Throughout the remainder of this paper, dimensionless parameters                                        T noH =  Ti,j,k D xi,j,k − Xb (Δh)3 .                                               (34)
+are employed to quantify hydrodynamic and thermal properties. The                                                     i,j,k
+
+thermal conductivity (k) and dynamic viscosity (μ) are related using the
+                                                                                                                Here, xi,j,k is the Eulerian nodes’ position, the lattice size is denoted
+Prandtl number (Pr), as expressed in Eq. (24):
+                                                                                                            by Δh, and Xb indicates the Lagrangian points’ position. The discretized
+       μ Cpf                                                                                                Dirac delta function (D) within Eqs. (33) and (34) is adapted for three-
+Pr =                  .                                                                          (24)
+          kf                                                                                                dimensional scenarios using the following expression:
+                                                                                                                                         (x − x ) (y − y ) (z − z )
+   In all the article, the index f denotes fluid properties and the index p                                   (          )       1
+                                                                                                                                                                                     (35)
+                                                                                                                                           i    b     i    b      i    b
+                                                                                                            D xi,j,k − Xb =           dh          dh         dh          .
+denotes particle properties, if both are available for the same quantity.
+                                                                                                                                    3
+                                                                                                                               (Δh)          Δh         Δh          Δh
+The Grashof and Rayleigh numbers, defined in Eqs. (25) and (26)
+                                                                                                                The 4-point delta function, as proposed by Peskin [17], is employed
+respectively, quantify buoyancy in relation to viscosity
+                                                                                                            for estimating dh (a):
+        ρ2f g β D3p ΔT                                                                                              ⎧ (                  √̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅ )                  ⎫
+Gr =                   ,                                                                         (25)               ⎪
+                                                                                                                    ⎪
+                                                                                                                        1
+                                                                                                                            3 −  2|a|  +    1  +   4|a|     −    4r  2
+                                                                                                                                                                             0 ≤  |a| < 1 ⎪
+                                                                                                                                                                                          ⎪
+              μ2                                                                                                    ⎪
+                                                                                                                    ⎪                                                                     ⎪
+                                                                                                                                                                                          ⎪
+                                                                                                                    ⎨ 8
+                                                                                                                    ⎪
+                                                                                                                                       √̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅ )
+                                                                                                                                                                                          ⎪
+                                                                                                                                                                                          ⎬
+                                                                                                            dh (a) = 1  (                                                                  . (36)
+Ra = Gr.Pr.                                                                                      (26)               ⎪
+                                                                                                                    ⎪     5 −   2|a| −   −  7  +    12|a|      −    4r  2
+                                                                                                                                                                             1 ≤  |a| < 2 ⎪
+                                                                                                                                                                                          ⎪
+                                                                                                                    ⎪
+                                                                                                                    ⎪ 8                                                                   ⎪
+                                                                                                                                                                                          ⎪
+                                                                                                                    ⎪                                                                     ⎪
+   Whenever referring to the heat capacity ratio or density ratio, the                                              ⎩
+                                                                                                                                           0                                   |a| ≥ 2
+                                                                                                                                                                                          ⎭
+index r indicates the property of the particle divided by the corre­
+sponding property of the fluid                                                                                    The force applied to each Eulerian node and the heat source on the
+                                                                                                            Eulerian nodes can be determined using Eqs. (37) and (38).
+       ρp
+ρr =      ,                                                                                      (27)                ∑       (           )
+       ρf                                                                                                   Fi,j,k =    Fnb D xi,j,k − Xb ΔVb ,                                 (37)
+                                                                                                                      b,n
+
+       Cpp
+Cp,r =     .                                                                                     (28)                ∑     (           )
+       Cpf                                                                                                  Qi,j,k =  Qnb D xi,j,k − Xb ΔVb ,                                                   (38)
+                                                                                                                      b,n
+   The Reynolds number (Re) is determined using velocity (Uc ) and the
+characteristic length (Lc , here the particle diameter Dp ), and can be                                     where ΔVb represents the boundary length in 2D cases and the boundary
+
+                                                                                                        4
+F. Gharibi et al.                                                                                    International Communications in Heat and Mass Transfer 155 (2024) 107525
+
+
+surface area in 3D. To incorporate the particle forces into the LBM, the
+force Fi,j,k is added to Eq. (1) using EDM force scheme; to incorporate the
+particles heat source term into the FD solver, the heat source Qi,j,k is
+included in Eq. (22).
+    At each Lagrangian point, the desired velocity Ud is formulated as
+follows:
+
+Ud = Up + Ωp × (Xb − Xc ),                                              (39)
+
+where Xc represents the particle center, and Ωp and Up denote the par­
+ticle angular and translational velocities, respectively. By applying the
+fundamental laws of motion, both velocities can be updated using Eqs.
+(40) and (41):
+             ∫
+   dUp                    dUp (         )                                                 Fig. 1. 4-point discrete delta function across the interface thickness.
+Mp      = −    Fb dV + Mf     + ρp − ρf Vp g + Fc ,                  (40)
+    dt                     dt
+
+        dΩp
+T=I         + Ωp × IΩp ,                                                (41)
+         dt
+
+where the subscripts “p“indicate particle properties, while “f “refers to
+fluid properties. The quantity Fc is the summation of particle–particle
+and wall-particle collision forces, M represents the mass, I stands for the
+moment of inertia and T denotes the total torque experienced by the
+particle’s center. Employing the technique introduced by Feng and
+Michaelides [65], this study includes the added mass effect by iteratively
+updating the particle’s velocity according to Kang’s equation [66,67]:
+                              (         )
+              Δt ∑ n            ρp − ρf         Fc Δt Mf ( n         )
+Un+1
+  p  =  U n
+          p −      F b ΔV b +             gΔt +      +    Up − Un−p 1 ,
+              Mp b                Mp             Mp    Mp
+                                                                        (42)
+
+                    Δt ∑[                     ] If ( n         )
+Ωn+1
+ p   = Ωnp −              (Xb − Xc ) × Fnb ΔVb +    Ωp − Ωn−p 1 ,       (43)
+                    Ip b                         Ip
+
+where n denotes the present time step. Finally, the updated position of
+the particle’s center can be calculated via the following formula:
+                (           )
+Xn+1
+  c  = Xnc + 0.5 Un+1
+                   p   − Unp Δt.                                   (44)
+
+    In the case of particles with heat transfer: 1) for a particle considered
+as being at a given temperature one can directly set the values of Tpd ; 2)
+for particles with varying temperature, the exchanged heat (in the
+following example, a heat generation Qgp ) is added to Eq. (32):
+                                                                                                             Fig. 2. Flowchart of the hybrid method.
+        Tpd − T noH
+Qnb =               + Qgp .                                             (45)
+             Δt                                                                                   ⎧                                                                              ⎫
+                                                                                                  ⎪
+                                                                                                  ⎪                        0                                          δn ≥ 2     ⎪
+                                                                                                                                                                                 ⎪
+    For particles with temperature variations, the time-dependent par­                            ⎪
+                                                                                                  ⎪
+                                                                                                  ⎪   (                √̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅ )                   ⎪
+                                                                                                                                                                                 ⎪
+                                                                                                                                                                                 ⎪
+                                                                                                  ⎪1                                                                             ⎪
+ticle temperature is determined by solving the differential equation                              ⎪
+                                                                                                  ⎪
+                                                                                                  ⎪     5 − 2|δn | −      − 7 + 12|δn | − 4δ2n                      1 ≤ δn < 2
+                                                                                                                                                                                 ⎪
+                                                                                                                                                                                 ⎪
+                                                                                                                                                                                 ⎪
+                                                                                                  ⎪
+                                                                                                  ⎪                                                                              ⎪
+                                                                                                                                                                                 ⎪
+describing energy balance for this particle, Eq. (46):                                            ⎪
+                                                                                                  ⎪
+                                                                                                  ⎪
+                                                                                                   8
+                                                                                                                         √̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅ )
+                                                                                                                                                                                 ⎪
+                                                                                                                                                                                 ⎪
+                                                                                                                                                                                 ⎪
+                       ∫         ∫
+                                                                                                  ⎪
+                                                                                                  ⎪
+                                                                                                  ⎪   1(                                                                         ⎪
+                                                                                                                                                                                 ⎪
+                                                                                                                                                                                 ⎪
+       dT         dT                                                                              ⎪
+                                                                                                  ⎨       3 − 2|δn | + 1 + 4|δn | − 4δ2n                            0 ≤ δn < 1   ⎪
+                                                                                                                                                                                 ⎬
+Mp Cpp = Mf Cpf + Qg dV −           Qb dV.                        (46)               (      )
+                                                                                    ϕ xi,j,k =
+                                                                                                      8
+       dt         dt                                                                                                       √̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅ )
+                                                                                               ⎪
+                                                                                               ⎪
+                                                                                               ⎪         1(                                                                       ⎪
+                                                                                                                                                                                  ⎪
+                                                                                               ⎪  1  −       3 − 2|δ   | +     1 + 4|δn | − 4δ2n                    − 1 ≤ δn < 0 ⎪⎪
+    In this context, Qb indicates the fluid-particle heat exchange, and Cp                     ⎪                                                                                  ⎪
+                                                                                                                     n
+                                                                                               ⎪
+                                                                                               ⎪         8                                                                        ⎪
+                                                                                                                                                                                  ⎪
+                                                                                               ⎪
+                                                                                               ⎪                         √̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅̅ )                  ⎪
+                                                                                                                                                                                  ⎪
+represents the specific heat. To address challenges related to cases where                     ⎪
+                                                                                               ⎪
+                                                                                               ⎪       1(                                                                         ⎪
+                                                                                                                                                                                  ⎪
+                                                                                               ⎪ 1−        5 − 2|δn | −     − 7 + 12|δn | − 4δ2n                   − 2 < δn < − 1 ⎪
+                                                                                                                                                                                  ⎪
+(ρf Cpf ≃ ρp Cpp ), which could lead to inaccurate particle temperature                        ⎪
+                                                                                               ⎪
+                                                                                               ⎪
+                                                                                               ⎪       8                                                                          ⎪
+                                                                                                                                                                                  ⎪
+                                                                                                                                                                                  ⎪
+                                                                                                                                                                                  ⎪
+                                                                                               ⎪                                                                                  ⎪
+estimations in Eq. (46), we employ the temperature evolution equation                          ⎩                           1                                          δn ≤ − 2    ⎭
+for particles in the discretized form following the method proposed by                                                                                                           (48)
+Feng and Michaelides [65], as expressed in Eq. (47):
+                       [                        ∫        ∫      ]                   where δn = ∣xi,j,k − xpc ∣ − Rp and Rp denotes the particle’s radius. As
+                  Δt              Tpn − Tpn− 1
+  n+1
+Tp = Tp + n
+                         ρ Vf Cpf              + Qg dV −   Qb dV .    (47)          shown in Fig. 1 this function takes on a value of 0 in fluid regions and 1
+              ρp Vp Cpp f              Δt
+                                                                                    in solid regions, experiencing a smooth transition from 1 to 0 at the
+   In this study, to distinguish Eulerian nodes within the particles, an            interface. It is worth noting that in this study, the number of Lagrangian
+indicator function (ϕ) is defined. The indicator function, which is based           points is determined to ensure similar lengths in 2D scenarios and
+on a 4-point delta function, enables a smooth and continuous transition             equivalent cell areas in 3D cases compared to the Eulerian grid, as rec­
+across the interface thickness and is expressed as:                                 ommended by Uhlmann [63].
+
+
+
+                                                                                5
+F. Gharibi et al.                                                                             International Communications in Heat and Mass Transfer 155 (2024) 107525
+
+
+2.4. Solver overall structure
+
+   To simulate the behavior of a system involving fluid dynamics, heat
+transfer, and particle motion, the following algorithm has been devel­
+oped to couple all models together. Fig. 2 illustrates the algorithm for
+the proposed approach, and the step-by-step details of this algorithm are
+elaborated in the following.
+
+1. Calculating the Boussinesq term: In every time step, the Boussinesq
+
+
+
+
+                                                                                                  h
+
+
+
+
+                                                                                                                                                               c
+   term is calculated using Eq. (23). This term takes into account the
+   buoyancy forces resulting from the Boussinesq approximation.
+2. Solving the fluid domain: The fluid flow is solved using Eq. (1),
+   which represents the corresponding governing equation. This step
+   provides pressure and velocity of fluid field. The corresponding
+   calculations rely on the particle and heat forces from the previous
+   time step.
+3. Solving the energy equation: To compute the temperature distribu­
+   tion within the fluid domain, the energy Eq. (22) is calculated, taking
+   into account the just updated fluid velocity, and the particle heat
+   forcing acquired from the preceding time step.
+4. Calculating particle forces and spreading to Eulerian nodes: Particle
+   forces are computed utilizing Eqs. (39), (33), and (31), incorporating
+   interactions between particles, fluid-particle interactions, and
+   external forces. Subsequently, these forces are distributed to the
+   Eulerian nodes using Eq. (37). These calculations rely on the updated                 Fig. 3. The geometric characteristics of the composite medium.
+   velocity from Step 2.
+5. Calculating particle temperature, thermal forcing, and spreading to
+   Eulerian nodes: Utilizing Eqs. (34) and (45), thermal forcing terms
+   are computed, incorporating the updated temperature field in the
+   fluid. Subsequently, these thermal forces are propagated to the
+   Eulerian nodes using Eq. (38), used to compute effective fluid-
+   particles heat transfer. The uniform particle temperature, in turn,
+   is updated through the application of Eq. (47).
+6. Motion of particles: Particle motion is controlled by Eqs. (42), (43),
+   and (44), which deliver the linear and rotational particles’ velocity in
+   response to the applied forces.
+
+    By adhering to this algorithmic flow, the three solvers successfully
+communicate and exchange information at each time step, ensuring the
+proper coupling between fluid dynamics, heat transfer, and particle
+motion.
+    It is worth noting that in this study, thermal calculations are con­
+ducted using the International System of Units (SI), while momentum
+calculations involving fluid velocities and particle motion are performed
+in lattice units. Throughout the analysis, any required flow data in the
+thermal calculations is converted to SI units based on the discrete time
+step (Δt) and spacing step (Δh). To facilitate the conversion of units from
+lattice units to SI units and vice versa while considering the fundamental
+dimensions of mass (m), length (l), and time (t) and setting the density to        Fig. 4. Distribution of temperature in the composite medium for different
+unity in lattice units, all other physical quantities can be determined            conductivity ratios.
+based on the following relation:
+      ( a b c)        [(        )a       ] (            )                          catalyst particles in interaction is explored using this approach,
+ξSI    m l t = ξl × ρ(Δh)3 Δhb Δtc           mal lbl tlc .              (49)       providing insights into complex flow/particle dynamics.
+
+where the subscript l denotes lattice units, and a, b, and c represent the         3.1. Steady-state conduction in a composite medium with varying thermal
+exponents corresponding to the units of a particular property (ξ).                 conductivity
+
+3. Results and discussion                                                              This section aims to demonstrate the solver capability to accurately
+                                                                                   simulate heat diffusion in media with varying thermal conductivity. To
+    Within this part, the step-by-step validation of distinct models and           achieve this, the test case involves the simulation of pure heat transfer
+algorithms within the hybrid solver is carried out. Benchmark assess­              without any fluid flow. Specifically, the scenario consists of one-
+ments are first conducted to verify and validate pure heat transfer, free          dimensional thermal conduction in a solid, composite material. The
+convection within a cavity, and free convection around a cylinder,                 simulation domain as depicted in Fig. 3 comprises two solid regions that
+demonstrating the method’s accuracy. Subsequently, the motion of                   possess the same density and heat capacity, but differ in their thermal
+spherical catalyst particles is simulated with varying heat capacity ratios        conductivity k. The left wall is maintained at a fixed hot temperature of
+to highlight model stability and capability. Finally, a reactor with many          Th , while the right wall is held at a fixed cold temperature of Tc ,
+
+                                                                               6
+F. Gharibi et al.                                                                                  International Communications in Heat and Mass Transfer 155 (2024) 107525
+
+
+
+
+    o                      i
+
+
+
+                                                                         o
+
+                                          i
+
+                                                                                       Fig. 6. Temperature distribution within the layered cylindrical medium using
+                                                                                       various grid sizes.
+
+
+
+
+                Fig. 5. Geometry of the layered cylindrical medium.
+
+
+respectively, while other boundaries are considered periodic.
+   Two values are investigated for the ratios of materials’ thermal
+conductivity, k* = kk12 = 4 and k* = kk12 = 200. The analytical distribution
+of temperature along the x-axis is as follows.
+       ⎧                                              ⎫
+       ⎪
+       ⎪              (Th − Tc )x                     ⎪
+                                                      ⎪
+       ⎪
+       ⎪     Th  −     (            )    0 ≤ |x| < L1 ⎪
+                                                      ⎪
+       ⎪
+       ⎪                 L 1    L 2                   ⎪
+                                                      ⎪
+       ⎪
+       ⎪            k1       +                        ⎪
+                                                      ⎪
+       ⎨                 k1 k2                        ⎬
+T(x) =                                                                     (50)
+       ⎪
+       ⎪          (Th − Tc )                          ⎪
+                                                      ⎪
+       ⎪
+       ⎪ Tc + (                ) (L − x) L1 ≤ |x| < L ⎪
+                                                      ⎪
+       ⎪
+       ⎪            L      L                          ⎪
+                                                      ⎪
+       ⎪
+       ⎪       k2
+                      1
+                        +
+                             2                        ⎪
+                                                      ⎪
+       ⎩                                              ⎭
+                    k1 k2
+
+   As illustrated in Fig. 4 the results show that the FD-solver agrees
+excellently with the analytical solution. In this figure θ is defined as θ =
+T− Tc
+Th − Tc
+        and x* is defined as x*   = xL. In each segment, the temperature profile
+exhibits linearity, with material 1 showing a gentler slope due to its
+higher thermal conductivity.
+
+3.2. Steady-state conduction in a layered cylindrical medium                           Fig. 7. Relative error of the coupled IBM-FD solver regarding temperature as
+                                                                                       function of radius grid size (NR ) by comparison to the analytical solution; A
+    This section aims to demonstrate the potential of the combined                     spatial order of convergence of 1.75 is observed.
+method involving IBM and the FD energy solver to accurately simulate
+heat diffusion in solid media. The scenario involves the study of one-                       ⎧         ( )                           ⎫
+dimensional conductive heat transfer in the radial direction of a cylin­                     ⎪
+                                                                                             ⎪ To − Ti    r                          ⎪
+                                                                                             ⎨ (Ro )ln R + Ti
+                                                                                             ⎪                           Ro ≥ r ≥ Ri ⎪
+                                                                                                                                     ⎪
+drical solid medium. This medium is configured in a dual-layer cylin­                                                                ⎬
+                                                                                                                                                                     (52)
+                                                                                                           i
+                                                                                       T(x) = ln                                      .
+drical arrangement, as depicted in Fig. 5. Note that both layers are                         ⎪
+                                                                                             ⎪     Ri                                ⎪
+                                                                                                                                     ⎪
+                                                                                             ⎪                                       ⎪
+composed of the same material, but this particular configuration has                         ⎩
+                                                                                                       Ti                   r ≤ Ri
+                                                                                                                                     ⎭
+been meticulously arranged for the sole purpose of assessing the effec­
+tiveness and functionality of the thermal Immersed Boundary Method at                      The simulation domain, illustrated in Fig. 5, consists of two solid
+the interface between both solid regions. In polar coordinate the steady               regions made of Iron, with a density of 7872 mkg3 , a specific heat capacity
+heat diffusion equation reads:                                                         of Cp = 0.44 kg.K
+                                                                                                     kJ
+                                                                                                        , and a thermal conductivity of k = 76.2 m.K  W
+                                                                                                                                                        .
+
+ ∂
+   (
+       ∂T
+          )                                                                               The boundaries at Ro = 0.05 m and Ri = 0.025 m are maintained at
+     r      = 0,                                                    (51)               constant hot and cool temperatures of To = 353 K and Ti = 303 K,
+∂r     ∂r
+                                                                                       respectively, while the perpendicular direction is considered periodic.
+which upon integration and proper application of boundary conditions                   Convergence to a steady-state solution was considered achieved when a
+leads to the analytical solution:                                                      L2-norm ≤ 10− 10 was obtained for the relative temperature residual.
+
+                                                                                   7
+F. Gharibi et al.                                                                             International Communications in Heat and Mass Transfer 155 (2024) 107525
+
+
+                                                                                  Table 1
+                                                                                  Evaluating the mean Nusselt number in comparison to benchmark solutions for
+                                                                                  different Rayleigh numbers.
+                                                                                   Ra     Present    Wang       Eshghinejadfard      De        House      Barakos
+                                                                                          study      & Qin      et al. [75]          Vahl      et al.     et al.
+                                                                                                     [71]                            Davis     [73]       [74]
+                                                                                                                                     [72]
+
+                                                                                   103    1.1178     1.1178     1.118                1.116     1.118      1.114
+                                                                                   106    8.8213     8.8244     8.781                8.798     8.923      8.806
+                    h
+
+
+
+
+                                                                      c
+
+                    Fig. 8. Geometry of the square enclosure.
+
+
+    In Fig. 6, the results of the steady-state temperature distribution
+along the radial direction are depicted, with r* representing the
+normalized radius (r* = r/Ro ), showing a comparison with the analyt­
+ical solution using three different mesh sizes. Additionally, Fig. 7 illus­
+trates the evolution of the averaged L1-norm relative error (see Eq. (53))
+for temperature when decreasing grid size from Ro /40 to Ro /160. A
+spatial order of convergence of 1.75 is observed, which is close to the
+                                                                                  Fig. 9. Nusselt Number variation along the heated enclosure wall for various
+theoretically expected value of 2. Although the employed IBM formally
+                                                                                  Ra numbers.
+represents a second-order method, numerical results indicate a spatial
+accuracy lower than 2. This discrepancy is attributed to the disconti­
+nuity of the temperature gradient, as discussed in [68–70].
+      ∑ ⃒⃒                    ⃒
+           ui − ui,analytical ⃒
+L1 = i ∑                                                              (53)
+             i ui,analytical
+
+
+3.3. Natural convection in a square enclosure
+
+    The developed solver is now validated against the well-known 2D
+natural convection benchmark in a heated square enclosure over a broad
+range of Rayleigh numbers. To this end, two-dimensional simulations
+are conducted by assuming periodicity along the third dimension. As
+illustrated in Fig. 8, the top and bottom boundaries are adiabatic, while
+the right and left boundaries are cooled or heated with a constant
+temperature of Tc and Th , respectively. The temperature difference
+across the domain is chosen within a range allowing valid Boussinesq
+approximation throughout the enclosure. The left wall maintains a
+steady temperature of 575 K, while the right boundary is maintained at
+625 K, resulting in a temperature difference that initiates natural con­
+vection. No-slip boundary conditions are enforced on the enclosure
+walls, except those that are normal to the z-axis where a periodic
+boundary condition is implemented. The Rayleigh number (Ra) is set to
+values of 103 or 106 , with a Prandtl number of 0.71. The domain is
+discretized employing a 400 × 400 grid. The effect of buoyancy is                 Fig. 10. Distribution of temperature at mid-height of enclosure for various
+calculated through Eq. (23) and is implemented into the LBM solver by             Ra numbers.
+the EDM forcing scheme following [59].
+    To compare our findings with prior research, the average and local
+Nusselt numbers are computed using the reference length L, based on
+Eqs. (54) and (55).
+
+
+
+
+                                                                              8
+F. Gharibi et al.                                                                                International Communications in Heat and Mass Transfer 155 (2024) 107525
+
+
+
+
+Fig. 11. Isotherms (white lines) on a color plot of temperature for Ra=103
+compared to the results of Ref. [72] (black lines). Note that white and black
+lines mostly overlap.
+
+
+
+                                                                                    Fig. 13. Streamlines for hot cylinder in a square cavity. Only one side is
+                                                                                    depicted due to flow symmetry. The right side illustrates results at Ra=104 , and
+                                                                                    the left side shows results at Ra=105 .
+
+
+
+
+Fig. 12. Isotherms (white lines) on a color plot of temperature for Ra=106
+compared to the results of Ref. [72] (black lines). Note that white and black
+lines mostly overlap.
+
+
+               L    ∂T
+Nux = −                                                                 (54)
+            Th − Tc ∂x
+                ∫L
+            1
+Nux = −              Nux dy                                             (55)
+            L   0
+
+    In Table 1, an evaluation of the average Nusselt number for various
+Rayleigh numbers is provided for comparison with other studies. Our
+results show very good agreement with the benchmark solutions of
+Wang and Qin [71], De Vahl Davis [72], House et al. [73], Barakos et al.
+[74], and Eshghinejadfard et al. [75]. As anticipated, an increase in the           Fig. 14. Temperature field and isotherms for hot cylinder in a square cavity.
+Rayleigh number corresponds to a higher rate of heat transfer. Fig. 9               Only one side is depicted due to symmetry. The right side illustrates results at
+depicts the left wall’s local Nusselt number for Rayleigh numbers of 103            Ra=104 , and the left side shows results at Ra=105 .
+and 106 , while Fig. 10 provides the profile of temperature at the mid-
+height of the enclosure. These profiles clearly demonstrate the transi­
+tion from conduction to convection as the dominant heat transfer
+mechanism with increasing Rayleigh numbers. At a low Rayleigh
+number, the temperature profile exhibits a 45◦ slope. However, as
+
+
+                                                                                9
+F. Gharibi et al.                                                                                  International Communications in Heat and Mass Transfer 155 (2024) 107525
+
+
+
+
+Fig. 15. Nusselt number along the cavity wall at Rayleigh numbers of 104                            Fig. 16. Vertical velocity of the catalyst particle.
+or 105 .
+                                                                                      vection. This process is driven by the exchange of heat between particle
+Rayleigh number rises, the temperature profile tends toward a hori­                   and fluid. A constant heat generation rate is assumed within the particle.
+zontal line in the enclosure’s center. Figs. 11 and 12 illustrate the tem­            The enclosure’s dimensions are set to be 8 times larger than the diameter
+perature distribution within the enclosure along with isotherms for Ra of             of the particle in the x and y directions, and extended to 16 times the
+103 and 106 .                                                                         particle’s diameter in the z (vertical) direction. The fluid and particle are
+                                                                                      initially at a temperature of 600 K, and the surrounding walls are
+3.4. Hot cylinder in a square cavity                                                  maintained at the same, fixed temperature. At time t = 0, the location of
+                                                                                      the particle is in the center of the domain and releases heat continuously.
+                                                                                                                  g
+   The investigation in this part delves into a hot cylinder located in the           This is implemented as Qp in Eq. (45). The non-dimensional parameters
+center of a cavity bounded by cold walls. The isothermal circular cyl­                are assigned values: Re = 40, Pr = 0.7, Gr = 1000, Cp,r = 1, ρr = 1.1. The
+inder, implemented using the DF-IBM approach, has a temperature of                    dimensionless particle’s heat source is defined by Eq. (56), and in this
+Th = 303 K, while the walls are isothermal at Tc = 283 K, and the                                                g
+                                                                                      simulation, it is set to Qp = 1.
+perpendicular direction is considered periodic. The reference tempera­
+                                                                                                  Qgp Dp
+ture is fixed at T0 = 293 K. The density is set to be ρ = 1.225 mkg3 using the        Qgp =                .                                                         (56)
+                                                                                              ρf Cpf Uc ΔT
+Boussinesq approximation for buoyancy, while the fluid kinematic vis­
+                                  2
+cosity is set at ν = 1.51 × 10− 5ms . The simulations are conducted at Ra =               The achieved results are compared with earlier research conducted
+104 and Ra = 105 . The cylinder’s radius is equal to r = 0.2L, where L                by Wachs [62], Xia et al. [77], and Eshghinejadfard et al. [1] in Fig. 16.
+represents the side length of the square box. The square box is dis­                  The findings demonstrate a good level of agreement with prior in­
+cretized with 200 grid points in both directions, while 5 nodes are                   vestigations particularly with the LBM investigation carried out by
+employed in the third, periodic direction. To obtain a steady flow field,             Eshghinejadfard et al. [1]. The small remaining discrepancies may be
+the solution is iteratively progressed in time until convergence is                   related to the utilization of slightly different numerical models [1].
+reached, defined by the condition that the L2-norm of both the relative                   It is important to highlight that in this study, the buoyancy force is
+temperature residual and relative velocity residual is less than or equal             only implemented in the nodes outside of the particle, which is
+to 10− 10 . Fig. 13 display the streamlines for Rayleigh number Ra = 104              accomplished by multiplying the buoyancy force FB with the indicator
+and Ra = 105 , and Fig. 14 presents the corresponding temperature                     function, (1 − ϕ), using Eq. (48). Fig. 17 depicts temperature contours
+fields.                                                                               along the central plane of the enclosure at different dimensionless times,
+    The heat transfer behavior is analyzed by computing the local Nus­                defined as t * = tUc /Dp . As illustrated, the particle initially experiences
+selt number at the cavity wall. The obtained outcomes are compared                    settling under gravity. However, with the increase in temperature of the
+with the findings reported by Kim et al. [76], demonstrating very good                particle and the surrounding fluid, natural convection intensifies, lead­
+agreement, as illustrated in Fig. 15. A minor deviation in the local                  ing to a drag force that surpasses gravity and propels the particle toward
+Nusselt number is observed at a single point, on the upper side of the                the upper side of the enclosure.
+cavity (left in Fig. 15) at Ra = 105 . This discrepancy could be related to               Fig. 18 shows the impact of the heat capacity ratio on particles
+the distinct numerical solvers and grid resolutions employed in both                  behavior. The results reveal that particles with higher heat capacity
+studies.                                                                              exhibit a delay in reaching their maximum velocity due to a slower in­
+                                                                                      crease in particle temperature. Conversely, particles with lower heat
+3.5. Spherical catalyst particle’s motion within a confined enclosure                 capacity experience a faster process. Additionally, higher heat capacity
+                                                                                      ratios are found to be associated with higher maximum particle veloc­
+    This section focuses on investigating the fluid flow and thermal field            ities. In the specific case of Cp,r = 20, the particle first settles on the
+inside a rectangular enclosure containing a spherical catalyst particle.              lower wall due to the influence of gravity. Later, the increasing tem­
+Conditions are selected in which the particle is at first denser than the             perature near the particle initiates an upward movement.
+surrounding fluid, but may rise in the enclosure due to natural con­
+
+                                                                                 10
+F. Gharibi et al.                                                                                    International Communications in Heat and Mass Transfer 155 (2024) 107525
+
+
+
+
+       Fig. 17. Temperature contours along the middle plane for the catalyst particle at t * = 0, t * = 8.406, t * = 16.812 and t * = 24.087 (from left to right).
+
+
+
+
+                                            Fig. 18. Vertical catalyst particle velocity under different heat capacity ratios.
+
+
+3.6. Many spherical catalyst particles interacting in a reactor                         using the full numerical model, LB/IB/FDM. A spring-force model based
+                                                                                        on Feng and Michaelides [78] is employed to represent the repulsive
+   This section presents a comprehensive investigation into the dy­                     force particles undergo upon encountering one another or the reactor
+namic behavior of 300 spherical catalyst particles within a cylindrical                 walls. Furthermore, to address hydrodynamic interactions at short dis­
+reactor to examine the complex fluid-particles interactions, focusing on                tances, a lubrication force, as outlined in [79], has been incorporated
+the influence of gravity and collisions compared to natural convection                  into the model. The particles are initially arranged following a random
+
+                                                                                   11
+F. Gharibi et al.                                                                                      International Communications in Heat and Mass Transfer 155 (2024) 107525
+
+
+                                                                                           motion due to gravity, before accelerating rapidly toward the upper wall
+                                                                                           when natural convection starts to dominate. Many particles collide with
+                                                                                           the top wall and then move downward again. Each particle exhibits a
+                                                                                           distinct trajectory depending on its own history governed by gravity,
+                                                                                           natural convection, collisions, and hydrodynamic structures. After a
+                                                                                           while, particles only move within a volume with a height of about 5.5Dp
+                                                                                           on the top side of the reactor, while being in average 1.5Dp away from
+                                                                                           the top wall. Fig. 20 presents the positions and temperatures of particles
+                                                                                           at varying time points. Particles located near the center of the reactor
+                                                                                           reach higher temperatures and experience intensified natural convec­
+                                                                                           tion, leading to upward motion and the formation of an upward stream
+                                                                                           along the axis. In contrast, particles near the wall experience lower
+                                                                                           temperatures due to isothermal boundary conditions, resulting in
+                                                                                           weaker natural convection. Consequently, particles close to wall move
+                                                                                           preferably downward because of gravity and of the downward fluid
+                                                                                           flow. The presence of multiple particles induces complex hydrodynamic
+                                                                                           interactions and induces vortical structures, leading to diverse particle
+                                                                                           trajectories and a wide distribution of arrival times at the upper wall.
+                                                                                           Approximately after t* = 75, particles move within a fixed volume close
+                                                                                           to the top side with a consistent pattern: particles near the center move
+                                                                                           upward, while those on the top side of this volume move mostly out­
+                                                                                           ward, become colder, subsequently move downward, and – after
+Fig. 19. Vertical position of particles over time in the cylindrical reactor. The          attaining the lower side of the volume, they move back toward the
+trajectories of the initially lowest and highest particle are plotted together with        center due to hydrodynamic forces in this convection cell, thus closing
+the mean trajectory of all particles.                                                      the cycle.
+                                                                                               Fig. 21 displays streamlines and velocity vectors inside the cylin­
+distribution within the lower half of the reactor, maintaining a minimum                   drical reactor at t* = 145, illustrating the aforementioned, stable
+distance of 4Δh (i.e., 4 grid cells) from any walls or neighboring parti­                  pattern reached near the top wall after the transient phase. Fig. 22
+cles. The cylindrical reactor has a radius of 5Dp and a length of 20Dp ,                   showcases the normalized vertical velocity of all particles over time. As
+where Dp denotes the particles’ diameter chosen as 2 cm. A grid size of                    depicted, particle velocity experiences initially a rapid increase
+Δh = Dp /25 is employed, yielding a mesh resolution of 250 × 250 ×                         (competition between gravity and buoyancy). After t * = 50, particles
+500. The density of the fluid is assumed to be 1.0 kg/m3 , and the specific                continue to move but only within a normalized velocity range of − 1 to 1.
+heat of the fluid is set to 1005 kJ/kg.K. Additionally, the viscosity of the               This behavior indicates that particles do not remain at a fixed position
+fluid is prescribed as 8.083 × 10− 5 m2/s, while the time step Δt is set to                but stay within a small, confined volume close to the top side, and the
+10− 4 s, leading to a dimensionless relaxation time of 0.538. The defined                  average particle velocity converges to zero.
+parameters for the simulation are as follows: Re = 40, Pr = 0.7, Gr =                          Furthermore, to evaluate the computational efficiency and scalabil­
+                                                                                           ity of the proposed framework, a performance study was conducted on
+1000, Cp,r = 1, ρr = 1.1 and Qp = 2.5. The value of the Grashof number
+                                                                                           the SuperMUC High-Performance Computing (HPC) cluster. Fig. 23 il­
+is used to determine the thermal expansion coefficient β, and the Prandtl
+                                                                                           lustrates the relationship between Million Lattice Updates per Second
+number is used to calculate the conductivity of the fluid. The particles
+                                                                                           (MLUPS) and the number of CPU cores utilized. The linear increase in
+and the surrounding fluid are initially at T = 600 K; the reactor walls are
+                                                                                           MLUPS with the number of CPU cores demonstrates strong scalability
+consistently maintained at this same temperature.
+                                                                                           and efficient parallelization of our proposed framework.
+    Fig. 19 illustrates the vertical position of the particles over time. For
+an easier understanding of what follows, the reader is referred to the
+                                                                                           4. Conclusion
+corresponding video uploaded as supplemental material to this work. As
+depicted in this figure, the particles initially experience a downward
+                                                                                              This study introduces a novel hybrid model that integrates the Lat
+
+
+
+
+Fig. 20. Temperature distribution of the particles inside the reactor volume and color plot of flow temperature along a central vertical cut-plane at dimensionless
+times t * = 0, t * = 25, t * = 75, and t * = 150 (from left to right). The gray color indicates the walls of the cylindrical reactor.
+
+                                                                                      12
+F. Gharibi et al.                                                                                     International Communications in Heat and Mass Transfer 155 (2024) 107525
+
+
+
+
+                                                                                          Fig. 23. MLUPS performance of the proposed method as a function of number
+                                                                                          of CPU cores.
+
+
+                                                                                          mark configurations. In particular, the hybrid model addresses stability
+                                                                                          issues through the modified central Hermite polynomial multiple
+                                                                                          relaxation time approach. By employing the full Hermite expansion,
+                                                                                          Galilean-invariant concerns are resolved. Additionally, the FD with
+Fig. 21. 3D view of the flow streamlines inside the cylindrical reactor (left) and
+                                                                                          WENO discretization leads to a stable and accurate representation of
+velocity vectors along a central vertical cut-plane inside the reactor (right) at
+dimensionless time t * = 145.
+                                                                                          complex flow patterns and temperature variations within the fluid. The
+                                                                                          model accounts for natural convection effects by utilizing the Boussinesq
+                                                                                          approximation. The obtained accuracy has been verified and validated
+                                                                                          through comparisons with analytical solutions and previously published
+                                                                                          numerical studies, including cases of conduction in composite medium,
+                                                                                          natural convection in an enclosure, and natural convection around a
+                                                                                          circular cylinder in a cavity. Furthermore, the motion of particles with
+                                                                                          internal heat generation and varying temperature has been investigated,
+                                                                                          showcasing the ability of the model to consider thermal property vari­
+                                                                                          ations, particularly for specific heat capacity. The influence of the Cp
+                                                                                          ratio on particle motion has been analyzed. Finally, the dynamic
+                                                                                          behavior of 300 particles within a cylindrical reactor has been explored
+                                                                                          in detail. Vertical positions, temperature distributions, and normalized
+                                                                                          velocities have been investigated, revealing intricate particle trajec­
+                                                                                          tories influenced by gravity, convection, collisions, and hydrodynamics.
+                                                                                          A cyclic motion pattern is observed close to the top wall of the reactor.
+                                                                                          This study offers interesting insight for corresponding engineering
+                                                                                          applications.
+                                                                                              Overall, the hybrid LB/IB/FDM model presented in this study ap­
+                                                                                          pears as a promising method for accurately simulating complex flow
+                                                                                          phenomena and will be used as a powerful tool to investigate and
+                                                                                          optimize heat transfer in particulate flows.
+                                                                                              Supplementary data to this article can be found online at https://doi.
+                                                                                          org/10.1016/j.icheatmasstransfer.2024.107525.
+
+
+Fig. 22. Temporal evolution of particle normalized vertical velocity in the               CRediT authorship contribution statement
+cylindrical reactor. The color lines represent the velocities of the individual
+particles, while the black line represents the average velocity of all                       Farshad Gharibi: Writing – review & editing, Writing – original
+300 particles.                                                                            draft, Visualization, Validation, Methodology, Investigation, Formal
+                                                                                          analysis, Conceptualization. Seyed Ali Hosseini: Writing – review &
+tice Boltzmann Method (LBM), Direct-Force Immersed Boundary                               editing, Methodology, Conceptualization. Dominique Thévenin:
+Method (DF-IBM), and Finite-Difference (FD) energy solver with                            Writing – review & editing, Writing – original draft, Supervision, Re­
+Weighted Essentially Non-Oscillatory (WENO) discretization. By inte­                      sources, Project administration.
+grating all these techniques, the resulting solver provides an effective
+solution for simulating complex particulate flows and accurately pre­
+dicting heat transfer phenomena. The hybrid LB/IB/FDM model relies                        Declaration of competing interest
+on an Eulerian framework to discretize the continuous fluid while
+employing a Lagrangian approach to model the motion of resolved                               The authors declare that they have no known competing financial
+particles. This combination provides very good stability for all bench­                   interests or personal relationships that could have appeared to influence
+                                                                                          the work reported in this paper.
+
+                                                                                     13
+F. Gharibi et al.                                                                                                 International Communications in Heat and Mass Transfer 155 (2024) 107525
+
+
+Data availability                                                                                  [19] H. Jeong, H. Yoon, M. Ha, M. Tsutahara, An immersed boundary-thermal lattice
+                                                                                                        Boltzmann method using an equilibrium internal energy density approach for the
+                                                                                                        simulation of flows with heat transfer, J. Comput. Phys. 229 (7) (2010)
+    Data will be made available on request.                                                             2526–2543, https://doi.org/10.1016/j.jcp.2009.12.002.
+                                                                                                   [20] S.K. Kang, Y.A. Hassan, A direct-forcing immersed boundary method for the
+Acknowledgements                                                                                        thermal lattice Boltzmann method, Comput. Fluids 49 (1) (2011) 36–45, https://
+                                                                                                        doi.org/10.1016/j.compfluid.2011.04.016.
+                                                                                                   [21] A. Amiri Delouei, M. Nazari, M. Kayhani, G. Ahmadi, Direct-forcing immersed
+   The authors gratefully acknowledge funding by the Deutsche For­                                      boundary – non-newtonian lattice Boltzmann method for transient non-isothermal
+schungsgemeinschaft (DFG, German Research Foundation) within                                            sedimentation, J. Aerosol Sci. 104 (2017) 106–122, https://doi.org/10.1016/j.
+                                                                                                        jaerosci.2016.09.002.
+Project number 465872891. Also, the authors gratefully acknowledge                                 [22] Z. Chen, C. Shu, L.M. Yang, X. Zhao, N.Y. Liu, Immersed boundary–simplified
+the Gauss Centre for Supercomputing e.V. (www.gauss-centre.eu) for                                      thermal lattice Boltzmann method for incompressible thermal flows, Phys. Fluids
+funding this project by providing computing time on the GCS Super­                                      32 (1) (2020) 013605, https://doi.org/10.1063/1.5138711.
+                                                                                                   [23] M. Mohammadi, S. Gandjalikhan Nassab, Solution of radiative-convective heat
+computer SuperMUC-NG at Leibniz Supercomputing Centre (www.lrz.                                         transfer in irregular geometries using hybrid lattice Boltzmann-finite volume and
+de).                                                                                                    immersed boundary method, Int. Commun. Heat Mass Transf. 128 (2021) 105595,
+                                                                                                        https://doi.org/10.1016/j.icheatmasstransfer.2021.105595.
+                                                                                                   [24] S. Tao, L. Wang, Q. He, J. Chen, J. Luo, Lattice Boltzmann simulation of complex
+References                                                                                              thermal flows via a simplified immersed boundary method, J. Comput. Sci. 65
+                                                                                                        (2022) 101878, https://doi.org/10.1016/j.jocs.2022.101878.
+ [1] A. Eshghinejadfard, D. Thévenin, Numerical simulation of heat transfer in                    [25] M. Jiang, K. Ma, J. Li, Z. Liu, Hydrodynamic resolved simulation of a char particle
+     particulate flows using a thermal immersed boundary lattice Boltzmann method,                      combustion by immersed boundary-lattice Boltzmann method, Int. Commun. Heat
+     Int. J. Heat Fluid Flow 60 (2016) 31–46, https://doi.org/10.1016/j.                                Mass Transf. 132 (2022) 105915, https://doi.org/10.1016/j.
+     ijheatfluidflow.2016.04.002.                                                                       icheatmasstransfer.2022.105915.
+ [2] H. Zhang, A. Yu, W. Zhong, Y. Tan, A combined tlbm–ibm–dem scheme for                         [26] Y. Ma, R. Mohebbi, M. Sheremet, Heat transfer and fluid flow around starfish-
+     simulating isothermal particulate flow in fluid, Int. J. Heat Mass Transf. 91 (2015)               inspired cylinder by immersed boundary-simplified thermal lattice Boltzmann
+     178–189, https://doi.org/10.1016/j.ijheatmasstransfer.2015.07.119.                                 method, Eng. Anal. Bound. Elem. 146 (2023) 656–667, https://doi.org/10.1016/j.
+ [3] A. Nee, Assessment of high order regularized hybrid lattice Boltzmann scheme for                   enganabound.2022.11.017.
+     turbulent thermal convection, Int. Commun. Heat Mass Transf. 143 (2023) 106723,               [27] Z. Li, M. Yang, Y. Zhang, Hybrid lattice Boltzmann and finite volume method for
+     https://doi.org/10.1016/j.icheatmasstransfer.2023.106723.                                          natural convection, J. Thermophys. Heat Transf. 28 (1) (2014) 68–77, https://doi.
+ [4] M. Mohammadi, S.G. Nassab, Combined influences of radiation and inclined                           org/10.2514/1.T4211.
+     magnetic field on natural convection in a cavity with complex geometry, Int.                  [28] S. Hosseini, N. Darabiha, D. Thévenin, Lattice Boltzmann advection-diffusion
+     Commun. Heat Mass Transf. 134 (2022) 106030, https://doi.org/10.1016/j.                            model for conjugate heat transfer in heterogeneous media, Int. J. Heat Mass Transf.
+     icheatmasstransfer.2022.106030.                                                                    132 (2019) 906–919, https://doi.org/10.1016/j.ijheatmasstransfer.2018.12.034.
+ [5] F. Gharibi, S. Jafari, M. Rahnama, B. Khalili, E. Jahanshahi Javaran, Simulation of           [29] M. Seddiq, M. Maerefat, M. Mirzaei, Modeling of heat transfer at the fluid–solid
+     flow in granular porous media using combined lattice Boltzmann method and                          interface by lattice Boltzmann method, Int. J. Therm. Sci. 75 (2014) 28–35,
+     smoothed profile method, Comput. Fluids 177 (2018) 1–11, https://doi.org/                          https://doi.org/10.1016/j.ijthermalsci.2013.07.014.
+     10.1016/j.compfluid.2018.09.020.                                                              [30] G. Pareschi, N. Frapolli, S.S. Chikatamarla, I.V. Karlin, Conjugate heat transfer with
+ [6] T. Henn, G. Thäter, W. Dörfler, H. Nirschl, M.J. Krause, Parallel dilute particulate             the entropic lattice Boltzmann method, Phys. Rev. E 94 (2016) 013305, https://
+     flow simulations in the human nasal cavity, Comput. Fluids 124 (2016) 197–207,                     doi.org/10.1103/PhysRevE.94.013305.
+     special Issue for ICMMES-2014, https://doi.org/10.1016/j.compfluid.2015.08.00                 [31] L. Fei, K.H. Luo, Cascaded lattice Boltzmann method for incompressible thermal
+     2.                                                                                                 flows with heat sources and general thermal boundary conditions, Comput. Fluids
+ [7] H. Kruggel-Emden, B. Kravets, M. Suryanarayana, R. Jasevicius, Direct numerical                    165 (2018) 89–95, https://doi.org/10.1016/j.compfluid.2018.01.020.
+     simulation of coupled fluid flow and heat transfer for single particles and particle          [32] F. Hajabdollahi, K.N. Premnath, Symmetrized operator split schemes for force and
+     packings by a lbm-approach, Powder Technol. 294 (2016) 236–251, https://doi.                       source modeling in cascaded lattice Boltzmann methods for flow and scalar
+     org/10.1016/j.powtec.2016.02.038.                                                                  transport, Phys. Rev. E 97 (2018) 063303, https://doi.org/10.1103/
+ [8] F. Jansen, J. Harting, From bijels to Pickering emulsions: a lattice Boltzmann study,              PhysRevE.97.063303.
+     Phys. Rev. E 83 (2011) 046707, https://doi.org/10.1103/PhysRevE.83.046707.                    [33] S.-K. Choi, S.-O. Kim, Comparative analysis of thermal models in the lattice
+ [9] B. Khalili, M. Rahnama, S. Jafari, F. Gharibi, E. Jahanshahi Javaran, Lattice                      Boltzmann method for the simulation of natural convection in a square cavity,
+     Boltzmann simulation of solid particles motion in a three dimensional flow using                   Numer. Heat Transf. B Fundam. 60 (2) (2011) 135–145, https://doi.org/10.1080/
+     smoothed profile method, J. Appl. Fluid Mechan. 10 (4) (2017) 1091–1103,                           10407790.2011.594403.
+     https://doi.org/10.18869/acadpub.jafm.73.241.26537.                                           [34] P. Lallemand, L.-S. Luo, Hybrid finite-difference thermal lattice Boltzmann
+[10] E. Fattahi, C. Waluga, B. Wohlmuth, U. Rüde, M. Manhart, R. Helmig, Lattice                        equation, Int. J. Mod. Phys. B 17 (01n02) (2003) 41–47, https://doi.org/10.1142/
+     Boltzmann methods in porous media simulations: from laminar to turbulent flow,                     S0217979203017060.
+     Comput. Fluids 140 (2016) 247–259, https://doi.org/10.1016/j.                                 [35] S.A. Hosseini, H. Safari, N. Darabiha, D. Thévenin, M. Krafczyk, Hybrid lattice
+     compfluid.2016.10.007.                                                                             Boltzmann-finite difference model for low Mach number combustion simulation,
+[11] F. Gharibi, M. Ashrafizaadeh, Darcy and inertial fluid flow simulations in porous                  Combust. Flame 209 (2019) 394–404, https://doi.org/10.1016/j.
+     media using the non-orthogonal central moments lattice Boltzmann method, J. Pet.                   combustflame.2019.07.041.
+     Sci. Eng. 194 (2020) 107572, https://doi.org/10.1016/j.petrol.2020.107572.                    [36] M. Gehrke, T. Rung, Scale-resolving turbulent channel flow simulations using a
+[12] H. Shahid, I. Yaqoob, W.A. Khan, M. Aslam, Multi relaxation time lattice                           dynamic cumulant lattice Boltzmann method, Phys. Fluids 34 (7) (2022) 075129,
+     Boltzmann analysis of lid-driven rectangular cavity subject to various obstacle                    https://doi.org/10.1063/5.0098032.
+     configurations, Int. Commun. Heat Mass Transf. 129 (2021) 105658, https://doi.                [37] P.J. Dellar, Lattice boltzmann algorithms without cubic defects in galilean
+     org/10.1016/j.icheatmasstransfer.2021.105658.                                                      invariance on standard lattices, J. Comput. Phys. 259 (2014) 270–283, https://doi.
+[13] G. Wang, J. Yang, T. Lei, J. Chen, Q. Wang, K.H. Luo, A three-dimensional non-                     org/10.1016/j.jcp.2013.11.021. https://www.sciencedirect.com/science/article/
+     orthogonal multiple-relaxation-time phase-field lattice Boltzmann model for                        pii/S0021999113007833.
+     multiphase flows at large density ratios and high Reynolds numbers, Int. J.                   [38] F. Bösch, S.S. Chikatamarla, I.V. Karlin, Entropic multirelaxation lattice Boltzmann
+     Multiphase Flow 168 (2023), https://doi.org/10.1016/j.                                             models for turbulent flows, Phys. Rev. E 92 (4) (2015) 043309, https://doi.org/
+     ijmultiphaseflow.2023.104582 cited by: 0.                                                          10.1103/PhysRevE.92.043309.
+[14] P. Sagaut, Toward advanced subgrid models for lattice-Boltzmann-based large-                  [39] F. Hajabdollahi, K.N. Premnath, Galilean-invariant preconditioned central-moment
+     eddy simulation: Theoretical formulations, Comput. Math. Appl. 59 (7) (2010)                       lattice boltzmann method without cubic velocity errors for efficient steady flow
+     2194–2199. Mesoscopic Methods in Engineering and Science, https://doi.org/10                       simulations, Phys. Rev. E 97 (2018) 053303, https://doi.org/10.1103/
+     .1016/j.camwa.2009.08.051.                                                                         PhysRevE.97.053303.
+[15] A. Eshghinejadfard, S.A. Hosseini, D. Thévenin, Fully-resolved prolate spheroids in          [40] F. Gharibi, M. Ashrafizaadeh, Simulation of high-viscosity-ratio multicomponent
+     turbulent channel flows: a lattice Boltzmann study, AIP Adv. 7 (9) (2017) 095007,                  fluid flow using a pseudopotential model based on the nonorthogonal central-
+     https://doi.org/10.1063/1.5002528.                                                                 moments lattice Boltzmann method, Phys. Rev. E 101 (2020) 043311, https://doi.
+[16] L. Jahanshaloo, N.A.C. Sidik, A. Fazeli, M. P. H.A, An overview of boundary                        org/10.1103/PhysRevE.101.043311.
+     implementation in lattice Boltzmann method for computational heat and mass                    [41] M. Geier, A. Greiner, J.G. Korvink, A factorized central moment lattice Boltzmann
+     transfer, Int. Commun. Heat Mass Transf. 78 (2016) 1–12, https://doi.org/                          method, Europ. Phys. J. Spec. Top. 171 (1) (2009) 55–61, https://doi.org/
+     10.1016/j.icheatmasstransfer.2016.08.014.                                                          10.1140/epjst/e2009-01011-1.
+[17] C.S. Peskin, The immersed boundary method, Acta Numer. 11 (2002) 479–517,                     [42] K.V. Sharma, R. Straka, F.W. Tavares, New cascaded thermal lattice Boltzmann
+     https://doi.org/10.1017/S0962492902000077.                                                         method for simulations of advection-diffusion and convective heat transfer, Int. J.
+[18] Z.-G. Feng, E.E. Michaelides, The immersed boundary-lattice Boltzmann method                       Therm. Sci. 118 (2017) 259–277, https://doi.org/10.1016/j.
+     for solving fluid–particles interaction problems, J. Comput. Phys. 195 (2) (2004)                  ijthermalsci.2017.04.020.
+     602–628, https://doi.org/10.1016/j.jcp.2003.10.013.
+
+
+
+
+                                                                                              14
+F. Gharibi et al.                                                                                               International Communications in Heat and Mass Transfer 155 (2024) 107525
+
+[43] A. De Rosis, C. Coreixas, Multiphysics flow simulations using D3Q19 lattice                  [61] D.S. Balsara, C.-W. Shu, Monotonicity preserving weighted essentially non-
+     Boltzmann methods based on central moments, Phys. Fluids 32 (11) (2020)                           oscillatory schemes with increasingly high order of accuracy, J. Comput. Phys. 160
+     117101, https://doi.org/10.1063/5.0026316.                                                        (2) (2000) 405–452, https://doi.org/10.1006/jcph.2000.6443.
+[44] S. Adam, F. Hajabdollahi, K.N. Premnath, Cascaded lattice boltzmann modeling                 [62] A. Wachs, Rising of 3d catalyst particles in a natural convection dominated flow by
+     and simulations of three-dimensional non-newtonian fluid flows, Comput. Phys.                     a parallel DNS method, Comput. Chem. Eng. 35 (11) (2011) 2169–2185, https://
+     Commun. 262 (2021) 107858, https://doi.org/10.1016/j.cpc.2021.107858.                             doi.org/10.1016/j.compchemeng.2011.02.013.
+[45] F. Hajabdollahi, K.N. Premnath, S.W. Welch, Central moment lattice boltzmann                 [63] M. Uhlmann, An immersed boundary method with direct forcing for the simulation
+     method using a pressure-based formulation for multiphase flows at high density                    of particulate flows, J. Comput. Phys. 209 (2) (2005) 448–476, https://doi.org/
+     ratios and including effects of surface tension and marangoni stresses, J. Comput.                10.1016/j.jcp.2005.03.017.
+     Phys. 425 (2021) 109893, https://doi.org/10.1016/j.jcp.2020.109893.                          [64] T. Seta, Implicit temperature-correction-based immersed-boundary thermal lattice
+[46] H. Peng, L. Fei, X. He, J. Carmeliet, S.V. Churakov, N.I. Prasianakis, Three-                     Boltzmann method for the simulation of natural convection, Phys. Rev. E 87 (2013)
+     dimensional modelling of cavitation bubble collapse using non-orthogonal                          063304, https://doi.org/10.1103/PhysRevE.87.063304.
+     multiple-relaxation-time lattice Boltzmann method, Ocean Eng. 294 (2024)                     [65] Z.-G. Feng, E.E. Michaelides, Heat transfer in particulate flows with direct
+     116720, https://doi.org/10.1016/j.oceaneng.2024.116720.                                           numerical simulation (DNS), Int. J. Heat Mass Transf. 52 (3) (2009) 777–786,
+[47] F. Hajabdollahi, K.N. Premnath, Central moments-based cascaded lattice                            https://doi.org/10.1016/j.ijheatmasstransfer.2008.07.023.
+     boltzmann method for thermal convective flows in three-dimensions, Int. J. Heat              [66] S.K. Kang, Immersed Boundary Methods in the Lattice Boltzmann Equation for
+     Mass Transf. 120 (2018) 838–850, https://doi.org/10.1016/j.                                       Flow Simulation, Texas A&M University, 2010.
+     ijheatmasstransfer.2017.12.085.                                                              [67] A. Eshghinejadfard, A. Abdelsamie, G. Janiga, D. Thévenin, Direct-forcing
+[48] F. Hajabdollahi, K.N. Premnath, S.W. Welch, Cascaded lattice boltzmann method                     immersed boundary lattice Boltzmann simulation of particle/fluid interactions for
+     based on central moments for axisymmetric thermal flows including swirling                        spherical and non-spherical particles, Particuology 25 (2016) 93–103, https://doi.
+     effects, Int. J. Heat Mass Transf. 128 (2019) 999–1016, https://doi.org/10.1016/j.                org/10.1016/j.partic.2015.05.004.
+     ijheatmasstransfer.2018.09.059.                                                              [68] K. Suzuki, T. Kawasaki, N. FuruMachi, Y. Tai, M. Yoshino, A thermal immersed
+[49] S.A. Hosseini, F. Huang, D. Thévenin, Lattice Boltzmann model for simulation of                  boundary–lattice Boltzmann method for moving-boundary flows with dirichlet and
+     flow in intracranial aneurysms considering non-newtonian effects, Phys. Fluids 34                 neumann conditions, Int. J. Heat Mass Transf. 121 (2018) 1099–1117, https://doi.
+     (7) (2022) 073105.                                                                                org/10.1016/j.ijheatmasstransfer.2018.01.033.
+[50] X. Shan, X.-F. Yuan, H. Chen, Kinetic theory representation of hydrodynamics: a              [69] K. Suzuki, T. Inamuro, A higher-order immersed boundary-lattice Boltzmann
+     way beyond the Navier–Stokes equation, J. Fluid Mech. 550 (2006) 413–441,                         method using a smooth velocity field near boundaries, Comput. Fluids 76 (2013)
+     https://doi.org/10.1017/S0022112005008153.                                                        105–115, https://doi.org/10.1016/j.compfluid.2013.01.029.
+[51] N.I. Prasianakis, I.V. Karlin, Lattice Boltzmann method for thermal flow simulation          [70] M.-C. Lai, C.S. Peskin, An immersed boundary method with formal second-order
+     on standard lattices, Phys. Rev. E 76 (1) (2007) 016702, https://doi.org/10.1103/                 accuracy and reduced numerical viscosity, J. Comput. Phys. 160 (2) (2000)
+     PhysRevE.76.016702.                                                                               705–719, https://doi.org/10.1006/jcph.2000.6483.
+[52] Q. Li, K. Luo, Y. He, Y. Gao, W. Tao, Coupling lattice Boltzmann model for                   [71] Y. Wang, G. Qin, An improved time-splitting method for simulating natural
+     simulation of thermal flows on standard lattices, Phys. Rev. E 85 (1) (2012)                      convection heat transfer in a square cavity by legendre spectral element
+     016710, https://doi.org/10.1103/PhysRevE.85.016710.                                               approximation, Comput. Fluids 174 (2018) 122–134, https://doi.org/10.1016/j.
+[53] S.A. Hosseini, N. Darabiha, D. Thévenin, Compressibility in lattice Boltzmann on                 compfluid.2018.07.013.
+     standard stencils: effects of deviation from reference temperature, Phil. Trans. R.          [72] G. De Vahl Davis, Natural convection of air in a square cavity: a bench mark
+     Soc. A 378 (2175) (2020) 20190399, https://doi.org/10.1098/rsta.2019.0399.                        numerical solution, Int. J. Numer. Methods Fluids 3 (3) (1983) 249–264, https://
+[54] X.-D. Liu, S. Osher, T. Chan, Weighted essentially non-oscillatory schemes,                       doi.org/10.1002/fld.1650030305.
+     J. Comput. Phys. 115 (1) (1994) 200–212, https://doi.org/10.1006/                            [73] J.M. House, C. Beckermann, T.F. Smith, Effect of a centered conducting body on
+     jcph.1994.1187.                                                                                   natural convection heat transfer in an enclosure, Numer. Heat Transf. A Appl. 18
+[55] X. Shan, X. He, Discretization of the velocity space in the solution of the Boltzmann             (2) (1990) 213–225, https://doi.org/10.1080/10407789008944791.
+     equation, Phys. Rev. Lett. 80 (1998) 65–68, https://doi.org/10.1103/                         [74] G. Barakos, E. Mitsoulis, D. Assimacopoulos, Natural convection flow in a square
+     PhysRevLett.80.65.                                                                                cavity revisited: laminar and turbulent models with wall functions, Int. J. Numer.
+[56] S. Hosseini, I. Karlin, Lattice Boltzmann for non-ideal fluids: fundamentals and                  Methods Fluids 18 (7) (1994) 695–719, https://doi.org/10.1002/fld.1650180705.
+     practice, Phys. Rep. 1030 (2023) 1–137, https://doi.org/10.1016/j.                           [75] A. Eshghinejad Fard, M. Khalili, Effect of channel width on the sedimentation
+     physrep.2023.07.003.                                                                              modes of a cold elliptical particle in hot narrow channels, Therm. Sci. Eng. Progr.
+[57] S. Ansumali, I.V. Karlin, Consistent lattice Boltzmann method, Phys. Rev. Lett. 95                36 (2022) 101519, https://doi.org/10.1016/j.tsep.2022.101519.
+     (2005) 260605, https://doi.org/10.1103/PhysRevLett.95.260605.                                [76] B. Kim, D. Lee, M. Ha, H. Yoon, A numerical study of natural convection in a square
+[58] M. Geier, A. Greiner, J.G. Korvink, Cascaded digital lattice Boltzmann automata for               enclosure with a circular cylinder at different vertical locations, Int. J. Heat Mass
+     high Reynolds number flow, Phys. Rev. E 73 (2006) 066705, https://doi.org/                        Transf. 51 (7) (2008) 1888–1906, https://doi.org/10.1016/j.
+     10.1103/PhysRevE.73.066705.                                                                       ijheatmasstransfer.2007.06.033.
+[59] A. Kupershtokh, D. Medvedev, D. Karpov, On equations of state in a lattice                   [77] J. Xia, K. Luo, J. Fan, Simulating heat transfer from moving rigid bodies using high-
+     Boltzmann method, Comput. Math. Appl. 58 (5) (2009) 965–974. Mesoscopic                           order ghost-cell based immersed-boundary method, Int. J. Heat Mass Transf. 89
+     Methods in Engineering and Science, https://doi.org/10.1016/j.camwa.2009.02.0                     (2015) 856–865, https://doi.org/10.1016/j.ijheatmasstransfer.2015.05.098.
+     24.                                                                                          [78] Z.-G. Feng, E.E. Michaelides, Proteus: a direct forcing method in the simulations of
+[60] G.-S. Jiang, C.-W. Shu, Efficient implementation of weighted ENO schemes,                         particulate flows, J. Comput. Phys. 202 (1) (2005) 20–51, https://doi.org/
+     J. Comput. Phys. 126 (1) (1996) 202–228, https://doi.org/10.1006/                                 10.1016/j.jcp.2004.06.020.
+     jcph.1996.0130.                                                                              [79] A.J. Ladd, R. Verberg, Lattice Boltzmann simulations of particle-fluid suspensions,
+                                                                                                       J. Stat. Phys. 104 (2001) 1191–1251, https://doi.org/10.1023/A:1010414013942.
+
+
+
+
+                                                                                             15
+

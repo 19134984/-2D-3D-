@@ -1,0 +1,1116 @@
+                                                     International Journal of Heat and Mass Transfer 255 (2026) 127790
+
+
+                                                                  Contents lists available at ScienceDirect
+
+
+                                        International Journal of Heat and Mass Transfer
+                                                          journal homepage: www.elsevier.com/locate/hmt
+
+
+
+
+Interpolation-supplemented lattice Boltzmann simulation of thermal
+convection on non-uniform meshes
+Ao Xu a,b        ,∗, Zheng Zhao a , Ben-Rui Xu a , Li-Sheng Jiang a
+a
+ Institute of Extreme Mechanics, School of Aeronautics, Northwestern Polytechnical University, Xi’an, 710072, PR China
+b
+ National Key Laboratory of Aircraft Configuration Design, Key Laboratory for Extreme Mechanics of Aircraft of Ministry of Industry and Information
+Technology, Xi’an, 710072, PR China
+
+
+
+ARTICLE               INFO                               ABSTRACT
+
+Keywords:                                                We present a systematic evaluation of an interpolation-supplemented lattice Boltzmann method (ISLBM) for
+Lattice Boltzmann method                                 simulating buoyancy-driven thermal convection on non-uniform meshes. The ISLBM extends the standard
+Thermal convection                                       lattice Boltzmann framework by incorporating quadratic interpolation during the streaming step, enabling
+High-performance computing
+                                                         flexible mesh refinement near solid boundaries while maintaining algorithmic simplicity and parallel scal-
+                                                         ability. The method is implemented for a two-dimensional side-heated cavity at high Rayleigh numbers
+                                                         106 ≤ 𝑅𝑎 ≤ 108 , and for a three-dimensional side-heated cavity at 105 ≤ 𝑅𝑎 ≤ 107 , with the Prandtl number
+                                                         fixed at 𝑃 𝑟 = 0.71. Benchmark results show that the ISLBM accurately captures thermal and velocity boundary
+                                                         layers, yielding Nusselt and Reynolds numbers in close agreement with high-fidelity reference data. Grid-
+                                                         convergence studies demonstrate nearly third-order accuracy for global quantities and about second-order for
+                                                         local fields. We further assess the computational performance of the in-house LBM solver against two open-
+                                                         source solvers: Nek5000 based on the spectral element method, and OpenFOAM based on the finite volume
+                                                         method. Performance metrics, including million lattice updates per second (MLUPS) and wall-clock time per
+                                                         dimensionless time unit (WCTpDT), indicate that the ISLBM offers one to three orders of magnitude higher
+                                                         efficiency in large-scale simulations. On GPU architectures, the ISLBM retains high computational performance:
+                                                         throughput on non-uniform meshes reaches 60%–70% of that on uniform meshes in terms of MLUPS, while
+                                                         the cost in WCTpDT is about three times higher. These results highlight the potential of interpolation-based
+                                                         LBM approaches for high-fidelity simulations of thermal convection on non-uniform meshes, providing a robust
+                                                         foundation for future extensions to turbulent flows.
+
+
+
+1. Introduction                                                                               computation [8–10] make it particularly effective for simulating fluid
+                                                                                              flows and associated transport processes. As a result, the LBM has
+    The lattice Boltzmann method (LBM) is a mesoscopic numerical                              achieved broad success across diverse applications, including turbulent
+approach to computational fluid dynamics [1,2], rooted in the Boltz-                          and multiphase flow simulations [11–19]. This success has positioned
+mann kinetic theory [3,4]. Instead of directly solving the macroscopic                        LBM as a compelling alternative to conventional Navier–Stokes-based
+Navier–Stokes equations, the LBM models the evolution of particle                             solvers, particularly for incompressible flows in the continuum regime.
+distribution functions on a discrete lattice [5,6]. From these evolution                          Our particular interest lies in using the LBM to simulate ther-
+equations, macroscopic flow variables such as velocity and pressure                           mal convection, specifically the coupled fluid flow and heat transfer
+are recovered. This framework provides access to continuum-scale hy-
+                                                                                              processes characteristic of buoyancy-driven systems [20–22]. This fun-
+drodynamics while retaining mesoscopic fidelity. Early developments
+                                                                                              damental mechanism underpins a wide range of natural and engineered
+of the LBM were inspired by lattice gas automata, but a rigorous
+                                                                                              systems, including atmospheric and oceanic convection [22], thermal
+connection to the Boltzmann equation was later established by He and
+                                                                                              management in fuel cells and flow batteries [23], thermal protection
+Luo [7], who derived the lattice Boltzmann equation from the continu-
+                                                                                              in nuclear reactors [24], and thermal convection in mechanical devices
+ous Bhatnagar–Gross–Krook formulation. Over the past three decades,
+the LBM has matured into an efficient tool for simulating a wide                              subjected to vibrations [25]. Accurately simulating thermal convection
+range of complex flow phenomena. Its inherent algorithmic simplicity,                         at high Rayleigh numbers (𝑅𝑎, defined later) remains a major com-
+local collision-streaming structure, and natural suitability for parallel                     putational challenge, as strong buoyancy forces significantly influence
+
+
+    ∗ Corresponding author at: Institute of Extreme Mechanics, School of Aeronautics, Northwestern Polytechnical University, Xi’an, 710072, PR China.
+      E-mail address: axu@nwpu.edu.cn (A. Xu).
+
+https://doi.org/10.1016/j.ijheatmasstransfer.2025.127790
+Received 6 July 2025; Received in revised form 31 August 2025; Accepted 31 August 2025
+Available online 27 September 2025
+0017-9310/© 2025 Elsevier Ltd. All rights are reserved, including those for text and data mining, AI training, and similar technologies.
+A. Xu et al.                                                                                          International Journal of Heat and Mass Transfer 255 (2026) 127790
+
+
+the flow and heat transfer dynamics. The difficulty arises from the              where 𝐮, 𝑃 and 𝑇 denote the velocity, pressure, and temperature fields,
+formation of thin thermal boundary layers, which demand much finer               respectively. The reference density and temperature are denoted by
+resolution near solid boundaries than in the bulk flow. As a result,             𝜌0 and 𝑇0 . 𝜈, 𝛽 and 𝛼 are the kinematic viscosity, thermal expansion
+uniform meshes quickly become computationally prohibitive, since                 coefficient, and thermal diffusivity of the fluid, respectively. The unit
+they enforce fine resolution across the entire domain. To overcome               vector 𝐲̂ points in the direction of gravity. To non-dimensionalize the
+this limitation, it is necessary to extend the conventional LBM (typi-           equations, we apply the following scalings:
+cally formulated on uniform meshes) to non-uniform meshes refined                                     √    (      )           √
+near solid boundaries, where steep velocity and temperature gradients            𝐱∗ = 𝐱∕𝐻 , 𝑡∗ = 𝑡∕ 𝐻∕ 𝛽 𝑔 𝛥𝑇 , 𝐮∗ = 𝐮∕ 𝛽 𝑔 𝐻 𝛥𝑇
+                                                                                           (          )         (      )                               (4)
+occur. Such spatially adaptive meshing enables adequate resolution of            𝑃 ∗ = 𝑃 ∕ 𝜌0 𝑔 𝛽 𝛥𝑇 𝐻 , 𝑇 ∗ = 𝑇 − 𝑇0 ∕𝛥𝑇
+near-wall structures, such as thermal boundary layers, while preserving
+computational efficiency in the bulk flow region.                                where 𝛥𝑇 is the temperature difference between the hot and cold walls.
+    Several extensions of the standard LBM from uniform meshes to                The characteristic length scale is the√cavity height 𝐻, the characteristic
+                                                                                 time scale is the free-fall time 𝑡𝑓 = 𝐻∕(𝛽 𝑔 𝛥𝑇 ), and the characteristic
+non-uniform meshes have been developed to resolve near-wall gradi-                                                             √
+ents without incurring excessive computational cost. A prominent ex-             velocity scale is the free-fall velocity 𝑢𝑓 = 𝐻 𝛽 𝑔 𝛥𝑇 . Unless otherwise
+ample is the interpolation-supplemented LBM (ISLBM) [26–28], which               stated, dimensionless variables are denoted with a superscript star.
+incorporates interpolation schemes during the streaming step to enable               Using these scalings, the dimensionless governing equations become
+off-lattice population transfers, thereby allowing non-uniform lattice
+spacing while retaining the simplicity of the standard formulation. An-          ∇ ⋅ 𝐮∗ = 0                                                                        (5)
+other widely studied approach is the finite-volume LBM [29–32], which
+reformulates the lattice Boltzmann equation within a control-volume                                         √
+                                                                                 𝜕𝐮∗                           𝑃𝑟 2 ∗
+framework, permitting flexible mesh structures while preserving its                 ∗
+                                                                                      + 𝐮∗ ⋅ ∇𝐮∗ = −∇𝑃 ∗ +          ∇ 𝐮 + 𝑇 ∗ 𝐲̂                                   (6)
+                                                                                 𝜕𝑡                           𝑅𝑎
+kinetic foundation. In addition, mesh refinement strategies, such as                                 √
+block-structured multi-domain methods [33,34] and multilevel (multi-             𝜕𝑇 ∗    ∗       ∗       1
+                                                                                      + 𝐮   ⋅ ∇𝑇   =         ∇2 𝑇 ∗                                                (7)
+grid) methods [35,36], have been extensively employed to resolve                 𝜕 𝑡∗                  𝑃 𝑟𝑅𝑎
+localized flow features at varying spatial resolutions. These method-            Two dimensionless parameters arise in the system: the Rayleigh number
+ological advances are particularly relevant as the LBM is increasingly           (𝑅𝑎) and the Prandtl number (𝑃 𝑟), defined as
+applied to simulate thermal convection at high Rayleigh numbers,
+                                                                                        𝑔 𝛽 𝛥𝑇 𝐻 3                 𝜈
+where both large-scale circulations and thin boundary layers must be             𝑅𝑎 =                 , 𝑃𝑟 =                                                      (8)
+resolved. Despite their potential, the performance of these methods in                       𝜈𝛼                   𝛼
+terms of numerical accuracy, stability, and computational efficiency             The Rayleigh number quantifies the driving buoyancy force relative to
+for thermally driven flows at high Rayleigh numbers have not been                viscous and thermal diffusion, while the Prandtl number represents the
+systematically assessed. Therefore, a comprehensive evaluation of their          ratio of momentum diffusivity to thermal diffusivity.
+accuracy, numerical stability, and efficiency is essential for advancing              To solve the thermal convection problem described above, we adopt
+high-fidelity LBM simulations of buoyancy-driven flows.                          a double-distribution-function (DDF) LB model [8,37–41]. Specifically,
+    Due to its conceptual simplicity and its direct extension of the             a D2Q9 lattice in two dimensions or a D3Q19 lattice in three dimen-
+standard streaming step, we focus here on evaluating the ISLBM. Specif-          sions is employed to solve the Navier–Stokes equations for fluid flow,
+ically, we implement and assess the ISLBM for simulating buoyancy-               while a D2Q5 lattice in two dimensions or a D3Q7 lattice in three
+driven thermal convection at moderately high Rayleigh numbers on                 dimensions is used to solve the energy equation for heat transfer. To
+non-uniform meshes. Through systematic benchmarks, we aim to quan-               enhance numerical stability, a multi-relaxation-time (MRT) collision
+tify its accuracy and efficiency, thereby laying the groundwork for its          operator is employed for both the density and temperature distribution
+future application to turbulent thermal systems. The rest of this paper is       functions. The evolution equation for the density distribution function
+organized as follows. In Section 2, we present the numerical details of          is
+the ISLBM for simulating thermal convection on non-uniform meshes.                                                       (     ) [              (eq)
+                                                                                                                                                        ]
+                                                                                 𝑓𝑖 (𝐱 + 𝐞𝑖 𝛿𝑡 , 𝑡 + 𝛿𝑡 ) − 𝑓𝑖 (𝐱, 𝑡) = − 𝐌−1 𝐒 𝑖𝑗 𝐦𝑗 (𝐱, 𝑡) − 𝐦𝑗 (𝐱, 𝑡) + 𝛿𝑡 𝐹𝑖′
+In Sections 3 and 4, we present results on laminar thermal convection
+in a two-dimensional (2-D) and a three-dimensional (3-D) side-heated                                             (𝑖 = 0, 1, … , 𝑞 − 1)                             (9)
+cavity, respectively. In Section 5, the main findings of the present work
+are summarized.                                                                  where 𝑓𝑖 is the density distribution function, 𝐱 is the spatial position, 𝑡 is
+                                                                                 the time, and 𝛿𝑡 is the time step. 𝐞𝑖 is the discrete velocity vector in the
+2. Numerical methods                                                             𝑖th direction. For the D2Q9 lattice, 𝑞 = 9; for the D3Q19 lattice, 𝑞 = 19.
+                                                                                 The equilibrium moments 𝐦(eq) are given by, for the D2Q9 lattice
+2.1. The standard LBM for simulating thermal convection on uniform                 (eq)     [                                                        ]𝑇
+                                                                                 𝐦D2Q9 = 𝜌 1, −2+3(𝑢2 +𝑣2 ), 1−3(𝑢2 +𝑣2 ), 𝑢, −𝑢, 𝑣, −𝑣, 𝑢2 −𝑣2 , 𝑢𝑣 (10)
+meshes
+                                                                                 and for the D3Q19 lattice,
+    We perform direct numerical simulations of thermal convection                            [
+                                                                                   (eq)                           11 2         2        2
+under the Boussinesq approximation. The fluid flow is assumed to be              𝐦D3Q19 = 𝜌 1, −11 + 19|𝐮|2 , 3 −   |𝐮| , 𝑢, − 𝑢, 𝑣, − 𝑣, 𝑤,
+                                                                                                                  2            3        3
+incompressible, and temperature is treated as an active scalar that                             2                  1 2
+influences the velocity field through buoyancy. Viscous dissipation
+                                                                                                     2     2   2             2
+                                                                                             − 𝑤, 2𝑢 − 𝑣 − 𝑤 , − (2𝑢 − 𝑣 − 𝑤 ), 𝑣 − 𝑤2 ,
+                                                                                                                                 2    2
+                                                                                                                                                                 (11)
+                                                                                                3                  2
+and compression work are neglected, and all transport coefficients are                                                        ]𝑇
+                                                                                               1 2
+assumed constant. The governing equations for the coupled fluid flow                        − (𝑣 − 𝑤2 ), 𝑢𝑣, 𝑣𝑤, 𝑢𝑤, 0, 0, 0
+                                                                                               2
+and heat transfer are
+                                                                                 The forcing term 𝐹𝑖′ on the right-hand side of Eq. (9) is computed as
+∇⋅𝐮=0                                                                 (1)                             ̃ where 𝐌𝐅̃ is given by Guo et al. [42,43]. For
+                                                                                 𝐅′ = 𝐌−1 (𝐈 − 𝐒∕2) 𝐌𝐅,
+                                (      )                                         the D2Q9 lattice,
+𝜕𝐮             1
+   + 𝐮 ⋅ ∇𝐮 = − ∇𝑃 + 𝜈∇2 𝐮 + 𝑔 𝛽 𝑇 − 𝑇0 𝐲̂                            (2)                  [                                                                  ]𝑇
+𝜕𝑡             𝜌0                                                                𝐌𝐅̃ 𝐷2𝑄9 = 0, 6𝐮 ⋅ 𝐅, −6𝐮 ⋅ 𝐅, 𝐹𝑥 , −𝐹𝑥 , 𝐹𝑦 , −𝐹𝑦 , 2𝑢𝐹𝑥 − 2𝑣𝐹𝑦 , 𝑢𝐹𝑥 + 𝑣𝐹𝑦
+𝜕𝑇
+   + 𝐮 ⋅ ∇𝑇 = 𝛼∇2 𝑇                                                   (3)                                                                                        (12)
+𝜕𝑡
+
+                                                                             2
+A. Xu et al.                                                                                                               International Journal of Heat and Mass Transfer 255 (2026) 127790
+
+
+and for the D3Q19 lattice,                                                                        mesh case, where 𝐱 + 𝐞𝑖 𝛿𝑡 coincides with a grid point, these locations
+           [                                                                                      are generally off-lattice in a non-uniform mesh. At such points, the
+                                        2           2           2
+𝐌𝐅̃ 𝐷3𝑄19 = 0, 38𝐮 ⋅ 𝐅, −11𝐮 ⋅ 𝐅, 𝐹𝑥 , − 𝐹𝑥 , 𝐹𝑦 , − 𝐹𝑦 , 𝐹𝑧 , − 𝐹𝑧 ,                             values of 𝑓𝑖 (𝐱 + 𝐞𝑖 𝛿𝑡 , 𝑡 + 𝛿𝑡 ) and 𝑔𝑖 (𝐱 + 𝐞𝑖 𝛿𝑡 , 𝑡 + 𝛿𝑡 ) are set equal to the
+                                        3           3           3                                 post-collision values 𝑓𝑖+ (𝐱, 𝑡) and 𝑔𝑖+ (𝐱, 𝑡), respectively. These off-lattice
+               4𝑢𝐹𝑥 − 2𝑣𝐹𝑦 − 2𝑤𝐹𝑧 , −2𝑢𝐹𝑥 + 𝑣𝐹𝑦 + 𝑤𝐹𝑧 , 2𝑣𝐹𝑦 − 2𝑤𝐹𝑧 ,                             values are then interpolated back to the nearest grid point 𝐱, providing
+                                                                                   ]𝑇             the updated distribution functions 𝑓𝑖 (𝐱, 𝑡 + 𝛿𝑡 ) and 𝑔𝑖 (𝐱, 𝑡 + 𝛿𝑡 ). In this
+               −𝑣𝐹𝑦 + 𝑤𝐹𝑧 , 𝑢𝐹𝑦 + 𝑣𝐹𝑥 , 𝑣𝐹𝑧 + 𝑤𝐹𝑦 , 𝑢𝐹𝑧 + 𝑤𝐹𝑥 , 0, 0, 0                           manner, the collision and the streaming steps are repeated iteratively.
+                                                                                                  To preserve second-order spatial accuracy, a higher-order quadratic
+                                                                                     (13)         interpolation scheme following the formulation proposed by He [28]
+Here, the body force is defined as 𝐅 = 𝜌𝑔 𝛽(𝑇 − 𝑇0 )𝐲.
+                                                    ̂ The macroscopic                             is employed. This step is essential for consistent and rigorous recovery
+                                             ∑                 ∑                                  of the Navier–Stokes equations within the LBM framework.
+density 𝜌 and velocity 𝐮 are obtained via 𝜌 = 𝑞−1  𝑓 , 𝐮 = 𝜌1 ( 𝑞−1
+                                               𝑖=0 𝑖
+                                                                    𝐞𝑓 +
+                                                                 𝑖=0 𝑖 𝑖
+𝐅∕2).                                                                                                 Fig. 1 illustrates the interpolation procedure in the ISLBM for a
+   The evolution equation for the temperature distribution function is                            two-dimensional non-uniform mesh. After the streaming step, the distri-
+                                                                                                  bution functions generally arrive at off-lattice positions (see blue open
+                                                 [                     ]                          circles). Quadratic interpolation stencils (see red boxes) are then con-
+                                                               (eq)
+𝑔𝑖 (𝐱 + 𝐞𝑖 𝛿𝑡 , 𝑡 + 𝛿𝑡 ) − 𝑔𝑖 (𝐱, 𝑡) = −(𝐍−1 𝐐)𝑖𝑗 𝐧𝑗 (𝑥, 𝑡) − 𝐧𝑗 (𝑥, 𝑡)                           structed from neighboring post-streaming nodes to recover the distribu-
+                                                                                                  tion function at virtual nodes (see yellow triangles). The interpolated
+                                  (𝑖 = 0, 1, … , 𝑞 − 1)                              (14)
+                                                                                                  values at the virtual nodes are subsequently used to reconstruct the
+where 𝑔𝑖 is the temperature distribution function. For the D2Q5 lattice,                          fluid nodes on the mesh (see black filled circles). This process completes
+𝑞 = 5; for the D3Q7 lattice, 𝑞 = 7. The equilibrium moments 𝐧(eq) are                             one collision–streaming cycle on a non-uniform lattice.
+given by, for the D2Q5 lattice                                                                        In the interpolation kernel, the main contributions to the total
+ (eq)    [                    ]𝑇                                                                  computational cost are as follows. The first is off-lattice memory access,
+𝐧D2Q5 = 𝑇 , 𝑢𝑇 , 𝑣𝑇 , 𝑎𝑇 𝑇 , 0                                     (15)                           which requires fetching distribution values from non-contiguous global
+and for the D3Q7 lattice,                                                                         memory addresses, leading to irregular and non-coalesced reads. This
+         [                            ]𝑇                                                          constitutes the dominant bottleneck. The second is the evaluation of
+ (eq)
+𝐧D3Q7 = 𝑇 , 𝑢𝑇 , 𝑣𝑇 , 𝑤𝑇 , 𝑎𝑇 𝑇 , 0, 0                             (16)                           interpolation coefficients, which includes on-the-fly computation of
+                                                               √                                  quadratic interpolation weights (e.g., Lagrange polynomial coefficients)
+                             √ to thermal diffusivity: 𝑎𝑇 = 20 3𝛼 − 4
+Here, 𝑎𝑇 is a parameter related                                                                   and depends on the degree of local mesh non-uniformity. The third is
+for D2Q5 lattice, and 𝑎𝑇 = 42 3𝛼 − 6 for D3Q7 lattice. The macroscopic                            stencil selection and indexing, which involves identifying the appropri-
+                                        ∑
+temperature 𝑇 is then obtained as 𝑇 = 𝑞−1    𝑔.
+                                          𝑖=0 𝑖                                                   ate neighboring nodes and determining their physical coordinates for
+    In the standard LB model described above, it is implicitly assumed                            accurate interpolation.
+that the computational mesh is uniform and that the lattice spacing
+matches the distance traveled by the distribution functions in a single                           2.3. Boundary conditions and implementation issues
+time step. Under this assumption, the evolution of the density dis-
+tribution function (Eq. (9)) can be decomposed into two sub-steps:
+                                                                                                      In the ISLBM framework, boundary conditions are implemented
+                                                                                                  using the same kinetic boundary schemes as in uniform-mesh LBM.
+                                         (     ) [              (eq)
+                                                                        ]
+Collision step ∶ 𝑓𝑖+ (𝐱, 𝑡) = 𝑓𝑖 (𝐱, 𝑡) − 𝐌−1 𝐒 𝑖𝑗 𝐦𝑗 (𝐱, 𝑡) − 𝐦𝑗 (𝐱, 𝑡) + 𝛿𝑡 𝐹𝑖′                 Specifically, the half-way bounce-back scheme is employed to en-
+                                                                                                  force the no-slip velocity boundary condition, while the half-way anti-
+                                                                                     (17)
+                                                                                                  bounce-back scheme is applied for Dirichlet (constant-temperature)
+Streaming step ∶ 𝑓𝑖 (𝐱 + 𝐞𝑖 𝛿𝑡 , 𝑡 + 𝛿𝑡 ) = 𝑓𝑖+ (𝐱, 𝑡)                               (18)         thermal boundaries and the half-way bounce-back scheme for Neumann
+                                                                                                  (adiabatic) thermal boundaries.
+where    𝑓𝑖+ (𝑥, 𝑡)
+                  denotes the post-collision density distribution func-
+                                                                                                      At the fluid-solid interface, the no-slip velocity boundary condition
+tion. Similarly, the evaluation of the temperature distribution function
+                                                                                                  is imposed using the half-way bounce-back scheme:
+(i.e., Eq. (14)) is split into:
+                                                   [                     ]                        𝑓𝑖 (𝐱, 𝑡 + 𝛿𝑡 ) = 𝑓𝑖+ (𝐱, 𝑡)                                                        (21)
+                                                                 (eq)
+Collision step ∶ 𝑔𝑖+ (𝐱, 𝑡) = 𝑔𝑖 (𝐱, 𝑡) − (𝐍−1 𝐐)𝑖𝑗 𝐧𝑗 (𝐱, 𝑡) − 𝐧𝑗 (𝐱, 𝑡)  (19)
+                                                                                                  where, 𝑓𝑖 (𝐱, 𝑡) denotes the density distribution function corresponding
+Streaming step ∶ 𝑔𝑖 (𝐱 + 𝐞𝑖 𝛿𝑡 , 𝑡 + 𝛿𝑡 ) = 𝑔𝑖+ (𝐱, 𝑡)                               (20)         to the discrete velocity 𝐞𝑖 = −𝐞𝑖 .
+where 𝑔𝑖+ (𝐱, 𝑡) represents the post-collision temperature distribution                               For     thermal       boundary       conditions,     the    Dirichlet
+function. Further numerical details on the thermal LB method can be                               (constant-temperature) case is imposed via the half-way anti-bounce-
+found in our previous works [8,9,37].                                                             back scheme:
+
+                                                                                                  𝑔𝑖̄(𝐱, 𝑡 + 𝛿𝑡 ) = −𝑔𝑖+ (𝐱, 𝑡) + 𝜔𝑖 𝑇𝑤                                               (22)
+2.2. The interpolation-supplemented LBM for simulating thermal convection
+on non-uniform meshes                                                                             where 𝑇𝑤 is the prescribed wall temperature. For the D2Q5 lattice, the
+                                                                                                  weights are 𝜔1−4 = (4 + 𝑎𝑇 )∕10; for the D3Q7 lattice, the weights are
+     In this work, we adopt the procedure proposed by He et al. [26–28]                           𝜔1−6 = (6 + 𝑎𝑇 )∕21. The Neumann (adiabatic) boundary condition is
+to update the distribution function 𝑓𝑖 and 𝑔𝑖 on a non-uniform mesh.                              enforced using the half-way bounce-back scheme:
+The key idea is to approximate the values of the distribution functions
+                                                                                                  𝑔𝑖̄(𝐱, 𝑡 + 𝛿𝑡 ) = 𝑔𝑖+ (𝐱, 𝑡)                                                        (23)
+at grid points via interpolation from their corresponding values at off-
+lattice locations. Let 𝐱 = (𝑥𝑖 , 𝑦𝑗 ) denote a grid point on an arbitrary                         where 𝑔𝑖 (𝑥, 𝑡) denotes the temperature distribution function associated
+rectangular non-uniform mesh in a Cartesian coordinate system. First,                             with the discrete velocity 𝐞𝑖̄.
+the collision steps (i.e. Eqs. (17) and (19)) are performed locally at each                           We now discuss several implementation issues encountered when
+grid point, yielding the post-collision distribution functions 𝑓𝑖+ (𝐱, 𝑡) and                     collecting data for post-analysis. The first concerns the distribution of
+𝑔𝑖+ (𝐱, 𝑡). Next, the virtual streaming steps (i.e. Eqs. (18) and (20)) are                       grid points and the corresponding length scale. Assume convection is
+applied to compute the distribution functions at the off-lattice locations                        simulated within a cell of length 𝐿 and height 𝐻. Fig. 2 illustrates
+𝐱 + 𝐞𝑖 𝛿𝑡 , i.e., 𝑓𝑖 (𝐱 + 𝐞𝑖 𝛿𝑡 , 𝑡 + 𝛿𝑡 ) and 𝑔𝑖 (𝐱 + 𝐞𝑖 𝛿𝑡 , 𝑡 + 𝛿𝑡 ). Unlike the uniform       typical examples of a uniform mesh and a non-uniform mesh with
+
+                                                                                              3
+A. Xu et al.                                                                                              International Journal of Heat and Mass Transfer 255 (2026) 127790
+
+
+
+
+Fig. 1. Illustration of the interpolation procedure in the interpolation-supplemented lattice Boltzmann method (ISLBM) on a two-dimensional non-uniform mesh.
+(For interpretation of the references to color in this figure legend, the reader is referred to the web version of this article.)
+
+
+                                    Table 1
+                                    Length scales in the physical system and in the LB systems with uniform and non-
+                                    uniform meshes.
+                                                                    Physical system    LB system with      LB system with
+                                                                                       uniform mesh        non-uniform mesh
+                                      Effective cell height         𝐻 m                1                   1 − 𝑦∗1
+                                      Minimal resolution (1 l.u.)   –                  1∕𝑁𝑦                𝑦∗1
+                                      Characteristic length         –                  𝑁𝑦 l.u.             (1∕𝑦∗1 − 1) l.u.
+
+
+
+clustering near the walls. For a uniform mesh, the coordinates (taking                error function vary more linearly across the domain. As 𝑎 approaches
+the 𝑦-direction as an example) are specified as                                       zero, the coordinate distribution 𝑦∗𝑗 approaches 𝑗∕𝑁𝑦+1 , corresponding
+                                                                                      to a uniform mesh. To ensure the robustness of our mesh design, we
+𝑦∗0 = 0,    𝑦∗𝑁 +1 = 1,                                                    (24)       quantitatively evaluated its quality using two widely accepted metrics.
+                𝑦
+                                                                                      The first metric is the growth rate, defined as the ratio of adjacent
+        𝑗 − 0.5
+𝑦∗𝑗 =           ,   𝑗 = 1, … , 𝑁𝑦                                          (25)       cell sizes (e.g., 𝛥𝑥𝑖+1 ∕𝛥𝑥𝑖 ). Excessive growth rates can compromise
+          𝑁𝑦
+                                                                                      numerical accuracy and stability. In our simulations with a 513 × 513
+where the indices 1 and 𝑁𝑦 correspond to the fluid nodes nearest to                   mesh and stretching parameter 𝑎 = 1.5, the maximum growth rate is
+the solid walls (denoted by the black circles in Fig. 2a). The spatial                1.0044, indicating a very smooth grid transition. This value is well
+resolution is uniform, with 𝛥𝑦∗ = 1∕𝑁𝑦 = 1 l.u., where ‘‘l.u’’. denotes               below the commonly accepted upper threshold of 1.2, ensuring high
+the lattice length unit [44]. Because the half-way bounce-back (or half-              interpolation fidelity. The second metric is the aspect ratio, defined as
+way anti-bounce-back) scheme is applied at the fluid-solid boundaries,                the ratio of the longest to the shortest side of a computational cell.
+the first layer of fluid nodes, 𝑦∗1 and 𝑦∗𝑁 , are offset by 0.5 l.u. from the         While elevated aspect ratios may be acceptable near boundary layers,
+                                           𝑦
+solid walls (denoted by the red lines at 𝑦∗0 = 0 and 𝑦∗𝑁 +1 = 1). This offset         where flow features are anisotropic, they are undesirable in core-flow
+                                                         𝑦
+arises naturally from the half-way formulation and holds regardless of                regions. In our simulations, the maximum aspect ratio is 1.75, observed
+whether the mesh is uniform or non-uniform.                                           near the four boundaries. This value remains well within acceptable
+    For non-uniform meshes, the coordinates (taking the 𝑦-direction as                limits for structured grid-based simulations.
+an example) are given by the error-function stretching [45]:                              The second issue concerns the calculation of derivatives of flow
+      ⎧    [ (              )]    ⎫                                                   variables at solid walls. The boundary schemes remain valid on non-
+      ⎪ 𝑒𝑟𝑓 𝑎     𝑗
+                       − 0.5      ⎪                                                   uniform meshes, provided that the first fluid node adjacent to the
+     1⎪         𝑁 𝑦 +1            ⎪                                                   wall is located 0.5 lattice units from the physical boundary. This half-
+𝑦∗𝑗 = ⎨                        + 1⎬ ,      𝑗 = 0, 1, … , 𝑁𝑦 + 1            (26)
+     2⎪       𝑒𝑟𝑓 (𝑎∕2)           ⎪                                                   spacing offset must be accounted for in derivative calculations. As
+      ⎪                           ⎪                                                   shown in Fig. 2(a), for a uniform mesh the first-order derivative of a
+      ⎩                           ⎭
+                                                                                      flow variable 𝜙 at the wall is evaluated using a one-sided second-order
+where the indices 1 and 𝑁𝑦 correspond to the fluid nodes nearest to the               finite-difference scheme:
+solid walls, and the minimal spatial mesh spacing is (𝛥𝑦∗ )𝑚𝑖𝑛 = 𝑦∗1 = 1
+l.u. Unlike the uniform case, the solid walls (denoted by the red lines               𝜕𝜙           −8𝜙𝑤𝑎𝑙𝑙 + 9𝜙1 − 𝜙2         𝜕𝜙      8𝜙𝑤𝑎𝑙𝑙 − 9𝜙𝑁𝑦 + 𝜙𝑁𝑦 −1
+in Fig. 2b) are located at 𝑦∗𝑏𝑜𝑡𝑡𝑜𝑚 = 0.5𝑦∗1 and 𝑦∗𝑡𝑜𝑝 = 1 − 0.5𝑦∗1 , so the             |       =                    ,          | =
+                                                                                      𝜕 𝑦 𝑏𝑜𝑡𝑡𝑜𝑚          3𝛥𝑦                 𝜕 𝑦 𝑡𝑜𝑝           3𝛥𝑦
+effective cell height is 1 − 𝑦∗1 . As marked in Fig. 2(b), the offset between
+the boundary (red line) and the first fluid node (black circle) is 0.5 l.u.                                                                                          (27)
+A summary of the length scales in the LB systems with uniform and
+non-uniform meshes is presented in Table 1.                                           where 𝛥𝑦 = 1 l.u. is the minimal spatial resolution. For non-uniform
+                                                                                      meshes, the first-order derivative of 𝜙 at the wall is expressed as
+    In the stretching error function (i.e. Eq. (26)), 𝑎 is a positive co-
+efficient that controls the degree of stretching. In this work, we set
+                                                                                      𝜕 𝜙 ||           −4𝑞(𝑞 + 1)𝜙wall + (2𝑞 + 1)2 𝜙1 − 𝜙2
+𝑎 = 1.5 unless otherwise specified. A larger value of 𝑎 produces a                         |         =                                     ,
+                                                                                      𝜕 𝑦 |bottom                 𝑞(2𝑞 + 1)𝛥𝑦
+more pronounced S-shape in the error function; consequently, mesh
+points are more densely packed near the boundaries and more sparsely                      𝜕 𝜙 ||                                2
+                                                                                                       4𝑞(𝑞 + 1)𝜙wall − (2𝑞 + 1) 𝜙𝑁 + 𝜙𝑁−1
+                                                                                                     =                                       .                       (28)
+distributed in the interior. Conversely, a smaller value of 𝑎 makes the                    𝜕 𝑦 ||top               𝑞(2𝑞 + 1)𝛥𝑦
+
+
+                                                                                  4
+A. Xu et al.                                                                                            International Journal of Heat and Mass Transfer 255 (2026) 127790
+
+
+
+
+Fig. 2. Examples of (a) uniform mesh and (b) non-uniform mesh with half-way bounce-back scheme. Here, l.u. denotes the lattice length-unit [44]. The first fluid
+node lies 0.5 l.u. from the wall due to the half-way bounce-back/anti-bounce-back scheme. (For interpretation of the references to color in this figure legend, the
+reader is referred to the web version of this article.)
+
+
+where 𝑞 = 𝛥𝑦∗2 ∕𝛥𝑦∗1 > 1 is the ratio of the second to the first mesh                conditions, the flow is considered to have reached a steady state when
+spacing, with 𝛥𝑦∗2 = 𝑦∗2 − 𝑦∗1 and 𝛥𝑦∗1 = 𝑦∗1 − 𝑦∗0 .                                the following convergence criteria are satisfied:
+   The third issue is the calculation of spatial averages of flow vari-              ∑
+ables. Based on the midpoint rule, the weighted average of a variable                  𝑖 ‖𝐮(𝑥𝑖 , 𝑡 + 2000𝛿𝑡 ) − 𝐮(𝑥𝑖 , 𝑡)‖2
+                                                                                                 ∑                            < 10−9 ,
+𝜙 on a non-uniform mesh is computed as                                                              𝑖 ‖𝐮(𝑥𝑖 , 𝑡)‖2
+                                                                                     ∑                                                                  (30)
+                                                                                       𝑖 |𝑇 (𝑥𝑖 , 𝑡 + 2000𝛿𝑡 ) − 𝑇 (𝑥𝑖 , 𝑡)|
+          𝑁
+          ∑𝑦           𝑦∗𝑗+1 − 𝑦∗𝑗−1                                                              ∑                          < 10−9
+⟨𝜙𝑗 ⟩ =         𝜙𝑗 ⋅                                                     (29)                        𝑖 |𝑇 (𝑥𝑖 , 𝑡)|
+          𝑗=1
+                            2
+                                                                                     where ‖𝐮‖2 denotes 𝐿2 norm of the velocity field 𝐮.
+This formulation ensures that the contribution of each data point to the
+                                                                                          In LBM simulations, a reference velocity must be specified to fully
+overall average reflects its relative spatial extent within the domain.
+                                                                                     determine the relaxation parameters, owing to the weakly compressible
+However, caution must be exercised when interpreting the results. As
+                                                                                     nature of the method.
+                                                                                                     √        For convection problems, we adopt the free-fall
+illustrated in Fig. 2(b), the vertical extent of the flow domain does not
+                                                                                     velocity 𝑢𝑓 = 𝛽 𝑔 𝐻 𝛥𝑇 as the characteristic velocity, which yields the
+span the full unit length, since the solid walls are located at 𝑦∗𝑏𝑜𝑡𝑡𝑜𝑚 =                                                           √
+                                                                                     dimensionless Mach number 𝑀 𝑎 = 𝑢𝑓 ∕𝑐𝑠 = 𝛽 𝑔 𝐻 𝛥𝑇 ∕𝑐𝑠 . Here, 𝑐𝑠 =
+0.5𝑦∗1 and 𝑦∗𝑡𝑜𝑝 = 1 − 0.5𝑦∗1 , due to the half-way bounce-back scheme.                 √
+Consequently, the average along the vertical flow direction should be                1∕ 3 l.u./t.s. is the lattice speed of sound. Unless otherwise stated, we
+normalized by the effective cell height 1 − 𝑦∗1 .                                    set 𝑀 𝑎 = 0.1 in all simulations. To approximate incompressibility, the
+                                                                                     Mach number should be kept as small as possible. In LBM simulations,
+                                                                                     however, the ratio of the dimensionless time step√ to the dimensionless
+3. Laminar convection in a 2-D side-heated cavity
+                                                                                     spatial
+                                                                                     √         resolution is given by 𝑑 𝑡∕𝑑 𝑥 = (𝛿𝑡 ∕ 𝐻∕(𝛽 𝑔 𝛥𝑇 ))∕(𝛿𝑥 ∕𝐻) =
+                                                                                        𝛽 𝑔 𝐻 𝛥𝑇 = 𝑀 𝑎 ⋅ 𝑐𝑠 , with 𝛿𝑥 = 1 l.u. and 𝛿𝑡 = 1 t.s. Thus, re-
+    We first consider thermal convection in the canonical 2-D side-
+                                                                                     ducing the Mach number decreases the dimensionless time step for a
+heated cavity [46]. The vertical walls are maintained at constant hot
+                                                                                     fixed mesh resolution, which in turn reduces computational efficiency
+and cold temperatures, respectively, while the horizontal walls are
+                                                                                     in time marching. Therefore, our choice of 𝑀 𝑎 = 0.1 represents a
+adiabatic. All four walls enforce no-slip velocity boundary conditions.
+                                                                                     compromise between approximating incompressibility and maintaining
+Although no exact analytical solution exists, this configuration has long
+                                                                                     computational efficiency.
+served as a benchmark for coupled fluid flow and heat transfer, ever
+since Davis [46] reported comprehensive results on the flow struc-                       In Fig. 3, we present the temperature and velocity fields. At 𝑅𝑎 =
+tures and heat transport. A wide variety of solvers and datasets have                106 (see Fig. 3a), the temperature distribution exhibits relatively thick
+been provided for convection at 𝑅𝑎 ≤ 106 . However, relatively fewer                 thermal boundary layers along the hot (left) and cold (right) walls, with
+benchmark datasets are available at 𝑅𝑎 ≥ 107 , since simulating ther-                smooth stratification in the interior. As 𝑅𝑎 increases to 107 and 108
+mal flows at higher Rayleigh number requires more robust numerical                   (see Figs. 3b and 3c), these boundary layers become thinner, reflecting
+methods and greater computational resources. At high 𝑅𝑎, the thermal                 enhanced thermal gradients and stronger convective transport. The ve-
+and velocity boundary layers become extremely thin, demanding high                   locity fields reveal a single dominant clockwise large-scale circulation
+near-wall resolution. This is precisely where non-uniform meshes can                 cell in all cases (see Figs. 3d–f), with elevated velocity magnitudes
+deliver substantial computational savings without compromising ac-                   near the boundary layers. At higher 𝑅𝑎, the maximum velocities are
+curacy, making the side-heated cavity a natural testbed for assessing                concentrated in narrow shear layers adjacent to the sidewalls, while
+both the accuracy and efficiency of ISLBM. Previously, we provided                   the streamlines indicate intensified plume activity near the vertical
+benchmark-quality results using a fine mesh of 20492 uniform mesh                    boundaries. The core region remains relatively quiescent and horizon-
+points [8], which were subsequently verified by Sun and Tao [47],                    tally stratified. Overall, the flow structure agrees well with earlier 2-D
+Chen et al. [48], Vesper et al. [49], and many others [50–58]. Here, to              simulations (see Fig. 10 in our previous work [8] and with many other
+validate the ISLBM for simulating coupled fluid flow and heat transfer,              studies [47–49]).
+we present results for 106 ≤ 𝑅𝑎 ≤ 108 with the Prandtl number fixed                      Figs. 4(a) and 4(b) show the horizontal distributions of the tempera-
+at 𝑃 𝑟 = 0.71. At these Rayleigh numbers, the flow remains steady and                ture 𝑇 ∗ and vertical velocity 𝑣∗ , each averaged over the mid-plane band
+laminar in two dimensions, but the boundary layers become extremely                  0.4 ≤ 𝑦 ≤ 0.6 for three Rayleigh numbers. This averaging minimizes
+thin, posing significant challenges for numerical resolution. Under these            end-wall effects and yields smooth profiles suitable for boundary-layer
+
+                                                                                 5
+A. Xu et al.                                                                                               International Journal of Heat and Mass Transfer 255 (2026) 127790
+
+
+
+
+                                                                                √
+Fig. 3. Contours of (a–c) temperature field 𝑇 ∗ and (d–f ) velocity magnitude       𝑢∗2 + 𝑣∗2 (superposed with streamlines), at (a, d) 𝑅𝑎 = 106 , (b, e) 𝑅𝑎 = 107 , and
+(c, f ) 𝑅𝑎 = 108 .
+
+
+analysis. Pronounced gradients are observed near the sidewalls, re-                   Table 2
+flecting the development of thermal and momentum boundary layers                      Benchmark solutions of the Nusselt numbers and Reynolds number. Columns
+adjacent to the hot and cold boundaries. To examine these boundary                    from left to right indicate: Rayleigh number 𝑅𝑎; flow database; grid number
+layers in more detail, Figs. 4(c) and 4(d) present enlarged views near                𝑁𝑥 × 𝑁𝑦 ; volume-averaged Nusselt number ⟨𝑁 𝑢⟩; average Nusselt number
+                                                                                      along the hot wall 𝑁 𝑢hot ; average Nusselt number along the vertical centerline
+the hot wall (𝑥∗ = 0). The boundary-layer thicknesses are determined
+                                                                                      𝑁 𝑢middle ; volume-averaged Reynolds number ⟨𝑅𝑒⟩.
+using two widely adopted approaches: the 99% criterion method and
+                                                                                        𝑅𝑎    Flow database   𝑁𝑥 × 𝑁𝑦     ⟨𝑁 𝑢⟩        𝑁 𝑢hot      𝑁 𝑢middle    ⟨𝑅𝑒⟩
+the slope method. In the 99% criterion method, the thermal boundary
+layer thickness 𝛿𝑇 is defined as the distance from the wall where 𝑇 ∗                         Present         2572        8.8282       8.8509      8.8277       99.6110
+                                                                                              Present         5132        8.8202       8.8317      8.8200       99.3839
+attains 99% of the difference between the wall and the core value, while                      Present         10252       8.8188       8.8246      8.8188       99.3576
+the velocity boundary layer thickness 𝛿𝑉 is defined as the distance                           ∞               –           8.8186       8.8206      8.8186       99.3542
+                                                                                        106
+where 𝑣∗ reaches 99% of its maximum magnitude. In the slope method,                           𝑝               –           2.6          1.5         2.6          3.1
+𝛿𝑇 is obtained as the ratio of the core-to-wall temperature difference to                     GCI (%)         –           0.0037       0.058       0.0033       0.0043
+                                                                                              Wang [59]       1282        8.830        –           –            99.11
+the near-wall temperature gradient, and 𝛿𝑉 as the ratio of the maximum
+                                                                                              Le Quéré [60]   722         –            8.825       8.825        –
+velocity to the near-wall velocity gradient. Power-law fits show that                         Contrino [39]   20432       8.8252       8.8252      8.8252       –
+both methods yield consistent results, with 𝛿𝑇 ∼ 𝑅𝑎−0.25 and 𝛿𝑉 ∼
+                                                                                              Present         5132        16.5245      16.5461     16.5243      230.6601
+𝑅𝑎−0.25 at 𝑃 𝑟 = 0.71. These results confirm that the thermal and velocity                    Present         10252       16.5133      16.5242     16.5133      230.2448
+boundary layers exhibit comparable scaling with Rayleigh number.                              Present         20492       16.5114      16.5169     16.5114      230.1948
+    In Table 2, we present quantitative results for heat transfer effi-                       ∞               –           16.5110      16.5132     16.5110      230.1879
+                                                                                        107
+                                                                                              𝑝               –           2.5          1.6         2.6          3.1
+ciency in terms of the Nusselt number, and for global flow strength                           GCI (%)         –           0.0030       0.028       0.0029       0.0037
+in terms of the Reynolds number. Specifically, the volume-averaged                            Xu [8]          20492       16.52414     16.52229    16.52428     –
+Nusselt number ⟨𝑁 𝑢⟩ is defined as                                                            Wang [59]       2562        16.528       –           –            229.70
+        √                                                                                     Le Quéré [60]   802         –            16.523      16.523       –
+⟨𝑁 𝑢⟩ = 𝑅𝑎𝑃 𝑟⟨𝑢∗ 𝑇 ∗ ⟩𝑉 + 1                                           (31)                    Contrino [39]   20432       16.5231      16.5233     16.5232      –
+                                                                                              Present         5132        30.3130      30.3503     30.3125      542.9352
+the average Nusselt number along the hot wall 𝑁 𝑢hot is given by                              Present         10252       30.2225      30.2423     30.2223      537.3420
+                                                                                              Present         20492       30.2072      30.2172     30.2072      536.6449
+               𝜕𝑇 ∗
+𝑁 𝑢hot = −⟨         ⟩ ∗                                                 (32)                  ∞               –           30.2041      30.2096     30.2041      536.5456
+               𝜕 𝑥∗ 𝑥 =0                                                                108
+                                                                                              𝑝               –           2.6          2.1         2.6          3.0
+and the average Nusselt number along the vertical centerline 𝑁 𝑢middle                        GCI (%)         –           0.013        0.031       0.013        0.023
+                                                                                              Xu [8]          20492       30.23013     30.22650    30.23050     –
+is expressed as
+                                                                                              Wang [59]       2562        30.242       –           –            534.23
+             √              𝜕𝑇 ∗                                                              Le Quéré [60]   1282        –            30.225      30.225       –
+𝑁 𝑢middle = ⟨ 𝑅𝑎𝑃 𝑟𝑢∗ 𝑇 ∗ −      ⟩ ∗                             (33)
+                            𝜕 𝑥∗ 𝑥 =0.5                                                       Contrino [39]   20432       30.2255      30.2268     30.2261      –
+
+The volume-averaged Reynolds number ⟨𝑅𝑒⟩ is defined as
+       √
+         𝑅𝑎 √ ∗2
+⟨𝑅𝑒⟩ =      ⟨ 𝑢 + 𝑣∗2 ⟩𝑉                                                (34)          solve low-Mach-number equations; Le Quéré [60], who used a pseudo-
+         𝑃𝑟                                                                           spectral Chebyshev algorithm; Contrino et al. [39], who applied an
+Here, ⟨⋅⟩𝑉 denotes a volume average, ⟨⋅⟩𝑥∗ =0 a line average along the                MRT-LBM with a forcing term split using the Strang–Marchuk scheme;
+hot wall, and ⟨⋅⟩𝑥∗ =0.5 a line average along the vertical centerline.                and our previous work [8], which used the LBM with Guo’s forcing
+For comparison, we also include benchmark data from previous stud-                    scheme [42,43,61] on a uniform mesh.
+ies: Wang et al. [59], who employed a finite-difference method to
+
+                                                                                6
+A. Xu et al.                                                                                               International Journal of Heat and Mass Transfer 255 (2026) 127790
+
+
+
+
+Fig. 4. Horizontal distributions of vertically averaged (a) temperature 𝑇 ∗ and (b) vertical velocity 𝑣∗ . Panels (c, d) show enlarged views near the hot wall (𝑥∗ = 0),
+where open circles denote boundary layer locations determined by the 99% criterion method and open squares denote those determined by the slope method.
+
+
+
+
+Fig. 5. (a–c) Contours of the logarithm of velocity divergence magnitude, log10 (|∇ ⋅ 𝐮|). (d–f ) Probability density functions (PDFs) of log10 (|∇ ⋅ 𝐮|), obtained over
+the entire cell, at (a, d) 𝑅𝑎 = 106 , (b, e) 𝑅𝑎 = 107 and (c, f ) 𝑅𝑎 = 108 .
+
+
+    The comparison in Table 2 shows that the present data converge to-                 in steady state. In the present study, however, we incorporate the
+ward the asymptotic value (discussed later) and are in good agreement                  full density 𝜌 in the equilibrium moments 𝐦(eq) , resulting in a weakly
+with previous studies. An interesting observation is that the present                  compressible formulation that enhances numerical stability. As also re-
+Nusselt numbers are slightly lower than those reported in our earlier                  ported by Wang et al. [59] and Wen et al. [62,63], weak compressibility
+work [8], with deviations of less than 0.1%. We attribute this small                   leads to a slight decrease in 𝑁 𝑢 and a slight increase in 𝑅𝑒, without
+discrepancy to the weak compressibility of the current LB model. In                    significantly affecting the scaling exponents with respect to 𝑅𝑎.
+our previous work [8], only density fluctuation 𝛿 𝜌 were included in
+certain components of the equilibrium moments 𝐦(eq) (see Eq. (3)                           To assess the compressibility effects intrinsic to the LBM employed
+in [8]), which provided a good approximation for incompressible flows                  in this study, we examine both the spatial distribution and statistical
+
+                                                                                   7
+A. Xu et al.                                                                                             International Journal of Heat and Mass Transfer 255 (2026) 127790
+
+
+properties of the velocity divergence field. Although the LBM formu-                Table 3
+lation is nearly incompressible, the simulations operate in a weakly                Convergence behavior of flow variables at cell center. The columns from
+compressible regime with a Mach number of 𝑀 𝑎 = 0.1, necessitating                  left to right indicate the following: Rayleigh number 𝑅𝑎; absolute value
+a careful evaluation of divergence behavior. Figs. 5(a–c) show contour              of vorticity |𝜔𝑐 |; temperature 𝑇𝑐 , horizontal velocity component 𝑢𝑐 ; vertical
+                                                                                    velocity component 𝑣𝑐 .
+maps of the base-10 logarithm of the velocity divergence magnitude,
+                                                                                     𝑅𝑎      Grid         |𝜔𝑐 |            𝑇𝑐           𝑢𝑐                 𝑣𝑐
+log10 (|∇ ⋅ 𝐮|), computed over the entire domain. In all cases, the di-
+vergence field remains predominantly low, with most of the domain                            2572         0.1175           0.49945      −1.2163×10−4       1.8504×10−5
+                                                                                             5132         0.1158           0.49947      −1.3013×10−4       1.9377×10−5
+exhibiting values below 10−4 , consistent with the nearly incompressible
+                                                                                     106     10252        0.1156           0.49948      −1.3239×10−4       1.9551×10−5
+character of the formulation. At 𝑅𝑎 = 106 (see Fig. 5a), the divergence                      ∞            0.1155           0.49948      −1.3320×10−4       1.9594×10−5
+field is characterized by smoother structures, reflecting weak localized                     𝑝            2.6              2.0          1.9                2.3
+deviations from incompressibility. As 𝑅𝑎 increases to 107 (see Fig. 5b),                     GCI (%)      0.054            0.00055      0.77               0.27
+finer features emerge, with localized regions of elevated divergence                         5132         0.1088           0.49930      −8.0524×10−5       8.2430×10−6
+magnitude appearing intermittently throughout the domain. At the                             10252        0.1076           0.49934      −8.3466×10−5       8.3163×10−6
+                                                                                     107     20492        0.1075           0.49934      −8.4272×10−5       8.3330×10−6
+highest Rayleigh number considered, 𝑅𝑎 = 108 (see Fig. 5c), the
+                                                                                             ∞            0.1074           0.49935      −8.4576×10−5       8.3379×10−6
+divergence field develops elongated and filamentary structures aligned                       𝑝            2.7              2.0          1.9                2.1
+with regions of intensified thermal plumes and sharp velocity gradi-                         GCI (%)      0.037            0.00068      0.45               0.073
+ents. Although local compressibility effects are slightly amplified at                       5132         4.1046×10−2      0.49911      −3.7830×10−5       3.1377×10−6
+higher Rayleigh numbers, they remain small in magnitude and spatially                        10252        3.9075×10−2      0.49922      −4.2857×10−5       2.7224×10−6
+confined. This ensures that the weakly compressible LBM faithfully                   108     20492        3.8864×10−2      0.49925      −4.4429×10−5       2.6433×10−6
+reproduces the incompressible flow characteristics.                                          ∞            3.8838×10−2      0.49926      −4.5144×10−5       2.6248×10−6
+                                                                                             𝑝            3.2              2.0          1.7                2.4
+    To quantitatively assess the divergence statistics, Figs. 5(d–f) show                    GCI (%)      0.082            0.0024       2.0                0.88
+the probability density functions (PDFs) of log10 (|∇ ⋅ 𝐮|), evaluated at
+three spatial resolutions for each Rayleigh numbers. In all cases, the
+PDFs peak within |∇ ⋅ 𝐮| ∈ [10−7 , 10−3 ], with long tails extending
+down to 10−11 , again consistent with a nearly incompressible flow                  local temperature and velocity converge at approximately second-order
+field. As resolution increases, the PDFs converge, particularly near the            accuracy.
+most probable values. In addition, a modest increase in the domain-                     In addition to assessing the observed order of convergence and
+averaged divergence is observed when 𝑅𝑎 increases from 106 to 108 .                 extrapolated asymptotic values, we further quantified the discretization
+This trend is physically reasonable, as stronger thermal forcing steepens           uncertainty using the Grid Convergence Index (GCI), following the
+velocity and temperature gradients, thereby amplifying local compress-              ASME procedure [65]. For three systematically refined meshes with a
+ibility effects in weakly compressible formulations. Similar divergence             refinement ratio of 𝑟, the GCI on the fine mesh is computed as
+characteristics have also been reported in high-fidelity incompressible                           𝐹𝑠 ||  (𝛥𝑥fine ) −  (𝛥𝑥medium ) ||
+                                                                                    GCIfine =                                        | × 100%,                      (37)
+simulations. For example, Ostilla-Mónico et al. [64] observed locally                           𝑟𝑝 − 1 ||        (𝛥𝑥fine )          |
+non-solenoidal fields with residual divergence of order of 𝑂(10−3 ) in
+multiple-resolution incompressible Navier–Stokes simulations. To the                where 𝑝 is the observed convergence order and 𝐹𝑠 = 1.25 is the safety
+best of our knowledge, such low levels of divergence do not introduce               factor recommended for three-grid studies. The resulting GCI values
+significant qualitative or quantitative deviations, even in turbulent               are typically below 0.1% for global quantities such as the Nusselt and
+convection regimes.                                                                 Reynolds numbers (see Table 2), whereas local velocity components ex-
+    Our non-uniform mesh is systematically refined to preserve ge-                  hibit somewhat larger values, up to ∼ 2% (see Table 3), reflecting their
+ometric similarity while halving the effective mesh spacing at each                 higher sensitivity to grid resolution. These results demonstrate that the
+refinement level. To assess convergence, we employ Richardson ex-                   fine-mesh solutions lie within the asymptotic range of convergence and
+trapolation using three successively refined meshes. For 𝑅𝑎 = 106 , the             that the numerical uncertainty in the reported quantities is negligible.
+grid resolutions are (𝑁coarse , 𝑁medium , 𝑁fine ) = (257, 513, 1025), and for           We evaluate the computational efficiency of our in-house LBM
+𝑅𝑎 = 107 and 108 , they are (𝑁coarse , 𝑁medium , 𝑁fine ) = (513, 1025, 2049).       solver by comparing it against two widely used open-source solvers:
+Throughout, the effective mesh spacing follows 𝛥𝑥𝑖 ∝ 1∕𝑁𝑖 , with                    Nek5000 (version v19.0), which is based on the spectral element
+refinement ratio 𝑟 = 𝛥𝑥coarse ∕𝛥𝑥medium = 𝛥𝑥medium ∕𝛥𝑥fine = 2. Let  (𝛥𝑥)          method (SEM) [66], and OpenFOAM (version 8), which employs the
+denote a flow quantity computed on mesh spacing 𝛥𝑥. The observed                    finite volume method (FVM) [67].
+order of convergence 𝑝 is then estimated as                                             The Nek5000 solver extends the standard finite element method to
+        (                                )                                          higher-order polynomial basis functions [66]. In this study, the poly-
+          |  (𝛥𝑥     )− (𝛥𝑥medium ) ||
+     ln ||  (𝛥𝑥coarse )− (𝛥𝑥         |                                            nomial order for both velocity and pressure is set to 𝑁 = 8, following
+          |       medium       fine |
+                                   )
+𝑝=                                                                       (35)       the Pn–Pn formulation. This choice is consistent with values commonly
+                    ln(𝑟)
+                                                                                    adopted in high-fidelity turbulent flow simulations. The Pn–Pn for-
+The corresponding asymptotic, grid-independent value is obtained as                 mulation employs a time-splitting scheme that decouples the pressure
+            𝑟𝑝  (𝛥𝑥fine ) −  (𝛥𝑥medium )                                          and velocity fields into three distinct substeps. The pressure Poisson
+ (1∕∞) ≈                                                             (36)
+                         𝑟𝑝 − 1                                                     equation is solved using the preconditioned Generalized Minimal Resid-
+Table 2 reports the estimated convergence orders and extrapolated                   ual (GMRES) method, while the Helmholtz equations for the velocity
+asymptotic values of the Nusselt and Reynolds numbers. Although the                 components are solved using the preconditioned Conjugate Gradient
+table lists four significant digits for readability, all computations were          (CG) method. For temporal discretization, a semi-implicit scheme is
+performed with at least fourteen-digit precision. The interpolation-                employed. The viscous term is discretized implicitly using a second-
+supplemented LBM solver achieves nearly third-order spatial accuracy                order backward difference scheme, while the nonlinear convection term
+in domain-integrated quantities, such as volume-averaged Nusselt and                is discretized explicitly using a second-order extrapolation scheme.
+Reynolds numbers. This enhanced accuracy arises because the integra-                The energy equation, governing temperature via a convection–diffusion
+tion process inherently damps local discretization errors. To further               formulation, is handled analogously: the transient and diffusion terms
+examine this hypothesis, Table 3 reports convergence orders for local               are treated implicitly with a second-order backward difference scheme,
+flow variables evaluated at the cell center. The vorticity field, being             while the convection term is treated explicitly using a second-order
+a derivative of velocity, exhibits close to third-order accuracy, while             extrapolation scheme.
+
+                                                                                8
+A. Xu et al.                                                                                         International Journal of Heat and Mass Transfer 255 (2026) 127790
+
+
+    The OpenFOAM solver enforces the integral form of the conserva-             Time), defined as:
+tion equations on each control volume. In this study, we employed the
+transient buoyantPimpleFoam solver [67]. The Navier–Stokes equations                          measured wall-clock time
+                                                                                WCTpDT =                                 [s]                                    (39)
+                                                                                            simulated dimensionless time
+were solved using the PIMPLE pressure–velocity coupling algorithm.
+Within the inner iterations, the Semi-Implicit Method for Pressure-             which quantifies the wall-clock time required to simulate one unit of
+Linked Equations (SIMPLE) scheme was applied for pressure correction,           dimensionless time on a given solver and hardware configuration. A
+while the outer iterations used the Pressure Implicit with Splitting of         lower WCTpDT indicates greater efficiency, as fewer computational
+Operators (PISO) scheme to handle transient terms, thereby improv-              resources are required to advance the solution over one unit of di-
+ing convergence and numerical stability. For temporal discretization,           mensionless time. Figs. 7(a) and 7(b) show WCTpDT as a function
+a second-order implicit backward scheme was adopted. Spatial dis-               of grid number for uniform and non-uniform meshes, respectively.
+cretization was carried out within the Gauss linear framework, in               On uniform meshes, the LBM solver consistently achieves the lowest
+which volume integrals are evaluated by Gaussian quadrature and face            WCTpDT across all tested resolutions. For non-uniform meshes, Open-
+fluxes are approximated using linear interpolation. The pressure equa-          FOAM shows a modest advantage at the coarsest resolution, but as grid
+tion in the resulting linear systems was solved using the Geometric–            size increases, the LBM solver demonstrates superior time-advancement
+Algebraic Multi-Grid (GAMG) method to accelerate convergence for                efficiency. This advantage becomes even clearer when WCTpDT is
+large-scale problems. The velocity and energy equations were solved             normalized by the LBM results, as shown in Figs. 7(c) and 7(d). It is
+using the Preconditioned Bi-Conjugate Gradient Stabilized (PBiCGStab)           worth noting that the Courant–Friedrichs–Lewy (CFL) numbers adopted
+method, which efficiently handles non-symmetric sparse matrices while           were 0.5 for Nek5000 and 0.9 for OpenFOAM, allowing these solvers
+maintaining both stability and accuracy.                                        to employ relatively larger time steps than LBM. On the uniform mesh,
+    As a performance metric, we adopt the million lattice updates per           the effective nondimensional timestep is 𝑑 𝑡∕𝑑 𝑥 = 𝑀 𝑎 ⋅ 𝑐𝑠 ≈ 0.0577 for
+second (MLUPS), defined as:                                                     LBM, compared with 𝑑 𝑡∕𝑑 𝑥 ≈ 0.8 for Nek5000 and 𝑑 𝑡∕𝑑 𝑥 ≈ 1.2 for
+               grid size × iteration steps                                      OpenFOAM. While larger timesteps should, in principle, reduce the cost
+MLUPS =                                                             (38)        per simulated physical time, Nek5000 and OpenFOAM exhibit substan-
+                  running time × 106
+                                                                                tially higher per-step overhead. As a result, their WCTpDT values are
+A higher MLUPS value indicates greater computational efficiency. The            roughly an order of magnitude larger than those of LBM. This explains
+use of simple geometry and boundary conditions in the side-heated cav-          why, despite LBM attaining two to three orders of magnitude higher
+ity enables direct and fair comparisons with Nek5000 and OpenFOAM,              MLUPS values than Nek5000 and OpenFOAM, the relative advantage
+while minimizing discrepancies related to solver-specific geometrical           in WCTpDT is smaller. Nevertheless, as the grid resolution increases,
+handling or mesh preprocessing. This ensures that the reported perfor-          the efficiency gap widens and the LBM solver becomes increasingly
+mance metrics primarily reflect the core algorithmic efficiency, rather         advantageous.
+than differences in geometry setup. Figs. 6(a) and 6(b) show MLUPS
+as a function of grid number on uniform and non-uniform meshes,                     To further assess the computational efficiency of the in-house LBM
+respectively. The simulations were carried at 𝑅𝑎 = 108 and 𝑃 𝑟 = 0.71,          solver on modern GPU architectures, additional performance tests were
+on AMD EPYC 9135 CPUs. For non-uniform meshes, the stretching                   conducted on an NVIDIA A100 GPU. Fig. 8 compares the solver’s
+coefficient in the error-function (i.e. Eq. (26)) was set to 𝑎 = 2.1.           performance on uniform and non-uniform meshes in terms of MLUPS
+Increasing the grid resolution from 10242 to 81922 has minimal impact           and WCTpDT across different grid sizes. As shown in Fig. 8(a), on
+on the performance of the in-house LBM solver. In contrast, Nek5000             all tested grids, MLUPS values on uniform meshes consistently exceed
+shows a slight decline, while OpenFOAM exhibits a significant drop in           those on non-uniform meshes. This disparity stems primarily from the
+efficiency. To further emphasize the relative differences, Figs. 6(c) and       additional interpolation operations required for off-lattice streaming on
+6(d) present MLUPS values normalized by those of the in-house LBM               non-uniform grids, which introduce irregular memory access patterns
+solver at each grid size. The results clearly show that Nek5000 becomes         and reduce throughput. The normalized MLUPS (see Fig. 8b) shows
+up to two orders of magnitude slower than LBM at the largest grid size          that non-uniform grids achieve only 60%–70% of the performance of
+of 81922 . For OpenFOAM, the disparity is even more pronounced, reach-          uniform grids, depending on resolution. The quadratic interpolation
+ing up to three orders of magnitude slower at the same resolution. The          step, particularly its memory-bound indirect access pattern, is the main
+observed performance advantage of the LBM stems from its reliance               source of this performance degradation. Uniform meshes permit fully
+almost entirely on local operations (collision and streaming) with no           coalesced and predictable memory access, whereas non-uniform inter-
+global matrix solves or complex stencil dependencies. This design yields        polation requires fetching data from spatially non-contiguous mem-
+excellent memory locality and computational regularity, allowing near-          ory locations, leading to irregular global memory access and reduced
+ideal scaling across CPU cores until memory-bandwidth limits are                throughput. The collision step, in contrast, is compute-bound and con-
+reached. In contrast, SEM and FVM require global or semi-global solves          sistently sustains high arithmetic throughput regardless of mesh type.
+for the pressure field and other coupled variables, involving sparse            Consequently, the observed 30%–40% drop in MLUPS for non-uniform
+matrix–vector products, iterative solvers, and halo exchanges. These            grids reflects interpolation overhead rather than any intrinsic ineffi-
+introduce higher communication costs and memory-access irregularity.            ciency of the LBM algorithm. WCTpDT increases nearly linearly with
+Consequently, the orders-of-magnitude speedup of LBM becomes most               grid size for both mesh types (see Fig. 8c), while the relative overhead
+pronounced at large grid sizes, where communication overhead and                associated with non-uniform meshes remains stable at about a factor of
+global-solve cost dominate in SEM/FVM frameworks.                               three across resolutions (see Fig. 8d). These results confirm that, despite
+                                                                                modest penalties from interpolation overhead, the in-house LBM solver
+    For steady problems, different solvers may require varying numbers
+                                                                                retains excellent scalability and GPU efficiency on both mesh types.
+of time steps to converge, depending on the temporal discretization
+                                                                                This enables practical large-scale simulations on contemporary accel-
+scheme employed and the inherent numerical damping of each solver.
+                                                                                erator hardware. It is also worth noting that our LBM solver on GPUs
+In unsteady simulations, however, it is often necessary to quantify
+                                                                                employs double-precision floating point arithmetic to ensure accuracy.
+the computational cost of advancing the solution over a prescribed
+dimensionless physical time (e.g., 1, 10, or 100 free-fall time). This             We also assess the economic benefits of the LBM solver on GPU
+requirement is particularly relevant in large-scale turbulent convec-           platforms through a simple cost estimation. Consider a simulation at
+tion studies, where long integrations are needed to achieve statistical         𝑅𝑎 = 108 and 𝑃 𝑟 = 0.71 using a 81932 non-uniform mesh with a stretch-
+stationarity and to accumulate converged averages. To this end, we              ing coefficient of 𝑎 = 2.1. On an NVIDIA A100 GPU, the wall-clock time
+introduce the metric WCTpDT (Wall-Clock Time per Dimensionless                  required to advance the simulation by 1 𝑡𝑓 (i.e. WCTpDT) is 1.5722 ×
+
+                                                                            9
+A. Xu et al.                                                                                        International Journal of Heat and Mass Transfer 255 (2026) 127790
+
+
+
+
+Fig. 6. Performance comparison of three solvers in terms of million lattice updates per second (MLUPS): an in-house solver using the lattice Boltzmann method
+(LBM), Nek5000 using the spectral element method (SEM), and OpenFOAM using the finite volume method (FVM). (a, b) Absolute MLUPS as a function of grid
+number; (c, d) MLUPS normalized by the corresponding LBM values, on (a, c) uniform and (b, d) non-uniform meshes.
+
+
+
+
+Fig. 7. Performance comparison of in-house LBM solver, Nek5000 and OpenFOAM in terms of wall-clock time per dimensionless time (WCTpDT). (a, b) Absolute
+WCTpDT as a function of grid number; (c, d) WCTpDT normalized by the corresponding LBM values, on (a, c) uniform and (b, d) non-uniform meshes.
+
+
+104 s ≈ 4.37 h. Assuming a nominal rental cost of 7 RMB per GPU-                  yielding a cost of 797.74 h × 0.1 RMB/h ≈ 79.77 RMB, where we assume
+hour, the corresponding cost per 𝑡𝑓 is 4.37 h × 7 RMB/h ≈ 30.57 RMB.              a conservative rate of 0.1 RMB per CPU-core hour. For OpenFOAM,
+By contrast, CPU-based solvers requires significantly longer wall-clock           the required time increases to 1.0981646 × 107 s ≈ 3050.5 h, yielding
+times. For Nek5000, the time per 𝑡𝑓 is about 2.871852 × 106 s ≈ 797.74 h,         3050.5 h × 0.1 RMB/h ≈ 305.05 RMB. It is important to emphasize
+
+
+                                                                             10
+A. Xu et al.                                                                                         International Journal of Heat and Mass Transfer 255 (2026) 127790
+
+
+
+
+Fig. 8. GPU performance of the in-house LBM solver on an NVIDIA A100 for uniform and non-uniform meshes. (a) Absolute MLUPS as a function of grid number,
+(b) MLUPS normalized by the corresponding uniform-mesh performance. (c) Absolute WCTpDT as a function of grid number, (d) WCTpDT normalized by the
+corresponding uniform-mesh value.
+
+
+that both Nek5000 and OpenFOAM typically run on multi-core CPU                     agrees well with earlier 3-D simulations (see Fig. 10 in our previous
+architectures, where scalability is often limited by communication over-           work [37] and with many other studies [47,48]).
+head and memory contention. Consequently, the effective performance                    Figs. 10(a) and 10(b) show the horizontal distributions of the tem-
+falls short of ideal expectations, further increasing wall-clock times and         perature 𝑇 ∗ and vertical velocity 𝑣∗ , each averaged over the mid-plane
+overall computational cost. These considerations highlight the substan-            band 0.4 ≤ 𝑦 ≤ 0.6 for three Rayleigh numbers. Both quantities
+tial economic advantage of the GPU-based LBM solver, an advantage                  exhibit clear gradients near the sidewalls, indicating the formation
+that becomes increasingly pronounced in large-scale simulations.                   of thermal and momentum boundary layers. Enlarged views near the
+                                                                                   hot wall (𝑥∗ = 0) are provided in Figs. 10(c) and 10(d), where open
+4. Laminar thermal convection in a 3-D side-heated cavity                          circles and squares denote the boundary layer thicknesses determined
+                                                                                   using the 99% criterion and slope methods, respectively. From these
+    We next consider thermal convection in the canonical 3-D side-                 measurements, the scaling relations are obtained as 𝛿𝑇 ∼ 𝑅𝑎−0.26 for
+heated cavity [37]. The left and right vertical walls are maintained               the thermal boundary layer and 𝛿𝑉 ∼ 𝑅𝑎−0.23 for the velocity boundary
+at constant hot and cold temperatures, respectively, while the other               layer, with consistent results from both methods.
+four walls are adiabatic. All six walls impose no-slip velocity boundary               In Table 4, we present quantitative results for heat transfer effi-
+conditions. In our previous work [37], we provided results obtained on             ciency in terms of the Nusselt number, and for global flow strength
+a uniform mesh of 2573 grid points, which were subsequently verified               in terms of the Reynolds number. Specifically, the volume-averaged
+by Sun and Tao [47], Chen et al. [48], Ren et al. [68,69], Yigit                   Nusselt number ⟨𝑁 𝑢⟩ is defined as
+et al. [70], Vesper et al. [49], and many others [55,56,71–73]. Here, to                    √
+validate the ISLBM for simulating coupled fluid flow and heat transfer             ⟨𝑁 𝑢⟩ = 𝑅𝑎𝑃 𝑟⟨𝑢∗ 𝑇 ∗ ⟩𝑉 + 1                                         (40)
+in 3-D, we present simulation results for 105 ≤ 𝑅𝑎 ≤ 107 , with the                and the average Nusselt numbers along the hot and cold walls, 𝑁 𝑢hot
+Prandtl number fixed at 0.71. Under these conditions, the flow reaches             and 𝑁 𝑢cold , are given by
+a steady state once the same convergence criteria as in the 2-D case are                       𝜕𝑇 ∗                   𝜕𝑇 ∗
+satisfied (see Eq. (30)).                                                          𝑁 𝑢hot = −⟨      ⟩ , 𝑁 𝑢cold = −⟨ ∗ ⟩cold                         (41)
+                                                                                               𝜕 𝑥∗ hot               𝜕𝑥
+    Fig. 9 illustrates the temperature fields 𝑇 ∗ , where contour slices in        The volume-averaged Reynolds number ⟨𝑅𝑒⟩ is defined as
+the vertical planes highlight the evolution of thermal structures with                     √
+increasing buoyancy forcing. At 𝑅𝑎 = 105 (see Fig. 9a), the flow is                           𝑅𝑎 √ ∗2
+                                                                                   ⟨𝑅𝑒⟩ =        ⟨ 𝑢 + 𝑣∗2 ⟩𝑉                                        (42)
+characterized by relatively smooth and broad thermal gradients with                           𝑃𝑟
+thick boundary layers. As 𝑅𝑎 increases to 106 (see Fig. 9b), convection            Here, ⟨⋅⟩𝑉 denotes a volume average, while ⟨⋅⟩hot/cold denotes an area
+becomes more vigorous, leading to thinner boundary layers and sharper              average along the hot or cold wall. For comparison, we also include
+vertical temperature gradients, indicative of enhanced plume activity.             data from previous studies, such as Fusegi et al. [74], who employed
+At 𝑅𝑎 = 107 (see Fig. 9c), convective transport dominates: the temper-             a control-volume-based finite difference method with a strongly im-
+ature field exhibits well-defined plume structures, pronounced vertical            plicit scheme; Tric et al. [75], who used a pseudo-spectral Chebyshev
+mixing, and significantly thinner boundary layers. These visualizations            algorithm based on the projection–diffusion method; and our earlier
+demonstrate the progressive transition from conduction-dominated to                work [37], which employed the LBM with Guo’s forcing scheme [42,
+convection-dominated regimes as 𝑅𝑎 increases. The overall structure                43,61] on a uniform mesh.
+
+                                                                              11
+A. Xu et al.                                                                                                International Journal of Heat and Mass Transfer 255 (2026) 127790
+
+
+
+
+                                           Fig. 9. Temperature slices 𝑇 ∗ at (a) 𝑅𝑎 = 105 , (b) 𝑅𝑎 = 106 , and (c) 𝑅𝑎 = 107 .
+
+
+
+
+Fig. 10. Horizontal distributions of vertically averaged (a) temperature 𝑇 ∗ and (b) vertical velocity 𝑣∗ . Panels (c, d) show enlarged views near the hot wall (𝑥∗ = 0),
+where open circles denote boundary layer locations determined by the 99% criterion method, and open squares denote boundary layer locations determined by
+the slope method.
+
+
+
+
+                         Fig. 11. PDFs of log10 (|∇ ⋅ 𝐮|) obtained over the entire domain, for (a) 𝑅𝑎 = 105 , (b) 𝑅𝑎 = 106 , and (c) 𝑅𝑎 = 107 .
+
+
+    The results in Table 4 demonstrate good agreement with previous                     was constructed to preserve geometric similarity while reducing the
+studies, with most values converge toward the corresponding asymp-                      effective mesh spacing. Richardson extrapolation was then applied
+totic limits. To ensure systematic refinement, the non-uniform mesh                     using three successively refined meshes: for 𝑅𝑎 = 105 , the grid numbers
+
+
+                                                                                   12
+A. Xu et al.                                                                                              International Journal of Heat and Mass Transfer 255 (2026) 127790
+
+
+Table 4                                                                               Table 5
+Benchmark solutions of the Nusselt numbers and Reynolds number. The                   Convergence behavior of flow variables at the cell center. The columns from
+columns from left to right indicate the following: Rayleigh number 𝑅𝑎; flow           left to right indicate the following: Rayleigh number 𝑅𝑎; grid number 𝑁𝑥 ×
+database; grid number 𝑁𝑥 × 𝑁𝑦 × 𝑁𝑧 ; volume-averaged Nusselt number ⟨𝑁 𝑢⟩;            𝑁𝑦 ×𝑁𝑧 ; absolute value of vorticity magnitude |𝜔𝑐 |; temperature 𝑇𝑐 ; horizontal
+average Nusselt number along the hot wall 𝑁 𝑢hot ; average Nusselt number             velocity 𝑢𝑐 ; vertical velocity 𝑣𝑐 .
+along the cold wall 𝑁 𝑢cold ; volume-averaged Reynolds number ⟨𝑅𝑒⟩.                    𝑅𝑎       Grid         |𝜔𝑐 |       𝑇𝑐             𝑢𝑐                  𝑣𝑐
+ 𝑅𝑎    Flow database   𝑁𝑥 × 𝑁𝑦 × 𝑁𝑧   ⟨𝑁 𝑢⟩     𝑁 𝑢hot     𝑁 𝑢cold    ⟨𝑅𝑒⟩                      1293         0.2565      0.49948        −2.1342 × 10−4      1.3056 × 10−4
+       Present         1293           4.3406    4.3624     4.3624     39.4521                   1813         0.2560      0.49949        −2.2689 × 10−4      1.2423 × 10−4
+       Present         1813           4.3363    4.3520     4.3520     39.3768                   2573         0.2557      0.49950        −2.3377 × 10−4      1.2119 × 10−4
+                                                                                       105
+       Present         2573           4.3346    4.3457     4.3457     39.3500                   ∞            0.2548      0.49950        −2.4093 × 10−4      1.1837 × 10−4
+ 105
+                       ∞              4.3334    4.3362     4.3362     39.3352                   𝑝            0.9         2.0            2.0                 2.1
+                       𝑝              2.6       1.5        1.5        3.0                       GCI (%)      0.5         0.002          4.0                 3.0
+                       GCI (%)        0.03      0.3        0.3        0.05                      1813         0.1419      0.49942        −1.2268 × 10−4      1.4722 × 10−5
+       Fusegi [74]     623            –         4.361      –          –                         2573         0.1383      0.49946        −1.3361 × 10−4      1.6437 × 10−5
+       Tric [75]       813            –         –          4.3370     –                         3613         0.1370      0.49948        −1.3933 × 10−4      1.7106 × 10−5
+                                                                                       106
+       Present         1813           8.6601    8.6931     8.6931     97.4828                   ∞            0.1363      0.49949        −1.4563 × 10−4      1.7532 × 10−5
+       Present         2573           8.6441    8.6669     8.6668     97.0075                   𝑝            3.0         2.1            1.9                 2.1
+       Present         3613           8.6379    8.6540     8.6540     96.8464                   GCI (%)      0.63        0.0039         5.7                 3.1
+ 106                   ∞              8.6341    8.6419     8.6419     96.7638                   1813         0.1296      0.49898        −7.1568 × 10−5      6.1396 × 10−6
+                       𝑝              2.8       2.1        2.1        3.1                       2573         0.1149      0.49917        −7.3572 × 10−5      7.4064 × 10−6
+                       GCI (%)        0.055     0.18       0.18       0.11                      3613         0.1094      0.49926        −7.8387 × 10−5      7.7847 × 10−6
+       Xu [37]         2573           –         8.64345    8.64342    –                107
+                                                                                                ∞            0.1060      0.49934        –                   7.9458 × 10−6
+       Fusegi [74]     623            –         8.770      –          –                         𝑝            2.8         2.3            –                   3.5
+       Tric [75]       813            –         –          8.6407     –                         GCI (%)      3.9         0.019          –                   2.6
+       Present         1813           16.5341   16.6161    16.6158    237.3925
+       Present         2573           16.4179   16.4681    16.4680    230.7625
+       Present         3613           16.3670   16.4001    16.4001    228.4148
+ 107                   ∞              16.3274   16.3422    16.3422    227.1278        non-uniform meshes executed on AMD EPYC 9135 CPUs. For non-
+                       𝑝              2.4       2.3        2.3        3.0             uniform meshes, the stretching coefficient 𝑎 = 2.1. As seen in Figs. 12(a)
+                       GCI (%)        0.30      0.44       0.44       0.70
+       Xu [37]         2573           –         16.40322   16.40285   –
+                                                                                      and 12(b), the absolute MLUPS values reveal that the in-house LBM
+       Tric [75]       1113           –         –          16.3427    –               solver consistently sustains throughput at 𝑂(10) MLUPS across all tested
+                                                                                      grid sizes, while Nek5000 and OpenFOAM are two to three orders
+                                                                                      of magnitude slower and exhibit decreasing performance as the grid
+                                                                                      size increases. On the largest grids, the throughput of Nek5000 and
+are (𝑁coarse , 𝑁medium , 𝑁fine ) = (129, 181, 361); for 𝑅𝑎 = 106 and 107 ,            OpenFOAM drops to near 𝑂(10−1 ) MLUPS, whereas the in-house LBM
+they are (𝑁coarse , 𝑁medium , 𝑁fine ) = (181, 257, 361). Throughout, we               solver maintains nearly constant performance, demonstrating resilience
+take 𝛥𝑥𝑖 ∝ 1∕𝑁𝑖 , with a refinement ratio 𝑟 = 𝛥𝑥coarse ∕𝛥𝑥medium =                    to increasing problem size. The normalized MLUPS results in Figs. 12(c)
+𝛥𝑥medium ∕𝛥𝑥fine ≈ 1.41. Table 4 reports the estimated convergence                    and 12(d) further highlight the relative efficiency of the three solvers:
+orders and Richardson-extrapolated asymptotic values of the Nusselt                   Nek5000 and OpenFOAM achieve at most a few percent of the LBM
+and Reynolds numbers. The included GCI values confirm that nu-                        performance, with the performance gap widening at higher resolutions,
+merical uncertainty is generally small, typically below 1%. Larger                    particularly on non-uniform meshes. By contrast, the relative advantage
+uncertainties are observed for local variables, reflecting the greater                of the LBM solver remains robust or even improves as the grid size
+difficulty of achieving convergence in these quantities. Nevertheless,                increases.
+these results validate the robustness of the grid-refinement study. The
+ISLBM solver achieves nearly third-order spatial accuracy for volume-
+                                                                                          Figs. 13(a) and 13(b) further show the absolute WCTpDT values
+averaged Nusselt and Reynolds numbers, owing to the error-canceling
+                                                                                      as functions of grid number on uniform and non-uniform meshes,
+effect of domain integration. To further examine this behavior, Table 5
+                                                                                      respectively. On uniform meshes, the in-house LBM solver consistently
+summarizes flow variables evaluated at the cell center. Consistent with
+                                                                                      achieves shorter runtimes than Nek5000, while OpenFOAM is slightly
+the 2-D case, these local flow variables converge at approximately
+                                                                                      more efficient at the coarsest grid but quickly loses this advantage
+second order.
+                                                                                      as the resolution increases, eventually becoming the most expensive
+    As in the 2-D case, compressibility effects are assessed by examining             solver. On non-uniform meshes, OpenFOAM again performs best at the
+the divergence field in three dimensions. Fig. 11 shows the PDFs of                   smallest grid, but its cost grows steeply with resolution, surpassing both
+log10 (|∇ ⋅ 𝐮|) at 𝑅𝑎 = 105 , 106 , and 107 , evaluated at three different            LBM and Nek5000 by more than an order of magnitude at the largest
+grid resolutions. Across all Rayleigh numbers, the PDFs peak between                  grids. Nek5000, by contrast, scales more smoothly and maintains a
+|∇ ⋅ 𝐮| ∈ [10−6 , 10−4 ] with long tails extending toward 10−11 , indicating          modest runtime advantage over LBM across all non-uniform grid sizes.
+that the flow remains nearly solenoidal. With increasing resolution,                  The normalized results in Figs. 13(c) and 13(d) further highlight these
+the distributions collapse onto each other, demonstrating numerical                   trends. On uniform meshes, Nek5000 requires approximately 3–5 times
+convergence of the divergence statistics. At higher Rayleigh numbers,                 the runtime of LBM per unit dimensionless time, while OpenFOAM
+the PDFs broaden slightly and the mean divergence increases modestly,                 starts faster at coarse grids but becomes significantly more expensive at
+reflecting stronger thermal forcing and sharper gradients that locally                higher resolutions. On non-uniform meshes, Nek5000 consistently out-
+amplify compressibility effects. Nevertheless, these deviations remain                performs LBM, requiring only about 50%–80% of its runtime, whereas
+small in magnitude. Taken together with the 2-D results, these findings               OpenFOAM undergoes a sharp transition from being the fastest solver
+confirm that the weakly compressible LBM preserves the incompress-                    at small grids to the least efficient at the large grids, exceeding LBM’s
+ible character of thermal convection in both two and three dimensions,                cost by a factor of 5–6. Although Nek5000 and OpenFOAM employ
+even at high Rayleigh numbers.                                                        larger CFL numbers (0.5 and 0.9, respectively) than the LBM solver,
+                                                                                      which should in principle reduce their cost per simulated physical
+   To extend the performance assessment to three dimensions, we                       time, their substantially higher per-step computational overhead offsets
+adopt MLUPS as the performance metric. Fig. 12 shows results for                      this benefit. Consequently, WCTpDT values for both remain larger,
+3-D simulations at 𝑅𝑎 = 107 and 𝑃 𝑟 = 0.71 on both uniform and                        particularly at high resolutions. As the grid size increases, the efficiency
+
+                                                                                 13
+A. Xu et al.                                                                                   International Journal of Heat and Mass Transfer 255 (2026) 127790
+
+
+
+
+Fig. 12. Performance comparison of in-house LBM solver, Nek5000 and OpenFOAM in terms of MLUPS. (a, b) Absolute MLUPS as a function of grid number,
+(c, d) MLUPS normalized by the corresponding LBM solver, on (a, c) uniform and (b, d) non-uniform meshes.
+
+
+
+
+Fig. 13. Performance comparison of in-house LBM solver, Nek5000 and OpenFOAM solvers in terms of WCTpDT. (a, b) Absolute WCTpDT as a function of grid
+number, (c, d) the WCTpDT normalized by the corresponding LBM solver, on (a, c) uniform and (b, d) non-uniform meshes.
+
+
+gap widens further, establishing the LBM solver as a favorable choice         for uniform and non-uniform meshes. As shown in Fig. 14(a), the
+for advancing large-scale 3-D simulations.                                    MLUPS values on uniform meshes consistently exceed those on non-
+                                                                              uniform meshes across all tested grid sizes. The normalized MLUPS in
+   To further assess the computational efficiency of the in-house 3-D         Fig. 14(b) indicates that non-uniform grids achieve only about 60%–
+LBM solver on modern GPU architecture, we performed additional tests          65% of the performance of uniform grids, with a slight downward
+on an NVIDIA A100 GPU. Fig. 14 compares the solver’s performance
+
+                                                                         14
+A. Xu et al.                                                                                       International Journal of Heat and Mass Transfer 255 (2026) 127790
+
+
+
+
+Fig. 14. GPU performance of the in-house LBM solver on an NVIDIA A100 for uniform and non-uniform meshes: (a) Absolute MLUPS as a function of grid number,
+(b) MLUPS normalized by the uniform-mesh performance at each grid; (c) WCTpDT as a function of grid number; (d) WCTpDT normalized by the corresponding
+value for uniform meshes.
+
+trend as resolution increases. Fig. 14(c) shows that the WCTpDT grows            nearly third-order accuracy for global quantities and about second-
+nearly linearly with grid size for both mesh types, while Fig. 14(d)             order for local fields. The method was validated through benchmark
+confirms that the relative overhead of non-uniform meshes remains                simulations of laminar thermal convection in a side-heated cavity at
+close to a factor of three across resolutions. Compared with the 2-D             Rayleigh numbers 106 ≤ 𝑅𝑎 ≤ 108 in 2-D and 105 ≤ 𝑅𝑎 ≤ 107 in 3-D,
+case, the relative throughput loss is similar, but the absolute runtime          demonstrating excellent agreement with high-fidelity reference data.
+penalty is more pronounced in 3-D, reflecting the higher computational           The results demonstrate second-order spatial accuracy for local temper-
+and memory demands of large-scale simulations. Overall, the solver               ature and velocity fields, and nearly third-order accuracy for vorticity
+retains excellent scalability and GPU efficiency in three dimensions,            and volume-integrated quantities. Furthermore, a careful assessment
+ensuring its applicability to practical large-scale problems even when           of compressibility effects confirmed that the solver remains within a
+non-uniform discretizations are employed.                                        nearly incompressible regime, with only minimal numerical divergence
+    For 3-D simulations, the cost estimation is as follows. Consider a           even at elevated Rayleigh numbers.
+simulation at 𝑅𝑎 = 107 and 𝑃 𝑟 = 0.71 using a 4003 non-uniform
+                                                                                     We also assessed the computational performance of the in-house
+mesh with a stretching coefficient of 𝑎 = 2.1. On an NVIDIA A100
+                                                                                 LBM solver by benchmarking it against two widely used open-source
+GPU, the wall-clock time required to advance the simulation by 1 𝑡𝑓
+                                                                                 solvers: Nek5000 based on the spectral element method, and Open-
+(i.e. WCTpDT) is 1.456 × 103 s ≈ 0.40 h. Thus, the corresponding cost
+                                                                                 FOAM based on the finite volume method. Using performance metrics
+per 𝑡𝑓 is 0.40 h × 7 RMB/h ≈ 2.83 RMB. For Nek5000, the time per 𝑡𝑓 is
+                                                                                 such as MLUPS and WCTpDT, our results consistently demonstrate that
+about 1.33484 × 105 s ≈ 37.08 h, yielding a cost of 37.08 h × 0.1 RMB/h ≈
+                                                                                 the ISLBM outperforms these solvers in large-scale simulations. When
+3.71 RMB. For OpenFOAM, the time per 𝑡𝑓 is about 5.576363 × 106 s ≈
+                                                                                 deployed on GPU architecture, the ISLBM maintains high computa-
+1549.0 h, yielding 1549.0 h × 0.1 RMB/h ≈ 154.90 RMB. When Nek5000
+                                                                                 tional performance. In terms of MLUPS, the throughput on non-uniform
+and OpenFOAM run on multi-core CPU architectures, scalability is
+                                                                                 meshes reaches approximately 60%–70% of that achieved on uniform
+limited by communication overhead and memory contention, and their
+                                                                                 meshes; in terms of WCTpDT, however, the computational cost on
+effective performance falls short of ideal expectations, resulting in
+                                                                                 non-uniform meshes is about three times higher than that on uni-
+increased wall-clock times and overall computational cost. We expect
+                                                                                 form meshes, mainly due to the overhead of quadratic interpolation
+greater economic advantage of the GPU-based LBM solver in large-scale
+                                                                                 and irregular memory access patterns. Despite this penalty, the solver
+simulations.
+                                                                                 exhibits excellent scalability and GPU efficiency, enabling practical
+                                                                                 large-scale simulations on contemporary accelerator hardware.
+5. Conclusion
+                                                                                     While the ISLBM was originally proposed by He et al. [26–28], to
+    In this study, we systematically evaluated an interpolation-                 the best of our knowledge no prior work has conducted a systematic
+supplemented lattice Boltzmann method (ISLBM) for simulating                     and quantitative evaluation of its performance for thermally driven
+buoyancy-driven thermal convection on non-uniform meshes. The                    flows at high Rayleigh numbers on non-uniform meshes. This study is,
+ISLBM enables local mesh refinement near solid boundaries to resolve             to our knowledge, the first to: (i) implement quadratic interpolation-
+steep thermal and velocity gradients, while retaining the computational          based streaming to simulate thermal convection on non-uniform meshes
+efficiency of the standard LBM in the bulk flow. By incorporating                at high Rayleigh numbers; (ii) quantitatively evaluate accuracy, conver-
+quadratic interpolation during the streaming step, the ISLBM achieves            gence order, divergence control, and computational efficiency; and (iii)
+
+                                                                            15
+A. Xu et al.                                                                                                      International Journal of Heat and Mass Transfer 255 (2026) 127790
+
+
+benchmark the ISLBM against high-fidelity solvers (Nek5000 and Open-                         [8] A. Xu, L. Shi, T.S. Zhao, Accelerated lattice Boltzmann simulation using GPU
+FOAM) using rigorous MLUPS and WCTpDT metrics, including GPU-                                    and OpenACC with data management, Int. J. Heat Mass Transfer 109 (2017)
+                                                                                                 577–588, http://dx.doi.org/10.1016/j.ijheatmasstransfer.2017.02.032.
+based performance tests. Our results demonstrate that the interpolation-
+                                                                                             [9] A. Xu, B.T. Li, Multi-GPU thermal lattice Boltzmann simulations using OpenACC
+supplemented LBM provides a robust and efficient framework for                                   and MPI, Int. J. Heat Mass Transfer 201 (2023) 123649, http://dx.doi.org/10.
+simulating thermally driven flows on non-uniform meshes. Its demon-                              1016/j.ijheatmasstransfer.2022.123649.
+strated accuracy, stability, computational efficiency, and scalability                      [10] A. Xu, B.T. Li, Particle-resolved thermal lattice Boltzmann simulation using
+make it a promising candidate for future extensions to fully turbulent                           OpenACC on multi-GPUs, Int. J. Heat Mass Transfer 218 (2024) 124758, http:
+                                                                                                 //dx.doi.org/10.1016/j.ijheatmasstransfer.2023.124758.
+convection at extreme Rayleigh numbers.
+                                                                                            [11] L. Chen, Q. Kang, Y. Mu, Y. He, W. Tao, A critical review of the pseu-
+                                                                                                 dopotential multiphase lattice Boltzmann model: Methods and applications,
+CRediT authorship contribution statement                                                         Int. J. Heat Mass Transfer 76 (2014) 210–236, http://dx.doi.org/10.1016/j.
+                                                                                                 ijheatmasstransfer.2014.04.032.
+                                                                                            [12] Q. Li, K.H. Luo, Q. Kang, Y. He, Q. Chen, Q. Liu, Lattice Boltzmann methods for
+   Ao Xu: Writing – review & editing, Writing – original draft, Vi-                              multiphase flow and phase-change heat transfer, Prog. Energy Combust. Sci. 52
+sualization, Validation, Supervision, Software, Resources, Project ad-                           (2016) 62–105, http://dx.doi.org/10.1016/j.pecs.2015.10.001.
+ministration, Methodology, Investigation, Funding acquisition, Formal                       [13] E. Calzavarini, Eulerian–Lagrangian fluid dynamics platform: the ch4-project,
+analysis, Data curation, Conceptualization. Zheng Zhao: Writing –                                Softw. Impacts 1 (2019) 100002, http://dx.doi.org/10.1016/j.simpa.2019.
+                                                                                                 100002.
+original draft, Visualization, Validation, Software, Methodology, In-
+                                                                                            [14] V. Patočka, E. Calzavarini, N. Tosi, Settling of inertial particles in turbulent
+vestigation, Formal analysis, Data curation. Ben-Rui Xu: Validation,                             Rayleigh–Bénard convection, Phys. Rev. Fluids 5 (11) (2020) 114304, http:
+Software, Investigation, Data curation. Li-Sheng Jiang: Validation,                              //dx.doi.org/10.1103/PhysRevFluids.5.114304.
+Software, Investigation, Data curation.                                                     [15] V. Patočka, N. Tosi, E. Calzavarini, Residence time of inertial particles in 3D
+                                                                                                 thermal convection: Implications for magma reservoirs, Earth Planet. Sci. Lett.
+                                                                                                 591 (2022) 117622, http://dx.doi.org/10.1016/j.epsl.2022.117622.
+Declaration of competing interest                                                           [16] H. Wu, K. Karzhaubayev, J. Shen, L.-P. Wang, Direct numerical simulation of
+                                                                                                 three-dimensional particle-laden thermal convection using the lattice Boltzmann
+    The authors declare the following financial interests/personal rela-                         method, Comput. & Fluids 276 (2024) 106268, http://dx.doi.org/10.1016/j.
+tionships which may be considered as potential competing interests:                              compfluid.2024.106268.
+                                                                                            [17] Y. Zhang, K. Luo, H. Yi, A. Liu, J. Wu, Application of large eddy simulation mod-
+Given his role as Associate Editor and Managing Editor of the Interna-
+                                                                                                 els to electroconvection turbulence study with lattice Boltzmann method, Phys.
+tional Journal of Heat and Mass Transfer, Ao Xu had no involvement                               Rev. Fluids 9 (8) (2024) 083703, http://dx.doi.org/10.1103/PhysRevFluids.9.
+in the peer review of this article and had no access to information                              083703.
+regarding its peer review. Full responsibility for the editorial process for                [18] X. Liu, Z.-X. Tong, Y.-L. He, Insight into enthalpy-based lattice Boltzmann method
+this article was delegated to another journal editor. If there are other                         for solid-liquid phase change without numerical diffusion, Int. J. Heat Mass
+                                                                                                 Transfer 239 (2025) 126534, http://dx.doi.org/10.1016/j.ijheatmasstransfer.
+authors, they declare that they have no known competing financial in-                            2024.126534.
+terests or personal relationships that could have appeared to influence                     [19] X. Liu, Z.-X. Tong, Y.-L. He, K.H. Luo, S. Du, Multi-GPU accelerated lattice
+the work reported in this paper.                                                                 Boltzmann modelling of melting performance for phase change material-metal
+                                                                                                 foam composite considering interfacial thermal resistance, Int. J. Heat Mass
+                                                                                                 Transfer 252 (2025) 127475, http://dx.doi.org/10.1016/j.ijheatmasstransfer.
+Acknowledgments                                                                                  2025.127475.
+                                                                                            [20] K.-Q. Xia, Current trends and future directions in turbulent thermal convection,
+    This work was supported by the National Natural Science Founda-                              Theor. Appl. Mech. Lett. 3 (5) (2013) 052001, http://dx.doi.org/10.1063/2.
+tion of China (NSFC) through grants nos. 12272311, 12388101; the                                 1305201.
+                                                                                            [21] K.-Q. Xia, S.-D. Huang, Y.-C. Xie, L. Zhang, Tuning heat transport via coherent
+Young Elite Scientists Sponsorship Program by CAST (2023QNRC001).
+                                                                                                 structure manipulation: recent advances in thermal turbulence, Natl. Sci. Rev.
+The authors acknowledge the Beijing Beilong Super Cloud Computing                                10 (6) (2023) nwad012, http://dx.doi.org/10.1093/nsr/nwad012.
+Co., Ltd for providing HPC resources that have contributed to the                           [22] K.-Q. Xia, K.L. Chong, G.-Y. Ding, L. Zhang, Some fundamental issues in
+research results reported within this paper (URL: http://www.blsc.cn/).                          buoyancy-driven flows with implications for geophysical and astrophysical sys-
+                                                                                                 tems, Acta Mech. Sin. 41 (1) (2024) 324287, http://dx.doi.org/10.1007/s10409-
+                                                                                                 024-24287-x.
+Data availability                                                                           [23] A. Xu, W. Shyy, T.S. Zhao, Lattice Boltzmann modeling of transport phenomena
+                                                                                                 in fuel cells and flow batteries, Acta Mech. Sin. 33 (3) (2017) 555–574, http:
+    Data will be made available on request.                                                      //dx.doi.org/10.1007/s10409-017-0667-6.
+                                                                                            [24] M.J. Ni, J.C. Yang, J. Zhang, Magnetohydrodynamics in liquid metal interfacial
+                                                                                                 flows, Appl. Mech. Rev. (2025) 1–105, http://dx.doi.org/10.1115/1.4067935.
+                                                                                            [25] B.-F. Wang, Q. Zhou, C. Sun, Vibration-induced boundary-layer destabilization
+References                                                                                       achieves massive heat-transport enhancement, Sci. Adv. 6 (21) (2020) eaaz8239,
+                                                                                                 http://dx.doi.org/10.1126/sciadv.aaz8239.
+ [1] S. Chen, G.D. Doolen, Lattice Boltzmann method for fluid flows, Annu. Rev.             [26] X. He, L.S. Luo, M. Dembo, Some progress in lattice Boltzmann method. Part
+     Fluid Mech. 30 (1) (1998) 329–364, http://dx.doi.org/10.1146/annurev.fluid.                 I. Nonuniform mesh grids, J. Comput. Phys. 129 (2) (1996) 357–363, http:
+     30.1.329.                                                                                   //dx.doi.org/10.1006/jcph.1996.0255.
+ [2] C.K. Aidun, J.R. Clausen, Lattice-Boltzmann method for complex flows, Annu.            [27] X. He, L.S. Luo, M. Dembo, Some progress in the lattice Boltzmann method:
+     Rev. Fluid Mech. 42 (1) (2010) 439–472, http://dx.doi.org/10.1146/annurev-                  Reynolds number enhancement in simulations, Physica A 239 (1–3) (1997)
+     fluid-121108-145519.                                                                        276–285, http://dx.doi.org/10.1016/S0378-4371(96)00486-4.
+ [3] K. Xu, Direct modeling for computational fluid dynamics, Acta Mech. Sin. 31 (3)        [28] X. He, Error analysis for the interpolation-supplemented lattice-Boltzmann equa-
+     (2015) 303–318, http://dx.doi.org/10.1007/s10409-015-0453-2.                                tion scheme, Internat. J. Modern Phys. C 8 (04) (1997) 737–745, http://dx.doi.
+ [4] K. Xu, Direct Modeling for Computational Fluid Dynamics, vol. 4, World                      org/10.1142/S012918319700062X.
+     Scientific, Singapore, 2015.                                                           [29] F. Nannelli, S. Succi, The lattice Boltzmann equation on irregular lattices, J. Stat.
+ [5] Y.H. Qian, D. d’Humières, P. Lallemand, Lattice BGK models for Navier–Stokes                Phys. 68 (3) (1992) 401–407, http://dx.doi.org/10.1007/BF01341755.
+     equation, Europhys. Lett. 17 (6) (1992) 479–484, http://dx.doi.org/10.1209/            [30] G. Peng, H. Xi, C. Duncan, S.-H. Chou, Finite volume scheme for the lattice Boltz-
+     0295-5075/17/6/001.                                                                         mann method on unstructured meshes, Phys. Rev. E 59 (4) (1999) 4675–4682,
+ [6] H. Chen, S. Chen, W.H. Matthaeus, Recovery of the Navier–Stokes equations                   http://dx.doi.org/10.1103/PhysRevE.59.4675.
+     using a lattice-gas Boltzmann method, Phys. Rev. A 45 (8) (1992) R5339–R5342,          [31] H. Xi, G. Peng, S.-H. Chou, Finite-volume lattice Boltzmann method, Phys. Rev.
+     http://dx.doi.org/10.1103/PhysRevA.45.R5339.                                                E 59 (5) (1999) 6202–6205, http://dx.doi.org/10.1103/PhysRevE.59.6202.
+ [7] X. He, L.-S. Luo, Theory of the lattice Boltzmann method: From the Boltz-              [32] S. Ubertini, G. Bella, S. Succi, Lattice Boltzmann method on unstructured grids:
+     mann equation to the lattice Boltzmann equation, Phys. Rev. E 56 (6) (1997)                 Further developments, Phys. Rev. E 68 (1) (2003) 016701, http://dx.doi.org/10.
+     6811–6817, http://dx.doi.org/10.1103/PhysRevE.56.6811.                                      1103/PhysRevE.68.016701.
+
+
+                                                                                       16
+A. Xu et al.                                                                                                         International Journal of Heat and Mass Transfer 255 (2026) 127790
+
+
+[33] O. Filippova, D. Hänel, Grid refinement for lattice-BGK models, J. Comput. Phys.          [56] J. Lu, C. Dai, P. Yu, Analysis and reconstruction of the simplified thermal
+     147 (1) (1998) 219–228, http://dx.doi.org/10.1006/jcph.1998.6089.                              lattice Boltzmann method, Int. J. Heat Mass Transfer 187 (2022) 122576,
+[34] D. Yu, R. Mei, W. Shyy, A multi-block lattice Boltzmann method for viscous                     http://dx.doi.org/10.1016/j.ijheatmasstransfer.2022.122576.
+     fluid flows, Internat. J. Numer. Methods Fluids 39 (2) (2002) 99–120, http:               [57] A. Nee, Evaluation of hybrid lattice Boltzmann models for laminar and turbulent
+     //dx.doi.org/10.1002/fld.280.                                                                  natural convection, Int. Commun. Heat Mass Transfer 162 (2025) 108635,
+[35] J. Tölke, M. Krafczyk, E. Rank, A multigrid-solver for the discrete Boltzmann                  http://dx.doi.org/10.1016/j.icheatmasstransfer.2025.108635.
+     equation, J. Stat. Phys. 107 (1) (2002) 573–591, http://dx.doi.org/10.1023/A:             [58] X. Feng, J. Zeng, Y. Ge, F. Liu, T. Yu, Q. Liu, An improved multiple-
+     1014551813787.                                                                                 relaxation-time lattice Boltzmann model for incompressible thermal flows in two
+[36] D.J. Mavriplis, Multigrid solution of the steady-state lattice Boltzmann equa-                 dimensions, Int. J. Heat Mass Transfer 240 (2025) 126614, http://dx.doi.org/
+     tion, Comput. & Fluids 35 (8–9) (2006) 793–804, http://dx.doi.org/10.1016/j.                   10.1016/j.ijheatmasstransfer.2024.126614.
+     compfluid.2005.07.020.                                                                    [59] Q. Wang, S.N. Xia, R. Yan, D.J. Sun, Z.H. Wan, Non-Oberbeck-Boussinesq effects
+[37] A. Xu, L. Shi, H.D. Xi, Lattice Boltzmann simulations of three-dimensional                     due to large temperature differences in a differentially heated square cavity filled
+     thermal convective flows at high Rayleigh number, Int. J. Heat Mass Transfer 140               with air, Int. J. Heat Mass Transfer 128 (2019) 479–491, http://dx.doi.org/10.
+     (2019) 359–370, http://dx.doi.org/10.1016/j.ijheatmasstransfer.2019.06.002.                    1016/j.ijheatmasstransfer.2018.06.079.
+[38] J. Wang, D. Wang, P. Lallemand, L.S. Luo, Lattice Boltzmann simulations of                [60] P.L. Quéré, Accurate solutions to the square thermally driven cavity at high
+     thermal convective flows in two dimensions, Comput. Math. Appl. 65 (2) (2013)                  Rayleigh number, Comput. & Fluids 20 (1) (1991) 29–41, http://dx.doi.org/10.
+     262–286, http://dx.doi.org/10.1016/j.camwa.2012.07.001.                                        1016/0045-7930(91)90025-D.
+[39] D. Contrino, P. Lallemand, P. Asinari, L.S. Luo, Lattice-Boltzmann simulations            [61] Z. Chai, T.S. Zhao, Effect of the forcing term in the multiple-relaxation-time
+     of the thermally driven 2D square cavity at high Rayleigh numbers, J. Comput.                  lattice Boltzmann equation on the shear stress or the strain rate tensor, Phys.
+     Phys. 275 (2014) 257–272, http://dx.doi.org/10.1016/j.jcp.2014.06.047.                         Rev. E 86 (1) (2012) 016705, http://dx.doi.org/10.1103/PhysRevE.86.016705.
+[40] Z. Chai, T.S. Zhao, Lattice Boltzmann model for the convection-diffusion equa-            [62] X. Wen, L.-P. Wang, Z. Guo, An efficient discrete unified gas-kinetic scheme for
+     tion, Phys. Rev. E 87 (6) (2013) 063309, http://dx.doi.org/10.1103/PhysRevE.                   compressible thermal flows, Phys. Fluids 36 (2) (2024) 026123, http://dx.doi.
+     87.063309.                                                                                     org/10.1063/5.0188092.
+[41] Z. Chai, B. Shi, Multiple-relaxation-time lattice Boltzmann method for the Navier–        [63] X. Wen, W. Lin, W. Wang, Y. Chen, K. Li, L.-P. Wang, An immersed
+     Stokes and nonlinear convection-diffusion equations: Modeling, analysis, and                   boundary-discrete unified gas-kinetic scheme for Non-Oberbeck–Boussinesq ther-
+     elements, Phys. Rev. E 102 (2) (2020) 023306, http://dx.doi.org/10.1103/                       mal convection with curved surfaces, Int. J. Heat Mass Transfer 247 (2025)
+     PhysRevE.102.023306.                                                                           127100, http://dx.doi.org/10.1016/j.ijheatmasstransfer.2025.127100.
+[42] Z. Guo, C. Zheng, B. Shi, Discrete lattice effects on the forcing term in the             [64] R. Ostilla-Mónico, Y. Yang, E.P.V.D. Poel, D. Lohse, R. Verzicco, A multiple-
+     lattice Boltzmann method, Phys. Rev. E 65 (4) (2002) 046308, http://dx.doi.                    resolution strategy for direct numerical simulation of scalar turbulence, J.
+     org/10.1103/PhysRevE.65.046308.                                                                Comput. Phys. 301 (2015) 308–321, http://dx.doi.org/10.1016/j.jcp.2015.08.
+[43] Z. Guo, C. Zheng, Analysis of lattice Boltzmann equation for microscale gas                    031.
+     flows: Relaxation times, boundary conditions and the Knudsen layer, Int.                  [65] I.B. Celik, U. Ghia, P.J. Roache, C.J. Freitas, H. Coleman, P.E. Raad, Procedure for
+     J. Comput. Fluid Dyn. 22 (7) (2008) 465–473, http://dx.doi.org/10.1080/                        estimation and reporting of uncertainty due to discretization in CFD applications,
+     10618560802253100.                                                                             J. Fluids Eng. 130 (7) (2008) 078001, http://dx.doi.org/10.1115/1.2960953.
+[44] H. Huang, M.C. Sukop, X.-Y. Lu, Multiphase Lattice Boltzmann Methods: Theory              [66] P. Fischer, An overlapping Schwarz method for spectral element solution of
+     and Application, John Wiley & Sons, 2015.                                                      the incompressible Navier–Stokes equations, J. Comput. Phys. 133 (1) (1997)
+[45] A. Ceci, S. Pirozzoli, Natural grid stretching for DNS of compressible wall-                   84–101, http://dx.doi.org/10.1006/jcph.1997.5651.
+     bounded flows, J. Comput. Phys.: X 17 (2022) 100128, http://dx.doi.org/10.                [67] H.G. Weller, G. Tabor, H. Jasak, C. Fureby, A tensorial approach to computa-
+     1016/j.jcpx.2023.100128.                                                                       tional continuum mechanics using object-oriented techniques, Comput. Phys. 12
+[46] G. de Vahl Davis, Natural convection of air in a square cavity: A benchmark                    (6) (1998) 620–631, http://dx.doi.org/10.1063/1.168744.
+     numerical solution, Internat. J. Numer. Methods Fluids 3 (3) (1983) 249–264,              [68] B. Ren, C.-G. Li, M. Tsubokura, Laminar natural convection in a square cavity
+     http://dx.doi.org/10.1002/fld.1650030305.                                                      with 3D random roughness elements considering the compressibility of the fluid,
+[47] D.L. Sun, W.Q. Tao, Performance analysis and comparison of ideal and sim-                      Int. J. Heat Mass Transfer 173 (2021) 121248, http://dx.doi.org/10.1016/j.
+     pler algorithms for incompressible fluid flow and heat transfer problems,                      ijheatmasstransfer.2021.121248.
+     Int. J. Heat Mass Transfer 205 (2023) 123896, http://dx.doi.org/10.1016/j.                [69] B. Ren, C.-G. Li, M. Tsubokura, The effects of irregular roughness with different
+     ijheatmasstransfer.2023.123896.                                                                surface power spectrums on the heat transfer of natural convection in enclosures,
+[48] Q. Chen, Y. Xuan, Q. Lin, Y. Han, Evolutions of the electromagnetic signatures                 Int. Commun. Heat Mass Transfer 141 (2023) 106581, http://dx.doi.org/10.
+     induced by the propagating wake behind a submerged body, Int. J. Heat Mass                     1016/j.icheatmasstransfer.2022.106581.
+     Transfer 194 (2022) 123105, http://dx.doi.org/10.1016/j.ijheatmasstransfer.               [70] S. Yigit, J. Hasslberger, N. Chakraborty, M. Klein, Effects of Rayleigh–Bénard
+     2022.123105.                                                                                   convection on spectra of viscoplastic fluids, Int. J. Heat Mass Transfer 147 (2020)
+[49] J.E. Vesper, S.C. Tietjen, M. Chakkingal, S. Kenjereš, Numerical analysis of                   118947, http://dx.doi.org/10.1016/j.ijheatmasstransfer.2019.118947.
+     effects of fins and conductive walls on heat transfer in side heated cavities—            [71] Y. Su, T. Ng, J.H. Davidson, Three dimensional mesoscopic scale simulations of
+     Onset of three-dimensional phenomena in natural convection, Int. J. Heat Mass                  buoyancy driven flow and heat mass transfer through randomly packed fiber
+     Transfer 183 (2022) 122033, http://dx.doi.org/10.1016/j.ijheatmasstransfer.                    boards, Int. J. Heat Mass Transfer 143 (2019) 118522, http://dx.doi.org/10.
+     2021.122033.                                                                                   1016/j.ijheatmasstransfer.2019.118522.
+[50] Y. Ma, Z. Yang, Simplified and highly stable thermal lattice Boltzmann method             [72] C. Ma, J. Wu, X. Gu, L. Yang, A three-dimensional high-order flux reconstruction
+     simulation of hybrid nanofluid thermal convection at high Rayleigh numbers,                    lattice Boltzmann flux solver for incompressible laminar and turbulent flows,
+     Phys. Fluids 32 (1) (2020) 012009, http://dx.doi.org/10.1063/1.5139092.                        Comput. & Fluids 265 (2023) 106008, http://dx.doi.org/10.1016/j.compfluid.
+[51] P. Yang, C. Huang, Z. Zhang, T. Long, M. Liu, Simulating natural convection                    2023.106008.
+     with high Rayleigh numbers using the smoothed particle hydrodynamics method,              [73] W. Schupbach, K. Premnath, Fokker–Planck model-based central moment lattice
+     Int. J. Heat Mass Transfer 166 (2021) 120758, http://dx.doi.org/10.1016/j.                     Boltzmann method for effective simulations of thermal convective flows, Energies
+     ijheatmasstransfer.2020.120758.                                                                18 (5) (2025) 1890, http://dx.doi.org/10.3390/en18081890.
+[52] Z. Zhao, M. Wen, W. Li, A coupled gas-kinetic BGK scheme for the finite                   [74] T. Fusegi, J.M. Hyun, K. Kuwahara, B. Farouk, A numerical study of three-
+     volume lattice Boltzmann method for nearly incompressible thermal flows,                       dimensional natural convection in a differentially heated cubical enclosure, Int. J.
+     Int. J. Heat Mass Transfer 164 (2021) 120584, http://dx.doi.org/10.1016/j.                     Heat Mass Transfer 34 (6) (1991) 1543–1557, http://dx.doi.org/10.1016/0017-
+     ijheatmasstransfer.2020.120584.                                                                9310(91)90295-P.
+[53] C. Ma, J. Wu, L. Yang, H. Dong, A coupled high-order implicit-explicit flux               [75] E. Tric, G. Labrosse, M. Betrouni, A first incursion into the 3D structure of
+     reconstruction lattice Boltzmann method for nearly incompressible thermal flows,               natural convection of air in a differentially heated cubic cavity, from accurate
+     Int. J. Heat Mass Transfer 187 (2022) 122575, http://dx.doi.org/10.1016/j.                     numerical solutions, Int. J. Heat Mass Transfer 43 (21) (2000) 4043–4056,
+     ijheatmasstransfer.2022.122575.                                                                http://dx.doi.org/10.1016/S0017-9310(00)00037-5.
+[54] C. Ma, J. Wu, X. Gu, L. Yang, High-order flux reconstruction thermal lattice
+     Boltzmann flux solver for simulation of incompressible thermal flows, Phys. Rev.
+     E 106 (3) (2022) 035301, http://dx.doi.org/10.1103/PhysRevE.106.035301.
+[55] Q. Xu, R. Li, M. Xu, High-performance implementation of parallel semi-
+     implicit method for pressure linked equations solver on CPU+GPU platform,
+     Int. J. Heat Mass Transfer 182 (2022) 121976, http://dx.doi.org/10.1016/j.
+     ijheatmasstransfer.2021.121976.
+
+
+
+
+                                                                                          17

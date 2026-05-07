@@ -1,0 +1,1305 @@
+                                        PHYSICAL REVIEW E 111, 055304 (2025)
+
+
+
+                           Alternative multiple-relaxation-time lattice Boltzmann method
+                                       for simulating conjugate heat transfer
+
+                                      Yong Zhao ,1 Xinyue Liu,2 Zhenyu Chen,3 and Lei Wang2,*
+           1
+             School of Mathematics and Statistics, Changsha University of Science and Technology, Changsha 410114, Hunan, China
+                          2
+                            School of Mathematics and Physics, China University of Geosciences, Wuhan 430074, China
+         3
+           School of Physics and Electronic Science, Changsha University of Science and Technology, Changsha 410114, Hunan, China
+
+                         (Received 11 July 2024; revised 19 October 2024; accepted 2 May 2025; published 19 May 2025)
+
+                   In this paper, an alternative multiple-relaxation-time lattice Boltzmann (LB) scheme for conjugate heat transfer
+                is proposed. We have derived the correct energy governing equation from the first law of thermodynamics and
+                clarified that the thermal boundary for conjugate heat transfer should be the continuity of the conductive heat
+                flux, which is essential to guarantee Galilean invariance. The development of the present model has two distinct
+                features. First, the temperature evolution equation is modified to include the effect of the specific heat capacity.
+                Second, the convection term is considered as a source term and is calculated in moment space, thus preserving
+                the inherent advantages of the LB method without finite difference calculations. To verify the thermal governing
+                equations, we conduct numerical simulations of heat conduction in a moving rod configuration with varying
+                thermal capacities. Furthermore, to validate the present model’s in accuracy, we examine several benchmark
+                problems, including the effective thermal conductivity of parallel and series dual-component materials, steady
+                and unsteady coupled heat transfer in horizontal interface channels, stable heat conduction in a two-layer annulus,
+                natural convection in a square cavity with 16 solid blocks, and thermocapillary flow with two superimposed
+                planar fluids. In the realm of application research, we apply our model to simulate the cooling process in random
+                porous media. The results demonstrate that our model achieves satisfactory accuracy and exhibits a second-
+                order convergence rate in space. The simulation results show the potential of the current LB method to simulate
+                complex applications, highlighting its versatility and accuracy.
+
+                DOI: 10.1103/PhysRevE.111.055304
+
+
+
+                        I. INTRODUCTION                                     efficiency [17–22]. Regarding the CHT problem, the LB
+                                                                            method has its intrinsic advantage while it can automatically
+    The conjugate heat transfer (CHT) problem, which in-
+                                                                            ensure the continuities of temperature and heat flux [23–31].
+volves heat transfer across various media with diverse
+                                                                            In the LB model, the temperature and heat flux can be re-
+thermodynamic properties, poses a significant challenge in
+                                                                            covered from the zeroth and first moments of the distribution
+engineering application [1]. This issue is commonly encoun-
+                                                                            function, which is assumed to be continuous in the whole
+tered across numerous scientific and engineering domains,
+                                                                            domain [28,32]. Generally, there are three categories to solve
+ranging from microscale applications such as the electronic
+                                                                            the conjugate heat transfer problem: Half lattice division, con-
+circuits, chips [2], and microfuel cells [3] to macroscale en-
+                                                                            jugate source, and modified equilibrium distribution function.
+deavors like the design of thermal protection systems [4,5],
+                                                                                Initial work on the CHT problem with the LB method is
+thermal management system [6,7], and cooling systems [8,9].
+                                                                            attributed to Wang et al.[23], who simulated the CHT problem
+The challenge of accurately determining heat transfer coef-
+                                                                            by using the half lattice division approach. However, it should
+ficients in the conjugate heat transfer problem has sparked
+                                                                            be noted that the interface in Wang et al.’s work [23] has
+considerable interest, resulting in a wide array of experimental
+                                                                            to be located precisely on the midpoint between two mesh
+[10,11], theoretical [12,13], and numerical studies [14–16].
+                                                                            grid points, thereby limiting their model to geometries with
+However, given the diverse thermodynamic properties and
+                                                                            straight interfaces. Subsequently, several improvements have
+intricate heat-momentum-mass mechanisms involved, con-
+                                                                            been conducted to the half lattice division model. [24,33–35].
+ducting investigations using either experimental or theoretical
+                                                                            However, these improved models often necessitate interpola-
+methods is a costly and challenging endeavour. As a result,
+                                                                            tion or extrapolation, resulting in increased complexity and
+numerous numerical studies have been undertaken to investi-
+                                                                            losing the advantage of local calculations inherent in the stan-
+gate the CHT problem.
+                                                                            dard LB method. To address the shortcomings above, Karani
+    As a promising mesoscopic numerical method, the lattice
+                                                                            and Huber [25] proposed a perspective on the CHT problem
+Boltzmann (LB) method has a wide application in fluid flow
+                                                                            by introducing a conjugate source. As pointed out by Karani
+and heat transfer problems owing to its high computational
+                                                                            and Huber [25], the macroscopic governing equation of the
+                                                                            CHT problem should be the conservative form of the heat
+                                                                            conduction equation rather than the conservative form of the
+ *
+     Contact author: wangleir1989@126.com, leiwang@cug.edu.cn               diffusion equation. In other words, the term on the right-hand
+
+2470-0045/2025/111(5)/055304(19)                                     055304-1                                  ©2025 American Physical Society
+ZHAO, LIU, CHEN, AND WANG                                                                  PHYSICAL REVIEW E 111, 055304 (2025)
+
+side of the energy equation should be 1/ρc p ∇ · k∇T rather         equation and interface boundary condition. Then, a multiple-
+than ∇ · α∇T (Here, ρ, c p , T , and ∇ denote the density,          relaxation-time LB model is presented in Sec. III. Finally, a
+specific heat capacity, temperature, and thermal conductiv-         series of numerical simulations are illustrated in Sec. IV, and
+ity, respectively.). Unfortunately, the standard LB model can       a brief conclusion is given in Sec. V.
+only recover the conservative form of the diffusion equation.
+Accordingly, Karani and Huber [25] reformulated the energy                    II. THE DESCRIPTION OF CONJUGATE
+equation into a conservative form of diffusion equation by in-                      HEAT TRANSFER PROBLEM
+troducing a source term to deal with the spatial variation of the
+heat capacity ρc p . Afterward, Hu et al.[36] proposed a similar       The conjugate heat transfer problem can be characterized
+conjugate source model for the CHT problem by assuming              as the interaction of heat transfer processes between two
+the curved interface is zigzag lines. However, as an immersed-      domains possessing distinct thermal properties (e.g., thermal
+boundary-like scheme, choosing a suitable Dirac function in         conductivity κ and heat capacity ρc). Generally, these two
+Hu’s model [36] could be a crucial challenge. Later, inspired       domains can exist in solid-solid, solid-liquid, and liquid-liquid
+by the total enthalpy-based method for solid-liquid phase           forms. Without loss of generality, we will approach the prob-
+change [37], Chen et al.[28] introduced a sensible-enthalpy-        lem by considering it to consist of fluid and solid regions.
+like quantity h∗ = (ρc p )t T into the energy equation, then the
+macroscopic governing equation can be transformed to be a                        A. Governing equations for fluid flow
+standard convection-diffusion equation respect to h∗ with a
+                                                                        Assuming the fluid in the system is Newtonian, laminar,
+conjugate source term. While the conjugate source method
+                                                                    and incompressible, the governing equations of the velocity
+can tackle the CHT problems, handling the additional source
+                                                                    field are can be expressed as [23]
+term, which typically involves gradients of heat capacity, in-
+troduces additional complexity. To handle this issue, Huang                       ∇ · u = 0,                                    (1a)
+and Wu [38] proposed a model to recover the governing equa-
+                                                                         ∂t u + ∇ · (uu) = −∇ p + ∇ · [v(∇u + (∇u) )] + F,
+                                                                                                                         T
+tions without any source term by modifying the equilibrium
+function. It should be noted that the modified equilibrium                                                                      (1b)
+distribution function method can be traced back to the work
+of Guo et al. [39]. Numerous modified models have been              where u, p, and ν are the volume-averaged velocity, dynamic
+put forth based on the concept of the modified equilibrium          pressure, and effective kinetic viscosity of the fluid, respec-
+distribution function, demonstrating significant potential in       tively. F is the external force defined as
+addressing CHT issues [40–42]. While the aforementioned                                   F = −gβ(T − Tref ),                    (2)
+modified models can recover the conservative form of the heat
+conduction equation, some deviation terms still exist that may      in which the Boussinesq approximation has been utilized,
+significantly influence stability and accuracy. Therefore, re-      and g, β are the gravitational vector and thermal expansion
+cently, Yue et al.[32] developed an improved LB model to deal       parameter, respectively. Also, T represents the temperature,
+with the deviation terms by introducing an additional source        which is determined by the governing equations for heat trans-
+suitable for steady and unsteady CHT problems. It must be           fer, and Tref is the referenced temperature.
+mentioned that these available LB models on conjugate heat
+transfer are almost constructed based on the conservative form                  B. Governing equation for heat transfer
+of temperature [32,40–42], and this suggests that the thermal
+                                                                       Based on the first law of thermodynamics, the general form
+boundary condition at the fluid-solid interface used in these
+                                                                    of the energy conservation equation can be expressed as [45]
+models may not obey the Galilean invariance [43], which
+plays a vital role in the numerical simulation.                                        Dε
+    Framed in this general background, the present paper in-                       ρ      = −∇ · q + σ : ∇u + ρE ,               (3)
+                                                                                       Dt
+tends to develop another path to recover the conservative form
+                                                                    where ε is the internal energy per unit mass, σ is the stress
+of the heat conduction equation for the CHT problem. The
+                                                                    tensor, and E represents the external heat generation from
+basic idea is to introduce the heat capacity into the evolution
+                                                                    radiation or chemical energy release. Introducing the Fourier’s
+equation instead of modifying the equilibrium distribution
+                                                                    law, i.e., q = −κ∇T and the constitutive equation Eq. (3) can
+function. Furthermore, inspired by Huang and Wu [44], we
+                                                                    be rewritten as
+treat the convection term as a source term, thereby simplifying
+our model to involve the solution of a pure heat conduction                       Dε
+                                                                                ρ    = ∇ · (κ∇T ) − p̄∇ · u +  + ρE ,          (4)
+equation solely. Notably, the source term is calculated in                        Dt
+the moment space, which preserves the inherent advantages           in which p̄ is thermodynamic pressure, and  is the dissipa-
+of the LB model. The present model can not only recover             tion function.
+the suitable governing equation for the CHT problem but                Barletta [46] addressed the correct relationship between
+also eliminate the deviation term. Additionally, the governing      internal energy and temperature when using the Boussinesq
+equation transforms into a pure heat conduction equation, ne-       approximation. In this approach, the density ρ depends on
+cessitating only a straightforward linear equilibrium function      the temperature T , so the specific internal energy ε can be
+equation, potentially enhancing computational efficiency.           expressed as a function of T and ρ(T ):
+    The remainder of the present paper is organized as follows.
+Section II describes the CHT problem with the governing                                     ε = ε(T, ρ(T )).                     (5)
+
+                                                              055304-2
+ALTERNATIVE MULTIPLE-RELAXATION-TIME LATTICE …                                             PHYSICAL REVIEW E 111, 055304 (2025)
+
+   Taking the total derivative, the variation of internal energy      is essential to use Eq. (11) as the governing equation rather
+can be written as                                                     than Eq. (12). This methodological selection aligns with
+                                                                      the validation framework proposed by Korba et al. [50] in
+                           dε = cdT,                           (6)    precision-critical simulations. While Eq. (12) may not be uni-
+where c can be different from cv and c p . By assuming that an        versally applicable to all CHT scenarios, it remains valid for
+approximate equation of state ρ = ρ(T ) can be applied, the           specific cases under well-defined constraints. Equation (11)
+fluid pressure does not vary significantly [47]. This assump-         captures the complexities of CHT problems by accounting
+tion allows the specific heat c to be calculated as                   for the space-dependent properties of the system, enabling
+                                                                    a more precise understanding and prediction of heat transfer
+                                 ∂ε                                   phenomena in these multidomain systems.
+                         c=            .                   (7)
+                                 ∂T p̄
+   With this definition, and considering the relation between                        C. Thermal boundary condition
+internal energy and specific enthalpy h = ε + p̄/ρ, c can be
+                                                                          Generally, for the stationary interface, to ensure the con-
+expressed in terms of c p and the thermal expansivity β:
+                                                                      tinuities of temperature and heat flux changes, additional
+                              
+                  ∂h        p̄ ∂ρ              p̄                     thermal boundary conditions need to be satisfied at the solid-
+           c=            + 2           = c p − β.          (8)        fluid interface, which is represented as [23]
+                 ∂T p̄ ρ ∂T p̄                 ρ
+    Moreover, as discussed by Barletta [46], the value of c                                      T f = Ts ,                     (13a)
+depends on the material phase: For ideal gases, c is equivalent                          n · κ f ∇T f = n · κs ∇Ts ,            (13b)
+to the specific heat at constant volume (i.e., cv ). For liquids, c
+can be accurately approximated by the specific heat at con-           where n is the normal vector with respect to the interface.
+stant pressure, (i.e., c p ). Also, since the thermal expansion       It should be noted that the thermal boundary conditions can
+parameter β for solids is typically small, the specific heat c        be automatically satisfied within the present LB model [28].
+in this case can also be approximated by c p .                        First, we solve the same governing equation of temperature
+    Further, taking Eq. (6) into Eq. (4) yields                       in the whole domain to satisfy the continuity of temperature.
+            DT                                                        Second, the heat flux can be recovered from the first moment
+          ρc      = ∇ · (κ∇T ) − p̄∇ · u +  + ρE .      (9)          of the distribution function, which is assumed to be continu-
+             Dt
+                                                                      ous.
+   Neglecting kinetic energy, viscous dissipation, external               However, the thermal boundary condition needs to be es-
+heat generation, and the bulk compressibility, the governing          tablished for moving interfaces, like thermocapillary flow.
+equation for heat transfer is given by [48,49]                        There are two methods for determining the thermal boundary
+                                 
+                    ∂T                                                in these cases. One method uses the same formulations [i.e.,
+           (ρc) f      + u · ∇T = ∇ · (κ f ∇T ),       (10a)
+                    ∂t                                                Eqs. (13)] for the moving interface [51–53]. Alternatively,
+                                                                      it has been argued that both the conductive heat flux and
+                              ∂T
+                           (ρc)s  = ∇ · (κs ∇T ).      (10b)          advective heat flux should be taken into account [25], and
+                               ∂t                                     the thermal boundary condition for the total heat flux is then
+   Here, the subscripts f and s denote the fluid and solid,           deformed:
+respectively, and (c) and κ are the specific heat capacity
+and thermal conductivity. Setting us = 0, one can obtain the               n · (−κ∇T + ρcuT ) f = n · (−κ∇T + ρcuT )s .          (14)
+uniform governing equation throughout the entire region as
+follows:                                                              It should be noted that the thermal boundary condition for to-
+                                                                    tal heat flux does not obey the Galilean invariance as proved in
+                    ∂T
+            (ρc)e      + u · ∇T = ∇ · (κe ∇T ),         (11)          Appendix B, in the sense that the boundary condition Eq. (14)
+                    ∂t                                                is unreasonable for the CHT problem. Conclusively, the ther-
+where κe and (ρc)e represent the effective thermal conductiv-         mal boundary in the CHT problem should be [i.e., Eqs. (13)]
+ity and the heat capacity of the fluid or solid phase.                for both the stationary interface and moving interface.
+    It should be noted that in several previous literatures
+[25,32,42], the governing equation for heat transfer are                         III. LATTICE BOLTZMANN METHOD
+given as
+                                                                          Typically, the collision operator in the LB community is
+                 ∂T
+             ρc      + ∇ · (ρcuT ) = ∇ · (κ∇T ),          (12)        represented by various models, such as the single-relaxation-
+                 ∂t                                                   time model (also referred to as the Bhatnagar-Gross-Krook
+in which the convection term can be expanded as ∇ ·                   model) [54], the two-relaxation-time (TRT) model [55], the
+(ρcuT ) = ρcu · ∇T + T ∇ · ρcu. It is crucial to clarify that         triple-relaxation-time (TriRT) model [56], and the multiple-
+Eq. (12) differs from Eq. (11) in the context of CHT problems         relaxation-time (MRT) model [57]. However, in this paper,
+due to the spatial dependence of the term ρc. This spatial            we employ the MRT model with the DdQq lattice model (q
+variation of ρc is a defining characteristic of CHT problems,         discrete velocities in d-dimensional space, d = 1, 2, 3) due to
+where heat transfer occurs across multiple domains with dif-          its superior stability and accuracy in addressing the conjugate
+ferent material properties. As discussed in Appendix A, it            heat transfer problems.
+
+                                                                055304-3
+ZHAO, LIU, CHEN, AND WANG                                                                                     PHYSICAL REVIEW E 111, 055304 (2025)
+
+    A. Lattice Boltzmann model for hydrodynamic equations                          Considering such a pure diffusion equation, a simple linear
+   In this subsection, we refer to previous research and apply                     equilibrium distribution function can be employed to recover
+an existing model [57] for the flow field, thus the evolution                      the macroscopic equation with no deviation, bringing higher
+equation for the hydrodynamic equations reads                                      computational efficiency. Second, in the standard LB model
+                                                                                   with equilibrium distribution function fi(eq) , the macroscopic
+ g(x + ci δt , t + δt ) − g(x, t ) = − M−1 S[n(x, t ) − n(eq) (x, t )]             equation is recovered as
+                                                     
+                                            −1      S                                      (eq)                                  
+                                     + δt M      I−    Gm , (15)                      ∂
+                                                    2                                       i fi                               (eq)
+                                                                                                    = ∇ · κe ∇         ci ci fi        − (ρc)e u · ∇T.
+                                                                                            ∂t
+where g (x, t ) = [g0 (x, t ), . . . , gi (x, t ), . . . , gq−1 (x, t )]T and                                        i
+                                                                                                                                                    (20)
+gi (x, t ) is the particle distribution function with discrete veloc-
+                                                                                   Using the popular linear equilibrium distribution function
+ity ci at position x and time t of the flow flied. The transform
+matrix M can be used to project the distribution function gi in                     fi(eq) = ωi (ρc)e T , the macroscopic equation becomes [42]
+the discrete velocity space onto macroscopic variables in the
+                                                                                        ∂ ((ρc)e T )
+moment space through following relation: n(x, t ) = Mg(x, t ).                                       = ∇ · (κe ∇((ρc)e T )) − (ρc)e u · ∇T.                    (21)
+S is a diagonal matrix composed of relaxation parameters.                                    ∂t
+The equilibrium moment n(eq) (x, t ) = Mg(eq) (x, t ) =                            Evidently, Eq. (21) does not align with Eq. (19) in scenarios
+M[g(eq)                  (eq)                (eq)
+     0 (x, t ), . . . , gi (x, t ), . . . , gq−1 (x, t )] ,
+                                                         T
+                                                                in which           where the heat capacity ρc varies spatially. Several existing
+g(eq)
+ i (x, t ) is the discrete equilibrium distribution function, can
+                                                                                   models have attempted to recover the correct macroscopic
+be given by                                                                        equation by decoupling the zero-order and second-order mo-
+               ⎧                                                                 ments of the equilibrium distribution function.
+                                                  uu: (ci ci −cs2 I )
+               ⎨(ω0 − 1) p2 + ωi ci ·u  2    +              4          , i=0           In the present paper, inspired by previous works [44,59],
+g(eq)
+ i (x, t ) =
+                          cs         cs
+                                                       2cs                        we propose an approach to recover the correct macroscopic
+               ⎩ω p + ci ·u +        (       −c     )
+                                                2
+                                 uu:   c  c       I
+                      i c2     cs2
+                                         i i   s
+                                            2cs4
+                                                       ,                 i = 0,   equation by introducing the heat capacity ρc into the evolution
+                         s
+                                                              (16)                 equation instead of modifying the equilibrium distribution
+where ωi is the weight coefficient, and cs is the speed of                         function. The current LB method offers a unique perspec-
+sound. The matrices and parameters in different lattice models                     tive and potential advantages compared to conventional
+can be found in Appendix C. Fm = M(F0 , · · · , Fi , · · · , Fq−1 )                approaches, and the evolution equation for the temperature
+represents the force term, in which the discrete distribution                      field is given as
+function of force Fi can be expressed as [58]
+                                                                                    (ρc)e f (x + ci δt , t + δt ) = f (x, t ) + [(ρc)e − 1]f (x + ci δt , t )
+               ci · F (Fu + uF) : ci ci − cs 2 I
+       Fi = ωi       +                                            .       (17)                                         − M−1 S[m(x, t ) − m(eq) (x, t )]
+                cs 2           2cs 4
+In this setting, the macroscopic velocity and pressure are                                                             + δt M−1 Qm ,                           (22)
+calculated by
+                                    ⎡                 ⎤                            where f (x, t ) = [ f0 (x, t ), . . . , fi (x, t ), . . . , fq−1 (x, t )]T ,
+                   δt           cs2 ⎣            |u|2 ⎦                             fi (x, t ) represents the distribution function of temperature.
+   u=       ci gi + F, p =                gi − ω0 2 .                              Similarly, M can be used to project the distribution func-
+                   2         1 − ω0 i=0         2cs
+         i                                                                         tion fi in the discrete velocity space onto macroscopic
+                                                                          (18)     variables in the moment space through following relation
+                                                                                   m = Mf (x, t ). S is a diagonal matrix composed of relax-
+      B. Lattice Boltzmann model for the temperature field                         ation parameters. m(eq) is given as m(eq) = Mf (eq) (x, t ) =
+    Over the past few years, numerous researchers have em-                         M[ f0(eq) (x, t ), f1(eq) (x, t ), · · · , f8(eq) (x, t )]T , where fi (eq) is the
+ployed the LB method to investigate conjugate heat transfer                        equilibrium distribution function and is expressed as
+problems. However, their approaches have encountered lim-
+                                                                                                                   fi (eq) = ωi T.                             (23)
+itations. Some of these studies are confined to addressing
+steady-state conjugate heat transfer challenges [23], while                        The discrete source term Qm is given as Qm = MQ, where
+others resort to the first-order finite difference scheme, com-                    Q = [Q0 , · · · , Qi , · · · , Qq−1 ]T , and the distribution function
+promising on accuracy [25]. Still, researchers modify the                          of source term Qi is defined as
+original temperature equation in some instances, necessitat-
+ing adherence to additional thermal boundary conditions for                                           Qi = ωi Q = −ωi (ρCp )e u · ∇T ,                         (24)
+accurate calculations [32,42]. To address the limitations of the
+current CHT problem, we propose an innovative approach that                        where the gradient of temperature ∇T can be calculated
+comprises two key components.                                                      locally, as shown in the following Chapman-Enskog anal-
+    First, we consider the governing equation a pure diffusion                     ysis. In the present model, the macroscopic variable T is
+equation, incorporating a corresponding source term, which                         calculated by
+can be mathematically expressed as
+                      ∂T                                                                                            T =          fi .                          (25)
+              (ρc)e      = ∇ · (κe ∇T ) − (ρc)e u · ∇T.                   (19)
+                      ∂t                                                                                                     i
+
+
+                                                                             055304-4
+ALTERNATIVE MULTIPLE-RELAXATION-TIME LATTICE …                                                             PHYSICAL REVIEW E 111, 055304 (2025)
+
+                       C. Chapman-Enskog analysis                                   Eq. (29a), we have
+   To recover the macroscopic governing equation (19), we                                                  m0(n) = 0 (∀n ⩾ 1).                 (31)
+will conduct a multiscale Chapman-Enskog analysis within a
+MRT model with natural moments. To this end, the time and                           Consequently, with      m0(eq) = T, Qm0 = Q,     Eqs. (29b) and
+space derivaties are first expanded as                                              (29c) can be simplified as
+
+      ∂t = ∂t1 +              2
+                                  ∂t2 ,    ∇ = , ∇1 ,
+                                                                                                1
+                                                                                                 : (ρc)e ∂t1 T = Q(1) ,                      (32a)
+                                                                                                                          s1 
+                +∞                                                                             2
+                                                                                                 : (ρc)e ∂t2 T + ∇ 1 · 1 −      m1(1) = 0.   (32b)
+     m=                n
+                           m(n) ,         Qm = Qm(1) ,        Q = Q(1) .    (26)                                           2
+                n=0                                                                    To further simplify Eq. (32b), combining the correspond-
+                                                                                    ing equations for the first-order moment m1 in Eq. (27b), we
+Applying the Taylor expansion to Eq. (22) and multiplying                           have
+M on both sides of of the above equations, we can obtain the                             s1
+following equations in the moment space at different orders
+                                                                                                                            (1)
+                                                                                      − m1(1) = ∂t1 m1(0) + ∇ 1 · m2(0) − Qm1   = cs2 ∇ 1 T.  (33)
+                                                                                         δt
+of :
+                                                                                    Here m1(0) = 0, m2(0) = T I, Qm1 = 0, owing to the linear
+         0
+             : m(0) = m(eq) ,                                              (27a)    equilibrium distribution function [i.e., Eqs. (23), (24)]. Then,
+                                            S                                       Eq. (32b) can be written as
+         1
+             : (ρc)e I∂t1 m(0) + d1 m(0) = − m(1) + Qm(1) ,                (27b)                                                     
+                                            δt
+                                                                                                                    2 1      1
+                                                                                           2
+                                                                                             : (ρc)e ∂t2 T = ∇ 1 · cs     −     δt ∇ 1 T .      (34)
+         2
+             : (ρc)e I∂t1 m(1) + d1 m(1) + (ρc)e I∂t2 m(0)                                                            s1     2
+                               t 2 (0)      t                                       We obtain
+               + (ρc)e I        ∂ m + (ρc)e (2∂t1 d1 )m(0)                                                                
+                              2 t1         2                                                       ∂T        2 1    1
+                  t 2 (0)                                                                    (ρc)e    = ∇ · cs    −     δt ∇T + Q.             (35)
+               +   d m                                                                             ∂t          s1   2
+                2 1
+                                                                                    Comparing Eq. (35) with Eq. (19), the thermal conductivity κe
+                S
+             = − m(2) .                                                    (27c)    is obtained as κe = cs2 ( s1j − 21 )δt .
+                δt                                                                      Meanwhile, to demonstrate the advantages of the LB
+where d1 = E · ∇ 1 , in which E = (Ex , Ey )T , Ex = M                              method, we perform a local calculation on the convection term
+[diag(c0x , . . . , c8x )]M−1 , and Ey = M[diag(c0y , . . . , c8y )]                as the source term. The convection term (macroscopic variable
+M−1 . By using the transform matrix for natural moments as                          ∇T ) is calculated by
+shown in Appendix C, the matrix of moments is composed by                                             Q = εQ(1) = −(ρc)e u · ε∇ 1 T.           (36)
+                           m = m0 , m1 , · · · , mk ,                               Taking Eq. (33) into above equation, one can obtain
+                   m   (eq)
+                              =       m0(eq) , m1(eq) , · · · , mk(eq) ,                                  s1
+                                                                                              Q = (ρc)e 2 u · m1(1)
+                                                                                                         cs δt
+                      Qm = Qm0 , Qm1 , · · · , Qmk ,                        (28)                          s1
+                                                                                                 = (ρc)e 2 u · m1 − 0 m1(0) + O( 2 ).       (37)
+in which the subscripts k represent the kth order moments of                                             cs δt
+ fi , fi(eq) , Qi . The corresponding relaxation matrix S is given                                
+                                                                                    Here, m1 = i ci fi , and m1(0) = m1(eq) = 0. Therefore, one
+by S = (S0 , S1 , · · · , Sk ). To derive the corresponding macro-
+                                                                                    can get the local calculation of the source term as
+scopic equation, we separately formulate the equation for the
+conserved moment m0 specified in Eq. (27) as                                                                  s1
+                                                                                                    Q = (ρc)e 2 u ·        ci fi + O( 2 ).     (38)
+                                                                                                             cs δt
+     0
+         : m0(0) = m0(eq) ,                                                (29a)                                       i
+
+                                      s0 (1)
+     1
+         : (ρc)e ∂t1 m0(0) + ∇ 1 · m1(0) = −
+                                        m + Qm0   (1)
+                                                      , (29b)                                       IV. RESULTS AND DISCUSSIONS
+                                      δt 0
+                                                                                     In this section, we begin by testing the accuracy and
+                    (1)           s1
+     2
+       : (ρc)e ∂t1 m0 + ∇ 1 · 1 −      m1(1) + (ρc)e ∂t2 m0(0)                      convergence of the proposed LB model. This evaluation in-
+                                  2                                                 volves analyzing problems such as determining the effective
+              1                          s0                                         thermal conductivity of parallel and series two-component
+             + (ρc)e t∂t1 ∇ 1 · m1(0) = − m0(2) .                          (29c)
+              2                          δt                                         materials, studying a graphite-water mixture, and investigat-
+                                                                                    ing steady (unsteady) conjugate heat transfer in horizontal
+   Note that                                                                        interface channels. In particular, since curved interfaces are
+                      d12 m(0) = (E · ∇ 1 )(E · ∇ 1 )m(0) ,                 (30)    often encountered in conjugate heat transfer, we perform sim-
+                                                                                    ulations focusing on steady heat conduction in a two-layer
+then substituting Eq. (27b) into Eq. (27c), we can rewrite                          annulus, natural convection in a square cavity populated by
+Eq. (27c) for the conserved moment m0 and finally ob-                               16 solid blocks, and thermocapillary flow with two superim-
+      (29c).n Substituting
+tain Eq.                      the Chapman-Enskog expansions                         posed planar fluids. These simulations allow us to compare
+m0 = +∞  n=0   m (n)
+                 0   , and Q =   Q(1) into Eq. (25), and utilizing                  our results with previously reported data, thereby verifying the
+
+                                                                              055304-5
+ZHAO, LIU, CHEN, AND WANG                                                                             PHYSICAL REVIEW E 111, 055304 (2025)
+
+                                                                         where  · 2 is the L2 norm in the whole domain, and ϕ is
+                                                                         the velocity u or the temperature T . Moreover, to test the
+                                                                         convergence rate of the current model, the global relative error
+                                                                         is defined as
+                                                                                                  
+                                                                                                      i |ϕnumerical (xi ) − ϕanalytical (xi )|
+                                                                                                                                                 2
+                                                                                      E (ϕ) =                                                       ,   (42)
+                                                                                                               i |ϕanalytical (xi )|
+                                                                                                                                     2
+   FIG. 1. Schematic diagram of the one-dimensional rod which is
+composed of two solids with different thermophysical properties and
+the same initial temperatures.
+                                                                         and the summation is taken over all grid points.
+
+reliability of our model. We also use our current LB model to
+simulate various complex conjugate heat transfer phenomena                        A. Validation of governing equations for temperature
+such as the cooling process in random porous media.                          To validate the governing equations of temperature, we
+    The conjugate heat transfer problems considered in what              present two numerical simulations of heat conduction in a
+follows can usually be described by some dimensionless                   moving rod with different velocities U0 . In this simulation, we
+parameters, such as the Prandtl number (Pr), the Rayleigh                configure the heat capacities as (ρc)l = 1.0, (ρc)r = 2.0, and
+number (Ra) and the Mach number (Ma), which are, respec-                 the left and right boundaries are set as adiabatic boundaries.
+tively, defined as                                                           First, as illustrated in Fig. 1, the initial temperature for
+                                           √                             both sides are set to be Tl = Tr = 1.0. Owing to there
+            ν         gβ T L 3               gβ T L
+     Pr = , Ra =                , Ma =               .  (39)             being no thermal gradient between the two sides, the pre-
+            α             να                   cs                        dicted temperature at thermal equilibrium state should also
+Unless otherwise specified, the Mach number Ma is set to be              be 1.0. As shown in Fig. 2(a), the results obtained from
+0.1 in the simuations on account of almost incompressible                Eqs. (11) and (12) both predict identical equilibrium states
+flow under consideration. In addition, we adopt the average              with complete temperature homogenization when U0 = 0.
+Nusselt number Nu to quantify the efficiency of heat transfer,           However, Fig. 2(b) reveals critical divergence when impos-
+which is given by                                                        ing a nonzero velocity (U0 = 0.1). The temperature obtained
+                                                                         from Eq. (12) gradually decreases over time and deviates
+                                               
+               1 H                          ∂T                         from the predicted thermal equilibrium temperature. As dis-
+        Nu =         Nu(y)dy, Nu(y) = −              ,   (40)
+                                            ∂x wall
+                                                                         cussed in Appendix A, Eq. (11) maintains thermodynamic
+               H 0
+                                                                         consistency, while Eq. (12) generates anomalous heat transfer
+where Nu(y) is calculated by the second-order up-wind dif-               characterized by T ∇ · ρcu. This artificial coupling term in-
+ference method. Further, to ensure that our numerical results            duces unphysical temperature oscillations along the rod axis,
+have reached a steady state for the steady-state problem, we             thereby violating the second law of thermodynamics.
+adopt a specific convergence criterion, which is defined as                  Secondly, as illustrated in Fig. 3, the initial configuration
+                                                                         features a temperature discontinuity with Tl = 1.0 on the left
+              ϕ(x, t ) − ϕ(x, t − 100δt )2                             side and Tr = 0 on the right side. The predicted temperature Tp
+                                             ⩽ 10−9 ,          (41)
+                        ϕ(x, t )2                                      at the thermal equilibrium state can be easily obtained based
+
+   1.05                                                                    1.05
+
+   1.04                                                                    1.04
+
+   1.03                                                                    1.03
+
+   1.02                                                                    1.02
+
+   1.01                                                                    1.01
+
+     1                                                                       1
+
+   0.99                                                                    0.99
+
+   0.98                                                                    0.98
+
+   0.97                                                                    0.97
+
+   0.96                                                                    0.96
+
+   0.95                                                                    0.95
+          0        0.2         0.4         0.6         0.8         1              0         0.2              0.4            0.6           0.8              1
+
+
+                                     (a)                                                                             (b)
+
+               FIG. 2. The profiles of temperature T for different governing equations of temperature under U0 = 0 (a) and (b).
+
+                                                                  055304-6
+ALTERNATIVE MULTIPLE-RELAXATION-TIME LATTICE …                                                     PHYSICAL REVIEW E 111, 055304 (2025)
+
+                                                                            B. Solid-solid CHT problem 1: Effective thermal conductivity
+                                                                                          for parallel mode and series mode
+                                                                              We first use the proposed model to predict the effective
+                                                                           thermal conductivity of parallel and series dual-component
+                                                                           materials as shown in Fig. 5. By considering the thermal
+                                                                           conductivities of the two components, denoted as κ1 and κ2 ,
+    FIG. 3. Schematic diagram of the one-dimensional rod which is          one can readily derive the theoretical solutions for the effec-
+composed of two solids with different thermophysical properties and        tive thermal conductivities. In the parallel mode, the effective
+initial temperatures.                                                      thermal conductivity is given by (κ1 + κ2 )/2, while for the
+                                                                           series mode, it is calculated as (2κ1 κ2 )/(κ1 + κ2 ) [33]. For the
+                                                                           numerical results, the effective thermal conductivity κe f f can
+on the conservation of energy as                                           be determined as
+
+                           (ρc)l Tl + (ρc)r Tr  1                                                               qL
+                    Tp =                       = .               (43)                                 κeff =       ,                         (44)
+                             (ρc)l + (ρc)r      3                                                                T
+
+    Figures 4(a) and 4(b) compare the temperature distri-                  where L is media thickness and T is the difference between
+butions predicted by the governing equation (11) and the                   Th and Tl , and the heat flux q can be determined by the
+governing equation (12). As shown in Fig. 4(a), both equa-                 Fourier’s law, i.e., q = −κ∇T . Owing to Eq. (38), the heat
+tions show the same temperature homogenization as predicted                flux q can be directly calculated by
+at equilibrium under static conditions (U0 = 0). However, as
+illustrated in Fig. 4(b), Eq. (12) results in a gradual decrease                                           
+                                                                                                          1
+in temperature over time and a notable deviation from the                                        q =− 1−                     ci fi .         (45)
+                                                                                                         2τ
+predicted thermal equilibrium temperature, which can also be                                                           i
+attributed to the spurious coupling term: T ∇ · ρcu.
+    This study validates temperature governing equa-                          In this simulation, we configure the parameters as fol-
+tions through numerical tests of heat conduction in a moving               lows: L = 1, Th = 0.5, Th = −0.5, and κ1 = 1, κ2 = 2, 10,
+rod under static (U0 = 0) and nonzero velocity (U0 = 0.1)                  100, 500, 1000, 10 000. Additionally, the computational grid
+conditions, with adiabatic boundaries and specified heat                   resolution is fixed at 100 × 100. We systematically compare
+capacities. Both equations predict identical temperature                   the simulation results with theoretical predictions, and the
+homogenization at equilibrium under static conditions,                     results are presented in Fig. 6. As shown in Fig. 6, the
+aligning with theoretical expectations. However, under                     numerical predictions exhibit excellent agreement with the-
+nonzero velocity, Eq. (12) deviates from the predicted thermal             oretical values across the entire parameter range, including
+equilibrium, showing unphysical temperature decreases                      when κ2 reaches the extreme value of 10 000. This demon-
+due to a spurious coupling term T ∇ · ρcu, which induces                   strates that the model exhibits robust capability to accurately
+thermodynamic inconsistency. In contrast, Eq. (11) maintains               resolve steady-state solid-solid conjugate heat transfer prob-
+thermodynamic consistency, highlighting its superiority in                 lems, even under conditions of extreme thermal conductivity
+modeling conjugate heat transfer problem.                                  contrast
+
+
+    1
+                                                                             1.2
+
+
+   0.8                                                                         1
+
+
+                                                                             0.8
+   0.6
+
+                                                                             0.6
+   0.4
+                                                                             0.4
+
+   0.2
+                                                                             0.2
+
+
+    0                                                                          0
+
+         0          0.2         0.4         0.6         0.8          1             0       0.2         0.4             0.6             0.8     1
+
+                                      (a)                                                                      (b)
+
+             FIG. 4. The profiles of temperature T for different governing equation of temperature under U0 = 0 (a) and U0 = 0.1 (b).
+
+                                                                    055304-7
+ZHAO, LIU, CHEN, AND WANG                                                                                 PHYSICAL REVIEW E 111, 055304 (2025)
+
+
+
+
+                                            (a)                                                           (b)
+
+        FIG. 5. Schematic illustration of the computation domain for solid-soild CHT problem 1: (a) series model and (b) parallel mode.
+
+
+ C. Solid-solid CHT problem 2: Effective thermal conductivity                   to c = 1 (graphite) and c = 2 (water), as these choices do
+                  of graphite-water mixture                                     not affect the calculated effective thermal conductivity. The
+   To further gauge the prowess of the current model, we aim                    comparison of the current predicted results, Wang’s pre-
+to predict the effective thermal conductivity of a graphite-                    dicted results [33], and experimental data [60] is presented in
+water mixture, wherein graphite is randomly dispersed in                        Table I. As seen from the table, the current model not only
+water with a volume fraction of P. Given that the ther-                         shows the ability to predict the effective thermal conductivity
+mal conductivity of graphite is κgraphite = 160.5 W/mK, and                     of a random porous medium but also produces predicted re-
+the thermal conductivity of water is κwater = 0.666 W/mK,                       sults that are closer to the experimental data when compared
+we proceed to conduct the simulation with L = 1, P =                            to Wang’s predicted results [33].
+0.05, 0.11, 0.17 in a 100 × 100 computational domain. For
+steady-state thermal conductivity analysis, the effective ther-                           D. Solid-solid CHT problem 3: Steady heat conduction
+mal conductivity tensor is governed solely by the conductivity                                           in a two-layered annulus
+contrast and spatial arrangement of the constituent phases.                        In the previous example, we considered the flat boundary
+Parameters such as specific heat capacity (c p ), density (ρ),                  case. To further verify the accuracy of the current LB method,
+and thermal expansion coefficient (β) do not influence the                      we consider the boundary of a curved surface and simulate
+steady-state conductive behavior, as they pertain to transient                  steady heat conduction in a two-layered annulus, as shown
+or thermomechanical effects excluded in this study. For com-                    in Fig. 7. In the simulation, the outer circle is at a higher
+putational simplicity, we normalized the heat capacity values                   temperature of Th = 1, and the inner circle is at a lower
+
+
+  2.2                                                                             9
+
+                                                                                  8
+    2
+                                                                                  7
+
+  1.8                                                                             6
+
+                                                                                  5
+  1.6
+                                                                                  4
+
+  1.4                                                                             3
+
+                                                       Theoretical Value          2                                                Theoretical Value
+                                                       Wang's Results                                                              Wang's Results
+  1.2
+                                                       Present Results                                                             Present Results
+                                                                                  1
+
+    1                                                                             0
+        0          2            4            6           8                 10         0             2           4         6           8                10
+
+
+                                      (a)                                                                           (b)
+
+                       FIG. 6. Comparison of effective thermal conductivity keff for (a) series mode and (b) parallel mode.
+
+                                                                       055304-8
+ALTERNATIVE MULTIPLE-RELAXATION-TIME LATTICE …                                                                      PHYSICAL REVIEW E 111, 055304 (2025)
+
+                                      TABLE I. Comparison of effective thermal conductivity for graphite-water mixture.
+
+Parameter                                    Experimental results [60]                          Present predictions                    Wang’s predictions [33]
+P                                                 κeff (W/mK)                                      κeff (W/mK)                             κeff (W/mK)
+0.05                                                   0.832                                               0.813                                0.800
+0.11                                                   1.132                                               1.044                                1.004
+0.17                                                   1.439                                               1.382                                1.286
+
+
+temperature of Tc = 0, defining r as the distance between any                               Fig. 8(b) that the current LB method still has the second-order
+point in the circle and the center of the circle, and defining                              convergence rate for the curved boundary problem.
+θ as the angle formed between any point in the circle and
+the horizontal line where the center of the circle is. The ring                                E. Solid-liquid CHT problem 1: Steady- and unsteady-state
+is divided into two regions. When R0 ⩽ r ⩽ R1 , it is the first                                            conjugate heat transfer in a channel
+region, and when R1 ⩽ r ⩽ R2 , it is the second region. The                                                     with a horizontal interface
+ratio of the radius is set as R0 : R1 : R2 = 1 : 2 : 3. The grid
+resolution is set to be 200 × 200. In the previous research                                     Having validated the current model’s effectiveness in sim-
+work [41], the diffusion interfaces were used in boundary                                   ulating solid-solid conjugate heat transfer, we now test its
+treatment using Dirichlet boundary conditions. However, the                                 application in addressing solid-liquid conjugate heat transfer
+processing process is relatively complex. In the current LB                                 scenarios. Specifically, we simulate the steady and unsteady
+method, we only need to use simple boundary conditions for                                  conjugate heat transfer in a channel featuring a horizontal
+processing. The bounce-back boundary method is adopted to                                   interface.
+treat all boundary conditions. One can obtain corresponding                                     First, we consider the steady-state situation. In Fig. 9, we
+analytical solution as θ = 0 [41]                                                           depict a square system with a horizontal interface positioned
+                                                                                            at its center, having a length of L and a width of H. Two
+T (r, θ )                                                                                   fluids, differing in their physical properties, flow in parallel
+    ⎧                                                                                       from left to right at a constant velocity ux in the upper and
+    ⎨k ln (R ln/R(r/R 0)
+                                                                          R0 ⩽ r ⩽ R1       lower regions of the system. To treat the boundaries, we adopt
+                  1 )+ln (R1 /R0 )
+ =
+       d    2
+
+    ⎩       ln (R1 /R0 )                         kd ln (r/R1 )                              periodic boundary conditions for the left and right walls, while
+       kd ln (R2 /R1 )+ln (R1 /R0 )
+                                   +     kd ln (R2 /R1 )+ln (R1 /R0 )
+                                                                          R1 ⩽ r ⩽ R2 .
+                                                                                            for the upper and lower walls, we employ the nonequilibrium
+                                                                                  (46)      extrapolation approach, as outlined in Ref. [61]. The temper-
+                                                                                            ature at the boundary satisfies the following expression:
+   As presented in Fig. 8(a), numerical solutions with differ-
+ent thermal conductivity ratios κd are given, and it is found                                T (x, y = 0) = T (x, y = H ) = cos(kx + ωt ),    k = 2π /L.
+that they all agree with analytical solutions. We also conduct                                                                                       (47)
+numerical simulations on the different mesh grid resolutions,                               Then the corresponding analytical solution of the temperature
+as well as x ranging from 1/40 to 1/320, and one can find in                                equation is expressed as [24]
+
+                                                   ⎧
+                                                   ⎨Re       {ei(kx+ωt ) [γ1 e−λ1 y + (1 − γ1 )eλ1 y ]},     0 ⩽ y ⩽ 0.5H
+                          T (x, y, t )         =                                                                                                          (48)
+                                                   ⎩Re       {ei(kx+ωt ) [γ2 e−λ2 y + (1 − γ2 e−λ2 H )e−λ2 (H −y) ]},   0.5H ⩽ y ⩽ 1.0H,
+
+
+where the relevant parameters are defined as                                                    Here, Re represents the real part of a complex number.
+                                                                                            When ω = 0, the resulting expression is the analytical solu-
+                  λ1 a32 − a22 + κa σ λ2 2a1 a2 a3 − a22 − a32                              tion in the steady-state case. In the simulation, the thermal
+γ1 =                                                                                    ,
+       (λ1 + κa σ λ2 ) a12 a32 − a22 − (λ1 − κa σ λ2 ) a12 a22 − a32                        conductivity ratio κd = κ2 /κ1 and heat capacity ratio σ =
+                                                                                 (49a)      ρ2 c p2 /ρ1 c p1 are both set to be 10 with grid resolution be-
+                                                                                            ing 64 × 64. Figure 10(a) shows the temperature distribution
+          λ1 a12 a3 + a3 − 2a1 a2 + κa σ λ2 a12 − 1 a3                                      at different locations, and the numerical results are in good
+γ2 =                                                                                    ,
+     (λ1 + κa σ λ2 ) a12 a32 − a22 − (λ1 − κa σ λ2 ) a12 a22 − a32                          agreement with the analytical solutions. Moreover, when we
+                                                                                  (49b)     take different values for σ or κd , the numerical results can still
+                                                                                            correspond to the analytical solution. To test the convergence
+         −λ1 H2                 −λ2 H2                                       κ2 /c p2
+a1 = e            ,   a2 = e             ,     a3 = e−λ2 H ,            κa =          ,     of property of our proposed LB model, we also calculate the
+                                                                             κ1 /c p1       relative error distribution for mesh sizes from 32 to 256. In
+                                                                                 (49c)      Fig. 11(a), the relative error distributions of different mesh
+                                                                                           sizes in the current stable state are plotted. It can be seen
+            ω + Uk                                                                          that the current LB method has a second-order convergence
+λj = k 1 + i 2           , ( j = 1, 2).                                          (49d)
+            k κ j /c p j                                                                    accuracy in space, which fully demonstrates the stability and
+
+                                                                                    055304-9
+ZHAO, LIU, CHEN, AND WANG                                                                          PHYSICAL REVIEW E 111, 055304 (2025)
+
+                                                                            TABLE II. Comparison of the steady-state average Nusselt num-
+                                                                         ber (Pr = 0.7, Ra = 105 ).
+
+                                                                         κd             Present      Ref. [62]         Ref. [63]           Ref. [64]
+                                                                         0.1            0.810         0.820             0.850               0.803
+                                                                         1              1.235         1.240             1.261               1.219
+
+
+
+                                                                         handle not only steady-state conjugate heat transfer problems
+                                                                         but also unsteady-state situations effectively. These numerical
+                                                                         results demonstrate that the current LB model has the flexibil-
+                                                                         ity and accuracy to simulate a wide range of CHT problems,
+                                                                         including those that involve changes over time.
+
+                                                                                  F. Solid-liquid CHT problem 2: Natural convection
+                                                                                      in a square cavity filled with 16 solid blocks
+                                                                            In this section, to investigate the ability of the current
+                                                                         LB method to apply to complex curved interface boundaries,
+                                                                         the natural convection in a square cavity filled with 16 solid
+      FIG. 7. Schematic diagram of the two-layered annulus.              blocks is simulated. As shown in Fig. 12, 16 circular cylinders
+                                                                         are uniformly distributed in a cavity with side length L, and
+                                                                         the solid volume fraction is 0.36. Here, the grid resolution is
+reliability of the current LB model in the study of the solid-           set to be 200 × 200, and the left wall is hot with temperature
+liquid conjugate heat transfer problems.                                 Th = 1, the right wall is cold with temperature Tc = 0, and
+    The above simulation is assumed to be carried out un-                the top and bottom walls are adiabatic. The ratio of thermal
+der steady-state conditions. To further validate the proposed            conductivity κd = κ1 /κ2 = 0.1 and 1. The Prandtl number
+model, we consider the case of ω = 0, which corresponds to              Pr and the Rayleigh number Ra are fixed at 0.7 and 105 .
+an unsteady state CHT problem. The analytical solution in                Figure 13 presents the velocity and temperature distributions
+the steady state gives the initial condition of this problem.            for different thermal conductivity ratios. When the ratio of κd
+Other parameters are consistent with those in the steady state           increases, the flow around the circular area is enhanced, and
+discussed above. The frequency ω is defined as ω = 2π /T .               the isotherm becomes smoother. As shown in Table. II, we
+When the time t = 2 is selected, the numerical solutions at              compare the average Nusselt number of the left wall in the
+different positions correspond to the analytical solutions in            steady state, and our predicted results fit well with previous
+Fig. 10(b). As we can see from Fig. 11(b), there is also a               works [62–64]. Moreover, we can find that as the κd increases,
+second-order convergence rate in space in the current case.              the average Nusselt number of the left wall increases, and
+Based on the information provided, the current model can                 there is a positive correlation between them. The comparison
+
+     1.1                                                                       -1.5
+
+
+     0.9                                                                        -2
+
+                                                                               -2.5
+     0.7
+                                                                                -3
+     0.5
+                                                                               -3.5
+     0.3
+                                                                                -4
+
+     0.1                                                                       -4.5
+                                                                                                                                Line,slope=2.0
+    -0.1                                                                        -5
+           1                          2                            3             -2.6       -2.4    -2.2         -2     -1.8        -1.6         -1.4
+
+
+                                     (a)                                                                         (b)
+
+   FIG. 8. The profiles of temperature T for different thermal conductivity ratios κd (a), and the relative errors versus grid resolutions for
+kd = 100 (b).
+
+                                                                 055304-10
+ALTERNATIVE MULTIPLE-RELAXATION-TIME LATTICE …                                                        PHYSICAL REVIEW E 111, 055304 (2025)
+
+                                                                          LB model. Here, the exact solution of T can be obtained via
+                                                                          Laplace transformation as follows [65]:
+                                                                                            
+                                                                                           1 ∞
+                                                                                                 2Im[m (ω2 eiπ , y)]e−ω t ωdω, (50)
+                                                                                                                        2
+                                                                            T (t, y) = −
+                                                                              m
+                                                                                          π 0
+                                                                                                                     
+                                                                                     1                  yuy   yGl (s)     T in
+                                                                            (s, y) = [F (s) − T ]exp
+                                                                              l                 in
+                                                                                                            −           +      , (51)
+                                                                                     s                  2Dl     2          s
+                                                                                                                           
+                                                                                                   1          yuy   yGh (s)
+                                                                                          (s, y) = F (s)exp
+                                                                                           h
+                                                                                                                  +          ,                          (52)
+                                                                                                   s          2Dh     2
+                                                                                                                                   
+                                                                                                     T in λl Gl (s) − uyl (ρc p,l )
+                                                                            F (s) =                                                                  , (53)
+                                                                                         (ρc p,l )uyl − (ρc p,h )uyh + λl Gl (s) + λh Gh (s)
+
+                                                                                                                      2            1/2
+                                                                                                                 uym           4s
+   FIG. 9. Schematic diagram of conjugate heat transfer in a chan-                              G (s) =
+                                                                                                 m
+                                                                                                                             + m           ,            (54)
+nel filled with two fluids.                                                                                      Dm           D
+
+                                                                          where parameter m indicates the phase (m = l, h), T in is the
+reveals that the current model can tackle the solid-liquid con-
+                                                                          initial temperature distribution, Dm = λm /(ρc p,m ), and uym is
+jugate heat transfer problem with complex curved interface
+                                                                          the Y-direction velocity of phase m. And results of them
+boundaries.
+                                                                          compared with Yue et al.’s results are as in Tables III and IV,
+                                                                          where λr = λl /λh , c p,r = c p,l /c p,h .
+      G. Liquid-liquid CHT problem 1: Thermocapillary                         Based on the dates in Tables III and IV, our results clearly
+          flow with two superimposed planar fluids                        align more closely with the theoretical values compared to
+                                                                          others. Furthermore, the discrepancy between our model’s
+    In this subsection, we are going to test the present model
+                                                                          results and those of Yue et al.’s model, as seen in the tables,
+in solving the liquid-liquid CHT problem by conducting sim-
+                                                                          can be attributed to the collision terms, which are both linked
+ulation on the thermocapillary flow with two superimposed
+                                                                          to heat capacity. Our model exhibits a lower error margin
+planar fluids, which is illustrated in Fig. 14. To begin, the tem-
+                                                                          than other models due to the avoidance of calculating the
+peratures of the upper wall and lower wall are T (x, H ) = Tc ,
+                                                                          spatial derivative of heat capacity. This becomes increasingly
+T (x, −h) = Th + T0 cos(ωx) respectively, in which Th > Tc >
+                                                                          apparent as heat capacity increases, as evident in Table IV.
+T0 > 0 and ω = 2π x/L. Moreover L, λ are the characteristic
+length and the conductivity, respectively.
+    In this case, we adopt two different thermal conductivity             H. Application 1: Cooling process of porous media in a cold flow
+ratios κd as 0.2 and 1.0. change λr , c p,r , and get the results            Next, we will apply the present LB model to simulate the
+of the temperature and velocity relative error by using the               cooling process of porous media in a cold flow. To this end,
+
+      1                                                                           1
+
+
+    0.8                                                                       0.8
+
+
+    0.6                                                  Analytical           0.6                                                              Analytical
+                                                         x/L=0.0625                                                                            x/L=0.0625
+                                                         x/L=0.25                                                                              x/L=0.25
+                                                         x/L=0.50                                                                              x/L=0.50
+    0.4                                                  x/L=0.75             0.4                                                              x/L=0.75
+
+
+
+    0.2                                                                       0.2
+
+
+      0                                                                           0
+       -1           -0.5             0             0.5                1           -0.8   -0.6     -0.4    -0.2         0       0.2      0.4       0.6       0.8
+
+                                    (a)                                                                                (b)
+
+ FIG. 10. The profiles of temperature T along vertical lines in the channel: (a) steady case with ω = 0, (b) unsteady case with ω = 2π /T .
+
+                                                                  055304-11
+ZHAO, LIU, CHEN, AND WANG                                                                              PHYSICAL REVIEW E 111, 055304 (2025)
+
+
+       -1                                                                             -1
+
+
+      -1.5                                                                          -1.5
+
+
+       -2                                                                             -2
+
+
+      -2.5                                                                          -2.5
+
+
+       -3                                                                             -3
+
+
+      -3.5                                                                          -3.5
+                                                     Line,slope=2.0                                                                 Line,slope=2.0
+       -4                                                                             -4
+        -2.6     -2.4       -2.2     -2       -1.8       -1.6         -1.4             -2.6     -2.4     -2.2       -2       -1.8       -1.6         -1.4
+
+
+                                     (a)                                                                            (b)
+
+        FIG. 11. Relative errors of temperature versus grid resolutions: (a) steady case with ω = 0, (b) unsteady case with ω = 2π /T .
+
+
+we first randomly generate a porous medium with a radius                         thermal conductivity of the solid κs is enhanced, there is no
+of R = 20 x by using the Monte Carlo method, as shown                            notable alteration in the solid’s cooling rate, which is at-
+in Fig. 15. In the simulation, the ratio of length L to height                   tributed to the fact that the heat transfer rate between the liquid
+H in this area is set to be 2.5 : 1, and the grid resolution at                  and the cold wall primarily influences cooling. Consequently,
+per unit is equal to 500. The initial temperature of the solid                   a higher κ f leads to a faster heat transfer rate.
+region is fixed at Th = 1.0, while the temperature of the fluid
+region equals Tc = 0. In addition, a flow is injected from the
+                                                                                                       V. CONCLUSIONS
+left wall with the temperature and velocity being Tc = 0, ux =
+0.05, respectively. Further, the Reynolds number and Prandlt                         This paper presents an alternative lattice Boltzmann model
+number are selected as Re = 100 and Pr = 2.0. Moreover,                          with multiple relaxation times for conjugate heat trans-
+to better depict the temperature variation of high-temperature                   fer. Unlike existing lattice Boltzmann models based on the
+          time,
+solids over         we define an average temperature given by                    conservative form of the temperature equation, the proposed
+Tavg = Tsolid / nsolid .                                                         lattice Boltzmann equation incorporates the influence of heat
+    As depicted in Figs. 16 and 17, the solid temperature                        capacity to ensure that the resulting macroscopic behavior
+initially exhibits the fastest change rate over time, gradually                  aligns with the original energy equation derived from the first
+decelerating as the duration progresses. This phenomenon is                      law of thermodynamics. Theoretical analysis and numerical
+due to the relationship between heat transfer and the tem-                       results demonstrate that the current model conforms well to
+perature difference between the solid and its surrounding                        Galilean invariance, a factor often overlooked in previous
+environment. Initially, the temperature difference is the great-                 models. Notably, the convection term in our lattice Boltzmann
+est, leading to a rapid heat loss from the solid and a swift                     equation is treated as a source term, allowing for the removal
+temperature change. However, as the temperature of the liq-                      of the derivative term induced by the varying velocity vector.
+uid surrounding the solid increases, the solid’s temperature                         The proposed model is validated by simulating effective
+gradually decreases, resulting in a diminished temperature                       thermal conductivity in different scenes, conjugating heat
+difference. Consequently, the rate of temperature decrease in                    transfer problems with analytical solutions, the natural con-
+the solid slows down.                                                            vection in a square enclosure with 16 solid blocks, and
+    Furthermore, an increase in κ f results in a more rapid                      thermocapillary flow with two superimposed planar fluids.
+cooling of the high-temperature solid, intensifying the cooling                  From the numerical analysis and comparison, it can be found
+effect. Conversely, when κ f remains constant and only the                       that the present model fits well with the existing bench-
+
+                  TABLE III. Comparisons of the relative errors of the temperature (T ) and the velocity (u) at different λr .
+
+λr               Relative error               Present                        Liu et al. [66]            Majidi et al. [67]             Yue et al. [32]
+0.2                     u                   5.41 × 10−2                      8.41 × 10−2                  8.37 × 10−2
+                        T                   6.42 × 10−4                      5.23 × 10−3                  4.98 × 10−3                    6.73 × 10−4
+1.0                     u                   3.61 × 10−2                      5.71 × 10−2                  5.61 × 10−2
+                        T                   2.98 × 10−4                      2.25 × 10−4                  5.47 × 10−4                    3.06 × 10−4
+
+
+                                                                      055304-12
+ALTERNATIVE MULTIPLE-RELAXATION-TIME LATTICE …                                                  PHYSICAL REVIEW E 111, 055304 (2025)
+
+                         TABLE IV. Comparisons of the relative errors of the temperature (T ) at different c p,r .
+
+                                                 λr = 1.0                                                            λr = 0.2
+Model                           c p,r = 2.0                      c p,r = 3.0                      c p,r = 2.0                    c p,r = 3.0
+Yue et al. [32]                4.06 × 10−4                      5.47 × 10−4                      2.10 × 10−2                    3.56 × 10−2
+Present paper                  2.91 × 10−4                      3.62 × 10−4                      2.02 × 10−3                    3.10 × 10−3
+
+
+mark data and analytical solutions and shares a second-order            throughout when it reaches a state of thermal equilibrium. The
+convergence rate in space. To show the capability of the cur-           governing equation of temperature is given by Eq. (12), which
+rent model, we further use the proposed model to simulate               can be rewritten as
+the cooling process of porous media in a cold flow, numerical
+                                                                                    ∂T
+results demonstrate the feasibility of the proposed model. It                  ρc      = ∇ · (κ∇T ) − ρcu · ∇T − T ∇ · ρcu.           (A1)
+should be noted that our current paper focuses on heat transfer                     ∂t
+in single-phase flow, and in future work, we aim to expand it               As shown in Eq. (A1), the first term on the left side ρc ∂T
+to more complex multiphase flows typically encountered in                                                                              ∂t
+                                                                        represents the heat change, and it should be zero at thermal
+industrial and engineering applications.                                equilibrium state. The first and second terms on the right side
+                                                                        [i.e., ∇ · (κ∇T ) − ρcu · ∇T ] could be zero at the thermal
+                    ACKNOWLEDGMENTS                                     equilibrium state. However, it’s important to recognize that
+   The authors thank Prof. Y. Hu for his invaluable assistance          the final term on the right-hand side (i.e., T ∇ · ρcu) cannot be
+in the discussion of Galilean invariance. This work is sup-             zero while (ρc)1 = (ρc)2 and the interface possesses a veloc-
+ported by the National Natural Science Foundation of China              ity U0 . Consequently, there exists a discrepancy between the
+(Grants No. 12302373 and No. 12472297) and Outstanding                  left and right sides of Eq. (A1). Conversely, if the governing
+Youth Program of Hunan Provincial Department of Education               equation of temperature is given as Eq. (11), there would be no
+(Grant No. 24B0310).                                                    inconsistency between the left and right sides of the equation.
+
+
+     APPENDIX A: THE SUITABILITY OF DIFFERENT                            APPENDIX B: GALILEAN INVARIANCE IN CONJUGATE
+      GOVERNING EQUATION FOR TEMPERATURE                                            HEAT TRANSFER PROBLEM
+   To discuss the suitability of different governing equa-                  In this appendix, we will test the Galilean invariance in
+tion for temperature [i.e., Eqs. (11) and (12)], we consider            the conjugate heat transfer problem, including the governing
+the thermal equilibrium within an infinitely long, one-                 equation for heat transfer and the thermal boundary con-
+dimensional rod made up of two distinct solids, each with its           dition, considering two inertial coordinate frames S : (x, t )
+own unique thermophysical properties, as shown in Fig. 3.               and S : (x , t  ) moving at relatively homogeneous velocities
+The rod moves at a constant velocity U0 = 0. In the ab-                u0 in the directions x and x , with the origin coinciding at
+sence of a heat source, it will achieve a uniform temperature           time t = t  = 0. Therefore, the transformation relationship
+                                                                        between two inertial coordinate frames can be given by
+
+                                                                                                   x = x + u0t,                     (B1a)
+                                                                                                         
+                                                                                                   t =t.                             (B1b)
+
+                                                                          Taking derivatives of t on both the left and right sides of
+                                                                        Eq. (B1a) yields the transformation formula for velocity as
+
+                                                                                                    u = u + u0 .                      (B2)
+
+                                                                           Consequently, one can derive the spatial and temporal
+                                                                        derivatives as follows [43]:
+                                                                                      ∂    ∂ ∂x     ∂ ∂t    ∂
+                                                                                         =       +        = ,                      (B3a)
+                                                                                      ∂x  ∂x ∂x      ∂t ∂x  ∂x
+                                                                                       ∂   ∂ ∂t     ∂ ∂x    ∂     ∂
+                                                                                         =       +       =  − u0  ,              (B3b)
+                                                                                      ∂t  ∂t ∂t     ∂x ∂t    ∂t    ∂x
+      0.          0.25                                                  rewriting the derivatives as
+
+                                                                                                ∇ = ∇ ,                             (B4a)
+                                                                                                ∂    ∂
+                                                                                                   =  − u0 · ∇  .                  (B4b)
+   FIG. 12. Schematic diagram of a square cavity filled with 16                                 ∂t  ∂t
+discrete circular solid blocks.
+
+                                                               055304-13
+ZHAO, LIU, CHEN, AND WANG                                                                           PHYSICAL REVIEW E 111, 055304 (2025)
+
+
+
+
+    FIG. 13. The distributions of streamlines (left) and isotherms (right) for natural convection in a square cavity filled with 16 solid blocks:
+(a) kd = 1.0, (b) kd = 0.1 (Pr = 0.7, Ra = 105 ).
+
+                                                                              Based on the above setting, the temporal derivative term,
+                                                                           diffusion term, and source term in the governing equation of
+                                                                           heat transfer, i.e., Eq. (19), exhibit the following relations:
+                                                                                                ∂T         ∂T 
+                                                                                           (ρc)e   = (ρc)e  − u0 · ∇  T  ,            (B5a)
+                                                                                                ∂t          ∂t
+                                                                                                            
+                                                                                           ∇ · κ∇T = ∇ · κ ∇ T ,                          (B5b)
+
+
+                                                                             , ,                                           Solid
+                                                                                            Fluid
+
+
+
+
+    FIG. 14. Schematic diagram of thermocapillary flows and
+T (x, H ) = Tc , T (x, −h) = Th + T0 cos(ωx) are the temperatures of         FIG. 15. Schematic diagram of the cooling process of porous
+the higher wall and lower wall, respectively.                              media in a cold flow.
+
+                                                                  055304-14
+ALTERNATIVE MULTIPLE-RELAXATION-TIME LATTICE …                                                        PHYSICAL REVIEW E 111, 055304 (2025)
+
+
+
+
+   FIG. 16. The temperature variation during the cooling process of porous media in a cold flow with different thermal conductivities at time
+t = 0 (left), t = 0.004 (middle), and t = 0.2 (right).
+
+            (ρc)e u · ∇T = (ρc)e (u + u0 ) · ∇  T  .              (B5c)   Galilean invariance as
+                                                                                                 n · κ f ∇  T f = n · κs ∇  Ts . (B7)
+   One can get the governing equation in the inertial coordi-                    On the other hand, for the thermal boundary condition of
+nate frame S  as                                                             total heat flux, Eq. (14) in S yields
+                                                                                        n · [−κ  ∇  T  + (ρc) (u − u0 )T  ] f
+                       
+                   ∂T                                                                       = n · [−κ  ∇  T  + (ρc) (u − u0 )T  ]s ,   (B8)
+          (ρc)e        = ∇  · κ  ∇  T  − (ρc)e u0 · ∇  T  ,   (B6)
+                   ∂t 
+                                                                              and rearranging Eq. (B9), it can be rewritten as
+
+which indicates that the governing equation retains the same                                 n · [−κ  ∇  T  + (ρc) u T  ] f
+form in both inertial coordinate frames, thereby adhering to                                     = n · [−κ  ∇  T  + (ρc) u T  ]s
+the principle of Galilean invariance.
+                                                                                                    + n · [(ρc)s − (ρc) f ]u0 T  .          (B9)
+   Next, we are going to test the Galilean invariance of dif-
+ferent thermal boundary conditions for heat flux as well as                      Evidently, the inclusion of an additional term in Eq. (B9)
+Eqs. (13) and (14). It is easy to prove the thermal boundary                  suggests that the thermal boundary condition for total heat flux
+condition of conductive heat flux Eqs. (13) in S satisfies the               as well as Eq. (14) violates Galilean invariance.
+
+
+                                                                        055304-15
+ZHAO, LIU, CHEN, AND WANG                                                                                                         PHYSICAL REVIEW E 111, 055304 (2025)
+
+
+                                                                                                        1
+    1
+
+                                                                                                    0.9
+   0.9
+
+                                                                                                    0.8
+   0.8
+
+                                                                                                    0.7
+   0.7
+
+                                                                                                    0.6
+   0.6
+
+                                                                                                    0.5
+   0.5
+
+                                                                                                    0.4
+   0.4
+                                                                                                    0.3
+   0.3
+          0         0.5            1                1.5                2               2.5                   0             0.5            1          1.5         2
+
+
+                                           (a)                                                                                                (b)
+
+   FIG. 17. Variations of the average temperature Tavg during the cooling process of porous media in a cold flow: (a) κd = 1, (b) κd = 10.
+
+
+
+               APPENDIX C: PARAMETERS AND TRANSFORM MATRICES IN VARIOUS LATTICE MODELS
+  In this appendix, the parameters and matrices in various lattice models employed in the present paper are given as follows.
+For the D2Q5 model, as used in
+
+                                                                                                              
+                                                                           0       1       0       −1       0
+                                                              ci = c                                             ,                                                    (C1a)
+                                                                           0       0       1       0        −1
+                                                              cs2 = c2 /3,         ω0 = 1/3,                ω1−4 = 1/6.                                               (C1b)
+
+  For the D2Q9 model, as used in
+
+                                                                                                                                   
+                                                              0    1       0       −1          0        1     −1     −1          1
+                                                 ci = c                                                                              ,
+                                                              0    0       1       0           −1       1      1     −1          −1
+                                                                                                                                                                      (C2a)
+                                                 cs2 = c2 /3,      ω0 = 4/9,                   ω1−4 = 1/9,           ω5−8 = 1/36.                                     (C2b)
+
+  For the D3Q7 model, as used in
+
+                                                                   ⎛                                                     ⎞
+                                                                 0             1       0       0    −1        0       0
+                                                          ci = c⎝0             0       1       0    0         −1      0 ⎠,                                            (C3a)
+                                                                 0             0       0       1    0         0       −1
+                                                          cs2 = c2 /4,         ω0 = 1/4,                ω1−6 = 1/8.                                                   (C3b)
+
+  For the D3Q19 model, as used in
+
+                ⎛                                                                                                                                                ⎞
+                0         1   −1       0         0        0       0        1       −1          1    −1         1      −1         0   0        0     0      0   0
+         ci = c⎝0         0   0        1         −1       0       0        1        1          0    0         0       0          1   −1       1     −1     1   −1⎠,   (C4a)
+                0         0   0        0         0        1       −1       0       0           1     1        −1      −1         1    1       −1    −1     1   −1
+         cs2 = c2 /3,     ω0 = 2/3,              ω1−6 = 1/9.                                                                                                          (C4b)
+
+   In the present paper, we employ the multiple-relaxation-times model composed of natural moments, and the matrice is defined
+as M = Cd M0 .
+
+                                                                                       055304-16
+ALTERNATIVE MULTIPLE-RELAXATION-TIME LATTICE …                                                                PHYSICAL REVIEW E 111, 055304 (2025)
+
+  For D2Q5:
+                                                                       ⎛                            ⎞
+                                                                 1                1    1    1     1
+                                                               ⎜0                 1    0   −1    0⎟
+                                                               ⎜                                    ⎟
+                                                          M0 = ⎜
+                                                               ⎜0                 0    1   0     −1⎟⎟,                                      (C5a)
+                                                               ⎝0                 1    0    1    0⎠
+                                                                 0                0    1   0      1
+                                                           Cd = diag(1, c, c, c2 , c2 ),                                                    (C5b)
+                                                                S = diag(s0 , s1 , s1 , s2 , s2 ).                                          (C5c)
+  For D2Q9:
+                                                    ⎛                                                            ⎞
+                                                  1         1        1       1         1    1    1     1      1
+                                                ⎜0          1        0       −1       0     1   −1    −1      1⎟
+                                                ⎜                                                                ⎟
+                                                ⎜0          0        1       0        −1    1    1    −1      −1⎟
+                                                ⎜                                                                ⎟
+                                                ⎜0          1        0       1        0     1    1     1      1⎟
+                                                ⎜                                                                ⎟
+                                           M0 = ⎜0          0        1       0         1    1    1     1      1 ⎟.                          (C6a)
+                                                ⎜0                                              −1            −1⎟
+                                                ⎜           0        0       0        0     1          1         ⎟
+                                                ⎜0                                                    −1      −1⎟
+                                                ⎜           0        0       0        0     1    1               ⎟
+                                                ⎝0          0        0       0        0     1   −1    −1      1⎠
+                                                 0          0        0       0        0     1    1     1       1
+                                           Cd = diag(1, c, c, c2 , c2 , c2 , c3 , c3 , c4 ),                                                (C6b)
+                                             S = diag(s0 , s1 , s1 , s2 , s2 , s2 , s3 , s3 , s4 ).                                         (C6c)
+  For D3Q7:
+                                                            ⎛                                            ⎞
+                                                          1              1    1       1     1    1     1
+                                                        ⎜0               1    0       0    −1   0     0⎟
+                                                        ⎜                                                ⎟
+                                                        ⎜0               0    1       0    0    −1    0⎟
+                                                        ⎜                                                ⎟
+                                                   M0 = ⎜
+                                                        ⎜0               0    0       1    0    0     −1⎟⎟,                                 (C7a)
+                                                        ⎜0               1    0       0     1   0     0⎟
+                                                        ⎜                                                ⎟
+                                                        ⎝0               0    1       0    0    1     0⎠
+                                                         0               0    0       1    0    0      1
+                                                   Cd = diag(1, c, c, c, c2 , c2 , c2 ),                                                    (C7b)
+                                                      S = diag(s0 , s1 , s1 , s1 , s2 , s2 , s2 ).                                          (C7c)
+  For D3Q19:
+           ⎛                                                                                                                            ⎞
+            1         1     1       1      1      1      1         1         1         1    1    1     1    1     1    1    1    1    1
+          ⎜0
+          ⎜           1     −1      0     0       0     0          1         −1        1   −1    1    −1    1    −1    0   0    0     0⎟⎟
+          ⎜0
+          ⎜           0     0       1     −1      0     0          1         1        −1   −1    0    0    0     0     1   −1    1    −1⎟
+                                                                                                                                        ⎟
+          ⎜0
+          ⎜           0     0       0     0       1     −1         0         0        0    0     1     1   −1    −1    1    1   −1    −1⎟
+                                                                                                                                        ⎟
+          ⎜0
+          ⎜           0     0       0     0       0      0         1         −1       −1    1    0     0    0     0    0   0    0     0⎟⎟
+          ⎜0
+          ⎜           0     0       0     0       0     0          0         0        0    0     1    −1   −1     1    0   0    0     0⎟⎟
+          ⎜0          0     0       0     0       0     0          0         0        0    0     0    0    0     0     1   −1   −1    1⎟
+          ⎜                                                                                                                             ⎟
+          ⎜0          1     1       0     0       0     0          1         1        1    1     1    1    1      1    0   0    0     0⎟
+          ⎜                                                                                                                             ⎟
+          ⎜0          0     0       1      1      0     0          1         1         1    1    0    0    0     0     1    1    1    1⎟
+          ⎜                                                                                                                             ⎟
+     M0 = ⎜ 0         0     0       0     0       1     1          0         0        0    0     1     1    1     1    1    1    1    1 ⎟, (C8a)
+          ⎜0                                                                 −1            −1                                         0⎟
+          ⎜           0     0       0     0       0      0         1                   1         0    0    0     0     0   0    0       ⎟
+          ⎜0                                                                                          −1         −1                   0⎟
+          ⎜           0     0       0     0       0     0          0         0        0    0     1          1          0   0    0       ⎟
+          ⎜0                                                                          −1   −1                                         0⎟
+          ⎜           0     0       0     0       0     0          1         1                   0    0    0     0     0   0    0       ⎟
+          ⎜0          0     0       0     0       0     0          0         0        0    0     1     1   −1    −1    0   0    0     0⎟
+          ⎜                                                                                                                             ⎟
+          ⎜0          0     0       0     0       0     0          0         0        0    0     0    0    0     0     1   −1    1    −1⎟
+          ⎜                                                                                                                             ⎟
+          ⎜0          0     0       0     0       0     0          0         0        0    0     0    0    0     0     1    1   −1    −1⎟
+          ⎜                                                                                                                             ⎟
+          ⎜0          0     0       0     0       0     0          1         1        1    1     0    0    0     0     0   0    0     0⎟
+          ⎜                                                                                                                             ⎟
+          ⎝0          0     0       0     0       0     0          0         0        0    0     1     1    1     1    0   0    0     0⎠
+           0          0     0       0     0       0     0          0         0        0    0     0    0    0     0     1   11   11
+     Cd = diag(1, c, c, c2 , c2 , c2 , c3 , c3 , c4 ),                                                                                      (C8b)
+       S = diag(s0 , s1 , s1 , s2 , s2 , s2 , s3 , s3 , s4 ).                                                                               (C8c)
+
+                                                                              055304-17
+ZHAO, LIU, CHEN, AND WANG                                                                      PHYSICAL REVIEW E 111, 055304 (2025)
+
+ [1] G. Buckinx and M. Baelmans, J. Fluid Mech. 804, 298 (2016).        [30] J. Ross-Jones, M. Gaedtke, S. Sonnick, M. Meier, M. Rädle,
+ [2] H. A. Stone, A. D. Stroock, and A. Ajdari, Annu. Rev. Fluid             H. Nirschl, and M. J. Krause, Appl. Therm. Eng. 182, 116073
+     Mech. 36, 381 (2004).                                                   (2021).
+ [3] C.-Y. Wang, Chem. Rev. 104, 4727 (2004).                           [31] K. Tolia, Sai Ravi Gupta Polasanapalli, and K. Anupindi, Phys.
+ [4] G. Duffa, Ablative Thermal Protection Systems Modeling                  Rev. E 109, 015101 (2024).
+     (American Institute of Aeronautics and Astronautics, Inc.,         [32] L. Yue, Z. Chai, L. Wang, and B. Shi, Int. J. Heat Mass Transfer
+     Reston, 2013).                                                          165, 120682 (2021).
+ [5] M. Natali, J. M. Kenny, and L. Torre, Prog. Mater. Sci. 84, 192    [33] M. Wang, J. Wang, N. Pan, and S. Chen, Phys. Rev. E 75,
+     (2016).                                                                 036702 (2007).
+ [6] J. Kim, J. Oh, and H. Lee, Appl. Therm. Eng. 149, 192 (2019).      [34] F. Meng, M. Wang, and Z. Li, Int. J. Heat Fluid Flow 29, 1203
+ [7] S. H. Zaferani, M. W. Sams, R. Ghomashchi, and Z.-G. Chen,              (2008).
+     Nano Energy 90, 106572 (2021).                                     [35] G. Le, O. Oulaid, and J. Zhang, Phys. Rev. E 91, 033306
+ [8] R. Best and W. Rivera, Appl. Therm. Eng. 75, 1162 (2015).               (2015).
+ [9] S. Glasstone and A. Sesonske, Nuclear Reactor Engineering:         [36] Y. Hu, D. Li, S. Shu, and X. Niu, Phys. Rev. E 92, 063305
+     Reactor Systems Engineering (Springer Science & Business                (2015).
+     Media, New York, 2012).                                            [37] R. Huang and H. Wu, J. Comput. Phys. 315, 65 (2016).
+[10] D. Bohn, N. Moritz, and M. Wolff, in Turbo Expo: Power for         [38] R. Huang and H. Wu, J. Comput. Phys. 294, 346 (2015).
+     Land, Sea, and Air (Atlanta, 2003), Vol. 3686, pp. 723–729.        [39] Z. Guo, B. Shi, and N. Wang, J. Comput. Phys. 165, 288
+[11] M. A. Alzoubi, A. Nie-Rouquette, and A. P. Sasmito, Int. J. Heat        (2000).
+     Mass Transfer 126, 740 (2018).                                     [40] D. Gao, Z. Chen, L. Chen, and D. Zhang, Int. J. Heat Mass
+[12] B. John, P. Senthilkumar, and S. Sadasivan, Arch. Comput.               Transfer 105, 673 (2017).
+     Method Eng. 26, 475 (2019).                                        [41] J. Lu, H. Lei, and C. Dai, Int. J. Heat Mass Transfer 126, 1275
+[13] Y. B. Zudin, Theory of Periodic Conjugate Heat Transfer                 (2018).
+     (Springer Nature, Cham, 2023).                                     [42] L. Wang, Y. Zhao, X. Yang, B. Shi, and Z. Chai, Appl. Math.
+[14] X. Chen and P. Han, Int. J. Heat Fluid Flow 21, 463 (2000).             Modell. 71, 31 (2019).
+[15] M. Sosnowski, J. Krzywanski, K. Grabowska, and R.                  [43] Y. Hu, arXiv:2404.07025.
+     Gnatowska, in EPJ Web of Conferences (EDP Sciences, Les            [44] R. Huang and H. Wu, Phys. Rev. E 91, 033302 (2015).
+     Ulis, 2018), Vol. 180, p. 02096.                                   [45] W. M. Kays, M. E. Crawford, and B. Weigand, Convective
+[16] Y. Kuwata, K. Tsuda, and K. Suga, J. Fluid Mech. 904, A9                Heat and Mass Transfer (McGraw-Hill, New York, 1980),
+     (2020).                                                                 Vol. 4.
+[17] Z. Guo and C. Shu, Lattice Boltzmann Method and Its Ap-            [46] A. Barletta, Int. J. Heat Mass Transfer 52, 5266 (2009).
+     plication in Engineering (World Scientific, Singapore, 2013),      [47] A. Barletta, Mech. Res. Commun. 124, 103939 (2022).
+     Vol. 3.                                                            [48] M. B. Saito and M. J. de Lemos, Int. Commun. Heat Mass
+[18] T. Krüger, H. Kusumaatmaja, A. Kuzmin, O. Shardt, G. Silva,             Transfer 32, 666 (2005).
+     and E. M. Viggen, The Lattice Boltzmann Method: Principles         [49] Y. Sato and B. Ničeno, J. Comput. Phys. 249, 127
+     and Practice (Springer International Publishing, Berlin, 2017).         (2013).
+[19] D. Gao, Z. Chen, D. Zhang, and L. Chen, Appl. Therm. Eng.          [50] D. Korba, N. Wang, and L. Li, Int. J. Heat Mass Transfer 156,
+     118, 315 (2017).                                                        119694 (2020).
+[20] A. De Rosis, Comput. Methods Appl. Mech. Eng. 319, 379             [51] N. Young, J. S. Goldstein, and M. Block, J. Fluid Mech. 6, 350
+     (2017).                                                                 (1959).
+[21] N. Wang, D. Korba, Z. Liu, R. Prabhu, M. W. Priddy, S. Yang,       [52] Z. Yu, X. Shao, and A. Wachs, J. Comput. Phys. 217, 424
+     L. Chen, and L. Li, Comput. Methods Appl. Mech. Eng. 385,               (2006).
+     114026 (2021).                                                     [53] Y. Hu, D. Li, X. Niu, and S. Shu, Int. J. Heat Mass Transfer 138,
+[22] Y. Guo, Y. Lai, S. Wang, and L. Wang, Appl. Therm. Eng. 234,            809 (2019).
+     121268 (2023).                                                     [54] Q. Zou and X. He, Phys. Fluids 9, 1591 (1997).
+[23] J. Wang, M. Wang, and Z. Li, Int. J. Therm. Sci. 46, 228 (2007).   [55] I. Ginzburg, F. Verhaeghe, and D. d’Humieres, Commun.
+[24] L. Li, C. Chen, R. Mei, and J. F. Klausner, Phys. Rev. E 89,            Comput. Phys. 3, 427 (2008).
+     043308 (2014).                                                     [56] Y. Zhao, Y. Wu, Z. Chai, and B. Shi, Comput. Math. Appl. 79,
+[25] H. Karani and C. Huber, Phys. Rev. E 91, 023304 (2015).                 2550 (2020).
+[26] F. Xiong, L. Wang, G. Xiao, J. Huang, and K. Luo, J. Sci.          [57] Z. Chai, B. Shi et al., Phys. Rev. E 102, 023306 (2020).
+     Comput. 103, 1 (2025).                                             [58] Z. Guo, C. Zheng, and B. Shi, Phys. Rev. E 65, 046308
+[27] G. Pareschi, N. Frapolli, S. S. Chikatamarla, and I. V. Karlin,         (2002).
+     Phys. Rev. E 94, 013305 (2016).                                    [59] L. Wang, J. Huang, and K. He, Phys. Rev. E 106, 055308
+[28] S. Chen, Y. Yan, and W. Gong, Int. J. Heat Mass Transfer 107,           (2022).
+     862 (2017).                                                        [60] A. K. Singh, R. Singh, and D. Chaudhary, J. Phys. D: Appl.
+[29] S. A. Hosseini, N. Darabiha, and D. Thévenin, Int. J. Heat Mass         Phys. 23, 698 (1990).
+     Transfer 132, 906 (2019).                                          [61] Z. Guo, C. Zheng, and B. Shi, Phys. Fluids 14, 2007 (2002).
+
+
+
+
+                                                                  055304-18
+ALTERNATIVE MULTIPLE-RELAXATION-TIME LATTICE …                                               PHYSICAL REVIEW E 111, 055304 (2025)
+
+[62] Q. Li, T. Zhang, and J. Yuan, Appl. Math. Comput. 387, 124302    [65] H. Yoshida, T. Kobayashi, H. Hayashi, T. Kinjo, H. Washizu,
+     (2020).                                                               and K. Fukuzawa, Phys. Rev. E 90, 013303 (2014).
+[63] Y. Hu, D. Li, S. Shu, and X. Niu, Comput. Math. Appl. 70, 2227   [66] H. Liu, A. J. Valocchi, Y. Zhang, and Q. Kang, J. Comput. Phys.
+     (2015).                                                               256, 334 (2014).
+[64] S. Tao, Q. He, L. Wang, B. Chen, J. Chen, and Y. Lin, Appl.      [67] M. Majidi, R. Haghani-Hassan-Abadi, and M.-H. Rahimian,
+     Math. Comput. 404, 126228 (2021).                                     Int. J. Multiphase Flow 127, 103289 (2020).
+
+
+
+
+                                                                055304-19
+

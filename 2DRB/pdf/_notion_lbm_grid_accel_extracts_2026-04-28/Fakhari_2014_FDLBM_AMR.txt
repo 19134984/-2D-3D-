@@ -1,0 +1,839 @@
+                                                  PHYSICAL REVIEW E 89, 033310 (2014)
+
+
+                      Finite-difference lattice Boltzmann method with a block-structured
+                                      adaptive-mesh-refinement technique
+                                                      Abbas Fakhari* and Taehun Lee†
+            Department of Mechanical Engineering, The City College of the City University of New York, New York 10031, USA
+                  (Received 6 August 2013; revised manuscript received 23 December 2013; published 19 March 2014)
+
+                 An adaptive-mesh-refinement (AMR) algorithm for the finite-difference lattice Boltzmann method (FDLBM)
+              is presented in this study. The idea behind the proposed AMR is to remove the need for a tree-type data structure.
+              Instead, pointer attributes are used to determine the neighbors of a certain block via appropriate adjustment of its
+              children identifications. As a result, the memory and time required for tree traversal are completely eliminated,
+              leaving us with an efficient algorithm that is easier to implement and use on parallel machines. To allow different
+              mesh sizes at separate parts of the computational domain, the Eulerian formulation of the streaming process is
+              invoked. As a result, there is no need for rescaling the distribution functions or using a temporal interpolation at the
+              fine-coarse grid boundaries. The accuracy and efficiency of the proposed FDLBM AMR are extensively assessed
+              by investigating a variety of vorticity-dominated flow fields, including Taylor-Green vortex flow, lid-driven cavity
+              flow, thin shear layer flow, and the flow past a square cylinder.
+
+              DOI: 10.1103/PhysRevE.89.033310                                                           PACS number(s): 47.11.Qr
+
+                      I. INTRODUCTION                                       (FTT) AMR was proposed by Khokhlov [4]. In the FTT
+                                                                            algorithm [4,5], the computational domain is covered by cubic
+    The adaptive-mesh-refinement (AMR) technique is a log-
+                                                                            cells (octs) in 3D. Each oct has eight child cells arranged in
+ical extension of the concept behind invoking nonuniform
+                                                                            an oct-tree data structure. Although tree traversal to find the
+grids to efficiently utilize computer resources. Grids of
+                                                                            nearest neighbors of a given cell is avoided using pointers
+higher resolution are used wherever a more accurate solution
+                                                                            and linked lists, the tree structure must still be maintained
+is desired. There are numerous scientific and engineering
+                                                                            and modified for traversing the threaded tree during search
+applications with large variations in the scale of their problems
+                                                                            operations. The FTT data structure is, however, simpler and
+of interest, for which AMR routines are most suited. For
+                                                                            more efficient than the tree-based approach. Compared to an
+instance, in complex fluids, higher resolution is preferred near
+                                                                            equivalent uniform mesh, a minimum factor of 10 savings in
+the interface between different phases because of the rapid
+                                                                            memory and computation time was reported using FTT [4].
+changes in the fluid properties.
+                                                                            Recently, Ji et al. [6] proposed a cell-based structured AMR
+    The concept of AMR for structured grids was pioneered by
+                                                                            that replaces the tree structure with a hash table. Accordingly,
+Berger and co-workers [1,2]. Berger and Colella [2] proposed
+                                                                            the computer memory required for storing the data structure
+a grid-based AMR for solving two-dimensional hyperbolic
+                                                                            is reduced. The penalty paid for this savings in memory is of
+equations in a conservative form. Rectangular, overlapping
+                                                                            course the computation overhead arising from the calculation
+grid patches were placed in regions with a need for higher
+                                                                            of the connectivity information, such as finding the neighbors
+resolution. Each patch consisted of a varying number of cells
+                                                                            of a particular cell. Needless to say, the hashing technique
+of the same size. This strategy, however, is not flexible in
+                                                                            relies on external resources for maintaining the data structure
+adaptivity, nor is it optimal in terms of computational cost
+                                                                            and connectivity information, which prevents the user from
+and memory management because the overlapping rectangular
+                                                                            having a transparent and stand-alone AMR routine.
+patches may cover parts of the computational domain that do
+                                                                                There are numerous AMR packages available [7–12] in the
+not need to be resolved, resulting in a waste of computer
+                                                                            literature. Among them, PARAMESH [7] is designed to extend
+memory and time. Moreover, the entire grid hierarchy must
+                                                                            an existing serial code with a uniform mesh to a parallel code
+be rebuilt once the refinement-derefinement is carried out.
+                                                                            with AMR capabilities. It uses a hierarchy of structured blocks
+de Zeeuw and Powel [3] proposed an AMR scheme with a
+                                                                            containing a fixed number of cells. While the data structure is
+quad-tree data structure in two dimensions (2D). The idea was
+                                                                            that of a tree, the constituent elements are regular blocks that
+to bisect each cell, once it was flagged for refinement, along the
+                                                                            contain a fixed number of computational cells as opposed to an
+coordinate directions. They claimed that finding the neighbors
+                                                                            irregular number of cells in the grid-based AMR [2]. Instead of
+of a given cell was superior to storing eight integer words per
+                                                                            storing the connectivity information for a single cell, an array
+cell. Consequently, they preferred to perform a tree search to
+                                                                            of cells within each block shares the data, reducing the memory
+find the neighboring cells rather than storing the cell-neighbor
+                                                                            overhead. On the downside, however, time-consuming tree
+information via pointers, which cost them approximately 25%
+                                                                            traversal and search operations must still be performed to
+of their computation time. To overcome the computational
+                                                                            find the neighbors of a given block. Constructing a parallel
+overhead of the tree-based approach, a fully threaded tree
+                                                                            AMR algorithm is yet another demanding issue. There is
+                                                                            ongoing research concerning paralleling AMR algorithms and
+                                                                            the load balancing techniques associated with them. For further
+ *
+  fakhari81@gmail.com                                                       information on the AMR and its challenges, the interested
+ †                                                                          reader is referred to an excellent discourse by Rantakokko and
+  thlee@ccny.cuny.edu; http://www.ccny.cuny.edu/profiles/Taehun-
+Lee.cfm                                                                     Thuné [13].
+
+1539-3755/2014/89(3)/033310(12)                                      033310-1                                   ©2014 American Physical Society
+ABBAS FAKHARI AND TAEHUN LEE                                                                   PHYSICAL REVIEW E 89, 033310 (2014)
+
+    Over the past two decades, the lattice Boltzmann method          ent Courant-Friedrichs-Lewy (CFL) numbers depending on
+(LBM) has become increasingly popular [14]. It has been              the grid resolution. Consequently, temporal interpolation of
+improved and utilized by many researchers in different               the solution on the coarser blocks is not required to provide
+areas [15]. Different strategies have been used to facilitate        the boundary data for the finer blocks. It is worth mentioning
+implementation of the LBM on nonuniform grids. In addition           that comparison of the proposed FDLBM with the standard
+to interpolation-supplemented LBM [16,17], a variety of              LBM on nonuniform grids is not covered in this study.
+finite-difference [18–20], finite-volume [21–23], and finite-            The rest of the paper is organized as follows. The AMR al-
+element [24] lattice Boltzmann equation (LBE) models have            gorithm will be elaborated in Sec. II, followed by a description
+been proposed. Most of the available LBE methods deal                of the FDLBM in Sec. III. The verification and validation of the
+with local grid refinement with static refinement of the             proposed FDLBM AMR is presented in Sec. IV. This includes
+mesh at the beginning of simulation [25–28]. Few studies,            the evaluation of the convergence rate for the Taylor-Green
+however, have been focused on developing a dynamically               decaying vortex flow, comparison of error indicators in the
+refined grid for lattice Boltzmann models. Tölke et al. [29]        simulations of cavity flow and Kelvin-Helmholtz instability of
+proposed such a scheme for the simulation of multiphase              a shear layer, and transient flow over a square cylinder. The
+flows. They invoked a data structure containing a hierarchy          paper is concluded in Sec. V with a brief summary.
+of tree-type grids. Yu and Fan [30] used the PARAMESH
+toolkit [7] to develop an AMR LBM for the simulation of
+a bubble rising under buoyancy. Recently, a stencil adaptive                      II. ADAPTIVE-MESH REFINEMENT
+LBM in 2D was proposed by Wu and Shu [31]. The idea                      We start by describing the architecture of our AMR scheme.
+is to combine two types of symmetric stencils to achieve             For the sake of simplicity in illustration and explanation, we
+adaptivity for a nine-velocity lattice in 2D. Chen et al. [32]       elaborate the AMR algorithm in 2D. The corner stone of the
+proposed an interpolation-supplemented LBM on quad-tree              present AMR is a rectangular block with nx × ny vertex nodes,
+grids. They used a back-and-forth error compensation and             as depicted in Fig. 1. Initially, the computational domain is
+correction algorithm to maintain the second-order accuracy           covered by a single block or, depending on the geometry,
+of the streaming step while invoking a linear, rather than           multiple blocks, referred to as the root block. The root block
+quadratic, interpolation. Most recently, Eitel-Amor et al. [33]      is obviously too coarse to start with; therefore, it is flagged for
+developed an AMR LBM with a cell-centered data structure,            refinement. Upon refinement, four child blocks (eight child
+as opposed to the conventional LBM with vertex points.               blocks in 3D) are created. The refinement process is continued
+    Most of the above-mentioned AMR LBM schemes use                  until the maximum refinement level lmax is reached. The blocks
+different time steps on grids with different lattice sizes. This     at the highest refinement level are called leaf blocks because
+requires storing additional data from the previous time step(s)      they have no children. The constructing blocks are self-similar
+to perform temporal interpolation for coarse grids. The afore-       in the sense that they have the same number of vertex points
+mentioned methods modify the relaxation time, according to           but different grid spacings depending on their hierarchical
+the grid spacing, to keep the viscosity constant in the fine and     levels. The root block has a refinement level of l = 0, while
+coarse grids. This approach has two evident shortcomings.            the refinement level associated with the finest block is l = lmax ,
+First, the maximum grid ratio, which is the ratio of the
+coarsest and finest grid spacings, is limited by the choice of the
+relaxation time. Increasingly larger relaxation times are needed
+on the finer grids and smaller relaxation rates are required
+on the coarser grids and these choices are restricted by the
+constraints of a small Knudsen number and numerical stability,
+respectively, which in turn limit the maximum allowable grid
+aspect ratio. Second, to maintain a continuous solution across
+grid boundaries, rescaling the distribution functions on the
+borders of fine-coarse grids is inevitable.
+                                                                               (a)                      (b)                     (c)
+    In the present study, we propose a lattice Boltzmann
+model with an adaptive-mesh-refinement strategy. The aim
+of this study is twofold. On the one hand, an efficient and
+straightforward algorithm for AMR is proposed that does
+not need a tree structure to maintain the connectivity data
+between the blocks. The proposed AMR algorithm alone
+can be used to solve partial differential equations including,
+but not limited to, the Navier-Stokes equations. On the
+other hand, in conjunction with the AMR, a finite-difference                   (d)                      (e)                     (f)
+lattice Boltzmann method (FDLBM) is developed. Unlike
+the previous multiblock LBMs, the current model does not                 FIG. 1. (Color online) Block-structured AMR: configuration of
+manipulate the speed of sound (as is the case in, e.g., [26]), nor   the blocks (black lines) containing an interface (red-color contour)
+does it need to rescale the distribution functions at the borders    for (a) lmax = 0, the root block with (nx × ny ) = 5 × 5 vertex nodes
+of fine-coarse blocks. All of the blocks at different refinement     (green lines); (b) lmax = 1; (c) lmax = 2; (d) lmax = 3; (e) lmax = 4; and
+levels are advanced in time with the same time step but differ-      (f) lmax = 5, final arrangement of the blocks.
+
+                                                               033310-2
+FINITE-DIFFERENCE LATTICE BOLTZMANN METHOD . . .                                             PHYSICAL REVIEW E 89, 033310 (2014)
+
+where lmax is an input parameter usually chosen in the range
+lmax ∼ 5–8. The grid spacings can be computed from the size
+of the root block in the x and y directions, Lx and Ly , by
+                        Lx                    Ly
+          x =                 ,   y =              .       (1)
+                    (nx − 1)2l            (ny − 1)2l
+It is clear that the resolution increases by a factor of 2
+when moving from a parent block to its child at the next
+refinement level. It is worth mentioning that, in the LBM,
+all the quantities in Eq. (1) are integers; therefore, the grid                       (a)                                  (b)
+spacings can be determined at no cost whenever necessary.
+However, it is preferable to store the connectivity information.       FIG. 3. (Color online) Interblock communications via ghost
+                                                                    nodes: blue circles (with a +) are (a) the ghost nodes for the fine
+Each block, which is a derived type in FORTRAN, stores
+                                                                    block to the left, to be filled from the data points of the coarse block
+its parent identification (ID) and its level of refinement. It
+                                                                    (×) to the right. (b) Interpolation points.
+also holds four pointers to its children, eight pointers to its
+orthogonal and diagonal neighbors, and a logical variable that
+indicates whether it is a leaf block. Unlike the FTT [5] or         allocation of the child pointers of a newly created block along
+the cell-based AMR [6], we keep track of all the pointers           with a unique designation of the pointers that determine the
+to neighbors and of all the children IDs of a given block.          neighboring blocks. To illustrate this point, let us consider
+This increases the performance of the code by avoiding “if          blocks A4 and B in Fig. 2. The east neighbor of block A4 is
+statements” or “lookup tables” to find the neighbors of a certain   assigned by associating its pointer with the third child of the
+block because the position of a block and its refinement level      east neighbor of its parent, that is, the third child of block B.
+are required to find the neighboring blocks. We will further        The FORTRAN pseudocode for this reads as
+explain the key differences later on.
+    A block of cells has some advantages over a single cell.                 Block(A4)%East N eighbor
+First, the memory required to store connectivity information                    => Block(A)%East N eighbor%child(3).
+and other necessary data is significantly reduced because
+each block has (nx − 1) × (ny − 1) cells that share the same        On the other hand, referring to Fig. 2(a), the child pointers
+attributes. Second, there is no need to refine additional cell      for block B, which is still a leaf block with no children, are
+layers around a refined cell to maintain a smooth solution          assigned to their parent ID. Therefore, the east neighbor of
+across a fine-coarse boundary; this is automatically taken          block A4 is pointing to block B at this time. Upon refinement
+care of using the block-structured scheme. To have a smooth         of block B in Fig. 2(b), four child blocks are created and their
+solution, however, a constraint requiring at most one level         pointers IDs are updated automatically. The east neighbor of
+jump between the refinement levels of neighboring blocks is         block A4 is then pointing to block B3. It is worth noting that the
+imposed in both orthogonal and diagonal directions.                 pointers to neighbors are allocated only once upon the creation
+    The AMR hierarchy is built by noting that the neighbor-         of the block. After that, no further modification to these
+neighbor relation between two adjacent blocks with different        pointers is necessary. Once the child IDs are updated, these
+levels is not reciprocal [4]. For example, in Fig. 2(a), the east   pointers will automatically point to the active neighboring
+neighbor of block A2 is block B, while the west neighbor            block.
+of block B is not block A2. Indeed, the west neighbor of               Now that the connectivity information for interblock and
+block B is block A (A2’s parent block), which is at the same        intrablock communications is established, each block should
+refinement level as block B. That is, the neighbors of a given      grant access to the portion of the data from the adjacent blocks.
+block can be at the same level or at a lower level, but not at      This is accomplished by using ghost nodes on each side of the
+a higher refinement level; otherwise some blocks will end up        blocks (see Fig. 3). For those neighboring blocks that are at the
+having two neighbors on at least one side, which impairs the        same refinement level, for example, A1 and A2 or A4 and B3
+consistency of and causes ambiguity in the AMR algorithm,           in Fig. 2(b), the corresponding ghost nodes are easily filled.
+as is the case in [6].                                              However, if the neighboring block is one level coarser, as is
+    The key strategy of the present AMR, which relieves us          the case in Fig. 3(a), an interpolation is required. One option
+from the necessity of a tree-type data structure, is the proper     would be to use a bilinear interpolation to fill the unavailable
+                                                                    data points according to
+                                                                                             (x − x1 )(y − y1 )
+                                                                               f (x,y) =                         f (x0 ,y0 )
+                                                                                            (x0 − x1 )(y0 − y1 )
+                                                                                               (x0 − x)(y − y1 )
+                                                                                            +                      f (x1 ,y0 )
+                                                                                              (x0 − x1 )(y0 − y1 )
+                                                                                               (x − x1 )(y0 − y)
+              (a)                                (b)                                        +                      f (x0 ,y1 )
+                                                                                              (x0 − x1 )(y0 − y1 )
+  FIG. 2. (Color online) Neighboring blocks at different refine-                               (x0 − x)(y0 − y)
+                                                                                            +                      f (x1 ,y1 ),         (2)
+ment levels: (a) before refinement and (b) after refinement.                                  (x0 − x1 )(y0 − y1 )
+
+                                                              033310-3
+ABBAS FAKHARI AND TAEHUN LEE                                                                        PHYSICAL REVIEW E 89, 033310 (2014)
+
+which, for the configuration shown in Fig. 3(b), can be                   where τ = λ/t is the dimensionless relaxation time and
+simplified to                                                             t is the time step. Because of the Eulerian nature of
+              f (x0 ,y0 ) + f (x1 ,y0 ) + f (x0 ,y1 ) + f (x1 ,y1 )       the streaming step (10), temporal and spatial discretizations
+   f (x,y) =                                                              are now decoupled, allowing us to have different spatial
+                                        4
+                                                                          resolutions irrespective of the time step. The Taylor-series
+              + O(x ).  2
+                                                                    (3)   expansion of the streaming equation is then approximated by
+   Another option is to use a higher-order interpolation
+scheme, such as the following biquadratic interpolation written                       fˆα (x,t + t) = fˆα (x,t) − teα · ∇ fˆα
+at point (x,y) in Fig. 3(b):                                                                                                         (x,t)
+                                                                                                                 2
+f (x,y) = [9f (x0 ,y0 ) + 18f (x1 ,y0 ) − 3f (x2 ,y0 )                                                        t
+                                                                                                          +      (eα · ∇)2 fˆα       .       (11)
+                                                                                                               2
+            + 18f (x0 ,y1 ) + 36f (x1 ,y1 ) − 6f (x2 ,y1 )                                                                     (x,t)
+
+            −3f (x0 ,y2 )−6f (x1 ,y2 ) + f (x2 ,y2 )]/64+O(x 3 ).        Discretizing the first and second derivatives using central
+                                                                          differences along characteristic lines leads us to the following
+                                                                   (4)    Lax-Wendroff scheme, with second-order accuracy in both
+As will be shown later, not only does the bilinear interpolation          time and space:
+lead to less accurate results, but also it causes a pressure jump              fˆα (x,t + t) = fˆα (x,t) − σ [fˆα (x,t) − fˆα (x − xα ,t)]
+across the interface of fine-coarse blocks. For the case that a
+block is adjacent to an external boundary, the corresponding                                    − 1 σ (1 − σ )[fˆα (x + xα ,t) − 2fˆα (x,t)
+                                                                                                    2
+boundary condition is applied instead of filling the ghost nodes.                               + fˆα (x − xα ,t)],                         (12)
+
+             III. FINITE-DIFFERENCE LATTICE
+                                                                                      α |t
+                                                                          where σ = |ex α
+                                                                                              is the CFL number and xα is the grid
+                    BOLTZMANN METHOD                                      spacing in the direction of eα . As can be seen in Eq. (12), when
+                                                                          the CFL number is equal to one (σ = 1) the streaming process
+   The discrete Boltzmann equation (DBE) for nearly incom-                collapses into the perfect shift fˆα (x,t + t) = fˆα (x − xα ,t),
+pressible single-phase flows [34] with a single-relaxation-time           as is the case in the conventional LBM. This occurs when the
+collision operator can be written as                                      spatial resolution is at its finest level, for instance, close to
+                                                     eq                   the solid walls, which is favorable because this solution is the
+                 ∂fα                  fα − fα
+                       + eα · ∇fα = −           ,               (5)       most accurate one. At other points, where the CFL number is
+                  ∂t                      λ
+                                                                          less than one, the streaming step is solved with second-order
+where fα is the particle distribution function, t is the time, and        accuracy in time and space.
+λ is the relaxation parameter. For the nine-velocity lattice used            Since the collision step is local, we only need to pro-
+in this study, the microscopic velocity set is given by                   vide boundary conditions for the streaming step, as will
+       ⎧
+       ⎪
+       ⎨(0,0),                   α=0                                      be described in the following section. Also, in the present
+                                                                          study the collision step is conducted using the multiple-
+ eα =     (cos θα , sin θα ),    θα = (α − 1)π/2, α = 1–4
+       ⎪
+       ⎩√                                                                 relaxation time (MRT) [35]. This affects only the collision step
+            2(cos θα , sin θα ), θα = (2α − 9)π/4, α = 5–8                in Eq. (9) to
+                                                                   (6)
+                                                                                           fˆα = fα − M−1 ŜM fα − fαeq ,                    (13)
+and the modified equilibrium distribution function is [34]
+                                                                       where M is the orthogonal transformation matrix and M−1 is
+                     2 eα · u    (eα · u)2   (u · u)                      its inverse [35]. The diagonal relaxation matrix is
+   fα = wα p + ρ0 cs          +            −            , (7)
+                          cs2       2cs4      2cs2
+               √                                                                          Ŝ = diag(0,se ,s ,0,sq ,0,sq ,sν ,sν ).           (14)
+where cs = 1/ 3 is the lattice speed of sound and the weight
+coefficients are w0 = 4/9, w1–4 = 1/9, and w5–8 = 1/36. The               The zero elements in the diagonal relaxation matrix correspond
+density ρ0 is constant and the pressure and velocity are                  to the conserved quantities (density and momentum in the x
+calculated from the following relations:                                  and y directions). The relaxation rates related to the energy
+                                                                          mode are set to se = s = 1 and the one related to the
+                    8                       8
+                                                                          energy flux is chosen as sq = 1.7. These relaxation rates are
+             p=          fα , ρ0 cs2 u =         eα fα .           (8)    chosen according to linear stability analysis [35,36]. The last
+                   α=0                     α=1                            two elements are related to the regular relaxation time, and
+   Following the idea proposed in [20], we recast the DBE (5)             therefore to the kinematic viscosity, by
+into two separate steps:                                                                                   1
+   collision                                                                                   sν =             ,    ν = τ cs2 .             (15)
+                                      eq                                                                τ + 0.5
+                               fα − fα
+                    fˆα = fα −                            (9)
+                                τ + 0.5                                                       IV. NUMERICAL RESULTS
+and streaming
+                                                                             One of the key components of any AMR algorithm is
+                        ∂ fˆα                                             an error indicator routine to determine whether the mesh
+                              + eα · ∇ fˆα = 0,                   (10)    in a particular region needs to be refined. It is crucial to
+                         ∂t
+
+                                                                    033310-4
+FINITE-DIFFERENCE LATTICE BOLTZMANN METHOD . . .                                             PHYSICAL REVIEW E 89, 033310 (2014)
+
+have a consistent and reliable estimator to obtain an accurate
+solution wherever it is needed. Because we are dealing with
+vortex-dominated flow problems, several refinement criteria in
+a dimensionless form, based on vorticity, are examined in the
+following sections.
+    The magnitude of the dimensionless vorticity is used as the
+first error indicator:
+
+                         ∗      ∂v ∗  ∂u∗
+                   1 = |ω | =      ∗
+                                     − ∗,                    (16)
+                                ∂x    ∂y
+where the variables with an asterisk are dimensionless. The
+reference velocity U0 and the length scale L are used to
+nondimensionalize the vorticity. The vorticity has been used            FIG. 4. (Color online) Pressure contour in decaying vortex flow:
+as the refinement criterion in other studies as well (e.g., [9]).    comparison between (a) bilinear and (b) biquadratic interpolations.
+   The second indicator is a variation of the relative error in
+vorticity:
+                                                                    where k = 2π L
+                                                                                      is the wave number and tc = 2νk   1
+                                                                                                                          2 is the viscous
+
+                          (x ω)2 + (y ω)2                          time. The constant parameter p0 is set to zero and the initial
+                  2 =                        ,               (17)    conditions are set by calculating Eq. (19) at t = 0.
+                                |ω|
+                                                                        In order to assess the accuracy of the proposed model, three
+where x and y are the undivided first derivatives in the           systematically refined grids are considered at Re = 20. The
+x and y directions, respectively. A similar criterion was also       Mach number of the flow Ma = U0 /cs is kept below 0.017.
+used in Refs. [10,11]. This criterion is mostly useful when the      For each case, the left half of the domain is covered with
+mesh close to the walls needs to be refined, as will be seen in      blocks with x  α
+                                                                                  |eα |
+                                                                                        = 1, while the right half of the domain consists
+the simulation of cavity flow.                                       of blocks with |eα | = 2 (see Fig. 4). This has two imminent
+                                                                                        xα
+   The final indicator is based on the so-called Q criterion         implications. First, the conventional perfect shift is implied
+[37,38]                                                              as the solution to the streaming equation (10) on the left side
+                                  2                               of the domain, while the Lax-Wendroff scheme with σ = 0.5
+                       3 =Q=           ,                     (18)    gives the solution on the right side. Second, at the interface
+                                  S2
+                                                                     between the fine-coarse blocks in the middle of the domain, an
+where S is the rate of strain tensor and  is the rate of rotation   interpolation is necessary to provide the distribution functions
+tensor. These tensors are the symmetric and antisymmetric            needed to perform the streaming step on the finer blocks. This
+parts of the velocity gradient tensor, respectively. Here            gives us the opportunity to examine the effect of interpolation
+Q > 1 indicates regions with larger vortical strength than shear     schemes on the order of accuracy of the model as well.
+strength.                                                               The computations are done for three different values
+    In this paper, the time step is fixed at t = 1 (all the         of maximum refinement level lmax = 3, 4, and 5, which
+dimensions are in lattice units). At every time step, the errors     correspond to the domain lengths of L = 64,128, and 256,
+are calculated for all the leaf blocks. A block is flagged for       respectively. The numerical results are compared to the
+refinement if the indicator is above a prescribed value > r .        analytical solution given by Eq. (19) at t = tc and the error
+Similarly, a block is marked for derefinement if < d . The           is measured by calculating the L2 norm
+actual refinement-derefinement is performed by considering                                  
+                                                                                            
+the one-level-jump rule for the refinement level of neighboring                              [(u − ua )2 + (v − va )2 ]
+                                                                                             x,y
+blocks. In this study, the typical thresholds for refinement and                δu2 =             2                     ,        (20)
+derefinement are, respectively, r = 0.2/U0 and d = 0.1/U0                                                 ua + va2
+                                                                                                     x,y
+when using the dimensionless vorticity magnitude 1 , r = 0.2
+and d = 0.1 when using the relative error in vorticity 2 ,           where u and v are the macroscopic velocities computed using
+and r = d = 1 when using the Q criterion 3 as the error              FDLBM and the summation is taken over the entire domain.
+indicator.                                                              As can be seen in Fig. 5, bilinear interpolation degrades
+                                                                     the order of accuracy of the FDLBM to first order. This is
+                  A. Taylor-Green vortex flow                        due to the fact that, although bilinear interpolation gives us
+                                                                     a second-order-accurate value for the distribution function, it
+   As a test problem, we consider the Taylor-Green decaying
+                                                                     causes the gradient calculation of the distribution function
+vortex flow in a periodic domain with the following analytic
+                                                                     in the streaming step (10) to be of first-order accuracy,
+solution [36,39,40]:
+                                                                     thus reducing the overall accuracy of the FDLBM to first
+ ua (x,y) = −U0 cos(kx) sin(ky) exp(−t/tc ),                         order. Comparing the bilinear and biquadratic interpolations
+                                                                     in Fig. 5, we observe that the bilinear interpolation not only
+ va (x,y) = U0 sin(kx) cos(ky) exp(−t/tc ),                  (19)    makes the FDLBM first order, but also produces an error
+                   ρ0 U02                                            that is about one order of magnitude larger than that of
+ pa (x,y) = p0 −          [cos(2kx) + cos(2ky)] exp(−2t/tc ),        the biquadratic interpolation. Moreover, as shown in Fig. 4,
+                     4
+
+                                                               033310-5
+ABBAS FAKHARI AND TAEHUN LEE                                                                     PHYSICAL REVIEW E 89, 033310 (2014)
+
+        -1
+   10
+                                                    bilinear
+                                                    biquadratic
+
+                           sl o p e
+   ⎥⎜δu⎥⎜2
+
+
+
+                                       -1
+
+
+
+   10-2
+
+
+                           sl o
+                                  pe
+                                       -2
+
+
+        -3
+   10
+
+             64                        128        192   256 320
+                                             Nx
+  FIG. 5. Convergence test: order of accuracy of the proposed
+model using bilinear and biquadratic interpolations.
+
+
+bilinear interpolation causes a discontinuity in the pressure
+at the border of fine-coarse blocks. This behavior was also
+observed by Lagrava et al. [28]. It is worth mentioning,                    FIG. 6. Lid-driven cavity flow at Re = 3200 after 200 000 itera-
+however, that when we adaptively refine-derefine the mesh,              tions. Comparison of different error indicators: (a) 1 , (b) 2 , (c) 3 ,
+                                                                        and (d) uniform mesh.
+this pressure jump across the interface of fine-coarse blocks
+is greatly suppressed. Nevertheless, the bilinear interpolation
+should be used with great care.                                         of magnitude larger than the other two indicators. Although
+                                                                        the first error indicator, which is based on the vorticity, gives
+                                                                        us acceptable results with less than 0.5% discrepancy with
+                    B. Lid-driven cavity flow
+                                                                        uniform-mesh results, the second refinement criterion, defined
+    A lid-driven cavity flow is simulated to further validate and       in Eq. (17), gives us the smallest error (0.3%) for this particular
+evaluate the accuracy of the code with regard to the error              problem. This is due to the fact that all the blocks adjacent to
+indicators introduced earlier. The Reynolds number of the               the wall boundaries are refined to their finest levels as a result
+flow Re = U0 L/ν is set to 3200. The lid of the cavity, at              of using a relative error in vorticity.
+the top, is moving to the right with U0 = 0.1 (Ma = 0.17).                 We also compared the FDLBM AMR results to the uniform-
+Figure 6 shows the streamlines for three different error criteria       mesh solution and the benchmark study by Ghia et al. [41].
+along with the streamlines on a uniform mesh after 200 000              In Fig. 8, the centerline velocities inside the lid-driven cavity
+iterations. Qualitatively, the first and the second error criteria,     flow at Re = 3200 are plotted and satisfactory agreement with
+defined in Eqs. (16) and (17), seem to be more successful               the benchmark study is observed. The very small difference
+in capturing the large eddies at the corners of the cavity.             between the results is due to the fact that Ghia et al. [41] used
+The third error criterion, however, has failed to capture the           a moderate 128 × 128 grid, while we are using a 256 × 256
+eddies, especially the smaller one at the top left corner, as           grid for the uniform-mesh solution.
+elegantly as the other two indicators. The arrangement of the
+blocks for all the refinement criteria can be seen in Fig. 7.                                   C. Thin shear layer
+It is interesting to note that, although the first two plots in
+Fig. 7 have substantially different configurations, they result            In a recent study [42], we examined the instability of a
+in almost the same solution, qualitatively. On the other hand,          shear layer for single-phase and multiphase flows using an
+the performance of the last estimator, based on the Q criterion,           TABLE I. Absolute and relative errors of the velocity field in the
+is very poor in detecting the large gradient regions.                   simulation of cavity flow using different error criteria (the uniform-
+    In order to quantify the errors associated with these               mesh result is used as the reference solution).
+refinement indicators, we calculate the difference between
+                                                                                                               
+the velocity fields based on the uniform mesh and the AMR               Refinement criterion                         |u|                δu2
+solutions. The absolute difference in the magnitude of the                                                     x,y
+
+velocity and the L2 norm are presented in Table I. The common            1 [Eq. (16)]                           0.030                   0.0049
+points for different block configurations in Fig. 7 are used to          2 [Eq. (17)]                           0.018                   0.0029
+calculate the errors. As can be seen in Table I, the errors given        3 [Eq. (18)]                           0.336                   0.0538
+for the last refinement criterion defined in Eq. (18) is one order
+
+                                                                  033310-6
+FINITE-DIFFERENCE LATTICE BOLTZMANN METHOD . . .                                                                        PHYSICAL REVIEW E 89, 033310 (2014)
+
+
+
+
+        FIG. 7. Configuration of the adaptively created blocks in the cavity flow for different error indicators: (a) 1 , (b) 2 , and (c) 3 .
+
+MRT LBM on a uniform mesh. In this section, the stability                                      number of the flow is
+of a single-phase Kelvin-Helmholtz billow is considered and                                                                    U0 δ
+the results are compared to the findings of Fontane and                                                                   Re =      ,                        (22)
+                                                                                                                                 ν
+Joly [43], who solved the Navier-Stokes equations using an
+AMR technique to study the Kelvin-Helmholtz instability of                                     where U0 is half the velocity difference across the shear
+two miscible fluids in the absence of gravity and interfacial                                  layer. Here U0 = 0.1, which results in Ma = 0.17. The
+tension. The following velocity profile, which consists of a                                   dimensionless time is also defined by t ∗ = tU0 /δ.
+base flow and small perturbations for the initiation of the                                        A comparison of the performance of the error estimators is
+Kelvin-Helmholtz instability, is imposed across the shear                                      presented in Fig. 9. While the best result is obtained using the
+layer:                                                                                         vorticity magnitude as the error indicator in Fig. 9(a), the error
+                                                                                               criterion based on the relative error in vorticity does not yield
+                                                                                             very accurate results. This is contrary to what we observed in
+                            y
+            u(y) = U0 tanh     + εu (y) cos(αx),                                              the cavity flow simulations. The main reason is that we are
+                            δ
+                                                                                     (21)      dealing with a larger vorticity value in the middle of the shear
+            v(y) = εv  (y) cos(αx),                                                           layer compared to the small eddies at the corners of the cavity.
+                                                                                               Because the vorticity magnitude appears in the denominator of
+where δ is half the shear-layer depth or vorticity thickness,                                  Eq. (17), the corners of the cavity, where the magnitude of the
+α = 2π/λ is the wave number with λ being the wavelength,                                       vorticity was small, were flagged for refinement. However, in
+ε is the perturbation amplitude, and u and v  are complex                                    the middle of the shear layer, the magnitude of the vorticity is
+eigenfunctions of the Rayleigh stability equation [43,44]. For                                 rather large and the difference in vorticity is small. Therefore,
+the most unstable mode we found αδ = 0.444 92 [42].                                            the middle part of the domain was not flagged for refinement.
+   We seed the initial disturbances similarly to what was                                      The opposite is the case for the parts of the shear layer that are
+performed in [43]. The size of the computation domain                                          far from the center; the vorticity magnitude is close to zero,
+corresponds to a uniform mesh with 256 × 256 lattice                                           making the denominator of Eq. (17) small, and incorrectly
+points. The boundary conditions are periodic in the streamwise                                 signals to refine the mesh away from the center. Consequently,
+direction and free slip at the top and bottom. The Reynolds                                    the results shown in Fig. 9(b) are not in good agreement with
+                                                                                               the uniform-mesh solution. Once again, the results of the Q-
+                                                                                               criterion indicator, depicted in Fig. 9(c), are not in line with
+                                                                                               the uniform-mesh results.
+ 1                                          0.6
+                                                                                                   We further verify our explanations, which are based on
+0.8
+                                            0.4                                                qualitative comparisons, by quantifying the errors between
+                                                                            FDLBM AMR
+                                                                            uniform mesh
+                                                                                               AMR results and uniform-mesh results. Once again, the
+                                            0.2
+0.6
+                         FDLBM AMR
+                         uniform mesh
+                                                                            Ref. [41]
+                                                                                               absolute error in the velocity field as well as the L2 norm
+                         Ref. [41]                                                             is calculated and the results are given in Table II. As can be
+                                            v*
+y*
+
+
+
+
+                                              0
+
+0.4
+                                            -0.2
+                                                                                                  TABLE II. Absolute and relative errors of the velocity field in the
+0.2                                         -0.4
+                                                                                               simulation of thin layer shear flow using different error criteria (the
+ 0                                          -0.6
+                                                                                               uniform-mesh result is used as the reference solution).
+ -0.5        0         0.5              1       0   0.2   0.4         0.6      0.8         1
+                 u*                                             x*                                                                   
+                 (a)                                            (b)                            Refinement criterion                        |u|                δu2
+                                                                                                                                     x,y
+
+   FIG. 8. (Color online) Centerline velocities inside the cavity flow                          1 [Eq. (16)]                          0.019                   0.0014
+at Re = 3200: (a) dimensionless x velocity along the vertical                                   2 [Eq. (17)]                          0.094                   0.0067
+centerline and (b) dimensionless y velocity along the horizontal                                3 [Eq. (18)]                          0.362                   0.0259
+centerline.
+
+                                                                                       033310-7
+ABBAS FAKHARI AND TAEHUN LEE                                                                            PHYSICAL REVIEW E 89, 033310 (2014)
+
+  256                                  256                                256                                      256
+
+
+
+  192                                  192                                192                                      192
+  Y
+
+
+
+
+                                       Y
+
+
+
+
+                                                                          Y
+
+
+
+
+                                                                                                                    Y
+  128                                  128                                128                                      128
+
+
+
+   64                                   64                                 64                                       64
+
+
+
+    0                                    0                                  0                                        0
+     0     64     128
+                        X 192    256      0    64     128
+                                                            X 192   256      0     64    128
+                                                                                                X 192        256      0     64    128
+                                                                                                                                        X 192   256
+
+
+                  (a)                                (b)                                  (c)                                    (d)
+
+     FIG. 9. Vorticity contour levels for Kelvin-Helmholtz instability at Re = 1500 and t ∗ = 26. Comparison of different estimators: (a) 1 , (b)
+ 2 , (c) 3 , and (d) uniform mesh. The vorticity increment between contours is 1/6.
+
+
+seen in Table II, the first indicator defined in Eq. (16) gives            placed in an infinite domain has been studied extensively both
+us the most accurate results with about 0.1% discrepancy with              numerically and experimentally [45–51]. There are also a few
+the uniform-mesh solution. The error for the second criterion,             studies on the flow pattern behind a square box in a confined
+although acceptable, is 5 times larger than the first one. On the          channel (with blockage effects) using the LBM [52–54]. For
+other hand, the Q criterion gives us the least accurate results            a uniform flow over a square cylinder, it is well known that
+with more than 2% error.                                                   once the Reynolds number is above a critical value Recr ∼ 52
+    A comparison of our FDLBM AMR result to that of Fontane                [47,52], the flow field becomes unstable and the so-called von
+and Joly [43] is also shown in Fig. 10. As can be seen,                    Kármán vortex street is generated downstream of the flow.
+the current FDLBM AMR results, using the magnitude of                      To examine the accuracy of the present FDLBM AMR, the
+the dimensionless vorticity as the error indicator, are in good            unsteady flow over a square cylinder in an unbounded uniform
+agreement with those obtained in [43].                                     flow (without blockage effects) is examined.
+    From the obtained results, we see that the choice of the error             The computational domain is chosen similar to previous
+criterion is rather case specific. When dealing with stationary            studies [47–49], as depicted in Fig. 11. A square box with
+walls, the error indicator based on the relative difference in             length D is placed at x = 8D from the inlet. The length and
+vorticity helps to refine the mesh close to the wall boundaries.           height of the domain are equal to L = 32D and H = 16D,
+In the absence of exterior walls, however, the magnitude of                respectively. The no-slip boundary condition is applied at the
+the vorticity is found to be a reliable estimator in detecting             walls of the square cylinder, while a uniform flow profile
+gradients and capturing the essential physics of the problem.              (u,v) = (U0 ,0) is imposed at the inlet, top, and bottom of
+Of course, the identification of a universal error indicator for           the domain, as shown in Fig. 11. At the outlet, the pressure
+AMR schemes is still the subject of ongoing research and will              is fixed and the following convective boundary condition is
+not be further discussed in this study.                                    solved to update the velocity:
+                                                                                                      ∂u      ∂u
+                                                                                                         + U0    = 0.                           (23)
+                  D. Flow past a square cylinder                                                      ∂t      ∂x
+   Although the AMR technique can be applied to steady state
+flows, its maximum benefit is obtained when it is used for the                 The far-field boundary conditions are imposed using the
+simulation of unsteady flows with large variations in the scale            momentum-exchange scheme [15] at the inlet, top, and bottom
+of the physics of the problem. Moreover, the versatility of an             boundaries, while the distribution function is set equal to the
+AMR scheme is better manifested when applied to unsteady                   equilibrium value at the outlet. On the walls of the square
+flows such as the vortex-shedding phenomenon behind a                      cylinder, the second-order link bounceback is applied. The
+cylinder. The physics of a uniform flow past a square cylinder             initial condition is a constant pressure with a uniform velocity
+
+
+                                                                                                               u=U0 , v=0
+
+
+                                                                                                  D
+                                                                            u=U0                                                       convecve
+                                                                            v=0
+                                                                                                         D                              oulow H=16D
+
+
+
+
+                                                                                                               u=U0 , v=0
+                                                                                                                   L=32D
+    FIG. 10. Comparison of (a) current FDLBM AMR findings with
+(b) AMR benchmark results in Ref. [43] [Fig. 2(a) therein] for Kelvin-         FIG. 11. (Color online) Flow past a square cylinder: computa-
+Helmholtz instability at Re = 1500 and t ∗ = 26 with lmax = 5.             tional domain and boundary conditions.
+
+                                                                    033310-8
+FINITE-DIFFERENCE LATTICE BOLTZMANN METHOD . . .                                               PHYSICAL REVIEW E 89, 033310 (2014)
+
+
+
+
+    FIG. 12. (Color online) Vortex shedding past a square cylinder at Re = 100 for (a) lmax = 5 (D = 16), (b) lmax = 6 (D = 32), and (c)
+lmax = 7 (D = 64). Shown on the left are streamlines and pressure contours and on the right are vorticity contours and mesh configurations.
+
+profile everywhere except in the vicinity of the square cylinder,      For bounceback on the link, the effective location of the wall
+where the velocity is set to zero. The important parameters            is halfway between the boundary nodes and the fluid nodes.
+of the flow field are the Reynolds number and the Strouhal             As a result, the momentum exchange between the cylinder and
+number, which are defined as                                           the flow field can be rewritten as
+                                                                                                       8
+                                U0 D                                                      F=2              eα fα (xb ,t).             (26)
+                           Re =      ,
+                                 ν                                                                xb α=1
+                                                              (24)
+                                 fs D                                  After evaluating the force on the cylinder, the drag and lift
+                            St =      ,
+                                  U0                                   coefficients are calculated by
+                                                                                                        2Fx
+where fs is the shedding frequency determined from the                                          CD =            ,                     (27)
+alternation of the lift force at the surface of the cylinder.                                          ρ0 U02 D
+The momentum-exchange method [15] is used to calculate                                                  2Fy
+the force exerted on the cylinder:                                                              CL =            .
+                                                                                                       ρ0 U02 D
+                   8                                                   Note that the actual value of D used in Eqs. (24) and (27) is the
+        F=             eα [fα (xb ,t) + fβ (xb + xα ,t)].    (25)     input value (16, 32, or 64) plus one. The one comes from the
+              xb α=1                                                   fact that, as a result of the bounceback on the link, the actual
+
+                                                                033310-9
+ABBAS FAKHARI AND TAEHUN LEE                                                                  PHYSICAL REVIEW E 89, 033310 (2014)
+
+                                                                           TABLE IV. Efficiency of the proposed FDLBM AMR compared
+                                                                       to a uniform-mesh solver.
+
+                                                                                                    Uniform-mesh FDLBM AMR
+                                                                       Case study                      time (s)    time (s) Speedup
+                                                                       cavity flow                      2678        2957          0.9
+                                                                       thin shear layer                   65          38          1.7
+                                                                       vortex shedding (lmax = 5)        701         331          2.1
+                                                                       vortex shedding (lmax = 6)        6074       1827          3.3
+                                                                       vortex shedding (lmax = 7)       46652       12081         3.9
+
+
+
+                                                                       solution in the regions of interest. Also, Fig. 13 plots the
+                                                                       variation of drag and lift coefficients versus dimensionless time
+                                                                       for the square cylinder with D = 64 lattice nodes (lmax = 7).
+                                                                          Finally, one complete cycle of the von Kármán vortex street
+                                                                       behind the square cylinder at Re = 100 is illustrated in Fig. 14.
+                                                                       The interval between subsequent snapshots is one-fourth of the
+                                                                       vortex-shedding period. Fluctuations in the wake velocity are
+                                                                       clearly seen in the vorticity contours downstream of the flow.
+   FIG. 13. (Color online) Drag and lift coefficients versus dimen-
+sionless time for a uniform flow past a square cylinder at Re = 100.
+                                                                                                    E. Efficiency
+                                                                           In this section we compare the CPU time of our FDLBM
+location of the wall is halfway between the fluid nodes and the
+                                                                       AMR code with the uniform-mesh code. All the simulations
+solid nodes.
+                                                                       are performed on a PC with Intel(R) Core(TM) i7 2.8 GHz
+    The vortex-shedding phenomenon past a square cylinder is
+                                                                       CPU and 4 GB RAM. The full optimization option is used. It
+studied at Re = 100 (Ma = 0.17) and the numerical values of
+                                                                       is worth noting that in all the data reported in Table IV, the
+the time-averaged drag coefficient and the Strouhal number are
+                                                                       refinement-derefinement subroutine, which costs about 6% of
+measured. The grid consistency of the results is ensured using
+                                                                       the computation time, is called at each time step.
+three different grid resolutions around the square cylinder. The
+                                                                           As the results presented in Table IV suggest, the AMR strat-
+sides of the square cylinder are resolved using 16, 32, and 64
+                                                                       egy is not very helpful when dealing with the flow in a confined
+lattice nodes, corresponding to lmax = 5, 6, and 7, respectively.
+                                                                       geometry like the cavity flow. This is due to the fact that sharp
+In Table III, the obtained results are compared with previous
+                                                                       gradients close to wall boundaries causes the mesh to be refined
+studies. As can be seen, the calculated drag coefficient and
+                                                                       in those regions. As illustrated in the cavity flow simulations
+the Strouhal number are in reasonable agreement with the
+                                                                       in Fig. 7, a high percentage of the computational domain
+benchmark studies. Also, increasing the resolution from lmax =
+                                                                       is refined to its finest level degrading the efficiency of an
+6 (D = 32) to lmax = 7 (D = 64) does not affect the predicted
+                                                                       AMR routine. On the other hand, thin shear layer and vortex-
+values for the drag and the Strouhal number, confirming the
+                                                                       shedding simulations show promising results in the speedup
+grid convergence of the findings.
+                                                                       factor when using the AMR routine. The efficiency of the
+    The contour plots of pressure and streamlines, as well
+                                                                       FDLBM-AMR increases with the maximum refinement level.
+as the dynamically created blocks, are shown in Fig. 12 for
+lmax = 5–7. As can be seen, the refinement criterion based on
+the vorticity magnitude, defined in Eq. (18), is fairly successful                              V. SUMMARY
+in capturing the von Kármán vortex structures. The mesh                  An adaptive mesh refinement strategy in the framework of
+is refined where it needs to be, producing a more accurate             the lattice Boltzmann method was developed in this study.
+                                                                       Compared to available AMR structures, the proposed AMR is
+   TABLE III. Drag coefficient and Strouhal number for unsteady        easier to code and implement mainly because the modification
+flow past a square cylinder at Re = 100.                               of a tree-type data structure after the reconstruction step is no
+                                                                       longer needed. Meanwhile, there is no need to search a tree
+Reference                            C¯D                    St         structure [3] or look up entries in a hash table [6] to find the
+                                                                       neighbors of a given block because the neighboring blocks
+[46]                                                   0.141–0.145
+                                                                       are already known via using pointers. Also, in the absence of
+[47]                              1.44–1.48            0.144–0.146
+[48]                                 1.51                 0.159
+                                                                       a tree structure, executing the code in parallel is intrinsically
+[49]                                 1.51                 0.150        straightforward.
+[50]                              1.40–1.53            0.144–0.146         Using the AMR technique, a FDLBM on nonuniform
+present work (D = 16)                1.53                 0.151        grids was presented that avoids temporal interpolations at the
+present work (D = 32)                1.51                 0.150        borders of fine-coarse grids by invoking a unified time step
+present work (D = 64)                1.51                 0.149        throughout the computational domain. This has two immediate
+                                                                       advantages: First, the second-order accuracy of the LBM in
+
+                                                                 033310-10
+FINITE-DIFFERENCE LATTICE BOLTZMANN METHOD . . .                                                      PHYSICAL REVIEW E 89, 033310 (2014)
+
+
+
+
+    FIG. 14. (Color online) Vorticity contours past a square cylinder at Re = 100 with lmax = 6 for (a) t0 , (b) t0 + 4f1s , (c) t0 + 4f2s , and (d)
+t0 + 4f3s .
+
+time is retained and second, there is no need to rescale the                nonuniform grids is beyond the scope of the present paper.
+distribution functions at the borders of fine-coarse grids. In              Also, extension of the proposed FDLBM AMR to multiphase
+the meantime, we take advantage of the perfect shift in the                 flows is a subject left for future work.
+streaming process, as is the case in the conventional LBM, on
+the blocks that are at the finest refinement level where the most
+                                                                                                  ACKNOWLEDGMENT
+accurate results are demanded.
+   Comparison of the accuracy and efficiency of the current                    This research was carried out using funding received from
+FDLBM with the conventional stream-and-collide LBM on                       the DOE’s NEUP.
+
+
+
+ [1] M. J. Berger and J. Oliger, J. Comput. Phys. 53, 484 (1984).           [27] C.-L. Lin and Y.-G. Lai, Phys. Rev. E 62, 2219 (2000).
+ [2] M. J. Berger and P. Colella, J. Comput. Phys. 82, 64 (1989).           [28] D. Lagrava, O. Malaspinas, J. Latt, and B. Chopard, J. Comput.
+ [3] D. de Zeeuw and K. G. Powell, J. Comput. Phys. 104, 56 (1993).              Phys. 231, 4808 (2012).
+ [4] A. M. Khokhlov, J. Comput. Phys. 143, 519 (1998).                      [29] J. Tolke, S. Freudiger, and M. Krafczyk, Comput. Fluids 35, 820
+ [5] A. V. Kravtsov, A. A. Klypin, and A. M. Khokhlov,                           (2006).
+     Astrophys. J. Suppl. Ser. 111, 73 (1997).                              [30] Z. Yu and L.-S. Fan, J. Comput. Phys. 228, 6456
+ [6] H. Ji, F.-S. Lien, and E. Yee, J. Comput. Phys. 229, 8981 (2010).           (2009).
+ [7] P. MacNeice, K. Olson, C. Mobarry, R. de Fainchtein, and               [31] J. Wu and C. Shu, J. Comput. Phys. 230, 2246
+     C. Packer, Comput. Phys. Commun. 126, 330 (2000).                           (2011).
+ [8] R. Teyssier, Astron. Astrophys. 385, 337 (2002).                       [32] Y. Chen, Q. Kang, Q. Cai, and D. Zhang, Phys. Rev. E 83,
+ [9] S. Popinet, J. Comput. Phys. 190, 572 (2003).                               026707 (2011).
+[10] T. Matsumoto, Publ. Astron. Soc. Jpn. 59, 905 (2007).                  [33] G. Eitel-Amor, M. Meinke, and W. Schroder, Comput. Fluids
+[11] U. Ziegler, Comput. Phys. Commun. 179, 227 (2008).                          75, 127 (2013).
+[12] R.-L. Jiang, C. Fang, and P.-F. Chen, Comput. Phys. Commun.            [34] X. He and L.-S. Luo, J. Stat. Phys. 88, 927 (1997).
+     183, 1617 (2012).                                                      [35] P. Lallemand and L.-S. Luo, Phys. Rev. E 61, 6546 (2000).
+[13] J. Rantakokko and M. Thun, Parallel Computing (Springer,               [36] R. Mei, L.-S. Luo, P. Lallemand, and D. d’Humières,
+     London, 2009), Chap. 5.                                                     Comput. Fluids 35, 855 (2006).
+[14] S. Chen and G. Doolen, Annu. Rev. Fluid Mech. 30, 329 (1998).          [37] P. Chakraborty, S. Balachandar, and R. J. Adrian, Annu. Rev.
+[15] D. Yu, R. Mei, L.-S. Luo, and W. Shyy, Prog. Aerosp. Sci. 39,               Fluid Mech. 535, 189 (2005).
+     329 (2003).                                                            [38] S. J. Kamkar, A. M. Wissink, V. Sankaran, and A. Jameson,
+[16] X. He, L.-S. Luo, and M. Dembo, J. Comput. Phys. 129, 357                   J. Comput. Phys. 230, 6271 (2011).
+     (1996).                                                                [39] A. Bardow, I. V. Karlin, and A. A. Gusev, Phys. Rev. E 77,
+[17] D. Yu, R. Mei, and W. Shyy, Int. J. Numer. Methods Fluids 39,               025701 (2008).
+     99 (2002).                                                             [40] T. Kruger, F. Varnik, and D. Raabe, Phys. Rev. E 82, 025701
+[18] D. Kandhai, W. Soll, S. Chen, A. Hoekstra, and P. Sloot,                    (2010).
+     Comput. Phys. Commun. 129, 100 (2000).                                 [41] U. Ghia, K. N. Ghia, and C. T. Shin, J. Comput. Phys. 48, 387
+[19] V. Sofonea and R. F. Sekerka, J. Comput. Phys. 184, 422                     (1982).
+     (2003).                                                                [42] A. Fakhari and T. Lee, Phys. Rev. E 87, 023304 (2013).
+[20] T. Lee and C.-L. Lin, J. Comput. Phys. 185, 445 (2003).                [43] J. Fontane and L. Joly, J. Fluid Mech. 612, 237 (2008).
+[21] F. Nannelli and S. Succi, J. Stat. Phys. 68, 401 (1992).               [44] A. Michalke, J. Fluid Mech. 19, 543 (1964).
+[22] H. Chen, Phys. Rev. E 58, 3955 (1998).                                 [45] R. W. Davis and E. F. Moore, J. Fluid Mech. 116, 475
+[23] M. Rohde, D. Kandhai, J. J. Derksen, and H. E. A. van den                   (1982).
+     Akker, Int. J. Numer. Methods Fluids 51, 439 (2006).                   [46] A. Okajima, J. Fluid Mech. 123, 379 (1982).
+[24] T. Lee and C.-L. Lin, J. Comput. Phys. 171, 336 (2001).                [47] A. Sohankar, C. Norberg, and L. Davidson, Int. J. Numer.
+[25] O. Filippova and D. Hanel, J. Comput. Phys. 147, 219                        Methods Fluids 26, 39 (1998).
+     (1998).                                                                [48] A. K. Saha, K. Muralidhar, and G. Biswas, J. Eng. Mech. 126,
+[26] O. Filippova and D. Hanel, J. Comput. Phys. 165, 407 (2000).                523 (2000).
+
+
+                                                                    033310-11
+ABBAS FAKHARI AND TAEHUN LEE                                                                 PHYSICAL REVIEW E 89, 033310 (2014)
+
+[49] A. N. Pavlov, S. S. Sazhin, R. P. Fedorenko, and M. R. Heikal,   [52] M. Breuer, J. Bernsdorf, T. Zeiser, and F. Durst, Int. J. Heat
+     Int. J. Numer. Methods H. 10, 6 (2000).                               Fluid Flow 21, 186 (2000).
+[50] N. Hasan, S. F. Anwer, and S. Sanghi, J. Comput. Phys. 206,      [53] S. Izquierdo, P. Martı́nez-Lera, and N. Fueyo, Comput. Math.
+     661 (2005).                                                           Appl. 58, 914 (2009).
+[51] S. Ul-Islam, C. Y. Zhou, A. Shah, and P. Xie, J. Mech. Sci.      [54] D. A. Perumal, G. V. S. Kumar, and A. K. Dass, ISRN Math.
+     Technol. 26, 1027 (2012).                                             Phys. 2012, 630801 (2012).
+
+
+
+
+                                                                033310-12
+

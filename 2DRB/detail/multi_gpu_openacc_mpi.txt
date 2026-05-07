@@ -1,0 +1,686 @@
+                                                     International Journal of Heat and Mass Transfer 201 (2022) 123649
+
+
+
+                                                               Contents lists available at ScienceDirect
+
+
+                                     International Journal of Heat and Mass Transfer
+                                                           journal homepage: www.elsevier.com/locate/hmt
+
+
+
+
+Multi-GPU thermal lattice Boltzmann simulations using OpenACC and
+MPI
+Ao Xu a,b,c,∗, Bo-Tao Li a
+a
+  School of Aeronautics, Northwestern Polytechnical University, Xi’an 710072, China
+b
+  Institute of Extreme Mechanics, Northwestern Polytechnical University, Xi’an 710072, China
+c
+  Key Laboratory of Icing and Anti/De-icing, China Aerodynamics Research and Development Center, Mianyang 621000, China
+
+
+
+
+a r t i c l e            i n f o                       a b s t r a c t
+
+Article history:                                       We assess the performance of the hybrid Open Accelerator (OpenACC) and Message Passing Interface
+Received 27 September 2022                             (MPI) approach for multi-graphics processing units (GPUs) accelerated thermal lattice Boltzmann (LB)
+Revised 6 November 2022
+                                                       simulation. The OpenACC accelerates computation on a single GPU, and the MPI synchronizes the infor-
+Accepted 7 November 2022
+                                                       mation between multiple GPUs. With a single GPU, the two-dimension (2D) simulation achieved 1.93
+                                                       billion lattice updates per second (GLUPS) with a grid number of 81932 , and the three-dimension (3D)
+Keywords:                                              simulation achieved 1.04 GLUPS with a grid number of 3853 , which is more than 76% of the theoretical
+Lattice Boltzmann method                               maximum performance. On multi-GPUs, we adopt block partitioning, overlapping communications with
+Thermal convective ﬂows                                computations, and concurrent computation to optimize parallel eﬃciency. We show that in the strong
+GPU
+                                                       scaling test, using 16 GPUs, the 2D simulation achieved 30.42 GLUPS and the 3D simulation achieved
+OpenACC
+                                                       14.52 GLUPS. In the weak scaling test, the parallel eﬃciency remains above 99% up to 16 GPUs. Our re-
+MPI
+                                                       sults demonstrated that, with improved data and task management, the hybrid OpenACC and MPI tech-
+                                                       nique is promising for thermal LB simulation on multi-GPUs.
+                                                                                                                          © 2022 Elsevier Ltd. All rights reserved.
+
+
+
+
+1. Introduction                                                                          lanes and it can exploit much more parallelism, thus it delivers
+                                                                                         much more performance on computations.
+   Over the past half-century, the development of semiconduc-                                The lattice Boltzmann (LB) method is a numerical approach to
+tor transistors has driven rapid growth and prosperity of high-                          simulate ﬂuid ﬂows and associate heat and mass transfer processes
+performance computing (HPC). The miniaturization of computer                             [5,6]. Speciﬁcally, the LB method describes the evolution of particle
+components was foreseen by physicist Richard Feynman in his                              density distribution, which originated from the Boltzmann kinetic
+1959 address ”There is Plenty of Room at the Bottom” [1]. Later                          theory but practically reﬂects hydrodynamic behavior at the con-
+in 1975, Gordon Moore, the founder of Intel Corporation, predicted                       tinuum scale. Mesoscopic physical pictures can be easily incorpo-
+that the number of transistors per computer chip would double                            rated into the LB method, and macroscopic physical conservation
+every two years, which is known as Moore’s law [2]. This trend                           laws can be recovered with a relatively low computational cost. Af-
+held up considerably well until recently when transistors reduce                         ter three decades of development of the LB method, the computa-
+their physical size and are reaching the atomic scale, implying                          tional ﬂuid dynamics community has witnessed its powerful abil-
+that Moore’s law is nearing its end and is anticipated to ﬂatten                         ity to simulate complex ﬂows, such as gas-liquid two-phase ﬂow
+by 2025 [3]. Alternative avenues for growth in computer perfor-                          [7,8], particulate ﬂow [9–11], ﬂuid-structure interaction [12], ﬂow
+mance include hardware architecture, software, and algorithms [4].                       in porous media [13], and so on. Advancements in HPC utilizing
+In the post-Moore era, computer architects should focus on hard-                         heterogeneous architecture, namely the combined traditional cen-
+ware streamlining and provide additional chip area for more cir-                         tral processing unit (CPU) and the emerging accelerators (such as
+cuitry to operate in parallel, rather than use more transistors and                      GPUs), further facilitate the application of LB simulations in large-
+increase the complexity of processing cores as they used to do. For                      scale engineering problems [14,15]. Open-source codes based on
+example, the graphics process unit (GPU) contains many parallel                          the LB method, including OpenLB [16], Palabos [17], and Sailﬁsh
+                                                                                         [18], even aim to brace the forthcoming Exascale supercomputing
+                                                                                         [19]. Review articles on LB simulation using GPUs can be found by
+    ∗
+                                                                                         Navarro-Hinojosa et al. [20], Niemeyer and Sung [21].
+        Corresponding author.
+        E-mail address: axu@nwpu.edu.cn (A. Xu).
+
+
+
+https://doi.org/10.1016/j.ijheatmasstransfer.2022.123649
+0017-9310/© 2022 Elsevier Ltd. All rights reserved.
+A. Xu and B.-T. Li                                                                           International Journal of Heat and Mass Transfer 201 (2022) 123649
+
+
+    The pioneer works implementing LB simulations on graphics               compression work are neglected, and all the transport coeﬃcients
+hardware were achieved by using textures and render buffers [22].           are assumed to be constants. Then, the governing equations can be
+Since 2007, with the introduction of Compute Uniﬁed Device Ar-              written as
+chitecture (CUDA), which is a parallel computing platform and ap-
+                                                                            ∇ ·u=0                                                                            (1a)
+plication programming interface (API), signiﬁcant advances in ap-
+plying LB simulation on GPUs have been made [23–26]. Mean-
+                                                                            ∂u              1
+while, the Open Computing Language (OpenCL, initially released                 + u · ∇ u = − ∇ P + ν∇ 2 u + gβT (T − T0 )zˆ                                   (1b)
+in 2009), which is an open standard for writing programs execut-            ∂t              ρ0
+ing across the heterogeneous platform, has also accelerated the LB          ∂T
+simulation without being restricted to only running on NVIDIA’s                + u · ∇ T = αT ∇ 2 T                                                           (1c)
+                                                                            ∂t
+hardware. For example, Sailﬁsh, an open-source LB solver is built
+                                                                            where u, P and T are the velocity, pressure, and temperature of
+dynamically at run-time in CUDA or OpenCL [18]. However, these
+                                                                            the ﬂuid, respectively. ρ0 and T0 are reference density and tem-
+two APIs require substantial changes in the original code, thus
+                                                                            perature, respectively. ν , βT and αT denote the viscosity, thermal
+threatening the code’s correctness, portability, and maintainability.
+                                                                            expansion coeﬃcient, and thermal diffusivity of the ﬂuid, respec-
+The third accelerating approach is using Open Accelerators (Ope-
+                                                                            tively. zˆ is the unit parallel to gravity. With the scaling
+nACC), which is a platform-independent, high level and directive-
+                                                                                                                                        
+based programming standard. The programmers provide hints as                   x∗ = x/H, t ∗ = t/ H/(βT gT ), u∗ = u/                       βT gH T ,        (2)
+annotations to the original code, specifying that a certain loop               P ∗ = P/(ρ0 gβT T H ), T ∗ = (T − T0 )/T
+should run in parallel on the accelerator, then compute-intensive
+calculations are oﬄoaded to the accelerator device without the              Then, Eq. (1) can be rewritten in dimensionless form as
+need to explicitly manage data transfers between the host and the           ∇ · u∗ = 0                                                                        (3a)
+accelerator. Recently, Open Multi-Processing (OpenMP) support for
+GPUs is also available. Both OpenACC and OpenMP are directive                                        
+                                                                            ∂ u∗                        Pr 2 ∗
+based; the difference is that OpenACC is more descriptive, while                 + u · ∇ u = −∇ P +
+                                                                                    ∗     ∗      ∗
+                                                                                                           ∇ u + T ∗ z˜                                       (3b)
+OpenMP is more prescriptive (using distribute constructs to explic-         ∂t∗                         Ra
+itly maps work-loads) [27].                                                                  
+    So far, there are fewer implementations of LB code using Ope-           ∂T∗                 1
+                                                                                 + u · ∇T =
+                                                                                    ∗     ∗
+                                                                                                    ∇ 2T ∗                                                    (3c)
+nACC compared to that using CUDA, primarily due to concerns re-             ∂t∗                PrRa
+garding computational eﬃciency [27–29]. Xu et al. [30] demon-                  Here, H isthe cell height and it is chosen as the characteristic
+strated that for thermal ﬂows (e.g., ﬂuid ﬂows and heat transfer in         length. t f = H/(βT gT ) is the free-fall time and it is chosen as
+the side heated cavity), a speedup of around 53X can be achieved            the characteristic time. T is the temperature difference between
+when using OpenACC acceleration compared with the serial code.              heating and cooling walls. The two dimensionless parameters are
+The results were obtained on a single Tesla K20c GPU, and 282.6             the Ra and the P r, which are deﬁned as
+million lattice update per second (MLUPS, deﬁned later in this
+paper) were reached for double-precision ﬂoating calculation. Al-                  gβT T H 3              ν
+                                                                            Ra =                ,   Pr =                                                       (4)
+though higher performance could be gained using single-precision                      ναT                  αT
+ﬂoating calculation [31], it would pose threats to the accuracy of
+                                                                            2.2. The LB model for thermal convection
+the simulation results, particularly for turbulent ﬂow simulations
+[32].
+                                                                                We adopt the double distribution function (DDF)-based LB
+    To utilize the computing power of multi-node GPU clusters, LB
+                                                                            model to simulate thermal convective ﬂows with the Boussinesq
+implementations based on a hybrid OpenACC and Message Passing
+                                                                            approximation [33–36]. Speciﬁcally, we chose a D2Q9 discrete lat-
+Interface (MPI) approach can be used for massively parallel sim-
+                                                                            tice in two-dimension (2D) or a D3Q19 discrete lattice in three-
+ulations of problems with larger domain sizes. However, simula-
+                                                                            dimension (3D) for the Navier–Stokes equations to simulate ﬂuid
+tions running on multiple GPUs have to face Peripheral Compo-
+                                                                            ﬂows, and a D2Q5 discrete lattice in 2D or a D3Q7 discrete lattice
+nent Interconnect Express (PCI-e) bottlenecks and minimize inter-
+                                                                            in 3D for the energy equation to simulate heat transfer [30,37], as
+GPU communications. In this work, we address implementation is-
+                                                                            illustrated in Fig. 1. Here, the D2Q5 or D3Q7 model was chosen
+sues when using hybrid MPI and OpenACC to accelerate LB simula-
+                                                                            for the convection-diffusion equation to pursue computational ef-
+tions. We show that ultra-high computational performance can be
+                                                                            ﬁciency.
+achieved with proper implementations. The rest of this paper is or-
+                                                                                To enhance the numerical stability, the multi-relaxation-time
+ganized as follows. In Section 2, we introduce numerical details for
+                                                                            (MRT) collision operator is adopted in the evolution equations of
+the simulation of thermal convection, including the mathematical
+                                                                            both density and temperature distribution functions. The evolution
+model and the corresponding LB model. In Section 3, we present
+                                                                            equation of the density distribution function is written as
+details for implementation and optimization of the hybrid Ope-
+nACC and MPI, as well the parallel performance measured via the                                                                                        
+strong scaling test. In Section 4, we present parallel performance          fi (x+ei δt , t +δt )− fi (x, t )= − M−1 S         m j (x, t )−m(jeq) (x, t ) +δt Fi
+                                                                                                                         ij
+measured via the weak scaling test. In Section 5, the main ﬁndings                                                                                             (5)
+of this work are summarized.
+                                                                            where fi is the density distribution function and i = 0, 1, · · · , q − 1.
+2. Numerical method                                                         x is the ﬂuid plarcel position, t is the time, δt is the time step. ei
+                                                                            is the discrete velocity along the ith direction. For D2Q9 discrete
+2.1. Mathematical model for thermal convection                              lattice, q = 9; for D3Q19 discrete lattice, q = 19. The forcing
+                                                                                                                                                term
+                                                                                                                                                 
+                                                                            Fi on the right-hand side of Eq. (5) is given by F = M−1 I − 2S MF˜ ,
+    We simulate thermal convection based on the Boussinesq ap-              and the term MF˜ is given as [38–40]
+proximation. We assume the ﬂuid ﬂow is incompressible, and we
+treat the temperature as an active scalar that inﬂuences the ve-            MF˜ D2Q9 = [0, 6u · F, −6u · F, Fx , −Fx , Fy , −Fy , 2uFx − 2vFy , uFx + vFy ]T
+locity ﬁeld through the buoyancy. The viscous heat dissipation and                                                                                            (6a)
+
+                                                                        2
+A. Xu and B.-T. Li                                                                                                      International Journal of Heat and Mass Transfer 201 (2022) 123649
+
+
+
+
+Fig. 1. Illustration of discrete velocity models: (a) the D2Q9 model and (b) the D2Q5 model for two-dimensional simulations; (c) the D3Q19 model and (d) the D3Q7 model
+for three-dimensional simulation.
+
+
+
+                                                                                                         2.3. Simulation settings and parallel performance characterization
+                     
+MF˜ D3Q19 =              0, 38u · F, −11u · F, Fx , − 23 Fx , Fy , − 23 Fy , Fz , − 23 Fz ,
+                                                                                                             We consider a 2D square cell and a 3D cubic cell. The left and
+                     4uFx − 2vFy − 2wFz , −2uFx + vFy + wFz , 2vFy − 2wFz ,                              right walls of the cell are kept at constant hot and cold tempera-
+                     −vFy + wFz , uFy + vFx , vFz + wFy , uFz + wFx , 0, 0, 0]T                          tures, respectively; while the other two (or four) walls of the 2D
+                                                                                              (6b)       cell (or the 3D cell) are adiabatic; all walls impose no-slip velocity
+                                                                                                         boundary conditions. We ﬁxed the Prandtl number as P r = 0.71.
+where F = ρ gβT (T − T0 )yˆ in 2D or F = ρ gβT (T − T0 )zˆ in 3D. The
+                                                                                                         For the 2D thermal convection, the Rayleigh number is ﬁxed as
+macroscopic density ρ and velocity u are obtained from ρ =
+   q−1                    q−1
+                                                                                                         Ra = 108 ; while for the 3D thermal convection, the Rayleigh num-
+       f ,u =
+   i=0 i
+                              e f + 12 F
+                          i=0 i i
+                                             /ρ . At the ﬂuid-solid boundary, the                        ber is ﬁxed as Ra = 107 . Previously, we obtained a steady ﬂow pat-
+no-slip velocity boundary condition can be realized via the half-                                        tern in these two cases [30,37]; while at higher Ra, the ﬂow tran-
+way bounce-back scheme fī (x, t + δt ) = fi+ (x, t ). Here, fi+ (x, t ) de-                             sits to an unsteady state, and a Hopf bifurcation occurs. We veri-
+notes the post-collision density distribution function; fī (x, t ) de-                                  ﬁed the multi-GPU implementation can give correct simulation re-
+notes the density distribution function associated with the velocity                                     sults consistent with our previous results [30,37] (see Fig. 2 for the
+eī , and we have the relation eī = −ei .                                                               temperature ﬁeld in the convection cell); however, for the sake of
+      The evolution equation of the temperature distribution function                                    clarity, we do not repeat to provide the tabulated ﬂow quantities
+is written as                                                                                            and heat transfer properties. In the following, we focus on the par-
+                                                                                                     allel performance of the multi-GPU simulation.
+gi (x + ei δt , t + δt ) − gi (x, t ) = − N−1 Q                   n j (x, t ) − n(jeq) (x, t )               In the strong scaling test, we measure the running time as a
+                                                             ij
+                                                                                                         function of GPU numbers for ﬁxed total problem size, which rep-
+                                                                                               (7)
+                                                                                                         resents the ability to solve a problem faster using more resources;
+where gi is the temperature distribution function and i =                                                while in the weak scaling test, we measure the running time as
+0, 1, · · · , q − 1. For D2Q5 discrete lattice, q = 5; for D3Q7 discrete                                 a function of GPU numbers for ﬁxed problem size per GPU (i.e.,
+lattice, q = 7. The macroscopic temperature T is obtained from                                           the total problem size increases), which represents the ability to
+          q−1
+T = i=0 gi . At the ﬂuid-solid boundary, the Dirichlet temperature                                       solve larger problems with larger resources. We adopt two met-
+boundary condition can be realized via the half-way anti-bounce-                                         rics to characterize the parallel performance of the LB simulation,
+back scheme gī (x, t + δt ) = −g+ i
+                                     (x, t ) + ωTw , where Tw is the wall                                one is Million Lattice Updates Per Second (MLUPS) and the other
+temperature, ω = (4 + aT )/10 for D2Q5 and ω = (6 + aT )/21 for                                          is parallel eﬃciency. The MLUPS is deﬁned as [42]
+D3Q7, aT is a constant related to thermal diffusivity [41]; the Neu-
+mann adiabatic boundary condition can be realized via the half-
+                                                                                                                      mesh size × iteration steps
+way bounce-back scheme gī (x, t + δt ) = g+      (x, t ). Here, g+i (x, t ) de-                         MLUPS =                                                                     (8)
+                                                i
+notes the post-collision temperature distribution function; gī (x, t )
+                                                                                                                         running time × 106
+denotes the temperature distribution function associated with the
+velocity eī . More numerical details of the thermal LB method can                                       Meanwhile, we have 1 GLUPS = 10 0 0 MLUPS, where GLUPS stands
+be found in our previous work [30,37].                                                                   for billion lattice updates per second. In the strong scaling test, the
+
+                                                                                                     3
+A. Xu and B.-T. Li                                                                                    International Journal of Heat and Mass Transfer 201 (2022) 123649
+
+
+
+
+                             Fig. 2. The temperature ﬁeld in the convection cell: (a) the 2D simulation and (b) the 3D simulation.
+
+
+
+parallel eﬃciency η is deﬁned as                                                  information between multiple GPUs. In Fig. 3(a), we present the
+    T                                                                             ﬂowchart of the DDF-based LB model for thermal convection prob-
+η= 1                                                                    (9)       lems. Here, we split the evaluation of the density distribution func-
+  Tn · n
+                                                                                  tion (i.e., Eq. (5)) into the following two steps
+Here, T1 denotes the running time using a single GPU and Tn de-
+                                                                                                                                                                  
+notes the running time using n GPUs. In the weak scaling test,                    Col l ision step : fi+ (x, t )= fi (x, t )− M−1 S        m j (x, t )−m(jeq) (x, t ) +δt Fi
+                                                                                                                                      ij
+the parallel eﬃciency η is simply calculated as η = T1 /Tn . We
+                                                                                                                                                                         (10a)
+conducted experiments on a four-node GPU cluster, each node is
+equipped with four NVIDIA A100 GPUs powered by the NVIDIA
+Ampere Architecture. The network interconnects use 100 Gigabits                   Streaming step : fi (x + ei δt , t + δt ) = fi+ (x, t )                                (10b)
+per second (Gbps) Remote direct memory access over Converged                         Similarly, we split the evaluation of the temperature distribu-
+Ethernet (RoCE). The inter-GPU-GPU communication within a node                    tion function (i.e., Eq. (7)) into two steps as
+goes over the PCI-e. To automatically utilize the GPUDirect accel-                                                                                                           
+eration technologies, we adopt a CUDA-aware MPI implemented in                    Col l ision step : g+
+                                                                                                      i
+                                                                                                        (x, t )=gi (x, t )− N−1 Q                  n j (x, t )−n(jeq) (x, t )
+                                                                                                                                              ij
+OpenMPI. With GPUDirect technology, including Peer to Peer (P2P)                                                                                                         (11a)
+and Remote Direct Memory Access (RDMA), the buffers can be di-
+rectly sent from a GPU memory to another GPU memory or the
+                                                                                  Streaming step : gi (x + ei δt , t + δt ) = g+
+                                                                                                                               i
+                                                                                                                                 ( x, t )                                (11b)
+network without touching the host memory [43].
+    We measure the running time and then calculate the MLUPS                          In the collision step, we can use the symbol i (x, t ) to de-
+and parallel eﬃciency. In Section 3, we describe optimization                     note the collision operator, which is the second term on the right-
+strategies for multi-GPU simulation and evaluate the parallel per-                hand side of the equation. The collision step is also known as the
+formance via the strong scaling test; then, in Section 4, we fur-                 relaxation step and it completely updates local information; the
+ther discuss the parallel performance via the weak scaling test. In               streaming step is also known as the propagation step and it trans-
+the strong scaling test, we ﬁx a grid number of 8193 × 8193 in the                fers data information to its neighboring. Because GPUs adopt sin-
+2D simulation and a grid number of 385 × 385 × 385 in the 3D                      gle instruction multiple threads (SIMT) execution model, we op-
+simulation. Here, we use an odd number of grid points in each                     timized the data layout for the distribution function and stored
+dimension for two reasons: ﬁrst, it reduces the oscillations due                  the information in the structure of array (SoA) to meet the re-
+to spurious conserved quantities [44]; secondly, for a grid num-                  quirement of coalescing memory access, such that neighboring
+ber of N in each dimension, it allows the [(N + 1 )/2]th point to                 threads access neighboring data. For example, the density distribu-
+be precisely located at the center line (plane) based on the half-                tion function fi (x, t ) is stored with index (x + Nx × y + Nx × Ny × i )
+way (anti-)bounce-back boundary scheme, which is convenient for                   or (x + Nx × y + Nx × Ny × z + Nx × Ny × Nz × i ), respectively, for the
+post-analysis of ﬂow and heat transfer quantities. The iteration                  2D or 3D case. Here, Nx , Ny , and Nz denote the grid number in the
+steps are ﬁxed as 12,0 0 0 and 60 0 0, respectively, for the 2D and 3D            x, y, and z directions, respectively. Using the column-major order
+simulations. Preliminary tests showed that the corresponding run-                 programming language (such as Fortran), the corresponding index
+ning time was around 30 seconds with 16 GPUs (i.e., the largest                   formula implementation is f (x, y, i ) or f (x, y, z, i ) [30].
+number of GPUs in the tests), which ensures the measurement of                        In a naive implementation of the hybrid OpenACC and MPI ap-
+computing performance enters a steady state. Detailed settings for                proach, we adopt a mono-dimensional partitioning of the compu-
+the weak scaling test are described in Section 5. All the simula-                 tational domain. Take the column-major order programming lan-
+tions adopt double-precision ﬂoating-point arithmetic, which en-                  guage (such as Fortran) as an example, we decompose the do-
+sures the simulation accuracy.                                                    main along the y-direction (or the z-direction) in the 2D (or the
+                                                                                  3D) domain, then the interface between the subdomains is along
+3. Implementation and optimization of the hybrid OpenACC                          the x-direction line (or the x − y plane), which favors the contin-
+and MPI approach                                                                  uous transfer data in memory space. We add ghost layers outside
+                                                                                  the boundary of each subdomain to receive data from the adja-
+3.1. Naive implementation of hybrid OpenACC and MPI approach                      cent subdomains, as illustrated in Fig. 3(b). To reduce the amount
+                                                                                  of data transfer, in the streaming step, we do not transfer the full
+   To utilize the computing power of GPU clusters, we use the                     array of the distribution function fi+ (x ) or g+   i
+                                                                                                                                        (x ), but only com-
+hybrid OpenACC and MPI approach, in which OpenACC acceler-                        ponents of these arrays corresponding to speciﬁc discrete veloc-
+ates the computation on a single GPU and MPI synchronizes the                     ity directions. For example, using the D2Q9 discrete lattice for the
+
+                                                                              4
+A. Xu and B.-T. Li                                                                                              International Journal of Heat and Mass Transfer 201 (2022) 123649
+
+
+
+
+Fig. 3. (a) Flowchart of double distribution function (DDF)-based lattice Boltzmann (LB) model for thermal convection simulation; (b) mono-dimensional partitioning of the
+2D computation domain and the associated data exchange.
+
+
+
+
+                     Fig. 4. Performanc of (a, c) the 2D simulation and (b, d) the 3D simulation, in terms of (a, b) the MLUPS and (c, d) the parallel eﬃciency.
+
+
+
+density distribution function and D2Q5 discrete lattice for the tem-                            Fig. 4 shows the parallel performance in terms of MULPS and
+perature distribution function, the current GPU [the corresponding                           parallel eﬃciency for the 2D simulation and the 3D simulation,
+subdomain is marked by orange color in Fig. 3(b)] only sends val-                            respectively. We can see that using 1 GPU, the 2D thermal LB
+ues of f2+,5,6 (x ) and g+
+                         2
+                           (x ) [these are distribution functions belong                     simulation achieves 1931.2 MLUPS, and the 3D thermal LB sim-
+to the top boundary of the subdomain, see the red rectangle with                             ulation achieves 1042.4 MLUPS. We note in the D2Q9 + D2Q5
+the solid line in Fig. 3(b)] to the top neighbor GPU, while it only                          thermal LB model, each grid node accesses 80 variables within
+sends values of f4+,7,8 (x ) and g+4
+                                     (x ) [these are distribution functions                  an iteration step and these variables occupy 8 bytes in double-
+belong to the bottom boundary of the subdomain, see the blue                                 precision; while in the D3Q19 + D3Q7 thermal LB model, each
+rectangle with the solid line in Fig. 3(b)] to the bottom neighbor                           grid node accesses 143 variables within an iteration step. Because
+GPU.                                                                                         the NVIDIA A100 has a memory bandwidth of 1555 GB/s, the
+
+
+                                                                                         5
+A. Xu and B.-T. Li                                                                                 International Journal of Heat and Mass Transfer 201 (2022) 123649
+
+
+
+
+                                      Fig. 5. Illustration of block partitioning and data exchange for the 2D domain.
+
+
+
+thermal LB simulation has a theoretical maximum performance of                           Table 1
+1555 × 10 0 03 /(80 × 8 × 106 ) = 2429.7 MLUPS for the 2D simula-                        Partition details of the domain in 2D and 3D.
+
+tion, and 1555 × 10 0 03 /(143 × 8 × 106 ) = 1359.3 MLUPS for the 3D                       GPU numbers       Partition type in 2D   partition type in 3D
+simulation. In other words, we have reached 79.5% and 76.7% of                             1                 -                      -
+the theoretical maximum performance, similar to that of the Sun-                           2                 1×2                    1×1×2
+wayLB [14]. With the increase of GPU numbers, the MULPS gen-                               4                 2×2                    1×2×2
+erally increases; however, the parallel eﬃciency degrades when                             8                 2×4                    2×2×2
+                                                                                           16                4×4                    2×2×4
+more GPUs are used, particularly for the 3D case in which the
+parallel eﬃciency is less than 57% using 16 GPUs, indicating the
+parallel code is not scalable. Two reasons may be responsible for
+the poor parallel performance. First, in the strong scaling measure-            the differences in the subdomain size along each dimension. Us-
+ment, the computational load on each GPU decreases with the in-                 ing the column-major order programming language (such as For-
+crease of GPU numbers; however, the communication cost per GPU                  tran), the data is stored continuously along the x-direction in the
+almost remains the same. Adopting the mono-dimensional parti-                   memory space, we preferably decompose the domain along the y-
+tioning, the amount of data that needs to be transferred is 2 × Nx              direction (in 2D) or the z-direction (in 3D). The partition details
+and 2 × Nx × Ny , respectively, for the 2D and the 3D simulation.               for the domain in 2D and 3D are provided in Table 1. After that,
+As a result, the ratio between communication time and the total                 we add ghost layers to each subdomain to store the data received
+time increases with the increase of GPU numbers, restricting the                from adjacent subdomains. Using Fortran, we need to wrap the left
+scalability of the code. Secondly, if the grid number of the whole              and right boundary nodes along the y-direction into a contiguous
+computation domain is not large enough, the computational load                  cache space before sending them to its left and right neighbor-
+on each GPU is not suﬃcient to fully occupy the resources of that               ing GPUs (see the nodes in the light blue and purple rectangles
+GPU, and the overhead to launch kernel matters. To further boost                with solid lines in Fig. 5). Here we also included ghost nodes out-
+the parallel performance using multi-GPUs, we describe some op-                 side the subdomain boundaries when sending the message, such
+timization strategies in the following subsections.                             that data for the corner points can be implicitly synchronized and
+                                                                                transferred to the diagonally neighboring GPUs. With CUDA-aware
+3.2. Block partitioning of the computational domain                             MPI libraries implemented in OpenMPI, we discourage the use of
+                                                                                MPI-derived datatypes for data communication, even though both
+   In mono-dimensional partitioning, the computational domain                   contiguous and non-contiguous derived datatypes are supported.
+is decomposed into several slices and each slice is allocated to a              The non-contiguous datatypes currently have a high overhead be-
+single GPU. An alternative strategy for domain decomposition is                 cause of the many calls to copy all the pieces of the buffer into the
+block partitioning, which is to decompose the domain in more                    intermediate buffer. Previously, Calore et al. [47] overcame this is-
+than one dimension [45,46]. Fig. 5 illustrates the block partition-             sue by developing a custom communication library that uses per-
+ing and data exchange for the 2D domain. We decompose the                       sistent send and receives buffers, allocated once on the GPUs at
+domain both along the x and the y directions, and we minimize                   program initialization. Here, we recommend an alternative solu-
+
+                                                                            6
+A. Xu and B.-T. Li                                                                                     International Journal of Heat and Mass Transfer 201 (2022) 123649
+
+
+
+
+Fig. 6. Performanc comparisons between mono-dimensional and block partitioning of the computational domain for (a, c) the 2D simulation and (b, d) the 3D simulation,
+in terms of (a, b) the MLUPS and (c, d) the parallel eﬃciency.
+
+
+
+
+tion that simply put the ghost nodes into a buffer of contiguous                     computation and data communications among GPUs, because GPUs
+memory locations.                                                                    cannot control data transfer and only CPUs can manage the data
+    Fig. 6 compares the performance between mono-dimensional                         communication. On devices with distinct hosts and device mem-
+partitioning and block partitioning of the computational domain.                     ory, we can create asynchronous work queues to deal with the
+We can see that adopting block partitioning can improve the                          cost of PCIe data transfers. Practically, we can adopt the !$acc async
+MLUPS and parallel eﬃciency for the 3D simulations, however,                         handle in OpenACC. As illustrated in Fig. 7(a), we ﬁrst update the
+it slightly degrades the parallel performance for the 2D simula-                     boundary nodes and put them into buffers of contiguous mem-
+tions. In the following, we provide a theoretical analysis of the                    ory. We then create asynchronous work queues to perform intense
+advantages and disadvantages of adopting block partitioning. For                     computation for updating inner nodes, while synchronizing data of
+the 2D computational domain with size Nx × Ny , we assume a                          boundary nodes among various GPUs using MPI. Thus, the latency
+square domain of Nx = Ny = N for simplicity. Adopting the mono-                      of communication can be hidden behind the computations. The
+dimensional partitioning, each GPU sends 2N boundary nodes to its                    next task will not begin execution until all actions on the async
+neighboring GPUs, and it launches two kernels for data communi-                      queues are complete, which can be realized using the !$acc wait
+cations on the two boundaries; while adopting the block partition-                   handle in OpenACC. In Fig. 7(b), we give an example of the thermal
+                           √
+ing, each GPU sends 4(N/ a + 2 ) boundary nodes to its neighbor-                     LB model for overlapping communications with computations. Be-
+ing, and it launches four kernels for data commutations on the four                  cause the evolution of density distribution function fi and temper-
+boundaries. Here, for simplicity, we discuss the case when the GPU                   ature distribution function gi are independent of each other within
+                                         √
+number a meets the requirement that a is an integer. We denote                       an iteration, we can update fi and gi alternatively to hide the com-
+that the time consumption for sending a single boundary node is                      munication overhead. Meanwhile, the amount of data computation
+k, and the time consumption to launch a kernel for data communi-                     for fi is larger than that for gi , since there are 5 components of
+cation is h. Thus, for mono-dimensional and block partitioning, the                   fi for the D3Q19 discrete lattice and 1 component of gi for the
+total time consumption for message passing, which includes the                       D3Q7 discrete lattice on a surface of the subdomain, we then di-
+time for sending data and the time to launch a kernel, on a sin-                     vide the communication of fi into three sets: fx representing the
+                                         √
+gle GPU is t1 = 2kN + 2h and t2 = 4(N/ a + 2 )k + 4h, respectively.                  density distribution at the back and front surfaces, fy represent-
+The above analysis indicates that the block partitioning would be                    ing the density distribution function at the left and right surfaces,
+                                              √
+more eﬃcient when t1 > t2 , i.e., 2kN − 4Nk/ a > 2h + 8k; in other                   and fz representing the density distribution function at the bottom
+words, we prefer to use block partitioning when both the domain                      and top surfaces. As illustrated in Fig. 7(b), we ﬁrst relax gi at the
+size N and the GPU number a are large.                                               inner nodes while communicating fz . After that, we communicate
+                                                                                     gi at the boundary nodes while relaxing fi at the inner nodes. Be-
+3.3. Overlapping communications with computations                                    cause the relaxation of fi is the most time-consuming subroutine,
+                                                                                     as evident by the results obtained via NVIDIA Nsight Systems and
+   Minimizing the communication overhead is crucial to improve                       represented by the box size in the illustration drawing, we can also
+the parallel performance of the simulations based on multi-GPUs,                     hide the communication of fy while relaxing fi at the inner nodes.
+we further hide communication overhead behind the kernel run-                        For the communication of fx , it can be hidden by the propagation
+time by overlapping the communications with computations. The                        step of gi and the step to calculate macroscopic variables of T . Now
+basic idea is to simultaneously execute kernels on GPUs for intense                  that the data communication for fi and gi at the boundary nodes
+
+                                                                                 7
+A. Xu and B.-T. Li                                                                                     International Journal of Heat and Mass Transfer 201 (2022) 123649
+
+
+
+
+Fig. 7. Schematic illustration of (a) the basic idea to overlap communications with computations in OpenACC and (b) an example in the thermal LB model for overlapping
+communications with computations. The size of the box to represent each computation subroutine is generally proportional to its time consumption (obtained via NVIDIA
+Nsight Systems). The bounce-back routines updating the distribution functions at boundaries are neglected because they account for less than 1% of the total time.
+
+
+
+
+Fig. 8. Performanc comparisons between non-overlapping and overlapping communication with computation for (a, c) the 2D simulation and (b, d) the 3D simulation, in
+terms of (a, b) the MLUPS and (c, d) the parallel eﬃciency.
+
+
+
+are completed within an iteration step, we do not have to over-                       the parallel performance even though we adopt the high level and
+lap communications for the remaining computation subroutines of                       directive-based OpenACC standard.
+propagation fi and calculation macroscopic variables of u and ρ .
+   Fig. 8 compares the performance of non-overlapping and over-                       3.4. Concurrent computation on a GPU
+lapping communication with computation. We can see that the
+MLUPS and parallel eﬃciency improved for all the cases if the                             In addition to data parallelism, exploiting task parallelism can
+communications and computations overlapped, and the advantage                         further utilize the GPU hardware resources, particularly when us-
+of using the overlapping mode is more obvious with the increase                       ing a large number of GPUs, the computational tasks may not
+of GPU numbers. For the 3D simulations, the performance im-                           fully occupy the resources of the GPU, and we can concurrently
+provement is greater than that in the 2D simulations, because                         execute two independent tasks on a single GPU, as illustrated in
+more time for data transfer between GPU communication is hid-                         Fig. 9(a). Practically, we can adopt the !$acc async (n) handle,
+den. Excitingly, for the 3D simulation, the parallel eﬃciency im-                     which launches work asynchronously in queue n. All operations in
+proves from 78.7% to 97.1% when using 8 GPUs, and the MLUPS in-                       the same queue will execute in order, while operations in different
+creases by 1.28X when using 16 GPUs. Previously, using the over-                      queues may execute in any order. In Fig. 9(b), we give an example
+lapping mode implemented in a hybrid CUDA and MPI approach,                           of the thermal LB model for concurrent computation. Because the
+Xian and Takayuki [48] reported the MLUPS increased by 1.24X                          evolution of density distribution function fi and temperature dis-
+with 16 GPUs, Hong et al. [49] reported the MLUPS increased by                        tribution function gi are independent of each other within an iter-
+1.38X with 6 GPUs, suggesting a similar amount of increase in                         ation, we can also update fi and gi in different queues. It should be
+
+                                                                                  8
+A. Xu and B.-T. Li                                                                                       International Journal of Heat and Mass Transfer 201 (2022) 123649
+
+
+
+
+Fig. 9. Schematic illustration of (a) the basic idea of concurrently executing two independent tasks in OpenACC and (b) an example in the thermal LB model for concurrent
+computation.
+
+
+
+
+Fig. 10. Performanc comparisons between non-concurrent and concurrent computation for (a, c) the 2D simulation and (b, d) the 3D simulation, in terms of (a, b) the MLUPS
+and (c, d) the parallel eﬃciency.
+
+
+
+noted that the data communication at the boundary nodes should                         4. Weak scaling test
+be performed before the propagation step. Here, following the dis-
+cussion in Section 3.3, we divide the communication of fi into                             In the weak scaling test, we use a sub-domain size of 8192 ×
+three sets, and we overlap the communication of fi and gi [see                         8192 and 384 × 384 × 384 in the 2D and the 3D simulation, re-
+the blue box in Fig. 9(b)] with computation [see the green box in                      spectively; the iteration steps are ﬁxed as 10 0 0 (in 2D) and 500 (in
+Fig. 9(b)].                                                                            3D). Each dimension of the domain size increases similarly to that
+    Fig. 10 compares the performance of non-concurrent and con-                        of increasing in GPU numbers (see Table 1 for the partition details
+current computation. We can see the MLUPS and the parallel                             of the domain). For simplicity, we only provide the performance of
+eﬃciency slightly improves. Using 16 GPUs, the 2D simulation                           the code after adopting all the optimization strategies described in
+achieved 30.42 GLUPS, and the 3D simulation achieved 14.52                             Section 3. As shown in Fig. 11, using 1 GPU, we can achieve 1932.9
+GLUPS. An interesting ﬁnding is that for the 2D simulation, the par-                   MLUPS and 1045.3 MLUPS in the 2D and 3D simulation (less than
+allel eﬃciency may even be greater than 100%, which may be due                         0.3% deviation from that in the strong scaling test due to different
+to the eﬃcient use of the on-chip memory on the GPU, highlight-                        runs), respectively. With the increase of GPU numbers, the MLUPS
+ing the advantage of exploiting task parallelism. Due to the high                      almost increases linearly up to 16 GPUs, and the parallel eﬃciency
+ability of GPU for computation, the GPU performance for the 3D                         remains above 99%. These results demonstrate that the optimized
+simulation can be further boosted with the increasing of computa-                      thermal LB code has excellent weak scalability.
+tional load.
+
+
+
+
+                                                                                   9
+A. Xu and B.-T. Li                                                                                          International Journal of Heat and Mass Transfer 201 (2022) 123649
+
+
+
+
+       Fig. 11. Weak scaling test: performance of (a, c) the 2D simulation and (b, d) the 3D simulation, in terms of (a, b) the MLUPS and (c, d) the parallel eﬃciency.
+
+
+
+
+Fig. 12. Comparison of the parallel performance on CPUs versus GPUs for (a) the 2D simulation and (b) the 3D simulation in terms of the MLUPS. The gray-dashed lines
+denote the MLUPS on a single GPU. The total number of CPU cores is N1 × N2 , where N1 is the number of MPI processes and N2 is the number of OpenMP threads per MPI
+process. Here, we ﬁx N2 as 14 and N1 increases from 2 to 64.
+
+
+
+5. Conclusions                                                                            needs to be transferred. By overlapping the communications with
+                                                                                          computations, communication overhead is hidden behind the ker-
+   In this work, we have adopted a hybrid OpenACC and MPI ap-                             nel runtime. Using concurrent computation, task parallelism can
+proach for accelerated thermal LB simulation on multi-GPUs. The                           be exploited to better utilize the GPU hardware resources. After
+OpenACC accelerates computation on a single GPU, and the MPI                              adopting these optimization strategies, we demonstrate that the
+synchronizes the information between multiple GPUs. We adopt                              parallel performance can be signiﬁcantly improved. In the strong
+the double distribution function-based thermal LB model, namely,                          scaling test, using 16 GPUs, the 2D simulation achieved 30.42
+D2Q9 + D2Q5 in the 2D simulation, and D3Q19 + D3Q7 in the                                 GLUPS and the 3D simulation achieved 14.52 GLUPS. In the weak
+3D simulation. With a single NVIDIA A100 GPU, the 2D simula-                              scaling test, the parallel eﬃciency remains above 99% up to 16
+tion achieved 1.93 GLUPS with a grid number of 81932 and the                              GPUs. It should be noted that all performance measurements are
+3D thermal LB simulation achieves 1.04 GLUPS with a grid num-                             based on double-precision ﬂoating-point arithmetic, which ensures
+ber of 3853 , which is more than 76% of the theoretical maximum                           simulation accuracy. Our results demonstrated that, with improved
+performance. In a naive implementation to extend to multi-GPUs,                           data and task management, the hybrid OpenACC and MPI tech-
+we used mono-direction partitioning of the computation domain,                            nique is promising for thermal LB simulation on multi-GPUs.
+however, the code was not scalable to more than 8 GPUs in the 3D
+simulation. To further boost the parallel performance, we adopted                         Declaration of Competing Interest
+three optimization strategies: block partitioning, overlapping com-
+munications with computations, and concurrent computation.                                    We conﬁrm that the manuscript has been read and approved by
+   With block partitioning, the domain is decomposed in more                              all named authors and that there are no other persons who satis-
+than one dimension, and it decreases the amount of data that                              ﬁed the criteria for authorship but are not listed. We further con-
+
+                                                                                     10
+A. Xu and B.-T. Li                                                                                                  International Journal of Heat and Mass Transfer 201 (2022) 123649
+
+
+ﬁrm that the order of authors listed in the manuscript has been                                   [8] Q. Li, K.H. Luo, Q. Kang, Y. He, Q. Chen, Q. Liu, Lattice Boltzmann methods for
+approved by all of us.                                                                                multiphase ﬂow and phase-change heat transfer, Prog. Energy Combust. Sci. 52
+                                                                                                      (2016) 62–105.
+                                                                                                  [9] M. Maxey, Simulation methods for particulate ﬂows and concentrated suspen-
+CRediT authorship contribution statement                                                              sions, Annu. Rev. Fluid Mech. 49 (2017) 171–193.
+                                                                                                 [10] S. Tao, L. Wang, Q. He, J. Chen, J. Luo, Lattice Boltzmann simulation of com-
+   Ao Xu: Conceptualization, Software, Formal analysis, Resources,                                    plex thermal ﬂows via a simpliﬁed immersed boundary method, J. Comput.
+                                                                                                      Sci. (2022) 101878.
+Writing – original draft, Writing – review & editing, Supervision,                               [11] Q. Xiong, B. Li, G. Zhou, X. Fang, J. Xu, J. Wang, X. He, X. Wang, L. Wang,
+Project administration, Funding acquisition. Bo-Tao Li: Software,                                     W. Ge, et al., Large-scale DNS of gas–solid ﬂows on mole-8.5, Chem. Eng. Sci.
+Validation, Formal analysis, Investigation, Data curation, Writing –                                  71 (2012) 422–430.
+                                                                                                 [12] C. Xu, X. Liu, K. Liu, Y. Xiong, H. Huang, A free ﬂexible ﬂap in channel ﬂow, J.
+original draft, Visualization.                                                                        Fluid Mech. 941 (2022) A12.
+                                                                                                 [13] Y.-L. He, Q. Liu, Q. Li, W.Q. Tao, Lattice Boltzmann methods for single-phase
+Data Availability                                                                                     and solid-liquid phase-change heat transfer in porous media: a review, Int. J.
+                                                                                                      Heat Mass Transf. 129 (2019) 160–197.
+                                                                                                 [14] Z. Liu, X. Chu, X. Lv, H. Meng, S. Shi, W. Han, J. Xu, H. Fu, G. Yang, SunwayLB:
+    Data will be made available on request.
+                                                                                                      Enabling extreme-scale lattice Boltzmann method based computing ﬂuid dy-
+                                                                                                      namics simulations on sunway taihulight, in: 2019 IEEE International Parallel
+Acknowledgments                                                                                       and Distributed Processing Symposium (IPDPS), IEEE, 2019, pp. 557–566.
+                                                                                                 [15] G. Falcucci, G. Amati, P. Fanelli, V.K. Krastev, G. Polverino, M. Porﬁri, S. Succi,
+                                                                                                      Extreme ﬂow simulations reveal skeletal adaptations of deep-sea sponges, Na-
+    This work was supported by the National Natural Science                                           ture 595 (7868) (2021) 537–541.
+Foundation of China (NSFC) through Grant Nos. 11902268 and                                       [16] M.J. Krause, A. Kummerländer, S.J. Avis, H. Kusumaatmaja, D. Dapelo, F. Kle-
+12272311, the Open Fund of Key Laboratory of Icing and Anti/De-                                       mens, M. Gaedtke, N. Hafen, A. Mink, R. Trunk, J.E. Marquardt, M.-L. Maier,
+                                                                                                      M. Haussmann, S. Simonis, OpenLB–open source lattice Boltzmann code, Com-
+icing (Grant No. IADL20200301). and the National Key Project via
+                                                                                                      put. Math. Appl. 81 (2021) 258–288.
+No. GJXM92579, The authors acknowledge the Beijing Beilong Su-                                   [17] J. Latt, O. Malaspinas, D. Kontaxakis, A. Parmigiani, D. Lagrava, F. Brogi,
+per Cloud Computing Co., Ltd for providing HPC resources that                                         M.B. Belgacem, Y. Thorimbert, S. Leclaire, S. Li, F. Marson, J. Lemus, C. Kotsalos,
+                                                                                                      R. Conradin, C. Coreixas, R. Petkantchin, F. Raynaud, J. Beny, B. Chopard, Pala-
+have contributed to the research results reported within this pa-
+                                                                                                      bos: parallel lattice Boltzmann solver, Comput. Math. Appl. 81 (2021) 334–350.
+per (URL: http://www.blsc.cn/).                                                                  [18] M. Januszewski, M. Kostur, Sailﬁsh: a ﬂexible multi-GPU implementation of the
+                                                                                                      lattice Boltzmann method, Comput. Phys. Commun. 185 (9) (2014) 2350–2368.
+Appendix A. Comparison of the parallel performance on CPUs                                       [19] G. Amati, S. Succi, P. Fanelli, V.K. Krastev, G. Falcucci, Projecting LBM perfor-
+                                                                                                      mance on exascale class architectures: a tentative outlook, J. Comput. Sci. 55
+versus GPUs
+                                                                                                      (2021) 101447.
+                                                                                                 [20] O. Navarro-Hinojosa, S. Ruiz-Loza, M. Alencastre-Miranda, Physically based vi-
+    In the appendix, we summarize the MLUPS of the GPU code                                           sual simulation of the lattice Boltzmann method on the GPU: a survey, J. Su-
+adopting the optimization strategies discussed in Section 3. As a                                     percomput. 74 (7) (2018) 3441–3467.
+                                                                                                 [21] K.E. Niemeyer, C.J. Sung, Recent progress and challenges in exploiting graph-
+comparison, we provide the MLUPS of a CPU code, which is de-                                          ics processors in computational ﬂuid dynamics, J. Supercomput. 67 (2) (2014)
+veloped with a hybrid MPI and OpenMP approach [50]. The CPU                                           528–564.
+code is based on a hierarchical two-level parallelization, where                                 [22] W. Li, X. Wei, A. Kaufman, Implementing lattice Boltzmann computation on
+                                                                                                      graphics hardware, Visual Comput. 19 (7) (2003) 444–456.
+the ﬁrst-level parallelization applies MPI domain decomposition to                               [23] J. Tölke, M. Krafczyk, TeraFLOP computing on a desktop PC with GPUs for 3d
+the simulation domain, and the second-level parallelization uses                                      CFD, Int. J. Comput. Fluid Dyn. 22 (7) (2008) 443–456.
+OpenMP parallel regions for loops within a subdomain. Such a hy-                                 [24] N. Delbosc, J.L. Summers, A. Khan, N. Kapur, C.J. Noakes, Optimized implemen-
+                                                                                                      tation of the lattice Boltzmann method on a graphics processing unit towards
+brid MPI + OpenMP approach can reduce the memory usage and                                            real-time ﬂuid simulation, Comput. Math. Appl. 67 (2) (2014) 462–475.
+overhead associated with MPI calls. For experiments on the CPU                                   [25] C. Huang, B. Shi, N. He, Z. Chai, Implementation of multi-GPU based lattice
+cluster, each node is equipped with two Intel Xeon 6258R CPUs                                         Boltzmann method for ﬂow through porous media, Adv. Appl. Math. Mech. 7
+                                                                                                      (1) (2015) 1–12.
+(i.e., 56 cores within a node), we assign 4 MPI processes on each                                [26] C. Huang, B. Shi, Z. Guo, Z. Chai, Multi-GPU based lattice Boltzmann method
+node with 14 OpenMP threads per MPI process. This choice is a                                         for hemodynamic simulation in patient-speciﬁc cerebral aneurysm, Commun.
+compromise between two factors: ﬁrst, more OpenMP threads re-                                         Comput. Phys. 17 (4) (2015) 960–974.
+                                                                                                 [27] E. Calore, J. Kraus, S.F. Schifano, R. Tripiccione, Accelerating lattice Boltzmann
+duces the corresponding number of MPI processes, which leads
+                                                                                                      applications with openACC, in: European Conference on Parallel Processing,
+to better communication performances; secondly, more OpenMP                                           Springer, 2015, pp. 613–624.
+threads increases the overhead associated with OpenMP constructs                                 [28] S. Blair, C. Albing, A. Grund, A. Jocksch, Accelerating an MPI lattice Boltzmann
+and remote memory accesses across sockets. For all the cases in-                                      code using openACC, in: Proceedings of the Second Workshop on Accelerator
+                                                                                                      Programming using Directives, 2015, pp. 1–9.
+vestigated, our test results showed that on each node, the com-                                  [29] E. Calore, A. Gabbana, J. Kraus, S.F. Schifano, R. Tripiccione, Performance and
+bination of 4 MPI processes × 14 OpenMP threads works slightly                                        portability of accelerated lattice Boltzmann applications with openACC, Con-
+better than that of 7 MPI processes × 8 OpenMP threads. We can                                        curr. Comput.-Pract. Exp. 28 (12) (2016) 3485–3502.
+                                                                                                 [30] A. Xu, L. Shi, T. Zhao, Accelerated lattice Boltzmann simulation using GPU and
+see from Fig. 12 that in the strong scaling test, both our CPU code                                   openACC with data management, Int. J. Heat Mass Transf. 109 (2017) 577–588.
+and GPU code scale well.                                                                         [31] F. Kuznik, C. Obrecht, G. Rusaouen, J.J. Roux, LBM based ﬂow simulation using
+                                                                                                      GPU computing processor, Comput. Math. Appl. 59 (7) (2010) 2380–2392.
+References                                                                                       [32] C. Obrecht, F. Kuznik, B. Tourancheau, J.J. Roux, Multi-GPU implementation of
+                                                                                                      the lattice Boltzmann method, Comput. Math. Appl. 65 (2) (2013) 252–261.
+ [1] R.P. Feynman, Plenty of room at the bottom, APS Annual Meeting, 1959.                       [33] H. Yoshida, M. Nagaoka, Multiple-relaxation-time lattice Boltzmann model for
+ [2] G.E. Moore, et al., Progress in digital integrated electronics, in: Electron Devices             the convection and anisotropic diffusion equation, J. Comput. Phys. 229 (20)
+     Meeting, Vol. 21, 1975, pp. 11–13. Washington, DC                                                (2010) 7774–7795.
+ [3] J. Shalf, The future of computing beyond Moore’s law, Philos. Trans. R. Soc.                [34] Z. Chai, T. Zhao, Lattice Boltzmann model for the convection-diffusion equa-
+     A-Math. Phys. Eng. 378 (2166) (2020) 20190061.                                                   tion, Phys. Rev. E 87 (6) (2013) 063309.
+ [4] C.E. Leiserson, N.C. Thompson, J.S. Emer, B.C. Kuszmaul, B.W. Lampson,                      [35] J. Wang, D. Wang, P. Lallemand, L.S. Luo, Lattice Boltzmann simulations of ther-
+     D. Sanchez, T.B. Schardl, There’s plenty of room at the top: what will                           mal convective ﬂows in two dimensions, Comput. Math. Appl. 65 (2) (2013)
+     drive computer performance after Moore’s law? Science 368 (6495) (2020).                         262–286.
+     Eaam9744                                                                                    [36] D. Contrino, P. Lallemand, P. Asinari, L.S. Luo, Lattice-Boltzmann simulations of
+ [5] S. Chen, G.D. Doolen, Lattice Boltzmann method for ﬂuid ﬂows, Annu. Rev.                         the thermally driven 2D square cavity at high Rayleigh numbers, J. Comput.
+     Fluid Mech. 30 (1) (1998) 329–364.                                                               Phys. 275 (2014) 257–272.
+ [6] C.K. Aidun, J.R. Clausen, Lattice-Boltzmann method for complex ﬂows, Annu.                  [37] A. Xu, L. Shi, H.D. Xi, Lattice Boltzmann simulations of three-dimensional ther-
+     Rev. Fluid Mech. 42 (2010) 439–472.                                                              mal convective ﬂows at high rayleigh number, Int. J. Heat Mass Transf. 140
+ [7] P. Cheng, X. Quan, S. Gong, X. Liu, L. Yang, Recent analytical and numerical                     (2019) 359–370.
+     studies on phase-change heat transfer, in: Advances in Heat Transfer, Vol. 46,              [38] Z. Guo, C. Zheng, B. Shi, Discrete lattice effects on the forcing term in the lat-
+     Elsevier, 2014, pp. 187–248.                                                                     tice Boltzmann method, Phys. Rev. E 65 (4) (2002) 046308.
+
+
+                                                                                            11
+A. Xu and B.-T. Li                                                                                                International Journal of Heat and Mass Transfer 201 (2022) 123649
+
+
+[39] Z. Guo, C. Zheng, Analysis of lattice Boltzmann equation for microscale gas               [45] C. Schepke, N. Maillard, P.O. Navaux, Parallel lattice Boltzmann method with
+     ﬂows: relaxation times, boundary conditions and the Knudsen layer, Int. J.                     blocked partitioning, Int. J. Parallel Program. 37 (6) (2009) 593–611.
+     Comput. Fluid Dyn. 22 (7) (2008) 465–473.                                                 [46] C. Obrecht, F. Kuznik, B. Tourancheau, J.J. Roux, Scalable lattice Boltzmann
+[40] Z. Chai, T. Zhao, Effect of the forcing term in the multiple-relaxation-time lat-              solvers for CUDA GPU clusters, Parallel Comput. 39 (6–7) (2013) 259–270.
+     tice Boltzmann equation on the shear stress or the strain rate tensor, Phys.              [47] E. Calore, A. Gabbana, J. Kraus, E. Pellegrini, S.F. Schifano, R. Tripiccione, Mas-
+     Rev. E 86 (1) (2012) 016705.                                                                   sively parallel lattice–Boltzmann codes on large GPU clusters, Parallel Comput.
+[41] L. Li, R. Mei, J.F. Klausner, Boundary conditions for thermal lattice Boltzmann                58 (2016) 1–24.
+     equation method, J. Comput. Phys. 237 (2013) 366–395.                                     [48] W. Xian, A. Takayuki, Multi-GPU performance of incompressible ﬂow compu-
+[42] P. Bailey, J. Myre, S.D. Walsh, D.J. Lilja, M.O. Saar, Accelerating lattice Boltz-             tation by lattice Boltzmann method on GPU cluster, Parallel Comput. 37 (9)
+     mann ﬂuid ﬂow simulations using graphics processors, in: 2009 International                    (2011) 521–535.
+     Conference on Parallel Processing, IEEE, 2009, pp. 550–557.                               [49] P.-Y. Hong, L.-M. Huang, L.-S. Lin, C.A. Lin, Scalable multi-relaxation-time lattice
+[43] C.-C. Ye, P.-J.-Y. Zhang, Z.-H. Wan, R. Yan, D.J. Sun, Accelerating CFD simulation             Boltzmann simulations on multi-GPU cluster, Comput. Fluids 110 (2015) 1–8.
+     with high order ﬁnite difference method on curvilinear coordinates for mod-               [50] H. Jin, D. Jespersen, P. Mehrotra, R. Biswas, L. Huang, B. Chapman, High per-
+     ern GPU clusters, Adv. Aerodynam. 4 (1) (2022) 1–32.                                           formance computing using MPI and openMP on multi-core parallel systems,
+[44] L.-S. Luo, W. Liao, X. Chen, Y. Peng, W. Zhang, et al., Numerics of the lattice                Parallel Comput. 37 (9) (2011) 562–575.
+     Boltzmann method: effects of collision models on the lattice Boltzmann simu-
+     lations, Phys. Rev. E 83 (5) (2011) 056710.
+
+
+
+
+                                                                                          12
+

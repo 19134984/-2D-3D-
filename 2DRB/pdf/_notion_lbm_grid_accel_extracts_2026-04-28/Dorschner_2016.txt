@@ -1,0 +1,1117 @@
+                                                                           Grid refinement for entropic lattice Boltzmann models
+
+                                                                                  B. Dorschner,∗ N. Frapolli,† S.S. Chikatamarla,‡ and I.V. Karlin§
+                                                                                     Aerothermochemistry and Combustion Systems Lab,
+                                                                  Department of Mechanical and Process Engineering, ETH Zurich, CH-8092 Zurich, Switzerland
+                                                                                                  (Dated: August 25, 2016)
+                                                                    We propose a novel multi-domain grid refinement technique with extensions to entropic incom-
+                                                                 pressible, thermal and compressible lattice Boltzmann models. Its validity and accuracy are accessed
+                                                                 by comparison to available direct numerical simulation and experiment for the simulation of iso-
+                                                                 thermal, thermal and viscous supersonic flow. In particular, we investigate the advantages of grid
+                                                                 refinement for the set-ups of turbulent channel flow, flow past a sphere, Rayleigh-Bénard convection
+                                                                 as well as the supersonic flow around an airfoil. Special attention is payed to analyzing the adaptive
+arXiv:1608.06915v1 [physics.flu-dyn] 24 Aug 2016
+
+
+
+
+                                                                 features of entropic lattice Boltzmann models for multi-grid simulations.
+
+
+                                                                     I.   INTRODUCTION                                 lattices [13, 14] extended to the fully compressible regime
+                                                                                                                       [15].
+                                                      Over the past decades the lattice Boltzmann method                  However, the computational effort needed for the sim-
+                                                   (LBM), with its roots in kinetic theory, has evolved into           ulation of realistic engineering applications on a uniform
+                                                   a mature and highly efficient approach to computational             mesh with reasonable spatial resolution is high. On the
+                                                   physics, successful in regimes ranging from incompress-             other hand, in many cases, the small scale flow struc-
+                                                   ible turbulence, multiphase, thermal and compressible               tures are confined in only a small region of the compu-
+                                                   flows up to micro-flows and relativistic hydrodynamics              tational domain. This reveals significant optimization
+                                                   [1]. In contrast to conventional numerical methods, LBM             potential by locally embedding refined blocks into the
+                                                   describes the governing equations in terms of discretized           domain. Conceptually, two main approaches to grid re-
+                                                   particle distribution functions (populations) fi (x, t) as-         finement can be found in the literature. In the first
+                                                   sociated with a set of discrete velocities ci , i = 1, · · · , Q.   approach, a cell-centered volumetric description is em-
+                                                   The latter are designed to recover the governing equa-              ployed for which the population are continuous over the
+                                                   tions in the hydrodynamic limit and the velocity set                grid interface and exact conservation of mass and mo-
+                                                   spans a regularly spaced lattice, which algorithmically re-         mentum across the grid border may be achieved [16, 17].
+                                                   duces to a highly efficient stream-collide algorithm with           However, as reported in [17], staggering effects on the fine
+                                                   exact propagation and local non-linearity.                          level require additional filtering. The second approach
+                                                      Despite these advantages, intrinsic stability issues of          uses a node-centered description, which requires interpo-
+                                                   the original Bhatnagar-Gross-Krook lattice Boltzmann                lation and rescaling of the population at the grid interface
+                                                   model (LBGK, see [2]), limited the LBM for long to re-              (see, e.g., [18–21]). Below, the discussion is restricted to
+                                                   solved, low Reynolds number flows and thus precluded a              the node-centered approach. Note that the accuracy and
+                                                   significant impact on the field of fluid dynamics. Among            stability of the entire simulation relies crucially on the
+                                                   a number of suggestions [3–6], this issue was resolved in           two-way coupling between fine and coarse level grids.
+                                                   [7] by introducing the concept of a discrete H−function                In this paper, we aim to (i): Increase the accuracy
+                                                   into the framework of LBM, which led to the development             of existing grid refinement schemes by proposing a novel
+                                                   of the parameter-free and non-linearly stable entropic              coupling technique, which avoids the low-order time in-
+                                                   lattice Boltzmann method (ELBM), consistent with the                terpolation commonly used in other approaches. (ii): Ex-
+                                                   second law of thermodynamics. In the context of multi-              tend the refinement methodology to the entropic thermal
+                                                   relaxation time LBM, the so-called KBC (Karlin-Bösch-              and compressible models through a consistent rescaling
+                                                   Chikatamarla) model, was recently proposed in [8] as                of the populations. (iii): Study the role the entropic
+                                                   an extension of ELBM with outstanding stability prop-               stabilizers by analyzing their behavior in multi-grid sim-
+                                                   erties. Accuracy, robustness and reliability of entropy-            ulations within and across refinement patches.
+                                                   based LBM was established for both periodic and wall-                  The outline of this paper is as follows: In Sec. II,
+                                                   bounded turbulence in the isothermal regime in [9–11].              we briefly review the incompressible, thermal and com-
+                                                   Similarly, the entropy concept has been successfully ap-            pressible ELB models, followed in Sec. III by a presen-
+                                                   plied to thermal flows [8, 12] and in combination with              tation of the grid refinement algorithm and the imple-
+                                                   recent advances in the theory of admissible high-order              mentation details for each model. In Sec. IV, accuracy
+                                                                                                                       and range of applicability is studied for various simula-
+                                                                                                                       tions. In the isothermal regime, the turbulent channel
+                                                                                                                       flow at Reynolds numbers of Reτ = {180, 590} is dis-
+                                                   ∗ benedikt.dorschner@lav.mavt.ethz.ch                               cussed followed by the flow past a sphere at Reynolds
+                                                   † *frapolli@lav.mavt.ethz.ch                                        number Re = 3700. The thermal regime is validated us-
+                                                   ‡ chikatamarla@lav.mavt.ethz.ch
+                                                                                                                       ing the Rayleigh-Bénard convection for Rayleigh number
+                                                   § Corresponding author; karlin@lav.mavt.ethz.ch
+                                                                                                                       Ra = 107 and the flow past a heated sphere at Re = 3700.
+                                                                                                                                          2
+                                                                                                                    QD=3
+Finally, in the compressible regime, we focus on the vis-             where the lattice weights are given as Wi = α Wciα
+cous supersonic flow around the NACA0012 airfoil for                  with W0 = 2/3 and W−1 = W1 = 1/6.
+a free-stream Mach number Ma∞ = 1.5 and Reynolds                         Multi-relaxation time models are based on the obser-
+number of Re = 10000. While for all simulations the                   vation that the kinetic system typically features a higher
+flow properties are compared to available direct numeri-              dimensionality than what is strictly needed to recover the
+cal simulations or experiments, we pay spacial attention              hydrodynamic equations. Those higher-order moments
+to demonstrating the adaptive features of the entropic                are then relaxed independently to increase stability with-
+LBM during multi-grid computations. Finally, conclu-                  out influencing the macroscopic dynamics. In contrast to
+sions are drawn in section V.                                         other MRT models, the KBC suggests that the rate at
+                                                                      which those moments should be relaxed is determined by
+                                                                      maximizing the entropy. The derivation of KBC mod-
+     II.    ENTROPIC LATTICE BOLTZMANN                                els was already discussed in our previous publications
+                    MODELS                                            [8, 10, 11]; here we remind the main steps. Let us recall
+                                                                      the set of natural moments of the D3Q27 lattice given
+   The general lattice Boltzmann equation for the popu-               by
+lation fi (x, t) is given by
+                                                                                       X
+ fi (x + ci , t + 1) = fi0 = (1 − β)fi (x, t) + βfimirr (x, t), (1)          ρMpqr =        fi cpix cqiy criz   p, q, r ∈ {0, 1, 2} ,    (7)
+                                                                                        i
+where the streaming step is given by the left-hand side
+and the post-collision state fi0 is represented on the right-         where the first D + 1 moments denote the conservation
+hand side by a convex-linear combination of fi (x, t) and             laws and the pressure tensor P is given as the second-
+the mirror state fimirr (x, t). The LBGK model is recov-              order moment. This moment representation, Eq. (7),
+ered for the mirror state specified as                                spans a basis in which the populations can equivalently
+                    fimirr (x, t) = 2fieq − fi .               (2)    be expressed. The populations fi may then be decom-
+                                                                      posed into three part as
+For the construction of the equilibrium fieq , the entropy
+function H is chosen as                                                                     fi = ki + si + hi ,                          (8)
+                                                  
+                              X               fi
+                    H(f ) =       fi ln                ,       (3)
+                                              Wi                      corresponding to the kinematic part ki , the shear part si
+                              i
+                                                                      and the remaining higher-order moments hi . While the
+and is minimized subject to the local conservation laws               kinematic part ki depends only on the conserved quanti-
+for mass, momentum and energy                                         ties, the shear part si contains deviatoric stress tensor
+            X                                                         P0 = P − D−1 T r(P)I. The remaining moments are
+               {1, ci , c2i }fi = {ρ, ρu, 2ρE}.      (4)              contained in hi . The present model is fully described
+                i
+                                                                      in [11], while various moment representations and parti-
+Note that the energy equation is usually neglected for                tions, Eq. (8), were discussed in [10]. By employing this
+the isothermal case and the weights Wi become lattice-                decomposition, the mirror state can be expressed as
+specific constants.
+                                                                          fimirr = ki + (2seq                         eq
+                                                                                           i − si ) + ((1 − γ) hi + γhi ) ,              (9)
+           A.   KBC model for isothermal flows
+                                                                      where seq        eq
+                                                                              i and hi indicate si and hi evaluated at equilib-
+                                                                      rium and the parameter γ determines the relaxation of
+   In the isothermal case, we use the entropic multi-                 the higher-order moments, while γ = 2 recovers LBGK.
+relaxation time (KBC) model on the D3Q27 lattice,                     Notice that independent of the choice of γ, the model
+which recovers the incompressible Navier-Stokes equation              recovers the Navier-Stokes equations with the kinematic
+with the kinematic shear viscosity                                    viscosity as given in Eq. (5). The relaxation parameter
+                           
+                              1   1
+                                                                     γ is found by minimizing the discrete H-function in the
+                   ν = c2s      −     ,               (5)             post-collision state fi0 and can be approximated as
+                             2β   2
+              √
+                                                                                             1 h∆s|∆hi
+                                                                                             
+where cs = 1/ 3 is the speed of sound. Employing the                                   1
+minimization procedure of the H-function in this case                               γ = − 2−           ,                                (10)
+                                                                                       β     β h∆h|∆hi
+yields a simple analytical expression as pointed out in
+[22]:                                                                 where ∆si = si − seq                        eq
+                                                                                            i and ∆hi = hi − hi indicate the
+           D=3
+            Y                   2u + p1 + 3u2 ciα
+                                                    !                 deviation from equilibrium and  Pthe entropic scalar prod-
+  eq                                  α
+                                                                      uct is introduced as hX|Y i = i (Xi Yi /fieq ). It has been
+                     p                            α
+fi = ρWi         2 − 1 + 3u2α                            ,
+           α=1
+                                        1 − uα                        shown in [10] that the KBC models tend to the LBGK
+                                                      (6)             limit, γ = 2, for fully resolved simulations.
+                                                                                                                                     3
+
+ B.        Two-population KBC model for thermal flows                where the total energy E is defined as
+                                                                                              D      1
+  In the two-population KBC model for thermal flows,                                         E=   T + u2 ,               (17)
+                                                                                               2     2
+the kinetic equations, Eqs. (1), for f -populations are
+modified in order to account for a variable Prandtl num-             and D is the space dimension.
+ber [23–25]. The second set of populations, g, is employed           The relaxation parameters β and β1 are related to the
+to recover the energy equation [24, 25]. The lattice ki-             kinematic viscosity and thermal diffusivity depending on
+netic equations for the f - and g-populations read                   the Prandtl number as
+                                                                                              
+                                                                                      1 − 1 T0 , if Pr ≤ 1,
+fi (x+ci , t+1) = (1−β)fi +βfimirr +2(β −β1 ) [fi∗ − fieq ] ,                    ν= 
+                                                                                         2β   2   
+                                                      (11)                            1 − 1 T0 , if Pr > 1,
+                                                                                         2β1    2
+
+gi (x + ci , t + 1) = gi (x, t)+2β (gieq − gi )+2 (β − β1 ) [gi∗ − gieq ] ,                         
+                                                           (12)                           1 − 1 T0 , if Pr ≤ 1,
+                                                                                             2β     2
+where fimirr (Eq. (2)) and fieq (Eq. (6)) are the same                             αth =  1
+                                                                                              1    1
+                                                                                                −  2 T0 ,    if Pr > 1,
+as for the isothermal model, gieq is the equilibrium of g-
+                                                                                         
+                                                                                             2β
+populations, fi∗ and gi∗ are the quasi-equilibrium states             so that the Prandtl number Pr reads
+for f - and g-populations, respectively, and β1 is a second,                                    ( (1−β)β
+                                                                                                  (1−β1 )β , if Pr ≤ 1,
+                                                                                                         1
+independent, relaxation parameter.                                                       ν
+                     eq   ∗       ∗
+The population, gi , fi and gi are constructed using the                           Pr =      =    (1−β1 )β
+                                                                                        αth       (1−β)β1 , if Pr > 1.
+general form
+               
+                        Mα ciα
+    Gi = Wi M0 +                                                        C. Two-population ELBM for compressible flows
+                          T0
+              (Mαβ − M0 T0 δαβ ) (ciα ciβ − T0 δαβ )
+                                                     
+           +                                           . (13)             Same as for the thermal two-populations ELBM, also
+                               2T02                                   for the compressible model [15, 26], we employ two pop-
+                                                                      ulations. However, in the compressible model a multi-
+The moments to be employed for the computation of the                 speed lattice, the DdQ7d , is used and the second popula-
+equilibrium of g-populations are provided in Table I. The             tion is needed to change the adiabatic exponent γad . The
+choice of moments for the quasi-equilibrium states f ∗ and            kinetic equations for the compressible model read
+g ∗ depends on the Prandtl number. In Table I, the mo-
+ments for the quasi-equilibrium populations are provided              fi (x+ci , t+1)−fi (x, t) = αβ2 (fieq − fi )+2 (β2 − β3 ) [fi∗ −fieq ],
+for both regimes (Pr ≤ 1 and Pr > 1) [24, 25].                                                                                  (18)
+                                                                     gi (x+ci , t+1)−gi (x, t) = αβ2 (gieq − gi )+2 (β2 − β3 ) [gi∗ −gieq ].
+TABLE I. Moments for equilibrium and quasi-equilibrium                                                                         (19)
+construction.                                                        The equilibrium fieq for the f -populations is found by
+                                                                     minimizing the entropy function, Eq. (3), under the con-
+      Gi                   M0                Mα             Mαβ
+                                                                     straints of conservation laws, Eq. (4). The minimization
+ gieq                     2ρE                 eq
+                                             qα              eq
+                                                            Rαβ      problem is solved with the method of the Lagrange mul-
+fi∗ ,      Pr ≤ 1          ρ                 ρuα            P eq     tipliers and leads to the formal expression
+fi∗ ,      Pr > 1          ρ                 ρuα            Pαβ
+                                                                                  fieq = ρWi exp χ + ζα ciα + λc2i ,
+                                                                                                                  
+gi∗        Pr ≤ 1         2ρE                        eq
+                                    qα − 2uβ Pαβ − Pαβ       eq
+                                                            Rαβ                                                                (20)
+                                                       
+                                                     eq      eq
+gi∗        Pr > 1         2ρE        eq
+                                    qα  + 2uβ Pαβ − Pαβ     Rαβ      where χ, ζα and λ are the Lagrange multipliers, which
+                                                                     in turn are determined by solving the system of D + 2
+                                                                     equations found by inserting Eq. (20) into the conserva-
+  In Table I, the moments are defined as follows:                    tion laws Eq. (4). The system is solved numerically at
+                                                                     every node in every time-step. The equilibrium for the
+               n
+   eq
+               X                                                     g-populations, gieq , can be computed directly from fieq as
+  Pαβ =              ciα ciβ fieq = ρT0 δαβ + ρuα uβ ,      (14)
+               i=1                                                                      gieq = (Cv − D/2)T fieq ,                 (21)
+                n
+                                                                     where Cv is the heat capacity at constant volume.
+               X
+      qαeq =         ciα gieq = 2ρEuα + 2ρT0 uα ,           (15)
+               i=1
+                                                                     The quasi-equilibrium state needs to be chosen depend-
+               n
+               X                                                     ing on the Prandtl number [14]. For P r ≤ 1, the quasi-
+  eq
+ Rαβ =               ciα ciβ gieq                                    equilibrium state depends on the centered heat-flux ten-
+               i=1                                                   sor Qαβγ , which can be written in a compact form as
+           = 2ρE (T0 δαβ + uα uβ ) + 2ρT0 (T0 δαβ + 2uα uβ ) ,                               Qαβγ [ciα ciβ ciγ − 3T ciγ δαβ ]
+                                                          (16)             fi∗ = fieq + Wi                                    ,   (22)
+                                                                                                          6T 3
+                                                                                                                           4
+
+where
+             Q
+             X
+    Qαβγ =         fi (ciα − uα )(ciβ − uβ )(ciγ − uγ ).   (23)
+             i=1
+
+The quasi-equilibrium populations gi∗ are written consis-
+tently with the fi∗ populations and read
+
+                                      Wi q α ciα
+                     gi∗ = gieq +                ,         (24)
+                                         T
+where q α is the contracted centered heat-flux tensor as-
+sociated to the internal degrees of freedom of the gas
+                           Q
+                           X
+                    qα =         gi (ciα − uα ).           (25)
+                           i=1
+
+In the above expressions Wi = Wi (T ) are the
+temperature-dependent weights [15, 26].
+Finally, the relaxation parameter α is computed as the
+positive root of the entropy condition                                    Twin node xt,f c              Twin node xt,cf
+                                                                          Reconstruction node xr
+               H(f + α(f eq − f )) = H(f ),                (26)
+                                                                  FIG. 1. Schematic of the overlapping grid interface between
+where H is the entropy function (Eq. (3)). This model             two levels in one (bottom) and two (top) dimensions.
+is referred here as the entropic lattice Boltzmann model
+(ELBM). The kinematic viscosity and the thermal dif-
+fusivity are thus related to the relaxation parameters β2         level to the coarse level and vice versa. This two-way cou-
+and β3 by                                                         pling is realized through an overlapping region which ex-
+                                    1                             tents the nominal domain of the two patches as indicated
+                         β2 = 2ν       ,                   (27)   by the gray shaded region in Fig. 1. In this region both
+                                  T +1                            fine and coarse grids are present. The minimal interface
+                                                                  width for the proposed coupling mechanism is two and
+                                 1                                one grid nodes for the fine- and coarse-level grid, respec-
+                        β3 = 2αth            ,             (28)   tively. After each time step in the corresponding grid, the
+                                  T     +1                        information at the boundary needs to be extracted from
+                                                                  the available information of the neighboring patch. It is
+and the heat capacity Cv is derived from the desired adi-
+                                                                  convenient to distinguish two types of nodes, namely twin
+abatic exponent γad from
+                                                                  nodes xt and reconstruction nodes xr . Twin nodes are
+                                    1                             nodes within the interface, located in places where both
+                        Cv =             .                 (29)   coarse and fine level nodes are overlapping. We write
+                                 γad − 1
+                                                                  xt,f c and xt,cf to indicate twin nodes in the interface
+The model implies a bulk viscosity ξ of                           of the fine and coarse level grids, respectively. The re-
+                                                                construction nodes belong to the fine level interface and
+                        1     2                                   do not coincide with any coarse level nodes. Thus the
+                  ξ=       −       µ.                      (30)
+                        Cv    D                                   information on those nodes is not readily available and
+                                                                  information from the neighboring grid nodes needs to be
+For further details on the model the reader is referred to        taken into account in order to complete the information
+[15, 26].                                                         exchange between the grids. The information extraction
+                                                                  for the two types of nodes is conceptually different and
+                                                                  will be elaborated in the next section.
+  III.   MULTI-DOMAIN GRID REFINEMENT
+
+   In the multi-domain approach, the fine-level grid                      A.   Twin node coupling and rescaling
+patches are inserted into the coarse-level grid and only
+one level is present for each patch. Thus, the most cru-            The standard LBM is restricted to regular meshes and
+cial part of the algorithm is the coupling of different grid      non-dimensional quantities are usually evaluated with re-
+patches, namely the information transfer from the fine            spect to the corresponding lattice units, specific to the
+                                                                                                                                  5
+
+chosen grid. Using multiple grids with different spacing                              1.       Isothermal model
+yields a set of lattice units which need to be rescaled ap-
+propriately in order to assure identical non-dimensional            In the isothermal case, we may approximate the non-
+quantities. While the spatial scaling is straightforwardly        equilibrium part of the population as
+defined as
+                                                                                           Wi (1)
+                              δxc                                               fineq ≈        P [ciα ciβ − c2s δαβ ],          (38)
+                           r=     ,                        (31)                            2c4s αβ
+                              δxf
+                                                                  where non-equilibrium part of the pressure tensor is given
+more possibilities exist for the time scale. While diffusive      as
+scaling relates the time and space scales as δt ∼ δx2 , the
+convective scaling requires δt ∼ δx. In this paper, we                              (1)        c2s ρ
+                                                                                  Pαβ =              (∂α uβ + ∂β uα ) .         (39)
+consider the convective scaling due to its greater numer-                                      2β
+ical efficiency; it follows
+                                                                  Note that strain rate tensor is given in fine and coarse lat-
+                              δtc                                 tice units respectively, and therefore requires rescaling to
+                           r=     .                        (32)   assure continuity of the non-equilibrium fields. Straight-
+                              δtf
+                                                                  forward substitution yields the relation between coarse
+As a result, the macroscopic quantities such as pres-             and fine level non-equilibrium as
+sure, velocity and temperature are continuous across the
+                                                                                            neq       βc neq
+grid border. However, for a continuous Reynolds number                                     fi,f =       f ,                     (40)
+Re = U L/ν the viscosity scales as                                                                   rβf i,c
+
+                                                                  which identifies the scaling factor [18]. This rescaling is
+                           νf = rνc .                      (33)
+                                                                  applied to all twin nodes xt (see Fig. 1), for the coarse
+On the other hand, viscosity is related to the relaxation         and the fine grids. Note that the adaptive nature of
+parameter β by Eq. (5) and thus scaling of the relaxation         entropy-based LBM does not require additional smooth-
+parameter is required as                                          ing or filtering to project the fine-scale solution onto the
+                                                                  coarse-level grid (see section IV for a more thorough dis-
+                                                                  cussion). This is in contrast to, e.g.,[21], where a box-
+                                 1                                filter is required to maintain stability.
+                   βf =                   .                (34)
+                          1 + r(1/βc − 1)
+
+For the rescaling of the populations, we decompose them                                   2.    Thermal model
+into fi = fieq (MC ) + fineq (MC , ∇MC ), where the equilib-
+rium distribution is written as a function of the conserved          For the thermal two-population model the rescaling of
+moments MC and the non-equilibrium part additionally              the f - and g-populations cannot be applied in the same
+depends on their gradients. Since the conserved fields            way as for the single-population case, Eq. (40), because
+are continuous across the interface, the equilibrium does         two independent relaxation parameters appear in the ki-
+not require any rescaling. However, the non-equilibrium           netic equations. Moreover, we must distinguish between
+part is proportional to the gradients and therefore needs         the two cases of Pr ≤ 1 and Pr > 1.
+rescaling. The rescaling procedure will be discussed sep-            For Pr ≤ 1 there is no contribution of the quasi-
+arately for each lattice Boltzmann model.                         equilibrium state in the kinetic equation for f , so that
+   In the case of an external force is, we use the exact          the same rescaling as Eq. (40) can be applied for the
+difference method as proposed in [27], where the post-            f -populations. For the g-populations, however, this is
+collision populations are modified according to:                  no more valid, since the non-equilibrium part depends
+                                                                  on two independent relaxation parameters. This can be
+     fi0 = fi0 + [fieq (ρ, uα + δuα ) − fieq (ρ, uα )] ,   (35)
+                                                                  verified by deriving an analytical expression for the non-
+where δuα is the change in velocity due to the external           equilibrium g-populations through Chapman-Enskog ex-
+force Fα :                                                        pansion, as in [25]. The non-equilibrium part of the g-
+                                                                  population depends on the higher-order, non-conserved
+                                  Fα                              moments as
+                         δuα =       δt.                   (36)
+                                   ρ                                                       h
+                                                                                                             (1)
+                                                                                                                     i
+                                                                              gineq = gineq qα(1) (β, β1 ), Rαβ (β1 ) , (41)
+Due to the convective time scaling employed here, the
+change in velocity has to be rescaled accordingly; it fol-                (1)        (1)
+                                                                  where qα and Rαβ are the first and second order non-
+lows                                                                                                                      (1)
+                                                                  equilibrium moments of the g-populations. The qα mo-
+                                  δuc                             ment includes a contribution of β, different from the mo-
+                          δuf =       .                    (37)           (1)
+                                   r                              ment Rαβ (β1 ) and the higher-order moments, which need
+                                                                                                                                                                6
+
+                                                                                          (1)
+to be excluded before rescaling of the non-equilibrium                         where Pαβ is the non-equilibrium pressure tensor, and
+           (1)
+part. The qα moment can be written analytically as                              (1)             (1)
+                                                                               Qαβγ and Rαβγµ are the third- and fourth-order non-
+                           1                                                   equilibrium moments. In this case, the different relax-
+                                               (1)
+     qα(1) (β, β1 ) = −       ρDT0 ∂α T + 2uβ Pαβ (β),                (42)                                 (1)
+                                                                               ation shows up only in the Qαβγ tensor, which can be
+                          2β1
+                                                                               written analytically as
+so that the contribution in β can be separated from the
+                                                                                    (1)                       1
+rest of the contributions to the non-equilibrium part of                        Qαβγ (β2 , β3 ) = −              ρT [∂α T δβγ + ∂β T δαγ + ∂γ T δαβ ]
+the g-populations. This contribution can be rescaled sep-                                                    2β3
+arately according to                                                                                                                             (50)
+                                                                                                                  (1) (1)                               (1)
+                                                                                                 + uα Pβγ (β2 ) + uβ Pαγ  (β2 ) + uγ Pαβ (β2 ).
+                       (1)           βc (1)
+                      Pαβ,f =          P     .                        (43)
+                                    rβf αβ,c                                   The contribution related to β3 can be subtracted from the
+                                                                               rest of the non-equilibrium part and rescaled separately
+After subtraction of the term dependent on β the rescal-                       according to the proper relaxation. The non-equilibrium
+ing is performed as usual. The final result reads                              part without the contribution related to β3 can be written
+                                 (1)
+                                        !            (1)
+                                                                               as
+ neq     β1,c   neq       2uβ Pαβ,c ciα         2uβ Pαβ,f ciα
+gi,f =         gi,c − Wi                   +Wi                .                 neq
+                                                                               fi     = fineq                                             (51)
+        rβ1,f                   T0                   T0
+                                                         (44)                           Wi Yi,αβγ 
+                                                                                                        (1)            (1)             (1)
+                                                                                      +             uα Pβγ (β2 ) + uβ Pαγ  (β2 ) + uγ Pαβ (β2 )
+Note that the non-equilibrium pressure tensor Pαβ can
+                                                     (1)                                   6T 3      
+                                                                                          (1)
+be computed directly from f -populations by                                           −Qαβγ (β2 , β3 ) ,
+                (1)
+                      X
+               Pαβ =      ciα ciβ (fi − fieq ).          (45)                  where
+                                i
+                                                                                                Yi,αβγ = ciα ciβ ciγ − 3ciγ T δαβ .                           (52)
+   For the case Pr > 1, similar considerations can be ap-
+plied, and the final results are: for the f -populations:                      At this point the reduced non-equilibrium part can be
+                                                                               rescaled according to
+                          neq        β1,c neq
+                         fi,f =          f ,                          (46)                                                     β2,c neq
+                                    rβ1,f i,c                                                                     neq
+                                                                                                             f i,f =               f ,                        (53)
+                                                                                                                              rβ2,f i,c
+while for the g-populations:
+                                                                               and the final non-equilibrium populations become
+                                      (1)                       (1)
+                                                !
+ neq      βc    neq             2uβ Pαβ,c ciα              2uβ Pαβ,f ciα        neq       neq
+gi,f =         gi,c − Wi                            + Wi                   ,   fi,f = f i,f                                                                   (54)
+         rβf                         T0                         T0
+                                                                                         β3,c Wi Yi,αβγ       (1)              (1)              (1)
+                                                    (47)                              −                    uα Pβγ,c (β2 ) + uβ Pαγ,c (β2 ) + uγ Pαβ,c (β2 )
+where the non-equilibrium pressure tensor is rescaled as                                rβ3,f 6T 3
+                                                                                                        
+                                                                                         (1)
+                                     β1,c (1)                                         −Qαβγ,c (β2 , β3 ) ,
+                          (1)
+                     Pαβ,f =             P     .                      (48)
+                                    rβ1,f αβ,c                                            (1)               (1)
+                                                                               where Pαβ and Qαβγ can be computed as
+
+                                                                                                       (1)
+                                                                                                                   X
+                    3.     Compressible model                                                     Pαβ =                      ciα ciβ (fi − fieq ),            (55)
+                                                                                                                        i
+   As for the thermal model, also in the compressible
+                                                                               and
+model the populations can not be rescaled directly, since
+the non-equilibrium part depends on two relaxation pa-                                           (1)
+                                                                                                                  X
+                                                                                                Qαβγ =                      ciα ciβ ciγ (fi − fieq ).         (56)
+rameters. For both f - and g-populations the non-                                                                  i
+equilibrium parts can be derived analytically as a func-
+tion of the higher-order, non-conserved moments [26].                          For g-populations a similar procedure is applied. The
+We consider here only the case Pr ≤ 1; for the case                            non-equilibrium part can be expressed as
+P r > 1 the relaxation parameters β2 and β3 needs simply                                       h                                   i
+                                                                                    (1)    (1)                             (1)
+to be interchanged.                                                               gi = gi T r(1) (β2 ), qα(1) (β2 , β3 ), Rαβ (β2 ) , (57)
+For the f -populations, the non-equilibrium part depends
+on the higher-order, non-conserved moments as                                                         (1)                    (1)
+                                                                               where T r(1) , qα and Rαβ are the zeroth-, first- and
+    (1)    (1)
+               h
+                  (1)        (1)              (1)
+                                                        i                      second-order non-equilibrium moments of g-populations.
+   fi = fi       Pαβ (β2 ), Qαβγ (β2 , β3 ), Rαβγµ (β2 ) , (49)                Similar to the f -populations, the different contribution
+                                                                                                                                7
+
+                                                      (1)
+on the relaxation, β3 , shows up only in the qα tensor;              influencing the solution. This is particularly important
+this can be expressed analytically as [26]                           for the thermal and compressible model, where a biased
+                                                                     interpolation stencil triggers spurious artifacts at the grid
+                1                                                    interface. Further, we confirm the observation of [21] that
+   qα(1) = −       ρT (2Cv − D) ∂α T + uα T r(1) (β2 ).      (58)
+               2β3                                                   a second-order interpolation is not sufficient.
+                                                                        This interpolation is used for the macroscopic quanti-
+Also for this case then, the contribution related to β3              ties of the flow field needed to compute the equilibrium
+can be subtracted from the rest of the non-equilibrium               part of the populations as well as the non-equilibrium
+g-populations and thus can be rescaled separately accord-            part of the populations using their values at the twin
+ing the the proper relaxation. The non-equilibrium part              nodes on the coarse level grid.
+without the contribution related to β3 can be written as
+                                                   
+                                        (1)
+                     uα T r(1) (β2 ) − qα (β2 , β3 ) ciα
+ g neq
+   i   = gineq + Wi                                      . (59)                            C.   Algorithm
+                                      T
+The reduced non-equilibrium part can be rescaled as                     In this section, we present the proposed grid refinement
+                                                                     algorithm. We aim to avoid the commonly used low-order
+                                  β2,c neq
+                       g neq
+                         i,f =        g ,                    (60)    time interpolation (see, e.g., [21]) and instead replace it
+                                 rβ2,f i,c                           by a high-order spatial interpolation using Eq. (64). Af-
+                                                                     ter initialization at time t = t0 we assume that all popu-
+thus the final non-equilibrium populations become                    lations and macroscopic fields are specified and available
+                           
+                                                (1)
+                                                                    everywhere on all grids. Further a refinement ratio of
+                 β           uα T r(1) (β2 ) − qα (β2 , β3 ) ciα     r = 2 is assumed. Starting at t = t0 , the simulation is
+ neq               3,c
+gi,f = g neq
+         i,f +          Wi                                       ,   evolved by the following iterative steps:
+                rβ3,f                         T
+                                                              (61)
+          (1)       (1)
+where T r and qα can be directly computed from pop-                     1. t = t0 + δt,f : Advection and collision on the
+ulations as                                                                fine grid. Note that information is missing on the
+                                                                           boundary of the fine level interface and collision
+                                                                           should be avoided on those nodes.
+                              X
+                    T r(1) =      (gi − gieq ),               (62)
+                                 i
+                                                                        2. t = t0 +δt,c : Advection on both coarse and fine level
+and                                                                        grids. Information is now missing on two boundary
+                             X                                             layers in the fine and one in the coarse grid.
+                   qα(1) =       ciα (gi − gieq ).           (63)
+                             i
+                                                                        3. t = t0 + δt,c : Rescaling of populations and macro-
+                                                                           scopic fields on the twin nodes xt .
+                 B.   Reconstruction nodes
+                                                                        4. t = t0 + δt,c : Reconstruction of the populations
+   The coupling from the coarse to the fine grid requires                  on xr : Interpolation of the macroscopic quantities
+only the rescaling procedure as outlined above in section                  to compute the equilibrium part of the populations
+III A. The fine level grid however requires an additional                  and direct interpolation of the non-equilibrium part
+reconstruction of the hanging or reconstruction nodes                      of the populations. All information is now available
+that do not correspond to a coarse level node as indi-                     again.
+cated in Fig. 1 by xr . As no information from the coarse
+level is available at this location, the information of the             5. t = t0 + δt,c : Collision on all grids.
+neighboring nodes is required to be included through an
+interpolation scheme. Analogous to [21], we use a cen-               This procedure effectively switches spatial and temporal
+tered four point stencil in each spatial dimension of the            interpolation allowing for an increase of accuracy, im-
+Lagrange polynomial, which, for a generic quantity λ,                portant for the simulation of a range of flow regimes as
+reads                                                                presented in the subsequent section.
+           1
+ λ(x) =      (−λ(x − 3δx) + 9λ(x − δx) + 9λ(x + δx)) −
+          16
+                                                   (64)                        IV.   NUMERICAL VALIDATION
+         λ(x + 3δx)).
+                                                                        In this section, the proposed grid refinement technique
+Note that in contrast to [21], no biase in the interpolation         is validated and its range of applicability is accessed in
+is introduced at the corners to avoid anisotropy effects             the isothermal, thermal and compressible flow regimes.
+                                                                                                                                                                8
+
+                                                                                    20
+TABLE II. Turbulent flow in a rectangular channel. The                                          Moser et al.
+nominal and measured Reynolds numbers are indicated by
+                                                                                                present
+Reτ,n and Reτ,m , respectively.                                                     15
+Contribution                 Reτ,n        Reτ,m     ∆y +
+Moser et al. [29]             180         178.13   ∼ 0.054
+
+
+
+
+                                                                 u+
+present                       180         173.06   ∼ 1.73                           10
+Moser et al. [29]             590         587.19   ∼ 0.044
+present (refined)             590         611.87   ∼ 3.06
+present (uniform)             590         613.19   ∼ 12.26                           5
+
+
+                                                                                    0
+                                                                                    10−2        10−1           100           101            102           103
+                                                                                                                      y+
+
+                                                               FIG. 3. Mean velocity profile in a turbulent channel at Reτ =
+                                                               180
+
+                                                                                                  urms - Moser et al.                    urms - present
+                                                                                                  vrms - Moser et al.                    vrms - present
+                                                                                                  wrms - Moser et al.                    wrms - present
+                                                                                    3.0
+
+                                                                                    2.5
+FIG. 2. Slice through the turbulent channel flow for Reτ =
+180 (top) and Reτ = 590 (bottom) showing a snapshot of the       urms, vrms, wrms   2.0
+streamwise velocity.
+                                                                                    1.5
+
+                    A.     Isothermal flows                                         1.0
+
+                                                                                    0.5
+   In this section, we investigate accuracy and stability
+of the proposed grid refinement algorithm for turbulent                             0.0
+isothermal flows using the examples of the flow past a                                 0   20      40    60      80        100     120    140     160     180
+                                                                                                                      y+
+sphere and the turbulent channel flow where grid refine-
+ment is crucial to obtain accurate result. The boundary
+conditions used for all wall-boundary nodes is Grad’s ap-      FIG. 4. Rms velocity profile in a turbulent channel at Reτ =
+proximation as presented in [28].                              180
+
+
+                                                               of the channel half-width of δc = 50 lattice points on the
+                1.       Turbulent channel flow                coarse level.
+                                                                  The computational domain was chosen as [4πδ × δ ×
+   The first validation in the isothermal regime is dedi-      4/3πδ] for Reτ = 180 and [8δ × δ × 4δ] for Reτ = 590,
+cated to the well-studied problem of the turbulent flow        where the x- and z-coordinate are in streamwise and
+in a rectangular channel for which many experimental           spanwise direction, respectively. An initial perturbation
+and numerical investigations have been conducted (see,         is introduced into the flow field in order to trigger turbu-
+e.g., [29–32]). We compare the performance of the pro-         lence. A snapshot of the velocity magnitude for both con-
+posed grid refinement technique in combination with            figurations is shown in Fig. 2. Most conveniently, all data
+KBC models to the DNS data of [29] for a Reynolds              is expressed in wall-units, where the velocity is defined as
+number Reτ = uτ δ/ν = 180 and Reτ = 590. The                   u+ = u/uτ and spatial coordinate as y + = yuτ /ν. Using
+friction Reynolds number Reτ is based onp      the channel     wall-units, the spatial resolution may be quantified with
+half-width δ and the friction velocity uτ = τw /ρ. The         the non-dimensional grid spacing ∆y + near the channel
+flow is driven by a constant body force, which was cho-        wall. The scaling of the average velocity is well under-
+sen according to g = Re2τ ν 2 /δ 3 to achieve the desired      stood in a high-Reynolds number turbulent channel by
+Reynolds number. By computing the wall-shear stress            the law of the wall, where one distinguishes between the
+directly from the flow field of the simulation, the friction   viscous sublayer (y + < 5), the buffer layer (5 < y + < 30)
+velocity may be evaluated and the actual Reynolds num-         and log-law region (y + ≥ 30) [33]. While the average
+ber measured. The results of our simulations are given in      streamwise velocity u+ is assumed to scale linearly with
+Table II. The simulations were conducted for a resolution      the wall coordinate y + in the viscous sublayer, the log-
+                                                                                                                                                     9
+
+                           3.0
+                           1.0
+
+                           2.5
+                           0.8
+        urms, vrms, wrms
+                           2.0
+                           0.6
+                           1.5
+                           0.4
+                           1.0
+                           0.2
+                           0.5
+                                      level 2                         level 1
+                           0.0
+                               0
+                             0.0                50      0.2     100             1500.4    0        0.6 50         100   0.8    150          1.0
+                                                                y+
+
+FIG. 5. Rms velocity profiles in a turbulent channel at Reτ = 590 with a two-level refinement in the near-wall region (left) and
+the non-refined case (right). For the legend please refer to Fig. 4.
+
+
+       25
+                                   Moser et al.
+       20                          present - uniform
+                                   present - refined
+
+       15
+  u+
+
+
+
+
+       10
+
+       5
+
+       0
+       10−2                        10−1         100           101         102       103
+                                                       y+
+
+                                                                                          FIG. 7. Slice through the turbulent channel flow at Reτ = 590
+FIG. 6. Mean velocity profile in a turbulent channel at Reτ =                             showing the spatial distribution of the stabilizer γ for the
+180                                                                                       KBC model and the refinement patches (only left half shown
+                                                                                          here).
+
+law suggests a scaling with u+ = κ−1 ln y + + C + in the
+log-law region, where κ ≈ 0.41 denotes the von Kármán
+constant and the constant C + is given by C + ≈ 5.5.                                         With these results, we test the limits of applicability
+While in the Reτ = 180 case low Reynolds number ef-                                       of the proposed grid refinement technique and choose a
+fects may still be observed, the channel flow at Reτ = 590                                higher Reynolds number of Reτ = 590. In this case, we
+is at a sufficiently high Reynolds number to exhibit all                                  add an additional grid level in the near-wall region to
+expected features of high Reynolds number wall-bounded                                    resolve the flow field in the fine level with ∆yf+ ≈ 3.06
+flows.                                                                                    (see Fig. 7). To access the necessity of grid refinement
+   Considering the case of Reτ = 180, we choose one                                       in the near-wall region, we conduct another simulation
+level of refinement near the wall with a spatial extent                                   for which a uniform mesh with ∆y + ≈ 12.26 is used.
+of 20 coarse-level points, which yields a resolution of                                   The average velocity profiles are shown in Fig. 6. One
+∆yf+ = 1.73 near the wall. We compare the average ve-                                     can observe that despite of the severe under-resolution in
+locity profile in Fig. 3. It is evident that the results match                            the uniform case, the average profile agree well with the
+the reference data excellently. Considering the rms veloc-                                reference data. The simulation using the refined mesh
+ity profiles, a similarly good agreement is shown in Fig. 4.                              matches similarly well and one cannot observe any dis-
+The marginal overshoot of urms is attributed to a slightly                                continuities at the level interfaces. Studying this in more
+higher Reynolds number in our simulation compared to                                      detail, we consider the next order of statistics, the rms
+the reference data. Important to notice is that the transi-                               velocity profiles, for both cases in Fig. 5. In the uniform
+tion between the grid levels is smooth for both the mean                                  case (Fig. 5, right), it is obvious that the peak urms is
+and rms velocity profiles and no numerical artifacts are                                  severely under-predicted, yielding a rather poor agree-
+present. y                                                                                ment with the reference DNS. This is of course expected
+                                                                                                                        10
+
+as the small-scale structures are not well represented on
+such a coarse grid. Surprisingly, the periodic and stream-
+wise components of the rms velocities show rather small
+discrepancies when compared to the DNS. This is at-
+tributed to the excellent subgrid features of entropic lat-
+tice Boltzmann models for under-resolved simulations as
+also reported in [10, 11].
+   The simulation using grid refinement is shown on
+the left side of Fig. 5, where we zoom in the near-wall
+region and pay special attention to the level interface.
+The agreement on the finest level is good, as expected.
+However, a small but distinct jump may be observed
+at the interface of level one and level two, which is
+particularly pronounced for vrms . This owes to the fact
+that the severe under-resolution in the coarse level leads
+to a misrepresentation of the small scale fluctuation
+on the coarse level. To support this hypothesis, in
+Fig. 7, we show an instantaneous snapshot of the              FIG. 8. Vorticity volume rendering for the flow past a sphere
+spatial distribution of the stabilizer γ for the KBC          at Re = 3700.
+model as computed by Eq. (10). As shown in [10], the
+stabilizer γ tends to the LBGK value γ = 2 in the
+resolved case. Thus, its deviation provides a measure         proposed grid refinement algorithm, we focus on the flow
+of under-resolution. It is apparent that in the refined       within the sub-critical regime, for which the boundary
+near-wall region, the stabilizer is indeed very close to      layer remains laminar and the near wake features turbu-
+γ = 2, whereas the distribution in the bulk exhibits large    lence. A detailed analysis is conducted for Re = 3700
+deviations. It is interesting to notice that particularly     and an instantaneous snapshot of the vorticity volume
+large deviations arise in the immediate neighborhood          rendering is shown in Fig. 1. The computational domain
+of the level interface. It seems that the level interface     is chosen as [−7D, 23D] × [−10D, 10D] × [−10D, 10D]
+is detected and compensated by the KBC model, thus            with the sphere centered at the origin. Four refinement
+rendering explicit projection of the fine level solution      patches are located closely around the sphere, where the
+onto the coarse mesh by filtering or alike unnecessary        finest patch resolves the sphere with D = 120. It is worth
+[21].                                                         noting that a simulation for this sphere resolution and
+                                                              without grid refinement would require Nf ≈ 20.7 · 109
+   These observations when viewed together with the flow      grid points, rendering such a simulation unfeasible for
+at Reτ = 180 suggest that despite of the excellent subgrid    practical purposes. With the refinement, the computa-
+features of entropic lattice Boltzmann models in match-       tional grid reduces to a total of Nr ≈ 94.6 · 106 lattice
+ing the average velocity (see uniform mesh at Reτ = 590),     points. By taking into account the time step scaling, the
+a minimum resolution on the coarse grid is required to        equivalent fine level points in the refined case amount
+reasonably represent the small scale fluctuations on the      to 39.5 · 106 , which is roughly 575 times less than the
+coarse grid and thus achieve a smooth grid level tran-        fully resolved case without refinement. Such an estimate
+sition in higher-order statistics. The implicit subgrid       suggest a tremendous optimization potential when em-
+model however, alleviates the need for filtering the fine     ploying grid refinement, while still retaining the desired
+level solution on the coarse level and assures stability in   accuracy. This allows for a detailed comparison with the
+the coarse level. It further needs to be emphasized that      contributions of [34] and their DNS simulation, [35] per-
+due to these excellent subgrid features, the finest patch     forming a LES simulation and the experimental results
+may be itself under-resolved (∆yf+ ≈ 3.06 compared to         of [36, 37]. First, we compare various scalar quantities
+∆y + ≈ 0.04 for the DNS) while accurately capturing the       such as the mean drag coefficient Cd = Fd /(1/2ρ∞ U 2 D),
+velocity fluctuation near the wall. Thus, the refinement      the mean base pressure coefficient Cpb , the recirculation
+allows to enhance the subgrid features, so that also the      length Lr and the separation angle ϕs . Here, the drag
+higher-order statistics can be captured accurately.           force is denoted by Fd . As tabulated in Table III, the
+                                                              comparison shows excellent agreement for all quantities
+                                                              with the literature.
+                  2.   Flow past a sphere                        For a more thorough analysis, we compare the time-
+                                                              averaged profiles of the streamwise velocity component
+   After the validation of the grid refinement technique      u in the near wake to profiles obtained by DNS, LES
+for flat walls in the previous section, we now consider       and experiment, see Fig. 9. Three profiles are measured
+curved walls and choose the well-studied problem of the       for a streamwise location of x/D = 0.2, x/D = 1.6 and
+flow past a sphere. In order to access the accuracy of the    further downstream at x/D = 3. While for x/D = 0.2
+                                                                                                                                        11
+
+
+                           Rodriguez et al. (DNS)                Yun,Kim & Choi (LES)
+                           Kim and Durbin (Exp.)                 present
+              1.0
+              1.2
+
+              0.8
+              0.8
+
+              0.6
+        u/U
+
+
+
+
+              0.4
+              0.4
+
+              0.0
+              0.2
+                                       x/D = 0.2                              x/D = 1.6                                 x/D = 3
+            −0.4
+             0.0
+               0.0        0.5      1.0 0.2       1.5     0.0     0.40.5     1.0     1.50.6   0.0        0.5   0.8 1.0       1.5   1.0
+                                                                           y/D
+
+        FIG. 9. Mean streamwise velocity profiles in the wake for the simulation of flow past a sphere at Re = 3700.
+
+
+                                                                            Cp = (p−p∞ )/(1/2ρ∞ U 2 ) around the sphere is presented
+                                            Rodriguez et al. (DNS)
+      1.0                                                                   in comparison with the DNS and experimental results.
+                                            Kim and Durbin (Exp.)           It is apparent that mean pressure distribution matches
+                                            present                         the two references well. However, it needs to be pointed
+      0.5                                                                   out that this agreement could only be achieved with an
+                                                                            additional layer of refinement, yielding a resolution of
+Cp
+
+
+
+
+                                                                            D = 240 points for the diameter of the sphere. This is in
+      0.0                                                                   contrast to the velocity profiles, which were captured al-
+                                                                            ready with four levels and a diameter of D = 120 points
+                                                                            in the finest level.
+     −0.5                                                                      These results for the turbulent channel flow and the
+        0       20   40     60    80       100    120   140    160   180    flow past a sphere conclude the validation of the isother-
+                                       ϕ                                    mal regime. Our results indicate robustness, high accu-
+                                                                            racy and compatibility with entropy-based LBM of the
+FIG. 10. Pressure coefficient distribution around the sphere                proposed grid refinement scheme for high Reynolds num-
+at Re = 3700.                                                               ber turbulent flows. Although average flow velocity is
+                                                                            easily captured using a coarse uniform grid in combina-
+                                                                            tion with the KBC model, near-wall features and higher-
+all measurements are in almost perfect agreement, the                       order statistics do require grid refinement for an accurate
+discrepancies increase slightly for all reference data fur-                 representation.
+ther downstream. Nonetheless, the measurements taken
+from our simulation appear to be in good agreement with
+all reference data. Next, in Fig. 10, the azimuthally
+averaged distribution of the mean pressure coefficient
+                                                                                                   B.   Thermal flows
+
+
+TABLE III. Turbulent flow past sphere at Re = 3700 and                         We proceed investigating stability and accuracy of the
+the comparison of the mean drag coefficient Cd , the averaged               proposed grid refinement algorithm when applied to ther-
+base pressure coefficient Cpb , the recirculation length Lr and             mal flows, simulated with the two-population model [24].
+the separation angle ϕs with literature values.                             We start with the simulation of Rayleigh-Bénard convec-
+                                                                            tion (RBC) in order to validate the model and the grid
+Contribution                  Cd    Cpb    Lr    ϕs                         refinement algorithm for flat walls. As a second step,
+Rodriguez et al. [34]        0.394 −0.207 2.28  89.4
+                                                                            in Sec. IV A 2, we revisit the simulation of the flow past
+Yun et al. [35]              0.355 −0.194 2.622  90
+Kim, H.J., Durbin [36]         −   −0.224   −    −
+                                                                            a sphere but additionally include the temperature field,
+Schlichting and Gersten [37] 0.39    −      −    −                          and compare the mean Nusselt number distribution. The
+present                      0.383 −0.220 2.51 89.993                       boundary conditions used for all wall-boundary nodes is
+                                                                            Grad’s approximation as presented in [25].
+                                                                                                                                     12
+
+
+                                                                                  1.0                                 present, mean
+                                                                                                                      present, rms
+
+
+
+
+                                                                (T − TC )/∆T , Trms/∆T
+                                                                                  0.9                                 Togni et al.
+
+                                                                                  0.8
+
+                                                                                  0.7
+
+                                                                                  0.6
+FIG. 11. Volume rendering of temperature for the Rayleigh-
+Bénard convection at Ra = 107 .                                                  0.5
+                                                                                         0   1   2   3        4   5     6       7
+                                                                                                         z∗
+              1.   Rayleigh-Bénard convection
+
+
+   The Rayleigh-Bénard set-up consists of a fluid layer       FIG. 12. Comparison of mean and rms temperature profiles
+                                                               for the Rayleigh-Bénard convection at Ra = 107 . The rms
+which is heated from below and cooled from above.
+                                                               temperature profile is shifted by 0.5 in order to ease visual-
+When the temperature difference ∆T between the two             ization of the plot.
+walls is sufficiently high, thermal convection is triggered.
+The non-dimensional parameters governing this problem
+are the Rayleigh number Ra = gλ∆TH3 /νκ and the                                   0.18
+Prandtl number Pr = ν/κ, where g represents gravita-                              0.16
+tional acceleration, λ the thermal expansion coefficient,                         0.14
+H the height of the fluid layer, ν the kinematic viscosity      urms/U , wrms/U   0.12
+and κ the thermal conductivity.
+In this work, we present the results of the thermal                               0.10
+two-population model coupled with the grid refinement                             0.08
+algorithm for thermal flows and their comparison with                             0.06
+                                                                                                                      present, urms
+the DNS simulation of [38]. The Rayleigh and Prandtl                              0.04                                present, wrms
+number are Ra = 1 · 107 and Pr = 0.7. The computa-                                0.02                                Togni et al.
+tional domain is a box with periodicity in the x- and
+                                                                                  0.00
+y-directions, where a fixed temperature is imposed at                                 0      1   2   3        4   5     6       7
+the bottom (hot) and top (cold) walls. The size of the                                                   z∗
+domain is Lx × Ly × Lz = 8H × 8H × H, where H = 64
+is the resolution in the coarse grid level. On top of the
+                                                               FIG. 13. Comparison of rms u- and w-velocity components
+coarse grid, one more refinement patch is added at both        profiles for the Rayleigh-Bénard convection at Ra = 107 .
+hot and cold walls in order to increase the resolution
+in the boundary layers. To trigger convection an initial
+random perturbation is imposed on a linear temperature         In Fig. 13, we study the rms velocity profiles for the
+profile. The buoyancy force is computed according to           u and w component and compare to the reference
+the Boussinesq assumption, and it is implemented as            data. Analogous to the temperature profiles, a good
+reported in [24].                                              agreement is also observed for the velocity fluctuations.
+An instantaneous volume rendering of the temperature           To complete the validation for the Rayleigh-Bénard
+in the domain is shown in Fig. 11. One can notice              convection we compare the resulting Nusselt number.
+the cold temperature plumes in the upper part of the           While in our simulation the Nusselt number at the wall
+box and the hot temperature plumes developing from             is evaluated as NuELBM = 15.67, the DNS [38] reports
+the bottom of the box. Quantitatively, in Fig. 12, we          NuDNS = 15.59. This amounts to a relative discrepancy
+compare the mean and the rms temperature profiles with         of Nu = 5.13 · 10−3 .
+the recent DNS data [38] and the agreement is good.
+All statistics are collected after the initial transient at       Similar to the turbulent channel flow, it is important to
+40tL and sampled every 2.5tL for a time period of 100tL ,      notice that the transition at the grid interface is smooth
+where tL = 2H/U denotes the large√ eddy turnover               for all quantities presented here, from the mean and rms
+time with the free fall velocity U = gλ∆T H. The               temperature profiles to the rms x- and z-velocity profiles.
+temperature profiles are plotted as a function of the          This is again attributed to the entropic stabilizer γ for
+normalized vertical coordinate (normal to the bottom           which a snapshot through the domain is shown in Fig. 14.
+wall) z ∗ = z/(H/Nu), where Nu is the mean Nusselt             It is evident that larger deviations of γ from the LBGK
+number, defined as Nu = dT/dn  ∆T/H , where dT /dn is the      value γ = 2 appear in the bulk rather than near the walls
+mean temperature gradient at top and bottom walls.             where the resolution is higher. Also in this case larger
+                                                                                                                                           13
+
+
+
+
+FIG. 14. Slice through the Rayleigh-Bénard convection at
+Ra = 1 · 107 showing the spatial distribution of the stabilizer
+γ for the KBC model and the refinement patch (only left half
+shown here).
+                                                                  FIG. 15. Snapshot of the instantaneous temperature distri-
+                                                                  bution around and in the wake a heated sphere at Re = 3700.
+
+
+deviations in the γ arise in the immediate neighborhood                    1.2
+of the level interface, which seems to be detected and                                                                  present
+compensated by the KBC model. This is analogous to                         1.0                                          Venezian et al.
+the observation in the channel flow. Thus demonstrating
+the self-adaptive nature of the entropic stabilizer γ for                  0.8
+                                                                  Nu/ Re
+
+
+all flow situations including grid refinement and complex
+                                                                     √
+
+
+
+
+                                                                           0.6
+wall boundary conditions. This self-adaptive nature of γ
+makes the simulations parameter-free.                                      0.4
+
+                                                                           0.2
+
+                                                                           0.0
+                                                                              0   20    40    60   80       100   120     140   160       180
+                2.   Flow past a heated sphere                                                          ϕ
+
+
+                                                                  FIG. 16. Average Nusselt number distribution around the
+   As in the isothermal section, after validation of the
+                                                                  heated sphere at Re = 3700.
+scheme for flows involving flat walls, we increase the com-
+plexity and consider curved walls next. For this purpose,
+we consider a heated sphere with the surface at constant
+                                                                                        C.   Compressible flows
+temperature. The flow is simulated for a Reynolds num-
+ber Re = 3700 and Prandtl number Pr = 0.7. The
+computational domain and the refinement patches are                 We conclude the numerical validation by entering the
+identical to the isothermal case with D = 240. A snap-            compressible regime for which we take the simulation
+shot of the temperature distribution around and in the            of the two-dimensional viscous supersonic flow around
+wake of the sphere for this simulation is shown in Fig. 15.       a NACA0012 airfoil as an example.
+The figure shows the hot temperature streams in the
+shear layer and the back of the sphere, where the flow
+recirculates. Further downstream, hot fluid mixes with                             1.   Supersonic NACA0012 airfoil
+cold fluid and the temperature becomes diluted. In or-
+der to quantitatively validate the heated sphere simu-               The set-up consists of a two-dimensional simulation
+lation, the mean reduced Nusselt number distribution              of the viscous supersonic flow field around a NACA0012
+     √               √
+Nu/ Re = dT     /dn
+              ∆T /D / Re around the sphere is shown in            airfoil, at zero angle of attack A = 0◦ . The free-stream
+comparison to experimental results [39] in Fig. 16, where         Mach number
+                                                                           √       is set to Ma∞ = U∞ /a∞ = 1.5, where
+n is the normal coordinate with respect to the sphere             a∞ = γad T∞ is the speed of sound with γad = 1.4
+surface and ∆T the temperature difference between fluid           and T∞ = 0.8, while the Reynolds number, based on the
+and sphere surface. The plot shows a good comparison              chord C of the airfoil, is Re = CU∞ /ν = 10000. The
+with the experiment.                                              computational domain is prescribed as [−7.5C, 17.5C] ×
+                                                                                                                                14
+
+[−7C, 7C] with the airfoil centered at the origin. Two re-
+finement patches are placed closely around the airfoil,
+where the finest patch resolves the airfoil chord with
+C = 1200 grid points (see Fig. 17).
+Due to the high Mach number in this simulation, we use
+the shifted lattices as presented in [40]. In particular, we
+employ the D2Q49 lattice with a shift in the freestream
+direction of Ux = 1. The advantage of shifted lattices is
+that the errors in the higher-order moments of the equi-
+librium populations are also shifted and centered around
+the shift velocity Ux . This allows us to keep the number
+of populations of the multispeed lattice relatively small
+while reducing the errors in the high Mach regime. For
+further details on shifted lattices the reader is referred to
+[40].
+   In Fig. 17, a snapshot of the temperature distribution
+along with the two refinement patches around the airfoil,
+indicated by the shadowed regions in the lower half of
+the domain, is shown. The main features of the viscous
+supersonic flow field are evident from the temperature
+distribution: In front of the airfoil, the formation of a       FIG. 17. Snapshot of temperature distribution around the
+bow shock may be observed, yielding a jump and dras-            NACA0012 airfoil at A = 0◦ , Ma = 1.5 and Re = 10000.
+tic increase in temperature. At the trailing edge of the        Grid refinement patches are shown by the shadowed regions
+                                                                around the airfoil in the lower half of the domain.
+airfoil, an oblique shock wave develops from the shear
+layer as a lambda shock. Further downstream, in the
+shear layer, vortex shedding is initiated. Important to                 0.5
+notice is that the shock waves penetrate through various
+refinement levels, where special care usually needs to be               0.0
+taken to avoid artificial reflections at the interface. It is
+apparent that for the proposed refinement algorithm, no
+                                                                       −0.5
+reflections or similar artifacts are observed and thus mak-
+                                                                 -cp
+
+
+
+
+ing it suitable also for compressible flows and the related
+shock dynamics.                                                        −1.0
+   For a quantitative comparison, the mean pressure coef-                                                        present
+ficient distribution upstream the airfoil (x/C ∈ [−1, 0]),             −1.5                                      Hafez et al.
+on the airfoil surface (x/C ∈ [0, 1]) and downstream the
+airfoil (x/C ∈ [1, 1.5]), is plotted in Fig. 18 along with               −1.0    −0.5       0.0         0.5      1.0            1.5
+the simulation results reported in [41]. Statistics have                                          x/C
+been collected after 50t∗ = 50C/U∞ flow times, and at
+every time step in the coarse level. Evidently, an excel-       FIG. 18. Comparison of the pressure coefficient distribution
+lent comparison can be reported.                                upstream the airfoil (x/C ∈ [−1, 0]), on the airfoil surface
+                                                                (x/C ∈ [0, 1]) and downstream the airfoil (x/C ∈ [1, 1.5]) for
+   Before concluding the numerical validation, we present       the supersonic simulation of the flow around a NACA0012
+a snapshot of the entropic estimate distribution around         airfoil at A = 0◦ , Ma = 1.5 and Re = 10000.
+the airfoil in Fig. 19. From the picture, two main ob-
+servations can be made. First, it is apparent that the
+entropic estimate adapts to the main physical features of       entropy condition Eq. (26) and plays a central role in sus-
+the flow. In particular, large deviations from the resolved     taining the flow field, damping the spurious oscillations
+limit value α = 2 may be observed near the bow shock,           near the shock regions or damping the spurious noise,
+through the expansion wave preceding the oblique shock          which would would otherwise appear near the different
+at the trailing edge, and in the oblique shock itself. A        grid interfaces.
+second key observation concerns the interplay of the en-
+tropic estimate with the physical feature of the flow and
+the grid refinement patches. For example, it can be seen                           V.   CONCLUSION
+that the entropic estimate exhibits larger deviations from
+the fine to the coarse grid when a shock wave crosses the         In this paper we have presented a novel grid refine-
+interface (see interface position in Fig. 17). These devi-      ment technique, which avoids the low-order time inter-
+ations in the entropic estimate arises naturally from the       polation commonly used in lattice Boltzmann simula-
+                                                                                                                            15
+
+                                                                 tain accurate results at a reasonable computational cost.
+                                                                 The implicit subgrid features of entropy-based lattice
+                                                                 Boltzmann models render the solutions stable and al-
+                                                                 low for significant under-resolution while retaining accu-
+                                                                 racy. The entropic stabilizer adapts to the flow features
+                                                                 and refinement patches, which enables multi-scale simu-
+                                                                 lations where the fine-to-coarse level projection and vice
+                                                                 versa is implicit to the model. These features are partic-
+                                                                 ularly important in the simulation of the supersonic air-
+                                                                 foil, where the shock waves cross the refinement patches
+                                                                 without being reflected and destabilizing the flow. With
+                                                                 these insights, an extension of entropic LBMs to adaptive
+                                                                 grid refinement seems natural, where the deviation of the
+                                                                 stabilizer from its resolved value is a measure of under-
+                                                                 resolution and can thus serve as a refinement criterion.
+                                                                 This is left for future investigations. In conclusion, it
+                                                                 has been shown that the proposed grid refinement tech-
+                                                                 nique in combination with entropy-based lattice Boltz-
+                                                                 mann models enables accurate and efficient simulations
+FIG. 19. Snapshot of the distribution of the entropic estimate   of flows ranging from low Mach number turbulence all
+α around the NACA0012 airfoil.                                   the way to supersonic compressible flows.
+
+
+tions. An extension to thermal and compressible mod-                            ACKNOWLEDGMENTS
+els is achieved by an appropriate rescaling of the pop-
+ulations and thus widening the range of applicability of           This work was supported by the European Research
+the proposed grid refinement algorithm. Accuracy and             Council (ERC) Advanced Grant No. 291094-ELBM and
+robustness is established through various set-ups in the         the ETH-32-14-2 grant. The computational resources at
+incompressible, thermal and compressible flow regimes            the Swiss National Super Computing Center CSCS were
+for which local grid refinement is crucial in order to ob-       provided under the grant s492 and s630.
+
+
+
+
+ [1] S. Succi, EPL (Europhysics Letters) 109, 50001 (2015).      [14] N. Frapolli, S. S. Chikatamarla, and I. V. Karlin, Phys-
+ [2] P. L. Bhatnagar, E. P. Gross, and M. Krook, Physical             ical Review E 90, 043306 (2014).
+     Review 94 (1954).                                           [15] N. Frapolli, S. S. Chikatamarla, and I. V. Karlin, Phys-
+ [3] P. J. Dellar, Physical Review E 64, 031203 (2001).               ical Review E 92, 061301 (2015).
+ [4] D. d’Humières, Philosophical Transactions of the Royal     [16] H. Chen, O. Filippova, J. Hoch, K. Molvig, R. Shock,
+     Society of London A: Mathematical, Physical and Engi-            C. Teixeira, and R. Zhang, Physica A: Statistical Me-
+     neering Sciences 360, 437 (2002).                                chanics and its Applications 362, 158 (2006).
+ [5] J. Latt and B. Chopard, Mathematics and Computers in        [17] M. Rohde, D. Kandhai, J. J. Derksen, and H. E. A.
+     Simulation 72, 165 (2006).                                       van den Akker, International Journal for Numerical
+ [6] R. Zhang, X. Shan, and H. Chen, Physical Review E 74,            Methods in Fluids 51, 439 (2006).
+     046703 (2006).                                              [18] O. Filippova and D. Hänel, International Journal of Mod-
+ [7] I. V. Karlin, A. Ferrante, and H. C. Öttinger, Euro-            ern Physics C 09, 1271 (1998).
+     physics Letters 47, 182 (1999).                             [19] A. Dupuis and B. Chopard, Physical Review E 67,
+ [8] I. V. Karlin, F. Bösch, and S. S. Chikatamarla, Physical        066707 (2003).
+     Review E 90, 31302 (2014).                                  [20] J. Tölke and M. Krafczyk, Computers & Mathematics
+ [9] S. Chikatamarla and I. V. Karlin, Physica A 392, 1925            with Applications 58, 898 (2009).
+     (2013).                                                     [21] D. Lagrava, O. Malaspinas, J. Latt, and B. Chopard,
+[10] F. Bösch, S. S. Chikatamarla, and I. V. Karlin, Physical        Journal of Computational Physics 231, 4808 (2012).
+     Review E 043309, 1 (2015).                                  [22] S. Ansumali, I. V. Karlin, and H. C. Öttinger, Euro-
+[11] B. Dorschner, F. Bsch, S. S. Chikatamarla, K. Boulou-            physics Letters 63, 798 (2003).
+     chos, and I. V. Karlin, Journal of Fluid Mechanics 801,     [23] S. Ansumali, S. Arcidiacono, S. Chikatamarla,
+     623 (2016).                                                      N. Prasianakis, A. Gorban,          and I. Karlin, The
+[12] S. Ansumali and I. V. Karlin, Physical Review Letters            European Physical Journal B 56, 135 (2007).
+     95, 1 (2005).                                               [24] I. V. Karlin, D. Sichau, and S. S. Chikatamarla, Physical
+[13] S. S. Chikatamarla and I. V. Karlin, Physical Review E           Review E 88, 1 (2013).
+     79, 046701 (2009).
+                                                                                                                           16
+
+[25] G. Pareschi, N. Frapolli, S. Chikatamarla, and I. Karlin,   [33] S. B. Pope, Turbulent flows (Cambridge university press,
+     Physical Review E 94, 013305 (2016).                             2000).
+[26] N. Frapolli, S. Chikatamarla, and I. Karlin, Physical       [34] I. Rodriguez, R. Borell, O. Lehmkuhl, C. D. Perez
+     Review E 93, 063302 (2016).                                      Segarra, and A. Oliva, Journal of Fluid Mechanics 679,
+[27] A. L. Kupershtokh, in Proc. 5th International EHD                263 (2011).
+     Workshop (2004) pp. 241–246.                                [35] G. Yun, D. Kim, and H. Choi, Physics of Fluids 18
+[28] B. Dorschner, S. Chikatamarla, F. Bösch, and I. Karlin,         (2006), 10.1063/1.2166454.
+     Journal of Computational Physics 295, 340 (2015).           [36] P. Kim, H.J., Durbin, Physics of Fluids 31, 3260 (1988).
+[29] R. D. Moser, J. Kim, and N. N. Mansour, Physics of          [37] H. Schlichting and K. Gersten, Boundary-layer theory
+     Fluids 11, 943 (1999).                                           (Springer Science & Business Media, 2003).
+[30] H. Eckelmann, Journal of Fluid Mechanics 65, 439            [38] R. Togni, A. Cimarelli, and E. De Angelis, Journal of
+     (1974).                                                          Fluid Mechanics 782, 380 (2015).
+[31] H.-P. Kreplin and H. Eckelmann, Physics of Fluids 22,       [39] E. Venezian, M. J. Crespo, and B. Sage, AIChE Journal
+     1233 (1979).                                                     8, 383 (1962).
+[32] J. Kim, P. Moin, and R. Moser, Journal of Fluid Me-         [40] N. Frapolli, S. Chikatamarla, and I. Karlin, Physical
+     chanics 177, 133 (1987).                                         Review Letters 117, 010604 (2016).
+                                                                 [41] M. Hafez and E. Wahba, Computers & Fluids 36, 39
+                                                                      (2007).
+

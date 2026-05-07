@@ -1,0 +1,7 @@
+interface:
+  display_name: "Karpathy Guidelines"
+  short_description: "Reduce overcomplication and make surgical, goal-driven code edits."
+  default_prompt: "Use $karpathy-guidelines to guide this coding task toward simple, surgical, well-verified changes."
+
+policy:
+  allow_implicit_invocation: true

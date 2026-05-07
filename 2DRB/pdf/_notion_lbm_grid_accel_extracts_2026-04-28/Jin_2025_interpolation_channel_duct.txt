@@ -1,0 +1,1071 @@
+Flow, Turbulence and Combustion (2025) 115:1445–1471
+https://doi.org/10.1007/s10494-025-00689-w
+
+RESEARCH
+
+
+
+Direct Numerical Simulations of Turbulent Channel and Duct
+Flows Using Interpolation-Based Lattice Boltzmann Method
+
+Bo-Xiao Jin1 · Sheng-Wei Feng1 · Yi-Han Chiu1 · Chao-An Lin1,2
+
+Received: 20 February 2025 / Accepted: 18 August 2025 / Published online: 17 September 2025
+© The Author(s) 2025
+
+
+
+Abstract
+The Lattice Boltzmann Method (LBM), a weakly compressible approach, has attracted
+considerable attention for turbulent flow simulations but remains limited in high-Reyn-
+olds-number applications due to its reliance on uniform meshes. This study investigates
+the interpolation-based Lattice Boltzmann Method (IBLBM) for direct numerical simula-
+tion (DNS) of turbulent channel and duct flows using nonuniform grids. Simulations are
+conducted for turbulent Poiseuille channel flows at Reτ = 180, 395, 640, and 1000,
+as well as for turbulent duct flow at Reτ = 360. The predicted mean velocity profiles,
+Reynolds stresses, vorticity distributions, and turbulent kinetic energy budgets show excel-
+lent agreement with benchmark DNS data. The IBLBM scheme accurately resolves near-
+wall turbulence and secondary flow structures in ducts while maintaining similar com-
+putational overhead across different interpolation orders. For the 7- and 200-million-grid
+cases at Reτ = 180 and 640, LBM with ∆+ ∼ 3 is approximately 1.9 and 3.7 times
+faster, respectively, than sixth-order IBLBM; however, to match IBLBMs wall resolution
+(∆+ ∼ 0.3) using ∆+ ∼ 1, LBM becomes four to six times slower. These results dem-
+onstrate the robustness and accuracy of IBLBM for high-Reynolds-number wall-bounded
+turbulence, offering an optimal balance between computational efficiency and physical
+fidelity through the use of nonuniform grids.
+
+Keywords Lattice boltzmann method · Direct numerical simulation · Interpolation ·
+Non-uniform mesh · Turbulent channel flow · Turbulent duct flow · Graphics processing
+unit
+
+
+
+1 Introduction
+
+The Lattice Boltzmann method (LBM) (Aidun and Clausen 2010) has gained prominence as
+a noteworthy alternative to Navier-Stokes solvers over the past three decades. The explicit
+formulation of LBM makes it particularly well suited for parallel computations, and its
+ease of implementation further enhances its appeal. These characteristics make LBM highly
+efficient in addressing a wide range of flow problems, such as pressure-driven flows (Lin et
+
+
+
+Extended author information available on the last page of the article
+
+
+                                                                                              13
+1446                                          Flow, Turbulence and Combustion (2025) 115:1445–1471
+
+
+al. 2020; Wang et al. 2024), flows involving natural convection (Dubois et al. 2016), two-
+phase flows (Huang et al. 2018), and porous media flows (Kuwata et al. 2020). Despite its
+advantages, the original LBM is limited by its dependence on uniform Cartesian meshes,
+which poses a notable constraint when simulating complex flows. This restriction becomes
+particularly evident in wall-bounded turbulent flows, where the accurate resolution of the
+near-wall region necessitates the use of fine meshes (Hsu et al. 2012).
+    To overcome the constraints imposed by the necessity of uniform meshes, various inves-
+tigations have used multiblock grid refinement techniques (Filippova and Hänel 1998; Wu
+et al. 2020). These methodologies facilitate adaptable adjustment of grid resolution to cater
+to the specific requirements of the flow field. Despite yielding favorable outcomes, these
+approaches maintain the use of uniform meshes within individual blocks. As a consequence,
+the handling of interfaces between distinct blocks remains a nontrivial challenge.
+    Various alternative approaches have been explored to mitigate the limitations associated
+with uniform mesh requirements. One such strategy involves the adoption of nonuniform
+meshes, where the coupling between the discretization of momentum and physical space
+is relaxed (He et al. 1996; He and Doolen 1997). Despite the localization of collisions, the
+differential mesh width impedes the streaming operation from reaching adjacent grid nodes.
+Consequently, interpolation techniques are used to recover the distribution function within
+the computational mesh. The selection of an interpolation stencil significantly influences
+the accuracy of predictions, with He et al. (1996) demonstrating that quadratic interpolation
+achieves better accuracy, albeit in simulations conducted at low Reynolds laminar numbers.
+    Furthermore, Cheng and Hung (2004) employed an upward-based Lagrangian interpola-
+tion technique, whereas Krämer et al. (2017) introduced the concept of the Semi-Lagrangian
+Lattice Boltzmann Method (SLLBM). In SLLBM, the precision of the reconstruction of the
+distribution function is enhanced through the integration of the finite element method, albeit
+at the cost of requiring a substantial amount of computational memory. In particular, Di Ilio
+et al. (2018) conducted simulations of turbulent flow past a circular cylinder at a Reynolds
+number of Re = 3900 using second-order SLLBM on body-fit meshes. These nonuniform
+mesh approaches offer promising solutions to simulate complex flows, providing greater
+flexibility and accuracy compared to traditional uniform mesh methodologies.
+    The aforementioned methodologies are mainly based on the Lagrangian formulation. An
+alternative avenue involves employing the Eulerian form of the discrete-lattice Boltzmann
+equation (LBE). In this paradigm, the LBE can be addressed analogously to the convection
+equation, utilizing the finite volume method (Nannelli and Succi 1992; Peng et al. 1998;
+1999) or the finite difference method (Lee and Lin 2003).
+    In this Eulerian approach, the collision term in the LBE is treated as a source term, and
+the precision of both the time derivative and the advection term discretizations directly
+influences the temporal and spatial accuracy of the solution. Additionally, the finite-volume
+or finite-difference methods are employed to discretize the governing equations, facilitating
+fluid flow simulation from an Eulerian perspective. These techniques offer an alternative
+route for lattice Boltzmann simulations, presenting distinct trade-offs in terms of accuracy,
+stability, and computational efficiency.
+    Pressure-driven turbulent channel flows (Moser et al. 1999; Abe et al. 2001; Lee and
+Moser 2015) have served as benchmark cases to assess the validity of direct numerical sim-
+ulation studies of the Lattice Boltzmann method (LBM-DNS) (Suga et al. 2015; Gehrke et
+al. 2017; Lee et al. 2018). The predominant focus of existing LBM-DNS investigations lies
+
+
+13
+Flow, Turbulence and Combustion (2025) 115:1445–1471                                      1447
+
+
+in the realm of low Reynolds numbers, typically around Reτ ∼ 180 (Rebulk ∼ 5660) (Suga
+et al. 2015; Lee et al. 2018).
+    Nathen et al. (2018) conducted LBM-DNS at lower resolutions for channel flows at
+Reτ =590. The uniform grid resolution is approximately ∆+ ∼ 6.48, leading to a 20%
+under-prediction of stresses due to this low resolution. In particular, the highest Reynolds
+number achieved in LBM-DNS is Reτ = 640 (Rebulk = 24000) (Wu et al. 2020), achieved
+through successive block mesh refinement strategies with a grid count of 235 × 106 using
+∆+ min ∼ 1, albeit with minor discontinuities at the block mesh interface. Recently, Xiang
+et al. (2023) conducted turbulent duct flow up to Reτ = 2000 based on duct height using
+D3Q19 SRT LBM and uniform mesh with a grid resolution of approximately ∆+ ∼ 3.4.
+However, Lee et al. (2018) and Kand and Hassan (2013) indicated that the D3Q19 lattice
+model is unsuitable for turbulent duct flow simulations, as the model generates additional
+corner vortex. The anisotropy and associated defects of the D3Q19 model have also been
+observed in jet flow simulations, as noted by Geller et al. (2013).
+    As indicated by Smits and Marusic (2013), industrial applications demand Reynolds
+numbers exceeding Reτ ≳ 1000 (Rebulk ∼ 40,000), thereby necessitating a thorough
+investigation of the proposed scheme. Accordingly, this study employs direct numerical
+simulation (DNS) of channel flows up to Reτ ∼ 1000 to evaluate the method’s capability
+and performance under industrially relevant conditions. The selected grid density aligns
+with that used in Navier–Stokes equation-based simulations (Moser et al. 1999; Abe et al.
+2001; Lee and Moser 2015), enabling a comparative assessment of the interpolation-based
+lattice Boltzmann method (IBLBM) across different interpolation orders.
+    To date, performance evaluations beyond second-order interpolation remain scarce,
+particularly in the context of complex turbulent flows. The present interpolation strate-
+gies address challenges arising from nonuniform mesh widths, which inhibit the stream-
+ing process from naturally reaching adjacent grid nodes. Furthermore, the method readily
+accommodates different collision models, such as the single-relaxation-time and multi-
+relaxation-time lattice Boltzmann methods (LBM) (Aidun and Clausen 2010), due to the
+inherently localized nature of the collision operation.
+    The paper is organized into distinct sections to facilitate a comprehensive understanding
+of the presented research. In Sect. 2, the formulation of the lattice Boltzmann method is
+explained, accompanied by a detailed discussion of the interpolation strategies used. Sec-
+tion 3 offers an extensive exposition on the results derived from the analysis of the laminar
+Poiseuille flow and the turbulent Poiseuille flow. Finally, Sect. 4 succinctly summarizes the
+key findings and conclusions drawn from the study.
+
+
+2 Methodology
+
+2.1 Lattice Boltzmann Method
+
+The evolution of the distribution function of the single relaxation time (SRT) LBM reads
+(Aidun and Clausen 2010),
+
+                                             1
+      fi (x + ei δt, t) = fi (x, t − δt) −     [fi (x, t − δt) − fieq (x, t − δt)] + Fi δt(1)
+                                             τ
+
+
+
+                                                                                   13
+1448                                                Flow, Turbulence and Combustion (2025) 115:1445–1471
+
+
+where τ, fi, and fieq are the relaxation time, the distribution function, and the equilibrium
+distribution, respectively. Fi is the body force, and the model proposed by He et al. (1997)
+is used, that is,
+                                               ρ
+                                       Fi = ωi 2 ei · G.                                           (2)
+                                              cs
+
+
+The equilibrium distribution function is given as
+                              [                                  2          ]
+                                       ei · u 1 (ei · u)   1u·u
+                   fieq = ωi ρ 1 +           +           −       ,                                 (3)
+                                         c2s   2   c4s     2 c2s
+
+where ωi is the weighting coefficients
+                               √        corresponding to the discrete velocity, ei. The speed
+of sound is given by cs = c/ 3, where the lattice velocity is defined as c = δx/δt = 1,
+assuming that the lattice spacing δx equals the lattice time step δt. ρ and u are macro density
+and velocity, respectively, which can be computed as
+                                  ∑                        ∑
+                            ρ=          fi ,        ρu =         ei fi .(4)
+                                   i                         i
+
+
+To simplify the numerical procedure, we split Eq. (1) into two steps.
+
+(1) Collision:
+
+                                               1
+                 fi+ (x, t) = f (x, t) −         [fi (x, t) − fieq (x, t)] + Fi δt                 (5)
+                                               τ
+
+(2) Streaming:
+
+                            fi (x + ei δt, t + δt) = fi+ (x, t)(6)
+
+This work uses the D2Q9 and D3Q19 and D3Q27 models to simulate the 2-D and 3-D flows.
+The discrete velocities in the D2Q9 model are given as e0 = (0, 0), e1 = −e3 = (1, 0),
+e2 = −e4 = (0, 1), e5 = −e7 = (1, 1), and e6 = −e8 = (−1, 1). The weighting coefficients
+are ω0 = 4/9, ω1−4 = 1/9, and ω5−8 = 1/36, respectively. In the D3Q19 and D3Q27
+models,
+            
+             (0, 0, 0),                             i = 0,
+              (±1, 0, 0), (0, ±1, 0),   (0, 0, ±1), i = 1 ∼ 6,
+       ei =                                                                                        (7)
+             (±1, ±1, 0), (±1, 0, ±1), (0, ±1, ±1), i = 7 ∼ 18,
+              (±1, ±1, ±1),                          i = 19 ∼ 26,
+
+and D3Q19: ω0 = 1/3, ω1−6 = 1/18, ω7−18 = 1/36, D3Q27: ω0 = 8/27, ω1−6 = 2/27,
+ω7−18 = 1/54, ω19−26 = 1/216.
+   The adaptation to other collision operators, such as the multi-relaxation-time (MRT) lat-
+tice Boltzmann method described by Lin et al. (2020), can be readily implemented due to
+the inherently localized nature of the collision process. In the present study, preliminary
+
+
+13
+Flow, Turbulence and Combustion (2025) 115:1445–1471                                        1449
+
+
+investigations indicate that, under the current nonuniform mesh configuration, the differ-
+ences between MRT and single-relaxation-time (SRT) models are marginal. Therefore, the
+SRT model is adopted for the simulations. In the following section, we introduce interpo-
+lation strategies designed to address challenges posed by differential mesh widths, which
+impede the streaming process from reaching neighboring grid nodes.
+
+2.2 The Interpolation-Based Lattice Boltzmann Method
+
+During the streaming step, meticulous consideration must be given to the departure lat-
+tice point, xdep , at x − ei δt due to potential misalignment with the computational mesh
+point and lattice point, particularly in nonuniform grids, i.e., ∆x, ∆y, ∆z ̸= δx. To rectify
+this misalignment, the present study employs an interpolation process directly within the
+physical domain. This interpolation process is instrumental in determining the values of the
+post-collision distribution function, denoted f + (xdep ), at the departure points. The rationale
+behind adopting this approach is grounded in the assumption that, in the context of incom-
+pressible flow, physical properties exhibit continuity throughout the entire physical domain,
+as postulated by He et al. (1996).
+   The value of the post-collision distribution at the departure point is the summation of the
+value of each support point multiplied by its respective interpolation coefficients. The equa-
+tion can be expressed as follows:
+                                                  d
+                                                 n
+                                                 ∑
+                                 f + (xdep ) =         Ls f + (xs ).                        (8)
+                                                 s=0
+
+
+
+Equation 8 is a versatile formula that can be applied to various interpolation orders (IOs),
+represented by the variable n, and to physical problems of different dimensions, spanning
+from one to three, denoted by d = 1, 2, and 3, respectively. The shape function Ln,s corre-
+sponds to the Lagrange polynomial associated with f + (xs ) and is evaluated at the respec-
+tive support points.
+   The arrangement of support points on a two-dimensional (2D) nonuniform grid is illus-
+trated in Fig. 1(a), using a fourth-order interpolation as an example. The red open circles
+indicate the departure points (xdep), while the support points (xs) are shown as red filled
+circles. The lattice width (δx), outlined by the dashed square in Fig. 1, may differ from the
+physical mesh size (Δx or Δy), as evidenced by the spacing between the filled circles in each
+direction.
+   These support points are symmetrically distributed around the target point (enclosed by
+the black dashed square), as illustrated in Fig. 1(a). To implement boundary conditions, the
+halfway bounce-back scheme (Lee et al. 2018; Ziegler 1993) is employed, which inherently
+lacks nodes beyond the domain boundary. Consequently, for grid points near the wall—as
+shown in Fig. 1(a)—a biased stencil is adopted due to the absence of support points outside
+the wall. This approach ensures that the interpolation process maintains a consistent level of
+accuracy across all points, including those adjacent to the boundary.
+   Figure 1(b) provides a zoomed-in view of an interpolation stencil, offering a detailed
+look at the interpolation process. For example, in the interpolation of the two-dimensional
+flow field, as shown in Fig. 1(a), the interpolation coefficients for each support point encom-
+
+
+                                                                                     13
+1450                                                  Flow, Turbulence and Combustion (2025) 115:1445–1471
+
+
+
+
+Fig. 1 Support points of ILBM; filled red circle: support points ϕ(xs ); open red circle: departure point
+ϕ(xdep ). (a) illustrates the distribution of support points on a 2D nonuniform grid, with the target point
+located at the center of the domain and biased stencils applied near boundaries to compensate for miss-
+ing nodes. (b) shows an enlarged view of the support stencil, providing a detailed look at the Lagrangian
+interpolation process
+
+pass two components: one in the x direction and the other in the y direction. In this scenario,
+the Lagrange polynomial, denoted as Ls, can be expressed as
+                                     ∏        xdep − xi        ∏        ydep − yj
+                    Ls (xs ) =
+                                               xs − xi                   ys − yj                             (9)
+                                 0⩽i⩽n,i̸=s                0⩽j⩽n,j̸=s
+
+
+As shown in Eq. 9, the shape functions Ls used in this study depend solely on the positions
+of the support points and the departure points. Their values remain constant throughout the
+simulation. To reduce computational overhead, the values of each Ls are precomputed and
+stored prior to the simulation, following the strategy employed in previous studies on the
+semi-Lagrangian lattice Boltzmann method (SLLBM) (Di Ilio et al. 2018; Krämer et al.
+2020).
+
+2.3 GPU Implementation
+
+In this investigation, 3-dimensional (3D) flow-field simulations are performed on multi-
+GPU clusters. The GPU implementation builds upon previous research efforts (Lee et al.
+2018; Chang et al. 2013; Hong et al. 2015). To efficiently manage the computational work-
+load, a one-dimensional domain decomposition strategy is employed, as illustrated in Fig. 2.
+   Each subdomain is assigned to a dedicated GPU, and the decomposition is performed
+along the streamwise direction (e.g., the x-axis), dividing the global domain into equally
+sized slabs, shown as green and dark blue boxes in Fig. 2. Within each GPUs memory, the
+allocated storage for distribution functions is slightly enlarged to include buffer regions that
+support interpolation near subdomain boundaries, depicted as light blue boxes in Fig. 2.
+The number of buffer layers depends on the interpolation order: fourth-order interpolation
+requires two layers on each side of a subdomain, whereas sixth-order interpolation requires
+three.
+
+
+13
+Flow, Turbulence and Combustion (2025) 115:1445–1471                                               1451
+
+
+
+
+Fig. 2 One-dimensional domain decomposition and communication pattern. Each subdomain is assigned
+to a GPU and divided into inner and boundary regions, green and dark blue boxes, respectively. Buffer
+layers are used to exchange boundary data between neighboring GPUs
+
+
+   Communication between neighboring GPUs is facilitated via GPUDirect Remote Direct
+Memory Access (RDMA) (2025), which enables accelerated data transfers between GPUs,
+especially when used in conjunction with CUDA-aware MPI for inter-node communication.
+At each time step, the streaming distribution functions near the subdomain boundaries—
+specifically, the 10 directions out of 19 in the D3Q19 lattice model that are relevant to the
+one-dimensional domain decomposition—are exchanged between adjacent GPUs.
+   To improve scalability and computational performance, the implementation overlaps
+communication with computation, following the approach adopted by Hong et al. (2015),
+effectively hiding the latency associated with data transfers. While data exchange occurs at
+subdomain boundaries, interior grid points that do not require updated halo data are com-
+puted concurrently.
+
+
+3 Results
+
+3.1 Simulations in Fully Developed Laminar Poiseuille Channel Flow with Wall
+Injection and Suction
+
+The simulations are directed to the Poiseuille flow with non-permeable walls, that is,
+(V = Vw ). The analytical solution reads
+
+                           h 2 Gx y − h     eRew − eRew (y−h)/h
+                     u=          [      −1+                     ]                                 (10)
+                          Rew ν     h           sinh(Rew )
+
+where Rew = Vw h/ν and H = 2h is the channel height. Without the permeable wall, i.e.,
+Vw = 0, the streamwise pressure gradient, Gx, determines the maximum velocity in the
+channel, given by Umax. Consequently, the Reynolds number in the absence of a permeable
+wall can be defined as Reo = Umax H/ν .
+
+
+                                                                                            13
+1452                                                  Flow, Turbulence and Combustion (2025) 115:1445–1471
+
+
+  The nonuniform physical mesh can be generated using a hyperbolic tangent function
+(Abe et al. 2001; Shi and Lin 2020; Shi et al. 2020), given by:
+                                            (                            )
+                                  H             −1 + 2j/Ny    1+a
+                           yj =     tanh                   ln                .(11)
+                                  a                 2         1−a
+
+Here, Ny represents the number of grid points in the vertical direction, and a ∈ (0, 1) is an
+adjustable parameter. In this injection and suction problem, the velocity ratio is set to a = 0.9.
+The lattice spacing is chosen based on the minimum physical mesh size, i.e., δx = ∆ymin .
+Four sets of grid resolutions are considered: Ny = 48, 64, 128, and 256. The corresponding
+grid sizes used in both LBM and IBLBM are summarized in Table 1. As shown, the uniform
+grid spacing (Δy) in LBM is approximately three times larger than the minimum lattice
+spacing employed (Δy) in IBLBM when a = 0.9.
+   In these simulations, the Reynolds numbers Reo = 30 and Rew = 10 are used. By incor-
+porating a vertical velocity, the maximum velocity is anticipated to shift towards the upper
+boundary, resulting in a more pronounced velocity distribution at the top wall. This behavior
+resembles that observed in turbulent boundary layers, where the nonuniform mesh offers
+distinct advantages. Additionally, as velocity distributions deviate from quadratic profiles,
+these cases serve as test scenarios to analyze the effects of interpolation.
+   Additionally, complementary Navier–Stokes solutions computed on the same non-uni-
+form mesh are included for reference. These results are obtained by solving the following
+discretized form of the Navier–Stokes Eq. (12):
+
+
+                                               j+1   j U j −Uj−1    U −U
+                  Uj+1 Vj+1 − Uj−1 Vj−1            −y − yj −yj−1
+                                        = 2ν j+1 j               + Gx                               (12)
+                                             y
+                       yj+1 − yj−1               yj+1 − yj−1
+
+where Gx represents the pressure gradient for fully developed flow at Reynolds number Reo.
+   Figure 3 presents the velocity distribution predicted by the IBLBM, revealing an upward
+shift in the peak of the streamwise velocity. This shift highlights the inherent advantage
+of using a non-uniform mesh over a uniform one. This benefit becomes more pronounced
+when examining the L∞ norm distribution with varying numbers of grid points (Ny), as
+shown in Fig. 4. The figure compares IBLBM simulations with different interpolation orders
+on non-uniform meshes against standard LBM results using uniform meshes.
+   The second-order accuracy of the lattice Boltzmann method is prominently demonstrated
+in Fig. 4, although with exceptions noted for second-order interpolation at lower grid reso-
+lutions. Specifically, at equivalent grid resolutions, the interpolation orders of 4th and 6th
+exhibit comparable distributions, indicating superior accuracy.
+
+
+Table 1 Grid distribution of the flow with transpiration
+Ny                    LBM                      IBLBM
+                      Δy                       ∆ymin                   ∆ymax                    δx
+48                    H/48                     0.329Δy                 1.634Δy                  0.329Δy
+64                    H/64                     0.324Δy                 1.635Δy                  0.324Δy
+128                   H/128                    0.317Δy                 1.636Δy                  0.317Δy
+256                   H/256                    0.314Δy                 1.636Δy                  0.314Δy
+
+
+13
+Flow, Turbulence and Combustion (2025) 115:1445–1471                                    1453
+
+Fig. 3 Predicted velocity distribution with permeable
+wall using the IBLBM (Reo = 30, Rew = 10.)
+
+
+
+
+Fig. 4 L∞ norm at different number of mesh
+(Reo = 30, Rew = 10.)
+
+
+
+
+Fig. 5 L∞ norm at different lattice spacing
+δ/H. (Reo = 30,Rew = 10.)
+
+
+
+
+   Figure 5 illustrates the error norms of Fig. 4 with respect to the lattice spacing (δy)
+employed. LBM and 4th order and 6th order IBLBM consistently depict similar distribu-
+tions, while 2nd order ISLBM shows decreased accuracy, particularly under this complex
+flow condition. Thus, the present ISLBM at high interpolation order, in particular, 4th order
+and 6th order, can produce the same performance as regular LBM results but at a lower grid
+
+
+
+
+                                                                                  13
+1454                                          Flow, Turbulence and Combustion (2025) 115:1445–1471
+
+
+density. For instance, the maximum error of the LBM results with Ny = 256 is comparable
+to that obtained using Ny = 96 for the 4th and 6th -order IBLBM, as shown in Fig. 4.
+
+3.2 Turbulent Poiseuille Channel Flows
+
+The current numerical procedure is used to calculate turbulent channel flows bounded by
+walls driven by pressure. Non-slip boundary conditions are applied in the y direction, while
+periodic conditions are enforced in the x and z directions. A constant pressure driving force
+is included in the streamwise direction to attain the target Reynolds numbers.
+    In this particular setup of wall-bounded flow, grid refinement is intentionally focused
+near the walls to resolve the thin viscous sublayer adequately. As a result, a nonuniform grid
+is generated in the vertical direction utilizing a hyperbolic tangent function, as elaborated
+in Eq. 11.
+    Four Reynolds numbers are under investigation: Reτ = 180, 395, 640, and 1000, based
+on the friction velocity and the half-height of the channel. The Reτ = 180 case has been
+extensively studied, while Reτ = 1000 has not been explored using direct numerical simu-
+lations with the lattice Boltzmann method. Table 2 provides a comprehensive overview of
+the grid configurations and lattice dimensions used throughout the study.
+    To ensure efficient acquisition of results through direct numerical simulation while main-
+taining a reasonable mesh size, subsequent scenarios maintain a grid spacing of approxi-
+mately ∆+ ∼ 5 in both the span and the streamwise directions. Furthermore, the vertical
+resolution is kept within the approximate range of 0.3 to 5 (Abe et al. 2001). These grid
+densities were considered sufficient for direct numerical simulation using the Navier-Stokes
+equation.
+    Figure 6 depicts the predicted streamwise velocity utilizing various interpolation orders
+(IO: 2 to 8) at Reynolds numbers Reτ = 180 (IO: 2,4,6), 640 (IO: 6,8), and 1000 (IO:
+6,8). At Reτ = 180, the 2nd order interpolation presents an excessively accelerated profile,
+whereas the 4th and 6th order interpolations exhibit similar results, though the 6th order
+results are marginally better. The impacts of these interpolation orders are further scruti-
+nized by contrasting the turbulent vorticity distributions, as shown in Fig. 7. Similarly to
+observations in streamwise velocity distributions at Reτ = 180, the 2nd order interpolation
+deviates from the benchmark solutions. In contrast, the 4th and 6th order interpolations show
+similar results, with the latter being marginally better.
+    At a higher Reynolds number of Reτ = 640, we investigated the effects of interpolations
+of the order 6th and 8th, as shown in Figs. 6 and 7, which reveal marginally different results.
+This is also true for the Reτ = 1000 case, where marginal difference results are observed.
+Consequently, for subsequent simulations, we adopt 6th-order interpolation for the Reynolds
+number investigated.
+    The performance of the current interpolation-based lattice Boltzmann method (IBLBM)
+in simulating mean velocity profiles across various Reynolds numbers up to Reτ = 1000
+is evident from Fig. 8, which demonstrates excellent alignment with benchmark solutions
+using direct numerical simulation data of Moser et al. (1999); Abe et al. (2001, 2004), and
+Lee and Moser (2015). In particular, the model accurately captures the heightened mean
+velocities beyond the logarithmic region at high Reynolds numbers in the center of the
+channel.
+
+
+
+
+13
+     Table 2 Grid setting for the turbulent channel flow at Reτ = 180, 395, 640, and 1000
+     Reτ                   Domain size                  Grid number                ∆x+      ∆z +   ∆y +           +     lattice size δ +
+                                                                                                                 yw
+     180                                                                          6.00      3.00                 0.15   0.30
+                                                                                                                                           Flow, Turbulence and Combustion (2025) 115:1445–1471
+
+
+
+
+                         6.4h × 2h × 3.2h             192 × 192 × 192                              0.30 ∼ 3.83
+     395                 6.4h × 2h × 3.2h             512 × 320 × 384             4.89      3.26   0.28 ∼ 5.40   0.14   0.28
+     640                 6.4h × 2h × 3.2h             832 × 512 × 464             4.92      5.33   0.31 ∼ 5.47   0.15   0.31
+     1000                6.4h × 2h × 3.2h             1232 × 768 × 608            5.19      5.26   0.41 ∼ 5.26   0.20   0.41
+                                                                                                                                           1455
+
+
+
+
+13
+1456                                           Flow, Turbulence and Combustion (2025) 115:1445–1471
+
+
+   Further insight into the predicted Reynolds stress is provided in Fig. 9, which shows the
+root mean square of normal stresses and shear stress. The model successfully anticipates
+the variations of the turbulence levels corresponding to changes in the Reynolds numbers,
+displaying strong agreement with established benchmark solutions (Moser et al. 1999; Abe
+et al. 2001; Lee and Moser 2015; Abe et al. 2004).
+   The distributions of the variation of the root mean square (rms) vorticity are illustrated
+in Fig. 10, demonstrating the correctly predicted increase in vorticity along the stream and
+span directions as the Reynolds number increases. These predicted results exhibit a favor-
+able comparison with established benchmark solutions (Moser et al. 1999; Abe et al. 2001;
+Lee and Moser 2015).
+   The turbulence transport mechanism can be best exemplified by the turbulent kinetic
+energy equation (Hsu et al. 2012; Hwang and Lin 1998), which can be expressed as
+
+                         +
+     ∂ + ′+      ′+ ′+ ∂ui     ∂ 2 k ′+    ∂u′+
+                                             j k
+                                                 ′+   ∂u′+
+                                                        j p
+                                                            ′+
+                                                                  ∂u′+  ′+
+                                                                    i ∂ui
+−       u   k −u   u       −ν            −          −          −ν       + =0
+    ∂x+
+      j
+          j      i   j
+                       ∂x+
+                         j    ∂x+j ∂xj
+                                       +
+                                            ∂x+j       ∂x+j       ∂x+
+                                                                    j ∂xj
+                                                                 
+        C+           P+            d+v           d+t            d+p             ϵ+
+
+
+                                                              +                +
+where k ′+ = u′+
+               i ui /2 is the turbulent kinetic energy and C : convection, P : production,
+                   ′+
+  +v                    +p                       +
+d : viscous diffusion, d : pressure diffusion, ϵ : turbulent dissipation rate. For the present
+fully developed flow, the convection term is zero.
+    Figure 11 presents the turbulent kinetic energy budget at Reτ values of 180, 395, 640
+and 1000, along with reference solutions from Moser et al. (1999), Abe et al. (2001, 2004),
+and Lee and Moser (2015). The predicted results of the current IBLBM align favorably with
+these benchmark solutions. The model accurately captures the increase in the viscous diffu-
+sion in the near-wall and the turbulence dissipation rate in response to escalating Reynolds
+numbers. Furthermore, it correctly predicts the plateau region of the turbulence dissipation
+rate around y + ∼ 10.
+    Furthermore, we evaluate the GPU performance of the interpolation-based Lattice
+Boltzmann Method (IBLBM) using different interpolation orders at friction Reynolds num-
+bers Reτ = 180 and 640, employing four and eight NVIDIA Tesla V100 GPUs, respec-
+tively. The performance metric is the million lattice updates per second (MLUPS), defined
+as:
+
+                             grid size × number of iterations × 10−6
+                  MLUPS =                                            .                       (13)
+                                       total simulation time
+
+The simulation time is measured over 10,000 time steps.
+  The results are summarized in Tables 3 and 4, corresponding to simulations with approxi-
+mately 7 million and 200 million grid points, respectively, for LBM and IBLBM under
+
+
+
+
+13
+Flow, Turbulence and Combustion (2025) 115:1445–1471                                  1457
+
+Fig. 6 Predicted streamwise velocity distributions
+using different interpolation orders at Reτ = 180, 640
+and 1000. (           : 2nd-order,          : 4th-order,
+solid: 6t-order and                : 8th-order)
+
+
+
+
+Fig. 7 Predicted turbulent vorticities distributions
+using different interpolation orders at Reτ = 180 and
+640. (           : 2nd-order,          : 4th-order, solid:
+6th-order and                 : 8th-order); □: Moser et al.
+(1999), Δ: Abe et al. (2001)
+
+
+
+
+Fig. 8 Predicted streamwise velocity distributions at
+different reynolds numbers. (Reτ =180, 395, 640 and
+1000)
+
+
+
+
+varying interpolation orders. Despite employing a similar total number of grid points, the
+effective resolution differs. For the standard LBM grid, the near-wall resolution is ∆+ ∼ 3
+–4, which is considered coarse. Achieving a finer resolution of ∆+ ∼ 1 with LBM would
+require 37 to 64 times more grid points than the current IBLBM configurations.
+   For the 7-million-grid case, LBM achieves performance that is approximately 90%
+higher than IBLBM with sixth-order interpolation. For the 200-million-grid simulation at
+Reτ = 640, LBM demonstrates a performance improvement of about 3.7 times over the
+
+
+                                                                                13
+1458                                                Flow, Turbulence and Combustion (2025) 115:1445–1471
+
+Fig. 9 Predicted turbulence intensity distributions at
+different reynolds numbers. (Reτ =180, 395, 640 and
+1000)
+
+
+
+
+Fig. 10 Predicted turbulent vorticity distributions at
+different reynolds numbers. (Reτ =180, 395, 640 and
+1000)
+
+
+
+
+Fig. 11 Predicted turbulent kinetic energy budgets at
+different reynolds numbers. (Reτ =180, 395, 640 and
+1000)
+
+
+
+
+sixth-order IBLBM. However, if the LBM were to match the wall resolution of IBLBM
+(∆+ ∼ 1), the associated grid size and computational cost would increase dramatically,
+diminishing the advantage.
+    Interestingly, the MLUPS per GPU for IBLBM using second- and fourth-order interpo-
+lation remains relatively stable across different grid sizes. In contrast, the performance of
+conventional LBM improves significantly, increasing from 895 MLUPS to 1202 MLUPS
+per GPU as the grid size grows. On the other hand, IBLBM with sixth-order interpolation
+
+
+13
+     Table 3 GPU performance of Reτ = 180 channel flow on four NVIDIA V100 GPUs for LBM (with grid number 360 × 112 × 180) and IBLBM (with grid number
+     192 × 192 × 192) in different order interpolations
+     Reτ = 180                                       LBM                   IBLBM
+     grid size                                       7.26 × 106            7.07 × 106
+     resolution                                      ∆+x,y,z = 3.2         ∆+ =6, 0.30 ∼ 3.83, 3
+                                                                                                                                                         Flow, Turbulence and Combustion (2025) 115:1445–1471
+
+
+
+
+                                                                           2nd-order                        4th-order                        6th-order
+     time (s)                                        20.3                  21.4                             32                               37.8
+     MLUPS                                           3578                  3301                             2211                             1873
+     MLUPS/GPU no.                                   895                   825                              553                              468
+     MLUPSLBM /M LU P S                              1                     1.09                             1.62                             1.91
+                                                                                                                                                         1459
+
+
+
+
+13
+                                                                                                                                                           1460
+
+
+
+
+13
+     Table 4 GPU performance of Reτ = 640 channel flow on eight NVIDIA V100 GPUs for LBM (with grid number 1088 × 340 × 544) and IBLBM (with grid number
+     832 × 512 × 464) in different order interpolations
+     Reτ = 640                                       LBM                    IBLBM
+     grid size                                       201 × 106              198 × 106
+     resolution                                      ∆+x,y,z = 3.8          ∆+ =4.92, 0.31 ∼ 5.47, 4.41
+                                                                            2nd-order                         4th-order                        6th-order
+     time (s)                                        209                    296                               452                              753
+     MLUPS                                           9615                   6660                              4369                             2623
+     MLUPS/GPU no.                                   1202                   833                               546                              328
+     MLUPSLBM /M LU P S                              1                      1.44                              2.07                             3.67
+                                                                                                                                                           Flow, Turbulence and Combustion (2025) 115:1445–1471
+Flow, Turbulence and Combustion (2025) 115:1445–1471                                     1461
+
+
+exhibits a notable decline in performance, decreasing from 468 MLUPS to 328 MLUPS
+per GPU. The underlying cause of this degradation is not yet fully understood, but it may
+be attributed to GPU occupancy limitations, possibly due to the partitioned matrix size and
+buffer memory usage in LBM and IBLBM implementations.
+    The computational time required per eddy turnover time is also included, as illustrated in
+Tables 5 and 6, which is used to account for the reduction of the time step if smaller lattice
+unit is used. It should be noted that the CPU time for the refined-grid LBM cases is esti-
+mated based on the increase in grid density under the assumption of perfect scaling.
+    As shown in Table 5 for the Reτ = 180 case, LBM with a grid resolution of ∆+ = 1.07
+requires nearly four times more CPU time per eddy turnover than IBLBM with sixth-
+order interpolation, even though the near-wall grid resolution of IBLBM (∆+ = 0.30) is
+approximately three times finer. Similarly, Table 6 presents results for the Reτ = 640 case,
+where LBM with ∆+ = 1.00—a resolution roughly three times coarser than that of IBLBM
+(∆+ = 0.31)—demands nearly six times the CPU time per eddy turnover.
+    Thus, IBLBM remains a competitive alternative to conventional LBM, particularly when
+wall-resolution requirements are taken into account, offering a favorable balance between
+efficiency and accuracy.
+
+3.3 Turbulent Poiseuille Duct Flow
+
+To further investigate the 6th order IBLBM applicability with two inhomogeneous direc-
+tions, the method is applied to simulate turbulent Poiseuille flow through a square duct at
+Reτ = 360. For duct flow, Reτ is defined based on the duct height H as Reτ = uτ H/ν .
+    The computational domain of the conduit is defined as 2πH × H × H in the x, y, and z
+directions. No-slip boundary conditions are applied at all four duct walls, while a periodic
+boundary condition is imposed in the streamwise (x) direction. A nonuniform grid, gener-
+ated using the same hyperbolic tangent function as in the turbulent Poiseuille channel flow,
+is employed in the wall-normal directions (i.e., the y- and z-axes). Sixth-order interpolation
+is used for both laminar and turbulent duct flow simulations.
+    Previous studies by Kang and Hassan (2013) and Lee et al. (2018), both using a uniform
+grid, indicated that the D3Q19 lattice model generates additional corner vortices in turbu-
+lent duct flows. Furthermore, Lee et al. (2018) demonstrated that even in the laminar regime,
+the D3Q19 model produces an artificial secondary flow pattern.
+    Figure 12 illustrates the predicted streamwise velocity contours and secondary flow pat-
+terns for laminar flow at Reτ = 30 using the D3Q19 and D3Q27 lattice models. The results
+reveal that the D3Q19 model introduces spurious secondary flow, whereas the D3Q27
+model, as expected, remains free of such effects. The magnitude of the secondary flow
+predicted by the D3Q19 model is on the order of 10−4 relative to the streamwise velocity.
+Despite employing a nonuniform grid (64 × 64), the findings align well with those of Lee
+et al. (2018). Consequently, the D3Q27 model is chosen for simulating turbulent duct flow.
+    Table 7 presents the grid configuration and lattice size employed for the turbulent duct
+flow simulation. In the streamwise direction, the grid spacing is set to ∆+ ∼ 5, while ∆+ in
+the wall-normal direction, is maintained within the range of 0.35 to 5.03 to ensure consis-
+tency with direct numerical simulation results.
+    Figure 13 (a) and (b) depict the instantaneous and mean velocity contours, along with the
+secondary flow vectors, for turbulent duct flow at Reτ = 360. The impact of secondary flow
+
+
+                                                                                  13
+                                                                                                                                                                          1462
+
+
+
+
+13
+     Table 5 Simulated number of eddy turn over time (nETT) of Reτ = 180 channel flow on four NVIDIA V100 GPUs for LBM (with grid number 360 × 112 × 180 and
+     1080 × 336 × 540) and IBLBM (with grid number 192 × 192 × 192) in different order interpolations. (nETT= Nstep ∆t/(h/uτ ), Nstep = 104 ,∗ : estimated based on the
+     grid size)
+     Reτ = 180                             LBM                      LBM                          IBLBM
+     grid size                             7.26 × 106               1.96 × 108                   7.07 × 106
+     resolution                            ∆+x,y,z = 3.2            ∆+x,y,z = 1.07               ∆+x,y,z =6, 0.30 ∼ 3.83, 3
+                                                                                                 2nd-order                   4th-order                       6th-order
+     CPU time (s)                          20.3                     548.1∗                       21.4                        32                              37.8
+     nETT                                  0.555                    0.185∗                       0.0521                      0.0521                          0.0521
+     CPU time(s)/nETT                      36.5                     2960∗                        411                         615                             726
+                                                                                                                                                                          Flow, Turbulence and Combustion (2025) 115:1445–1471
+     Table 6 Simulated number of eddy turn over time (nETT) of Reτ = 640 channel flow on four NVIDIA V100 GPUs for LBM (with grid number 1088 × 340 × 544 and
+     4009 × 1292 × 2068) and IBLBM (with grid number 832 × 512 × 464) in different order interpolations. (nETT= Nstep ∆t/(h/uτ ), Nstep = 104 ,∗ : estimated based on
+     the grid size)
+     Reτ = 640                              LBM                      LBM                        IBLBM
+     grid size
+                                                                                                                                                                        Flow, Turbulence and Combustion (2025) 115:1445–1471
+
+
+
+
+                                            2.01 × 108               1.1 × 1010                 1.98 × 108
+     resolution                             ∆+x,y,z = 3.8            ∆+x,y,z = 1.               ∆+ =4.92, 0.31 ∼ 5.47, 4.41
+                                                                                                2nd-order                   4th-order                      6th-order
+     time (s)                               209                      11, 468∗                   296                         452                            753
+     nETT                                   0.157                    0.0413∗                    0.0128                      0.0128                         0.0128
+     CPU time(s)/nETT                       1,331                    377, 485∗                  23,103                      35,279                         58,773
+                                                                                                                                                                        1463
+
+
+
+
+13
+1464                                              Flow, Turbulence and Combustion (2025) 115:1445–1471
+
+
+
+
+Fig. 12 The predicted streamwise velocity contours and the secondary flow at Reτ = 30 duct flow with
+6th-order IBLBM. (a) D3Q19 lattice model (b) D3Q27 lattice model
+
+
+on the mean streamwise velocity is most pronounced in the bulging of velocity contours
+toward the corners, as observed in Fig. 13 (b). This phenomenon occurs as the secondary
+flow redistributes high-momentum fluid from the central region to the corners.
+   The predicted mean streamwise velocity and turbulence intensities along the wall bisec-
+tor are presented in Figs. 14 and 15 and compared with the direct numerical simulation
+(DNS) data of Moser et al. (1999) for channel flow. The results exhibit excellent agreement
+with the benchmark solutions, demonstrating the accuracy of the present approach.
+   The detailed distributions of the predicted streamwise velocity and secondary flow veloc-
+ity in various span cross sections are presented in Figs. 16 and 17. These results are com-
+pared with duct flow data at Reτ = 300 from Gavrilakis (1992) and Pattison et al. (2009).
+   The predicted wall shear stress is shown in Fig. 18 and is compared with the results of
+Gavrilakis (1992) and Hsu et al. (2012). Overall, the predicted results agree well with the
+benchmark solutions despite slight differences in Reynolds numbers.
+
+
+4 Conclusion
+
+This study presents numerical simulations of turbulent channel and duct flows using the
+interpolation-based Lattice Boltzmann Method (IBLBM) with nonuniform meshes. The
+investigation begins with laminar Poiseuille flow featuring wall injection and suction, where
+analytical solutions are used as a benchmark to assess the effect of interpolation order. In this
+configuration, the maximum velocity shifts toward the suction boundary, producing a more
+pronounced near-wall velocity gradient that resembles turbulent boundary layers—condi-
+tions under which nonuniform meshes offer distinct advantages. Results show that IBLBM
+with fourth-order interpolation and higher achieves accuracy comparable to conventional
+uniform-mesh LBM while requiring fewer grid points, whereas second-order interpolation
+yields reduced predictive accuracy.
+   For turbulent channel flows up to Reτ = 1000, nonuniform grids were employed with
+∆x ∼ 5 in the periodic directions and 0.3 ≲ ∆x ≲ 5 in the wall-normal direction. Pre-
+
+
+13
+     Table 7 Grid setting for the turbulent duct flow at Reτ = 360
+                                                                                                    + +
+                                                                                                                                  Flow, Turbulence and Combustion (2025) 115:1445–1471
+
+
+
+
+     Reτ                     Domain size                     Grid number     ∆x+    ∆y + (∆z + )   yw (z w )   lattice size δ +
+     360                   2πH × H × H                     448 × 128 × 128   5.05   0.7 ∼ 5.03     0.35        0.7
+                                                                                                                                  1465
+
+
+
+
+13
+1466                                                  Flow, Turbulence and Combustion (2025) 115:1445–1471
+
+
+
+
+Fig. 13 The streamwise velocity contours and the secondary flow at Reτ = 360 duct flow with 6th-order
+IBLBM. (a) Instantaneousness (b) mean
+
+
+Fig. 14 The mean streamwise velocity profile along the
+wall bisector at Reτ = 360 duct flow
+
+
+
+
+Fig. 15 Distribution of turbulent intensity and the
+primary reynolds stress at Reτ = 360 duct flow
+
+
+
+
+13
+Flow, Turbulence and Combustion (2025) 115:1445–1471                                      1467
+
+
+
+
+Fig. 16 The streamwise velocity profiles at different locations at Reτ = 360 duct flow
+
+dicted mean flow and turbulence statistics were compared with benchmark DNS data. At
+Reτ = 180, tests with second-, fourth-, and sixth-order interpolation showed that second-
+order interpolation caused overprediction of streamwise velocity and incorrect turbulent
+vorticity distribution. At higher Reynolds numbers (Reτ = 640 and 1000), sixth- and
+eighth-order interpolations produced comparable results; hence, the sixth-order scheme
+was adopted for subsequent simulations. The predictions closely matched benchmark DNS,
+accurately resolving the viscous sublayer and reproducing key turbulence statistics, includ-
+ing mean velocity profiles, Reynolds stresses, and turbulent kinetic energy budgets.
+
+
+
+
+                                                                                         13
+1468                                                 Flow, Turbulence and Combustion (2025) 115:1445–1471
+
+
+
+
+Fig. 17 The spanwise velocity profiles at different locations at Reτ = 360 duct flow
+
+
+Fig. 18 Wall shear stress distributions
+
+
+
+
+13
+Flow, Turbulence and Combustion (2025) 115:1445–1471                                                        1469
+
+
+    The method was further applied to turbulent duct flow with two inhomogeneous direc-
+tions, confirming the superiority of the D3Q27 lattice model over the D3Q19 model in avoid-
+ing spurious secondary flows. Predicted mean velocity contours and secondary flow patterns
+agreed well with reference data, validating the approach for more complex geometries.
+    Performance analysis shows that, for the same total grid count, the computational over-
+head of IBLBM remains of the same order across interpolation schemes. For the 7- and
+200-million-grid cases at Reτ = 180 and 640, LBM with ∆+ ∼ 3 is approximately 1.9 and
+3.7 times faster, respectively, than sixth-order IBLBM. However, to match the wall resolu-
+tion of IBLBM (∆+ ∼ 0.3), adopting ∆+ ∼ 1, LBM becomes four to six times slower,
+substantially increasing computational cost and negating its performance advantage.
+    Overall, the results demonstrate that IBLBM with nonuniform meshes is a robust and
+accurate approach for simulating wall-bounded turbulent flows. By enabling high near-wall
+resolution with fewer grid points, it achieves an optimal balance between computational
+efficiency and accuracy, making it particularly effective for high-Reynolds-number simula-
+tions where wall resolution is critical.
+
+Author Contributions B.-X., S.-W. and Y.-H., and C.-A. conducted the simulations. B.-X., Y.-H., and C.-A.
+wrote the main manuscript text, and B.-X., S.-W., Y.-H., and C.-A. prepared figures. All authors reviewed the
+manuscript. C.-A. secured the funding.
+
+Funding Open access funding provided by National Tsing Hua University. Bo-Xiao Jin is supported by the
+National Tsing Hua University Graduate Student Scholarship, Hsinchu, Taiwan. The Taiwan National Sci-
+ence and Technology Council sponsors the project under grant number NSTC 113-2221-E-007-129.
+
+Data Availability The authors declare that the data supporting the findings of this study are available from the
+corresponding authors on reasonable request.
+
+Declarations
+
+Competing Interests The authors declare no competing interests.
+
+Open Access This article is licensed under a Creative Commons Attribution-NonCommercial-
+NoDerivatives 4.0 International License, which permits any non-commercial use, sharing, distribution and
+reproduction in any medium or format, as long as you give appropriate credit to the original author(s) and the
+source, provide a link to the Creative Commons licence, and indicate if you modified the licensed material.
+You do not have permission under this licence to share adapted material derived from this article or parts of it.
+The images or other third party material in this article are included in the article’s Creative Commons licence,
+unless indicated otherwise in a credit line to the material. If material is not included in the article’s Creative
+Commons licence and your intended use is not permitted by statutory regulation or exceeds the permitted use,
+you will need to obtain permission directly from the copyright holder. To view a copy of this licence, visit ​h​
+t​t​p​:​/​​/​c​r​e​a​​t​i​v​e​c​o​​m​m​o​n​​s​.​o​r​g​​/​l​i​c​e​​n​s​e​s​/​b​​y​-​n​c​​-​n​d​/​4​.​0​/.
+
+
+
+
+References
+Abe, H., Kawamura, H., Matsuo, Y.: Direct numerical simulation of a fully developed turbulent channel flow
+     with respect to the reynolds number dependence. J. Fluids. Eng. 123(2), 382–393 (2001)
+Abe, H., Kawamura, H., Matsuo, Y.: Surface heat-flux fluctuations in a turbulent channel flow up to ret=1020
+     with pr=0.025 and 0.71. Int. J. Heat Fluid Flow. 25(3), 404–419 (2004)
+Aidun, C.K., Clausen, J.R.: Lattice-boltzmann method for complex flows. Annu. Rev. Fluid Mech. 42, 439–
+     472 (2010)
+
+
+
+
+                                                                                                    13
+1470                                                             Flow, Turbulence and Combustion (2025) 115:1445–1471
+
+Chang, H.-W., Hong, P.-Y., Lin, L.-S., Lin, C.-A.: Simulations of flow instability in three dimensional deep
+      cavities with multi relaxation time lattice boltzmann method on graphic processing units. Comput. &
+      Fluids. 88, 866–871 (2013)
+Cheng, M., Hung, K.C.: Lattice boltzmann method on nonuniform mesh. Int. J. Multiling. Computational
+      Eng. Sci. 5(2), 291–302 (2004)
+Di Ilio, G., Dorschner, B., Bella, G., Succi, S., Karlin, I.V.: Simulation of turbulent flows with the entropic
+      multirelaxation time lattice boltzmann method on body-fitted meshes. J. Fluid Mech. 849, 35–56 (2018)
+Dubois, F., Lin, C.-A., Tekitek, M.M.: Anisotropic thermal lattice boltzmann simulation of 2d natural convec-
+      tion in a square cavity. Comput. & Fluids. 124, 278–287 (2016)
+Filippova, O., Hänel, D.: Grid refinement for lattice-bgk models. J. Comput. Phys. 147(1), 219–228 (1998)
+Gavrilakis, S.: Numerical simulation of low-reynolds-number turbulent flow through a straight square duct. J
+      Fluid Mech. 244, 101–129 (1992). https://doi.org/10.1017/S0022112092002982
+Gehrke, M., Janßen, C.F., Rung, T.: Scrutinizing lattice boltzmann methods for direct numerical simulations
+      of turbulent channel flows. Comput. & Fluids. 156, 247–263 (2017)
+Geller, S., Uphoff, S., Krafczyk, M.: Turbulent jet computations based on mrt and cascaded lattice boltzmann
+      models. Comput. Math. Appl. 65(12), 1956–1966 (2013). https://doi.org/10.1016/j.camwa.2013.04.013
+He, X., Doolen, G.: Lattice boltzmann method on curvilinear coordinates system: flow around a circular
+      cylinder. J. Comput. Phys. 134(2), 306–315 (1997)
+He, X., Luo, L.-S., Dembo, M.: Some progress in lattice boltzmann method. Part I. nonuniform mesh grids.
+      J. Comput. Phys. 129(2), 357–363 (1996)
+He, X., Zou, Q., Luo, L.S., Dembo, M.: Analytic solutions of simple flows and analysis of nonslip boundary
+      conditions for the lattice boltzmann bgk model. J. Stat. Phys. 87, 115–136 (1997)
+Hong, P.-Y., Huang, L.-M., Lin, L.-S., Lin, C.-A.: Scalable multi-relaxation-time lattice boltzmann simula-
+      tions on multi-gpu cluster. Comput. & Fluids. 110, 1–8 (2015)
+Hsu, H.-W., Hsu, J.-B., Lo, W., Lin, C.-A.: Large eddy simulations of turbulent couette–poiseuille and cou-
+      ette flows inside a square duct. J Fluid Mech. 702, 89–101 (2012). https://doi.org/10.1017/jfm.2012.160
+Huang, T.-C., Chang, C.-Y., Lin, C.-A.: Simulation of droplet dynamic with high density ratio two-phase lat-
+      tice boltzmann model on multi-gpu cluster. Comput. & Fluids. 173, 80–87 (2018)
+Hwang, C.B., Lin, C.A.: Improved low-reynolds-number k-e model based on direct numerical simulation
+      data. Aiaa J. 36(1), 38–43 (1998)
+Kang, S.K., Hassan, Y.A.: The effect of lattice models within the lattice boltzmann method in the simulation
+      of wall-bounded turbulent flows. J. Comput. Phys. 232(1), 100–117 (2013)
+Krämer, A., Küllmer, K., Reith, D., Joppich, W., Foysi, H.: Semi-lagrangian off-lattice boltzmann method for
+      weakly compressible flows. Phys Rev E E. 95(2), 023305 (2017)
+Krämer, A., Wilde, D., Küllmer, K., Reith, D., Foysi, H., Joppich, W.: Lattice boltzmann simulations on
+      irregular grids: introduction of the natrium library. Comput. Math. Appl. 79(1), 34–54 (2020)
+Kuwata, Y., Tsuda, K., Suga, K.: Direct numerical simulation of turbulent conjugate heat transfer in a porous-
+      walled duct flow. J Fluid Mech. 904(9) (2020)
+Lee, M., Moser, R.D.: Direct numerical simulation of turbulent channel flow up to Re τ ≈ 5200. J Fluid
+      Mech. 774, 395–415 (2015). https://doi.org/10.1017/jfm.2015.268
+Lee, T., Lin, C.-L.: An eulerian description of the streaming process in the lattice boltzmann equation. J.
+      Comput. Phys. 185(2), 445–471 (2003)
+Lee, Y.-H., Huang, L.-M., Zou, Y.-S., Huang, S.-C., Lin, C.-A.: Simulations of turbulent duct flow with lattice
+      boltzmann method on gpu cluster. Comput. & Fluids. 168, 14–20 (2018)
+Lin, W.-J., Li, M.-J., Su, C.-W., Huang, X.-Y., Lin, C.-A.: Direct numerical simulations of turbulent periodic-
+      hill flows with mass-conserving lattice boltzmann method. Phys. of Fluids. 32(11), 115122 (2020)
+Moser, R.D., Kim, J., Mansour, N.N.: Direct numerical simulation of turbulent channel flow up to re τ= 590.
+      Phys. of Fluids. 11(4), 943–945 (1999)
+Nannelli, F., Succi, S.: The lattice boltzmann equation on irregular lattices. J. Stat. Phys. 68, 401–407 (1992)
+Nathen, P., Gaudlitz, D., Krause, M.J., Adams, N.A.: On the stability and accuracy of the bgk, mrt and rlb
+      boltzmann schemes for the simulation of turbulent flows. Commun. Comput. Phys. 23(3), 846–876
+      (2018)
+NVIDIA corporation: developing a linux kernel module using GPUDirect RDMA. ​h​t​t​p​s​:​​​/​​/​d​o​c​​s​.​n​v​i​d​i​​a​.​​c​​o​m​/​​c​
+      u​​d​a​/​​g​p​u​d​i​r​​​e​c​t​​-​r​​​d​m​a​/​#​s​t​a​n​​d​a​r​​d​-​d​m​a​-​t​r​a​n​s​f​e​r (2025)
+Pattison, M., Premnath, K., Banerjee, S.: Computation of turbulent flow and secondary motions in a square
+      duct using a forced generalized lattice boltzmann equation. Phys. Rev. E. E. 79, 026704 (2009). ​h​t​t​p​s​:​/​
+      /​d​o​i​.​o​r​g​/​1​0​.​1​1​0​3​/​P​h​y​s​R​e​v​E​.​7​9​.​0​2​6​7​0​4​​​​
+Peng, G., Xi, H., Duncan, C., Chou, S.-H.: Lattice boltzmann method on irregular meshes. Phys. Rev. E. E.
+      58(4), 4124 (1998)
+Peng, G., Xi, H., Duncan, C., Chou, S.-H.: Finite volume scheme for the lattice boltzmann method on
+      unstructured meshes. Phys. Rev. E. E. 59(4), 4675 (1999)
+
+
+13
+Flow, Turbulence and Combustion (2025) 115:1445–1471                                                      1471
+
+Shi, X., Agrawal, T., Lin, C.-A., Hwang, F.-N., Chiu: T.-H.: A parallel nonlinear multigrid solver for unsteady
+     incompressible flow simulation on multi-gpu cluster. J. Comput. Phys. 414, 109447 (2020)
+Shi, X., Lin, C.-A.: Simulations of wall bounded turbulent flows using general pressure equation. Flow Tur-
+     bul. Combust. 105(1), 67–82 (2020)
+Smits, A.J., Marusic, I.: Wall-bounded turbulence. Phys. Today. 66(9), 25–30 (2013)
+Suga, K., Kuwata, Y., Takashima, K., Chikasue: R.: A d3q27 multiple-relaxation-time lattice boltzmann
+     method for turbulent flows. Comput. Math. Appl. 69(6), 518–529 (2015)
+Wang, L., Liu, Z., Jin, B.R., Huang, Q., Young, J., Tian, F.-B.: Wall-modeled large eddy simulation in the
+     immersed boundary-lattice boltzmann method. Phys. of Fluids. 36(3), 035167 (2024)
+Wu, C.-M., Zhou, Y.-S., Lin, C.-A.: Direct numerical simulations of turbulent channel flows with mesh-
+     refinement lattice boltzmann methods on gpu cluster. Comput. & Fluids. 210, 104647 (2020)
+Xiang, X., Su, W., Hu, T., Wang, L.: Multi-gpu lattice boltzmann simulations of turbulent square duct flow at
+     high reynolds numbers. Comput. & Fluids. 266, 106061 (2023)
+Ziegler, D.P.: Boundary conditions for lattice boltzmann simulations. J. Stat. Phys. 71, 1171–1177 (1993)
+
+Publisher’s Note Springer Nature remains neutral with regard to jurisdictional claims in published maps and
+institutional affiliations.
+
+
+
+Authors and Affiliations
+
+Bo-Xiao Jin1 · Sheng-Wei Feng1 · Yi-Han Chiu1 · Chao-An Lin1,2
+
+    Chao-An Lin
+    calin@pme.nthu.edu.tw
+    Bo-Xiao Jin
+    jinboxiao98@gmail.com
+    Sheng-Wei Feng
+    asdf1253698@gmail.com
+    Yi-Han Chiu
+    chiu9074@gmail.com
+1
+    Department of Power Mechanical Engineering, National Tsing Hua University, 101, Sec. 2,
+    Kuang Fu Road, Hsinchu 30013, Taiwan
+2
+    Institute of Space Engineering, National Tsing Hua University, 101, Sec. 2, Kuang Fu Road,
+    Hsinchu 30013, Taiwan
+
+
+
+
+                                                                                                 13
+

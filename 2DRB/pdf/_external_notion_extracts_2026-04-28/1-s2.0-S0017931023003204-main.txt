@@ -1,0 +1,1003 @@
+                                                         International Journal of Heat and Mass Transfer 210 (2023) 124167
+
+
+
+                                                                  Contents lists available at ScienceDirect
+
+
+                                      International Journal of Heat and Mass Transfer
+                                                            journal homepage: www.elsevier.com/locate/hmt
+
+
+
+
+Lattice Boltzmann method for heat transfer in transitional ﬂows with
+uniﬁed single-node curved boundary conditions
+Xing Xiang a,b, Limin Wang a,b,∗
+a
+    State Key Laboratory of Multiphase Complex Systems, Institute of Process Engineering, Chinese Academy of Sciences, Beijing 100190, PR China
+b
+    School of Chemical Engineering, University of Chinese Academy of Sciences, Beijing 100049, PR China
+
+
+
+
+a r t i c l e            i n f o                           a b s t r a c t
+
+Article history:                                           Laminar separation bubbles in transitional ﬂows of low-Reynolds-number airfoils signiﬁcantly affect aero-
+Received 21 October 2022                                   dynamic eﬃciency and heat transfer characteristics, which can be dealt with using the numerical method
+Revised 7 March 2023
+                                                           with boundary treatment of complex geometry. This work proposes the uniﬁed single-node curved
+Accepted 3 April 2023
+                                                           boundary conditions based on the thermal lattice Boltzmann method, and several benchmarks verify
+Available online 20 April 2023
+                                                           the higher accuracy and parallel scalability over conventional schemes. Multi-GPU simulations for air-
+Keywords:                                                  foil Eppler 61 and SD8020 are carried out, and the lift coeﬃcients CL are accurately simulated by the
+Thermal lattice Boltzmann method                           parametric combined momentum-exchange method. Furthermore, time-averaged pressure coeﬃcients C p
+Curved boundary conditions                                 and local Nussel number Nu of airfoil surfaces are obtained, and the unsteady ﬂow and heat transfer
+Multi-GPU computation                                      characteristics of laminar separation bubbles are captured. Simulated average Nussel numbers Nu for an
+Transitional ﬂows                                          Eppler 61 airfoil with different Reynold numbers are equivalent to and modify the Hilpert correlation. The
+Low-Reynolds-number airfoils
+                                                           numerical method can quickly and accurately predict transitional ﬂows of low-Reynolds-number airfoils
+                                                           and guide the design and application of heat transfer with blade conﬁguration.
+                                                                                                                                      © 2023 Elsevier Ltd. All rights reserved.
+
+
+
+
+1. Introduction                                                                               rately predict the aerodynamic and thermal characteristics of un-
+                                                                                              steady laminar separation bubbles.
+    Laminar boundary layer separates under an adverse pressure                                   Compared to traditional computational ﬂuid dynamics (CFD)
+gradient, then the free shear layer transits to turbulent ﬂows and                            approaches, the lattice Boltzmann method has the potential advan-
+is reattached, which is frequently observed at the range of Re =                              tages of inherent eﬃciency characteristics and parallel scalability
+104 − 105 . Numerical simulations found that the length of a long                             when incorporating complex physics models [7]. Lattice Boltzmann
+bubble increased with the angle of attack, resulting in a decrease                            method has been developed into a promising numerical tool for
+in the lift curve slope [1,2], and a short bubble might move up-                              simulating transitional ﬂows [8] and thermal problems [9–11] in
+stream toward the leading edge and reduce in size [3,4] under cer-                            the last three decades. In the thermal lattice Boltzmann method
+tain conditions. Furthermore, the heat transfer in the laminar sep-                           (TLBM), the DdQb model (d is Euclidean lattice dimensionality
+aration bubble represents an urgent problem in various technical                              and b is lattice velocity count) introduced by Qian [12] used the
+applications, such as the leading edges of gas turbine blades [5].                            Maxwell–Boltzmann equilibrium distribution and a discrete set of
+Wang et al. [6] obtained an experimental correlation of forced con-                           velocities in phase space. The double distribution function (DDF)
+vection heat transfer from a NACA airfoil. Due to the limitations of                          models, including velocity and temperature distribution functions,
+experiments, it is urgent to develop a fast numerical tool to accu-                           are regarded as the best way to solve thermal problems because
+                                                                                              the original framework and format of lattice Boltzmann simula-
+                                                                                              tions are retained. Shan et al. [13] implemented the DDF model
+     Abbreviations: CFD, computational ﬂuid dynamics; TLBM, thermal lattice Boltz-
+                                                                                              to solve the Rayleigh–Bénard convection without heat dissipation
+mann method; DDF, double distribution function; SRT, single-relaxation-time; MRT,
+multiple-relaxation-times; GPU, graphics processing unit; MPI, message-passing in-            and compressive work. Jami et al. [14] develop a numerical scheme
+terface; BPO, Bernstein polynomials; FFT, fast Fourier transform; CST, class-shape            based on the MRT-D2Q9 model for ﬂuid velocity and the MRT-
+function transformation parameterization; AOA, angles of attack; MLUPS, mega lat-             D2Q5 cross model for the temperature. Wang et al. [15] study
+tice updates per second.
+   ∗
+                                                                                              the MRT collision model for incompressible thermo-hydrodynamics
+     Corresponding author at: State Key Laboratory of Multiphase Complex Systems,
+Institute of Process Engineering, Chinese Academy of Sciences, Beijing 100190, PR
+                                                                                              with the Boussinesq approximation.
+China.                                                                                           The boundary treatment of complex geometry signiﬁcantly af-
+     E-mail address: lmwang@ipe.ac.cn (L. Wang).                                              fects the overall accuracy, numerical stability, and parallel scal-
+
+
+https://doi.org/10.1016/j.ijheatmasstransfer.2023.124167
+0017-9310/© 2023 Elsevier Ltd. All rights reserved.
+X. Xiang and L. Wang                                                                           International Journal of Heat and Mass Transfer 210 (2023) 124167
+
+
+                                                                            interpolated bounce-back schemes and proposed a procedure to
+   Nomenclature                                                             implement Dirichlet velocity boundary conditions using data only
+                                                                            from a single node, called the single-node scheme. To maintain the
+   Variables                                                                local computation property of TLBM, it is necessary to extend the
+   Cp         pressure coeﬃcients                                           single-node scheme to the temperature boundary condition and
+   Nu         local Nussel number                                           achieve uniﬁed single-node curve boundary conditions.
+   Nu         average Nussel number                                             Multi-GPU computation is increasingly widely used to accel-
+   Re         Reynold number                                                erate ﬂuid solvers with the development of graphics processing
+   fi (x, t ) velocity distribution functions                               unit (GPU) supercomputing systems. The message-passing inter-
+   gi (x, t ) temperature distribution functions                            face (MPI) can be employed [30] for the multi-GPU computation
+   cS         lattice sound speed                                           and cross-device parallel. Based on multi-scale supercomputing
+   Tw         wall temperature                                              systems–Mole-8.5, Xiong et al. [31] conducted a multi-GPU im-
+   ci         discrete speed                                                plementation of lattice Boltzmann simulations for large-scale gas-
+   uw         wall velocity                                                 solid ﬂows. The ﬂuid-solid interaction is treated by the immersed
+   CD         drag coeﬃcients                                               moving boundary condition [32], and solid volume fractions are
+   CL         lift coeﬃcients                                               used to ensure that the force acting on the particle varies contin-
+   St         Strouhal number                                               uously. However, the calculation of solid volume fractions is com-
+   C (ψ )     class function                                                plex and time-consuming [33]. Xu et al. [34,35] assess the perfor-
+   S (ψ )     shape function                                                mance of the Open Accelerator (OpenACC), GPU accelerator, and
+   L          characteristic length                                         hybrid OpenACC and Message Passing Interface (MPI) approach for
+   Lr         recirculation length                                          multi-graphics processing units (GPUs) accelerated thermal lattice
+   D          diameter of cylinders                                         Boltzmann simulations. Multi-GPU thermal lattice Boltzmann sim-
+   N2         system sizes                                                  ulations with uniﬁed single-node curve boundary conditions keep
+   U0         initial velocity                                              the inherent parallelism of TLBM. Meanwhile, simulation results
+   Er         L2 -error                                                     describe ﬂow and heat transfer details of local proﬁles on ﬂuid-
+   y+         dimensionless distance from the wall                          solid interfaces under high mesh resolutions, providing an effective
+                                                                            numerical tool for accurate heat transfer in transitional ﬂows.
+   Greek symbols
+                                                                                This paper proposed the uniﬁed single-node curved boundary
+   δx       unit lattice spacing
+                                                                            conditions based on the single-node scheme [22] and general con-
+   δt       unit time spacing
+                                                                            centration boundary conditions [26], suitable for all the velocity
+   ν        kinematic viscosity
+                                                                            and temperature boundary conditions in thermal lattice Boltzmann
+   κ        heat transfer coeﬃcient
+                                                                            simulations. The accuracy and precision are veriﬁed by mathemat-
+   ζ        dimensionless y-axis coordinate
+                                                                            ical derivation and numerical experiments. A universal multi-GPU
+   ψ        dimensionless x-axis coordinate
+                                                                            implementation is presented, and parallel scalability of the algo-
+   t       time interval, s
+                                                                            rithm is ensured. The aerodynamic and heat transfer characteris-
+   Subscripts                                                               tics of low-Reynolds-number airfoils at different Reynolds numbers
+   i          the order of discrete speeds                                  and angles of attack are numerically studied. The unsteady evolu-
+   ī         the opposite order of discrete speeds                         tion process of laminar separation bubbles with different types is
+   b          the number of discrete speeds                                 simulated. Meanwhile, the simulated average Nussel numbers Nu
+    j         the order of Bernstein polynomials                            for forced convection with different Reynold numbers are equiva-
+   k          the order of discrete points in CST parameterization          lent to and modify the Hilpert correlation.
+   m          the number of discrete points in CST parameteriza-
+              tion                                                          2. Numerical methodology
+   n          the number of Bernstein polynomials
+   N1         the coeﬃcients for the shape function                         2.1. Thermal lattice Boltzmann method
+   N2         the coeﬃcients for the shape function
+                                                                                Compared to the SRT model, the MRT model [36] for ﬂuid ﬂows
+                                                                            uses a collision matrix with different eigenvalues to improve stabil-
+ability in particle ﬂows [16,17]. The early bounce-back scheme              ity, and the DDF model [13] is imposed for heat transfer. Thermal
+[18] approximates the curved geometry as staircase-shaped poly-             Lattice Boltzmann equations (TLBE) can be expressed as a set of
+lines. However, such simpliﬁcation leads to the collapse of ge-             velocity distribution functions fi (x, t ) and temperature distribution
+ometry integrity and even causes wrong simulation results in                functions gi (x, t ) with position x, time t, and discrete speed ci :
+some cases [19]. There have been several improved curved bound-             fi (x + ci δt, t + δt ) − fi (x, t ) = i ( f ),       i = 0, 1, . . . , b − 1.
+ary conditions describing actual shapes of solid boundaries, such
+as the interpolated bounce-back schemes [20–22] and the non-
+                                                                            gi (x + ci δt, t + δt ) − gi (x, t ) = i (g),         i = 0, 1, . . . , b − 1.   (2.1)
+equilibrium extrapolation scheme [23]. The treatment of the tem-            where b denotes the number of discrete speeds which are related
+perature Dirichlet condition is similar to the velocity boundary            to dimensions.
+condition [24]. However, the treatments of the Neumann and                     The nine-velocity model on the two-dimensional square lattice
+mixed Robin conditions should be constructed because the wall               (D2Q9) is used here, where the velocity set and corresponding
+temperature is unknown. One direct method is to calculate the               weight coeﬃcients are given as
+wall temperature using the wall-normal vector and temperature                                                                                         
+                                                                              cix          0    1     0     −1       0         1     −1      −1       1
+gradient, and then the Neumann condition is transformed into the                      =c
+Dirichlet condition [25,26]. Li et al. [27,28] studied the coeﬃcients         ciy          0    0     1      0      −1         1      1      −1      −1
+in distribution functions that satisﬁed the Dirichlet or Neumann
+                                                                                                     
+                                                                                                        4/9,       i=0
+                                                                                          c
+condition with second-order accuracy using the asymptotic theory.                   cS = √ , ωi =       1/9,       i = 1, 2, 3, 4                             (2.2)
+Recently, Marson et al. [29] developed a framework to generalize                           3            1/36,      i = 5, 6, 7, 8
+
+                                                                        2
+X. Xiang and L. Wang                                                                                                                          International Journal of Heat and Mass Transfer 210 (2023) 124167
+
+
+    In the following, δ x, δt , and cS respectively denote unit lattice
+spacing, unit time spacing, and lattice sound speed. The MRT col-
+lision operator of velocity distribution functions and SRT collision
+operator of temperature distribution functions are written as
+                                                               
+i ( f )=−                    M−1 SM
+                                            ij
+                                                     f j − f jeq
+                          j
+                  
+i (g)=−sg gi −geq
+                i
+                                                                                                         (2.3)
+where the transformation matrix M is
+         ⎛                                                                                               ⎞
+                1                  1        1            1              1       1     1        1    1
+  ⎜            −4                 −1       −1           −1             −1       2     2         2    2   ⎟
+  ⎜             4                 −2       −2           −2             −2       1     1         1    1   ⎟
+  ⎜                                                                                                      ⎟
+  ⎜             0                  1        0           −1              0       1    −1        −1    1   ⎟
+  ⎜                                                                                                      ⎟
+M=⎜             0                 −2        0            2              0       1    −1        −1    1   ⎟
+  ⎜                                                                    −1                      −1   −1   ⎟
+  ⎜             0                  0        1            0                      1     1                  ⎟           Fig. 1. Illustration of the Cartesian mesh and curved wall boundary. The missing
+  ⎜             0                  0       −2            0              2       1     1        −1   −1   ⎟           distribution functions are represented as solid arrows. The lattice-to-lattice links are
+  ⎝                                                                                                      ⎠           represented as dotted lines. Nodes (xc ) are constructed by the wall-normal vector
+                0                  1       −1            1             −1       0     0         0    0
+                                                                                                                     and value of δ based on wall nodes (xw ).
+                0                  0        0            0              0       1    −1         1   −1
+                                                                                                         (2.4)
+                                                                                                                     of γ can be obtained from the distance from ﬂuid boundary nodes
+      Moreover, the diagonal matrix S is                                                                             x f to wall nodes xw and the distance from ﬂuid boundary nodes
+S = diag(0, se , sε , 0, sq , 0, sq , sν , sν )                                                          (2.5)       x f to solid boundary nodes xw .
+
+where s represents the relaxation rate. Relaxation rates for density                                                        x f − xw 
+                                                                                                                     γ=                 , for xw exists                                                        (2.10)
+and momentum are zero to conserve mass and momentum. In this                                                                x f − xs 
+paper, se is related to bulk viscosity, set as 1.2. The values of s
+and sq are free parameters to tune, set as 1.1. Prandtl number P r                                                      Inspired by Ladd’s halfway bounce-back scheme [37,38], in
+is the kinematic viscosity and heat transfer coeﬃcient ratio, set as                                                 which cī ≡ −ci , Zhao et al. [22] proposed a single-node second-
+0.7. Moreover, sν is determined by kinematic viscosity ν , and sg is                                                 order curved boundary for wall velocity uw = u(xw , t ).
+determined by heat transfer coeﬃcient κ :                                                                                                                              ci · uw
+                                                                                                                   fi (x f , t + δt ) = fī (x f , t ) + 2ωi ρ                                               (2.11)
+              1              1
+                                                              1   1
+                                                                                                                                                                           cS2
+ν   = cS2             −             δt, κ        = cS2           −    δt                                 (2.6)
+               sν             2                               sg           2
+                                                                                                                                                2γ                      1                   2       c ·u
+                                                                                    eq    eq                         f i (x f , t + δ t ) =          f i (x f , t ) +        f (x , t ) +        ωi ρ i 2 w
+   The equilibrium distribution functions fi , gi are evaluated by                                                                            1 + 2γ                  1 + 2γ ī f         1 + 2γ       cS
+density ρ , velocity u and temperature T of the ﬂuid, which can be
+                                                                                                                                                                                                               (2.12)
+written as:
+                                                                                                                       The single-node scheme (2.12) discards the nonlocal contribu-
+                                  ci · u   ( ci · u )  u
+                                                              2             2
+fieq = ωi ρ 1 +                          +            − 2                                                            tion of neighboring nodes x f f to ensure the parallel scalability of
+                                   cS2        2cS4     2 cS
+                                                                                                                     lattice Boltzmann simulations based on the following ﬁrst-order
+                                                                               
+                    c ·u  (c · u ) u2
+                                                              2                                                      time approximation [29].
+geq
+ i
+    =       ωi T 1 + i 2 + i 4 − 2                                                                       (2.7)         
+                      cS    2 cS   2 cS                                                                              fī (x f f , t ) = fī (x f , t + 1 ) ≈ fī (x f , t )                                    (2.13)
+    The ﬂuid density ρ and velocity u can be derived respectively                                                        This approximation method can be extended from the single-
+as the zeroth and ﬁrst-order moments of velocity distribution func-                                                  node scheme (2.12) to the Dirichlet condition. Inspired by the mid-
+tions, and the ﬂuid temperature T can be derived as the zeroth                                                       point bounce-back scheme [26], the new single-node Dirichlet con-
+moment of temperature distribution functions:                                                                        dition for wall temperature Tw = T (xw , t ) is proposed in this paper.
+                                                                     
+ρ=             fi ,     ρu =               ci f i , T =                    gi                            (2.8)                                                                                            
+                                                                                                                                                                                  (ci · uw )2       u2w
+          i                            i                               i                                             gi (x f , t + δt ) = −gī  (x f , t ) + 2ωi Tw 1 +                        −              (2.14)
+                                                                                                                                                                                     2cS4           2cS2
+    TLBE is generally solved in the algorithm by the collision and
+streaming steps as
+                                                                                                                                              2γ                   1             
+    f i ( x , t ) = f i ( x , t ) + i ( f )                                                                         gi x f , t + δ t =                gi ’ x f , t −        gi x f , t
+                                                                                                                                                1 + 2γ                1 + 2γ
+    g i  ( x , t ) = g i ( x , t ) + i ( g )                                                                                                                                                 
+                                                                                                                                                   2            (c · u )2 u2
+                                                                                                                                              +        ωi Tw 1 + i 4w − w2                                    (2.15)
+    fi (x + ci δt, t + δt ) = fi (x, t )                                                                                                         1 + 2γ             2 cS   2 cS
+                                                                                                         (2.9)
+    gi (x + ci δt, t + δt ) = gi  (x, t )
+                                                                                                                        The new single-node scheme (2.15) results from the time ap-
+                                                                                                                     proximation and original scheme, which are as follows:
+2.2. Uniﬁed single-node curved boundary conditions
+                                                                                                                     gī (x f , t ) ≈ gī (x f , t + 1 ) = gī  (x f f , t )                                  (2.16)
+    The main concern of boundary treatment is reconstructing
+missing distribution functions after the streaming step. As il-
+                                                                                                                                                  2γ                         1
+lustrated in Fig. 1, missing distribution functions correspond to                                                    gi ( x f , t + δ t ) =            gi  ( x f , t ) −       g  (x , t )
+                                                                                                                                                1 + 2γ                    1 + 2γ ī f f
+lattice-to-lattice links for an arbitrary curved wall boundary in the                                                                                                                          
+Cartesian mesh. The wall nodes represent the intersection points of                                                                                     2            (c · u ) u2
+                                                                                                                                                                                      2
+                                                                                                                                               +            ωi Tw 1 + i 4w − w2                                (2.17)
+discrete speed ci and various lattice-to-lattice links, and the value                                                                                1 + 2γ             2 cS  2 cS
+
+                                                                                                                 3
+X. Xiang and L. Wang                                                                                                                 International Journal of Heat and Mass Transfer 210 (2023) 124167
+
+
+   The original scheme (2.17) satisﬁes second-order accuracy rela-                                            where ζ = y/c is the dimensionless y-axis coordinate of airfoils,
+tions for the Dirichlet condition proposed by Li [27].                                                        ψ = x/c is the dimensionless x-axis coordinate of airfoils, and c is
+                                                                                                              the chord length of airfoils.
+gi (x f , t + δt ) = Cd1 ∗ gī  (x f , t ) + Cd2 ∗ gī  (x f f , t ) + Cd3 ∗ gi  (x f , t )
+                                                                                                               In this paper, the class function C (ψ ) describes the category
+                                                            (ci · uw )2        u2                             of geometric shape through coeﬃcients N1 and N2 , and the shape
+                               +Cd4 ∗ 2ωi Tw 1 +                              − w2                            function S(ψ ) is deﬁned as the weighted sum of Bernstein polyno-
+                                                               2cS4            2 cS
+                                                                                                              mials, which can be expressed as the following:
+Cd1 = 0,          Cd2 = −1/(1 + 2γ ),
+                                                                                                                                                                                     n!
+Cd3 = 2γ /(1 + 2γ ),                    Cd4 = 1/(1 + 2γ )                                        (2.18)       C (ψ ) = CN2 N1 (ψ ) = ψ N1 (1 − ψ ) 2 , Knj =
+                                                                                                                                                                    N
+                                                                                                                                                                                 j!(n − 1 )!
+    Furthermore, the ﬁnite-difference approximation is employed                                                           
+                                                                                                                          n                       
+                                                                                                                                                  n                                 
+                                                                                                                                                                              n− j
+for the boundary temperature gradient. And the Neumann or                                                     S (ψ ) =           b j Bnj (ψ ) =         A j Knj ψ j (1 − ψ )                        (2.24)
+mixed Robin condition can be transformed into the Dirichlet con-                                                           j=0                    j=0
+dition by solving the wall temperature. The ﬁrst-order accuracy
+ﬁnite-difference approximation, the Neumann and mixed Robin                                                   where the number of weighted factors b j corresponds to the or-
+                                                                                                                                                                j
+conditions at the wall are as follows:                                                                        der of Bernstein polynomials Bn (BPO), and the value of coeﬃcients
+ ∂T           T (xc )−T (xw )
+                                            ∂T                                                            N1 and N2 are usually empirical, such as coeﬃcients N1 = 0.5 and
+  ∂n w ≈                   δ       ,         ∂ n w = m,             a1 ∂∂ Tn + a2 T       = a3   (2.19)       N2 = 1.0 for round nose NACA airfoils, and coeﬃcients N1 = 0.75
+                                                                                      w
+
+where δ represents the distance from constructed nodes xc to                                                  and N2 = 0.75 for Sears–Haack spinodal bodies.
+boundary nodes xw , set as 1.5 in this paper, and the direction is                                               The weight factors are calculated through the least square
+the same as the wall-normal unit vector. As shown in Fig. 1, the                                              method, uniquely determined by the given discrete points
+temperature of constructed nodes xc is calculated by the bilinear                                             (ψk , ζ (ψk )). The calculation of weight factors can be written in
+interpolation from surrounding ﬂuid nodes. Furthermore, distribu-                                             the form of linear equations:
+                                                                                                              ⎡                                                  ⎤⎡          ⎤   ⎡          ⎤
+tion functions of ﬂuid nodes x f f and ﬂuid boundary nodes x f near                                            ζ0 (ψ0 )          ζ1 (ψ0 )    ...        ζn (ψ0 )    b0             ζ ( ψ0 )
+the wall are√preferred √ over wall nodes xw , which gives the value                                           ⎢ζ0 (ψ1 )          ζ1 (ψ1 )    ...        ζn (ψ1 ) ⎥⎢ b1       ⎥ ⎢ζ ( ψ 1 ) ⎥
+range of δ ( 2 < δ < 2 2).
+                                                                                                              ⎢.                 .                      .        ⎥⎢ .        ⎥ = ⎢.         ⎥       (2.25)
+                                                                                                              ⎣.                 .                      .        ⎦⎣ .        ⎦ ⎣.           ⎦
+                                                                                                                .                .           ···        .                .               .
+    So far, the uniﬁed single-node curved boundary conditions re-
+                                                                                                                ζ0 (ψm )         ζ1 (ψm )    ···        ζn (ψm )        bn               ζ ( ψm )
+construction is completed, treating for the wall velocity and wall
+temperature, including the Dirichlet, Neumann, or mixed Robin                                                 
+                                                                                                               ζ (ψ ) = CNN21 (ψ )Knj ψ j (1 − ψ )n− j                                              (2.26)
+conditions. When the simulation does not involve moving bound-
+aries, the wall velocity is zero, and the uniﬁed single-node curved
+                                                                                                               ψ = ψk ∈ ( 0, 1 ) ( j = 0, 1, . . . , n )
+boundary conditions can be simpliﬁed as follows:                                                              where the subscript k represents the order of discrete points, m
+                   2γ                     1                                                             represents the number of discrete points, and n represents the
+fi x f , t + δt =
+                                            ’
+                          fi x f , t +          f x ,t ,                                                      number of Bernstein polynomials (BPO). When the order is too
+                   1 + 2γ                1 + 2γ i f
+                                                                                                              high, the least square ﬁtting process of CST parameterization is se-
+                   2γ                   1             2
+gi x f , t + δ t =        gi ’ x f , t −       g x ,t +         ωi Tw ,                                       riously ill-conditioned [41], so BPO = 9 is used in this paper.
+                   1 + 2γ                1 + 2γ i f      1 + 2γ                                                  As shown in Figs. 2 and 3, the parametric airfoil coincides with
+         
+           T (xw ),                                           Dirichlet                                       the given discrete points. In the following, coeﬃcients N1 = 0.5 and
+Tw =       T (xc ) − δ m,                                     Neumann                            (2.20)       N2 = 1.0 are evaluated for the symmetrical SD8020 airfoil, coeﬃ-
+           [a1 T (xc ) − a3 δ ]/(a1 − a3 δ ),                 mixed Robin                                     cients N1 = 0.75 and N2 = 0.75 are evaluated for the suction sur-
+                                                                                                              face of asymmetric Eppler 61 airfoil, and coeﬃcients N1 = 0.25 and
+    The momentum-exchange method [39] is imposed in this paper
+                                                                                                              N2 = 0.75 are evaluated for the pressure surface of asymmetric Ep-
+for force evaluation in TLBM. As shown in Fig. 1, each link’s force
+                                                                                                              pler 61 airfoil. The CST parametric airfoil is used to obtain the
+is evaluated from momentum exchange per unit time between two
+opposing directions of the neighboring ﬂuid boundary node and
+solid boundary node.
+ 1                                    
+      cī fi (x f ) − ci fī (xb ) ,              xb = x f + cī δt                              (2.21)
+δt
+The total force is calculated by summing all lattice-to-lattice links
+overall ﬂuid boundary nodes to the body.
+                                                                   
+F=                       cī fi (x f , t ) + fī (x f + cī δt, t )                              (2.22)
+      al l x f γ j =0
+                                                                                                              Fig. 2. Comparison between the CST parametric airfoil and symmetrical SD8020 air-
+                                                                                                              foil.
+2.3. Class-shape function transformation parameterization
+
+    For the boundary treatment in TLBM, the accuracy of simula-
+tions depends not only on the construction of boundary schemes
+but also on the exact parametric description of the wall, which is
+essential for obtaining the value of γ . In this paper, Class-Shape
+function Transformation Parameterization (CST) parameterization
+proposed by Kulfan [40] is imposed for trailing edge-closed low
+Reynolds number airfoils, which can be represented as the product
+of the class function C (ψ ) and the shape function S(ψ ):
+                                                                                                              Fig. 3. Comparison between the CST parametric airfoil and asymmetric Eppler 61
+ζ ( ψ ) = C ( ψ )S ( ψ )                                                                         (2.23)       airfoil.
+
+
+                                                                                                          4
+X. Xiang and L. Wang                                                                                    International Journal of Heat and Mass Transfer 210 (2023) 124167
+
+
+
+
+            Fig. 4. Framework for multi-GPU implementation of thermal lattice Boltzmann simulations using uniﬁed single-node curved boundary conditions.
+
+
+
+value of γ by rotating and dichotomy method at different angles
+of attack.
+
+
+3. Multi-GPU implementation
+
+    The framework for multi-GPU implementation of thermal
+lattice Boltzmann simulations using uniﬁed single-node curved
+boundary conditions is shown in Fig. 4. The ﬁrst step for the multi-
+GPU computation is domain partitioning and setting the corre-
+sponding CPU process and GPU. The next step is to apply for the
+host and device memory. Then, the information of lattice nodes
+is initialized, and the iterative method [42] is used to obtain dis-
+tribution functions consistent with the initial velocity ﬁeld. After
+initialization, the data are copied from the host to the device, and
+kernels are executed on GPUs. The strategy proposed by Wang and
+Aoki [30] is adopted to improve scalability, which can hide the
+communicational time using the overlapping mode. The overlap-
+ping mode using streams can execute the kernel and copy data be-
+tween the host and device simultaneously. The data transfer from
+the device to the host is conducted at the end of the kernel, and
+then data processing is carried out.
+    As well as Tölke’s work [43], the parallel algorithm reserves
+                                                                                     Fig. 5. Illustration of the multi-GPU implementation of thermal lattice Boltzmann
+the layouts of the mesh and block of kernel functions. The shared
+                                                                                     simulations based on peer-to-peer mode. The missing distribution functions are
+memory accelerates the propagation process of distribution func-                     represented as the dashed arrows, and the solid circle is represented as the buffer
+tions with east and west parts. As illustrated in Fig. 5, the idea of                in each computational domain.
+peer-to-peer mode lies in the same data handling for different pro-
+
+                                                                                 5
+X. Xiang and L. Wang                                                                                      International Journal of Heat and Mass Transfer 210 (2023) 124167
+
+
+cesses. The main concern for the multi-GPU thermal lattice Boltz-                      outer cylinder is determined by the Dirichlet, Neumann, and mixed
+mann simulations is to calculate missing distribution functions in                     Robin conditions. Thermal Taylor–Couette ﬂows’ velocity or tem-
+each computational domain. The buffer resized according to ac-                         perature proﬁles have steady analytical solutions [22,26,44], which
+tual needs is added in each computational domain for data com-                         can be expressed as
+munication on the host. The GPU-to-GPU data transfer is realized                                      β  r2 r 
+through the communication between corresponding CPU processes                          u(r )/U0 =            −                                                       (4.1)
+                                                                                                    1 − β2 r   r2
+using MPI. It should be noted that the allocation of CPU processes
+should be consistent with the partition of the whole computational                                                ln (r/r1 )
+                                                                                       T (r ) = T1 + (T2 − T1 )                Dirichlet                            (4.2)
+domain. Moreover, the periodic boundary condition is realized by                                                  ln (1/β )
+communicating the information at both ends.
+   This work is carried out on the AMD Radeon Open Com-                                T (r ) = T1 − r2 m ln (r/r1 ) Neumann                                        (4.3)
+pute platform (ROCm), and programs using the Heterogeneous-
+Computing Interface for Portability (HIP) framework are executed                                          a2 T1 − a3
+                                                                                       T (r ) = T1 +                    × ln (r/r1 ) mixed Robin                    (4.4)
+on GPU-like accelerators. In this study, a cluster is used with                                        a2 ln β + a1 /r2
+the SIMT accelerator made in China. The cluster includes many
+                                                                                       where m represents the boundary temperature gradient, the coef-
+nodes, each containing 1 CPU and four accelerators. The CPU has
+                                                                                       ﬁcients a1 , a2 , and a3 are the same as those in the scheme (2.19),
+four NUMA nodes, and each NUMA node has 8 X86-based posses-
+                                                                                       and the ratio β = r1 /r2 , r ∈ [r1 , r2 ].
+sors. The accelerator adopts a GPU-like architecture consisting of a
+                                                                                           The uniﬁed single-node curved boundary conditions are im-
+16 GB HBM2 device memory, and many compute units. Accelera-
+                                                                                       posed with system sizes N2 = 2562 at velocity U0 = 0.01, kine-
+tors connected to the CPU with PCI-E, the peak bandwidth of the
+                                                                                       matic viscosity ν = 0.05, and radius r2 = 125.5 at ratio β (=
+data transcription between main and device memory is 16 GB/s.
+                                                                                       0.1, 0.2, 0.4, 0.8 ) to simulate Taylor–Couette ﬂows in several cases.
+                                                                                       Furthermore, for the temperature boundary condition of the outer
+4. Numerical experiments for benchmarks                                                cylinder, several cases (the Dirichlet condition T2 = 0.0, the Neu-
+                                                                                       mann condition m = 0.003, and the mix Robin condition a1 = 18,
+4.1. Thermal Taylor–Couette ﬂows                                                       a2 = −0.5, and a3 = −0.1) with heat transfer coeﬃcient κ = 1.0
+                                                                                       are imposed in this paper. The computing time is long enough to
+    The ﬁrst benchmarks are thermal Taylor–Couette ﬂows between                        ensure steady thermal Taylor–Couette ﬂows. As shown in Fig. 6,
+two concentric circular cylinders. In the following, inner and outer                   multi-GPU simulation results are consistent with analytical solu-
+cylinders have radius r1 and r2 , respectively (r1 < r2 ). For the ve-                 tions quantitatively.
+locity boundary condition, the inner cylinder rotates at a constant                        Meanwhile, Taylor–Couette ﬂows are frequently used to as-
+velocity U0 , and the outer cylinder is ﬁxed. For the temperature                      sess the accuracy of boundary conditions. The different kine-
+boundary condition, the temperature of the inner cylinder keeps                        matic viscosity ν (= 0.12, 0.25, 0.5 ) is imposed in the follow-
+the Dirichlet condition T1 = 1.0, and the temperature T2 of the                        ing with spatial step h = 1.0/r1 and ratio β = 0.5, where
+
+
+
+
+Fig. 6. Thermal Taylor–Couette ﬂows’ velocity or temperature proﬁles at different ratios. Solid lines are analytical solutions, and markers are multi-GPU thermal lattice
+Boltzmann simulation results. (a): the velocity boundary condition; (b)–(d): the temperature boundary condition (Dirichlet, Neumann, mixed Robin).
+
+
+                                                                                   6
+X. Xiang and L. Wang                                                                                        International Journal of Heat and Mass Transfer 210 (2023) 124167
+
+
+
+
+Fig. 7. Convergence order of multi-GPU lattice Boltzmann simulations using the uniﬁed single-node curved boundary condition for thermal Taylor–Couette ﬂows between
+two concentric circular cylinders. (a): the velocity boundary condition; (b)–(d): the temperature boundary condition (Dirichlet, Neumann, mixed Robin).
+
+
+
+r1 (= 18.75, 38.75, 58.75, 78.75, 98.75 ), corresponding to system
+                                                                                          Table 1
+sizes N 2 (= 802 , 1602 , 2402 , 3202 , 4002 ). The simulations are car-                  Time recorded for total loops and speed-up of the single GPU to the single CPU.
+ried out at Re = 2U0 L/ν = 10, and the values of m and a1 are con-
+                                                                                            Mesh size                  Total time (s)      Total time (s)      Speedup
+sistent with the change of characteristic length L = r2 − r1 . The L2 -
+                                                                                                                       for single CPU      for single GPU
+error Eru and ErT for solutions are deﬁned as
+                                                                                        N 2 = 64 × 64              55                  8.25                 6.66
+           x [u (x, t ) − u (x, t )]
+                                    2
+                                                  x [T (x, t ) − T (x, t )]
+                           ∗                                      ∗        2                N 2 = 128 × 128            195                 8.51                 22.93
+Eru =                               , ErT =                                             N 2 = 256 × 256            961                 9.34                 102.89
+                 x [u (x, t )]
+                              2
+                                                        x [T (x, t )]
+                      ∗                                      ∗       2
+                                                                                            N 2 = 512 × 512            4281                10.94                391.22
+                                                                              (4.5)         N 2 = 1024 × 1024          20,833              15.94                1306.56
+
+where u(x, t ) and T (x, t ) are numerical solutions,           u∗ ( x, t )
+                                                                    and
+T ∗ (x, t ) are analytic solutions, and the summation is over all ﬂuid
+nodes and ﬂuid boundary nodes. Figure 7(a) shows that second-
+order accuracy for the single-node scheme (2.12) is veriﬁed in
+multi-GPU thermal lattice Boltzmann simulations. Meanwhile, the
+error becomes more signiﬁcant with ν increasing mainly due to
+the increased lattice Mach number Ma = U0 /cS = Re · ν /(2LcS ) at
+the constant Reynolds number. Figure 7(b) shows that the present
+single-node scheme (2.15) for the benchmark problem has higher
+accuracy than the non-equilibrium extrapolation scheme proposed
+by Guo et al. [23] and minor numerical oscillation compared to
+Chen’s scheme [26] without using the value of γ . There is no
+signiﬁcant difference in accuracy with the Neumann and mixed
+Robin conditions for different values of δ (= 1.5δx , 2.0δx , 2.5δx ) in
+Fig. 7(c) and (d). The accuracy of the Neumann and mixed Robin
+conditions is reduced due to the ﬁrst-order approximation (2.19) of
+the boundary temperature gradient.
+     The performance of multi-GPU computation is calculated by the
+metric “mega lattice updates per second” [30]. Table 1 shows the
+                                                                                          Fig. 8. Performance versus mesh size for the benchmark problem with three curved
+time recorded for total loops and speed-up of the single GPU to                           boundary conditions.
+the single CPU, simulating thermal Taylor–Couette ﬂows as bench-
+marks. Figures 8 and 9 shows the performance versus mesh size
+and GPU numbers for the benchmark problem with three curved
+
+                                                                                      7
+X. Xiang and L. Wang                                                                                     International Journal of Heat and Mass Transfer 210 (2023) 124167
+
+
+
+
+       Fig. 9. Performance versus GPU numbers for the benchmark problem with three curved boundary conditions. (a) strong scaling tests; (b) weak scaling tests.
+
+
+
+boundary conditions. System sizes N 2 = 40962 are used for the                        Table 2
+                                                                                      Comparison between other numerical results and present work. Table demonstrates
+whole computational domain for strong scaling tests and each
+                                                                                      drag coeﬃcients CD and recirculation length Lr for steady ﬂows over a circular cylin-
+GPU’s computational domain for weak scaling tests. The comput-                        der at Re = 20, 40.
+ing cost for Chen’s scheme [26] is minimal but does not accurately
+                                                                                        Case                      Reference                    CD                    Lr
+describe the wall, and the single-node scheme improves accu-
+racy without signiﬁcantly increasing the computing time. The non-                       Re = 20                   Zhou et al. [46]             2.3                   1.84
+                                                                                                                  Wu et al. [47]               2.091                 1.86
+equilibrium extrapolation scheme proposed by Guo et al. [23] uses
+                                                                                                                  Present                      2.049                 1.87
+distribution functions from several neighboring nodes, inevitably                       Re = 40                   Zhou et al. [46]             1.7                   4.4
+undermining the LBM algorithm’s parallel scalability.                                                             Wu et al. [47]               1.565                 4.62
+                                                                                                                  Present                      1.529                 4.49
+                  nx × ny × loopnumber × 10−6
+Performance =                                 MLUP S                      (4.6)
+                           total time
+                                                                                      Table 3
+                                                                                      Comparison between other numerical, experimental results, and present work. Ta-
+                                                                                      ble demonstrates time-averaged drag coeﬃcients CD and Strouhal number St for un-
+4.2. Flows around a heated circular cylinder with constant heat ﬂux
+                                                                                      steady ﬂows over a circular cylinder at Re = 100, 200.
+
+    The following benchmarks are ﬂows around a heated circular                          Case                      Reference                     CD              St
+cylinder with constant heat ﬂux, which have been studied by the-                        Re = 100                  Clift et al. [48]             1.24            –
+oretical, experimental, and numerical analysis for many years. The                                                Williamson reported in        –               0.166
+formation of wake vortices is mainly related to Reynolds numbers,                                                 Liu et al. [49]
+                                                                                                                  Wu et al. [47]                1.364           0.163
+which can be deﬁned as                                                                                            Present                       1.339           0.165
+       U0 D                                                                             Re = 200                  Clift et al. [48]             1.16            –
+Re =                                                                      (4.7)
+        ν                                                                                                         Williamson reported in
+                                                                                                                  Liu et al. [49]
+                                                                                                                                                –               0.197
+
+where D is the diameter of cylinders, chosen to be 65 in simula-                                                  Wu et al. [47]                1.349           0.193
+tions.                                                                                                            Present                       1.337           0.195
+
+    Considering that simulation results are sensitive to the size of
+computational domains, system sizes N 2 = 4, 0962 and initial ve-
+locity U0 = 0.009647 are imposed. The cylinder is placed in the                       and lift coeﬃcients CL are deﬁned as
+center of the domain. The uniﬁed single-node curved boundary                                       FD                          FL
+conditions are imposed for treating the cylinder’s surface with                       CD =                    ,   CL =                                               (4.8)
+                                                                                               (1/2 )ρU02 D              (1/2 )ρU02 D
+the Neumann condition ∂ T /∂ n = m = −1. Several cases (Re = 20,
+40, 100, and 200) are simulated, instantaneous streamlines and                            Furthermore, the length of recirculation region Lr (scaled by
+isotherms for dimensionless temperature are shown in Fig. 10,                         D/2) and Strouhal number St = f D/U0 are used to evaluate steady
+and instantaneous vorticity and dimensionless temperature ﬁelds                       and unsteady ﬂows, where the vortex shedding frequency is ob-
+T  = −(T − T0 )/(∂ T /∂ n )/D are shown in Fig. 11. As can be ob-                    tained fast Fourier transform (FFT) of lift coeﬃcients. Tables 2 and
+served, ﬂow ﬁelds are laminar and steady with no vortex struc-                        3 show that simulation results are consistent with experimental
+ture at Re = 20 and 40, and a pair of stationary recirculating eddies                 values at different Reynolds numbers.
+form behind the cylinder. With increases of Re, the region heated
+by the cylinder shrinks gradually, and vortices fall off the cylinder                 5. Numerical results of heat transfer in transitional ﬂows
+alternately and take away the heat leading to the similarity of vor-
+ticity and temperature distribution. Meanwhile, the temperature in                    5.1. Problem set and mesh convergence
+the wake decreases gradually due to heat transfer. Furthermore,
+Fig. 12 shows the local Nusselt number Nu = −∂ T /∂ n ∗ D/(T − T0 )                      To study heat transfer in transitional ﬂows, it is necessary to
+proﬁles along the cylinder surface, describing the heat transfer                      grasp the aerodynamics of airfoil ﬂows at low Reynolds numbers
+rate, and the results agree well with those of Tao et al. [45].                       as accurately as possible. Figure 13 shows a schematic of the com-
+    In this paper, the total force is calculated according to                         putational domain and the locations of the various boundaries
+Eq. (2.22), and drag forces FD and lift forces FL are components of                   for a heated Eppler 61 airfoil at an angle of attack (AOA = 10◦ ).
+the total force in x-direction and y-direction. Drag coeﬃcients CD                    The length ratio of the x-direction and y-direction (tx : ty) main-
+
+                                                                                  8
+X. Xiang and L. Wang                                                                                           International Journal of Heat and Mass Transfer 210 (2023) 124167
+
+
+
+
+Fig. 10. Instantaneous streamlines (left) and isotherms (right) for ﬂows around a heated circular cylinder with constant heat ﬂux. (a), (b): Re = 20; (c), (d): Re = 40; (e), (f):
+Re = 100; (g), (h): Re = 200.
+
+
+
+tains 4 : 1. The uniﬁed curved boundary conditions (2.20) are                               Table 4
+                                                                                            Time-averaged lift and drag coeﬃcients (CD , CL ) for different chord L values and
+used for the no-slip velocity boundary and the Neumann condi-
+                                                                                            ratio tx values at Re = 1500. The standard deviation for lift and drag coeﬃ-
+tion ∂ T /∂ n = m = −1. The halfway bounce-back scheme (2.11) is                            cient is listed. The extrapolated value of time-averaged lift and drag coeﬃcients at
+used for the inlet with constant velocity U0 (lattice unit) and den-                        Re = 1500 are 1.0503 and 0.1657 proposed by Celik et al. [51].
+sity ρ0 . The convective boundary condition is imposed for outlets
+                                                                                             Mesh                       CL             CD              CL,std          CD,std
+to simulate unsteady ﬂows more accurately [8]. Considering that
+it is hard to calculate the average boundary velocity in multi-GPU                            L = 256, tx = 16          1.03023        0.17047         0.03301         0.00581
+                                                                                              L = 512, tx = 16          1.05752        0.17427         0.03486         0.00648
+computation, the deﬁnition of local boundary velocity is imposed
+                                                                                              L = 768, tx = 16          1.07242        0.17560         0.03651         0.00683
+[50].                                                                                         L = 1024, tx = 16         1.07523        0.17586         0.03668         0.00688
+    Furthermore, time-averaged lift and drag coeﬃcients (CD , CL ) are                        L = 1024, tx = 10         1.13042        0.18507         0.03965         0.00744
+related to the Reynolds numbers deﬁned by the chord length L                                  L = 512, tx = 32          1.02802        0.16950         0.03339         0.00621
+(lattice unit) and calculated by the momentum-exchange method.
+The local pressure coeﬃcient C p and Nusselt number Nu are mea-
+sured for the suction and pressure surfaces. The average Nusselt
+number Nu is integrated surrounding the airfoil surface, which can                          verify the mesh convergence. Figure 14 shows lift and drag coeﬃ-
+be expressed:                                                                               cients for ﬂows with different chord L values during all time inter-
+                                                                                            vals, which change periodically with time at Re = 1500. Meanwhile,
+             cS2 [ρ (X ) − ρ0 ]                                                             it can be seen that the time series of lift and drag coeﬃcients
+C p (X ) =                        ,
+                0.5ρ0U02                                                                    at Re = 46, 0 0 0 shows irregular oscillation, which means that the
+                                                                                            ﬂows transit to turbulence. When ﬂows are fully developed, the
+         −∂ T /∂ n ∗ L
+Nu(X ) =                ,                                                                   time-averaged values are obtained with a long enough time se-
+         [T (X ) − T0 ]                                                                                                                          √
+                                                                                          ries. Time-averaged dimensionless distance (y+ = δ τw /ρ /μ, τw =
+Nu = Nu(X )ds/ ds                                                              (5.1)        ρμUc /δ ) for the suction and pressure surfaces is calculated. As
+                                                                                            seen in Fig. 15, the wall shear stress is mainly concentrated at
+                       
+                                                                                            the blade’s leading edge, which may lead to a speciﬁc error in
+   Multi-GPU simulations for different chord L values and ratio tx                          calculating drag coeﬃcients. As illustrated in Tables 4 and 5, the
+values in the x-direction are computed at Re = 10 0 0 and 46,0 0 0 to                       simulation results from different meshes are close and stationar-
+
+                                                                                        9
+X. Xiang and L. Wang                                                                                           International Journal of Heat and Mass Transfer 210 (2023) 124167
+
+
+
+
+Fig. 11. Instantaneous vorticity (left) and temperature ﬁelds (right) for ﬂows around a heated circular cylinder with constant heat ﬂux. (a), (b): Re = 20; (c), (d): Re = 40;
+(e), (f): Re = 100; (g), (h): Re = 200.
+
+
+
+
+                                                                                            Fig. 13. Flows around a heated Eppler 61 airfoil at AOA = 10◦ : schematic of the
+                                                                                            computational domain.
+
+
+                                                                                            Table 5
+                                                                                            Time-averaged lift and drag coeﬃcients (CD , CL ) for different chord L values and
+                                                                                            ratio tx values at Re = 46,0 0 0. The standard deviation for lift and drag coeﬃ-
+                                                                                            cient is listed. The extrapolated value of time-averaged lift and drag coeﬃcients at
+                                                                                            Re = 46,0 0 0 are 1.5461 and 0.1057 proposed by Celik et al. [51].
+
+                                                                                             Mesh                      CL             CD              CL,std         CD,std
+Fig. 12. The cylinder surface’s local Nusselt number Nu proﬁles at different Reynold
+                                                                                              L = 256, tx = 16         1.61141         0.15889        0.16170        0.04308
+numbers Re.
+                                                                                              L = 512, tx = 16         1.56568         0.09691        0.08663        0.02193
+                                                                                              L = 768, tx = 16         1.56571         0.09244        0.08281        0.02055
+                                                                                              L = 1024, tx = 16        1.61756         0.09357        0.07623        0.02155
+ity, which proves that different chord values L = 512, 768, 1024                              L = 1024, tx = 10        1.65578         0.09387        0.06230        0.01699
+provide adequate mesh resolution. Furthermore, computational do-                              L = 512, tx = 32         1.51905         0.09217        0.07223        0.01807
+main size affects time-averaged lift and drag coeﬃcient values. The
+mesh (L = 1,024, tx = 10) is used in the remaining study due to the
+cost of multi-GPU computations. Multi-GPU thermal lattice Boltz-
+
+                                                                                       10
+X. Xiang and L. Wang                                                                                         International Journal of Heat and Mass Transfer 210 (2023) 124167
+
+
+
+
+Fig. 14. Lift and drag coeﬃcients during all time intervals for ﬂows around a heated Eppler 61 airfoil at AOA = 10◦ with different chord L values. (a) lift coeﬃcients (CL );
+(b) drag coeﬃcients (CD ).
+
+
+
+
+                                                                                            bubble. Furthermore, the temperature boundary layer shrinks, the
+                                                                                            vortex size reduces, and the turbulence increases with increases of
+                                                                                            Re. The separation bubble becomes shorter and moves closer to the
+                                                                                            leading edge.
+                                                                                                Figure 19 illustrates the time-averaged local pressure coeﬃcient
+                                                                                            C p and Nusselt number Nu for the suction and pressure surfaces at
+                                                                                            several Reynolds numbers Re (= 1500, 10,000, 20,000, 46,000). As
+                                                                                            can be seen, the laminar separation bubble changes the equivalent
+                                                                                            shape of the airfoil, resulting in signiﬁcant changes in the pressure
+                                                                                            distribution on the suction surface. The plateau in the proﬁle of
+                                                                                            the local Nusselt number can express the separation and reattach-
+                                                                                            ment points, and the change is consistent with the ﬂow structure.
+                                                                                            Meanwhile, the temperature boundary layer contraction causes the
+                                                                                            local Nusselt number to increase. After the shear layer is sepa-
+                                                                                            rated, a low-speed ﬂow is formed in the separation bubble, and
+                                                                                            the convection heat transfer between the ﬂuid and wall surface
+                                                                                            decreases. The average Nusselt number Nu is calculated as 51.36,
+                                                                                            62.81, 199.82, 319.90, 645.86, corresponding to Reynolds numbers
+Fig. 15. Time-averaged dimensionless distance y+ from the wall at Re = 46, 0 0 0 for
+the suction and pressure surfaces around a heated Eppler 61 airfoil with different          Re (= 10 0 0, 150 0, 10,0 0 0, 20,0 0 0, 46,0 0 0), which can modify the
+Reynolds numbers at AOA = 10◦ .                                                             Hilpert correlation [52] of forced convection heat transfer from an
+                                                                                            Eppler 61 airfoil at AOA = 10◦ . The following correlation of Nu is
+                                                                                            linearly ﬁtted by a logarithmic equation (correlation coeﬃcient R2
+mann simulations with 10, 240 × 2560 lattice nodes and 4,0 0 0,0 0 0                        = 0.995).
+time steps take about 14.33 h and 2 × 2 GPUs. The performance
+of multi-GPU computation is measured as 2,033.22 MLUPS in the                               Nu = 0.6178Re0.6494 P r 1/3     (for Re ≤ 46, 0 0 0 )                      (5.2)
+following.
+
+5.2. Effect of the Reynolds number for ﬂows around a heated Eppler                          5.3. Effect of the angle of attack for ﬂows around a heated SD8020
+61 airfoil                                                                                  airfoil
+
+    Several cases (Re = 1500, 10,000, 20,000, 46,000) with the ini-                             Flows around a symmetric SD8020 airfoil for a range of at-
+tial velocity U0 = 0.009798 are simulated to study the effect of                            tack angles (between −4◦ and 10◦ ) are simulated the nonlinear
+the Reynolds number for ﬂows around a heated Eppler 61 airfoil                              effect of lift coeﬃcients at Re = 40,0 0 0. Figure 20 illustrates the
+at AOA = 10◦ . The fully developed unsteady vorticity and tem-                              simulation results of the time-averaged lift coeﬃcients CL com-
+perature ﬁelds, temperature boundary layers, and streamlines dur-                           pared with those from the experimental work [53] and numeri-
+ing ten-time intervals (10t = 16.95, 2.54, 1.27, 0.55 s) are shown                         cal works [1,2]. As can be seen, the lift curve slope agrees well
+in Figs. 16–18. Compared with the ﬂows around a heated circu-                               with the experimental value at small angles of attack, such as a
+lar cylinder, the vorticity ﬁeld is similar to the temperature ﬁeld                         plateau at AOA < 2◦ , and the large lift curve slope at AOA = 2.0◦ –
+because the wake vortices remove the heat and transfer it out-                              3.0◦ . The three-dimensional effect of the ﬂow increases, leading
+ward continuously. As can be observed, the shear layer is not sep-                          to speciﬁc numerical errors with the increase of the angle of
+arated, and the unsteady ﬂow is characterized by the shedding of                            attack.
+the trailing-edge vortex at Re = 1500. The shear layer is separated                             Several cases (AOA = 2.5◦ , 3.0◦ , 3.5◦ ) with the initial velocity U0
+from the suction surface due to a reverse pressure gradient and                             = 0.009798 are simulated to study the effect of the angle of attack
+reattached downstream, forming the laminar separation bubble at                             for ﬂows around a heated SD8020 airfoil at Re = 40,0 0 0. The fully
+Re = 10,0 0 0, 20,0 0 0, 46,0 0 0. Among them, the shear vortices play                      developed unsteady vorticity and temperature ﬁelds, temperature
+a crucial role in the evolution of the unsteady laminar separation                          boundary layers, and streamlines during ten-time intervals (10t
+
+                                                                                       11
+X. Xiang and L. Wang                                                                                     International Journal of Heat and Mass Transfer 210 (2023) 124167
+
+
+
+
+       Fig. 16. Unsteady vorticity ﬁelds for ﬂows around a heated Eppler 61 airfoil during ten-time intervals 10t with different Reynolds numbers at AOA = 10◦ .
+
+
+
+
+      Fig. 17. Unsteady temperature ﬁelds for ﬂows around a heated Eppler 61 airfoil during ten-time intervals 10t with different Reynolds numbers at AOA = 10◦ .
+
+
+
+
+Fig. 18. Unsteady temperature boundary layers (one percent of the maximum temperature) and streamlines for ﬂows around a heated Eppler 61 airfoil during ten-time
+intervals 10t with different Reynolds numbers at AOA = 10◦ .
+
+
+                                                                                  12
+X. Xiang and L. Wang                                                                                        International Journal of Heat and Mass Transfer 210 (2023) 124167
+
+
+
+
+Fig. 19. Time-averaged local pressure coeﬃcient C p (left) and Nusselt number Nu (right, decimal logarithm) for the suction and pressure surfaces around a heated Eppler 61
+airfoil with different Reynolds numbers at AOA = 10◦ .
+
+
+
+                                                                                         = 0.64s) based on the unsteady lift change are shown in Figs. 21–
+                                                                                         23. As can be observed, even if the angle of attack changes pretty
+                                                                                         little, the position and structure of the unsteady laminar separation
+                                                                                         bubble and the mode of the wake vortex are pretty different at
+                                                                                         AOA = 2.5◦ , 3.0◦ , 3.5◦ . Similarly, the similarity between vorticity
+                                                                                         and temperature ﬁelds is also observed.
+                                                                                              Figure 24 illustrates the time-averaged local pressure coeﬃcient
+                                                                                         C p and Nusselt number Nu for the suction and pressure surfaces
+                                                                                         at several angles of attack AOA (= 2.5◦ , 3.0◦ , 3.5◦ ). The average
+                                                                                         Nusselt number Nu is calculated as 481.59, 471.31, and 498.88, cor-
+                                                                                         responding to angles of attack AOA = (2.5◦ , 3.0◦ , 3.5◦ ). At small
+                                                                                         attack angles, the average Nusselt number does not change sig-
+                                                                                         niﬁcantly, while the proﬁle of the local Nusselt number is pretty
+                                                                                         different, mainly due to laminar separation bubbles. Similarly,
+                                                                                         the plateau in the proﬁle of the local Nusselt number can ex-
+                                                                                         press the separation region and minimum of the local Nusselt
+                                                                                         number.
+Fig. 20. Time-averaged lift coeﬃcient CL for ﬂows around a heated SD8020 airfoil
+with different angles of attack at Re = 40,0 0 0.
+
+
+
+
+         Fig. 21. Unsteady vorticity ﬁelds for ﬂows around a heated SD8020 airfoil during ten-time intervals 10t with different angles of attack at Re = 40,0 0 0.
+
+
+                                                                                    13
+X. Xiang and L. Wang                                                                                      International Journal of Heat and Mass Transfer 210 (2023) 124167
+
+
+
+
+       Fig. 22. Unsteady temperature ﬁelds for ﬂows around a heated SD8020 airfoil during ten-time intervals 10t with different angles of attack at Re = 40,0 0 0.
+
+
+
+
+Fig. 23. Unsteady temperature boundary layers and streamlines for ﬂows around a heated SD8020 airfoil during ten-time intervals 10t with different angles of attack at
+Re = 40,0 0 0.
+
+
+
+
+                                                                                   14
+X. Xiang and L. Wang                                                                                       International Journal of Heat and Mass Transfer 210 (2023) 124167
+
+
+
+
+Fig. 24. Time-averaged local pressure coeﬃcient C p (left) and Nusselt number Nu (right, decimal logarithm) for the suction and pressure surfaces around a heated SD8020
+airfoil with different angles of attack at Re = 40,0 0 0.
+
+
+
+6. Conclusion                                                                          CRediT authorship contribution statement
+
+    The uniﬁed curved boundary conditions for all the velocity and                        Xing Xiang: Data curation, Investigation, Software, Validation,
+temperature boundary conditions (Dirichlet, Neumann, and mixed                         Visualization, Writing – original draft. Limin Wang: Conceptual-
+Robin) are presented, which reserve the local computation prop-                        ization, Project administration, Methodology, Writing – review &
+erty of TLBM and are suitable for multi-GPU implementation. CST                        editing, Supervision.
+parameterization for the symmetrical airfoil SD8020 and asymmet-
+ric airfoil Eppler 61 at different attack angles is used to describe                   Data availability
+the wall surface accurately. A series of acceleration technologies
+are used in the multi-GPU computation, such as the shared mem-                             Data will be made available on request.
+ory used to propagate distribution functions, data of different steps
+stored separately to reduce exchanges, and overlapping mode used                       Acknowledgments
+to hide the communicational time. Multi-GPU parallel computing
+architecture algorithm with uniﬁed single-node curved boundary                            This work was ﬁnancially supported by National Natural Science
+conditions can be easily extended to the numerical study of ﬂow                        Foundation of China (Nos. 51776212, 91434113), National Numerical
+and heat transfer in three-dimensional straight blades.                                Wind Tunnel Project of China (No. NNW2020ZT1-A20), and Chi-
+    Numerical results of benchmarks verify the accuracy of uniﬁed                      nese Academy of Sciences (No. QYZDB-SSW-SYS029 ). This work
+single-node curved boundary conditions in multi-GPU thermal lat-                       was supported by the GHfund A (202302015420). The computation
+tice Boltzmann simulations. The second-order accuracy of the new                       was supported by Advanced Computing East China Sub-center. We
+single-node Dirichlet condition is proved by theoretical derivation                    would like to thank Dr. Huahai Zhang for his valuable suggestions.
+and numerical experiments. However, the accuracy of Neumann
+                                                                                       Appendix A. Procedure for the values of γ at different angles
+and mixed Robin conditions is reduced due to the ﬁrst-order ap-
+                                                                                       of attack
+proximation of boundary temperature gradient, which can be im-
+proved using the high-order difference scheme. Furthermore, heat
+                                                                                           The values of γi (i = 1, 2, . . . , b − 1 ) corresponding to wall
+transfer in the laminar separation bubble mainly depends on the
+                                                                                       nodes xw are intersections of lattice-to-lattice links and CST para-
+airfoil ﬂow aerodynamics at low Reynolds numbers. The size of
+                                                                                       metric airfoils in Fig. 1, which can be solved by combining discrete
+long bubbles for SD8020 airfoil at Re = 40,0 0 0 increases with in-
+                                                                                       speeds equations of ﬂuid boundary nodes x f and CST parametric
+creasing the angle of attack, and short bubbles move upstream to-
+                                                                                       airfoils.
+ward the leading edge and reduce in size for Eppler 61 airfoil at
+                                                                                           Coordinate points (x f , y f ) are normalized by the chord front-
+AOA = 10◦ with Re increasing. The evolution of laminar separation
+                                                                                       end coordinate, and discrete speeds equations (i = 2, 4 ) can be ex-
+bubbles is accurately reﬂected from the variation of time-average
+                                                                                       pressed as:
+pressure coeﬃcients C p in transitional ﬂows and signiﬁcantly af-                      
+fects the local Nussel number Nu of the suction surface. The aver-                      y = f (x ) = (ciy /cix )x + b
+                                                                                                                                                                      (A1)
+age Nussel numbers Nu for Eppler 61 at different Reynold numbers                        b = y f − (ciy /cix )x f
+are equivalent to and modify the Hilpert correlation without the
+limitations of experiments. Multi-GPU TLBM solver can simulate                            For airfoils at AOA = 0◦ , CST parametric airfoils are imposed,
+transitional ﬂows using high-resolution meshes on supercomput-                         and weight factors are calculated through the least square method
+ers, complementing traditional computational ﬂuid dynamic ap-                          with the given discrete points from the airfoil database.
+proaches. Further studies aim to study the three-dimensional effect                    ζ (ψ ) = C (ψ )S(ψ ),
+of low-Reynolds-number at high altitudes on compressor blades
+                                                                                                                                                          n!
+                                                                                       C (ψ ) = CN2 N1 (ψ ) = ψ N1 (1 − ψ ) 2 , Knj =
+                                                                                                                                      N
+using compressible lattice Boltzmann simulations.
+                                                                                                                                                      j!(n − 1 )!
+Declaration of Competing Interest                                                                 
+                                                                                                  n                      
+                                                                                                                         n                              
+                                                                                                                                                  n− j
+                                                                                       S (ψ ) =         b j Bnj (ψ ) =         A j Knj ψ j (1 − ψ )                   (A2)
+                                                                                                  j=0                    j=0
+    The authors declare that they have no known competing ﬁnan-
+cial interests or personal relationships that could have appeared to                     It is assumed that discrete points (ψk , ζ (ψk )) on the CST para-
+inﬂuence the work reported in this manuscript.                                         metric airfoils locate on lattice-to-lattice links at the same time,
+
+                                                                                  15
+X. Xiang and L. Wang                                                                                                International Journal of Heat and Mass Transfer 210 (2023) 124167
+
+
+that is, ζ (ψ ) = (ciy /cix )ψ + b. The unique real root can be obtained                        [15] J. Wang, D. Wang, P. Lallemand, L.-S. Luo, Lattice Boltzmann simulations of
+by dichotomy or Newton iteration.                                                                    thermal convective ﬂows in two dimensions, Comput. Math. Appl. 65 (2)
+                                                                                                     (2013) 262–286.
+   For the other discrete speeds equations (i = 2, 4 ), the values of                           [16] G.J. Rubinstein, A. Ozel, X. Yin, J.J. Derksen, S. Sundaresan, Lattice Boltzmann
+γ can directly be obtained from the CST parametric airfoils:                                         simulations of low-Reynolds-number ﬂows past ﬂuidized spheres: effect of in-
+                                                                                                    homogeneities on the drag force, J. Fluid Mech. 833 (2017) 599–630.
+ γ = y f − ζ (x f )             i=2                                                             [17] S. Song, L. Rong, K. Dong, X. Liu, P. Le Clech, Y. Shen, Particle-scale modelling
+                                                                                  (A3)
+ γ = 1 − y f + ζ (x f )         i=4                                                                  of ﬂuid velocity distribution near the particles surface in sand ﬁltration, Water
+                                                                                                     Res. 177 (2020) 115758.
+                                                                                                [18] D.P. Ziegler, Boundary conditions for lattice Boltzmann simulations, J. Stat.
+   The difference for airfoils at AOA = 0◦ is that the rotating of                                  Phys. 71 (5–6) (1993) 1171–1177.
+CST parametric airfoils needs to be considered. Assuming that the                               [19] S. Tao, Z. Guo, Boundary condition for lattice Boltzmann modeling of mi-
+rotation angle is θ , the equation with the front end of the chord as                                croscale gas ﬂows with curved walls in the slip regime, Phys. Rev. E 91 (4)
+                                                                                                     (2015) 043305.
+the coordinate origin is as follows:                                                            [20] M. Bouzidi, M. Firdaouss, P. Lallemand, Momentum transfer of a Boltzman-
+                                                                                                     n-lattice ﬂuid with boundaries, Phys. Fluids 13 (11) (2001) 3452–3459.
+x sin θ + y cos θ = 0                                                             (A4)          [21] D.Z. Yu, R.W. Mei, L.S. Luo, W. Shyy, Viscous ﬂow computations with the
+                                                                                                     method of lattice Boltzmann equation, Prog. Aerosp. Sci. 39 (5) (2003)
+    It is assumed that new discrete points ( , Z ( )) are on rotat-                                329–367.
+ing airfoils, and the distance dy from the point to the chord has the                           [22] W. Zhao, W.-A. Yong, Single-node second-order boundary schemes for the lat-
+following relationship with the length dx in the x-direction before                                  tice Boltzmann method, J. Comput. Phys. 329 (2017) 1–15.
+                                                                                                [23] Z.L. Guo, C.G. Zheng, B.C. Shi, An extrapolation method for boundary conditions
+rotation.                                                                                            in lattice Boltzmann method, Phys. Fluids 14 (6) (2002) 2007–2010.
+dy =  cos θ + Z( ) sin θ                                                                      [24] L. Wang, Y. Zhao, X.G. Yang, B.C. Shi, Z.H. Chai, A lattice Boltzmann analysis of
+                                                                                                     the conjugate natural convection in a square enclosure with a circular cylinder,
+dx =  cos θ − Z( ) sin θ                                                        (A5)               Appl. Math. Model. 71 (2019) 31–44.
+dy = ζ (dx ), dx ∈ (0, 1 )                                                                      [25] T. Zhang, B.C. Shi, Z.L. Guo, Z.H. Chai, J.H. Lu, General bounce-back scheme for
+                                                                                                     concentration boundary condition in the lattice-Boltzmann method, Phys. Rev.
+    Similarly, the values of γ can be obtained by taking the root                                    E 85 (1) (2012) 016701.
+of simultaneous Eqs. (A1), (A5). Meanwhile, because the func-                                   [26] Q. Chen, X.B. Zhang, J.F. Zhang, Improved treatments for general boundary
+                                                                                                     conditions in the lattice Boltzmann method for convection-diffusion and heat
+tional relationship for discrete points ( , Z ( )) is implicit, dis-                               transfer processes, Phys. Rev. E 88 (2013) 033304.
+crete speeds (i = 2, 4 ) must also ﬁnd the root in the interval (0,                             [27] L.K. Li, R.W. Mei, J.F. Klausner, Boundary conditions for thermal lattice Boltz-
+1).                                                                                                  mann equation method, J. Comput. Phys. 237 (2013) 366–395.
+                                                                                                [28] L.K. Li, R.W. Mei, J.F. Klausner, Lattice Boltzmann models for the convection-d-
+    The procedure for the values of γ at different angles of attack                                  iffusion equation: D2Q5 vs. D2Q9, Int. J. Heat Mass Transf. 108 (2017) 41–
+is summarized as follows.                                                                            62.
+                                                                                                [29] F. Marson, Y. Thorimbert, B. Chopard, I. Ginzburg, J. Latt, Enhanced single-node
+1) Determine internal and external points according to the CST                                       lattice Boltzmann boundary condition for ﬂuid ﬂows, Phys. Rev. E 103 (2021)
+   parametric airfoils and the value of AOA.                                                         053308.
+                                                                                                [30] W. Xian, A. Takayuki, Multi-GPU performance of incompressible ﬂow compu-
+2) Find the lattice-to-lattice links and obtain the ﬂuid boundary                                    tation by lattice Boltzmann method on GPU cluster, Parallel Comput. 37 (9)
+   nodes x f .                                                                                       (2011) 521–535.
+3) Root by combining the discrete speeds Eq. (A1) and CST para-                                 [31] Q. Xiong, B. Li, G. Zhou, X. Fang, J. Xu, J. Wang, X. He, X. Wang, L. Wang, W. Ge,
+                                                                                                     J. Li, Large-scale DNS of gas-solid ﬂows on mole-8.5, Chem. Eng. Sci. 71 (2012)
+   metric airfoils (A2) or (A5).                                                                     422–430.
+                                                                                                [32] D.R. Noble, J.R. Torczynski, A lattice-Boltzmann method for partially saturated
+References                                                                                           computational cells, Int. J. Mod. Phys. C 9 (8) (1998) 1189–1201.
+                                                                                                [33] C. Rettinger, U. Ruede, A comparative study of ﬂuid-particle coupling meth-
+ [1] D.L. Ma, Y.P. Zhao, Y.H. Qiao, G.X. Li, Effects of relative thickness on aerody-                ods for fully resolved lattice Boltzmann simulations, Comput. Fluids 154 (2017)
+     namic characteristics of airfoil at a low Reynolds number, Chin. J. Aeronaut. 28                74–89.
+     (4) (2015) 1003–1015.                                                                      [34] A. Xu, L. Shi, T. Zhao, Accelerated lattice Boltzmann simulation using GPU and
+ [2] B. Peng, F. Li, Q. Liu, H. Zhan, Evolution of the non-linear and unsteady low                   OpenACC with data management, Int. J. Heat Mass Transf. 109 (2017) 577–
+     Reynolds number laminar separation bubble around the airfoil with small an-                     588.
+     gle of attack, in: 46th AIAA Fluid Dynamics Conference, p. 4337.                           [35] A. Xu, B.-T. Li, Multi-GPU thermal lattice Boltzmann simulations using Ope-
+ [3] S.B. Savaliya, S.P. Kumar, S. Mittal, Laminar separation bubble on an Eppler 61                 nACC and MPI, Int. J. Heat Mass Transf. 201 (2023) 123649.
+     airfoil, Int. J. Numer. Methods Fluids 64 (6) (2010) 627–652.                              [36] P. Lallemand, L.S. Luo, Theory of the lattice Boltzmann method: dispersion, dis-
+ [4] J.S.S. Pandi, S. Mittal, Wake transitions and laminar separation bubble in the                  sipation, isotropy, Galilean invariance, and stability, Phys. Rev. E 61 (6) (20 0 0)
+     ﬂow past an Eppler 61 airfoil, Phys. Fluids 31 (11) (2019) 114102.                              6546–6562.
+ [5] C. Liang, Y. Rao, J. Luo, X. Luo, Experimental and numerical study of turbulent            [37] A.J.C. Ladd, Numerical simulations of particulate suspensions via a discretized
+     ﬂow and heat transfer in a wedge-shaped channel with guiding pin ﬁns for                        Boltzmann equation. Part 1. Theoretical foundation, J. Fluid Mech. 271 (1994)
+     turbine blade trailing edge cooling, Int. J. Heat Mass Transf. 178 (2021) 121590.               285–309.
+ [6] X. Wang, E. Bibeau, G.F. Naterer, Experimental correlation of forced convec-               [38] A.J.C. Ladd, Numerical simulations of particulate suspensions via a discretized
+     tion heat transfer from a NACA airfoil, Exp. Therm. Fluid Sci. 31 (8) (2007)                    Boltzmann equation. Part 2. Numerical results, J. Fluid Mech. 271 (1994)
+     1073–1082.                                                                                      311–339.
+ [7] J. Latt, O. Malaspinas, D. Kontaxakis, A. Parmigiani, D. Lagrava, F. Brogi,                [39] R.W. Mei, D.Z. Yu, W. Shyy, L.S. Luo, Force evaluation in the lattice Boltzmann
+     M.B. Belgacem, Y. Thorimbert, S. Leclaire, S. Li, F. Marson, J. Lemus, C. Kotsalos,             method involving curved geometry, Phys. Rev. E 65 (4) (2002) 041203.
+     R. Conradin, C. Coreixas, R. Petkantchin, F. Raynaud, J. Beny, B. Chopard, Pala-           [40] B.M. Kulfan, Universal parametric geometry representation method, J. Aircr. 45
+     bos: parallel lattice Boltzmann solver, Comput. Math. Appl. 81 (2021) 334–350.                  (1) (2008) 142–158.
+ [8] B. Dorschner, S.S. Chikatamarla, I.V. Karlin, Transitional ﬂows with the entropic          [41] M. Ceze, M. Hayashi, E. Volpe, A study of the CST parameterization character-
+     lattice Boltzmann method, J. Fluid Mech. 824 (2017) 388–412.                                    istics, in: 27th AIAA Applied Aerodynamics Conference, p. 3767.
+ [9] F. Tian, Y. Wang, H. Liu, Y. Zhang, The lattice Boltzmann method and its ap-               [42] R. Mei, L.-S. Luo, P. Lallemand, D. d’Humieres, Consistent initial conditions
+     plications in complex ﬂows and ﬂuid–structure interactions, Proc. Inst. Mech.                   for lattice Boltzmann simulations, Comput. Fluids 35 (8–9) (2006) 855–
+     Eng. Part C: J. Mech. Eng. Sci. 232 (3) (2018) 403–404.                                         862.
+[10] H.E. Van den Akker, Lattice Boltzmann simulations for multi-scale chemical                 [43] J. Tölke, Implementation of a lattice Boltzmann kernel using the compute uni-
+     engineering, Curr. Opin. Chem. Eng. 21 (2018) 67–75.                                            ﬁed device architecture developed by nVIDIA, Comput. Vis. Sci. 13 (13) (2010)
+[11] Y.-L. He, Q. Liu, Q. Li, W.-Q. Tao, Lattice Boltzmann methods for single-phase                  29–39.
+     and solid-liquid phase-change heat transfer in porous media: a review, Int. J.             [44] K. Wang, L. Yang, Y. Yu, G. Hou, Inﬂuence of slip boundary on the hydrofoil
+     Heat Mass Transf. 129 (2019) 160–197.                                                           with a curved slip boundary condition for the lattice boltzmann method, Phys.
+[12] Y.H. Qian, D. Dhumieres, P. Lallemand, Lattice BGK models for Navier–Stokes                     Fluids 30 (12) (2018) 123601.
+     equation, Europhys. Lett. 17 (1992) 479–484.                                               [45] S. Tao, A. Xu, Q. He, B.M. Chen, F.G.F. Qin, A curved lattice Boltzmann boundary
+[13] X. Shan, Simulation of Rayleigh–Bénard convection using a lattice Boltzmann                     scheme for thermal convective ﬂows with Neumann boundary condition, Int.
+     method, Phys. Rev. E 55 (3) (1997) 2780.                                                        J. Heat Mass Transf. 150 (2020) 119345.
+[14] M. Jami, F. Moufekkir, A. Mezrhab, J.P. Fontaine, M. Bouzidi, New thermal MRT              [46] H. Zhou, G. Mo, F. Wu, J. Zhao, M. Rui, K. Cen, GPU implementation of lattice
+     lattice Boltzmann method for simulations of convective ﬂows, Int. J. Therm.                     boltzmann method for ﬂows with curved boundaries, Comput. Methods Appl.
+     Sci. 100 (2016) 98–107.                                                                         Mech. Eng. 225 (2012) 65–73.
+
+
+                                                                                           16
+X. Xiang and L. Wang                                                                                             International Journal of Heat and Mass Transfer 210 (2023) 124167
+
+
+[47] J. Wu, C. Shu, Implicit velocity correction-based immersed boundary-lattice             [51] I.B. Celik, U. Ghia, P.J. Roache, C.J. Freitas, Procedure for estimation and report-
+     Boltzmann method and its applications, J. Comput. Phys. 228 (6) (2009)                       ing of uncertainty due to discretization in CFD applications, ASME J. Fluids Eng.
+     1963–1979.                                                                                   130 (7) (2008) 078001.
+[48] R. Clift, J.R. Grace, M.E. Weber, Bubbles, Drops, and Particles, Academic Press,        [52] F.P. Incropera, D.P. DeWitt, T.L. Bergman, A.S. Lavine, Fundamentals of Heat and
+     New York, 1978.                                                                              Mass Transfer, vol. 6, Wiley New York, 1996.
+[49] C. Liu, X. Zheng, C.H. Sung, Preconditioned multigrid methods for unsteady in-          [53] M. Selig, J. Guglielmo, A. Broern, P. Giguere, Experiments on airfoils at low
+     compressible ﬂows, J. Comput. Phys. 139 (1) (1998) 35–57.                                    Reynolds numbers, in: 34th Aerospace Sciences Meeting and Exhibit, p. 62.
+[50] Q. Lou, Z. Guo, B. Shi, Evaluation of outﬂow boundary conditions for two-phase
+     lattice Boltzmann equation, Phys. Rev. E 87 (6) (2013) 063301.
+
+
+
+
+                                                                                        17
+

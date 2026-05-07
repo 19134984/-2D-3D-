@@ -1,0 +1,715 @@
+                                                        International Journal of Heat and Mass Transfer 150 (2020) 119345
+
+
+
+                                                                 Contents lists available at ScienceDirect
+
+
+                                      International Journal of Heat and Mass Transfer
+                                                            journal homepage: www.elsevier.com/locate/hmt
+
+
+
+
+A curved lattice Boltzmann boundary scheme for thermal convective
+ﬂows with Neumann boundary condition
+Shi Tao a,∗, Ao Xu b, Qing He a, Baiman Chen a,∗, Frank G.F. Qin a
+a
+ Key Laboratory of Distributed Energy Systems of Guangdong Province, Dongguan University of Technology, Dongguan 523808, China
+b
+ National Key Laboratory of Science and Technology on Aerodynamic Design and Research, School of Aeronautics, Northwestern Polytechnical University,
+Xi’an 710072, China
+
+
+
+
+a r t i c l e            i n f o                           a b s t r a c t
+
+Article history:                                           We propose a curved lattice Boltzmann boundary scheme for thermal convective ﬂows with Neumann
+Received 26 June 2019                                      boundary condition. The distribution function at the ﬂuid-solid intersection node is obtained to accom-
+Revised 8 January 2020
+                                                           plish the interpolation of unknown temperature distribution function at the boundary point. Speciﬁcally,
+Accepted 8 January 2020
+                                                           the distribution function is ﬁrst extrapolated from the ﬂuid point along the lattice link; and then, the
+Available online 17 January 2020
+                                                           one in the opposite direction is evaluated by the anti-bounce back rule with wall temperature, which
+Keywords:                                                  can be further determined by the speciﬁed Neumann boundary condition at the ﬂuid-solid interface. The
+Lattice Boltzmann method                                   advantage of our scheme is that the involved inter/extrapolations are completely link-based, resulting in
+Thermal ﬂows                                               a quite eﬃcient implementation procedure. Furthermore, our scheme has second-order spatial accuracy,
+Curved boundary condition                                  and we veriﬁed in four numerical examples where analytical solutions are available: the heat transfer in
+Heat ﬂux at interface                                      a channel with a sinusoidal temperature gradient, the thermal diffusion in an annulus, and the conjugate
+Second-order accuracy
+                                                           heat transfer for these two cases. To further validate our scheme for thermal convective ﬂow problems
+                                                           with complex geometries, we simulate the natural convection in an annulus, the thermal ﬂow past a
+                                                           cylinder, and the mixed convection in a lid-driven cavity with a circular enclosure. The simulation results
+                                                           are consistent with existing benchmark data obtained by other methods.
+                                                                                                                                 © 2020 Elsevier Ltd. All rights reserved.
+
+
+
+
+1. Introduction                                                                            in LBM. For straight and curved surfaces, a lot of hydrodynamic
+                                                                                           boundary schemes have been proposed when using the LBM to
+   In the past three decades, the lattice Boltzmann method (LBM)                           solve the N-S equations. The no-slip velocity boundary condition
+has been developed as a convenient solver for the Navier-Stokes                            in that scenario can be easily enforced through the simple bounce-
+(N-S) equations to simulate ﬂuid ﬂow problems [1,2]. To describe                           back (BB) scheme [8], the interpolated bounce-back scheme [9],
+ﬂuid ﬂows coupled with heat transfer, the convection-diffusion                             and the non-equilibrium extrapolation (NEE) scheme [10]. It should
+(CD) equation is further combined with the N-S equations. Due                              be noted that the latter two schemes are specially designed for
+to the advantages of the LB method including easy implementa-                              curved boundaries, where a relative distance from the boundary
+tion and parallelization [3], efforts have been devoted to extend-                         to the interface is introduced to improve the spatial accuracy com-
+ing the LB method to thermal convective ﬂow problems [4,5], for                            pared with that of simple BB scheme. In the case of thermal con-
+example, the double distribution function approach which consists                          vective ﬂows, the CD equation should be solved with speciﬁed
+of the velocity distribution function and temperature distribution                         temperature or heat ﬂux boundary condition (i.e., the Dirichlet or
+function to solve the CD equation. The double distribution function                        Neumann boundary condition) between the ﬂuid-solid interface.
+approach has excellent numerical stability, and it has been used for                           If the wall temperature is known (i.e., the Dirichlet boundary
+natural, forced and mix convection ﬂows [6,7].                                             condition), the treatment for straight and curved boundaries are
+   Different types of boundary condition between ﬂuid and solid                            similar to the hydrodynamic counterpart. For instance, the NEE
+interface should be handled when simulating thermal convective                             scheme proposed by Guo et al. [10] has been applied to simulate
+ﬂows, which is transformed to identify the unknown distribution                            the unsteady Taylor-Couette ﬂow [11], the heat transfer in a cavity
+function coming from the solid zone during the streaming step                              [12], and the natural convection in eccentric annulus [13], respec-
+                                                                                           tively. Khazaeli et al. [14] and Mohsen et al. [15] also presented the
+                                                                                           thermal version of the hydrodynamic ghost ﬂuid (GF) scheme pro-
+    ∗
+        Corresponding authors.                                                             posed by Tiwari et al. [16]. It should be noted that both the exten-
+        E-mail addresses: taoshi@dgut.edu.cn (S. Tao), chenbm@dgut.edu.cn (B. Chen).
+
+https://doi.org/10.1016/j.ijheatmasstransfer.2020.119345
+0017-9310/© 2020 Elsevier Ltd. All rights reserved.
+2                                     S. Tao, A. Xu and Q. He et al. / International Journal of Heat and Mass Transfer 150 (2020) 119345
+
+
+                                                                                          mal wall to obtain the surface temperature. For curved geometries,
+                                                                                          Zhang et al. [17] proposed a simple anti-bounce back method, in
+                                                                                          which a ﬁrst-order ﬁnite difference scheme was applied to cal-
+                                                                                          culate the heat ﬂux and arbitrarily evaluated along with the lat-
+                                                                                          tice link. However, heat ﬂux is temperature derivative in the nor-
+                                                                                          mal direction, and it generally not consistent with the lattice link.
+                                                                                          Due to such surface heterogeneity, Chen et al. [18] modiﬁed the
+                                                                                          above simple BB scheme with an interpolated rebounding tem-
+                                                                                          perature and normally discretized heat ﬂux with the same ﬁrst-
+                                                                                          order ﬁnite difference method. A bilinear interpolation scheme
+                                                                                          computed the unknown ﬂuid temperature. Due to the ﬁrst-order
+                                                                                          approximation of normal derivative, those mentioned above ﬁnite
+                                                                                          difference-based schemes [17,18] are just ﬁrst-order spatial accu-
+                                                                                          rate for the Neumann boundary conditions. Note that recently one
+                                                                                          more interpolation point is introduced to approximate the temper-
+                                                                                          ature derivative at the interface [41,42]. On the other hand, the
+Fig. 1. Schematic of the current curved Neumann boundary condition. xA is the             asymptotic analysis technique was used to construct the Neumann
+boundary node with unknown distribution functions. xW and xB are the intersection
+                                                                                          schemes. The unknown distribution function was considered to be
+point and the nearest ﬂuid node along the intersection direction, respectively.
+                                                                                          a combination of several known distribution functions, and their
+                                                                                          weights were determined through the asymptotic theory. Huang
+                                                                                          et al. [20] ﬁrst proposed a one-point Neumann scheme for the
+                                                                                          curved boundaries; however, their scheme suffers from low accu-
+                                                                                          racy and numerical instability issues. They subsequently presented
+                                                                                          an improved version with second-order spatial accuracy [21]. In
+                                                                                          Huang et al.’s scheme, the curved boundary was approximated by
+                                                                                          zig-zag lines, and the normal derivative at the boundary node was
+                                                                                          evaluated with the combination of ﬁrst- and second-order normal
+                                                                                          derivatives of the auxiliary points. The implementation procedure
+                                                                                          was complicated and diﬃcult to be applied in the simulation of
+                                                                                          complex thermal convective ﬂows [22,23]. Li et al. [24,25] pro-
+                                                                                          posed a Neumann boundary condition based on the asymptotic
+                                                                                          theory. They convert the normal direction of the boundary into
+                                                                                          derivative conditions in the lattice link directions; however, their
+                                                                                          scheme involves complex analysis of topological geometric and is
+                                                                                          of ﬁrst-order spatial accuracy.
+                                                                                              The above-mentioned ﬁnite difference and asymptotic analysis-
+                                                                                          based Neumann boundary schemes generally suffer low accuracy
+         Fig. 2. Schematic of the channel and the boundary conditions.                    and complicated implementation procedure. In this work, we aim
+                                                                                          to propose an eﬃcient second-order accurate Neumann scheme
+                                                                                          for thermal convective ﬂows with complex geometries. The macro-
+sions mentioned above decompose the distribution function into                            scopic heat ﬂux constraint is evaluated by the moment of the non-
+the equilibrium and the non-equilibrium parts. The former portion                         equilibrium distribution functions. With the distribution functions
+is obtained by the interpolated macroscopic quantities, while the                         at the ﬂuid-solid interface obtained by second-order extrapolation
+latter portion is evaluated through extrapolation. Therefore, both                        and anti-bounce back rule, the wall temperature can be deter-
+NEE and GF schemes fall into the non-equilibrium extrapolation-                           mined through the root-ﬁnding. The unknown distribution func-
+type schemes, and their extensions to the thermal convective ﬂows                         tion is then interpolated from the distribution functions along with
+are quite straightforward. However, signiﬁcant modiﬁcations are                           a lattice link. The remaining part of the paper is organized as fol-
+needed to develop thermal boundary conditions based on the sim-                           lows: In Section 2, we provide the numerical method; in Section 3,
+ple BB schemes. Zhang et al. [17] ﬁrst demonstrated that the anti-                        we validate the proposed numerical scheme through seven ex-
+bounce back rule should replace the original one in thermal con-                          amples; in Section 4, we summarize the main conclusions of the
+vective ﬂows. However, in their boundary scheme, the relative dis-                        present work.
+tance from the boundary to the interface was not involved, and it
+was essentially a simple anti-bounce back method with the ﬁrst-                           2. Numerical method
+order accuracy for curved geometries. Chen et al. [18] subsequently
+improved that approach with an interpolated temperature at the                                The incompressible viscous thermal ﬂow is generally subjected
+middle of a lattice link, and they showed the modiﬁed scheme has                          to the N-S and CD equations as
+second-order accuracy for the temperature ﬁeld.
+                                                                                          ∇ .u = 0,                                                           (1)
+     There are also many thermal convective ﬂow problems where
+the macroscopic constraint is heat ﬂux at the ﬂuid-solid interface,
+                                                                                          ∂u            1
+i.e., the Neumann type boundary condition [38,39]. Due to the sim-                           + u.∇ u = − ∇ p + ν∇ 2 u + ag ,                                  (2)
+plicity in the Dirichlet boundary treatment, it is straightforward to                     ∂t            ρ
+identify the boundary temperature and then transform the Neu-
+                                                                                          ∂T
+mann type into the Dirichlet type boundary conditions. Hence, the                            + ∇ .(uT ) = κ∇ 2 T ,                                            (3)
+normal derivative in the macroscopic heat ﬂux constraint was re-                          ∂t
+placed with various ﬁnite difference schemes in previous studies.                         where u, ρ , p, ν , T and κ are the velocity, density, pressure, kinetic
+Liu et al. [19] reported a three-point scheme for the straight ther-                      viscosity, temperature and thermal diffusivity of ﬂuid, respectively.
+                                        S. Tao, A. Xu and Q. He et al. / International Journal of Heat and Mass Transfer 150 (2020) 119345                                               3
+
+
+
+
+                         Fig. 3. Isotherms (a) and the temperature proﬁles at three positions (b) for the channel with τ T = 0.6, q = 0.2 and N = 30.
+
+
+
+
+                            Fig. 4. The convergence rates of the temperature (a) and the temperature gradient (b) with different grid resolutions.
+
+
+
+
+Fig. 5. The convergence rates with the LBGK and MRT collision models at τ T = 0.6
+and q = 0.3.
+
+
+
+In the momentum equation, the body force ag is for introducing                                   Fig. 6. Schematic of two-ﬂuid channel with convection-diffusion process.
+the buoyancy force from the temperature ﬁled. With the Boussi-
+nesq approximation, it is usually expressed as
+                                                                                            present study to solve the above N-S and CD equations, where two
+ag = g0 α (T − T0 ) j.                                                           (4)        sets of distribution functions, fi (x, t) and gi (x, t) for the velocity and
+Here, g0 is the acceleration of gravity, α is the thermal expansion                         temperature ﬁelds are adopted, respectively
+                                                                                                                                                                      
+coeﬃcient, T0 is the average temperature of the ﬂuid, and j is the                            fi (x + ei δt , t + δt ) − fi (x, t ) = − M −1 SM                f j − f jeq + δt Fi ,
+                                                                                                                                                         ij
+unit vector in the vertical direction.
+                                                                                              ×i = 0, 1, ..., 8.                                                                       (5)
+2.1. Lattice Boltzmann method for ﬂuid ﬂows and heat transfer
+
+                                                                                                                                         1              
+   The double distribution population approach is considered to be                          gi (x + ei δt , t + δt ) − gi (x, t ) = −            g j − geq ,      i = 0, 1, ..., 4.
+capable of a wide range of temperature variations and has excel-                                                                        τT              j
+
+lent numerical stability [7,26,27]. It is hence implemented in the                                                                                                                     (6)
+4                                               S. Tao, A. Xu and Q. He et al. / International Journal of Heat and Mass Transfer 150 (2020) 119345
+
+
+
+
+                                      Fig. 7. Isotherms (a) and the temperature proﬁles at three positions (b) for the channel ﬂow with q = 0.3.
+
+
+
+
+                 Fig. 8. The convergence rates of the temperature at q = (0.25, 0.5, 0.75) (a) and q = (0.01, 0.99) (b) with different grid resolutions. H = 1/δ x .
+
+
+
+                                                                                                    this paper with δ x the lattice spacing). For consistency, the force
+                                                                                                    term of Fi for incorporating the buoyancy force ag should be given
+                                                                                                    by [29]
+
+                                                                                                    F = M −1 (I − S/2 )M F ,                                                                    (8)
+
+                                                                                                    where I is the identity matrix, F = (F0 , F1 , …, F8 ), and
+                                                                                                    F̄ = (F̄0 , F̄1 , . . . , F̄8 ) with
+                                                                                                                                                
+                                                                                                                  ei .ag   uag : ei ei − cs2 I
+                                                                                                    Fi = wi              +                              ,       i = 0, 1, ..., 8.               (9)
+                                                                                                                   cs2            cs4
+
+                                                                                                       For simplicity and without loss of generality, the D2Q9 and
+                                                                                                    D2Q5 velocity models [24,37] are employed respectively for the
+    Fig. 9. Schematic of the pure diffusion between two concentrated cylinders.                     velocity and temperature ﬁelds. Through Chapman-Enskog expan-
+                                                                                                    sion, the macroscopic quantities, i.e., ρ , u, p, ν , T and κ can be
+Here, ei is the lattice velocity, x the position, t the time, and δ t is                            respectively obtained as
+the temporal step. M is the transform matrix and S the relaxation
+matrix in the multi-relaxation-time (MRT) collision model [28]. feq                                         
+                                                                                                            8                   
+                                                                                                                                8
+                                                                                                      ρ=           fi , ρ u =         ei fi + δt ag /2, p = ρ cs2 , ν = cs2 (τs − 0.5 )δt ,
+and geq are the Maxwellian-type equilibrium distribution functions,
+                                                                                                             i=0                i=0
+which are typically evaluated by the density ρ , velocity u and tem-
+perature T of the ﬂuid as                                                                                     
+                                                                                                              8
+                                                                                                      ×T =           gi , κ = cs2 (τT − 0.5 )δt .                                              (10)
+                                                                                                           i=0
+                     e j .u       ( e j .u )2
+                                                    u2                             e j .u
+f jeq = ω j ρ 1 +             +                 −        ,    geq
+                                                               j
+                                                                  = ω jT 1 +                    ,
+                       cs2           2cs4           2cs2                            cs2                Note that the LBGK collision model in Eq. (6) is used for solving
+                                                                                            (7)     the CD equation in the present study. It can be replaced with a
+                                        √                                                           corresponding MRT model and is rewritten as [43]
+where ωj is the weight coeﬃcient; cs = RT is the lattice sound
+                      √                                                                                                                                           
+speed and set to be 1/ 3 (R is the gas constant, and δ x /δ t =1 in                                 gi (x + ei δt , t + δt ) − gi (x, t ) = − N −1 N
+                                                                                                                                                        ij
+                                                                                                                                                             g j − geq
+                                                                                                                                                                    j i
+                                                                                                                                                                       ,   i = 0, 1, ..., 4.   (11)
+                                        S. Tao, A. Xu and Q. He et al. / International Journal of Heat and Mass Transfer 150 (2020) 119345                                                  5
+
+
+
+
+                               Fig. 10. The temperature proﬁle between the cylinders (a) and the convergence rate (b) at two radius ratios.
+
+
+
+                                                                                            part, the main concern is to identify the unknown distribution
+                                                                                            function (UDF) at the boundary node, which has at least one lattice
+                                                                                            link with the nodes at the opposite side of the interface.
+                                                                                                Distribution functions in several directions at the boundary
+                                                                                            node are unknown after the streaming step in LBM. Taking point
+                                                                                            A depicted in Fig. 1 as an example, the g1 and g2 are UDFs. To ob-
+                                                                                            tain gi (xA ), the lattice link interpolation scheme can be applied as
+
+                                                                                                            1
+                                                                                            gi ( xA ) =        (gi (xW ) + qgi (xB )),                                                   (13)
+                                                                                                           1+q
+                                                                                            where gi (xB ) is known and gi (xW ) is unknown. The unknown gi (xW )
+                                                                                            can be obtained by the anti-bounce back scheme as [17,18,31]
+                                                                                            gi (xW ) = −gi (xW ) + 2ωi T (xW ),                                                          (14)
+                                                                                            where T(xw ) is the wall temperature at the intersection point W.
+Fig. 11. The convergence rate of the temperature gradient with different grid reso-
+lutions at β = 0.3 and 0.5.                                                                 However, two more unknowns, i.e., gī (xW ) and T(xw ) are further
+                                                                                            introduced. In this study, a second-order extrapolation scheme is
+                                                                                            used to obtain the ﬁrst variable,
+                                                                                            gi (xW ) = (1 + q )gi (xA ) − qgi (xB ).                                                     (15)
+                                                                                               Note that the streaming procedure can directly obtain gī (xA )
+                                                                                            and gī (xB ). Similarly, we have
+                                                                                            gk (xW ) = −gk (xW ) + 2ωk T (xW ),                                                          (16)
+
+
+                                                                                            gk (xW ) = (1 + q )gk (xA ) − qgk (xB ).                                                     (17)
+                                                                                                Furthermore, the distribution function at e0 = (0, 0) is
+                                                                                            g0 (xW ) = ω0 T (xW ).                                                                       (18)
+                                                                                               So far, we can ﬁnd from Eqs. (14)–(18) that at the intersection
+                                                                                            point W, the distribution functions are just determined by the tem-
+Fig. 12. Schematic of the heat transfer in two concentrated cylinders with a conju-         perature T(xW ).
+gate interface.                                                                                On the other hand, for the Neumann boundary condition, the
+                                                                                            macroscopic constraint is the normal derivative of temperature at
+                                                                                            the ﬂuid-solid interface, i.e.,
+where N and  are respectively the transform and relaxation ma-
+trixes as                                                                                   ∂ T (xW )
+                                                                                                      = m,                                                                               (19)
+    ⎡                      ⎤                                                                   ∂n
+    1        1      1      1     1
+  ⎢0         1      0     −1      0⎥
+                                                                                            where n = (nx , ny ) is a unit vector normal to the interface
+  ⎢                                ⎥                                                        and pointing to the ﬂuid zone, and m is a known parameter.
+N=⎢ 0        0      1      0     −1⎥,      = diag(1, 1/τT , 1/τT , 1/τ3 , 1/τ3 ).
+  ⎣0         1     −1     1      −1⎦                                                        Eq. (19) can be rewritten as
+   −4        1     1      1      1
+                                                                                            n · ∇ T (xW ) = m.                                                                           (20)
+                                                                                (12)
+                                                                                               The temperature gradient is evaluated by the moment of the
+2.2. Neumann boundary condition at the curved boundary                                      non-equilibrium distribution functions with a second-order accu-
+                                                                                            racy as [22,23,23,45]
+   The treatment of Neumann boundary condition at the curved
+                                                                                                                                                                                    
+                                                                                                             1                               −1            
+                                                                                                                                                            4                 
+                                                                                                                                                                              4
+ﬂuid-solid interface is frequently encountered in the complex ther-                         ∇T = − 2                     ei [gi − geq ] =                         el gl − u         gl . (21)
+mal convective ﬂows using LBM. Similar to the Dirichlet counter-                                          cs τT δt   i
+                                                                                                                                            cs2 τT δt
+                                                                                                                                                            l=0               l=0
+6                                      S. Tao, A. Xu and Q. He et al. / International Journal of Heat and Mass Transfer 150 (2020) 119345
+
+
+
+
+                               Fig. 13. Isotherms (a) and the temperature proﬁle between the cylinders at θ = 0 and π /4 (b) with β = 0.5.
+
+
+
+                                                                                               Once the wall temperature is obtained, gi (xW ) is computed by
+                                                                                           Eq. (14). With gi (xW ) at hand, the UDF, i.e., gi (xA ) can be ﬁnally
+                                                                                           interpolated from Eq. (13).
+                                                                                               The linear inter/extrapolations, as can be seen in Eqs. (13),
+                                                                                           (15) and (17) achieve second-order accuracy. The anti-bounce
+                                                                                           back scheme in Eqs. (14) and (16) is also second-order accu-
+                                                                                           rate. Furthermore, the computation of the temperature gradient
+                                                                                           by Eq. (21) through the moment of the non-equilibrium distribu-
+                                                                                           tion functions has second-order accuracy. Therefore, the present
+                                                                                           Neumann scheme is theoretically of second-order spatial accu-
+                                                                                           racy. Another advantage of this scheme is that the involved in-
+                                                                                           ter/extrapolations are all based on the directions of the lattice link,
+                                                                                           which contributes to the easy implementation in the thermal con-
+                                                                                           vective ﬂow simulations. Note that the present scheme is indepen-
+                                                                                           dent of the collision models in LBM, because of the two essential
+Fig. 14. The convergence rate of the temperature with different grid resolutions at
+                                                                                           ingredients of it, i.e., the anti-bounce back rule in Eq. (14) and the
+β = 0.3 and 0.5.
+                                                                                           distribution-function-based temperature gradient in Eq. (21) can be
+                                                                                           applied consistently to the LBGK and MRT models. Furthermore,
+                                                                                           with the inter/extrapolations implemented to both sides of the
+                                                                                           conjugate interface (see Figs. 6 and 8), the interface temperature
+                                                                                           TW can be determined, and hence the conjugate boundary condi-
+                                                                                           tion (Eq. (26)) can also be handled by the present scheme.
+
+                                                                                           3. Results and discussion
+
+                                                                                               In this section, we validate the current Neumann scheme
+                                                                                           through seven numerical tests. We ﬁrst simulate the heat trans-
+                                                                                           fer in a channel with a sinusoidal temperature gradient, and the
+                                                                                           thermal diffusion between circular surfaces to test the spatial ac-
+                                                                                           curacy of the scheme, where analytical results are available. We
+                                                                                           then simulate thermal convective ﬂows with complex geometries,
+                                                                                           including the natural convection in an annulus, the thermal ﬂow
+Fig. 15. Schematic of the natural convection between two concentrated cylinders.
+                                                                                           past a cylinder, and the mix-convection in a lid-driven cavity with
+                                                                                           a circular closure. In these tests, the single-node no-slip velocity
+                                                                                           boundary scheme [32] is adopted for the N-S equations; the single-
+Then, we have
+                                                                                          node Dirichlet temperature boundary scheme proposed in our pre-
+(nx , ny ) · ei,0 gi (xW ) + ei,0 gi (xW ) − ux T (xW ), ek,1 gk (xW )                     vious work [40] is chosen for the CD equation with speciﬁed tem-
+                                                                                          perature boundary. The LBGK model is used in the simulations un-
+  + ek,1 gk (xW ) − uy T (xW ) = −cs2 τT δt m,                                 (22)
+                                                                                           less otherwise speciﬁed.
+with ei = (ei ,0 , ei ,1 ). Substituting the Eqs. (14)–(18) into Eq. (22),
+the interface temperature can be ﬁnally determined as                                      3.1. Heat transfer in a channel with a sinusoidal temperature gradient
+            cs2 τT δt m + 2ei,0 gi (xW )nx + 2ek,1 gk (xW )ny
+T (xW ) =                                                     .              (23)           As illustrated in Fig. 2, the height and length of the channel are
+               (2ωi ei,0 − ux )nx + 2ωk ek,1 − uy ny                                       both H = 1, which is resolved by N lattices in the simulations. A
+                                        S. Tao, A. Xu and Q. He et al. / International Journal of Heat and Mass Transfer 150 (2020) 119345                         7
+
+
+
+
+               Fig. 16. Isotherms (a) and streamlines (b) of the natural convection in an annulus with an inner Neumann surface, at Pr = 0.7 and Ra = 5700.
+
+
+
+                                                                                                                 
+                                                                                                                     
+                                                                                                                         (TLB (x ) − Ta (x ))2
+                                                                                            L2 − norm(T ) =                                   ,                (25)
+                                                                                                                               (Ta (x ) )2
+                                                                                            where Ta is the analytical solution of temperature given by
+                                                                                            Eq. (24), TLB is obtained by the LBM with the present Neumann
+                                                                                            scheme, and x is for all the ﬂuid nodes. The error of the tempera-
+                                                                                            ture gradient is further deﬁned to evaluate the numerical accuracy
+                                                                                            of the current scheme,
+                                                                                                                    
+                                                                                                                        
+                                                                                                                            (∇ TLB (x ) − ∇ Ta (x ))2
+                                                                                            L2 − norm(∇ T ) =                                        ,         (26)
+                                                                                                                                  (∇ Ta (x ))2
+                                                                                            where ∇ Ta and ∇ TLB are the gradients of temperature calculated
+Fig. 17. The distribution of the temperature along the surface of the inner cylinder.       by the Eq. (21) locally and Eq. (24) with a second-order ﬁnite dif-
+                                                                                            ference scheme. According to Zhang et al. [23], x in Eq. (26) is for
+                                                                                            all the internal ﬂuid nodes, namely the boundary node that has a
+                                                                                            lattice link intersecting with walls is excluded in the Eq. (26). Fig.
+                                                                                            4(a) and (b) show the relative errors of the temperature and its
+                                                                                            gradient. It is clear that the convergence rates are all close to 2,
+                                                                                            and a second-order spatial accuracy of the present scheme is then
+                                                                                            generally conﬁrmed.
+                                                                                                The effect of the collision model on the accuracy of the present
+                                                                                            scheme is further tested in this ﬂow problem. The simulations are
+                                                                                            performed at τ T = 0.6 and q = 0.3. The other relaxation time τ 3 is
+                                                                                            set to be 1.5 [43]. From the results depicted in Fig. 5, it is observed
+                                                                                            that both models achieve second-order spatial accuracy.
+
+                                                                                            3.2. A two-ﬂuid channel with convection-diffusion processes
+Fig. 18. Schematic of the thermal ﬂow around a cylinder with a ﬁxed heat ﬂux at
+the surface.                                                                                   We further consider the convection-diffusion process in a chan-
+                                                                                            nel with two ﬂuids, where the geometry arrangement is the same
+                                                                                            as that of the one-ﬂuid case mentioned above. The ﬂuids are sep-
+temperature gradient in the sine form ∂ T/∂ y = sin(2π x) is imposed                        arated from the conjugate interface at y = 0.5H, where the bound-
+on the upper wall. With x ranging from 0 to 1, the upper wall ex-                           ary condition is speciﬁed as
+                                                                                                                                
+                                                                                                              ∂ T         ∂ T 
+periences a whole period of the gradient. The temperature of the
+lower wall is constant with T = 1, which deviates from the second                           T1 = T2 = Ty , κ1        = σ κ2        ,               y = 0.5H,   (26a)
+row of grids with an offset of (1 − q)δ x . The left and right sides of                                       ∂ n 1        ∂ n 2
+the channel are periodic boundaries, and they locate at the middle                             Here, the subscripts 1 and 2 denote the ﬂuid 1 and ﬂuid 2, re-
+of the lattices. The analytical solution of the temperature ﬁeld is                         spectively. σ = 1 is the volume heat capacity ratio. The bound-
+                                                                                            ary conditions at the top and bottom walls are T (y = 0 and
+                   sin(2π x ) sinh(2π y )
+T (x, y ) = 1 +                           .                                     (24)        H) = cos(2π x/H). A constant velocity u = (U0 , 0) is applied to the
+                      2π cosh(2π )
+                                                                                            entire computational domain. The analytical solution for the tem-
+   Fig. 3 presents the isotherms and temperature proﬁles in the                             perature in the channel is expressed as [44]
+channel at τ T = 0.6, q = 0.2 and N = 30. It can be observed that                                           ikx  −λ y               
+                                                                                                           Re e γ1 e 1 + (1 − γ1 )eλ1 y ,   0 ≤ y ≤ 0.5H,
+the results agree well with the analytical solutions. Furthermore,                          T (x, y ) =       ikx  −λ y                        
+simulations with different grid resolutions are performed to study
+                                                                                                                                   λ
+                                                                                                           Re e γ2 e 2 + (1 − γ2 e 2 )e−λ2 (H−y ) ,
+                                                                                                                                  −   H
+                                                                                                                                                      0.5H ≤ y ≤ H,
+the convergence rate of the temperature ﬁeld, which is deﬁned as                                                                                                (27)
+8                                      S. Tao, A. Xu and Q. He et al. / International Journal of Heat and Mass Transfer 150 (2020) 119345
+
+
+
+
+Fig. 19. Isotherms around the cylinder (left column) and the distribution of Nu along the cylinder surface (right column). The Re = 10 (a, b), Re = 20 (c, d) and Re = 40 (e,
+f).
+
+where                                                                                         In the simulations, κ 1 and κ 2 are set to be 1/60 and 1/6, re-
+                                                                                           spectively. The Peclet number Pe, deﬁned as U0 H/κ 1 is ﬁxed at 20.
+          λ1 (a23 − a22 ) + χ σ λ2 (2a1 a2 a3 − a22 − a23 )                                The present boundary scheme is applied to the conjugate interface.
+γ1 =                                                                ,                      The temperature at such interface is considered to be unknown,
+     (λ1 + χσ λ2 )(a21 a23 − a22 ) − (λ1 − χ σ λ2 )(a21 a22 − a23 )
+                                                                                           which is to be determined by the constraint of the heat ﬂux given
+           λ1 (a21 a3 + a3 − 2a1 a2 ) + χ σ λ2 (a21 − 1 )                                  by Eq. (26). The isotherm and the temperature proﬁle in the conju-
+γ2 =                                                                ,
+     (λ1 + χσ λ2 )(a21 a23 − a22 ) − (λ1 − χ σ λ2 )(a21 a22 − a23 )                        gate channel are shown in Fig. 7. Good agreement can be observed
+                                                                                           between the present results and analytical solutions from Eq. (27).
+a1 = e−0.5λ1 H , a2 = e−0.5λ2 H ,      a3 = e−λ2 H .
+                                                                                          Five sets of q = 0.01, 0.25, 0.5, 0.75 and 0.99 are considered to test
+       κ2          2π                 iU0 H                                                the accuracy of the scheme. The results shown in Fig. 8 again indi-
+χ=        , λ1,2 =              1+           .                                 (28)
+       κ1           H                2π κ1,2                                               cates a second-order spatial accuracy.
+                                      S. Tao, A. Xu and Q. He et al. / International Journal of Heat and Mass Transfer 150 (2020) 119345                       9
+
+
+
+
+                                                                                                                    2σ (κ2 /κ1 )R−8
+                                                                                                                                 1
+                                                                                                                                    R−4
+                                                                                                                                     2
+                                                                                          b1 =                                              ,
+                                                                                                 (σ κ2 /κ1 + 1 )R−8
+                                                                                                                 1
+                                                                                                                    + (σ κ2 /κ1 − 1 )R−8
+                                                                                                                                      2
+                                                                                                          (σ κ2 /κ1 + 1 )R−8
+                                                                                                                          1
+                                                                                                                             R−4
+                                                                                                                              2
+                                                                                          b2 =                                           ,
+                                                                                                 (σ κ2 /κ1 + 1 )R−8
+                                                                                                                 1
+                                                                                                                    + (σ κ2 /κ1 − 1 )R−8
+                                                                                                                                      2
+                                                                                                            (σ κ2 /κ1 − 1 )R−4
+                                                                                                                            2
+                                                                                          b3 =                                           .                 (31)
+                                                                                                 (σ κ2 /κ1 + 1 )R−8
+                                                                                                                 1
+                                                                                                                    + (σ κ2 /κ1 − 1 )R−8
+                                                                                                                                      2
+
+                                                                                              In the simulations, σ is ﬁxed as 1; κ 1 and κ 2 are set to be
+                                                                                          1/60 and 1/6, respectively. Fig. 13 delineates the isotherm and the
+                                                                                          temperature proﬁle of the conjugate system. It is observed that the
+                                                                                          present result agrees with those of the analytical solutions given
+                                                                                          by Eq. (30). The relative error of the temperature is depicted in
+                                                                                          Fig. 14. The convergence rate indicates that the present scheme is
+                                                                                          generally second-order accurate in space.
+
+Fig. 20. Schematic of the mixed convection in a lid-driven cavity with an insulted        3.5. Natural convection in an annulus
+cylinder.
+                                                                                             As illustrated in Fig. 15, the outer cylinder maintains a uni-
+3.3. Thermal diffusion between two concentrated cylinders                                 form temperature To = 0, while the inner one has a heat ﬂux at
+                                                                                          the surface with ∂ T/∂ n = m = −1. The ﬂow system is subjected
+   As shown in Fig. 9, the two cylinders have radii of Ro and Ri ,                        to a vertical gravity force ﬁeld, and the ﬂuid experiences a buoy-
+respectively. The inner cylinder is speciﬁed with the constant tem-                       ancy force described by Eq. (4). In the simulation, the radii ratio
+perature Ti = 1.5, and the outer one has a ﬁxed heat ﬂux at the                           β = Ri /Ro is ﬁxed at 0.5, where Ro and Ri are the radii of the inner
+interface, where the temperature gradient is ∂ T/∂ n = m = 0.018.                         and outer cylinders, respectively. The ﬂow is governed by two non-
+Those settings are the same as Refs. [18,22]. The ratio of cylinder                       dimensional parameters, i.e., the Rayleigh number Ra and Prandtl
+radii is deﬁned as β = Ri /Ro , and we chose β = 0.3 and 0.5 in the                       number Pr, which are deﬁned as
+simulation. The relaxation time of temperature distribution func-                                ν                          g0 α L4 Q
+tion is τ T = 0.8. At steady state, the temperature proﬁle between                        Pr =     ,          Ra =                      ,                  (32)
+                                                                                                 κ                            κ 2ν
+the two cylinders can be obtained analytically as [18]
+                                                                                          where L = (Ro − Ri ) is the characteristic length resolved by 50 lat-
+T (r ) = Ti − mRo ln (r/Ri ),                                                 (29)        tices, and Q = −κ∂ T /∂ n denotes the heat ﬂux. The characteristic
+                                                                                          velocity of the ﬂow can be expressed by
+where r is the radial distance ranging from Ri to Ro .                                           
+    The temperature proﬁle between the two cylinders is shown in                                     g0 α L2 Q
+Fig. 10(a), where 40 lattices resolve Ro for the two cases. It can                       U0 =                       .                                      (33)
+                                                                                                          κ
+be found that the numerical results given by the present scheme
+agree well with the analytical solution. From Fig. 10(b), we can                              In this test, we ﬁx Pr, Ra and U0 as 0.7, 5700 and 0.1, respec-
+see the current scheme has second-order spatial accuracy for ther-                        tively.
+mal convective ﬂows with complex geometry, which preserves the                                Fig. 16 shows the isotherms and streamlines between the two
+precision of the original LBM. Furthermore, Fig. 11 delineates the                        cylinders. It can be observed that both ﬂow and temperature ﬁelds
+relative error of temperature gradient. It can be observed that the                       are symmetric about the vertical centerline of concentric cylin-
+convergence order of temperature gradient is between 1.0 and 2.0.                         ders. A pair of crescent-shaped vortices are formed in the annulus,
+From Eq. (21), the temperature gradient is a combination of the                           which is located at the shoulder of the inner cylinder. Furthermore,
+non-equilibrium distribution function, which is a low-order small                         the ﬂuid is heated by the inner surface, and a strong plume gener-
+quantity compared with the distribution function in LBM. And the                          ates at the upper part of the annulus. All those indicates the ﬂow
+temperature is a summation of the distribution functions according                        is in convection dominated regime, which is consistent with pre-
+to the Eq. (10). Therefore, the second-order extrapolation of dis-                        vious studies [33–35]. We further show the temperature proﬁle on
+tribution functions by Eqs. (15) and (17) can guarantee a second-                         the surface of the inner cylinder (see Fig. 17), and the results agree
+order accuracy of the temperature, but not always for a tempera-                          well with those reported in Refs. [33–35].
+ture gradient. In general, the temperature gradient would not affect
+the overall accuracy of the temperature ﬁelds, which is consistent                        3.6. Flow around a heated cylinder with constant heat ﬂux
+with those by Zhang et al. [23].
+                                                                                              As shown in Fig. 18, the circular cylinder with diameter D is lo-
+                                                                                          cated at (0.25 L, 0.5 H), where L = 40 D and H = 20 D are the
+3.4. Heat transfer in circular domains with a conjugate interface
+                                                                                          length and width of the computational domain, respectively. The
+                                                                                          ﬂuid with constant velocity U0 and temperature Tc streams from
+    The ﬂuids are in the areas of r < R1 and R1 < r < R2 , with
+                                                                                          left to right and is fully developed at the outlet. A temperature
+R1 and R2 denote the radii of the inner and outer cylinders, re-
+                                                                                          gradient with ∂ T/∂ n = m = −1 is speciﬁed at the cylinder sur-
+spectively (Fig. 12). At r = R2 , the temperature is speciﬁed as
+                                                                                          face. The ﬂow is governed by the Reynolds number Re = U0 D/ν
+T = cos(4θ ) where θ is the polar angle. The interface at r = R1
+                                                                                          and Prandtl number Pr. The Nusselt number Nu describing the heat
+is conjugate described by the Eq. (26). The analytical solution for
+                                                                                          transfer rate on the cylinder surface is deﬁned as
+the temperature of this system can be written as [44]                                            
+              
+              b1 r cos(4θ ),
+                  4
+                                 0 ≤ r ≤ R1 ,                                                           − ∂∂ Tn D
+T (r, θ ) =                                                                   (30)        Nu =                          .                                  (34)
+              (b2 r4 + b3 r−4 )cos(4θ ), R1 ≤ y ≤ R2 ,                                                 (T − Tc )
+10                                      S. Tao, A. Xu and Q. He et al. / International Journal of Heat and Mass Transfer 150 (2020) 119345
+
+
+
+
+Fig. 21. Streamlines (left column) and isotherms (right column) in the lid-driven cavity with an insulted cylinder. The values of Ri are respectively 0.01 (a,b), 1 (c,d) and 10
+(e,f).
+
+    In the simulation, we adopt Re = 10, 20, and 40; the Pr is ﬁxed                         3.7. Thermal ﬂow in a lid-driven cavity with a circular enclosure
+as 0.7; 50 lattices resolve the cylinder diameter.
+    Fig. 19 shows the isotherms around the cylinder and the distri-                             As shown in Fig. 20, the circular enclosure with diameter
+bution of Nusselt number along the cylinder surface. The isotherms                          D = 0.4 L is located at the center of the square cavity, where L = 1
+(Fig. 19 (a,c,e)) are very dense in front of the cylinder, demonstrat-                      is the side length of the cavity. The cold upper wall of T = Tc
+ing a large temperature gradient and a high heat transfer rate in                           constantly moves with the velocity of U0 = 0.05. The hot bottom
+such region. As shown in Fig. 19 (b,d,f), the Nu always reaches                             wall of T = Th is stationary. The two vertical walls are adiabatic
+the maximum and minimum values at the front and end rears of                                and stationary. The average temperature of the ﬂow is evaluated
+the cylinder, respectively. Moreover, the convection intensity is en-                       as T0 = (Th +Tc )/2. The immersed circular enclosure is adiabatic at
+hanced so that the region heated by the cylinder shrinks gradually                          the surface, i.e., ∂ T/∂ n = m = 0. In the simulation, the length of
+for Re ranging from 10 to 40. Those observations are in good agree-                         the cavity is resolved by 201 lattices, and the Pr is ﬁxed as 0.7. The
+ment with previous studies [33–35].                                                         Re and Ra are deﬁned as
+                                                                                                   U0 L                g0 α L3 (Th − Tc )
+                                                                                            Re =          ,    Ra =                          ,                            (35)
+                                                                                                    ν                         νκ
+                                    S. Tao, A. Xu and Q. He et al. / International Journal of Heat and Mass Transfer 150 (2020) 119345                     11
+
+
+
+
+                           Fig. 22. The Nusselt number at the bottom wall of the cavity (a) and the temperature proﬁle at x/L = 0.15 (b).
+
+
+
+
+                  Fig. 23. The temperature proﬁle at x/L = 0.15 with different grid resolutions (a) and the convergence rate of the temperature (b).
+
+
+
+where Re is ﬁxed as 100, and Ra = 70, 70 0 0, and 70,0 0 0. The                         dition. The key idea is to obtain the intermediate distribution func-
+Richardson number is deﬁned as Ri = Ra/(Re2 Pr), the correspond-                        tion at the intersection node for accomplishing the interpolation of
+ing Ri values are 0.01, 1 and 10, respectively.                                         the unknown temperature distribution function. In contrast to pre-
+    The streamlines and isotherms at different Ri are shown in                          vious studies where the temperature is extrapolated from the ﬂuid
+Fig. 21. Duo to the moving upper cold wall, the ﬂow and temper-                         nodes, we extrapolated the temperature distribution function from
+ature proﬁles are all asymmetrical. At lower Richardson number                          the ﬂuid nodes, and the extrapolation is lattice link-based. Further-
+(Ri = 0.01), a large vortex is generated between the cylinder and                       more, using the anti-bounce back rule, the distribution function at
+the upper wall. It shrinks and then removed with the increasing of                      the intersection point can be all obtained. The Neumann bound-
+Ri from 1 to 10. Meanwhile, the small vortex at the lower-left cor-                     ary condition is then applied locally by the moments of the distri-
+ner of the cavity disappears, and the lower-right corner grows with                     bution functions. Those features contribute to the eﬃcient imple-
+a certain degree. The cold region with a temperature lower than                         mentation in the simulations. The second-order spatial accuracy of
+0.1 is greatly suppressed at larger Ri. Particularly, the isotherms are                 the present scheme is veriﬁed in the heat transfer in a channel
+generally perpendicular to the cylinder surface and the two ver-                        ﬂow and thermal diffusion between an annulus. Three additional
+tical walls of the cavity, where adiabatic conditions are speciﬁed.                     thermal convective ﬂow problems with Neumann boundary condi-
+Fig. 22 shows the Nusselt number at the bottom wall of the cav-                         tions, including the natural convection in an annulus, the thermal
+ity and the temperature proﬁle at x/L = 0.15. It can be observed                        ﬂow past a cylinder, and the mixed convection in a lid-driven cav-
+that those results mentioned above are all in good agreement with                       ity with a circular enclosure are further simulated to validate the
+those reported in Refs. [33,36].                                                        present scheme for complex geometries. The simulation results are
+    We also evaluate the numerical accuracy of the present scheme                       consistent with existing benchmark data obtained by other meth-
+in this case. Here, we take the temperature obtained with the                           ods.
+ﬁnest grid as the reference solution since no analytical solution is
+available. Fig. 23(a) shows the temperature proﬁle at x/L = 0.15
+with ﬁve sets of grid resolutions. We can see the result can al-                        Declaration of Competing Interest
+most achieve mesh-independence at δ x = 1/189. The relative er-
+ror of the temperature is then calculated by comparing with that                            The authors declare that there is no conﬂict of interest.
+of δ x = 1/189 according to Eq. (23). The convergence rate of the
+temperature is generally second-order, indicating again that the
+present scheme is second-order spatial accurate.                                        CRediT authorship contribution statement
+
+4. Conclusions                                                                             Shi Tao: Conceptualization, Methodology, Software, Writing -
+                                                                                        review & editing. Ao Xu: Data curation, Writing - original draft.
+   In this work, we proposed a curved lattice Boltzmann boundary                        Qing He: Visualization, Investigation. Baiman Chen: Writing - re-
+scheme for thermal convective ﬂows with Neuman boundary con-                            view & editing. Frank G.F. Qin: Supervision.
+12                                      S. Tao, A. Xu and Q. He et al. / International Journal of Heat and Mass Transfer 150 (2020) 119345
+
+
+Acknowledgments                                                                             [19] C.H. Liu, K.H. Lin, H.C. Mai, C.A. Lin, Thermal boundary conditions for thermal
+                                                                                                 lattice Boltzmann simulations, Comput. Math. Appl. 59 (7) (2010) 2178–2193.
+                                                                                            [20] J. Huang, W.A. Yong, Boundary conditions of the lattice Boltzmann method for
+   This work was supported by the National Natural Science Foun-                                 convection–diffusion equations, J. Comput. Phys. 300 (2015) 70–91.
+dation of China (51906044 and 11902268), the Doctoral Start-up                              [21] J. Huang, Z. Hu, W.A. Yong, Second-order curved boundary treatments of the
+Foundation of Dongguan University of Technology, China (Grant No.                                lattice Boltzmann method for convection–diffusion equations, J. Comput. Phys.
+                                                                                                 310 (2016) 26–44.
+GC300502-39), and the Foundation of National Key Laboratory un-                             [22] X. Meng, Z. Guo, Boundary scheme for linear heterogeneous surface reactions
+der grant No. 614220119030103.                                                                   in the lattice Boltzmann method, Phys. Rev. E 94 (5) (2016) 053307.
+                                                                                            [23] L. Zhang, S. Yang, Z. Zeng, J.W. Chew, Consistent second-order boundary im-
+                                                                                                 plementations for convection-diffusion lattice Boltzmann method, Phys. Rev. E
+Supplementary materials
+                                                                                                 97 (2) (2018) 023302.
+                                                                                            [24] L. Li, R. Mei, J.F. Klausner, Lattice Boltzmann models for the convection-diffu-
+   Supplementary material associated with this article can be                                    sion equation: D2Q5 vs D2Q9, Int. J. Heat Mass Transfer 108 (2017) 41–62.
+                                                                                            [25] L. Li, R. Mei, J.F. Klausner, Boundary conditions for thermal lattice Boltzmann
+found, in the online version, at doi:10.1016/j.ijheatmasstransfer.
+                                                                                                 equation method, J. Comput. Phys. 237 (2013) 366–395.
+2020.119345.                                                                                [26] H. Lamarti, M. Mahdaoui, R. Bennacer, A. Chahboun, Numerical simulation of
+                                                                                                 mixed convection heat transfer of ﬂuid in a cavity driven by an oscillating lid
+References                                                                                       using lattice Boltzmann method, Int. J. Heat Mass Transfer 137 (2019) 615–629.
+                                                                                            [27] A. D’Orazio, A. Karimipour, A useful case study to develop lattice Boltzmann
+ [1] C.K. Aidun, J.R. Clausen, Lattice-Boltzmann method for complex ﬂows, Annu.                  method performance: Gravity effects on slip velocity and temperature proﬁles
+     Rev. Fluid Mech. 42 (2010) 439–472.                                                         of an air ﬂow inside a microchannel under a constant heat ﬂux boundary con-
+ [2] Q. Li, K.H. Luo, Q.J. Kang, Y.L. He, Q. Chen, Q. Liu, Lattice Boltzmann methods             dition, Int. J. Heat Mass Transfer 136 (2019) 1017–1029.
+     for multiphase ﬂow and phase-change heat transfer, Prog. Energy Combust. Sci.          [28] P. Lallemand, L.S. Luo, Theory of the lattice Boltzmann method: Dispersion, dis-
+     52 (2016) 62–105.                                                                           sipation, isotropy, Galilean invariance, and stability, Phys. Rev. E 61 (6) (20 0 0)
+ [3] A. Xu, L. Shi, T.S. Zhao, Accelerated lattice Boltzmann simulation using GPU                6546.
+     and OpenACC with data management, Int. J. Heat Mass Transfer 109 (2017)                [29] Z. Guo, C. Zheng, B. Shi, Discrete lattice effects on the forcing term in the lat-
+     577–588.                                                                                    tice Boltzmann method, Phys. Rev. E 65 (4) (2002) 046308.
+ [4] Y.L. He, Q. Liu, Q. Li, W.Q. Tao, Lattice Boltzmann methods for single-phase and       [30] K. Suzuki, T. Kawasaki, N. Furumachi, Y. Tai, M. Yoshino, A thermal immersed
+     solid-liquid phase-change heat transfer in porous media: a review, Int. J. Heat             boundary–lattice Boltzmann method for moving-boundary ﬂows with Dirichlet
+     Mass Transfer 129 (2019) 160–197.                                                           and Neumann conditions, Int. J. Heat Mass Transfer 121 (2018) 1099–1117.
+ [5] A.E.F. Monfared, A. Sarraﬁ, S. Jafari, M. Schaﬃe, Linear and non-linear Robin          [31] F. Dubois, P. Lallemand, M.M. Tekitek, On anti bounce back boundary condition
+     boundary conditions for thermal lattice Boltzmann method: cases of convec-                  for lattice Boltzmann schemes, Comput. Math. Appl. (2019).
+     tive and radiative heat transfer at interfaces, Int. J. Heat Mass Transfer 95          [32] S. Tao, Q. He, B. Chen, X. Yang, S. Huang, One-point second-order curved
+     (2016) 927–935.                                                                             boundary condition for lattice Boltzmann simulation of suspended particles,
+ [6] A. Xu, L. Shi, H.D. Xi, Lattice Boltzmann simulations of three-dimensional ther-            Comput. Math. Appl. 76 (7) (2018) 1593–1607.
+     mal convective ﬂows at high Rayleigh number, Int. J. Heat Mass Transfer 140            [33] Y. Wang, C. Shu, L.M. Yang, Boundary condition-enforced immersed bound-
+     (2019) 359–370.                                                                             ary-lattice Boltzmann ﬂux solver for thermal ﬂows with Neumann boundary
+ [7] A. Xu, L. Shi, H.D. Xi, Statistics of temperature and thermal energy dissipation            conditions, J. Comput. Phys. 306 (2016) 237–252.
+     rate in low-Prandtl number turbulent thermal convection, Phys. Fluids 31 (12)          [34] T. Guo, E. Shen, Z. Lu, Y. Wang, L. Dong, Implicit heat ﬂux correction-based
+     (2019) 125101.                                                                              immersed boundary-ﬁnite volume method for thermal ﬂows with Neumann
+ [8] A.J. Ladd, Lattice-Boltzmann methods for suspensions of solid particles, Mol.               boundary conditions, J. Comput. Phys. 386 (2019) 64–83.
+     Phys. 113 (17–18) (2015) 2531–2537.                                                    [35] W. Ren, C. Shu, W. Yang, An eﬃcient immersed boundary method for thermal
+ [9] X. Yin, J. Zhang, An improved bounce-back scheme for complex boundary                       ﬂow problems with heat ﬂux boundary conditions, Int. J. Heat Mass Transfer
+     conditions in lattice Boltzmann method, J. Comput. Phys. 231 (11) (2012)                    64 (2013) 694–705.
+     4295–4303.                                                                             [36] K. Khanafer, S.M. Aithal, Laminar mixed convection ﬂow and heat transfer
+[10] Z. Guo, C. Zheng, B. Shi, An extrapolation method for boundary conditions in                characteristics in a lid driven cavity with a circular cylinder, Int. J. Heat Mass
+     lattice Boltzmann method, Phys. Fluids 14 (6) (2002) 2007–2010.                             Transfer 66 (2013) 200–209.
+[11] H.B. Huang, X.Y. Lu, M.C. Sukop, Numerical study of lattice Boltzmann methods          [37] Y.H. Qian, D. d’Humières, P. Lallemand, Lattice BGK models for Navier-Stokes
+     for a convection-diffusion equation coupled with Navier–Stokes equations, J.                equation, Europhys. Lett. 17 (6) (1992) 479.
+     Phys. A Math. Theor. 44 (5) (2011) 055001.                                             [38] Y. Zhao, B. Shi, Z. Chai, L. Wang, Lattice Boltzmann simulation of melting in
+[12] L. Wang, Y. Zhao, X. Yang, B. Shi, Z. Chai, A lattice Boltzmann analysis of the             a cubical cavity with a local heat-ﬂux source, Int. J. Heat Mass Transfer 127
+     conjugate natural convection in a square enclosure with a circular cylinder,                (2018) 497–506.
+     Appl. Math. Modell. 71 (2019) 31–44.                                                   [39] Y. Hu, D. Li, S. Shu, X. Niu, Study of multiple steady solutions for the 2D nat-
+[13] E. Fattahi, M. Farhadi, K. Sedighi, Lattice Boltzmann simulation of natural con-            ural convection in a concentric horizontal annulus with a constant heat ﬂux
+     vection heat transfer in eccentric annulus, Int. J. Therm. Sci. 49 (12) (2010)              wall using immersed boundary-lattice Boltzmann method, Int. J. Heat Mass
+     2353–2362.                                                                                  Transfer 81 (2015) 591–601.
+[14] R. Khazaeli, S. Mortazavi, M. Ashraﬁzaadeh, Application of a ghost ﬂuid ap-            [40] S. Tao, B. Chen, H. Xiao, S. Huang, Lattice Boltzmann simulation of thermal
+     proach for a thermal lattice Boltzmann method, J. Comput. Phys. 250 (2013)                  ﬂows with complex geometry using a single-node curved boundary condition,
+     126–140.                                                                                    Int. J. Therm. Sci. 146 (2019) 106112.
+[15] M. Mozafari-Shamsi, M. Seﬁd, G. Imani, Application of the ghost ﬂuid lattice           [41] G. Le, O. Oulaid, J. Zhang, Counter-extrapolation method for conjugate inter-
+     Boltzmann method to moving curved boundaries with constant temperature                      faces in computational heat and mass transfer, Phys. Rev. E 91 (3) (2015)
+     or heat ﬂux conditions, Comput. Fluids 167 (2018) 51–65.                                    033306.
+[16] A. Tiwari, S.P. Vanka, A ghost ﬂuid Lattice Boltzmann method for complex ge-           [42] Z. Wang, F. Colin, G. Le, J. Zhang, Counter-extrapolation method for conjugate
+     ometries, Int. J. Numer. Methods Fluids 69 (2) (2012) 481–498.                              heat and mass transfer with interfacial discontinuity, Int. J. Numer. Methods
+[17] T. Zhang, B. Shi, Z. Guo, Z. Chai, J. Lu, General bounce-back scheme for concen-            Heat Fluid Flow 27 (10) (2017) 2231–2258.
+     tration boundary condition in the lattice-Boltzmann method, Phys. Rev. E 85            [43] S. Cui, N. Hong, B. Shi, Z. Chai, Discrete effect on the halfway bounce-back
+     (1) (2012) 016701.                                                                          boundary condition of multiple-relaxation-time lattice Boltzmann model for
+[18] Q. Chen, X. Zhang, J. Zhang, Improved treatments for general boundary condi-                convection-diffusion equations, Phys. Rev. E 93 (4) (2016) 043311.
+     tions in the lattice Boltzmann method for convection-diffusion and heat trans-         [44] L. Li, C. Chen, R. Mei, J.F. Klausner, Conjugate heat and mass transfer in the
+     fer processes, Phys. Rev. E 88 (3) (2013) 033304.                                           lattice Boltzmann equation method, Phys. Rev. E 89 (4) (2014) 043308.
+                                                                                            [45] Z. Chai, T.S. Zhao, Nonequilibrium scheme for computing the ﬂux of the con-
+                                                                                                 vection-diffusion equation in the framework of the lattice Boltzmann method,
+                                                                                                 Phys. Rev. E 90 (1) (2014) 013305.
+

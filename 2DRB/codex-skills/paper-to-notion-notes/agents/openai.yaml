@@ -1,0 +1,7 @@
+interface:
+  display_name: "Paper To Notion Notes"
+  short_description: "Read a local paper and create a detailed Notion literature note."
+  default_prompt: "Use $paper-to-notion-notes to read the paper I put in detail/ and create or update a detailed note in my Notion literature database."
+
+policy:
+  allow_implicit_invocation: true

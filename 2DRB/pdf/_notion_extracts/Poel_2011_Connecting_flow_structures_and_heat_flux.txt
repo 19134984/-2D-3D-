@@ -1,0 +1,305 @@
+                                                    Connecting flow structures and heat flux in turbulent Rayleigh-Bénard convection
+
+                                                                          Erwin P. van der Poel1 , Richard J. A. M. Stevens1 , and Detlef Lohse1
+                                                                  1
+                                                                      Department of Physics, Mesa+ Institute, and J. M. Burgers Centre for Fluid Dynamics,
+                                                                                  University of Twente, 7500 AE Enschede, The Netherlands
+                                                                                                   (Dated: March 1, 2022)
+                                                                 The aspect ratio (Γ) dependence of the heat transfer (Nusselt number N u in dimensionless form)
+                                                               in turbulent (two-dimensional) Rayleigh-Bénard convection is numerically studied in the regime
+                                                               0.4 ≤ Γ ≤ 1.25 for Rayleigh numbers 107 ≤ Ra ≤ Ra9 and Prandtl numbers P r = 0.7 (gas) and 4.3
+                                                               (water). N u(Γ) shows a very rich structure with sudden jumps and sharp transitions. We connect
+                                                               these structures to the way the flow organizes itself in the sample and explain why the aspect ratio
+                                                               dependence of N u is more pronounced for small P r. Even for fixed Γ different turbulent states
+arXiv:1109.6865v1 [physics.flu-dyn] 30 Sep 2011
+
+
+
+
+                                                               (with different resulting N u) can exist, between which the flow can or cannot switch. In the latter
+                                                               case the heat transfer thus depends on the initial conditions.
+
+                                                               PACS numbers: 47.27.-i, 47.27.te
+
+
+                                                     The physicists’ view on fully developed turbulence has        aspect ratio Γ (i.e. many different runs with different Γ)
+                                                  been dominated by Kolmogorov’s seminal work [1], pos-            becomes feasible. These features will enable us to reveal
+                                                  tulating universality of the small scales. Real-world flows      the connection between the flow organization and the
+                                                  however have walls and boundaries. How do these geo-             heat-transfer properties. However, we stress that these
+                                                  metric properties affect the global transport characteris-       connections also exist in 3D RB flow, and working them
+                                                  tics of the flow such as heat or momentum transfer? The          out from experimental measurements had been pioneered
+                                                  common view is that in the fully turbulent state, due            by Xia and coworkers [15].
+                                                  to the large fluctuations of the system, the phase space            The main control parameter of this study will be the
+                                                  is fully explored by the dynamics of the flow and that           aspect ratio Γ, whose effect on the turbulent RB flow
+                                                  universality implies an at most weak dependence on the           has not yet been extensively studied, with only a few
+                                                  boundary conditions, clearly without any jumps in global         theoretical and numerical studies [17–19]. The main rea-
+                                                  transport properties.                                            son for this short-coming is that it is experimentally very
+                                                     Only recently the community became aware of the pos-          difficult to vary Γ in 3D cylindrical samples, as each Γ
+                                                  sibility of the coexistence of different turbulent states,       requires a new sample. That is why in experiment the Γ
+                                                  with first or second order phase transitions in between          resolution has hitherto been insufficient to detect transi-
+                                                  them. Examples include different turbulent states in von         tions between different turbulent states. In their review
+                                                  Kármán flow (“French washing machine” [2]), in mag-            Ahlers et al. [16] conclude, based on a small number of
+                                                  netohydrodynamic turbulence in a closed system (von              experiments with few different Γ [20–22], that the ”weak
+                                                  Kármán turbulent liquid sodium experiment) [3], in tur-        Γ-dependence [of the heat transfer] suggests an insensi-
+                                                  bulent rotating Rayleigh-Bénard (RB) flow [4], or in            tivity to the nature of the large-scale convection”. We
+                                                  turbulent rotating spherical Couette flow [5], and pos-          will show that in 2D RB this is definitely not the case.
+                                                  sibly even in high Rayleigh number turbulent RB flow                One may argue that the flow phenomena in 3D are
+                                                  in a cylindrical cell of aspect ratio Γ = 1/2 [6–12] and         different and richer, which is correct. However, various
+                                                  Γ = 0.23 [13]. That transitions between different flow           2D RB flow simulations [23–30] have revealed the value of
+                                                  states occur in closed flows at low degree of turbulence         this approach for a better understanding of turbulent RB
+                                                  has been well known and explored in the context of               convection and the analogies to 3D RB flow. In ref. [29]
+                                                  spatial-temporal chaos and pattern formation, see e.g.           we could even reveal a one-to-one analogy between the
+                                                  [14], but that they also occur between turbulent states          flow organization in our 2D numerical simulations and
+                                                  clearly came as a surprise.                                      in experiments in a quasi-2D sample of the same aspect
+                                                     In this paper we will numerically show that different         ratio Γ = 1.
+                                                  turbulent states with first and second order phase tran-            The code on which the results in this paper are based
+                                                  sitions in between them and even coexistence of different        is a fourth order finite difference discretization of the
+                                                  turbulent states also exist in an even simpler geometry,         incompressible Oberbeck-Boussinesq equations. It has
+                                                  namely in a two-dimensional (2D) RB sample. The ad-              been described and tested in detail in ref. [27]. The ve-
+                                                  vantages of the 2D geometry are (i) that a flow visualiza-       locity boundary conditions on the walls are no-slip. The
+                                                  tion is much easier, (ii) that the complicated axial and         (relative) temperature is fixed at ∆/2 at the bottom plate
+                                                  torroidal dynamics of 3D RB flow [16] does not compli-           and −∆/2 at the top plate, with adiabatic side-wall con-
+                                                  cate or even obscure the flow field analysis, and (iii) that     ditions. The grid resolution obeys the strict criteria for-
+                                                  it is numerically cheaper so that a good resolution in the       mulated in ref. [31]. The imposed initial condition is a
+                                                                                                                                2
+
+          26
+
+          25                                                   (a)
+    Nu
+
+          24
+           1                     Γ
+ τstate
+
+
+
+
+          0.5                                                  (b)
+
+           0
+          25
+                                                               (c)
+    Nu
+
+
+
+
+          20
+          15
+           1                     Γ                     SRS
+                                                       DRS
+ τstate
+
+
+
+
+          0.5                                          TRS     (d)
+                                                       QRS
+
+           0
+                                                       N/A
+                                                                       65                            35
+                0.5       0.75             1                 1.25                                         (e)
+                                 Γ                                          (d)
+
+FIG. 1. (color online) N u(Γ) for Ra = 108 and (a) P r = 4.3         PDF                            PDF
+and (c) P r = 0.7 (averaging time > 103 tE ). The ac-
+companying figures (b) and (d) show the respective relative
+time the system is in the single roll state (SRS), double-roll                                        0
+                                                                        0                       1                              1
+state (DRS), triple-roll state (TRS), and quadruple-roll state          0                             0
+(QRS). Additionally, the extend of time that no roll state               x/H            z/H            x/H             z/H
+could be identified is indicated.                                          0.45 0                        0.55 0
+
+single roll state with a linear temperature profile. The             FIG. 2. (color online) Snapshots of the temperature field for
+sample aspect ratio is Γ = D/H, where D is the sample                Ra = 108 and P r = 0.7 for (a) Γ = 0.45 with the flow in
+width and H the sample height. Times are given in mul-               a very stable TRS and (b,c) Γ = 0.55 with the flow in an
+                                                                     unstable TRS. The top and bottom rolls in (b) grow until
+tiples of large eddy turnover times tE := 4π/h|ωc (t)|i,             collision (c), which causes enhanced mixing and heat trans-
+where ωc is the center vorticity. Next to Γ, the other               port. Corresponding videos can be seen as supplementary
+control parameters are the Rayleigh number Ra (the di-               material. The positions of the roll centers are automatically
+mensionless temperature difference between top and bot-              tracked and their PDFs as function of (x,z) are shown in (d)
+tom) and the Prandtl number P r = ν/κ, where ν and                   for Γ = 0.45 and (e) for Γ = 0.55.
+κ are kinematic viscosity and thermal diffusivity, respec-
+tively. The system responds with the heat transfer from              coincides with a developing instability of the triple roll
+bottom to top (in dimensionless form: Nusselt number                 state (TRS): The sample becomes too wide for three rolls
+N u) and the turbulence intensity (in dimensionless form:            so that the three-roll structure from time to time breaks
+Reynolds number Re).                                                 down. This breakdown shuffles warm fluid upwards and
+                                                                     cold fluid downwards, leading to a larger temperature
+   In fig. 1 we show N u(Γ) for Ra = 108 and P r = 0.7
+                                                                     gradient across the thermal boundary layers (BLs) and
+and 4.3, resulting from a very large averaging time of
+                                                                     thus to increased heat flux. Typical snapshots of the
+more than 103 tE , for which we have checked statistical
+                                                                     temperature field in this regime are shown in fig. 2; the
+convergence. For the lower P r the curve shows varia-
+                                                                     movies can be seen in the supplementary material.
+tions in N u of up to 35%, with abrupt jumps and sharp
+transitions. From visual inspection of flow movies we de-               The enhanced vortex mobility at Γ = 0.55 as compared
+duce that these jumps are associated with transitions in             to Γ = 0.45 can also be deduced from the positions of
+the overall flow organization from one to two vertically             the vortex centers, which we identify by a non-iterative
+stacked rolls (at Γ ≈ 0.9) and from two to three rolls (at           ellipse-fit [32] coupled with a vortex criterium based on
+Γ ≈ 0.55). We automize this flow analysis by measuring               the non-zero imaginary part of the velocity gradient ten-
+the zeros in the vorticity along the center vertical axis,           sor’s eigenvalues. The 2D probability functions (PDFs)
+i.e., the zeros in ω(x = D/2, z). A state is not counted             of these positions are visualized in fig. 2d (for Γ = 0.45)
+if its life time is shorter than tE . The results for the            and fig. 2e (for Γ = 0.55). While in the former case we
+relative time in a certain state is shown in fig. 1. For             see three pronounced sharp peaks, reflecting the stability
+P r = 0.7 this analysis confirms that the transitions are            of that flow configuration, in the latter case the peaks
+rather sharp, with the coexistence of different roll states          are smeared out, showing the vortex mobility which con-
+only in a small Γ-range. Next to the jumps, relatively               tributes to the enhanced heat flux.
+sharp transitions in N u(Γ) can be observed. As an ex-                 We now come to the case of large P r = 4.3. Here the
+ample we discuss the 35% increase in N u from Γ = 0.45               transitions in N u(Γ) are much smoother as compared to
+to Γ = 0.55, namely from N u = 16 to N u = 24. This                  the P r = 0.7 case (compare figs. 1b and d) with wide Γ
+                                                                                                                                            3
+
+                                                                        51
+
+                                                                        50
+
+                                                                        49
+
+
+
+
+                                                                   Nu
+                                                                                       SRS
+                                                                        48
+                                                                                       DRS
+                                                                                       TRS
+                                                                        47
+                                                                                       QRS
+
+                                                                         0.4   0.5     0.6      0.7         0.8            0.9          1
+                                                                                                 Γ
+
+FIG. 3. (color online) Two temperature snapshots for Ra =        FIG. 4. (color online) Conditionally averaged N u(Γ) for the
+109 , P r = 4.3, and Γ = 0.93. The system is either in the SRS   various states SRS, DRS, and TRS, which can be identified
+(a) or DRS (b). The corresponding movie is available online      at Ra = 109 and P r = 4.3. For fixed Γ the flow jumps in
+as supplementary material. Heat transport efficiency differs     between these different states.
+between these states, see fig. 4.
+
+regimes of coexistence between different states, between
+which the dynamical evolution of the flow meanders, as                  5.5
+e.g. seen from temperature field snapshots of fig. 3, the
+supplementary movie, and the time series of the Nus-                                                      5.5
+selt number. For these larger P r the dynamics is much                   5
+richer as the flow keeps on switching between the different        Nu                                      5
+
+
+
+
+                                                                                                  Nu
+states. The reason for this lies in the plume dynamics:
+                                                                        4.5                               4.5
+Whereas for P r = 0.7 the larger thermal diffusivity tends
+to smoothen out temperature differences between differ-                                                    4
+ent flow parcels, for larger P r = 4.3 the plumes keep                   4                                 0.6                   0.66
+their thermal energy for a longer time. Thus the plumes,                                                               Γ
+which feed the competing rolls as described in ref. [29],                0.4    0.6      0.8          1          1.2             1.4
+have a longer life time, which leads to more lively roll                                         Γ
+dynamics. Therefore a 100% dominance of a certain roll
+                                                                 FIG. 5. (color online) N u(Γ) for Ra = 107 and P r = 0.7.
+state, common for small P r, does not occur.
+                                                                 For Γ ≈ 0.64 the Nusselt number depends on the initial con-
+   Based on the state analysis, the heat flux can be condi-      ditions, see text for details.
+tionally averaged on the SRS, DRS, or TRS. The results
+for these conditional heat fluxes are shown in fig. 4. For       pared to large P r, see again fig. 1. The first reason for
+the vertically arranging vortices it again holds that the        this finding is the organization of the thermal BL and
+stable states with n rolls enable larger heat transfer than      kinetic BL: For large P r the thermal BL is nested in
+the stable states with n+1 rolls. For n=1 and n=2 the            the kinetic one. Thus modifications of the bulk flow are
+difference is about 5% for Ra = 109 , P r = 4.3. Re-             buffered by the kinetic BL and hardly lead to a differ-
+markably, that value is similar to what one would expect         ent thermal BL thickness λθ and therefore to hardly any
+for the 3D situation, based on an extrapolation towards          change in N u ≈ L/(2λθ ). In contrast, for low P r the
+Ra = 109 of the N u measurements for the SRS and DRS             thermal BL is thicker than the kinetic one and is there-
+in ref. [33] (for 4 · 109 ≤ Ra ≤ 1011 ), which roughly gives     fore fully exposed to bulk flow modifications, leading to
+3%.                                                              a much stronger dependence of N u ≈ L/(2λθ ) on the
+   We also found a case for which the final state and thus       flow organization. The second reason for the larger sen-
+N u depend on the initial conditions of the flow field, see      sitivity of N u at smaller P r is the larger thermal diffu-
+fig. 5 for Ra = 107 and P r = 0.7, which according to            sivity, leading to a thermal smoothening of the plumes.
+ref. [25] is already turbulent. The unstable TRS initial         As discussed above this results in sharper transitions be-
+condition for Γ = 0.63 falls back to the DRS, whereas            tween different states. Our interpretation is supported by
+for initial DRS condition at Γ = 0.64 the flow remains           fig. 6, in which we plot N u(Γ) vs a normalized Rez (Γ),
+in this DRS (with lower N u) for longer than 3000 tE . It        where Rez = uz,rms L/ν, which represents the bulk flow.
+remains to be seen whether this explicit dependence on           For P r = 4.3 there is hardly any dependence of N u on
+initial conditions can also be found at larger Ra.               Rez /hRez i, whereas for P r = 0.7 this dependence is ma-
+   We finally address the question why N u is much more          jor. Here hRez i is the average Reynolds number of the
+sensitive to the flow organization at small P r as com-          shown Γ range 0.4 ≤ Γ ≤ 1.25.
+                                                                                                                             4
+
+       26                                                         [3] F. Ravelet et al., Phys. Rev. Lett. 101, 074502 (2008);
+                                                                      R. Monchaux et al., Phys. Fluids 21, 035108 (2009); M.
+                                                                      Berhanu et al., Eur. Phys. J. B 77, 459 (2010).
+       24
+                                                                  [4] R. J. A. M. Stevens et al., Phys. Rev. Lett. 103, 024503
+                                                                      (2009); S. Weiss et al., Phys. Rev. Lett. 105, 224501
+       22                                                             (2010).
+                                                                  [5] D. S. Zimmerman, A. A. Triana, and D. P. Lathrop,
+  Nu
+
+
+
+
+       20                                                             Phys. Fluids 23, 065104 (2011).
+                                                                  [6] P. E. Roche, B. Castaing, B. Chabaud, and B. Hebral,
+                                                                      Europhys. Lett. 58, 693 (2002).
+       18                                                         [7] E. S. C. Ching et al., Phys. Rev. Lett 93, 124501 (2004).
+                                                    Pr = 0.7      [8] C. Sun, H. D. Xi, and K. Q. Xia, Phys. Rev. Lett. 95,
+       16                                           Pr = 4.3          074502 (2005).
+                                                                  [9] H. D. Xi and K. Q. Xia, Phys. Fluids 20, 055104 (2008).
+                  0.8           1             1.2                [10] S. Weiss and G. Ahlers, J. Fluid. Mech. 676, 5 (2011).
+                            Rez/<Rez>                            [11] G. Ahlers, D. Funfschilling, and E. Bodenschatz, New J.
+                                                                      Phys. 13, 049401 (2011).
+FIG. 6. (color online) N u(Γ) vs. Rez (Γ)/hRez i for P r = 0.7   [12] S. Grossmann and D. Lohse, Phys. Fluids 23, 045108
+(red squares) and P r = 4.3 (blue bullets) at Ra = 108 .              (2011).
+                                                                 [13] P. E. Roche, G. Gauthier, R. Kaiser, and J. Salort, New
+   In conclusion, we could clearly identify different turbu-          J. Phys. 12, 085014 (2010).
+                                                                 [14] E. Bodenschatz, W. Pesch, and G. Ahlers, Ann. Rev.
+lent states, corresponding to different roll structures. It
+                                                                      Fluid Mech. 32, 709 (2000).
+is remarkable that these features, which have been associ-       [15] C. Sun, H. D. Xi, and K.-Q. Xia, Phys. Rev. Lett. 95,
+ated to lower Reynolds and Rayleigh number flow in the                074502 (2005); H. D. Xi and K.-Q. Xia, Phys. Fluids 20,
+regime of spatial-temporal chaos with much less dynami-               055104 (2008).
+cal degrees of freedom, survive for such high Ra. It seems       [16] G. Ahlers, S. Grossmann, and D. Lohse, Rev. Mod. Phys.
+that the turbulent states ’live’ on low-dimensional struc-            81, 503 (2009).
+tures. The different turbulent states are associated with        [17] S. Grossmann and D. Lohse, J. Fluid. Mech. 486, 105
+                                                                      (2003).
+different overall heat transfer. Transitions between the
+                                                                 [18] E. S. C. Ching and W. S. Tam, J. Turb. 7, 1 (2006).
+states – either dynamically or as function of the control        [19] J. Bailon-Cuba, M. S. Emran, and J. Schumacher, J.
+parameter Γ – thus imply jumps and sharp transitions in               Fluid Mech. 655, 152 (2010).
+N u(Γ). Based on the flow organization, we understand            [20] D. Funfschilling, E. Brown, A. Nikolaenko, and G.
+why these variations are larger for lower P r and why the             Ahlers, J. Fluid Mech. 536, 145 (2005).
+overall flow dynamics is richer at larger P r, for which         [21] A. Nikolaenko, E. Brown, D. Funfschilling, and G.
+the plumes can keep their thermal identity for a longer               Ahlers, J. Fluid Mech. 523, 251 (2005).
+                                                                 [22] C. Sun, L.-Y. Ren, H. Song, and K.-Q. Xia, J. Fluid
+time. The next step will be to push the present results
+                                                                      Mech. 542, 165 (2005).
+to much higher Ra in order to see whether these features         [23] E. E. DeLuca, J. Werne, R. Rosner, and F. Catta-
+survive. Based on our analysis for Ra = 108 and 109 we                neo, Phys. Rev. Lett. 64, 2370 (1990); J. Werne, E. E.
+presume that this could be the case as the stability of the           DeLuca, R. Rosner, and F. Cattaneo, Phys. Rev. Lett.
+states and the variation in N u(Γ) is higher for Ra = 109             67, 3519 (1991); J. Werne, Phys. Rev. E 48, 1020 (1993).
+compared to Ra = 108 at P r = 4.3. Additionally, large           [24] J. Schmalzl, M. Breuer, and U. Hansen, Geophys. Astro-
+scale roll states have been distinguished up to Ra = 1010             phys. Fluid Dyn. 96, 381 (2002); J. Schmalzl, M. Breuer,
+                                                                      S. Wessling, and U. Hansen, Europhys. Lett. 67, 390
+[29] and can probably be found for even higher Ra.
+                                                                      (2004).
+                                                                 [25] K. Sugiyama, E. Calzavarini, S. Grossmann, and D.
+Acknowledgements: We thank K. Sugiyama for writ-                      Lohse, Europhys. Lett. 80, 34002 (2007).
+ing the first version of the numerical code. The work was        [26] G. Ahlers et al., Phys. Rev. E 77, 046302 (2008).
+supported by the Foundation for Fundamental Research             [27] K. Sugiyama, E. Calzavarini, S. Grossmann, and D.
+                                                                      Lohse, J. Fluid Mech. 637, 105 (2009).
+on Matter (FOM) and the National Computing Facilities
+                                                                 [28] H. Johnston and C. R. Doering, Phys. Rev. Lett. 102,
+(NCF), both sponsored by NWO.                                         064501 (2009).
+                                                                 [29] K. Sugiyama et al., Phys. Rev. Lett. 105, 034503 (2010).
+                                                                 [30] Q. Zhou et al. J. Fluid Mech. 664, 297 (2010); M. Chan-
+                                                                      dra and M.K. Verma, Phys. Rev. E 83, 067303 (2011).
+                                                                 [31] R. J. A. M. Stevens, R. Verzicco, and D. Lohse, J. Fluid
+ [1] A. N. Kolmogorov, Dokl. Akad. Nauk SSSR 30, 9 (1941),            Mech. 643, 495 (2010).
+     reprinted in Proc. R. Soc. Lond. A 434, 9-13 (1991).        [32] R.Halir and J.Flusser, WSCG 1, 125 (1998).
+ [2] P.P. Cortet, A. Chiffaudel, F. Daviaud, and B. Dubrulle,    [33] S. Weiss and G. Ahlers, J. Fluid. Mech. 676, 5 (2010).
+     Phys. Rev. Lett. 105, 214501 (2010); R. Monchaux et al.,    [34] See           supplemental           material          at
+     Phys. Rev. Lett. 96, 124502 (2006); A. de la Torre and           http://link.aps.org/supplemental/DOI for flow field
+     J. Burguete, Phys. Rev. Lett. 99, 054101 (2007).                 movies.
+

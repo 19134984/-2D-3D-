@@ -1379,7 +1379,7 @@ subroutine collisionT3d()
         By_prev(i,j,k) = By
         Bz_prev(i,j,k) = Bz
 #else
-        ! 传统 Chai BGK 与 legacy LBGK 分支都不加入 d(uT)/dt 对流修正项。
+        ! 传统  BGK 与 legacy LBGK 分支都不加入 d(uT)/dt 对流修正项。
         dBx = 0.0d0
         dBy = 0.0d0
         dBz = 0.0d0

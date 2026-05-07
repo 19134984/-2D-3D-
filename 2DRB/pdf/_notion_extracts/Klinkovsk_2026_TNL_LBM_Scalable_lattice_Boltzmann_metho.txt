@@ -1,0 +1,1592 @@
+The Journal of Supercomputing      (2026) 82:167
+https://doi.org/10.1007/s11227-026-08292-0
+
+
+
+
+TNL‑LBM: Scalable lattice Boltzmann method
+implementation based on Template Numerical Library
+
+Jakub Klinkovský1 · Pavel Eichler1 · Robert Straka2 · Tomáš Oberhuber3 ·
+Radek Fučík3
+
+Received: 2 September 2025 / Accepted: 26 January 2026
+© The Author(s) 2026
+
+
+
+Abstract
+The lattice Boltzmann method (LBM) is a mesoscopic numerical technique widely
+used for solving partial differential equations such as the Navier–Stokes equations
+or advection–diffusion equations. It employs discrete particle distribution functions
+instead of macroscopic variables, offering advantages in parallelization and scal-
+ability. This paper introduces the TNL-LBM project, an advanced computational
+framework that implements LBM using the Template Numerical Library (TNL).
+TNL-LBM is designed for high-performance, large-scale simulations of turbulent
+flows and is available under the MIT license. The project emphasizes modularity,
+efficiency, and flexibility, providing a library of fundamental components and a
+high-level framework for developing custom solvers. Key features include a mod-
+ular architecture with pluggable components, high performance through parallel
+algorithms and data structures provided by TNL, and scalability across multi-core
+CPUs, GPU accelerators, and distributed platforms. The paper outlines the compo-
+nents of LBM, its computational algorithm, and the design of TNL-LBM, followed
+by a description of input/output components and benchmark results demonstrating
+its performance on the Karolina supercomputer and on a compute node based on
+NVIDIA Tesla H100 accelerators. The performance of TNL-LBM is also compared
+to other open-source LBM projects.
+
+Keywords Lattice Boltzmann method (LBM) · Computational fluid dynamics
+(CFD) · High-performance computing (HPC) · Scalability · Software design
+
+Mathematics Subject Classification 65Y05 · 65Y10 · 76M28
+
+
+
+
+Extended author information available on the last page of the article
+
+
+                                                                        Vol.:(0123456789)
+    167      Page 2 of 35                                                   J. Klinkovský et al.
+
+
+1 Introduction
+
+The lattice Boltzmann method (LBM) is a mesoscopic numerical method capable
+of solving a suitable class of partial differential equations such as the advection–dif-
+fusion or Navier–Stokes equations [13, 16, 23]. It uses a discrete set of particle dis-
+tribution functions as main unknown variables instead of the original macroscopic
+variables. It has been extensively studied for the past couple of decades and has
+developed as an alternative numerical method to the classical finite element, finite
+volume, and finite difference methods. LBM was originally used for the numerical
+solution of the incompressible Navier–Stokes equations [35] and has been extended
+to various types of problems, such as fluid-solid interaction [10, 14], multiphase,
+multi-component and porous media flows [23], chemical and thermal transport [8,
+50], radiative transport [41, 42], non-Newtonian fluid flow [11], and other problems.
+The method can be easily and efficiently parallelized [35], and the advent of general-
+purpose computing on graphics processing units (GPGPU) made large-scale and
+highly resolved numerical simulations of turbulent flows feasible [18, 27, 36, 47, 59,
+60].
+   This paper describes the TNL-LBM project, an advanced computational frame-
+work implementing the lattice Boltzmann method using the Template Numerical
+Library (TNL) [46]. Both TNL-LBM1 and TNL2 are free and open-source projects
+available under the MIT license. TNL-LBM is a high-performance code designed to
+facilitate large-scale simulations using LBM, including problems involving turbulent
+flow and coupling with additional solvers. It has been used in numerous scientific
+and engineering applications, including environmental science, biomedical engi-
+neering, or the energy industry, where it has shown its versatility, robustness, and
+effectiveness. The implementation of LBM in this project was verified and validated
+on multiple problems in [5, 9–11, 13–16, 29]. We would like to highlight that these
+works include various multiphysics problems that require extensions of the lattice
+Boltzmann method developed within the TNL-LBM project, such as non-Newtonian
+fluid flow, fluid–structure interaction based on the immersed boundary method, and
+coupling with the mixed-hybrid finite element method (MHFEM).
+   The TNL-LBM project emphasizes modularity, efficiency, and flexibility. From
+the user’s perspective, the repository contains functionality that can be used in dif-
+ferent ways. First, there is a library of fundamental low-level components that are
+needed for LBM, such as collision operators, streaming schemes, data structures,
+and parallelization algorithms. On top of this, the TNL-LBM project provides a gen-
+eral high-level framework for writing LBM-based solvers and a few simple exam-
+ples that show how to adapt the code for a particular problem. Using the framework
+is not as versatile as using the library, since it enforces certain design patterns, but it
+simplifies the development of custom solvers, since researchers do not need to deal
+with designing a solver from scratch and they can instead focus on obtaining desired
+results. The key features of the project include the following.
+
+
+1
+    https://​gitlab.​com/​tnl-​proje​ct/​tnl-​lbm
+2
+    https://​tnl-​proje​ct.​org/
+TNL‑LBM: Scalable lattice Boltzmann method implementation…           Page 3 of 35   167
+
+
+• Modular architecture with pluggable components (collision operators, stream-
+  ing patterns, boundary conditions, macroscopic quantities, etc.). This modular-
+  ity facilitates customization and experimentation with various LBM approaches
+  without significant changes to the core codebase.
+• High-performance portability achieved through the use of established data struc-
+  tures and parallel algorithms from the main TNL library. The project leverages
+  TNL’s advanced interface for parallel hardware architectures to ensure efficient uti-
+  lization of computational resources. This includes support for common multi-core
+  CPUs, general-purpose computing on GPU accelerators by different vendors, and
+  computing on distributed platforms using the Message Passing Interface (MPI).
+• Scalability is one of the primary objectives of TNL-LBM. It is designed to scale
+  efficiently across multiple compute units within a node, as well as across multi-
+  ple compute nodes. Good parallel efficiency is ensured by overlapping computa-
+  tion with communication and other optimization techniques. Overall, TNL-LBM
+  enables researchers to tackle large-scale problems that require significant compu-
+  tational power and memory.
+
+1.1 Related work
+
+Several LBM implementations exist as active free and open-source projects, includ-
+ing Palabos [38], OpenLB [34], waLBerla [3], TCLB [37], and VirtualFluids [20].
+These projects share common features such as GPU acceleration, distributed com-
+puting via MPI, and various multi-physics capabilities. Beyond standard incom-
+pressible flow, Palabos, OpenLB, and waLBerla can be applied to problems involv-
+ing porous media, particles, free surface, thermal, or multi-phase flows. Similarly,
+TCLB is extended to problems with particles, thermal or multi-phase flows and Vir-
+tualFluids is an active research code with many emerging multi-physics extensions.
+However, the main differences of these projects lie in their design choices, program-
+ming interfaces, and implementation of LBM-specific components.
+   TNL-LBM distinguishes itself through its full support for distributed GPU-accel-
+erated systems, modular architecture with pluggable components, and a permissive
+MIT license. The core TNL library serves as a performance portability layer for
+TNL-LBM, providing support for various hardware platforms without code changes
+in downstream projects. It also extends to multi-physics problems via models for
+solving thermal or non-Newtonian flows and coupling with the mixed-hybrid finite
+element method (MHFEM) and immersed boundary method (IBM).
+   Table 1 summarizes the key features of the aforementioned projects. In addition,
+many LBM implementations exist under non-free licenses or as inactive research
+projects that accompany academic publications [6, 49]. It must be noted that each
+software project offers its own unique and distinctive features that are not mentioned
+in the comparison table, such as bespoke collision operators, boundary conditions,
+coupling with external software projects, etc. This paper describes details related to
+the components implemented in the TNL-LBM project, but a comprehensive review
+and comparison of features provided by other projects is beyond the scope of this
+work. A performance comparison of the projects listed in Table 1 on a single-GPU
+system is presented in the last section of this paper.
+167       Page 4 of 35                                                            J. Klinkovský et al.
+
+
+Table 1  Comparison of key features among free and open-source LBM projects
+Project              License       Languages              GPU Support         Scalability
+
+TNL-LBM              MIT           C++                    CUDA, HIP           128 GPUs [Sect. 6.2]
+Palabos              AGPLv3        C++, Python            C++ PSTL            400 GPUs [30, 38]
+OpenLB               GPLv2         C++                    CUDA                512 GPUs [33]
+waLBerla             GPLv3         C++, Python            CUDA, HIP           2048 GPUs [24]
+TCLB                 GPLv3         C++, Python, R         CUDA, HIP           48 GPUs [37]
+VirtualFluids        GPLv3         C++, Python            CUDA                8 GPUs [20]
+
+
+
+
+1.2 Content of the article
+
+The paper is organized as follows. First, the components of LBM and its background
+are described in Sect. 2. The following Sect. 3 formulates the computational algo-
+rithm in several variants leading to a distributed and scalable implementation. Sec-
+tion 4 provides insights into the implementation of the TNL-LBM project and its
+performance optimizations. The input/output components are described in Sect. 5.
+The final Sect. 6 contains computational results: Firstly Sect. 6.1 presents results
+of numerical verification on the three-dimensional Taylor–Green vortex problem;
+then, Sect. 6.2 evaluates the TNL-LBM project in high-performance computing
+(HPC) environments such as the Karolina supercomputer [25] through several com-
+putational benchmarks, and finally Sect. 6.3 contains a performance comparison of
+TNL-LBM with other open-source LBM projects.
+
+
+2 LBM components and background
+
+The lattice Boltzmann method [35] (LBM) is an alternative to traditional compu-
+tational methods for the solution of time-dependent PDEs such as finite difference,
+finite volume, and finite element methods. Based on the kinetic theory of gases,
+it utilizes probabilistic distributions as main degrees of freedom, with the origi-
+nal macroscopic variables reconstructed as raw moments. The approach based on
+kinetic theory makes LBM very suitable for parallel computations. However, it also
+poses several challenging problems such as the treatment of boundary conditions
+(see Sect. 2.5).
+   The detailed derivation of LBM is not within the scope of this article. Instead, we
+review the basic components related to the implementation of LBM within the pre-
+sented TNL library. For further details on LBM, the reader is referred to [16, 23, 35].
+
+2.1 Lattice and velocity set
+
+The computational domain in TNL-LBM is a cuboid Ω ⊂ ℝ3 and is covered by uni-
+form lattice LΩ defined as
+TNL‑LBM: Scalable lattice Boltzmann method implementation…             Page 5 of 35   167
+
+
+  LΩ = {Δx[i, j, k]T ∣ i ∈ {0, … , Nx − 1}, j ∈ {0, … , Ny − 1}, k ∈ {0, … , Nz − 1}},
+                                                                                       (1)
+where the integers Nx , Ny, and Nz determine the numbers of grid nodes along the
+x, y, and z axes, respectively, and Δx is the lattice spacing parameter that we set to
+Δx = 1 as usual in the LBM community [35]. The lattice site Δx[i, j, k]T corresponds
+to a physical point xi,j,k = [i𝛿x + Ox , j𝛿x + Oy , k𝛿x + Oz ]T , where 𝛿x [m] is the grid
+spacing parameter and O = [Ox , Oy , Oz ]T [m] is an offset vector that allows to fit the
+grid nodes to the physical coordinates of the domain. Note that "[m]" denotes the
+physical unit in which these quantities are measured. For further purposes, by LΩ we
+denote the extended lattice consisting of sites used for boundary condition approxi-
+mations [12].                                             [       ]
+   Similarly to space discretization, the time interval 0, tmax is discretized by a non-
+                               {                        }
+dimensional finite set Lt = 𝓁Δt ∣ 𝓁 ∈ {0, … , Nt } , where Nt is the number of time
+steps and Δt = 1 is the non-dimensional time step. The time level 𝓁Δt corresponds
+to the physical time 𝓁𝛿t , where 𝛿t = tmax ∕Nt [s] is the time step in physical units.
+   LBM uses the so-called discrete velocity set V which comes from the discretiza-
+tion of the microscopic velocity space. They are typically named as DDQQ, where
+D stands for spatial dimension, and Q denotes the number of discrete velocities per
+lattice site. The most common examples are D1Q3, D2Q5, D2Q9, D3Q7, D3Q15,
+D3Q19, and D3Q27. Not all velocity sets are suitable for accurate resolution of the
+desired macroscopic equation [13, 16, 35].
+   For the solution of the Navier–Stokes equations in ℝ3, the TNL-LBM project
+implements the D3Q27 velocity set consisting of Q = 27 discrete velocities, i.e.,
+V = {−c, 0, c} × {−c, 0, c} × {−c, 0, c}, c = Δx∕Δt . TNL-LBM also provides the
+three-dimensional velocity set D3Q7 as an alternative for solving linear advec-
+tion–diffusion equations and the D2Q9 velocity set for solving the Navier–Stokes
+equations in ℝ2. Other simpler or even more complex velocity sets may be imple-
+mented in the future.
+   For the purpose of lattice computations, a system of lattice units is defined by
+selecting 𝛿x , 𝛿t , and 𝜌0 as conversion factors. In lattice units, we set the space step
+as Δx = 1, the time step as Δt = 1, and the average density 𝜌̂0 = 1. In the rest of this
+section, all variables are supposed in the non-dimensional form.
+
+2.2 Discrete lattice Boltzmann equation
+
+The basic lattice Boltzmann equation implemented in TNL-LBM is in the form of
+                                                        (                     )
+                fq (x + Δt𝝃 q , t + Δt) − fq (x, t) = Δt Cq (x, t) + Sq (x, t)  (2)
+
+for all q ∈ {1, … , Q}, x ∈ LΩ, and t ∈ Lt . In Equation (2), fq = fq (x, t) are the
+discrete density distribution functions corresponding to the microscopic veloc-
+ity 𝝃 q ∈ V , Cq is the discrete collision operator, and Sq is the discrete source term.
+Note that the collision operator Cq and source term Sq depend on the entire set of
+Q discrete density distribution functions (i.e., the Q equations written in (2) are not
+167      Page 6 of 35                                                             J. Klinkovský et al.
+
+
+independent). Following common conventions used in the LBM community, the
+dependency is omitted in (2) to avoid cluttered notation.
+   In LBM, the moments of the discrete density distribution functions fq are of inter-
+est, as they allow recovery of desired unknown macroscopic quantities. For instance,
+the scheme for the approximation of the Navier–Stokes equations is constructed
+such that the conserved moments correspond to the macroscopic density 𝜌 that can
+be obtained in lattice units in LΩ × Lt by
+                                                 Q
+                                                 ∑
+                                     𝜌(x, t) =         fq (x, t)                                 (3)
+                                                 q=1
+
+and the macroscopic momentum density 𝜌v that can be computed in lattice units as
+                                            Q
+                                            ∑                 1 ̂
+                         𝜌(x, t)v(x, t) =       fq (x, t)𝝃 q + ΔtF(x, t),                        (4)
+                                            q=1
+                                                              2
+
+where F̂ denotes the external force density in lattice units exerted on the fluid. The
+macroscopic velocity v can be obtained by dividing the macroscopic momentum
+density 𝜌v by the macroscopic mass density 𝜌. Other macroscopic quantities, such as
+the stress tensor, can be obtained from non-conserved higher-order moments of the
+distribution functions [35].
+
+2.3 Collision operator
+
+The term Cq in Equation (2) denotes the discrete collision operator. In TNL-LBM,
+users can choose from several collision operators based on the selected discrete
+velocity set. The summary of collision operators implemented within the TNL-LBM
+project is listed in Table 2.
+   The operators have several parameters that drive the relaxation rates of different
+cumulants toward their equilibria. Their value influences the precision and overall
+computational time of the simulation.
+
+
+
+
+Table 2  Summary of collision    Collision operator                Velocity set           Reference
+operators implemented in the
+TNL-LBM project                  Single relaxation time (SRT)      D3Q7      D3Q27        [35]
+                                 Multiple relaxation time (MRT)    D3Q7      D3Q27        [18]
+                                 Improved BGK model                          D3Q27        [18]
+                                 KBC model                                   D3Q27        [31]
+                                 Central moment-based (CLBM)       D3Q7      D3Q27        [16]
+                                 Cumulant-based (CuLBM)                      D3Q27        [18]
+TNL‑LBM: Scalable lattice Boltzmann method implementation…             Page 7 of 35   167
+
+
+2.4 Equilibrium function
+
+In the kinetic theory of gases, the Maxwell–Boltzmann distribution f eq describes
+the speeds of particles in an ideal gas that moves with a macroscopic velocity v in a
+thermodynamic equilibrium [35]. In the derivation of the discrete lattice Boltzmann
+equation, the equilibrium distribution function f eq is discretized to obtain an approx-
+imation of the equilibrium state for the given discrete velocity set.
+   The form of the discrete equilibrium function is based on the solved problem
+and the chosen collision operator. For instance, a second-order approximation of
+the continuous Maxwell–Boltzmann distribution [35] and the entropic equilibrium
+model [31] are implemented in TNL-LBM.
+
+2.5 Boundary conditions
+
+The formulation of proper boundary conditions for LBM is a major complication
+in its applications, since the desired macroscopic conditions (e.g., given in terms of
+𝜌 and v) must be reproduced at the mesoscopic level using the discrete density dis-
+tribution functions fq [35]. This problem does not have a unique solution, and thus
+multiple LBM boundary schemes exist that approximate the same macroscopic con-
+dition. The following boundary conditions are currently implemented in TNL-LBM:
+
+•   General Dirichlet boundary condition based on the equilibrium approach [35]
+•   Inflow boundary condition based on the equilibrium approach [35]
+•   Interpolated outflow boundary condition [12]
+•   No-slip boundary condition based on the bounce-back approach [35]
+•   Moment-based boundary conditions [12]
+•   Periodic and symmetry-plane boundary conditions [35]
+
+Note that all boundary conditions that are currently implemented in TNL-LBM use
+values only from the closest layer of neighboring lattice sites. This property sim-
+plifies the implementation and interaction of boundary conditions with other com-
+ponents of the TNL-LBM project, such as streaming patterns and communication
+in distributed computing. Considering a more general class of non-local boundary
+conditions might limit the number of available streaming patterns.
+
+2.6 Initialization
+
+The initialization approach, which is used in TNL-LBM, is based on the equilib-
+rium approach, i.e., at time t = 0, discrete density functions are set to their equilibria
+according to the supplied macroscopic density and velocity using
+                                 fq (x, 0) = fqeq (𝜌(x, 0), v(x, 0))                    (5)
+
+for all lattice sites x ∈ LΩ and q ∈ {1, … , Q}. Unless noted otherwise, the values
+𝜌(x, 0) = 𝜌̂0 and v(x, 0) = 0 are used.
+167     Page 8 of 35                                                         J. Klinkovský et al.
+
+
+2.7 Streaming schemes
+
+Based on Equation (2), the computational steps needed to evolve the state from
+the current time t to the next time level t + Δt can be decomposed into two suc-
+cessive steps: the collision step and the streaming step. Depending on the order of
+these steps, two simple yet equivalent schemes can be formulated [35]. In the push
+scheme, the collision step is performed first and the subsequent streaming step prop-
+agates the post-collision values fq∗, of the distribution function from the reference
+lattice site x ∈ LΩ to the neighboring lattice site in the direction of the correspond-
+ing velocity 𝝃 q ∈ V , for all q ∈ {1, … , Q}:
+                                                   (                     )
+                        fq∗ (x, t) = fq (x, t) + Δt Cq (x, t) + Sq (x, t) ,        (6a)
+
+                              fq (x + Δt𝝃 q , t + Δt) = fq∗ (x, t).                       (6b)
+
+    On the other hand, in the pull scheme, the streaming step first propagates the
+post-collision distribution function fq∗ to the reference lattice site x ∈ LΩ from the
+neighboring lattice site in the direction of −𝝃 q from the previous time level, and the
+subsequent collision step computes the new post-collision distribution functions fq∗
+at the current time level t, for all q ∈ {1, … , Q}:
+                              fq (x, t) = fq∗ (x − Δt𝝃 q , t − Δt),                        (7a)
+
+                                                  (                     )
+                       fq∗ (x, t) = fq (x, t) + Δt Cq (x, t) + Sq (x, t) .                (7b)
+
+   Note that regardless of the chosen streaming scheme, the collision step is local in
+terms of the lattice sites x ∈ LΩ (that is, collisions in different lattice sites are inde-
+pendent of each other), but collective for all q ∈ {1, … , Q} since the collision opera-
+tor Cq depends on the entire set of discrete density distribution functions at the given
+lattice site. On the other hand, the operations in the streaming step are non-local, but
+trivial as they do not require any computation (the post-collision values are merely
+transferred from one place to another).
+   Both the push and pull schemes require attention during the implementation to
+avoid overwriting memory locations containing values that may be needed in the
+future. In the former scheme, the values of fq at the time level t + Δt cannot be
+pushed to the neighboring lattice sites by overwriting the values at the current time
+level t, because the neighboring nodes may still be unprocessed in this time step.
+Similarly, after the collision step in the pull scheme, the values of fq∗ cannot over-
+write the values of fq at the reference lattice site, because those values may be pulled
+later when processing neighboring nodes in the same time step. Hence, the imple-
+mentation of these schemes requires the use of two arrays to store the state of the
+simulated system. In each time step, an array A is used for input and an array B is
+used for output, and while going to the next time step (that is, from t to t + Δt ), the
+arrays A and B are swapped. Hence, this approach is named A-B pattern. The A-B
+pattern with the pull scheme is implemented in the TNL-LBM project.
+TNL‑LBM: Scalable lattice Boltzmann method implementation…            Page 9 of 35   167
+
+
+    The A-A pattern [2, 58] is an alternative approach that allows to perform the
+streaming step in-place using just one storage array 𝙰 for the density distribution
+functions. This feature of the streaming scheme reduces the memory requirements
+for a given lattice by a factor of two, which is crucial for high-resolution LBM simu-
+lations on GPU accelerators due to their limited amount of global memory. The A-A
+pattern is also implemented within the TNL-LBM project.
+    The time-stepping procedure using the A-A pattern involves different opera-
+tions in even and odd iterations. In an even iteration, both pre-collision reading and
+post-collision writing operations happen locally at the reference lattice site x ∈ LΩ,
+whereas in an odd iteration, both pre-collision reading and post-collision writing
+operations access only neighboring lattice sites. In order to avoid read/write con-
+flicts in the storage array, the A-A pattern involves inverting the streaming direction
+𝝃 q at the end of even iterations and at the beginning of odd iterations.
+    The A-A pattern is not the only technique that facilitates in-place streaming using
+a single array. Alternatives include, for example, Esoteric twist [17], the compact
+LRnLA streaming pattern [60], Esoteric push, and Esoteric pull [39]. However, none
+of the aforementioned papers discuss advanced topics such as MPI communication
+or the implementation of boundary conditions. Hence, these streaming patterns have
+not yet been implemented in the TNL-LBM project.
+
+
+3 Computational algorithm
+
+The time-stepping algorithm for LBM can be generalized to cover all aforemen-
+tioned streaming patterns. Algorithm 1 summarizes the steps according to our
+implementation on the conceptual level for the A-A pattern and the push/pull
+schemes with the A-B pattern.
+Algorithm 1  LBM
+
+
+
+
+   All steps in Algorithm 1 that involve iteration over the lattice sites provide a natu-
+ral way to parallelize the algorithm. While each such step could be implemented in
+167     Page 10 of 35                                                    J. Klinkovský et al.
+
+
+a separate parallel loop (e.g., launching a separate CUDA kernel), it is desirable to
+merge all steps in the time loop into a single parallel loop to avoid a performance
+penalty due to writing and reading the intermediate results. This is already indicated
+in Algorithm 1 which includes explicit read and write operations, and it is assumed
+that intermediate results are readily available for the following steps. The formula-
+tion of a parallel variant of Algorithm 1 for architectures that utilize a single shared
+memory, such as multicore CPUs within a single node or a single-GPU accelerator,
+is trivial and omitted here for brevity.
+    In order to utilize multiple GPUs or even multiple nodes for computing in a dis-
+tributed fashion, an additional level of coarse-grained parallelism has to be intro-
+duced based on the domain decomposition approach. The global lattice LΩ is
+divided into subdomains LΩ,j , j ∈ {1, … , Nparts } that are processed independently
+using Nranks ≤ Nparts independent processes (MPI ranks). Each subdomain is
+assigned one MPI rank that is mapped to one coarse-grain computational unit, such
+as a CPU core, a CPU socket, or a GPU accelerator. Each MPI rank is responsible
+for processing computations related to one or more subdomains that were assigned
+to it. In order to obtain consistent results, it must be ensured that the values of dis-
+crete density distribution functions are propagated correctly across the interfaces
+between subdomains. However, due to the distributed memory system, this cannot
+happen automatically as part of the streaming step in Algorithm 1. The solution
+adopted in our implementation is to extend each subdomain LΩ,j with ghost lattice
+sites which are excluded from parallel processing but provide additional storage
+where other lattice sites will write and/or read values that will be later streamed to/
+from the adjacent subdomains. After the parallel loop in each time step, the data
+corresponding to the ghost lattice sites are exchanged via MPI among adjacent sub-
+domains. The implementation of this procedure is explained later in Sect. 4.2.
+    Algorithm 2  Distributed LBM with overlapped computation and communication
+
+
+
+
+    Furthermore, in order to ensure the scalability of the distributed LBM algorithm,
+it is necessary to overlap computation with communication to hide the extra latency
+TNL‑LBM: Scalable lattice Boltzmann method implementation…          Page 11 of 35   167
+
+
+of MPI communication [26, 51]. This can be done by processing the boundary lat-
+tice sites of each subdomain separately from the interior lattice sites, copying the
+data between subdomains as soon as the computation on the boundary has finished,
+and processing the interior lattice sites independently, while all MPI ranks exchange
+their boundary data. This approach is summarized in Algorithm 2 using asynchro-
+nous operations.
+   The steps 8 and 9 in Algorithm 2 represent the same local operations as the steps
+4 to 12 in Algorithm 1, but they are applied to different sets of lattice sites. Like-
+wise, both steps 4 and 12 in Algorithm 2 perform the same operations; these will be
+explained further in Sect. 4.2.
+
+
+4 Extensible design and composition of components in a simulation
+
+From a high-level point of view, each MPI rank creates an object of the State
+class, which combines all the components needed to run a simulation.
+   The implementation of State provides all functionality needed for solving
+problems such as the Navier–Stokes equations. However, it is not tied to a par-
+ticular problem and all problem-specific logic is implemented in separate compo-
+nents. The State class is designed to be extended via inheritance, so users can
+define their own subclass for a particular case and adjust the behavior of the solver
+by adding attributes and overriding various virtual member functions. Hence, it is
+possible to implement more complicated solvers for coupled problems, such as the
+Navier–Stokes–Fourier problem of fluid flow coupled with thermal transport [8, 50].
+   The class diagram of State is shown in the left half of Fig. 1. The State
+class has an attribute of the LBM class that represents one set of discrete distribu-
+tion functions. Additional sets of discrete distribution functions can be represented
+by additional attributes in a user-defined class inheriting from State. Next, each
+LBM instance has a vector of LBM_BLOCK objects that represent the decomposition
+of the lattice into subdomains and additional functionality related to LBM simula-
+tions, such as variables for time-stepping or conversion between physical and lattice
+units. By default, each MPI rank manages just one LBM_BLOCK, but in general it
+can utilize multiple blocks that may be necessary to add for optimal load-balancing
+in case of non-uniform decomposition. Finally, the LBM_BLOCK class contains all
+data related to the given subdomain, which is stored in data structures that will be
+described later.
+   The implementation approach based on the extension of the State class is suita-
+ble for high-level adaptations that reuse various internal data structures. However, it
+is often necessary to modify even the low-level building blocks of the lattice Boltz-
+mann method, such as local per-lattice-site computations in the LBM algorithm. For
+example, it may be desirable to switch to a different collision operator or to define
+additional macroscopic quantities. In order to sustain high-performance computing
+on GPU accelerators that have limited support for virtual functions [43], using com-
+pile-time techniques rather than dynamic polymorphism is more appropriate. There-
+fore, our LBM implementation is based on several template meta-programming
+167     Page 12 of 35                                                         J. Klinkovský et al.
+
+
+
+
+Fig. 1  Composition of the main C++ classes and meta-programming components in TNL-LBM
+
+
+components that allow to configure the low-level details while preserving the gen-
+eration of optimal CUDA kernels for each configuration.
+   The starting template meta-programming element in TNL-LBM is the LBM_
+CONFIG template class. As shown in the right half of Fig. 1, it combines the follow-
+ing components that are set through template parameters:
+
+• TRAITS is a structure that holds the definition of fundamental types used in the
+    solver, such as floating-point type, index type, permutations of multidimensional
+    arrays, etc.
+•   KERNEL_STRUCT​is a structure that is used in the GPU kernel to store local
+    data related to the given lattice site. In particular, it contains a static array of
+    Q discrete distribution functions that are read and written during the streaming
+    steps.
+•   DATA​is a structure that has the purpose of passing dynamic data and scalar
+    parameters to the GPU kernel. It refers to the LBM_DATA​class or its subclass,
+    allowing users to supplement the attributes contained in LBM_DATA​with data
+    used by extensions of the following components.
+•   COLL is a structure that implements a particular collision operator. The action
+    of the operator is computed in its static member function collision using the
+    values in an instance of KERNEL_STRUCT​      .
+•   EQ is a structure that implements a particular discrete equilibrium function.
+•   STREAMING is a structure that implements a particular streaming scheme.
+TNL‑LBM: Scalable lattice Boltzmann method implementation…         Page 13 of 35   167
+
+
+• BC is a structure that defines tags that can be assigned to lattice sites and imple-
+  ments actions to be taken in the CUDA kernel based on these tags. It is intended
+  for user modification in order to specify boundary conditions for a particular
+  simulation.
+• MACRO is a structure that implements the computation of macroscopic quanti-
+  ties.
+
+Only the KERNEL_STRUCT​and DATA​components are intended to represent data,
+the other components are never instantiated and serve merely to define types or algo-
+rithms in terms of static member functions. The code base provides multiple models
+for each component with sensible default behavior. The final composition of the type
+configuration can be done as follows:
+
+
+
+
+   All the aforementioned classes LBM_BLOCK, LBM, and State are, in fact, tem-
+plates with one parameter, CONFIG, as shown in Fig. 1. The main entrypoint to
+creating a simulation is the State class, or its user-defined subclass, which can be
+instantiated as follows:
+
+
+
+
+   Users can subclass each model used in the LBM_CONFIG-type configuration
+and implement their modifications. However, customized components such as BC or
+MACRO may need to be designed carefully together with extensions of State, espe-
+cially when custom attributes are added to the DATA​class. More advanced examples
+are included in the source code of the TNL-LBM project.
+
+4.1 Internal data structures
+
+The TNL-LBM project relies on the Template Numerical Library (TNL) [46] for
+the parallel programming model and internal data structures used for the LBM algo-
+rithm. TNL is a collection of building blocks that facilitate the development of effi-
+cient numerical solvers and HPC algorithms, providing native support for modern
+hardware architectures such as multicore CPUs, GPUs, and distributed systems,
+which can be managed via a unified interface. TNL is a state-of-the-art parallel com-
+puting library comparable to, for example, Kokkos [53, 54].
+167     Page 14 of 35                                                   J. Klinkovský et al.
+
+
+  Several multidimensional arrays are needed to store relevant values in the LBM
+implementation:
+
+• Distribution    functions are stored in a 4-dimensional array of size
+  Q × Nx × Ny × Nz . Depending on the streaming scheme, either one or two such
+  arrays are necessary.
+• Macroscopic quantities are stored in a 4-dimensional array of size
+  Nm × Nx × Ny × Nz , where Nm is the number of macroscopic quantities stored
+  during simulation. In case of the Navier–Stokes equations, four quantities (den-
+  sity and three components of velocity) are stored by default, but additional user-
+  defined quantities can be added.
+• Lattice site tags are stored in a 3-dimensional array of size Nx × Ny × Nz and
+  value type short int. The values in this array determine the type of each lat-
+  tice site and are used to identify different boundary conditions and geometry of
+  immersed bodies.
+
+The data structure used for all of these arrays is DistributedNDArray from
+TNL, which is defined as follows [52]:
+
+
+
+
+    The DistributedNDArray class adds functionality for distributed comput-
+ing with MPI to a local multidimensional array, which is represented by the tem-
+plate parameter NDArray. The NDArray class in TNL is highly configurable, and
+its definition consists of a number of template parameters (the default types are sim-
+plified for clarity):
+
+
+
+
+    The template parameters have the following role [52]:
+
+• Value specifies the type of values stored in the array,
+• SizesHolder specifies the dimension and static sizes of the array,
+• Permutation specifies the layout of the array in memory,
+• Device specifies the device that will be used for running operations on the
+  array,
+• Index specifies the type used for computing indexes in the array,
+• Overlaps specifies the width of so-called ghost regions in each dimension,
+  which are used for exchanging data in distributed computing,
+TNL‑LBM: Scalable lattice Boltzmann method implementation…          Page 15 of 35   167
+
+
+• Allocator is the allocator type used for the allocation and deallocation of
+   memory used by the array.
+
+The SizesHolder, Permutation, and Overlaps parameters allow to
+specify any memory layout, including the distinction between static and dynamic
+sizes separately for each dimension of the array. Moreover, thanks to Permuta-
+tion, the logical ordering such as Q × Nx × Ny × Nz for the array of distribution
+functions, is independent from the data layout ordering. For example, the afore-
+mentioned 4-dimensional array in TNL-LBM is configured with a permutation
+(0, 1, 3, 2), such that the index along the y-dimension changes the fastest, followed
+by the z-dimension and x-dimension, and the index of the distribution function
+q ∈ {0, 1, … , Q − 1} changes the slowest. This data layout is advantageous for the
+performance of MPI communication in the case of a simple 1D domain decomposi-
+tion along the x-axis (see also Sect. 4.2).
+   The global array corresponding to the lattice LΩ must be decomposed in a struc-
+tured conforming manner (i.e., subdomains must be orthogonal blocks arranged in
+a conforming grid) and the decomposition must be consistent for all the aforemen-
+tioned arrays, but each rank can be assigned multiple subdomains and the rank num-
+bering is arbitrary. All distributed data structures are collected in the LBM_BLOCK
+class that contains all data associated with one subdomain: local subarrays, subdo-
+main sizes and offsets, indices of neighboring blocks, and ranks that own them.
+   To facilitate computations on GPU accelerators, two objects are needed for each
+array to represent data in different memory spaces. One object allocates the array
+data in the host memory where it can be processed by the CPU, and the other object
+allocates the array data in the device memory where it can be processed by the GPU
+accelerator. The main part of the LBM (that is, steps 8 and 9 in Algorithm 2) is
+computed on GPU accelerators, but CPU processing is used for initialization and
+output of the results. During the computation of the LBM algorithm, relevant arrays
+must be copied from one memory space to another whenever processing is switched
+from CPU to GPU or vice versa. Furthermore, the LBM_BLOCK class contains an
+instance of LBM_DATA​(see Fig. 1), which provides access to all data that is needed
+from a running GPU kernel. This includes pointers to the arrays allocated in the
+device memory, sizes of the lattice, and scalar parameters (e.g., viscosity and param-
+eters related to boundary conditions).
+
+4.2 Optimization remarks
+
+The most important optimization for distributed LBM computations is already
+described in Algorithm 2: Processing interior lattice sites must overlap with data
+synchronization on the interfaces between adjacent subdomains. This technique
+is implemented by launching multiple GPU kernels in different streams and using
+stream-level synchronization functions [43]. A separate stream is used for each
+interface with an adjacent subdomain and for the interior lattice sites. The streams
+for interfaces are configured with the highest priority so that the operations in these
+streams are executed as soon as possible. The stream for the interior is configured
+167     Page 16 of 35                                                     J. Klinkovský et al.
+
+
+with the lowest priority, as it is used for the longest-running kernel that is waited for
+at the end of the time step.
+    Data synchronization among the ranks of adjacent subdomains is governed by
+the DistributedNDArraySynchronizer class from the Template Numeri-
+cal Library (TNL) [52]. A synchronizer object is created for each subdomain and
+each of the Q discrete distribution functions. It is responsible for synchronizing data
+in one subarray to and from neighbors in the direction of the corresponding vector
+from the velocity set. For example, when the D3Q27 velocity set is used and the lat-
+tice is distributed in a 1D manner such that each subdomain has at most two neigh-
+bors, one to the left and one to the right, 9 distribution functions (corresponding to
+discrete velocities with +1 in the first component) are synchronized from left to right
+on each interface, and different 9 distribution functions (corresponding to discrete
+velocities with −1 in the first component) are synchronized from right to left. Note
+that in case of a 2D or 3D decomposition, the communication pattern is more com-
+plicated as it is necessary to also synchronize relevant distribution functions across
+edges and corners of the interfaces between subdomains.
+    The synchronizer objects are used in Algorithm 2 in the steps 4 and 12. The
+synchronization procedure utilizes pipelining among all synchronizers to hide the
+latency of internal operations. Note that the implementation relies on the so-called
+CUDA-aware support [32] from the MPI library to avoid having to explicitly copy
+the send and receive buffers from the GPU memory to the host memory. However,
+unless NVIDIA GPUDirect technology [44] is functional, the MPI library may still
+need to internally copy data between the GPU and host memory when processing
+requests such as MPI_Isend or MPI_Irecv.
+
+
+5 Data management and visualization
+
+Efficient data management is essential for large-scale scientific simulations, as inad-
+equate input/output (I/O) components can render the simulation impractical or even
+unusable. The TNL-LBM project addresses this challenge by using the ADIOS2
+(Adaptable Input/Output System) library [22]. ADIOS2 is a cutting-edge library for
+scientific data management, offering a flexible framework for high-performance data
+I/O that is capable of processing terabytes of data per rank in exascale distributed
+workloads.
+   ADIOS2 serves two primary purposes in the TNL-LBM project: saving output
+data for visualization of the simulation results and checkpointing the simulation
+state to facilitate restarts from the last saved state.
+
+5.1 Visualization output
+
+The ADIOS2 library provides a generic interface that can be used to construct vari-
+ous data hierarchies without enforcing a specific data layout. Two notable exam-
+ples of data models that utilize ADIOS2 are Fides [48] and the vtk.xml attribute
+[21]. These models enrich the dataset with metadata that maps binary data arrays to
+TNL‑LBM: Scalable lattice Boltzmann method implementation…          Page 17 of 35   167
+
+
+visualization objects, enabling seamless integration with visualization tools such as
+ParaView [1]. An example of such visualization is shown in Fig. 2.
+   Compared to our previous approach of directly writing VTK files from the simu-
+lation codes, the current method retains full management of large data arrays within
+ADIOS2, ensuring high efficiency and scalability of the visualization pipeline.
+Moreover, ADIOS2 is not limited to the post-processing workflow, which involves
+saving output data to files on disk and processing them with external tools. By
+changing the engine type in the ADIOS2 configuration, the workflow can be adapted
+for in situ or in-transit visualization [40] while using the same metadata mapping
+attached to the ADIOS2 dataset. Exploring these advanced workflows in the TNL-
+LBM project is an ongoing effort.
+
+5.2 Checkpointing
+
+The flexibility of the ADIOS2 library in data layout makes it an ideal choice for
+checkpointing in the TNL-LBM project. Checkpointing involves saving the com-
+plete state of a running simulation and restoring it after a restart. This functional-
+ity allows to save the full simulation state before the allocated computation time
+expires and to resume the simulation from the last saved state in a new instance.
+Checkpointing enables splitting long simulations into several chunks that fit within
+the HPC system’s maximum wallclock time limit, facilitating both time-constrained
+execution and crash recovery.
+   This approach results in a custom data hierarchy comprising large data arrays for
+all density distribution functions, boundary conditions, and scalar parameters of the
+simulation. Given the large memory requirements of the lattice Boltzmann method,
+the amount of data for checkpointing often exceeds the size of a single visualization
+snapshot, making the efficiency of the underlying I/O system critical.
+   Creating a checkpoint can be time-consuming and may run out of the allocated
+time limit, potentially leading to an incomplete state in the file. To prevent the cor-
+ruption of the previous checkpoint, we implement a protection mechanism. The
+new state is written to a temporary file/directory and atomically exchanged with the
+previous state on disk upon successful completion. In Linux, this is achieved using
+the renameat2 system call with the RENAME_EXCHANGE parameter [7]. This
+approach ensures that if the new checkpoint fails to complete, the previous check-
+point remains intact, allowing the simulation to be safely restarted from the last
+valid state.
+
+
+6 Results
+
+6.1 Verification
+
+The first verification result presented in this section demonstrates the accuracy
+and correctness of numerical components implemented in the TNL-LBM project.
+We have selected the problem of a three-dimensional Taylor–Green vortex as a
+ 167     Page 18 of 35                                                                    J. Klinkovský et al.
+
+
+
+
+Fig. 2  Visualization of the three-dimensional Taylor–Green vortex flow using the isocontour of Q-crite-
+rion Qc = 1∕2 colored by velocity magnitude at four different time levels. See Sect. 6.1 for details regard-
+ing the simulation setup
+
+
+canonical example of a transitional flow. The setup and parameters choice follows
+the specification of Problem C3.5 in [55].
+   The flow governed by incompressible Navier–Stokes equations is solved in the
+domain Ω = (−𝜋L, 𝜋L) × (−𝜋L, 𝜋L) × (−𝜋L, 𝜋L) with periodic boundaries from the
+initial state given by
+                                     ( )      (y)     ( )
+                                      x                z
+                         vx = V0 sin      cos     cos     ,                   (8a)
+                                      L        L       L
+                                               ( )     (y)     ( )
+                                                x               z
+                              vy = −V0 cos         sin     cos     ,                                   (8b)
+                                                L       L       L
+
+                                                 vz = 0,                                                (8c)
+TNL‑LBM: Scalable lattice Boltzmann method implementation…           Page 19 of 35   167
+
+                           ( ( )         ( ))( ( )     )
+                          𝜌0 V022x        2y      2z
+               p = p0 +     cos    + cos      cos    +2 ,                            (8d)
+                        16      L         L       L
+
+   where L is the characteristic length and V0 is the initial velocity magnitude. The
+initial pressure field in the lattice Boltzmann simulation is set implicitly via the den-
+sity field. Additionally, the Reynolds number Re = 𝜈0 is set to 1600 and the final
+                                                        V L
+
+simulation time is set to tmax = 20 tc, where tc = VL is the characteristic convective
+                                                             0
+time.
+    At the specified Reynolds number, the Taylor–Green vortex flow exhibits a transi-
+tion to turbulence followed by a decay phase. Following [19], the Kolmogorov length
+𝜂 ≈ 0.01214L can be estimated from the enstrophy of the reference solution by [55].
+As the domain size is 2𝜋L in each direction, the space discretization should contain
+at least 518 nodes along each axis to resolve all turbulence scales without a sub-grid
+model. The reference solution by [55] was computed on a 512 × 512 × 512 mesh
+using a pseudo-spectral method, and we choose the lattice sizes 128 × 128 × 128,
+256 × 256 × 256, and 512 × 512 × 512 for verification of the LBM implementation.
+Additionally, we use the D3Q27 velocity set with the cumulant collision operator
+and set the non-dimensional kinematic viscosity to 𝜈LB = 10−4 for double precision
+and 𝜈LB = 5 ⋅ 10−4 for single precision.
+    Several mandatory results are requested by the problem specification [55]. First,
+we present the temporal evolution of the kinetic energy integrated on the domain Ω:
+
+
+                                          2𝜌0 |Ω| ∫Ω
+                                            1
+                                   Ek =              𝜌 v ⋅ v dx.                       (9)
+
+The second quantity in the comparison is the temporal evolution of the kinetic
+                                dE
+energy dissipation rate 𝜖 = − k , which we calculate numerically from Ek using a
+                                 dt
+4-point central finite difference. The dissipation rate of kinetic energy is also equal
+to 𝜖 = 2𝜈E , where the enstrophy E is given by
+
+
+                                          2𝜌0 |Ω| ∫Ω
+                                            1
+                                   E=                𝜌|∇v|2 dx.                      (10)
+
+The dissipation rate measured by enstrophy is the third important diagnostic show-
+ing the effects of numerical diffusion of the method. These three quantities are plot-
+ted in Fig. 3 for single precision and Fig. 4 for double precision showing the conver-
+gence of lattice Boltzmann method and good agreement of the DNS-level resolution
+with the reference solution. Finally, Fig. 5 shows the vorticity norm on the periodic
+face x = −𝜋L at time t = 8 tc for comparison to the reference results.
+
+6.2 Computational benchmark
+
+The benchmark problem used in this section simulates a laminar flow (Navier–Stokes
+equations) in a rectangular duct for which an analytical solution can be derived [56].
+The domain Ω = (0, Lx ) × (0, Ly ) × (0, Lz ) (see Fig. 6) has an inflow boundary on the
+167      Page 20 of 35                                                             J. Klinkovský et al.
+
+
+left-hand side (i.e., x = 0), outflow boundary on the right-hand side (i.e., x = Lx ),
+and solid walls with the no-slip boundary condition on the remaining sides. The
+inflow velocity profile is prescribed as v(0, y, z) = [van,x (y, z), 0, 0]T , where van,x
+denotes the x-component of the velocity in the analytical solution. The kinematic
+viscosity is set as 𝜈 = 1.5 × 10−5 m2 s−1, and the final simulation time is tmax = 100s.
+The basic configuration of the TNL-LBM solver can be summarized as follows:
+
+• D3Q27 velocity set with the cumulant collision operator,
+• A-A pattern streaming scheme,
+• minimal storage for macroscopic quantities (only velocity components and den-
+    sity),
+• non-dimensional kinematic viscosity 𝜈LB = 10−3.
+
+
+
+
+Fig. 3  Comparison of kinetic energy and dissipation rate for LBM solutions in single precision and
+reference solution from [55]
+TNL‑LBM: Scalable lattice Boltzmann method implementation…                   Page 21 of 35   167
+
+
+
+
+Fig. 4  Comparison of kinetic energy and dissipation rate for LBM solutions in double precision and
+reference solution from [55]
+
+
+   The typical metric for performance evaluation in the context of LBM is GLUPS
+(that is, giga-LUPS, billions of lattice updates per second). The value of GLUPS in
+a simulation is calculated by taking the number of lattice sites Nx × Ny × Nz , multi-
+plying it by the number of completed iterations (time steps), and dividing it by the
+needed computational time. The values reported in this section were calculated by
+taking the total number of iterations in the whole simulation and the corresponding
+computational time (i.e., without the time spent in initialization, data output, etc.).
+The GLUPS values are comparable among different lattice resolutions and hardware
+platforms used for the computations, but they are bound to the underlying configura-
+tion of LBM. Most importantly, the results reported in this section are specific to the
+D3Q27 velocity set and the cumulant collision operator. However, it is interesting
+to note that LBM is memory-bound on modern GPU accelerators, and changing the
+streaming scheme in LBM (see Sect. 2.7) has negligible impact on computational
+performance [28].
+ 167     Page 22 of 35                                                                 J. Klinkovský et al.
+
+
+
+
+Fig. 5  Isocontours of the vorticity norm in the Taylor–Green vortex problem in one quadrant
+(0, 𝜋L) × (0, 𝜋L) of the periodic face x = −𝜋L at time t = 8 tc, computed on the 512 × 512 × 512 lattice
+in double precision
+
+
+    For distributed computations using multiple GPUs, we define the speed-up Sp as
+the ratio between GLUPS using Nranks and 1 GPU (assuming each rank always uses
+its own separate GPU), and parallel efficiency Eff , which quantifies the scalability of
+the computation and is defined as the speed-up divided by the number of GPUs, i.e.,
+                                        GLUPS forNranks GPUs
+                             Eff =                              .
+                                     Nranks × (GLUPS for 1 GPU)
+
+The parallel scalability of TNL-LBM was investigated using both strong-scaling and
+weak-scaling studies, which are detailed in the following subsections.
+
+6.2.1 Hardware platforms
+
+The following results were computed on two platforms with different hardware spec-
+ifications. First, the scaling performance of distributed computations using TNL-
+LBM is shown on the Karolina supercomputer [25], operated by IT4Innovations in
+Ostrava. The system comprises 72 accelerated compute nodes (see Table 3) and the
+number of NVIDIA A100 GPUs used in the studies ranged from 1 to 128 (i.e., 1 to
+16 nodes). The solver was compiled with the nvcc compiler version 11.6 using the
+flags -std=c++17 -O3 -DNDEBUG and the host compiler nvc++ version 22.2.
+The communication library in this environment was OpenMPI version 4.1.2. Note
+that all results presented in this article were computed without utilizing the NVIDIA
+GPUDirect technology [44], which was not fully functional on the Karolina super-
+computer at the time this study was performed. Hence, the effective bandwidth of
+inter-node communication was limited, because data could not be transferred from
+the GPU memory directly to the InfiniBand network interface and had to be buffered
+in the host memory instead. The maximum bandwidth observed between nodes was
+TNL‑LBM: Scalable lattice Boltzmann method implementation…                         Page 23 of 35   167
+
+
+
+
+Fig. 6  Sketch of the computational domain of the benchmark problem. The color scale corresponds to
+the x-component of the velocity given by the analytical solution of square duct flow, and it is prescribed
+as the boundary condition at the inflow boundary (left back side). The opposite right front side (light
+gray color) is the outflow, and the remaining sides are no-slip wall boundaries
+
+
+
+approximately 15 GB/s per direction (i.e., 30 GB/s bidirectional), which corresponds
+to the maximum throughput of a PCIe x16 Gen 4 bus (31.508 GB/s unidirectional
+[57]) rather than the aggregate throughput of InfiniBand cards. We presume that all
+GPUs and InfiniBand cards in the system share the same PCIe bus for the data flow
+with buffering in host memory.
+   The second system used for the computations presented here is operated by the
+Faculty of Mechanical Engineering of the Czech Technical University in Prague
+(see Table 3). It is a single compute node equipped with two 64-core AMD EPYC
+9554 processors, 1.5 TB RAM, and 8 NVIDIA H100 GPU accelerators with 80 GB
+memory. Note that the H100 GPU has more than 2× higher peak performance
+(TFLOPS) as well as memory bandwidth compared to the A100 (40 GB HBM2)
+GPU that is used in the Karolina supercomputer. All communication between the
+GPUs within the node is handled by the NVLink interconnection, and the inter-node
+network is not applicable to this system. The solver was compiled with the nvcc
+167      Page 24 of 35                                                               J. Klinkovský et al.
+
+
+Table 3  Hardware specifications of systems on which the benchmark was computed. The Karolina super-
+computer [25] is operated by IT4Innovations (https://​www.​it4i.​cz/), and the FME CTU system is oper-
+ated by the Faculty of Mechanical Engineering of the Czech Technical University in Prague
+                                Karolina supercomputer                 FME CTU system
+
+Number of nodes                 72                                     1
+Processors per node             2                                      2
+CPU model                       AMD EPYC 7763 (64 cores)               AMD EPYC 9554 (64 cores)
+Memory per node                 1 TB DDR4                              1.5 TB DDR4
+Accelerators per node           8                                      8
+GPU model                       NVIDIA A100 (40 GB HBM2)               NVIDIA H100 (80 GB HBM3)
+GPU peak performance            19.5 TFLOPS (FP32),                    66.9 TFLOPS (FP32),
+                                9.7 TFLOPS (FP64)                      33.5 TFLOPS (FP64)
+GPU memory bandwidth            1.55 TB/s                              3.35 TB/s
+Intra-node connection           NVLink 3.0 (12 sub-links,              NVLink 4.0 (18 sub-links,
+                                25 GB/s per sub-link)                  25 GB/s per sub-link)
+Inter-node connection           4× 200 Gb/s InfiniBand ports           –
+
+
+
+compiler version 12.6 using the flags -std=c++17 -O3 -DNDEBUG and the host
+compiler g++ version 12.3.0. The communication library in this environment was
+OpenMPI version 4.1.5.
+
+6.2.2 Strong‑scaling study
+
+In the strong-scaling analysis, the global lattice size remains fixed (512 × 512 × 512),
+while the subdomains become smaller as the number of MPI ranks increases. The
+corresponding problem size (16 GB in single precision, 32 GB in double precision)
+approaches the 40 GB memory limit of a single NVIDIA A100 GPU, restricting
+further scaling. The physical dimensions of the domain are Lx = Ly = Lz = 0.25 m.
+    The results from NVIDIA A100 GPUs on the Karolina supercomputer, sum-
+marized in Table 4 and Fig. 7, demonstrate near-ideal scalability up to 16 ranks (2
+nodes), with efficiency dropping as the number of ranks ( Nranks) increases. For sin-
+gle precision, efficiency decreases from 0.99 at 8 ranks to 0.87 at 32 ranks and fur-
+ther to 0.45 at 128 ranks. Double precision maintains higher efficiency across all
+scales, reaching 0.64 at 128 ranks. This disparity arises because double precision
+computation, though slower per rank, allows better overlap with communication due
+to longer kernel execution times. Single-precision runs, constrained by shorter com-
+putation times, exhibit less effective hiding of communication latency, particularly
+at large Nranks.
+    Communication bottlenecks emerge as subdomains shrink. Due to the 1D decom-
+position used in this study, the subdomains are reduced to 4 × 512 × 512 elements
+at 128 ranks, with the communication volume per rank remaining constant (faces of
+subdomains). This leads to a growing communication-to-computation ratio, limit-
+ing scalability as communication eventually starts to dominate the total runtime. A
+multidimensional decomposition could mitigate this by distributing the communica-
+tion volume more evenly, at the cost of increased latency (in 1D decomposition we
+TNL‑LBM: Scalable lattice Boltzmann method implementation…                       Page 25 of 35     167
+
+
+can configure the storage layout such that all communicated values are stored con-
+tiguously in memory, but in multidimensional decomposition this is not possible).
+However, such approach was not tested due to limited access of the authors to the
+Karolina supercomputer.
+   Table 5 presents results from a single node equipped with 8 NVIDIA H100
+GPUs. Unlike the previous system, the H100 results are limited to intra-node scal-
+ing (up to 8 ranks). The single-precision performance reaches 64.6 GLUPS at
+8 ranks, with a speedup of 6.6 and efficiency of 0.82. Double-precision achieves
+46.5 GLUPS at 8 ranks, with a speedup of 7.9 and efficiency of 0.99. These values
+reflect the H100’s superior per-GPU performance compared to the A100, as it ena-
+bles a 2.1× speedup over A100 at 8 ranks in double precision. On the other hand,
+the decrease in single-precision efficiency at 8 ranks indicates the need for further
+analysis and potential optimizations within TNL-LBM. However, the single-node
+limitation prevents assessing multi-node scalability, as all communication occurs via
+NVLink without inter-node InfiniBand transfers.
+
+6.2.3 Weak‑scaling study with extending domain size
+
+In weak-scaling analysis, the lattice size of each subdomain remains constant, while
+the entire domain becomes larger as the number of MPI ranks increases. First, the
+domain is scaled along the x-axis, i.e., the fixed-size subdomains are stacked next to
+each other. Consequently, the computation-to-communication ratio is kept constant
+as well.
+   Table 6 demonstrates almost perfect weak scaling on the Karolina supercomputer
+for the case where the size of each subdomain is 256 × 256 × 256 and the global lat-
+tice size is (256 Nranks ) × 256 × 256. These results are also included in Fig. 7. Our
+internal tests showed that the same parallel efficiency can be achieved even with
+larger subdomains (such as 512 × 512 × 512), but not with smaller subdomains
+(such as 128 × 128 × 128) that are presumably too small to saturate dozens of A100
+GPU accelerators. Similar results are shown in Table 7 for the system equipped
+with H100 GPUs. Note that on this system we used a larger size of subdomains
+(512 × 512 × 512) because smaller sizes lead to lower efficiency in single-precision.
+
+
+Table 4  Strong scaling in single                     Single precision          Double precision
+and double precision on the
+Karolina supercomputer. The         Nnodes   Nranks   GLUPS      Sp      Eff    GLUPS      Sp       Eff
+lattice size is 512 × 512 × 512
+in all cases. Each MPI rank         1        1        5.2        1.0     1.00   2.8        1.0      1.00
+was mapped to its own GPU           1        2        10.2       2.0     0.98   5.5        2.0      1.00
+accelerator
+                                    1        4        20.4       3.9     0.98   11.1       4.0      1.01
+                                    1        8        41.1       7.9     0.99   22.3       8.1      1.01
+                                    2        16       80.4       15.5    0.97   44.1       16.0     1.00
+                                    4        32       145.2      28.0    0.87   85.5       31.0     0.97
+                                    8        64       258.6      49.8    0.78   153.7      55.7     0.87
+                                    16       128      301.1      58.0    0.45   225.1      81.6     0.64
+ 167     Page 26 of 35                                                                              J. Klinkovský et al.
+
+
+Table 5  Strong scaling in single                Single precision                         Double precision
+and double precision on one
+node with NVIDIA Tesla H100         Nranks       GLUPS          Sp          Eff           GLUPS         Sp        Eff
+accelerators. The lattice size is
+512 × 512 × 512 in all cases.       1            9.8            1.0         1.00          5.9           1.0       1.00
+Each MPI rank was mapped to         2            19.6           2.0         1.00          11.9          2.0       1.01
+its own GPU accelerator
+                                    4            39.1           4.0         1.00          23.4          4.0       0.99
+                                    8            64.6           6.6         0.82          46.5          7.9       0.99
+
+
+
+   However, note that this weak-scaling analysis is not practical, since the physi-
+cal size of the domain is different in each case (here Lx = 0.25Nranks m and
+Ly = Lz = 0.25 m ). A more realistic weak-scaling study is described in the following.
+
+6.2.4 Weak‑scaling study with fixed domain size
+
+In the second weak-scaling analysis, the primary requirement is to keep the physical
+size of the domain constant. In this study, we fix Lx = Ly = Lz = 0.25 m , the same as
+in the strong-scaling study. The global discrete lattice size is scaled along all three
+axes such that the number of nodes Nx × Ny × Nz is (approximately) proportional to
+the number of ranks. The lattice size is scaled according to the formula
+                                              �          �
+                                                 √
+                            Nx = Ny = Nz = s 3 Nranks ,                            (11)
+
+where ⌊⋅⌉ denotes rounding to the nearest integer and s is a scaling parameter selected
+as a large enough power-of-two that allows to fully saturate the GPUs and achieve
+the best weak-scaling efficiency.
+   For the Karolina supercomputer based on A100 GPUs, we chose s = 512 for
+single precision, giving the largest possible base lattice (512 × 512 × 512 for one
+rank). For double precision, we had to use a smaller base lattice with s = 256 due
+to memory limitations. The reason is that in this study, the communication size per
+rank is increasing (it is proportional to Ny × Nz ) and storage for data received from
+
+
+Table 6  Weak scaling with                              Single precision                    Double precision
+extending domain size in
+single and double precision on      Nnodes   Nranks     GLUPS         Sp           Eff      GLUPS       Sp        Eff
+the Karolina supercomputer.
+The lattice size is scaled as       1        1          5.2           1.0          1.00     2.8         1.0       1.00
+256 Nranks × 256 × 256. Each        1        2          10.2          2.0          0.99     5.5         2.0       0.99
+MPI rank was mapped to its
+own GPU accelerator                 1        4          20.4          4.0          0.99     11.0        4.0       0.99
+                                    1        8          40.9          7.9          0.99     22.0        8.0       0.99
+                                    2        16         81.8          15.8         0.99     44.1        15.9      0.99
+                                    4        32         163.4         31.7         0.99     88.2        31.8      0.99
+                                    8        64         326.8         63.4         0.99     176.4       63.6      0.99
+                                    16       128        653.9         126.7        0.99     352.8       127.3     0.99
+TNL‑LBM: Scalable lattice Boltzmann method implementation…                   Page 27 of 35   167
+
+
+Table 7  Weak scaling with                   Single precision          Double precision
+extending domain size in single
+and double precision on one         Nranks   GLUPS        Sp    Eff    GLUPS          Sp      Eff
+node with NVIDIA Tesla H100
+accelerators. The lattice size is   1        9.8          1.0   1.00   5.9            1.0     1.00
+scaled as 512 Nranks × 512 × 512.   2        19.6         2.0   1.00   11.7           2.0     0.99
+Each MPI rank was mapped to
+its own GPU accelerator             4        39.2         4.0   1.00   23.5           4.0     0.99
+                                    8        78.4         8.0   1.00   46.9           8.0     0.99
+
+
+
+neighboring ranks must be allocated, so with s = 512 and Nranks ≥ 32 the amount of
+memory needed per rank would be more than the GPU accelerators have available.
+On the other hand, the H100 GPUs have twice as large global memory, and thus we
+used s = 512 for both single precision and double precision on the second system.
+   Note that the increasing communication size per rank is a limitation of the 1D
+domain decomposition. The TNL-LBM project also implements a general multi-
+dimensional decomposition; however, it has higher latency and lower throughput
+due to additional buffering (a 3D array cannot be ordered such that all subdomain
+boundaries are stored contiguously in memory, so some data have to be packed into
+a contiguous buffer before sending and unpacked after receiving). Therefore, in the
+present scenario with a cuboidal geometry, the advantage of the general decomposi-
+tion over a simple 1D slicing comes only with a large number of nodes. On the other
+hand, the advantage of the multidimensional decomposition may be more apparent
+in more complex applications with a non-cuboidal geometry. Unfortunately, the ben-
+efits of the multidimensional decomposition could not be fully tested due to limited
+access of the authors to the Karolina supercomputer.
+   The results of this weak-scaling study are summarized in Table 8 and Fig. 7 for
+the Karolina supercomputer and in Table 9 for the compute node based on H100
+GPUs. In both tables, it can be observed that Eff does not behave monotonically: For
+1, 8, and 64 ranks, it is close to 1, but otherwise it is significantly lower. This effect
+is apparent even in single-node computations on both A100 and H100 accelerators,
+where all communication is accomplished through NVLink. However, this problem
+is not due to the communication cost—the communication is completely overlapped
+with computation, but the computation itself is slower than it should be. The size
+of the CUDA thread block is (1, By , 1) for all lattice sizes used in this study, where
+By = 256 for single precision and By = 128 for double precision. It can be seen that
+the performance of the LBM algorithm is decreased in cases where Ny is not a mul-
+tiple of By due to inactive threads compared to the optimal case where Ny is a multi-
+ple of By.
+
+6.3 Comparison with other projects
+
+In this section we compare the computational performance of TNL-LBM with other
+free and open-source LBM projects that are introduced in Table 1. Computations
+for this comparison were performed on a professional workstation equipped with
+an NVIDIA RTX A5000 graphics card (see Table 10). This system was selected
+167      Page 28 of 35                                                                          J. Klinkovský et al.
+
+
+Table 8  Weak scaling with fixed domain size in single and double
+                                                            �            � on the Karolina supercom-
+                                                                  precision
+                                                                 √
+puter. The lattice size is scaled as Nx = Ny = Nz = 512 3 Nranks in single precision and
+              �            �
+                  √
+Nx = Ny = Nz = 256 3 Nranks in double precision. Each MPI rank was mapped to its own GPU accelerator
+
+                      Single precision                              Double precision
+Nnodes       Nranks   Nx          GLUPS          Sp       Eff       Nx            GLUPS          Sp           Eff
+
+1            1        512         5.2            1.0      1.00      256           2.8            1.0          1.00
+1            2        645         9.5            1.8      0.91      323           5.3            1.9          0.95
+1            4        813         19.0           3.7      0.92      406           10.6           3.8          0.96
+1            8        1024        40.9           7.9      0.98      512           22.4           8.1          1.01
+2            16       1290        74.3           14.3     0.89      645           40.4           14.6         0.91
+4            32       1625        153.8          29.6     0.93      813           82.9           30.0         0.94
+8            64       2048        324.0          62.4     0.98      1024          176.2          63.7         1.00
+16           128      2580        604.9          116.5    0.91      1290          301.3          108.9        0.85
+
+
+for two reasons: Firstly, it is equipped with a suitable software environment where
+we could easily install and test all required software, and secondly, the hardware
+characteristics of the system allow us to study the LBM algorithm in both memory-
+bound and compute-bound regimes. This is because the RTX A5000 GPU features
+a 1:64 ratio of peak performance (FLOPS) in double precision and single precision,
+whereas the A100 and H100 GPUs have the ratio 1:2. As a result, the LBM algo-
+rithm is memory-bound in single precision, but becomes compute-bound in dou-
+ble precision, revealing the profundity of code-level optimizations implemented in
+the GPU kernel of each project. Unless noted otherwise, all LBM projects in this
+section were built with g++ 15.2.1, nvcc 13.0.88, and Python 3.13.7. All projects
+were configured with suitable compiler flags, including code optimization for the
+platform.
+   The configuration of the simulation for comparison was chosen from sim-
+ple examples or benchmarks developed by authors of each project. We made only
+minor code modifications to ensure that the results are comparable. In particular, we
+focused on:
+
+• switching between single precision and double precision for performance evalua-
+     tion,
+• setting the D3Q27 velocity set and uniform lattice size 2563,
+
+Table 9  Weak scaling with fixed                         Single precision                Double precision
+domain size in single and double
+precision on one node with              Nranks   Nx      GLUPS      Sp      Eff          GLUPS         Sp     Eff
+NVIDIA Tesla H100 accelerators.
+The lattice size is scaled as           1        512     9.8        1.0     1.00         5.9           1.0    1.00
+                    �          �
+                         √              2        645     15.6       1.6     0.79         10.0          1.7    0.84
+Nx = Ny = Nz = 512 3 Nranks .
+                                        4        813     33.2       3.4     0.85         20.8          3.5    0.88
+Each MPI rank was mapped to its
+own GPU accelerator                     8        1024    79.7       8.1     1.02         48.2          8.2    1.02
+TNL‑LBM: Scalable lattice Boltzmann method implementation…                        Page 29 of 35   167
+
+
+
+
+Fig. 7  Comparison of GLUPS per rank and achieved memory bandwidth on the Karolina supercomputer
+across all scaling scenarios. Values are based on Table 4, 6 and 8. The memory bandwidth is calculated
+by multiplying GLUPS by the number of values per lattice site (58) that are read/written in the global
+memory and by the data type size in bytes (4 for single precision and 8 for double precision). The values
+on each curve are also proportional to the parallel efficiency ( Eff )
+
+
+
+• using the facilities provided by each project to set the cumulant collision opera-
+  tor [18], the state of the art, and one of the most complex options for fluid flow
+  simulations to date (only OpenLB does not have a functioning cumulant colli-
+  sion operator, so we used the OpenLB’s default BGK operator),
+• ensuring that only "simple" boundary conditions are used in the simulation.
+
+We resorted to setting up either a channel flow or a lid-driven cavity case, depend-
+ing on what is available in each project (see Table 11). Both cases involve only the
+bounce-back boundary condition for no-slip walls, a simple condition to prescribe
+velocity, and a simple outflow condition in case of the channel flow. While the
+implementation of these conditions and the choice of simulation parameters are dif-
+ferent across all projects, they have negligible impact on performance differences.
+   The results in Table 11 show that waLBerla delivers the highest performance
+both in single precision (3.12 GLUPS) and double precision (0.656 GLUPS). The
+waLBerla project uses a hybrid approach for problem definition: The simulation
+developer writes a high-level skeleton code in C++ and detailed problem specifi-
+cation in Python, which is pased to a code generator producing an optimized C++
+code and GPU kernels adapted for the given problem [4]. Compiling the generated
+code along with the developer’s skeleton and waLBerla’s API results in a highly
+optimized binary code while providing high modularity and flexibility.
+   TNL-LBM seized the second place based on single precision performance (2.892
+GLUPS), but its performance in double precision (0.354 GLUPS) is significantly
+lower than waLBerla’s. The collision operator in TNL-LBM is hand-written based
+167       Page 30 of 35                                                           J. Klinkovský et al.
+
+
+Table 10  Hardware specifications of the system used for the performance comparison of open-source
+LBM projects
+
+Processors per node                                         1
+CPU model                                                   Intel Core i9-10900X (10 cores)
+Memory per node                                             256 GB DDR4
+Accelerators per node                                       1
+GPU model                                                   NVIDIA RTX A5000 (24 GB GDDR6)
+GPU peak performance in FP32                                22.7 TFLOPS
+GPU peak performance in FP64                                0.43 TFLOPS
+GPU memory bandwidth                                        768 GB/s
+
+
+
+
+on the publication [18], and the implementation does not employ advanced code
+optimization techniques that are used by waLBerla. The results show that relying
+on compiler optimizations is sufficient in single precision where the algorithm is
+memory-bound, but the project needs to implement code optimizations to improve
+performance in the compute-bound regime.
+   The VirtualFluids project provides a reference implementation of the cumulant
+collision operator, which was independently implemented by other projects based
+on the publication [18]. The performance of VirtualFluids reaches competitive 2.708
+GLUPS in single precision, but shows the highest computational complexity with
+only 0.167 GLUPS in double precision.
+   OpenLB is the only project in the comparison with a different collision opera-
+tor. Nevertheless, it comprises the same amount of read/write operations due to the
+D3Q27 velocity set, so its performance of 2.509 GLUPS in single precision, where
+the LBM algorithm is memory-bound, is comparable to other projects. But the BGK
+operator has lower computational complexity than the cumulant operator, so the per-
+formance in double precision (0.411 GLUPS) is overrated and not comparable to
+other projects.
+   Palabos shares a common history and philosophy with OpenLB [38], sustaining
+many similarities to date. Unlike OpenLB, Palabos provides the implementation of
+the cumulant collision operator. However, Palabos has support for GPU computing
+only in a pre-release, not in in the public GitLab repository. The GPU acceleration
+is based on parallel STL algorithms (stdpar) [45], whereas all other projects use
+
+Table 11  Performance comparison of open-source LBM projects on NVIDIA RTX A5000 (lattice size
+2563, velocity set D3Q27)
+Project               Case                 Collision       Single precision      Double precision
+
+waLBerla              Lid-driven cavity    Cumulant        3.120 GLUPS           0.656 GLUPS
+TNL-LBM               Channel flow         Cumulant        2.892 GLUPS           0.354 GLUPS
+VirtualFluids         Lid-driven cavity    Cumulant        2.708 GLUPS           0.167 GLUPS
+OpenLB                Lid-driven cavity    BGK             2.509 GLUPS           0.411 GLUPS
+Palabos               Lid-driven cavity    Cumulant        0.197 GLUPS           0.191 GLUPS
+TCLB                  Channel flow         Cumulant        0.680 GLUPS           0.283 GLUPS
+TNL‑LBM: Scalable lattice Boltzmann method implementation…           Page 31 of 35   167
+
+
+CUDA [43] directly. The Palabos application used in this comparison was built with
+NVIDIA’s compiler nvc++ from NVHPC 25.9 [45].
+    Similarly to waLBerla, TCLB employs another high-level programming language
+to generate the CUDA code for the GPU kernel. However, it is R rather than Python
+and the code optimization level is not on par with waLBerla, resulting in 0.68
+GLUPS in single precision and 0.283 GLUPS in double precision. Nevertheless,
+TCLB outperforms Palabos in both precisions and VirtualFluids in double precision.
+    Overall, the results in Table 11 show balanced performance in single precision
+across most of the compared projects. This indicates that in the memory-bound regime,
+it is possible to achieve competitive performance even without advanced code optimi-
+zation techniques applied to the numerical scheme. However, large differences in dou-
+ble precision performance indicate that the implementation of the cumulant collision
+operator is very different in each project and code optimization techniques can improve
+the performance by multiple factors. It is also interesting to note that while the RTX
+A5000 GPU has a 1:64 ratio of peak performance in double precision and single preci-
+sion, the ratio of GLUPS performance achieved by waLBerla is approximately 1:5.
+
+
+7 Conclusions
+
+The TNL-LBM project represents a robust and versatile implementation of the lat-
+tice Boltzmann method (LBM), designed to address the challenges of large-scale,
+high-fidelity simulations in computational fluid dynamics (CFD) and multiphys-
+ics applications. By leveraging the Template Numerical Library (TNL), the frame-
+work achieves a balance between modularity, performance, and scalability, enabling
+researchers to tackle complex problems ranging from turbulent flow modeling to
+fluid–structure interaction and coupled multiphysics systems. The modular architec-
+ture of TNL-LBM allows seamless integration of diverse LBM variants, boundary
+conditions, and collision operators, while its high-performance design ensures effi-
+cient utilization of modern heterogeneous computing architectures, including multi-
+core CPUs, GPUs, and distributed memory systems.
+   The computational algorithm, formulated to support both single-node and distrib-
+uted implementations, demonstrates strong scalability on the Karolina supercom-
+puter and NVIDIA H100 GPUs. The benchmark results highlight the ability of the
+framework to maintain high parallel efficiency even under challenging scaling sce-
+narios, with double-precision computations showing superior scalability compared
+to single precision due to more efficient utilization of the hardware. These findings
+underscore the importance of code optimizations for data layout and communica-
+tion, such as aligning memory access patterns and minimizing latency. While the
+presented benchmarks include only results obtained on NVIDIA GPUs, note that
+thanks to the performance portability layer provided by TNL the project also sup-
+ports running simulations on the AMD platform via the ROCm/HIP toolkit. The
+performance comparison of free and open-source LBM projects demonstrates com-
+petitiveness and high performance of the TNL-LBM project.
+   Beyond technical performance, the use of the MIT license further enhances the value
+of the project to the scientific community, fostering reproducibility, collaboration, and
+ 167      Page 32 of 35                                                                         J. Klinkovský et al.
+
+
+integration into proprietary workflows. This licensing choice, combined with demon-
+strated computational scalability, lowers barriers to adoption and encourages collabora-
+tion between academia and industry. The validation of the framework on a wide range
+of problems, including non-Newtonian flows and coupled solvers, demonstrates its reli-
+ability and adaptability to real-world engineering and scientific challenges. Future plans
+for the project currently include integrating advanced collision models for compressible
+flows, improving the implementation of the immersed boundary method for fluid–struc-
+ture interaction, and utilizing advanced strategies for in situ/in-transit visualization.
+    In summary, TNL-LBM provides a powerful and flexible tool for high-perfor-
+mance LBM simulations that combine algorithmic innovation with modern software
+engineering practices. Its success in scaling to 128 of GPU-accelerated ranks on
+Karolina and achieving high performance on H100 systems highlights the project’s
+capabilities in performing large-scale and high-fidelity simulations where accuracy
+and efficiency are crucial factors.
+Acknowledgements This work was supported by the projects LUAUS25049 and e-INFRA CZ
+(ID:90254) of the Ministry of Education, Youth and Sports of the Czech Republic and by the project
+26-21483S of the Czech Science Foundation. R.S. was supported by the by statutory activities – work no.
+16.16.110.663.
+
+Author contributions J.K. and P.E. wrote the main manuscript text. All authors contributed to the soft-
+ware project described in the manuscript text. J.K. performed the computational studies. All authors
+reviewed the manuscript.
+
+Funding Open access publishing supported by the institutions participating in the CzechELib Transform-
+ative Agreement.
+
+Data availability No datasets were generated or analyzed during the current study.
+
+Declarations
+Conflict of interest The authors declare no conflict of interest.
+
+Open Access This article is licensed under a Creative Commons Attribution 4.0 International License, which
+permits use, sharing, adaptation, distribution and reproduction in any medium or format, as long as you give
+appropriate credit to the original author(s) and the source, provide a link to the Creative Commons licence,
+and indicate if changes were made. The images or other third party material in this article are included in the
+article’s Creative Commons licence, unless indicated otherwise in a credit line to the material. If material is not
+included in the article’s Creative Commons licence and your intended use is not permitted by statutory regula-
+tion or exceeds the permitted use, you will need to obtain permission directly from the copyright holder. To
+view a copy of this licence, visit http://creativecommons.org/licenses/by/4.0/.
+
+
+
+References
+ 1. Ahrens J, Geveci B, Law C (2005) ParaView: an end-user tool for large-data visualization. Butterworth-
+    Heinemann Burlington chap 36:717–731. https://​doi.​org/​10.​1016/​b978-​01238​7582-2/​50038-1
+ 2. Bailey P, Myre J, Walsh SDC, et al (2009) Accelerating lattice Boltzmann fluid flow simulations
+    using graphics processors. In: 2009 International Conference on Parallel Processing. IEEE, pp 550–
+    557, https://​doi.​org/​10.​1109/​ICPP.​2009.​38
+ 3. Bauer M, Eibl S, Godenschwager C et al (2021) waLBerla: a block-structured high-performance
+    framework for multiphysics simulations. Comput & Math Appl 81:478–501. https://​doi.​org/​10.​
+    1016/j.​camwa.​2020.​01.​007
+TNL‑LBM: Scalable lattice Boltzmann method implementation…                          Page 33 of 35    167
+
+
+ 4. Bauer M, Köstler H, Rüde U (2021) lbmpy: automatic code generation for efficient parallel lattice
+    Boltzmann methods. J Comput Sci 49:101269. https://​doi.​org/​10.​1016/j.​jocs.​2020.​101269
+ 5. Beneš M, Eichler P, Fučík R et al (2022) Experimental and numerical investigation of air flow
+    through the distributor plate in a laboratory-scale model of a bubbling fluidized bed boiler. Jpn J Ind
+    Appl Math 39(3):943–958. https://​doi.​org/​10.​1007/​s13160-​022-​00518-x
+ 6. Chen Y, Valocchi AJ, Kang Q et al (2019) Inertial effects during the process of supercritical CO2
+    displacing brine in a sandstone: lattice Boltzmann simulations based on the continuum-surface-force
+    and geometrical wetting models. Water Resour Res 55(12):11144–11165. https://​doi.​org/​10.​1029/​
+    2019W​R0257​46
+ 7. Corbet J (2013) Exchanging two files. https://​lwn.​net/​Artic​les/​569134/, [Accessed April 2025]
+ 8. Dapelo D, Simonis S, Krause MJ et al (2021) Lattice-Boltzmann coupled models for advection-dif-
+    fusion flow on a wide range of Péclet numbers. J Comput Sci 51:101363. https://​doi.​org/​10.​1016/j.​
+    jocs.​2021.​101363
+ 9. Eichler P, Fuka V, Fučík R (2021) Cumulant lattice Boltzmann simulations of turbulent flow above
+    rough surfaces. Comput & Math Appl 92:37–47. https://​doi.​org/​10.​1016/j.​camwa.​2021.​03.​016
+10. Eichler P, Fučík R, Straka R (2021) Computational study of immersed boundary-lattice Boltzmann
+    method for fluid-structure interaction. Discret & Contin Dynam Syst-S 14(3):819. https://​doi.​org/​10.​
+    3934/​dcdss.​20203​49
+11. Eichler P, Galabov R, Fučík R et al (2023) Non-Newtonian turbulent flow through aortic phantom:
+    experimental and computational study using magnetic resonance imaging and lattice Boltzmann
+    method. Comput & Math Appl 136:80–94. https://​doi.​org/​10.​1016/j.​camwa.​2023.​01.​031
+12. Eichler P, Fučík R, Strachota P (2024) Investigation of mesoscopic boundary conditions for lattice
+    Boltzmann method in laminar flow problems. Comput & Math Appl 173:87–101. https://​doi.​org/​10.​
+    1016/j.​camwa.​2024.​08.​009
+13. Fučík R, Straka R (2021) Equivalent finite difference and partial differential equations for the lattice
+    Boltzmann method. Comput & Math Appl 90:96–103. https://​doi.​org/​10.​1016/j.​camwa.​2021.​03.​014
+14. Fučík R, Eichler P, Straka R et al (2019) On optimal node spacing for immersed boundary-lattice
+    Boltzmann method in 2D and 3D. Comput & Math Appl 77(4):1144–1162. https://​doi.​org/​10.​
+    1016/j.​camwa.​2018.​10.​045
+15. Fučík R, Galabov R, Pauš P et al (2020) Investigation of phase-contrast magnetic resonance imag-
+    ing underestimation of turbulent flow through the aortic valve phantom: experimental and compu-
+    tational study using lattice Boltzmann method. Magn Reson Mater Phys, Biol Med 33(5):649–662.
+    https://​doi.​org/​10.​1007/​s10334-​020-​00837-5
+16. Fučík R, Eichler P, Klinkovský J et al (2022) Lattice Boltzmann method analysis tool (LBMAT).
+    Numer Algorithms. https://​doi.​org/​10.​1007/​s11075-​022-​01476-8
+17. Geier M, Schönherr M (2017) Esoteric twist: an efficient in-place streaming algorithmus for the
+    lattice Boltzmann method on massively parallel hardware. Computation 5(2):19. https://​doi.​org/​10.​
+    3390/​compu​tatio​n5020​019
+18. Geier M, Schönherr M, Pasquali A et al (2015) The cumulant lattice Boltzmann equation in three
+    dimensions: theory and validation. Comput & Math Appl 70(4):507–547. https://​doi.​org/​10.​1016/j.​
+    camwa.​2015.​05.​001
+19. Geier M, Lenz S, Schönherr M et al (2021) Under-resolved and large eddy simulations of a decay-
+    ing Taylor-Green vortex with the cumulant lattice Boltzmann method. Theoret Comput Fluid Dyn
+    35(2):169–208. https://​doi.​org/​10.​1007/​s00162-​020-​00555-7
+20. Geier M, Kutscher K, Schönherr M et al (2025) VirtualFluids open source parallel LBM solver.
+    Comput Phys Commun 317:109810. https://​doi.​org/​10.​1016/j.​cpc.​2025.​109810
+21. Godoy WF (2020) ADIOS2 Documentation visualizing data. Oak Ridge National Laboratory,
+    https://​adios2.​readt​hedocs.​io/​en/​v2.​10.2/​ecosy​stem/​visua​lizat​ion.​html
+22. Godoy WF, Podhorszki N, Wang R, et al (2020) ADIOS 2: The adaptable input output system.
+    a framework for high-performance data management. SoftwareX 12:100561. https://​doi.​org/​10.​
+    1016/j.​softx.​2020.​100561
+23. Guo Z, Shu C (2013) Lattice Boltzmann method and its application in engineering, vol 3. World
+    Sci. https://​doi.​org/​10.​1142/​8806
+24. Holzer M, Bauer M, Köstler H et al (2021) Highly efficient lattice Boltzmann multiphase simula-
+    tions of immiscible fluids at high-density ratios on CPUs and GPUs through code generation. Int J
+    High Perform Comput Appl 35(4):413–427. https://​doi.​org/​10.​1177/​10943​42021​10165​25
+25. IT4Innovations (2025) It4innovations documentation – Karolina cluster. https://​docs.​it4i.​cz/​karol​
+    ina/​intro​ducti​on/, [Accessed April 2025]
+ 167      Page 34 of 35                                                                    J. Klinkovský et al.
+
+
+26. Januszewski M, Kostur M (2014) Sailfish: a flexible multi-GPU implementation of the lattice Boltzmann
+    method. Comput Phys Commun 185(9):2350–2368. https://​doi.​org/​10.​1016/j.​cpc.​2014.​04.​018
+27. Kang SK, Hassan YA (2013) The effect of lattice models within the lattice Boltzmann method in
+    the simulation of wall-bounded turbulent flows. J Comput Phys 232(1):100–117. https://​doi.​org/​10.​
+    1016/j.​jcp.​2012.​07.​023
+28. Klinkovský J (2023) Data structures and parallel algorithms for numerical solvers in computational
+    fluid dynamics. PhD thesis, Czech Technical University in Prague, Faculty of Nuclear Sciences and
+    Physical Engineering, Prague, Czech Republic, https://​hdl.​handle.​net/​10467/​112277.
+29. Klinkovský J, Trautz AC, Fučík R et al (2023) Lattice Boltzmann method-based efficient GPU sim-
+    ulator for vapor transport in the boundary layer over a moist soil: development and experimental
+    validation. Comput & Math Appl 138:65–87. https://​doi.​org/​10.​1016/j.​camwa.​2023.​02.​021
+30. Kotsalos C, Latt J, Beny J et al (2021) Digital blood in massively parallel CPU/GPU systems for the
+    study of platelet transport. Interface Focus 11(1):20190116. https://​doi.​org/​10.​1098/​rsfs.​2019.​0116
+31. Krämer A, Wilde D, Küllmer K et al (2019) Pseudoentropic derivation of the regularized lattice
+    Boltzmann method. Phys Rev E 100(2):023302. https://​doi.​org/​10.​1103/​PhysR​evE.​100.​023302
+32. Kraus J (2013) An introduction to CUDA-aware MPI. https://​devel​oper.​nvidia.​com/​blog/​intro​ducti​
+    on-​cuda-​aware-​mpi/, NVIDIA Developer Blog, [Accessed April 2025]
+33. Krause M, Kummerländer A, Frank M, et al (2022) Performance on HoreKa using OpenLB 1.5.
+    https://​www.​openlb.​net/​perfo​rmance/, [online, OpenLB documentation website]
+34. Krause MJ, Kummerländer A, Avis SJ et al (2021) OpenLB open source lattice Boltzmann code.
+    Comput & Math Appl 81:258–288. https://​doi.​org/​10.​1016/j.​camwa.​2020.​04.​033
+35. Krüger T, Kusumaatmaja H, Kuzmin A et al (2017) The lattice Boltzmann method. Springer. https://​
+    doi.​org/​10.​1007/​978-3-​319-​44649-3
+36. Kumar P, Kutscher K, Mößner M et al (2018) Validation of a VRANS-model for turbulent flow
+    over a porous flat plate by cumulant lattice Boltzmann DNS/LES and experiments. J Porous Media.
+    https://​doi.​org/​10.​1615/​JPorM​edia.​v21.​i5.​60
+37. Łaniewski-Wołłk Ł, Rokicki J (2016) Adjoint lattice Boltzmann for topology optimization on multi-GPU
+    architecture. Comput & Math Appl 71(3):833–848. https://​doi.​org/​10.​1016/j.​camwa.​2015.​12.​043
+38. Latt J, Malaspinas O, Kontaxakis D et al (2020) Palabos: parallel lattice Boltzmann solver. Comput
+    & Math Appl. https://​doi.​org/​10.​1016/j.​camwa.​2020.​03.​022
+39. Lehmann M (2022) Esoteric pull and esoteric push: two simple in-place streaming schemes for the
+    lattice Boltzmann method on GPUs. Computation. https://​doi.​org/​10.​3390/​compu​tatio​n1006​0092
+40. Mazen F, Givord L, Gueunet C (2023) Catalyst-ADIOS2: In transit analysis for numerical simula-
+    tions using Catalyst 2 API. In: Bienz A, Weiland M, Baboulin M et al (eds) High Performance Com-
+    puting. Springer Nature Switzerland, Cham, pp 269–276
+41. Mink A, McHardy C, Bressel L et al (2020) Radiative transfer lattice Boltzmann methods: 3D mod-
+    els and their performance in different regimes of radiative transfer. J Quant Spectrosc Radiat Trans-
+    fer 243:106810. https://​doi.​org/​10.​1016/j.​jqsrt.​2019.​106810
+42. Mink A, Schediwy K, Posten C et al (2022) Comprehensive computational model for coupled fluid
+    flow, mass transfer, and light supply in tubular photobioreactors equipped with glass sponges. Ener-
+    gies. https://​doi.​org/​10.​3390/​en152​07671
+43. NVIDIA (2025a) CUDA toolkit documentation, version 12.8. https://​docs.​nvidia.​com/​cuda/​archi​ve/​
+    12.8.​0/
+44. NVIDIA (2025b) Developing a Linux kernel module using GPUDirect RDMA. https://​docs.​nvidia.​
+    com/​cuda/​gpudi​rect-​rdma/​index.​html
+45. NVIDIA (2025c) NVIDIA HPC Compilers User’s Guide version 25.9. https://​docs.​nvidia.​com/​hpc-​
+    sdk/​compi​lers/​hpc-​compi​lers-​user-​guide/​index.​html
+46. Oberhuber T, Klinkovský J, Fučík R (2021) TNL: Numerical library for modern parallel architec-
+    tures. Acta Polytechnica 61(SI):122–134. https://​doi.​org/​10.​14311/​AP.​2021.​61.​0122
+47. Peng C, Geneva N, Guo Z et al (2018) Direct numerical simulation of turbulent pipe flow using the
+    lattice Boltzmann method. J Comput Phys 357:16–42. https://​doi.​org/​10.​1016/j.​jcp.​2017.​11.​040
+48. Ross C, Pugmire D, Geveci B, et al (2023) Fides User Guide Version 1.2.0. Kitware, https://​fides.​
+    readt​hedocs.​io/​en/​v1.2.​0/
+49. Santos JE, Gigliotti A, Bihani A et al (2022) MPLBM-UT: multiphase LBM library for permeable
+    media analysis. SoftwareX 18:101097. https://​doi.​org/​10.​1016/j.​softx.​2022.​101097
+50. Sharma KV, Straka R, Tavares FW (2020) Current status of lattice Boltzmann methods applied to
+    aerodynamic, aeroacoustic, and thermal flows. Prog Aerosp Sci 115:37. https://​doi.​org/​10.​1016/j.​
+    paero​sci.​2020.​100616
+TNL‑LBM: Scalable lattice Boltzmann method implementation…                          Page 35 of 35   167
+
+
+51. Succi S, Amati G, Bernaschi M et al (2019) Towards exascale lattice Boltzmann computing. Com-
+    put & Fluids 181:107–115. https://​doi.​org/​10.​1016/j.​compf​l uid.​2019.​01.​005
+52. TNL project developers (2025) Template Numerical Library documentation. https://​tnl-​proje​ct.​org/​
+    docum​entat​ion/
+53. Trott C, Berger-Vergiat L, Poliakoff D et al (2021) The Kokkos ecosystem: comprehensive perfor-
+    mance portability for high performance computing. Comput Sci Eng 23(5):10–18. https://​doi.​org/​
+    10.​1109/​MCSE.​2021.​30985​09
+54. Trott CR, Lebrun-Grandi D, Arndt D et al (2022) Kokkos 3: programming model extensions for the
+    exascale era. IEEE Trans Parallel Distrib Syst 33(4):805–817. https://​doi.​org/​10.​1109/​TPDS.​2021.​
+    30972​83
+55. Wang ZJ, Fidkowski K, Abgrall R et al (2013) High-order CFD methods: current status and per-
+    spective. Int J Numer Meth Fluids 72(8):811–845. https://​doi.​org/​10.​1002/​fld.​3767
+56. White FM (2005) Viscous fluid flow. McGraw-Hill, New York
+57. Wikipedia contributors (2025) PCI Express — Wikipedia, the free encyclopedia. https://​en.​wikip​
+    edia.​org/w/​index.​php?​title=​PCI_​Expre​ss&​oldid=​13159​94286, [Online; accessed 9-October-2025]
+58. Wittmann M, Zeiser T, Hager G et al (2013) Comparison of different propagation steps for lattice
+    Boltzmann methods. Comput & Math Appl 65(6):924–935. https://​doi.​org/​10.​1016/j.​camwa.​2012.​
+    05.​002
+59. Wittmann M, Zeiser T, Hager G et al (2013) Domain decomposition and locality optimization for
+    large-scale lattice Boltzmann simulations. Computers & Fluids 80:283–289. https://​doi.​org/​10.​
+    1016/j.​compf​l uid.​2012.​02.​007
+60. Zakirov A, Perepelkina A, Levchenko V et al (2021) Streaming techniques: revealing the natural
+    concurrency of the lattice Boltzmann method. J Supercomput 77(10):11911–11929. https://​doi.​org/​
+    10.​1007/​s11227-​021-​03762-z
+
+Publisher’s Note Springer Nature remains neutral with regard to jurisdictional claims in published maps
+and institutional affiliations.
+
+
+
+Authors and Affiliations
+
+Jakub Klinkovský1 · Pavel Eichler1 · Robert Straka2 · Tomáš Oberhuber3 ·
+Radek Fučík3
+
+* Jakub Klinkovský
+  jakub.klinkovsky@fjfi.cvut.cz
+    Pavel Eichler
+    pavel.eichler@fjfi.cvut.cz
+    Robert Straka
+    strakrob@agh.edu.pl
+    Tomáš Oberhuber
+    tomas.oberhuber@fjfi.cvut.cz
+    Radek Fučík
+    radek.fucik@fjfi.cvut.cz
+1
+    Department of Software Engineering, Faculty of Nuclear Sciences and Physical Engineering,
+    Czech Technical University in Prague, Trojanova 13, 12000 Prague, Czech Republic
+2
+    AGH University of Science and Technology, Adama Mickiewicza 30, 30‑059 Krakow, Poland
+3
+    Department of Mathematics, Faculty of Nuclear Sciences and Physical Engineering, Czech
+    Technical University in Prague, Trojanova 13, 12000 Prague, Czech Republic
+

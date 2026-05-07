@@ -1,0 +1,345 @@
+                                                      Transition to the ultimate regime in two-dimensional Rayleigh-Bénard convection
+
+                                                         Xiaojue Zhu1 ,∗ Varghese Mathai1 , Richard J. A. M. Stevens1 , Roberto Verzicco2,1 , and Detlef Lohse1,3†
+                                                                        1
+                                                                          Physics of Fluids Group and Max Planck Center for Complex Fluid Dynamics,
+                                                                                MESA+ Institute and J. M. Burgers Centre for Fluid Dynamics,
+                                                                            University of Twente, P.O. Box 217, 7500AE Enschede, The Netherlands
+                                                       2
+                                                         Dipartimento di Ingegneria Industriale, University of Rome ‘Tor Vergata’, Via del Politecnico 1, Roma 00133, Italy
+                                                                     3
+                                                                       Max Planck Institute for Dynamics and Self-Organization, 37077 Göttingen, Germany
+
+                                                                   The possible transition to the so-called ultimate regime, wherein both the bulk and the boundary
+                                                                layers are turbulent, has been an outstanding issue in thermal convection, since the seminal work by
+                                                                Kraichnan [Phys. Fluids 5, 1374 (1962)]. Yet, when this transition takes place and how the local flow
+                                                                induces it is not fully understood. Here, by performing two-dimensional simulations of Rayleigh-
+arXiv:1804.03914v1 [physics.flu-dyn] 11 Apr 2018
+
+
+
+
+                                                                Bénard turbulence covering six decades in Rayleigh number Ra up to 1014 for Prandtl number Pr
+                                                                = 1, for the first time in numerical simulations we find the transition to the ultimate regime, namely
+                                                                at Ra∗ = 1013 . We reveal how the emission of thermal plumes enhances the global heat transport,
+                                                                leading to a steeper increase of the Nusselt number than the classical Malkus scaling Nu ∼ Ra1/3
+                                                                [Proc. R. Soc. London A 225, 196 (1954)]. Beyond the transition, the mean velocity profiles are
+                                                                logarithmic throughout, indicating turbulent boundary layers. In contrast, the temperature profiles
+                                                                are only locally logarithmic, namely within the regions where plumes are emitted, and where the
+                                                                local Nusselt number has an effective scaling Nu ∼ Ra0.38 , corresponding to the effective scaling in
+                                                                the ultimate regime.
+
+
+                                                      Rayleigh-Bénard (RB) flow, in which the fluid is heated       ultimate regime more conclusively. They observed a sim-
+                                                   from below and cooled from above, is a paradigmatic rep-          ilar exponent 0.38, but this exponent was found only to
+                                                   resentation of thermal convection, with many features             start at a much higher Ra ≈ 1014 (the transition starts
+                                                   that are of interest in natural and engineering applica-          at Ra ≈ 1013 ). This observation is compatible with the
+                                                   tions. Examples range from astrophysical and geophysi-            theoretical prediction [10, 11] for the onset the ultimate
+                                                   cal flows to industrial thermal flows [1–3]. When the tem-        regime. It is also consistent with the theoretical pre-
+                                                   perature difference between the two plates (expressed in          diction of Refs. [8, 12], according to which logarithmic
+                                                   dimensionless form as the Rayleigh number Ra) is large            temperature and velocity BLs are necessary to obtain an
+                                                   enough, the system is expected to undergo a transition            effective scaling exponent β ≈ 0.38 for that Ra.
+                                                   from the so-called “classical regime” of turbulence, where           The apparent discrepancies among various high Ra RB
+                                                   the boundary layers (BLs) are of laminar type[4–7], to            experiments have been attributed to many factors. The
+                                                   the so-called “ultimate regime”, where the BLs are of             change of Pr, the non-Boussinesq effect, the use of con-
+                                                   turbulent type, as first predicted by Kraichnan [8] and           stant temperature or constant heat flux condition, the
+                                                   later by others [9–13]. In the classical regime, the Nus-         finite conductivity of the plates, and the sidewall effect
+                                                   selt number Nu (dimensionless heat transfer) is known             can all play different roles [1, 23]. Direct numerical simu-
+                                                   to effectively scale as Raβ , with the effective scaling ex-      lations (DNS), which do not have these unavoidable arte-
+                                                   ponent β ≤ 1/3 [10, 11, 14–16]. Beyond the transition             facts as occurring in experiments, can ideally help to un-
+                                                   to the ultimate regime, the heat transport is expected            derstand the transition to the ultimate regime, with the
+                                                   to increase substantially, reflected in an effective scaling      strict accordance to the intended theoretic RB formula-
+                                                   exponent β > 1/3 [1, 8, 12].                                      tions. Unfortunately, high Ra simulations in three di-
+                                                      Hitherto, the evidence for the transition to the ulti-         mensions (3D) are prohibitively expensive [24, 25]. The
+                                                   mate regime has only come from experimental measure-              highest Rayleigh number achieved in 3D RB simulations
+                                                   ments. In fact, the community is debating at what Ra the          is 2 × 1012 [23], which is one order of magnitude short of
+                                                   transition starts and even whether there is a transition          the expected transitional Ra. Two-dimensional (2D) RB
+                                                   at all. For example, Niemela & Sreenivasan [17] observed          simulations, though different from 3D ones in terms of
+                                                   that β first increases above 1/3 around Ra ≈ 1014 and             integral quantities for small Pr [26, 27], still capture the
+                                                   then decreases back to 1/3 again for Ra ≈ 1015 . Sub-             many essential features of 3D RB [27]. Consequently, in
+                                                   sequently, Urban et al. [18] also reported β ≈ 1/3 for            recent years, 2D DNS has been widely used to test theo-
+                                                   Ra = [1012 , 1015 ]. However, Chavanne et al. [19, 20]            ries, not only for normal RB [28, 29], but also for RB in
+                                                   found that the effective scaling exponent β increases to          porous media [30]. Although also expensive at high Ra,
+                                                   0.38 for Ra > 2 × 1011 . In the experiments mentioned             now we have the chance to push forward to Ra = 1014
+                                                   above, low temperature helium was used as the working             using 2D simulations as we will show in this manuscript.
+                                                   fluid and Prandtl number Pr changes with increasing Ra.              Another advantage of DNS as compared to experiment
+                                                   In contrast to helium, SF6 has roughly pressure indepen-          is that velocity and temperature profiles can be easily
+                                                   dent Pr. This allows He et al. [21, 22] to achieve the            measured, to check whether they are logarithmic in the
+                                                                                                                                2
+
+ultimate regime, as expected from theory. Specifically,
+for the temperature, only a few local experimental mea-
+surements were available in the near-sidewall regions of
+RB cells, which showed logarithmic profiles [31, 32]. Even
+worse, for velocity, there is almost no evidence for the
+existence of a logarithmic BL, due to the experimental
+challenges. For instance, in cylindrical cells with aspect
+ratio Γ = O(1), the mean velocity profile cannot be easily
+quantified because of the absence of a stable mean roll
+structure [24]. In situations where stable rolls do exist
+(e.g. narrow rectangular cells), the highest Ra available
+are still far below the critical Ra at which logarithmic
+velocity BLs can manifest themselves [4, 7].
+   As numerical simulations provide us with every detail
+of the flow field which might be unavailable in experi-
+ments, they also enable us to reveal the links between
+the global heat transport and the local flow structures.
+A few attempts (both 2D and 3D) have been made in the
+classical regime, in which logarithmic temperature BLs
+were detected, by selectively sampling the regions where                Ejecting             Impacting              Ejecting
+the plumes are ejected to the bulk [31, 33]. However, it is
+still unclear how these local logarithmic BLs contribute
+to the attainment of the global heat transport enhance-
+ment during the transition to the ultimate regime.
+   In this work, for the first time in DNS we do observe
+a transition to the ultimate regime in 2D, namely at
+Ra∗ = 1013 , similar as in the 3D RB experiments of Ref.
+[21]. DNS also provides first evidence that the mean ve-
+locity profiles follow the log-law of the wall, in analogy              Impacting              Ejecting            Impacting
+to other paradigmatic turbulent flows, e.g. pipe, chan-
+nel, and boundary flows [34–36]. Further, we explore the
+link between the local and global quantities to reveal the
+mechanism leading to the increased scaling exponent be-          FIG. 2. The instantaneous temperature fields for (a) Ra =
+yond the transition.                                             1011 and (b) Ra = 1014 . The corresponding movies are shown
+                                                                 in Ref. [38]. (c) The Mean temperature and velocity field
+   The simulations have been carried out using a well val-
+                                                                 for Ra = 1013 . The contours represent the mean tempera-
+idated second-order finite-difference code [39, 40]. The         ture field, while the vectors show the direction of the velocity,
+two control parameters are Ra = αg∆L3 /(νκ) and Pr =             scaled by its magnitude. The plate surfaces have been divided
+                                                                 into equal-sized plume ejecting and impacting regions. The
+                                                                 three plots share the same color map.
+    0.045
+                                   Johnston & Doering (2009)
+                                          Present data
+    0.035                                                        ν/κ, with α being the thermal expansion coefficient, g
+                                                                 the gravitational acceleration, ∆ the temperature differ-
+                                                                 ence across a fluid layer of depth L, ν the kinematic
+    0.025                                                        viscosity, and κ the thermal diffusivity. In the simula-
+                                                                 tions, Pr were fixed at 1 and aspect ratio Γ ≡ W/L
+                                                                 were fixed at 2, where W is the width of the domain.
+    0.015                                                        With this Γ, it has been found that the heat flux approx-
+         10 8   10 9    1010    10 11   10 12    10 13    1014   imates the heat flux at infinite aspect ratio [37]. The
+                                                                 boundary conditions were non-slip for velocity, constant
+FIG. 1. Nu(Ra) plot compensated by Ra0.35 . A clear transi-      temperature for the bottom and top plates, and peri-
+tion can be seen at Ra = 1013 , as evident from the plateau.     odic horizontally.
+                                                                        √              Nu was calculated from the relation
+The data agree well with the previous results in the low Ra      Nu = RaPr huz θiA,t − h∂z θiA,t , with uz being the ver-
+regime [37]. The flow structures of the three colored data       tical velocity, θ the temperature, and h· · ·iA,t the average
+points (blue for Ra = 1011 , green for Ra = 1013 , grey for      over a horizontal plane and time. All the cases were well
+Ra = 1014 ) are displayed in Fig. 2.                             resolved. At the highest Ra = 1014 , we used a grid with
+                                                                                                                           3
+
+20480×10240 mesh points. For details of the simulations,            40
+we refer to Ref. [38].
+   We begin by looking at the heat transport Nu as a                30
+function of Ra. In Fig. 1, we show Nu(Ra) compensated
+with Ra0.35 , for the range Ra=[108 , 1014 ]. Up to Ra =
+                                                                    20
+1011 (blue symbol), the effective scaling is essentially the
+same (β ≈ 0.29) as has been already observed [27, 37,
+41] in the classical regime where the BLs are laminar [5,           10
+6]. This trend continues up to the transitional Rayleigh
+number Ra∗ = 1013 (green symbol). Beyond this, we                    0
+                                                                        -1           0          1          2          3
+witness the start of the transition to the ultimate regime,          10         10         10         10         10
+with a notably larger effective scaling exponent β ≈ 0.35,
+                                                                    25
+as evident from the plateau in the compensated plot.
+   Next, to appreciate how the flow structures are differ-
+                                                                    20
+ent before and beyond the transition (Ra∗ ), we show the
+respective instantaneous temperature fields (see Fig. 2).           15
+The top panel presents a relatively low Ra = 1011 (below
+Ra∗ ), while the middle panel shows a high Ra = 1014                10
+(beyond Ra∗ ). At low Ra, intense large scale rolls (LSR)
+are clearly visible. In comparison, at high Ra, the LSR,             5
+although still evident, contains much weaker and smaller
+structures. Interestingly, even at the highest Ra, the tem-          0
+                                                                        -1           0          1          2          3
+perature field still has both plume ejecting and impacting           10         10         10         10         10
+regions. Additionally, these observations indicate that             25
+the spatial extent of plume ejecting regions do not grow
+in spite of the increase in Ra.                                     20
+   We now focus on the mean temperature and velocity
+fields at the transitional Ra. Remarkably, even after 500           15
+dimensionless time units, the flow domain still shows a
+stable mean roll structure, i.e. the rolls are pinned with          10
+clearly demarcated plume ejecting and impacting regions
+(see Fig. 2(c)). The mean temperature and velocity fields            5
+display horizontal symmetry, which enables us to average
+them over a single LSR instead of the whole domain (as               0
+                                                                        -1           0          1          2          3
+                                                                     10         10         10         10         10
+the velocity averaged horizontally for the whole domain
+will be zero).
+   Figure 3(a) shows the temporally and spatially aver-        FIG. 3. Mean velocity (a) and temperature (b) profiles in
+aged velocity profiles, performed on one single LSR. We        wall units (u+ for velocity, T + for temperature, and y + for
+plot the profiles in dimensionless wall units, in terms of     wall distance) at four Ra. The dashed lines show the viscous
+u+ and y + , where u+ = huix,t /uτpand y + = zuτ /ν.           sublayer behavior and the log-layer behavior. A log-layer is
+                                                               seen for the velocity (with inverse slope κv = 0.4), but not
+Here uτ is the friction velocity uτ = ν∂z huix,t |z=0 [42].    for the temperature. (c) Local temperature profiles averaged
+Similar to channel, pipe, and boundary layer flows, we         in plume ejecting and impacting regions (see Fig. 2(c) for
+can identify two distinct layers: a viscous sub-layer          definitions). The dashed lines again show the viscous sublayer
+where u+ = y + , followed by a logarithmic region, where       behavior and the log-layer behavior. A log-layer is seen for
+the velocity profile follows u+ = κ1v ln y + + Bv [42].        the temperature in the plume ejecting regions (with inverse
+The inverse slope gives κv = 0.4, which is remark-             slope κθ = 4.0), but not in impacting regions.
+ably close to the Kármán constant in various 3D canon-
+ical wall-bounded turbulent flows [35, 36]. However,
+the parameter Bv varies with Ra. With increasing               cous sub-layer T + = y + , followed by a rather flat region,
+Ra, the logarithmic range grows in spatial extent, un-         without a clear logarithmic dependence. Since the ulti-
+til at Ra∗ = 1013 , it spans one decade in y + . Simi-         mate regime is associated with logarithmic profiles, the
+larly, we express the temperature profile in wall units        key question remains, as to why the mean temperature
+T + = (Tb − hT ix,t )/Tτ , where Tb is the bottom plate        profile is not logarithmic despite the global scaling rela-
+temperature, and Tτ = −κ∂z hT ix,t |z=0 /uτ a character-       tions suggesting a transition in Fig. 1.
+istic temperature scale analogous to uτ for the velocity          To find out, we look back more closely into the flow
+[43]. The mean temperature profile shows a similar vis-        field of Fig. 2(c) where the mean flow was separated into
+                                                                                                                               4
+
+(a) a plume ejection region, and (b) a plume impacting              not the globally averaged one. We recall that by defi-
+region. As noted earlier, the spatial extent of these re-           nition on the plate surface, Nu = − h∂z θiA . Following
+gions does not grow with increasing Ra, and the mean                the observations from Fig. 2(c), we compute the local Nu
+flow field is horizontally symmetric. Therefore, the do-            on the plate surface from ejecting (Nue ) and impacting
+main can be divided into plume ejection and impacting               (Nui ) regions separately. These are shown in Fig. 4, com-
+regions, enabling us to perform a conditional analysis for          pensated by Ra1/3 . Up to Ra∗ , both Nui and Nue follow
+the temperature profiles specific to the respective regions.        a similar trend, with their respective local scaling expo-
+In Fig. 3(c), we plot these profiles separately, for differ-        nents βi and βe < 1/3. However, beyond Ra∗ , Nui and
+ent Ra. All the profiles collapse into a single curve in the        Nue diverge. The ejecting regions show an increased heat
+viscous sub-layer. Beyond the viscous sub-layer, the im-            transport, with βe = 0.38, which is precisely the ultimate
+pacting and ejecting regions show very different behavior.          scaling exponent predicted for Ra ∼ O(1014 ) with loga-
+For the impacting regions, the temperature profile is flat          rithmic BLs. In contrast, the impacting regions have a
+(dotted curves), and remains so for all Ra. However, for            much lower scaling exponent βi = 0.28. This means that
+the plume ejecting regions, we observe a clear log-layer            the flow is partially in the ultimate regime and partially
+(solid curves) with a profile T + = κ1θ ln y + + Bθ , where         still in the classical regime. Based on these, we express
+κθ = 4 is the equivalent Kármán constant for temper-              the global Nusselt number, Nu = Nui + Nue , in anal-
+ature, and Bθ varies with Ra. Similar to the velocity               ogy to the Grossmann-Lohse approach [10, 12] wherein
+profiles, the extent of the log-layer increases with Ra. At         the dissipation rate was separated into bulk and BL con-
+the transitional Ra∗ = 1013 , it spans one decade in y + .          tributions. We write Nu = Ci Raβi + Ce Raβe , where
+   Temperature profiles that are locally logarithmic (in            βe is expected to become even larger with increasing Ra
+plume ejecting regions) have been observed before for               [12]. The above expression asymptotically approaches
+both the classical and the ultimate regimes [31–33].                the ultimate regime scaling when the plume ejecting re-
+Based on this, one hypothesis regarding how the system              gions become more and more dominant in transporting
+undergoes the transition to the ultimate regime is that             the heat with increasing Ra. Thus, with only the local
+the fraction of plume emitting regions (or hot spots) will          temperature profile being logarithmic (in plume ejecting
+gradually grow with increasing Ra [33]. As speculated,              regions), the system can still undergo a gradual transition
+the trend would continue until the entire BL becomes a              to the ultimate regime.
+hot spot, thus leading to a mean logarithmic temperature               Finally, it is worthwhile to clarify the effect of the im-
+profile. Our findings indicate that here this is not the            posed two-dimensionality on the heat transfer. As men-
+case, as even at Ra = 1014 plume impacting regions do               tioned in the beginning, 2D RB is different from 3D
+not show a logarithmic temperature profile. The presence            RB. However, the effective scaling exponents observed
+of these impacting regions makes the mean temperature               are identical in 2D and 3D for a wide range of Ra in
+profile also non-logarithmic (see Fig. 3(b)).                       the classical regime [27], and here we found both in 2D
+   We now explain how the global heat transport scal-               and 3D the transition starts at Ra∗ = 1013 . Further-
+ing can still undergo a transition to the ultimate regime,          more, the logarithmic BLs are theoretically expected for
+though only the local temperature profile is logarithmic,           both 2D and 3D, as the theoretical argument [13] is built
+                                                                    on the Prandtl equations which are 2D. Also in other
+                                                                    2D canonical flows, logarithmic BLs have been observed,
+   0.024                                                            e.g. in channel flow [44, 45]. Therefore, the physical in-
+                                                                    sights gained from this work are useful for understanding
+   0.022
+                                                                    the transition to ultimate turbulence in both 2D and 3D
+    0.02                                                            flows.
+                                                                       In conclusion, we have used two-dimensional simula-
+   0.018
+                   (Ejecting)                                       tions of Rayleigh-Bénard convection to investigate the
+   0.016
+                   (Impacting)                                      transition to the ultimate regime of thermal convection.
+                                                                    We followed the approach of using the local flow struc-
+   0.014
+                                                                    tures to explain the globally observed heat transfer en-
+       10
+          11
+                         10
+                              12
+                                         10
+                                              13
+                                                          10
+                                                               14   hancement. A transitional Rayleigh number Ra∗ = 1013
+                                                                    was found for the 2D RB with Pr = 1, beyond which
+                                                                    the mean velocity profile has a log-layer spanning one
+FIG. 4. Local wall-heat-flux as a function of Ra, separately
+for the plume ejecting region (Nue ) and the plume impact-          decade. However, the temperature profile is logarithmic
+ing region (Nui ). At Ra∗ = 1013 , Nue starts to undergo a          only within the regions where plumes are ejected. The
+transition to the ultimate regime with an effective scaling ex-     local effective Nusselt scaling exponent βe increases to
+ponent of 0.38, while Nui (Ra) has a much smaller effective         0.38 in the plume ejecting regions, corresponding to the
+scaling exponent of 0.28. The competition between the two           ultimate regime. The transition to the ultimate regime
+parts finally determines the effective global scaling exponent.     can be understood as the gradual takeover of the global
+                                                                                                                          5
+
+heat transport by the contribution from the regions of        [12] S. Grossmann and D. Lohse, Phys. Fluids 23, 045108
+plume ejection. In future work we will extend these 2D             (2011).
+DNS to smaller (and larger) Pr, to check the predicted        [13] S. Grossmann and D. Lohse, Phys. Fluids 24, 125103
+Pr-dependence [10, 11] of the transition to the ultimate           (2012).
+                                                              [14] R. J. A. M. Stevens, E. P. van der Poel, S. Grossmann,
+regime.                                                            and D. Lohse, J. Fluid Mech. 730, 295 (2013).
+   Many open questions remain, for example whether wall       [15] M. V. R. Malkus, Proc. R. Soc. London A 225, 196
+roughness can trigger a transition to an asymptotic ul-            (1954).
+timate regime, in which Nu∼Ra1/2 , i.e., the logarithmic      [16] C. H. B. Priestley, Aust. J. Phys. 7, 176 (1954).
+corrections vanish. A previous study that reached Ra          [17] J. Niemela and K. R. Sreenivasan, New J. Phys. 12,
+                                                                   115002 (2010).
+= 1012 has shown that this was not yet the case [46].         [18] P. Urban, P. Hanzelka, V. Musilová, T. Králı́k,
+However, in rough wall Taylor-Couette (TC) simulations             M. La Mantia, A. Srnka, and L. Skrbek, New J. Phys.
+(reaching a Taylor number of Ta ≈ 2 × 109 ) and experi-            16, 053042 (2014).
+ments (reaching Ta ≈ 1012 ) we did reach the correspond-      [19] X. Chavanne, F. Chilla, B. Castaing, B. Hebral,
+ing asymptotic ultimate regime for the angular momen-              B. Chabaud, and J. Chaussy, Phys. Rev. Lett. 79, 3648
+tum transport in TC flow thanks to the effect of pressure          (1997).
+drag [47]. As the analog to pressure drag is absent in        [20] X. Chavanne, F. Chilla, B. Chabaud, B. Castaing, and
+                                                                   B. Hebral, Phys. Fluids 13, 1300 (2001).
+the heat flux balance for RB flow, such an asymptotic         [21] X. He, D. Funfschilling, H. Nobach, E. Bodenschatz, and
+ultimate regime may not exist in RB flow [48].                     G. Ahlers, Phys. Rev. Lett. 108, 024502 (2012).
+   We thank Daniel Chung for discussions and for point-       [22] X. He, D. Funfschilling, E. Bodenschatz, and G. Ahlers,
+ing us to Ref. [48]. The work was financially supported            New J. Phys.. 14, 063030 (2012).
+by NWO-I, NWO-TTW, the Netherlands Center for Mul-            [23] R. J. A. M. Stevens, D. Lohse, and R. Verzicco, J. Fluid
+                                                                   Mech. 688, 31 (2011).
+tiscale Catalytic Energy Conversion (MCEC), all spon-
+                                                              [24] O. Shishkina, R. J. A. M. Stevens, S. Grossmann, and
+sored by the Netherlands Organization for Scientific Re-           D. Lohse, New J. Phys. 12, 075022 (2010).
+search (NWO), and the COST Action MP1305. Part                [25] R. J. A. M. Stevens, R. Verzicco, and D. Lohse, J. Fluid
+of the simulations were carried out on the Dutch na-               Mech. 643, 495 (2010).
+tional e-infrastructure with the support of SURF Cooper-      [26] J. Schmalzl, M. Breuer, S. Wessling, and U. Hansen,
+ative. We also acknowledge PRACE for awarding us ac-               Europhys. Lett. 67, 390 (2004).
+cess to Marconi based in Italy at CINECA under PRACE          [27] E. P. van der Poel, R. J. A. M. Stevens, and D. Lohse,
+                                                                   J. Fluid Mech. 736, 177 (2013).
+Project No. 2016143351 and the DECI resource Archer
+                                                              [28] Y.-X. Huang and Q. Zhou, J. Fluid Mech. 737 (2013).
+based in the United Kingdom at Edinburgh with support         [29] Y. Zhang, Y.-X. Huang, N. Jiang, Y.-L. Liu, Z.-M. Lu,
+from the PRACE aisbl under Project No. 13DECI0246.                 X. Qiu, and Q. Zhou, Phys. Rev. E 96, 023105 (2017).
+                                                              [30] D. R. Hewitt, J. A. Neufeld, and J. R. Lister, Phys. Rev.
+                                                                   Lett. 108, 224503 (2012).
+                                                              [31] G. Ahlers, E. Bodenschatz, D. Funfschilling, S. Gross-
+                                                                   mann, X. He, D. Lohse, R. J. A. M. Stevens, and R. Verz-
+  ∗
+     xiaojue.zhu@utwente.nl                                        icco, Phys. Rev. Lett. 109, 114501 (2012).
+  †
+     d.lohse@utwente.nl                                       [32] G. Ahlers, E. Bodenschatz, and X. He, J. Fluid Mech.
+ [1] G. Ahlers, S. Grossmann, and D. Lohse, Rev. Mod. Phys.        758, 436 (2014).
+     81, 503 (2009).                                          [33] E. P. van der Poel, R. Ostilla-Mónico, R. Verzicco,
+ [2] D. Lohse and K.-Q. Xia, Ann. Rev. Fluid Mech. 42, 335         S. Grossmann, and D. Lohse, Phys. Rev. Lett. 115,
+     (2010).                                                       154501 (2015).
+ [3] F. Chilla and J. Schumacher, Eur. Phys. J. E 35, 58      [34] A. E. Perry and M. S. Chong, J. Fluid Mech. 119, 106
+     (2012).                                                       (1982).
+ [4] C. Sun, Y. H. Cheung, and K.-Q. Xia, J. Fluid Mech.      [35] I. Marusic, B. J. McKeon, P. A. Monkewitz, H. M. Nagib,
+     605, 79 (2008).                                               A. J. Smits, and K. R. Sreenivasan, Phys. Fluids 22,
+ [5] Q. Zhou and K.-Q. Xia, Phys. Rev. Lett. 104, 104301           065103 (2010).
+     (2010).                                                  [36] A. J. Smits, B. J. McKeon, and I. Marusic, Ann. Rev.
+ [6] Q. Zhou, R. J. A. M. Stevens, K. Sugiyama, S. Gross-          Fluid Mech. 43, 353 (2011).
+     mann, D. Lohse, and K.-Q. Xia, J. Fluid Mech. 664,       [37] H. Johnston and C. R. Doering, Phys. Rev. Lett. 102,
+     297 (2010).                                                   064501 (2009).
+ [7] R. du Puits and C. Willert, Phys. Fluids 28, 044108      [38] See Supplemental Material at [URL will be inserted by
+     (2016).                                                       publisher] for numerical details, (2017).
+ [8] R. H. Kraichnan, Phys. Fluids 5, 1374 (1962).            [39] R. Verzicco and P. Orlandi, J. Comput. Phys. 123, 402
+ [9] E. A. Spiegel, Ann. Rev. Astron. Astrophys. 9, 323            (1996).
+     (1971).                                                  [40] E. P. van der Poel, R. Ostilla-Mónico, J. Donners, and
+[10] S. Grossmann and D. Lohse, J. Fluid. Mech. 407, 27            R. Verzicco, Computers & Fluids 116, 10 (2015).
+     (2000).                                                  [41] E. P. van der Poel, R. Ostilla-Mónico, R. Verzicco, and
+[11] S. Grossmann and D. Lohse, Phys. Rev. Lett. 86, 3316          D. Lohse, Phys. Rev. E 90, 013017 (2014).
+     (2001).                                                  [42] S. B. Pope, Turbulent Flow (Cambridge University
+                                                                                                                       6
+
+     Press, Cambridge, 2000).                                [46] X. Zhu, R. A. J. M. Stevens, R. Verzicco, and D. Lohse,
+[43] A. M. Yaglom, Annu. Rev. Fluid Mech. 11, 505 (1979).         Phys. Rev. Lett. 119, 154501 (2017).
+[44] D. Samanta, F. Ingremeau, R. Cerbus, T. Tran, W. I.     [47] X. Zhu, R. A. Verschoof, D. Bakhuis, S. G. Huisman,
+     Goldburg, P. Chakraborty, and H. Kellay, Phys. Rev.          R. Verzicco, C. Sun, and D. Lohse, Nat. phys. 14, 417
+     Lett. 113, 024504 (2014).                                    (2018).
+[45] V. S. L’vov, I. Procaccia, and O. Rudenko, Phys. Rev.   [48] P. R. Owen and W. R. Thomson, J. Fluid Mech. 15, 321
+     E 79, 045304 (2009).                                         (1963).
+

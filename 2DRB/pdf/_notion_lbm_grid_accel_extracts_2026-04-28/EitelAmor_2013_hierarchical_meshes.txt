@@ -1,0 +1,851 @@
+                                                                    Computers & Fluids 75 (2013) 127–139
+
+
+
+                                                        Contents lists available at SciVerse ScienceDirect
+
+
+                                                                  Computers & Fluids
+                                           j o u r n a l h o m e p a g e : w w w . e l s e v i e r . c o m / l o c a t e / c o m p fl u i d
+
+
+
+
+A lattice-Boltzmann method with hierarchically reﬁned meshes
+G. Eitel-Amor ⇑, M. Meinke, W. Schröder
+RWTH Aachen University, Institute of Aerodynamics, Wüllnerstr. 5a, 52062 Aachen, Germany
+
+
+
+a r t i c l e        i n f o                           a b s t r a c t
+
+Article history:                                       A lattice-Boltzmann method (LBM) with local hierarchical adaptive grid reﬁnement using a cell-centered
+Received 7 June 2012                                   lattice structure is presented which satisﬁes the requirements of high accuracy and high efﬁciency. It is
+Received in revised form 19 December 2012              applied to two-dimensional and three-dimensional laminar and turbulent ﬂows over cylinders and
+Accepted 7 January 2013
+                                                       spheres which constitute a comprehensive validation of LB methods for such blunt body problems. In
+Available online 30 January 2013
+                                                       the turbulent ﬂow regime, a large-eddy simulation is used to capture the ﬂow physics up to the inertial
+                                                       subrange. The numerical approach is described in detail and the accuracy of the method is demonstrated
+Keywords:
+                                                       by considering the ﬂow around a circular cylinder at Reynolds numbers Re = 20, 40, and 100 and the ﬂow
+Lattice-Boltzmann method
+Local grid reﬁnement
+                                                       past a sphere at Re = 100, 300, 3700, and 10,000. The LBM plus local hierarchical grid reﬁnement yields
+Solution-adaptive reﬁnement                            accurate temporal and spatial results and dramatically increases the computational efﬁciency by globally
+LES                                                    reducing the number of cells.
+Subcritical turbulent ﬂow past a sphere                                                                                 Ó 2013 Elsevier Ltd. All rights reserved.
+
+
+
+
+1. Introduction                                                                              tion of particles moving in a certain direction. Using a cell-centered
+                                                                                             lattice structure, exact conservation of mass and momentum in the
+    Over the last two decades, the lattice-Boltzmann method (LBM)                            transition region between the grid levels is achieved. The most
+has received growing interest as an efﬁcient tool for the numerical                          simple variant of this volumetric scheme does not use any interpo-
+solution of the incompressible Navier–Stokes equations [32,57].                              lation or rescaling and is therefore less expensive than interpolat-
+The LBM formulation allows for straightforward parallelization                               ing schemes. However, staggering effects reported by Rohde et al.
+and offers an efﬁcient boundary treatment for complex geometries                             [53] may introduce errors on the ﬁne grid levels and require addi-
+making it favorable for highly intricate ﬂows [3,10,66]. The inher-                          tional ﬁltering. Therefore, the method presented in this study uses
+ent advantages of the LBM are associated with the use of regular                             interpolation and rescaling as proposed by Filippova and Hänel
+lattices with uniform grid spacing. Clearly, this regularity limits                          [26] with a modiﬁed rescaling according to Dupuis and Chopard
+the ﬁeld of applications for LBM from an efﬁciency point of view                             [23]. Due to algorithmic advantages in parallel computing and
+since uniform grids are not well suited to simulate ﬂows at strong                           adaptive reﬁnement, a cell-centered lattice is preferred. The LBM,
+local gradients. To circumvent the drawback of generating an enor-                           the reﬁnement scheme, and the speciﬁc attributes of the current
+mous number of cells to resolve the dominant physical mecha-                                 approach are described in detail in Section 2.
+nisms of the ﬂow ﬁeld, the concept of locally reﬁned meshes is                                   In general, engineering applications are characterized by highly
+employed in the present study.                                                               unsteady and anisotropic turbulent ﬂows involving a wide range of
+    Local reﬁnement can be introduced to LBM in a straightforward                            interacting spatial and temporal scales. That is, the detailed ﬂow
+manner using embedded blocks of isotropically reﬁned grids. A                                physics cannot be captured by time-averaged approaches. There-
+ﬁrst approach to overcome the communication problem between                                  fore, in this study an LBM based on the large-eddy simulation con-
+blocks of different lattice sizes was proposed by Filippova and                              cept (LES) is introduced by considering an effective eddy viscosity
+Hänel [26,25]. In this scheme the particle distribution functions                            in the collision term of the ﬁltered lattice-Boltzmann equation
+are reconstructed at block interfaces using spatial and temporal                             [37,68].
+interpolation. This method refers to the original ﬁnite-difference                               The purpose of this paper is the development of a lattice-Boltz-
+scheme of the LB method and takes into account a rescaling of                                mann method that is based on LES turbulence modeling including
+non-equilibrium components. Over the last 10 years, this formula-                            hierarchical adaptive grid reﬁnement. This concept requires the
+tion has been adopted and further investigated in several studies                            combination of advanced LB techniques for irregular grids, error
+[18,23,56,65,67]. A different concept was pursued by Rohde et al.                            estimation, subgrid modeling, and boundary conditions. The algo-
+[53] and Chen et al. [9] who assumed a continuous spatial distribu-                          rithm is designed and optimized for distributed calculations on
+                                                                                             massively parallel machines enabling simulations of demanding
+ ⇑ Corresponding author. Tel.: +49 (0)241 80 95426.                                          three-dimensional ﬂow problems. To evidence the quality of the
+   E-mail address: g.eitel@aia.rwth-aachen.de (G. Eitel-Amor).                               numerical scheme, two- and three-dimensional, steady and
+
+0045-7930/$ - see front matter Ó 2013 Elsevier Ltd. All rights reserved.
+http://dx.doi.org/10.1016/j.compﬂuid.2013.01.013
+128                                                    G. Eitel-Amor et al. / Computers & Fluids 75 (2013) 127–139
+
+
+unsteady, laminar and subcritical turbulent ﬂows past circular ob-                     [4]. To overcome stability constraints in the low viscosity limit at
+jects are simulated. To be more precise, the ﬂow ﬁelds of cylinders                    ﬁnite resolution and a lack of Galilean invariance, more sophisti-
+and spheres serve as validation problems in the Reynolds number                        cated approaches have been proposed for the collision term which
+range 20 6 Re 6 10,000.                                                                are brieﬂy addressed. The multiple-relaxation-time (MRT) models
+   The paper possesses the following structure. In the next section,                   [20,28,44] can achieve higher stability than the SRT model and ex-
+the numerical methods including the lattice-Boltzmann approach,                        tend the application to a wider range of transport phenomena. Re-
+local grid reﬁnement, grid adaptation, boundary conditions, and                        sults from Freitas et al. [27] indicating unphysical behavior of MRT
+subgrid-scale modeling are described. Subsequently, the numerical                      methods in internal ﬂow were revised in a recent study by Eitel-
+results for steady and unsteady ﬂows past a circular cylinder and                      Amor [24]. It was shown that pressure oscillations in underre-
+for the laminar and subcritical turbulent ﬂow past a sphere are dis-                   solved BGK solutions are suppressed by moment-based methods
+cussed. Finally, the ﬁndings are summarized and an outlook is                          and that consistent results are obtained for turbulent channel ﬂow
+given.                                                                                 if the relaxation parameters of the MRT methods are chosen
+                                                                                       according to the prevailing viscosity.
+2. Numerical method                                                                       Entropic LB (ELB) models [2,11,12,39] utilize a local equilibrium
+                                                                                       function that minimizes the entropy function H. By guaranteeing
+2.1. Lattice-Boltzmann approach                                                        the discrete H-theorem on all nodes in every time step, stability
+                                                                                       should be improved. However, the accurate determination of local
+   The LBM is based on the Boltzmann equation describing the                           equilibrium and higher-order lattices with up to 41 velocities [12]
+evolution of particle distribution functions via binary collisions.                    increase the computational costs. Furthermore, a recent study of
+The velocity space is discretized which drastically reduces the                        two-dimensional cavity ﬂow revealed an inferior behavior of ELB
+amount of information being processed. Assuming very small                             methods when compared to MRT or SRT schemes [45]. In sum-
+Knudsen numbers, i.e. the continuum ﬂow regime is considered,                          mary, it can be stated that there exist higher order collision oper-
+the deviations from thermodynamic equilibrium are marginal                             ators which increase the accuracy and stability of the LB scheme in
+which allows a simpliﬁcation of the collision integral. Hence, the                     the low-viscosity limit. However, the collision algorithms of such
+LBM can be utilized to efﬁciently calculate the evolution of                           methods are more expensive and the adjustment of relaxation
+macroscopic quantities in continuum ﬂows at low Mach numbers                           parameters might be elaborate.
+on uniform Cartesian meshes. Furthermore, it allows for a straight-                       Another approach to achieve a stable and accurate algorithm is
+forward implementation of curved boundaries and fully parallel                         to combine the efﬁcient SRT model with a method for local grid
+algorithms. An extensive description of the LB method and its                          reﬁnement to increase the resolution in areas where strong gradi-
+applications can be found in [57,66,32].                                               ents dominate the local and global ﬂow ﬁeld. Considering the
+   The governing equation for LBM without external forcing reads                       sometimes meticulous determination of the relaxation parameters
+                                                                                       and the computational costs of higher-order lattices, it is this ap-
+fi ðx þ ni Dt; t þ DtÞ  fi ðx; tÞ ¼ C i   with i 2 f1; . . . ; ng;          ð1Þ       proach which is pursued in the present study. Note that the pre-
+                                                                                       sented reﬁnement concept can also be applied to the collision
+where fi(x, t) is the particle-distribution function that represents the
+                                                                                       operators mentioned above.
+density of particles traveling at speed ni and Ci denotes the collision
+                                                                                          The SRT model is governed by the discrete lattice BGK (LBGK)
+term. In the fundamental algorithm of a LBGK solver the collision
+                                                                                       equation,
+operation on the right-hand side of Eq. (1) is applied to incoming
+distribution functions in each time step and the resulting distribu-
+                                                                                                                                  1  eq                               
+tion functions are propagated to the nearest neighbors. LB models                      fi ðx þ ni Dt; t þ DtÞ  fi ðx; tÞ ¼          fi ðv ðx; tÞ; qðx; tÞÞ  fi ðx; tÞ ;            ð2Þ
+are characterized by the number of spatial dimensions d and the
+                                                                                                                                  s
+number of discrete velocities n. In this context, the DdQn notation
+                                                                                       where s represents the relaxation time and f eq is the discretized
+was introduced by Qian et al. [51]. Preferred models in two and
+                                                                                       Maxwell–Boltzmann equilibrium-distribution function for incom-
+three dimensions are the D2Q9, D3Q19, D3Q15, and D3Q27 formu-
+                                                                                       pressible ﬂows [36]
+lations, since they offer a sufﬁcient lattice symmetry. In this work,
+the D2Q9 and the D3Q19 models are used, the latter of which is                                                                                                                      
+                                                                                                                                ni;a v a ðx; tÞ v a ðx; tÞv b ðx; tÞ ni;a ni;b
+illustrated in Fig. 1.                                                                 fieq ðv ðx; tÞ; qðx; tÞÞ ¼ t i qðx; tÞ þ                þ                                d ab    :
+                                                                                                                                      c2s               2c2s            c2s
+    Several approaches have been introduced for the description of
+                                                                                                                                                                                      ð3Þ
+the collision term Ci, which were proven to yield the correct hydro-
+dynamic behavior [2,8,11,20,28,39,44,51]. The widely used single-                         In this context, va are the components of the macroscopic
+relaxation-time (SRT) approximation [8,51] is based on a simpliﬁed                     velocity vector with summation over equal indices. The weighting
+collision operator introduced by Bhatnagar, Gross, and Krook (BGK)                     factors ti are obtained from symmetry considerations [61] and
+
+
+
+
+                                                         Fig. 1. The discrete velocities for the D3Q19 model.
+                                                          G. Eitel-Amor et al. / Computers & Fluids 75 (2013) 127–139                                                                               129
+
+
+
+
+                                                            (a)                                                  (b)
+        Fig. 2. Two possible lattice arrangements at a reﬁnement interface: (a) node-centered lattice with coinciding coarse and ﬁne nodes; (b) cell-centered lattice.
+
+cs ¼ p1ﬃﬃ3 DDxt represents the speed of sound. The macroscopic proper-                    rescaled [26]. Note that in [18,56,65,67] the post-collision distri-
+ties for density q and velocity v are obtained as base moments of                         bution functions are reconstructed which means that the bound-
+the distribution functions                                                                ary nodes are excluded from the collision process and only serve
+             X
+             n                                                                            as a recipient. Instead, Dupuis and Chopard [23] proposed to
+qðx; tÞ ¼      fi ðx; tÞ;                                                      ð4aÞ       reconstruct the pre-collision distribution functions such that
+             i¼1                                                                          collisions in all cells belonging to the reﬁnement level under
+             Xn                                                                           consideration can be taken into account.
+v ðx; tÞ ¼         ni fi ðx; tÞ;                                               ð4bÞ           In the present study, the pre-collision distribution functions are
+             i¼1
+                                                                                          reconstructed and a cell-centered lattice structure shown in Fig. 2b
+and the pressure follows from p ¼ c2s q.                                                  is chosen. This requires a modiﬁed interface algorithm since there
+   The relaxation time s which depends on the grid resolution is                          are no coinciding cell centers at grid reﬁnement interfaces. Evalu-
+given by                                                                                  ating the distribution functions at the cell center is advantageous
+                                                                                          when the lattice is decomposed for parallel computing, since the
+    1        3m
+s¼ þ 2             ;                                                            ð5Þ       control volume of a cell can be assigned to one single domain. This
+    2      n Dt                                                                           simpliﬁes the implementation of volumetric discretization
+with the kinematic viscosity m and the molecular velocity n ¼ DDxt ¼ 1.                   schemes [9]. Furthermore, each cell can be reﬁned or coarsened
+                                                                                          regardless of the reﬁnement level of neighbor cells which is bene-
+2.2. Local grid reﬁnement                                                                 ﬁcial for adaptive reﬁnement methods and allows to efﬁciently
+                                                                                          organize the cells in a hierarchical tree data structure [33,46,64].
+    In the locally reﬁned meshes used in this work the size of a cell                     Coarse cells with underlying ﬁne cells are excluded from the colli-
+is represented by its level of reﬁnement k 2 {kmin, . . . , kmax}, i.e. the               sion and propagation process as long as they do not belong to a
+mesh width of a cell is given by Dx = Dy = Dz = h0/2k with h0 being                       reﬁnement interface.
+the maximum length of the computational domain. On each reﬁne-                                To enable collisions on all interface cells highlighted in Fig. 3a, the
+ment level k, a cell can be isotropically sub-divided into 2d child                       incoming pre-collision distribution functions are reconstructed via
+cells at level k + 1. On non-uniform grids, the reﬁnement ratio for                       spatial interpolation. In former studies, a quadratic or cubic interpo-
+adjacent blocks is limited to m = Dxc/Dxf = 2, where the indices c                        lation along the grid interface is suggested [18,23,56,65,67] which
+and f denote the coarse and the ﬁne grid, respectively. For the lat-                      does not capture gradients normal to the interface. In this study a
+tice-Boltzmann algorithm, this implies that while two collision                           linear interpolation scheme is applied which allows a high degree
+steps are performed on a certain level, only one collision takes                          of locality while incorporating gradients in all Cartesian directions.
+place on the next lower level. Furthermore, the relaxation time                           Assuming the two-dimensional setup of an inner interface in
+has to be adapted to the grid level according to Eq. (5)                                  Fig. 3b, the variable Y at the position x = (x, y) of a ﬁne interface cell
+                                                                                        is obtained by bi-linear interpolation of coarse cell values
+                    1   1
+sf ¼ m sc             þ :                                                      ð6Þ                      ðx2  xÞðy2  yÞ                          ðx  x1 Þðy2  yÞ
+                    2   2                                                                 Yðx; yÞ ¼                        Yðx1 ; y1 Þ þ                                         Yðx2 ; y1 Þ
+                                                                                                              ð Dxc Þ 2                                      ðDxc Þ2
+     At interfaces between regions of different resolution there ex-
+                                                                                                           ðx2  xÞðy  y1 Þ
+ist neighboring cells with different reﬁnement levels. Since a                                           þ                   Yðx1 ; y2 Þ
+straightforward propagation of distribution functions is not pos-                                                ð Dxc Þ 2
+sible, the communication between adjacent blocks has to be                                                   ðx  x1 Þðy  y1 Þ
+                                                                                                         þ                        Yðx2 ; y2 Þ;                                                      ð7Þ
+realized by a speciﬁc reﬁnement scheme preserving the conser-                                                     ð Dxc Þ 2
+vation of mass and momentum. Usually, an overlap between
+the coarse and ﬁne grid at a width of at least Dxc is required                            where (x1, y1), (x2, y1), (x1, y2), and (x2, y2) are the positions of the
+and the speciﬁc reconstruction procedure depends on the lattice                           nearest coarse neighbor cells. In three dimensions a tri-linear inter-
+structure chosen.                                                                         polation is applied
+     In [18,23,56,65,67] the distribution functions are evaluated at                                     ðx2  xÞðy2  yÞðz2  zÞ                          ðx  x1 Þðy2  yÞðz2  zÞ
+                                                                                          Yðx; y; zÞ ¼                                Yðx1 ; y1 ; z1 Þ þ                                 Yðx2 ; y1 ; z1 Þ
+the cell vertices as shown in Fig. 2a. At coinciding nodes, the                                                   ðDxc Þ3                                            ð Dx c Þ 3
+post-collision distribution functions are directly transferred from                                      ðx2  xÞðy  y1 Þðz2  zÞ                         ðx  x1 Þðy  y1 Þðz2  zÞ
+                                                                                                                                      Yðx1 ; y2 ; z1 Þ þ                                 Yðx2 ; y2 ; z1 Þ
+the coarse and the ﬁne grid while a spatial interpolation has to                                                  ðDxc Þ3                                            ð Dx c Þ 3
+be performed for the so-called hanging nodes on the ﬁne grid lo-                                         ðx2  xÞðy2  yÞðz  z1 Þ                         ðx  x1 Þðy2  yÞðz  z1 Þ
+                                                                                                                                      Yðx1 ; y1 ; z2 Þ þ                                 Yðx2 ; y1 ; z2 Þ
+cated between the coarse nodes. In general, an interpolation of                                                   ðDxc Þ3                                            ð Dx c Þ 3
+at least second order along the interface and a linear interpola-                                        ðx2  xÞðy  y1 Þðz  z1 Þ                        ðx  x1 Þðy  y1 Þðz  z1 Þ
+                                                                                                                                      Yðx1 ; y2 ; z2 Þ þ                                 Yðx2 ; y2 ; z2 Þ:
+tion in time is used. Additionally, to satisfy the continuity of                                                  ðDxc Þ3                                           ð Dx c Þ 3
+stresses across the interface, the non-equilibrium parts                                                                                                                                             ð8Þ
+fineq ¼ fi  fieq of the exchanged distribution functions have to be
+130                                                       G. Eitel-Amor et al. / Computers & Fluids 75 (2013) 127–139
+
+
+                                                                                                    y
+
+
+
+                                                                                               y2
+
+
+
+                                                                                                y
+                                                                                               y1
+
+
+                                          y
+                                                                                                                                            x
+                                                                                                              x1 x                 x2
+                                              x
+                                                            (a)                                                       (b)
+Fig. 3. Grid interface in two-dimensions: (a) one layer of gray colored coarse cells overlaps with the ﬁne grid where the arrows indicate an open boundary; (b) a ﬁne interface
+cell is enclosed by four supporting coarse cells allowing for bi-linear interpolation.
+
+
+
+   The list of neighbors and the corresponding interpolation coef-                           The results discussed in this paper were computed using the
+ﬁcients are stored for each interface cell before the start of the                        above mentioned linear interpolation scheme, which allows a high
+computation and after each adaptation step. When a grid interface                         degree of locality. It will be evidenced in Section 3 that convincing
+coincides with an open boundary, the interpolation method for ﬁne                         results are obtained in two and three dimensions. Concerning
+cells is no longer valid. Such a situation is shown in Fig. 3a for an                     interpolations in LBM, former studies [44,35] showed that the
+inﬂow boundary with an outward normal in the x-direction.                                 interpolation schemes introduce additional numerical viscosities
+Instead, the incoming distribution functions are determined using                         and do inﬂuence the Galilean invariance. This numerical effect
+the boundary conditions described in Section 2.4. When informa-                           can be further reduced by higher-order interpolation making the
+tion is transferred from the ﬁne to the coarse grid, the variables                        scheme less local. Geier et al. [29] proposed a second-order accu-
+of all ﬁne cells belonging to a coarse cell are averaged                                  rate interpolation scheme in two dimensions using a minimal
+                                                                                          number of supporting points by evaluating the information avail-
+                d
+         1X 2                                                                             able from higher order moments of the distribution functions.
+YðxÞ ¼    d
+               Yðxk Þ;                                                          ð9Þ       Compared to the current method, however, the computational cost
+         2 k¼1
+                                                                                          per interface cell is clearly increased, which is why we pursue the
+where d is the number of dimensions and xk is the position of the                         linear interpolation based approach in this study.
+kth underlying ﬁne cell.
+   In the present study, a simpliﬁed rescaling of the non-equilib-                        2.3. Adaptive mesh reﬁnement
+rium components proposed by Dupuis and Chopard [23] is adopted
+which contains no singularity at s = 1. Using a ﬁrst-order Chap-                             The dynamic reﬁnement and coarsening of grid cells is con-
+man-Enskog expansion [13], fineq ¼ fi  fieq can be approximated by                       trolled by monitoring parameters which estimate the error for a
+                                                                                          quantity of interest. For LB methods several error estimators were
+            Dt s             @                                                            discussed in the literature. Among other methods, Crouse et al. [17]
+fineq          t i Q ia b     ðqub Þ;                                        ð10Þ
+             c2s            @xa                                                           proposed to use the divergence of the velocity r  v to estimate the
+                                                                                          error of mass conservation. Wu and Shu [62] incorporated a stencil
+where Q iab ¼ cia cib  c2s dab and the summation convention is used.                     adaptive algorithm [21] to the LB framework which leads to a uni-
+Only Dt and s depend on the grid resolution leading to the relation                       form relaxation time on all grid levels. However, this approach
+between non-equilibrium components on different lattices [23]                             would increase the current computational effort since the opera-
+                                                                                          tions for collision, propagation, and spatial interpolation have to
+         1 sf neq
+ffneq
+  ;i ¼       f :                                                               ð11Þ       be performed in all cells in every time step.
+         m sc c;i                                                                            In this study, two sensors based on the absolute value of the
+The non-equilibrium distributions are evaluated using a linear                            vorticity vector and the difference of the total pressure at low
+extrapolation of the macroscopic variables determined in the pre-                         Mach numbers are used
+ceding collision steps.                                                                   sv ¼ jr  v j  Dx2 ;
+                                                                                                                  3
+                                                                                                                         sp
+   To guarantee a homogeneous propagation of information across                                                     
+                                                                                                    1             1         3
+interfaces, the interpolation procedure has to be part of the solu-                           ¼ p1 þ q1 v 21  p þ qv 2  Dx2 ;                                          ð12Þ
+tion algorithm. The blocks of different lattice size are synchronized                               2             2
+such that the collision and propagation operations deﬁned by the                                                                    3
+                                                                                          with the weighting factor Dx2 according to [14]. The second sensor
+right- and left-hand side of Eq. (2), respectively, are executed in                       in which the subscript 1 denotes freestream values is employed to
+every time step on the highest level kmax and every 2kmax k time step                    detect detached ﬂow regions with a low level of vorticity. The sen-
+on the coarser levels with kmax < k 6 kmin. Since the simulation                          sors are evaluated in constant time intervals Tadapt after a propaga-
+starts with a simultaneous collision on all levels, the macroscopic                       tion step was completed as indicated in Fig. 4. If one local sensor
+variables for subsequent collisions on reﬁned grid levels are ob-                         value for a speciﬁc cell is above the upper threshold which is given
+tained by linear extrapolation of the values on the next coarser                          by its root-mean-square (RMS) value
+grid. The basic algorithm for collision, propagation, and interpola-                             qﬃﬃﬃﬃﬃﬃﬃﬃﬃ                  rD
+                                                                                                                              ﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃ
+                                                                                                                                      E
+tion on an N-level grid is illustrated in Fig. 4. Note that the solution                  sv >       s2v      _       sp >       s2p ;                                   ð13Þ
+adaptation is included, which will be described in the next section.
+                                                         G. Eitel-Amor et al. / Computers & Fluids 75 (2013) 127–139                                                        131
+
+
+
+
+                Fig. 4. Schematic LB algorithm for a hierarchically reﬁned grid with reﬁnement levels k 2 {kmin, . . . , kmax} and dynamic solution adaptation.
+
+the cell is reﬁned to the next higher level, i.e. 2d ﬁne cells are added                  scopic velocity, the non-equilibrium components of the inner cells
+to the grid. Similarly, if both sensors fall below the lower threshold                    are extrapolated to determine the outgoing distribution function
+          qﬃﬃﬃﬃﬃﬃﬃﬃﬃ                      ﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃ
+                                         rD       E                                       ~f ðx ; tÞ ¼ f eq ðv ðx  n
+                                                                                            i b         i        b  ^ ; tÞ; q1 Þ
+sv < 0:1      s2v      ^   sp < 0:1            s2p ;                           ð14Þ                          h                                                        i
+                                                                                                           1
+                                                                                                       þ fieq ðv ðxb  n                   ^ ; tÞÞ  ~f i ðxb  n
+                                                                                                                            ^ ; tÞ; qðxb  n                    ^ ; tÞ :   ð16Þ
+the corresponding cell is marked for coarsening. The empirical fac-
+                                                                                                          s
+tor of 0.1 prevents alternating coarsening and reﬁnement. After                           The no-slip boundary conditions at the walls are based on an inter-
+each adaptation step the neighbor relations on all reﬁnement levels                       polated bounce-back scheme [6] avoiding aliasing effects at curved
+and the sets of interface cells have to be updated. Before the next                       walls. If a discrete particle velocity ni impinges upon a solid wall as
+collision step can be performed, the macroscopic values and distri-                       shown in Fig. 5, the normalized distance qi = di/(jnijDt) is used to
+bution functions of the newly activated cells are initialized using                       determine the reﬂected distribution function fi
+the interpolation scheme described in Section 2.2.
+
+2.4. Boundary conditions
+
+   To model the freestream ﬂow over a solid body, the following
+boundary conditions are used. At the inlet boundary a uniform
+velocity distribution is prescribed. The outgoing distribution func-
+tions in the boundary cell at xb are calculated using Eq. (3) by
+extrapolating the macroscopic density in the outward normal
+          ^ . That is,
+direction n
+
+~f ðx ; tÞ ¼ f eq ðv 1 ; qðx  n
+                               ^ ; tÞÞ                                         ð15Þ
+  i b         i             b
+
+
+where v1 is the freestream velocity and a tilde denotes distribution
+functions after collision and before propagation.
+   At the outﬂow and at the lateral boundaries a constant pressure is
+                                                                                          Fig. 5. Deﬁnitions for the interpolated bounce-back boundary condition [5]. The
+imposed. Since pronounced gradients, i.e. non-equilibrium effects,                        property di measures the distance from a cell center to an arbitrarily orientated wall
+could occur at these boundaries, a boundary condition proposed                            in the direction of ni. The cell centers xf and xff are located in the ﬂuid whereas xb
+by Guo et al. [30,31] is used in this work. In addition to the macro-                     marks a dry node.
+132                                                              G. Eitel-Amor et al. / Computers & Fluids 75 (2013) 127–139
+
+
+                                             15
+
+                                             10                                                                                Δ x = D /4
+
+
+                                                5
+
+                                                0
+
+                                            −5
+
+                                            −10             Δx = D /64            Δx = D /32           Δx = D /16              Δ x= D /8
+                                   y
+
+
+                                            x              −10     −5        0    5       10   15     20     25     30     35       40      45
+
+                                                Fig. 6. Topology of the reﬁned Cartesian grid for the laminar ﬂow past a cylinder.
+
+                                                                    1                            2.5. Subgrid-scale modeling
+fi ðx; t þ DtÞ ¼ 2q~f i ðx; tÞ þ ð1  2qÞ~f i ðx  ni Dt; tÞ; qi <                   ð17aÞ
+                                                                    2
+                  1 ~              2q  1 ~                  1                                       The turbulent ﬂow in the wake of a sphere is highly unsteady
+fi ðx; t þ DtÞ ¼
+                     f i ðx; tÞ þ        f i ðx; tÞ; qi P ;
+                                                                                     ð17bÞ
+                  2q                 2q                      2                                   and anisotropic and involves a wide range of interacting spatial
+                                                                                                 and temporal scales. To be able to capture the essential ﬂow phys-
+                                                                                                 ics, the large-eddy simulation (LES) concept is used by which the
+where ni ¼ ni .                                                                                scales up to the inertial subrange are resolved, while the physics
+   To determine the forces acting on the ﬂuid, the so-called                                     of the smaller scales is modeled separately. In this study, the stan-
+momentum exchange method is employed [43,48,66] which mea-                                       dard Smagorinsky subgrid-scale model [50,55] is implemented in
+sures the balance of distribution functions at the no-slip boundary                              the LB solver. This model was ﬁrst combined with LBM by Hou
+of a solid body via                                                                              et al. [37] and has been successfully applied for LES by Yu et al.
+                                                                                                 [68]. The general idea is to model the energy dissipation of the sub-
+      XX h                                  i                                                                                                                 2
+                                                                                                 grid scales by an additional viscosity mt ¼ ls jSj ¼ ðC S Dx Þ2 jSj. This
+F¼      ni ~f i ðxb ; tÞ þ fi ðxb ; t þ DtÞ :                                         ð18Þ
+      all xb i2V                                                                                 turbulent kinematic viscosity term is a function of the ﬁltered local
+                                                                                                 rate of strain jSj ¼ ð2Sab Sab Þ1=2 , the Smagorinsky constant CS, and
+                                                                                                                                                        @v
+                                                                                                                                                         b
+                                                                                                 the ﬁlter length scale Dx, where Sab ¼ 12                  þ @@xvba      and the indices
+Besides the aforementioned notation the vectors xb deﬁne the posi-                                                                                      @xa
+
+tions of cells inside the ﬂuid having distributions intersecting a so-                           a and b denote the Cartesian directions. The constants CS and Dx
+lid wall and V is the set of intersecting directions.                                            are set to CS = 0.17 and Dx = D x, respectively.
+                                                                                                     For the SRT algorithm, the eddy-viscosity model is imposed by
+Table 1                                                                                          adjusting the relaxation time (Eq. (5)) according to the current
+Steady laminar ﬂow past a circular cylinder at Ma = 0.1 and Reynolds numbers Re = 20
+and Re = 40. The drag coefﬁcient Cd and the non-dimensional length of the
+                                                                                                 total viscosity, i.e. molecular viscosity m plus turbulent viscosity
+recirculation region Lr/D are compared with reference data from the literature.                  mt. Instead of the standard ﬁnite-difference based formulation the
+                                                                                                 strain-rate tensor is directly computed from the non-equilibrium
+  Contribution                    Re = 20                            Re = 40
+                                                                                                 properties of the particle-distribution functions [37,68]
+                                  Cd                Lr/D             Cd           Lr/D
+                                                                                                             1 X             
+  Tritton [58] (exp.)             2.08              –                1.58         –              Sab ¼              fi  fieq nia nib :                                                ð19Þ
+  Dennis and Chang [19]           2.045             –                1.522        –                        2qc2s s i
+  Tseng and Ferziger [59]         –                 –                1.53         2.21
+  Ye et al. [63]                  2.03              0.92             1.52         2.27           In recent studies, the second-order accuracy of this scheme has
+  Hartmann et al. [34]            2.032             0.934            1.521        2.306          been shown [7,42].
+  Present                         2.059             0.920            1.539        2.245
+
+                                                                                                 3. Results
+
+                                                                                                    The simulation of the ﬂow past a circular object is an appropri-
+                                                                                                 ate validation test case since the curved boundary is a known
+
+                                                                                                 Table 2
+                                                                                                 Unsteady ﬂow past a circular cylinder at Ma = 0.1 and Re = 100. The mean drag
+                                                                                                 coefﬁcient C d , the mean lift coefﬁcient amplitude C l , the RMS value of the lift
+                                                                                                 coefﬁcient Cl,rms, and the Strouhal number St are compared with reference data from
+                                                                                                 the literature.
+
+                                                                                                    Contribution                      Cd         C 0l                   Cl,rms     St
+
+                                                                                                    Williamson [60] (exp.)            –          –                      –          0.164
+                                                                                                    Zhang et al. [70]                 1.425      –                      0.250      0.173
+                                                                                                    Tseng and Ferziger [59]           1.42       –                      0.29       0.164
+                                                                                                    Kim et al. [41]                   1.33       0.32                   –          0.165
+Fig. 7. Simulation of the ﬂow past a circular cylinder. Distribution of the wall                    De Palma et al. [49]              1.32       0.331                  –          0.163
+pressure coefﬁcient Cp at Re = 40 and Ma = 0.1. The angle u is deﬁned clockwise                     Hartmann et al. [34]              1.345      0.337                  0.238      0.165
+starting from the windward stagnation point. The ﬁnite-volume-based data were                       Present                           1.348      0.331                  0.236      0.165
+published by Hartmann et al. [34], Kim et al. [41], and Tseng and Ferziger [59].
+                                                           G. Eitel-Amor et al. / Computers & Fluids 75 (2013) 127–139                                        133
+
+
+
+
+                                         Fig. 8. Solution-adaptive grid for the simulation of the steady ﬂow past a cylinder at Re = 40.
+
+
+
+                                                                                           (x, y) = (0, 0). The mesh in Fig. 6 possesses ﬁve levels of reﬁnement
+                                                                                           and reﬁnement patches are clustered around the cylinder. On the
+                                                                                           highest level of reﬁnement kmax = 12, the cell length is Dx = D/64,
+                                                                                           which leads to an overall number of 142,676 cells. Note that a fully
+                                                                                           reﬁned mesh for the same domain requires 8.4 million cells and
+                                                                                           the computational time required to achieve convergence is 58
+                                                                                           times higher than that of the locally reﬁned mesh.
+                                                                                               The results for steady ﬂow simulations at Re = 20 and
+                                                                                           Re = 40 are summarized         in Table 1. The drag coefﬁcient
+                                                                                           C d ¼ F x = 12 q1 v 21 DB is deﬁned by the axial force Fx, and the unit
+                                                                                           width B. The ratio Lr/D denotes the normalized length of the
+                                                                                           recirculation region on the leeward side. The agreement with
+                                                                                           experimental and numerical data from the literature is very
+Fig. 9. Density residual as a function of the computational work for the adaptive          good. It is shown in Fig. 7 that the pressure coefﬁcient C p ¼
+                                                                                                                  
+solution and for the reference solution based on a static reﬁned grid in the case of       ðp  p1 Þ= 12 q1 v 21 for the ﬂow at Re = 40 matches the ﬁnite-vol-
+the steady ﬂow past a cylinder at Re = 40.                                                 ume based data from the literature.
+                                                                                               The data in Table 2 are computed for Re = 100 where     an unstea-
+                                                                                                                                                              
+                                                                                           dy wake ﬂow develops. The lift coefﬁcient C l ¼ F y = 12 q1 v 21 DB and
+Table 3
+Relative errors of the adaptive solution compared to the reference solutions in Tables     the Strouhal number St = fvsD/v1 are deﬁned by the lateral force Fy
+1 and 2 for steady and unsteady ﬂow past a cylinder.                                       and the vortex shedding frequency fvs, respectively. The drag coef-
+                                                                                           ﬁcient and the amplitude of the lift coefﬁcient are time averaged.
+  Re             k             DðC d Þ (%)          D(Lr/D) (%)          D(St) (%)
+                                                                                           Again, a very convincing agreement with the data from the litera-
+   40            11            0.2                 4.6                 –                 ture is evident.
+   40            12            +0.4                 2.4                 –
+                                                                                               Next, the cylinder ﬂow is simulated using a solution-adaptive
+  100            11            1.3                 –                    2.4
+  100            12            1.0                 –                    1.9              mesh. To validate the proposed adaptation scheme, the cylinder
+                                                                                           ﬂows at Re = 40 and Re = 100 are simulated using adaptive meshes
+                                                                                           and the results are compared with the solutions from the ﬁxed lo-
+challenge for any Cartesian grid method and different intricate
+                                                                                           cally reﬁned mesh which are referred to as reference solutions in
+ﬂow features can be investigated depending on the Reynolds num-
+                                                                                           the following. In the adaptive simulations, the initial grid is pre-re-
+ber. Furthermore, detailed reference data from numerous publica-
+                                                                                           ﬁned with respect to the wall distance using the same range of lev-
+tions are available for the two-dimensional ﬂow past a circular
+                                                                                           els as in the previous simulations. For the steady case at Re = 40, a
+cylinder [19,41,49,58–60,63,70] and past a sphere [38,40,47,52,
+                                                                                           converged grid with 80,148 cells is developed from the initial grid
+54,69].
+                                                                                           after 1.6  105 iterations on the highest grid level. The correspond-
+    In the following, ﬁrst the two-dimensional laminar ﬂow over a
+                                                                                           ing grid is shown in Fig. 8 and the convergence histories for the ref-
+circular cylinder is discussed and then, the three-dimensional ﬂow
+                                                                                           erence solution and the adaptive solution are compared in Fig. 9. It
+past a sphere is investigated. The Reynolds number Re ¼ q1 vm1 D is
+                                                                                           is found that the adaptive computation converges more than 2.5
+based on the diameter D, the freestream velocity v1, and the kine-
+                                                                                           times faster than the reference computation with respect to the to-
+matic viscosity of the ﬂuid m. It is varied in the range 20 6 Re 6 100
+                                                                                           tal number of updated cells. Since the adaptation procedure is per-
+for the cylinder and 100 6 Re 6 10,000 for the sphere problem. The
+                                                                                           formed every 200 time steps, the additional computational time is
+static computational grids are generated using the hierarchical grid
+                                                                                           small. The obtained coefﬁcients are in very good agreement with
+reﬁnement described by Hartmann et al. [33]. This grid generator
+                                                                                           the reference solution which is evident from the relative errors
+allows for an automated generation of reﬁned grids for arbitrary
+                                                                                           summarized in Table 3. The same holds for the unsteady case at
+geometries. When adaptive reﬁnement is used, the indices of un-
+                                                                                           Re = 100 for which the dynamically adapted grid possesses approx-
+used cells are freed and new cells are appended to the cell list or
+                                                                                           imately 91,200 cells as shown in Fig. 10.
+assigned to free indices. The LB ﬂow solver is parallelized using
+                                                                                               Note that the previous computations were rerun at kmax = 11
+the Message Passing Interface (MPI) with regard to applications
+                                                                                           using the same reﬁnement criteria to investigate the inﬂuence of
+on massively parallel machines.
+                                                                                           grid resolution in adaptive simulations. The results are also given
+                                                                                           in Table 3. The inﬂuence of the lowered resolution on the drag
+3.1. Laminar ﬂow past a circular cylinder                                                  coefﬁcient is almost negligible whereas the errors concerning the
+                                                                                           recirculation length Lr and the vortex shedding frequency fvs are
+  The dimensions of the computational domain are                                           slightly increased. Although this fact indicates a susceptibility of
+[15D, 49D]  [15D, 15D] and the cylinder axis is located at                              the detachment mechanism to the grid resolution, it has to be
+134                                                      G. Eitel-Amor et al. / Computers & Fluids 75 (2013) 127–139
+
+
+
+
+Fig. 10. Solution-adaptive grid and vorticity distribution for the simulation of the unsteady ﬂow past a cylinder at Re = 100: (a) instantaneous solution at minimum lift; (b)
+instantaneous solution at maximum lift. (For interpretation of the references to color in this ﬁgure legend, the reader is referred to the web version of this article.)
+
+
+emphasized that the deviations are still below 5%. It is therefore                        extensive investigations have been carried out concerning the sub-
+concluded that the present calculations are converged and that                            and the supercritical ﬂow past a sphere [69,52,16,1]. In the follow-
+the solution-adaptive mesh reﬁnement allows an accurate simula-                           ing, four Reynolds numbers Re = 100, Re = 300, and Re = 3700 and
+tion of steady and unsteady ﬂow problems with a signiﬁcantly re-                          Re = 10,000 are considered to evaluate the reﬁnement method in
+duced number of cells. That is, the memory consumption is                                 three dimensions.
+reduced by at least 35% and the computational work required to
+achieve convergence is reduced by a factor greater than 2.5 in                            3.2.1. Flow at 100 6 Re 6 300
+the steady ﬂow case. This speedup is due to the fact that a cell at                           For the laminar ﬂow regime, a domain of [15D, 49D] 
+level k has to be updated only every 2ðkmax kÞ time steps.                               [15D, 15D]  [15D, 15D] is resolved by a mesh with ﬁve levels
+                                                                                          in the near wall region (Fig. 11). The grid is clustered around the
+3.2. Flow Past a Sphere                                                                   sphere and the sphere center is located at (x, y, z) = (0, 0, 0). On the
+                                                                                          highest grid level, the cell width equals Dx = D/32 and the total
+   The ﬂow past a sphere can be categorized into three regimes                            number of cells is 1.5  106. The velocity distributions and the
+depending on the Reynolds number. Up to Re  210 the ﬂow is                               streamlines for Re = 100 and Re = 300 in Fig. 12 illustrate the tran-
+steady and axisymmetric, whereas at Re > 270 periodic vortex                              sition from a steady and symmetric ﬂow to an unsteady ﬂow re-
+shedding occurs [38]. Below a critical Reynolds number Recr -                             gime. The drag and lift coefﬁcients C d ¼ F x = 12 q1 v 21 p D4 ;
+                                                                                                                                                                          2
+
+
+ 3.7  105 the boundary layer remains laminar and the near wake                               qﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃ
+                                                                                                                             2
+becomes turbulent. The instability effects are well understood and                        C l ¼ F 2y þ F 2z = 12 q1 v 21 p D4 , and the non-dimensional recircula-
+                                                            G. Eitel-Amor et al. / Computers & Fluids 75 (2013) 127–139                                                          135
+
+
+                                                                                            Tc = D/v1 corresponds to 4434 iterations on the highest level of
+                                                                                            reﬁnement. After an initial settle-down period, the simulations
+                                                                                            are performed for 500 characteristic time units Tc for which statis-
+                                                                                            tics are determined. Additional averaging is performed in the azi-
+                                                                                            muthal direction.
+                                                                                                The results are compared with data from several numerical and
+                                                                                            experimental studies. A direct numerical simulation (DNS) at
+                                                                                            Re = 3700 was performed by Rodríguez et al. [52] and LES results
+                                                                                            at Re = 3700 and Re = 10,000 are available from a study of Yun
+                                                                                            et al. [69] who used an immersed-boundary method and a dynamic
+                                                                                            subgrid-scale model on a cylindrical grid. Furthermore, Constan-
+                                                                                            tinescu and Squires performed LES and detached-eddy simulations
+                                                                                            (DES) at Re = 10,000 [15,16]. Experimental results have been pub-
+                                                                                            lished by Achenbach [1], Kim and Durbin, [40] and Schlichting [54].
+                                                                                                The data summarized in Tables 5 and 6 show a convincing
+Fig. 11. Computational mesh for the simulation of the ﬂow in the wake of a sphere.          agreement of the current results with the reference data. The mean
+Embedded reﬁnement patches are clustered on ﬁve levels around the sphere.                   drag coefﬁcients, C d ¼ 0:378 for Re = 3700 and C d ¼ 0:392 for
+                                                                                            Re = 10,000, agree very well with the published numerical and
+                                                                                            experimental ﬁndings. Excellent agreement is found for the pres-
+tion length Lr/D as well as the Strouhal number St are given in
+                                                                                            sure distributions shown in Figs. 13a and 14a at Re = 3700 and
+Table 4. The values are in good agreement with the results from
+                                                                                            Re = 10,000. The same holds for the base pressure coefﬁcients.
+the literature, evidencing the accuracy of the reﬁnement scheme
+                                                                                            The skin friction distributions are plotted in Figs. 13b and 14b. In
+also in three dimensions.
+                                                                                            both cases the agreement with reference values is convincing
+                                                                                            although the skin friction is slightly underestimated. Oscillations
+                                                                                            occurring in the region of maximum skin friction indicate limita-
+3.2.2. Flow at 3700 6 Re 6 10,000
+                                                                                            tions of the employed no-slip boundary condition [6]. However,
+    The subcritical turbulent ﬂow past a sphere is simulated using a
+                                                                                            the convincing determination of the drag coefﬁcient indicates that
+computational domain with dimensions [5D, 27D]  [5D, 5D] 
+                                                                                            the essential drag contribution of the ﬂow over a bluff body, is well
+[5D, 5D]. Like in the previous simulation, reﬁnement patches
+                                                                                            captured by the present method.
+are clustered around the sphere which is located at (x, y, z) =
+                                                                                                The literature values for the mean length of the recirculation re-
+(0, 0, 0) and the smallest cell length is Dx = D/256. The mesh pos-
+                                                                                            gion and for the mean separation angle vary somewhat stronger
+sesses 51.7  106 cells on six levels of reﬁnement and radial grid
+                                                                                            than for the drag coefﬁcient due to a pronounced sensitivity to
+interfaces are located at r/D = [0.53, 0.8, 1.0, 1.25, 1.75]. Note that a
+                                                                                            numerical and experimental boundary conditions and employed
+uniform mesh at the maximum resolution results in approximately
+                                                                                            numerical models. However, the values obtained in this study are
+54  109 cells. That is, it is deﬁnitely inefﬁcient to perform simula-
+                                                                                            well within the expected range. The obtained Strouhal number St
+tions at likewise near-wall and wake resolutions without local
+                                                                                            matches the reference values for both Reynolds numbers.
+reﬁnement. The computation of one characteristic time unit
+
+                                                                                            Table 5
+Table 4                                                                                     Subcritical turbulent ﬂow past a sphere at Ma = 0.1 and Reynolds number Re = 3700.
+Steady and unsteady laminar ﬂow past a sphere at Ma = 0.1 and Reynolds numbers              The values of the averaged drag coefﬁcient C d , the mean base pressure coefﬁcient C pb ,
+Re = 100 and Re = 300. The mean drag coefﬁcient C d , the non-dimensional length of         the mean non-dimensional length of the recirculation region Lr =D, the mean
+the recirculation region Lr/D, the mean lift coefﬁcient C l , and the Strouhal number St    separation angle u s , and the Strouhal number for the large-scale vortex shedding St
+are compared with reference data from the literature.                                       are compared with reference values.
+
+  Contribution                  Re = 100              Re = 300                                 Contribution                     Cd         C pb        Lr =D       s =
+                                                                                                                                                                  u         St
+
+                                Cd         Lr/D       Cd          Cl           St              Rodríguez et al. [52] (DNS)      0.394      0.207      2.28       89.4      0.215
+                                                                                               Yun et al. [69] (LES)            0.355      0.194      2.622      90        0.21
+  Johnson and Patel [38]        1.08       0.88       0.656       0.069       0.137
+                                                                                               Kim and Durbin [40] (exp.)       –          0.224      –          –         0.225
+  Kim et al. [41]               1.06       0.88       0.657       0.067       0.134
+                                                                                               Schlichting [54] (exp.)          0.39       –           –          –         –
+  Hartmann et al. [34]          1.083      0.880      0.657       0.069       0.135
+                                                                                               Present                          0.378      0.190      2.51       93.9      0.210
+  Present                       1.098      0.863      0.660       0.065       0.132
+
+
+
+
+Fig. 12. Flow past a sphere. Streamlines and velocity distributions at (a) Re = 100 and (b) Re = 300. The velocity magnitude is given by the color code. (For interpretation of the
+references to color in this ﬁgure legend, the reader is referred to the web version of this article.)
+136                                                          G. Eitel-Amor et al. / Computers & Fluids 75 (2013) 127–139
+
+
+Table 6
+Subcritical turbulent ﬂow past a sphere at Ma = 0.1 and Reynolds number Re = 10,000. The values of the averaged drag coefﬁcient C d , the mean base pressure coefﬁcient C pb , the
+mean non-dimensional length of the recirculation region Lr =D, the mean separation angle u
+                                                                                          s , and the Strouhal number for the large-scale vortex shedding St are compared with
+reference values.
+
+  Contribution                                          Cd                              C pb                    Lr =D                     us =                   St
+
+  Yun et al. [69] (LES)                                 0.393                           0.274                  1.364                     90                      0.17
+  Const. and Squires [15] (LES& DES)                    0.367–0.432                     -                       1.48–1.55                 84–87                   0.170–0.200
+  Const. and Squires [16] (DES)                         0.393                           –                       1.7                       85                      0.195
+  Achenbach [1] (exp.)                                  0.40                            –                       –                         82.5                    0.195
+  Schlichting [54] (exp.)                               0.41                            –                       –                         –                       –
+  Present                                               0.392                           0.256                  1.788                     90.0                    0.200
+
+
+
+
+                                                     (a)
+
+
+
+
+                                                     (b)
+
+
+                                                                                                                                 (c)
+Fig. 13. Flow past a sphere at Re = 3700. (a) Distribution of the wall-pressure coefﬁcient Cp; (b) Distribution of the mean skin friction s
+                                                                                                                                          ; (c) Radial distribution of the mean
+streamwise velocity at several streamwise positions (x/D = 0.2, x/D = 1.6, and x/D = 3.0). The angle u is deﬁned clockwise starting from the windward stagnation point. The
+results are compared with DNS data from Rodríguez et al. [52], LES data of Yun et al. [69], and experimental data from Kim and Durbin [40].
+
+
+
+   The wake ﬂow at Re = 3700 is further examined in Fig. 13c                                   reaches a maximum at the end of the recirculation region due to
+where the mean streamwise velocity is plotted versus the radial                                the local vortex shedding mechanism [52]. At Re = 10,000 the recir-
+distance from the symmetry axis at three streamwise positions.                                 culation region is remarkably smaller than at Re = 3700 and the
+The data points at x/D = 0.2 almost coincide with the DNS data                                 extrema of the turbulence intensities and Reynolds shear stress
+and the experimental results from the literature. Further down-                                are shifted upstream. This is in agreement with results from former
+stream at x/D = 1.6 and at x/D = 3.0 a deviation between the LES re-                           numerical studies [52,69]. The intricacy of the ﬂow ﬁeld in the
+sults and the DNS data is observed with the LBM solution being in                              wake region is visualized by the vortical structures in Fig. 16.
+good agreement with the LES distributions from Yun et al. [69].                                When comparing both Reynolds numbers, the downsizing of the
+   The components of the Reynolds-stress tensor are given in the                               recirculation region and the enhancement of small scale motions
+contour plots in Fig. 15. The radial turbulence intensity v 0r v 0r                            at Re = 10,000 is obvious. In summary, it is fair to state that the
+                                                                 G. Eitel-Amor et al. / Computers & Fluids 75 (2013) 127–139                                                                    137
+
+
+
+
+                                                        (a)                                                                                  (b)
+Fig. 14. Flow past a sphere at Re = 10,000. (a) Distribution of the mean wall-pressure coefﬁcient Cp; (b) Distribution of the mean skin friction s
+                                                                                                                                                 . The angle u is deﬁned
+clockwise starting from the windward stagnation point. The results are compared with DES data from Constantinescu and Squires [16].
+
+
+
+
+Fig. 15. Reynolds-stress components for the ﬂow past a sphere at (a) Re = 3700 and (b) Re = 10,000. From top to bottom: v 0x v 0x =v 21 , v 0r v 0r =v 21 , v 0x v 0r =v 21 . The color scale ranges
+from 0 (blue) to 0.08 (red) and black lines indicate 10 equidistant levels in the range 4.94  103  7.41  102, 4.94  103  7.41  102, and 1.07  103  3.66  102,
+respectively. The white line represents the sphere surface. (For interpretation of the references to color in this ﬁgure legend, the reader is referred to the web version of this
+article.)
+
+
+
+
+Fig. 16. Vortical structures in the wake region of the ﬂow past a sphere at Re = 3700 (top) and Re = 10,000 (bottom) visualized by the Q-criterion [22]. The color code deﬁnes
+the velocity magnitude. (For interpretation of the references to color in this ﬁgure legend, the reader is referred to the web version of this article.)
+138                                                     G. Eitel-Amor et al. / Computers & Fluids 75 (2013) 127–139
+
+
+integral data and the local distributions deﬁning the ﬂow ﬁeld are                       [9] Chen H, Filippova O, Hoch J, Molvig K, Shock R, Teixeira C, et al. Grid reﬁnement
+                                                                                             in lattice Boltzmann methods based on volumetric formulation. Phys A
+well determined by the present LB model with local hierarchical
+                                                                                             2006;362(1):158–67.
+grid reﬁnement.                                                                         [10] Chen S, Doolen GD. Lattice Boltzmann method for ﬂuid ﬂows. Annu Rev Fluid
+                                                                                             Mech 1998;30:329–64.
+                                                                                        [11] Chikatamarla SS, Ansumali S, Karlin IV. Entropic lattice Boltzmann
+4. Summary and outlook                                                                       models for hydrodynamics in three dimensions. Phys Rev Lett
+                                                                                             2006;97:010201.
+                                                                                        [12] Chikatamarla SS, Karlin IV. Lattices for the lattice boltzmann method. Phys Rev
+    A lattice-Boltzmann method with local hierarchical grid reﬁne-                           E 2009;79:046701.
+ment was introduced and validated by canonical test cases. The                          [13] Chopard B, Droz M. Cellular automata modeling of physical
+method utilizes the reconstruction of particle distribution func-                            systems. Cambridge: Cambridge University Press; 1998.
+                                                                                        [14] Coirier WJ, Powell KG. Solution-adaptive cartesian cell approach for viscous
+tions by spatial and temporal interpolation based on a cell-                                 and inviscid ﬂows. AIAA J 1996;34(5):938–45.
+centered lattice structure. Furthermore, a solution-adaptive                            [15] Constantinescu G, Squires K. LES and DES investigations of turbulent ﬂow over
+reﬁnement scheme for LBM was proposed. The algorithms for                                    a sphere at Re = 10,000. Flow Turbul Combust 2003;70:267–98.
+                                                                                        [16] Constantinescu G, Squires K. Numerical investigations of ﬂow over a sphere in
+the data transfer between blocks of different lattice sizes and the                          the subcritical and supercritical regimes. Phys Fluids 2004;16(5):1449–66.
+grid adaptation were described in detail. Computations of the                           [17] Crouse B, Rank E, Krafczyk M, Tölke J. A LB-based approach for adaptive ﬂow
+two-dimensional laminar ﬂow past a cylinder and the three-                                   simulations. Int J Modern Phys B 2003;17(1–2):109–12.
+                                                                                        [18] Crouse B, Rank E, Krafczyk M, Tölke J. A LB-based approach for adaptive ﬂow
+dimensional laminar and turbulent ﬂow past a sphere were con-                                simulations. Int J Modern Phys B 2003;17:109–12.
+ducted at several ﬂow regimes where the turbulence was modeled                          [19] Dennis SCR, Chang Gau-Zu. Numerical solutions for steady ﬂow past
+using the large-eddy simulation concept. The ﬂow ﬁeld at the                                 a circular cylinder at Reynolds numbers up to 100. J Fluid Mech
+                                                                                             1970;42:471–89.
+interfaces of the reﬁnement levels was perfectly smooth, i.e. no
+                                                                                        [20] d’Humières D, Ginzburg I, Krafczyk M, Lallemand P, Luo L-S. Multiple-
+discontinuous distribution was observed. The drag and lift coefﬁ-                            relaxation-time lattice Boltzmann models in three dimensions. Phil Trans R
+cients as well as the shedding frequency are in good agreement                               Soc London A 2002;360:437–51.
+                                                                                        [21] Ding H, Shu C. A stencil adaptive algorithm for ﬁnite difference
+with values from the literature. Additionally, the LB results of the
+                                                                                             solution of incompressible viscous ﬂows. J Comput Phys 2006;214(1):
+sphere ﬂow at Re = 3700 and Re = 10,000 show excellent agree-                                397–420.
+ment with reference data from numerical studies and experiments                         [22] Dubief Y, Delcayre F. On coherent-vortex identiﬁcation in turbulence. J Turbul
+for the drag coefﬁcients, the streamwise velocity, and the wall-                             2000;1:1–22.
+                                                                                        [23] Dupuis A, Chopard B. Theory and applications of an alternative lattice
+pressure distribution. The skin friction, Reynolds stresses, and                             Boltzmann grid reﬁnement algorithm. Phys Rev E 2003;67:066707.
+Strouhal numbers are accurately determined.                                             [24] G. Eitel-Amor. Lattice-Boltzmann methods with hierarchically reﬁned meshes,
+    The reﬁnement approach resulted in a drastic reduction of the                            PhD thesis. RWTH Aachen University; 2012.
+                                                                                        [25] Filippova O, Hänel D. Boundary-ﬁtting and local grid reﬁnement for lattice-
+computational effort of the LBM. That is, the method is more efﬁ-                            BGK models. Int J Modern Phys C 1998;147:219–28.
+cient and applicable to more complex problems. At the two-dimen-                        [26] Filippova O, Hänel D. Grid reﬁnement for lattice-BGK models. J Comput Phys
+sional ﬂow past a cylinder, the CPU-time is reduced by a factor of                           1998;147:219–28.
+                                                                                        [27] Freitas RK, Henze A, Meinke M, Schröder W. Analysis of lattice-Boltzmann
+50 without any accuracy decrease. Furthermore, at solution-adap-                             methods for internal ﬂows. Comput Fluids 2011;47(1):115–21.
+tive reﬁnement the cell number is further decreased by more than                        [28] Geier M, Greiner A, Korvink JG. Cascaded digital lattice Boltzmann automata
+35% leading to a higher rate of convergence. In three dimensions                             for high Reynolds number ﬂow. Phys Rev E 2006;73(6):066705.
+                                                                                        [29] Geier M, Greiner A, Korvink JG. Bubble functions for the lattice Boltzmann
+the efﬁciency gain due to static local grid reﬁnement is even high-
+                                                                                             method and their application to grid reﬁnement. Eur Phys J – Spec Top
+er, i.e. the cell number is reduced by a factor of Oð102 Þ for the                           2009;171:173–9.
+sphere ﬂow, such that extremely intricate wall-bounded and                              [30] Guo Z, Zheng C, Shi B. An extrapolation method for boundary conditions in
+                                                                                             lattice Boltzmann method. Phys Fluids 2002;14(6):2007–10.
+free-shear ﬂows at strong spatial gradients can be efﬁciently
+                                                                                        [31] Guo Z, Zheng C, Shi B. Non-equilibrium extrapolation method for velocity and
+analyzed.                                                                                    pressure boundary conditions in the lattice Boltzmann method. Chinese Phys
+    In summary, the results evidence the potential of the SRT meth-                          2002;11(4):366–74.
+od in conjunction with local grid reﬁnement for LES applications. It                    [32] Hänel D. Molekulare Gasdynamik. Springer; 2004.
+                                                                                        [33] Hartmann D, Meinke M, Schröder W. An adaptive multilevel multigrid
+is concluded that the presented method is a reliable, robust, and                            formulation for Cartesian hierarchical grid methods. Comput Fluids
+effective tool to simulate complex engineering ﬂow ﬁelds.                                    2008;37:1103–25.
+                                                                                        [34] Hartmann D, Meinke M, Schröder W. A strictly conservative Cartesian cut-cell
+                                                                                             method for compressible viscous ﬂows on adaptive grids. Comput Meth Appl
+Acknowledgment                                                                               Mech Eng 2011;200(9-12):1038–52.
+                                                                                        [35] He X. Error analysis for the interpolation-supplemented lattice-Boltzmann
+                                                                                             equation scheme. Int J Modern Phys C 1997;8(4).
+   The support by the German Research Foundation (DFG) under                            [36] He X, Luo L-S. Lattice Boltzmann model for the incompressible Navier–Stokes
+research grant SCHR 309/22 is gratefully acknowledged.                                       equation. J Stat Phys 1997;88(3–4):927–44.
+                                                                                        [37] Hou S, Sterling J, Chen S, Doolen GD. A lattice Boltzmann subgrid model for
+                                                                                             high reynolds number ﬂows. Fields Inst Commun 1996;6:151–66.
+References                                                                              [38] Johnson TA, Patel VC. Flow past a sphere up to a Reynolds number of 300. J
+                                                                                             Fluid Mech 1999;378:19–70.
+                                                                                        [39] Karlin IV, Gorban AN, Succi S, Bofﬁ V. Maximum entropy principle for lattice
+[1] Achenbach E. Experiments on the ﬂow past spheres at very high Reynolds
+                                                                                             kinetic equations. Phys Rev E 1998;81:6–9.
+    numbers. J Fluid Mech 1972;54(3):565–75.
+                                                                                        [40] Kim HJ, Durbin PA. Observations of the frequencies in a sphere wake and of
+[2] Ansumali S, Karlin IV. Entropy Function Approach to the Lattice Boltzmann
+                                                                                             drag increase by acoustic excitation. Phys Fluids 1988;31(11):3260–5.
+    Method. J Stat Phys 2002;107:291–308.
+                                                                                        [41] Kim J, Kim D, Choi H. An immersed-boundary ﬁnite-volume
+[3] Benzi R, Succi S, Vergassola M. The lattice Boltzmann equation: theory and
+                                                                                             method for simulations of ﬂow in complex geometries. J Comput Phys
+    applications. Phys Rep 1992;222(3):145–97.
+                                                                                             2001;171:132–50.
+[4] Bhatnagar PL, Gross EP, Krook M. A model for collision processes in gases. I.
+                                                                                        [42] Krüger T, Varnik F, Raabe D. Shear stress in lattice Boltzmann simulations. Phys
+    Small amplitude processes in charged and neutral one-component systems.
+                                                                                             Rev E 2009;79:046704.
+    Phys Rev 1954;94(3):511–25.
+                                                                                        [43] Ladd AJC. Numerical simulations of particulate suspensions via a discretized
+[5] Bouzidi M, d’Humières D, Lallemand P, Luo L-S. Lattice Boltzmann equations on
+                                                                                             Boltzmann equation. J Fluid Mech 1994;271:285–339.
+    a two-dimensonal rectangular grid. J Comput Phys 2001;172:704–17.
+                                                                                        [44] Lallemand P, Luo L-S. Theory of the lattice Boltzmann method: dispersion,
+[6] Bouzidi M, Firdaouss M, Lallemand P. Momentum transfer of a Boltzmann-
+                                                                                             isotropy, Galilean invariance, and stability. Phys Rev E 2000;61(6):6546–62.
+    lattice ﬂuid with boundaries. Phys Fluids 2001;13(11):3452–9.
+                                                                                        [45] Luo L-S, Liao W, Chen X, Peng Y, Zhang W. Numerics of the lattice Boltzmann
+[7] Chai Z, Zhao TS. Effect of the forcing term in the multiple-relaxation-time
+                                                                                             method: effects of collision models on the lattice Boltzmann simulations. Phys
+    lattice Boltzmann equation on the shear stress or the strain rate tensor. Phys
+                                                                                             Rev E 2011;83:056710.
+    Rev E 2012;86:016705.
+                                                                                        [46] Khokhlov AM. Fully threaded tree algorithms for adaptive reﬁnement ﬂuid
+[8] Chen H, Chen S, Matthaeus WH. Recovery of the Navier–Stokes equations using
+                                                                                             dynamics simulations. J Comput Phys 1998;143(2):519–43.
+    a lattice-gas boltzmann method. Phys Rev A 1992;45:5339–42.
+                                                         G. Eitel-Amor et al. / Computers & Fluids 75 (2013) 127–139                                                  139
+
+
+[47] Marella S, Krishnan S, Liu H, Udaykumar HS. Sharp interface Cartesian grid          [60] Williamson CHK. Vortex dynamics in the cylinder wake. Annu Rev Fluid Mech
+     method I: an easily implemented technique for 3D moving boundary                         1996;28(1):477–539.
+     computations. J Comput Phys 2005;210(1):1–31.                                       [61] Wolf-Gladrow DA. Lattice-gas cellular automata and lattice boltzmann models
+[48] Mei R, Yu D, Shyy W, Luo L-S. Force evaluation in the lattice Boltzmann method           – an introduction. Springer; 2005.
+     involving curved geometry. Phys Rev E 2002;65:1–14.                                 [62] Wu J, Shu C. A solution-adaptive lattice Boltzmann method for
+[49] De Palma P, de Tullio MD, Pascazio G, Napolitano M. An immersed-                         two-dimensional incompressible viscous ﬂows. J Comput Phys 2011;230(6):
+     boundary method for compressible viscous ﬂows. Comput Fluids                             2246–69.
+     2006;35(7):693–702.                                                                 [63] Ye T, Mittal R, Udaykumar HS, Shyy W. An accurate cartesian grid method for
+[50] Pope SB. Turbulent ﬂows. Cambridge University Press; 2000.                               viscous incompressible ﬂows with complex immersed boundaries. J Comput
+[51] Qian Y-H, D’Humieres D, Lallemand P. Lattice BGK models for Navier–Stokes                Phys 1999;156(2):209–40.
+     equations. Europhys Lett 1992;17(6):479–84.                                         [64] Young DP, Melvin RG, Bieterman MB, Johnson FT, Samant SS, Bussoletti JE. A
+[52] Rodríquez I, Borrell R, Lehmkuhl O, Pérez Segarra CD, Oliva A. Direct numerical          locally reﬁned rectangular grid ﬁnite element method: application to
+     simulation of the ﬂow over a sphere at Re = 3700. J Fluid Mech                           computational ﬂuid dynamics and computational physics. J Comput Phys
+     2011;679:263–87.                                                                         1991;92(1):1–66.
+[53] Rohde M, Kandhai D, Derksen JJ, van den Akker HEA. A generic, mass                  [65] Yu D, Girimaji SS. Multi-block lattice Boltzmann method: extension to 3D and
+     conservative local grid reﬁnement technique for lattice-Boltzmann schemes.               validation in turbulence. Physica A 2006;362(1):118–24.
+     Int J Num Meth Fluids 2006;51(4):439–68.                                            [66] Yu D, Mei R, Luo L-S, Shyy W. Viscous ﬂow computations with the method of
+[54] Schlichting H. Boundary layer theory. 8th ed. Springer; 2000.                            lattice Boltzmann equation. Prog Aerosp Sci 2003;39:329–67.
+[55] Smagorinsky J. General circulation experiments with the primitive equations.        [67] Yu D, Mei R, Shyy W. A multi-block lattice Boltzmann method for viscous ﬂuid
+     Mon Weather Rev 1963;91(3):99–164.                                                       ﬂows. Int J Num Meth Fluids 2002;39(2):99–120.
+[56] Stiebler M, Krafczyk M, Freudiger S, Geier M. Lattice Boltzmann large eddy          [68] Yu H, Girimaji SS, Luo LS. DNS and LES of decaying isotropic turbulence with
+     simulation of subcritical ﬂows around a sphere on non-uniform grids. Comput              and without frame rotation using lattice Boltzmann method. J Comput Phys
+     Math Appl 2011;61(12):3475–84.                                                           2005;209(2):599–616.
+[57] Succi S. The lattice Boltzmann equation for ﬂuid dynamics and                       [69] Yun G, Kim D, Choi H. Vortical structures behind a sphere at subcritical
+     beyond. Oxford: Oxford University Press; 2001.                                           Reynolds numbers. Phys Fluids 2006;18(1):1–14.
+[58] Tritton DJ. Experiments on the ﬂow past a circular cylinder at low Reynolds         [70] Zhang H-Q, Fey U, Noack BR, König M, Eckelmann H. On the transition of the
+     numbers. J Fluid Mech 1959;6:547–67.                                                     cylinder wake. Phys Fluids 1995;7(4):779–94.
+[59] Tseng Y-H, Ferziger JH. A ghost-cell immersed boundary method for ﬂow in
+     complex geometry. J Comput Phys 2003;192:593–623.
+

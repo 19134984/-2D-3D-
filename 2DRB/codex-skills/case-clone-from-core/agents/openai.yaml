@@ -1,0 +1,7 @@
+interface:
+  display_name: "Clone From Core Baseline"
+  short_description: "Start new cases from the four approved core solver baselines."
+  default_prompt: "Use $case-clone-from-core to create a new solver variant from the closest core baseline."
+
+policy:
+  allow_implicit_invocation: true

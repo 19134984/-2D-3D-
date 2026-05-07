@@ -1,0 +1,1582 @@
+Advances in Applied Mathematics and Mechanics                    DOI: 10.4208/aamm.OA-2023-0078
+Adv. Appl. Math. Mech., Vol. 17, No. 4, pp. 1037-1062            August 2025
+
+
+
+
+Thirteen-Velocity Three-Dimensional
+Multiple-Relaxation-Time Lattice Boltzmann
+Model for Incompressible Navier-Stokes Equations
+Wenhuan Zhang1,∗ , Shibo Kuang2 , Zhenhua Chai3
+and Baochang Shi3
+1 School of Mathematics and Statistics, Ningbo University, Ningbo, Zhejiang 315211,
+
+China
+2 ARC Research Hub for Computational Particle Technology, Department of Chemical
+
+Engineering, Monash University, VIC 3800, Australia
+3 Hubei Key Laboratory of Engineering Modeling and Scientific Computing, School of
+
+Mathematics and Statistics, Huazhong University of Science and Technology, Wuhan,
+Hubei 430074, China
+Received 17 March 2023; Accepted (in revised version) 27 April 2024
+
+
+
+           Abstract. This paper presents a three-dimensional thirteen-velocity (D3Q13) multiple-
+           relaxation-time (MRT) lattice Boltzmann (LB) model for incompressible flows. The
+           model can eliminate the second kind of compressibility error existing in previous
+           D3Q13 MRT LB models. We simulate the three-dimensional steady Poiseuille flow,
+           unsteady pulsatile flow, and lid-driven cavity flow to verify the validity of the cur-
+           rent model. The excellent agreement between the numerical result and the analytical
+           solution or the previous numerical result demonstrates the model’s effectiveness.
+AMS subject classifications: 76M25, 76D05
+Key words: Lattice Boltzmann method, multiple relaxation time, incompressible Navier-Stokes
+equations, compressibility error.
+
+
+
+
+1    Introduction
+In the past decades, researchers have accepted the LB method as an effective numerical
+method for solving incompressible Navier-Stokes (N-S) equations [1–3]. Compressibility
+error is considered an essential issue in solving incompressible N-S equations by the LB
+model [4–8]. However, few papers have been published to elucidate the compressibility
+
+∗ Corresponding author.
+Email: zhangwenhuan@nbu.edu.cn (W. Zhang)
+
+
+http://www.global-sci.org/aamm                          1037              c 2025 Global Science Press
+1038          W. Zhang, S. Kuang, Z. Chai and B. Shi / Adv. Appl. Math. Mech., 17 (2025), pp. 1037-1062
+
+
+error occurring in the LB method [9–12]. Generally, the compressibility error can be at-
+tributed to the errors of two kinds. The first is the error caused by the non-zero Mach
+number. For example, the accuracy of the macroscopic momentum equations of most
+LB models is of order O(δt2 + δtM2 ), where δt denotes the time step and M denotes the
+Mach number. If the Mach number is not zero, the error such as O(δtM2 ) always exists.
+Essentially, this error is caused by the compressibility of the flow, so it can be named the
+compressibility error of the first kind. The deviation of the macroscopic equations of the
+LB models from the incompressible N-S equations causes the second kind of compress-
+ibility error. Under the low Mach number assumption, we expect an LB model to recover
+to the incompressible N-S equations because the low Mach number assumption is equiv-
+alent to the incompressible limit. Unfortunately, most LB models can only recover to
+the compressible N-S equations under the low Mach number assumption. When we use
+these LB models to simulate incompressible flows, the LB solution may deviate from the
+solution of the incompressible N-S equations. This deviation is called the compressibility
+error of the second kind.
+    In the past, various efforts have focused on the second kind of compressibility er-
+ror [4–8]. For example, Guo et al. [4] proposed a two-dimensional nine-velocity (D2Q9)
+lattice Bhatnagar-Gross-Krook (LBGK) model, which can eliminate the compressibility
+error of the second kind in the existing two-dimensional (2D) LBGK models [12, 13].
+He et al. [5] presented a unified DdQq incompressible LBGK model for 2D and three-
+dimensional (3D) incompressible flows, which can eliminate the compressibility error of
+the second kind in the existing 3D LBGK models. Based on the equilibrium distribution
+functions of Guo et al. D2Q9 LBGK model, Du et al. [6] and Du [7] developed new ver-
+sions of D2Q9 and D3Q19 MRT LB models for 2D and 3D incompressible flows, respec-
+tively. Zhang et al. [8] proposed an LBGK D2Q9 model for incompressible axisymmetric
+flows, which can eliminate the compressibility error of the second kind in the existing LB
+models for axisymmetric flows.
+    In the LB method, the commonly used 2D and 3D models are D2Q9, D3Q13, D3Q15,
+D3Q19 and D3Q27 models [13–16]. Generally, the MRT LB model is much more stable
+than the LBGK model. However, the computational speed of the MRT LB model in terms
+of the number of nodes updated per second is about 15% slower than that of the LBGK
+model [15]. To realize a computationally more efficient two-dimensional MRT LB model
+for incompressible flows, Du et al. proposed a D2Q8 MRT LB model [17]. Enlightened
+by Du et al.’s work, Zhang et al. proposed D3Q14 and D3Q18 MRT LB models for three-
+dimensional incompressible flows [18].
+    To facilitate the discussion, we refer to all the above-discussed LB models as the scalar
+LB models [19]. In the 3D space, a scalar LB model usually needs at least 13 discrete veloc-
+ity directions to solve the incompressible N-S equations. Following the developments of
+the D2Q8, D3Q14, and D3Q18 MRT LB models, an intuitive question is if a D3Q12 MRT
+LB model can be constructed similarly. This realization could be instrumental because
+a D3Q12 MRT LB model is, in principle, the computationally most efficient 3D MRT LB
+model. However, constructing such a model is challenging because the method adopted
+W. Zhang, S. Kuang, Z. Chai and B. Shi / Adv. Appl. Math. Mech., 17 (2025), pp. 1037-1062                                              1039
+
+
+for constructing the D2Q8, D3Q14, and D3Q18 MRT LB models cannot be directly used.
+    Recently, we proposed an inversion method to overcome the above-discussed dif-
+ficulty, and by using this method, we proposed a D3Q12 MRT LB model for 3D in-
+compressible flows [20]. In such a development, we found that by using the inversion
+method, we can also obtain a new D3Q13 MRT LB model, which differs from the exist-
+ing D3Q13 MRT LB models [14]. More importantly, this subsequent D3Q13 MRT LB can
+recover to the exact 3D incompressible N-S equations only under the low Mach number
+assumption. This D3Q13 MRT LB model can eliminate the compressibility error of the
+second kind, which has yet to be achieved by the developed D3Q13 MRT LB models.
+    The rest of the paper is organized as follows. Section 2 introduces the existing D3Q13
+MRT LB models. Section 3 presents a new D3Q13 MRT LB model and describes the meth-
+ods to construct this model. We perform three benchmark tests to validate the current
+D3Q13 MRT LB model in Section 4. Finally, Section 5 gives the conclusion.
+
+
+2     The existing D3Q13 MRT LB models
+The two existing D3Q13 MRT LB models are shown in [14]. We call them the D3Q13 MRT
+LB model and the ”incompressible” D3Q13 MRT LB model in this paper. The existing
+D3Q13 MRT LB models adopt discrete velocities as follows
+                                                                           
+                          0 1 1 1 1 0 0 −1 −1 −1 −1 0                     0
+   {c0 ,c1 ,...,c12 } =  0 1 −1 0 0 1 1 −1 1             0      0 −1 −1  c,
+                          0 0 0 1 −1 1 −1 0            0 −1 1 −1 1
+
+where c = δx /δt is the particle velocity, δx and δt are the lattice spacing and time step,
+respectively. c = 1 is set in the following; therefore, the relevant quantities do not contain
+c.
+   The evolution equation of existing D3Q13 MRT LB models is
+                                                               12
+                 f i ( x + ci δt ,t + δt )− f i ( x,t) = − ∑ Λij ( f j ( x,t)− f j
+                                                                                       (eq)
+                                                                                              ( x,t)),      i = 0 − 12,               (2.1)
+                                                               i =0
+
+                                                                                                                        (eq)
+where f i ( x,t) is the distribution function corresponding to velocity ci , f i ( x,t) is the
+equilibrium distribution function and Λ ij is the element of a 13 × 13 collision matrix Λ.
+The evolution equation can also be written in a vector form:
+
+                         | f ( x + ci δt ,t + δt )i−| f ( x,t)i = −Λ(| f ( x,t)i−| f (eq) ( x,t)i),                                   (2.2)
+
+where
+                                                          0                            (eq)               (eq)                 (eq)
+| f ( x,t)i = ( f 0 ( x,t), f 1 ( x,t), ··· , f 12 ( x,t)) ,    | f (eq) ( x,t)i = ( f 0      ( x,t), f 1        ( x,t), ··· , f 12 ( x,t))0 ,
+                                                                                                      0
+| f ( x + ci δt ,t + δt )i = ( f ( x,t + δt ), f ( x + c1 δt ,t + δt ), f ( x + c12 δt ,t + δt )) ,
+1040            W. Zhang, S. Kuang, Z. Chai and B. Shi / Adv. Appl. Math. Mech., 17 (2025), pp. 1037-1062
+
+
+and the superscript 0 represents the transpose operator.
+   The transformation matrix of the existing D3Q13 MRT LB models [14] is
+                                                                         
+            1     1     1    1     1    1   1    1    1   1 1   1     1
+         0
+                 1     1    1     1    0   0 −1 −1 −1 −1 0           0  
+         0
+                 1    − 1   0     0    1   1   − 1   1   0 0  −  1  −  1 
+                                                                          
+         0
+                 0     0    1 −1 1 −1 0              0 −1 1 −1 1        
+         −12 1         1    1     1    1   1    1    1   1 1   1     1 
+                                                                         
+        
+           0     1     1    1     1   − 2 − 2   1    1   1 1  −  2  −  2
+                                                                          
+                                                                          
+   T = 0         1     1 −1 −1 0           0    1    1 −1 −1 0       0 .                                     (2.3)
+                                                                         
+         0       1 −1 0           0    0   0    1 −1 0     0   0     0 
+                                                                         
+         0       0     0    0     0    1 −1 0        0   0 0   1 −1 
+                                                                         
+         0                  1 −1 0                       1 −1 0
+        
+                  0     0                   0    0    0               0 
+                                                                          
+                            −     −             −    −
+                                                                         
+         0       1     1     1     1   0   0     1     1 1 1   0     0   
+                                                                         
+         0      −1 1        0     0    1   1    1 −1 0     0 −1 −1 
+            0     0     0    1 −1 −1 1           0    0 −1 1    1 −1
+
+Thirteen moments are defined by linear mapping m( x,t) = T | f ( x,t)i and
+
+                        m( x,t) = (ρ, jx , jy , jz ,e,3Sxx ,Sww ,Sxy ,Syz ,Sxz ,h x ,hy ,hz )0 ,               (2.4)
+
+where the components of the vector m( x,t) correspond to the density, the mass fluxes
+along x, y and z, a scalar related to the kinetic energy, five moments related to the viscous
+stress tensor, and three without obvious physical meaning, respectively.
+    Suppose that the collision matrix is defined as Λ = T −1 Λ̂T and
+
+                         Λ̂ = diag(λc ,λc ,λc ,λc ,λe ,λν ,λν ,λ0ν ,λ0ν ,λ0ν ,λh ,λh ,λh ),                    (2.5)
+
+where λc , λe , λν , λ0ν and λh are the relaxation parameters corresponding to the conserved
+moments and the moments related to the kinetic energy, the viscous stress tensor and
+other moments without physical meaning, respectively.
+   To recover the N-S equations, one can choose the equilibrium moments of the original
+D3Q13 MRT LB model as
+
+                 (eq)                   (eq)                  (eq)                      3              13
+   ρ(eq) = ρ,    jx     = ρu x ,    jy         = ρuy ,       jz      = ρuz ,   e(eq) = (13c2s − 8)ρ + ρu2 ,   (2.6a)
+                                                                                        2               2
+        (eq)                        (eq)                                  (eq)            (eq)
+   3Sxx = ρ(3u2x − u2 ),           Sww = ρ(u2y − u2z ),                  Sxy = ρu x uy , Syz = ρuy uz ,       (2.6b)
+       (eq)               (eq)                 (eq)               (eq)
+   Sxz = ρu x uz ,      hx       = 0,      hy         = 0,    hz         = 0,                                 (2.6c)
+
+where ρ is the density, u x , uy and uz are the velocities in x, y and z directions in a Cartesian
+coordinate system, respectively, cs is the speed of sound, u is the modulus of velocity, that
+is,                                                     q
+                                |u| = |(u x ,uy ,uz )| = u2x + u2y + u2z .
+W. Zhang, S. Kuang, Z. Chai and B. Shi / Adv. Appl. Math. Mech., 17 (2025), pp. 1037-1062                      1041
+
+
+Therefore, the evolution equation can be written as
+
+                      | f ( x + ci δt ,t + δt )i = T −1 [m( x,t)− Λ̂(m( x,t)− m(eq) ( x,t))],                 (2.7)
+
+where
+
+              m(eq) ( x,t) = T | f (eq) ( x,t)i
+                         (eq) (eq) (eq)           (eq)     (eq)   (eq)   (eq)   (eq)   (eq)   (eq)   (eq)
+            =(ρ(eq) , jx , jy , jz ,e(eq) ,3Sxx ,Sww ,Sxy ,Syz ,Sxz ,h x ,hy ,hz )0 .
+
+Via the Chapman-Enskog (C-E) analysis, the compressible N-S equations can be recov-
+ered under the low Mach number limit (equivalent to the incompressible limit) as
+
+                      ∂ρ
+                         +∇·(ρu) = 0,                                                                        (2.8a)
+                      ∂t
+                      ∂(ρu)                             ν  
+                            +∇·(ρuu) = −c2s ∇ρ + ν∆(ρu)+ + ζ ∇∇·(ρu),                                        (2.8b)
+                        ∂t                               3
+with the shear and bulk kinematic viscosities
+                     1 1 1 1 1 1                                     2       1 1
+                 ν=        − =          − ,                       ζ=        − c2s ( − .                       (2.9)
+                     4 λν 2       2 λ0ν 2                                 3        λe 2
+
+The density ρ, pressure p and velocity u can be obtained by
+                                          12                             12
+                                     ρ = ∑ fi ,    p = c2s ρ,      u = ∑ ci f i .                            (2.10)
+                                          i =0                           i =1
+
+d’Humières also pointed out that the so-called ”incompressible” D3Q13 MRT LB model
+can be obtained by using the following equilibrium moments [14]:
+               (eq)                (eq)             (eq)
+ ρ(eq) = ρ, jx = ρ0 u x , jy = ρ0 uy , jz = ρ0 uz ,                                 (2.11a)
+         3               13         (eq)                     (eq)
+ e(eq) = (13c2s − 8)ρ + ρ0 u2 , 3Sxx = ρ0 (3u2x − u2 ), Sww = ρ0 (u2y − u2z ),      (2.11b)
+         2               2
+   (eq)             (eq)             (eq)               (eq)      (eq)         (eq)
+ Sxy = ρ0 u x uy , Syz = ρ0 uy uz , Sxz = ρ0 u x uz , h x = 0, hy = 0, hz = 0, (2.11c)
+
+where ρ = ρ0 + δρ is the density, ρ0 is the average density, δρ is the density variation.
+  Via the C-E analysis, the macroscopic equations can be recovered under the low Mach
+number limit as
+                              1 ∂p
+                                     +∇· u = 0,                                                             (2.12a)
+                              c2s ∂t
+                              ∂u                        ν  
+                                  + u ·∇u = −∇ p + ν∆u + + ζ ∇(∇· u),                                       (2.12b)
+                              ∂t                         3
+with the shear and bulk kinematic viscosities determined by Eq. (2.9).
+1042              W. Zhang, S. Kuang, Z. Chai and B. Shi / Adv. Appl. Math. Mech., 17 (2025), pp. 1037-1062
+
+
+                                                           ∂p
+     Clearly, in the case of steady flow, ∂t = 0, the condition for incompressible flow, ∇· u =
+0, is satisfied exactly. The momentum equation becomes
+                               ∂u
+                                   + u ·∇u = −∇ p + ν∆u,
+                                ∂t
+which is exactly the momentum equation of incompressible N-S equations. As in the case
+of unsteady flow, we can rewrite Eq. (2.12a) in a dimensionless form as follows
+                                                       1 ∂p0 cs 0 0
+                                                            + ∇ · u = 0,                                       (2.13)
+                                                       T ∂t0 L
+where p0 = p/c2s , t0 = t/T, ∇0 = L∇, u0 = u/cs , L and T are the characteristic length and
+time of the macroscopic flows, respectively. From Eq. (2.13), one can see that under an
+                                             ∂p0
+additional assumption T  L/cs the term ∂t0 can be negligible. Then, the macroscopic
+equations (2.12) can become the exact incompressible N-S equations.
+    For the ”incompressible” D3Q13 MRT LB model, the density ρ, pressure p and veloc-
+ity u can be obtained by
+                                                 12                                  12
+                                                                 c2 ρ
+                                         ρ = ∑ fi ,            p= s ,       ρ0 u = ∑ c i f i .                 (2.14)
+                                             i =0
+                                                                  ρ0                i =0
+
+
+3      The current D3Q13 MRT LB model and the methods to
+       construct this model
+3.1    The current D3Q13 MRT LB model
+Except for the equilibrium moments, the discrete velocities, the evolution equation, the
+collision matrix, the transformation matrix, and the moments of the current D3Q13 MRT
+LB model are the same as those of the previous D3Q13 MRT LB models. To recover the
+exact incompressible N-S equations, we choose the equilibrium moments of the current
+D3Q13 MRT LB model as
+                         (eq)               (eq)                 (eq)                    13u2 39p
+        ρ(eq) = ρ0 ,   jx       = ux ,      jy        = uy ,    jz      = uz ,   e(eq) =     +      − 12ρ0 ,   (3.1a)
+                                                                                           2      2
+           (eq)                      (eq)                            (eq)             (eq)
+        3Sxx = 3u2x − u2 ,         Sww = u2y − u2z ,             Sxy = u x uy ,      Syz = uy uz ,             (3.1b)
+         (eq)                 (eq)                (eq)            (eq)
+        Sxz = u x uz ,      h x = 0,             hy = 0,         hz = 0,                                       (3.1c)
+where ρ0 is the constant density and p is the pressure of fluid.
+   Via the C-E analysis, the exact incompressible N-S equations can be recovered only
+under the low Mach number assumption as
+                                                 ∇· u = 0,                                                     (3.2a)
+                                                 ∂u
+                                                    + u ·∇u = −∇ p + ν∇2 u,                                    (3.2b)
+                                                 ∂t
+W. Zhang, S. Kuang, Z. Chai and B. Shi / Adv. Appl. Math. Mech., 17 (2025), pp. 1037-1062      1043
+
+
+with the shear kinematic viscosity
+                                            1 1 1 1 1 1
+                                       ν=       − =      − .                                   (3.3)
+                                            4 λν 2  2 λ0ν 2
+We can see that under the low Mach number assumption, the recovered macroscopic
+equations of the current D3Q13 MRT LB model are the exact incompressible N-S equa-
+tions, while the recovered macroscopic equations of the previous D3Q13 MRT LB models
+are not. This is one of the main differences between the current D3Q13 MRT LB model
+and the previous D3Q13 MRT LB models.
+    The density ρ0 , pressure p and velocity u can be obtained by
+                                12
+                                                 2  12       | u |2           12
+                          ρ0 = ∑ f i ,
+                                                 3 i∑
+                                            p=          f i −          ,   u = ∑ ci f i .      (3.4)
+                                i =0                 =1
+                                                                2              i =1
+
+From the above equation, we can see that the density of the fluid is always equal to ρ0 ,
+so the density need not be computed in the simulation and is usually set to be a constant.
+We can also see that the pressure is decoupled with the density. This is the other main
+difference between the current D3Q13 MRT LB model and the previous D3Q13 MRT LB
+models.
+
+3.2   The method to design the equilibrium moments of the current D3Q13
+      MRT LB model
+The equilibrium moments m(eq) of the MRT LB model and the equilibrium distribution
+functions (EDFs) | f (eq) ( x,t)i of the corresponding single-relaxation-time (SRT) LB model
+(also called LBGK model) generally have the relationship m(eq) = T | f (eq) ( x,t)i. Therefore,
+we first use the inverse of the transformation matrix of existing D3Q13 MRT LB models
+to multiply the equilibrium moments of the original D3Q13 MRT LB model and get
+                                                                                          
+                                                     −(ρ(3c2s + u2 − 2))/2
+                                       (ρ(c2s + u2x + 2u x uy + u x + u2y + uy − u2z ))/8 
+                                                                                          
+                                                                                          
+                                       (ρ(c2 + u2 − 2u u + u + u2 − u − u2 ))/8 
+                                            s     x      x y      x     y     y    z      
+                                                                                          
+                                       (ρ(c2 + u2 + 2u x uz + u x − u2 + u2 + uz ))/8 
+                                            s     x                     y     z           
+                                       (ρ(c2s + u2x − 2u x uz + u x − u2y + u2z − uz ))/8 
+                                                                                          
+                                                                                          
+                                       (ρ(c2s + u2 − 2u2x + uy + uz + 2uy uz ))/8 
+                                                                                          
+
+                   | f (eq) ( x,t)i =         2     2      2
+                                                                                          
+                                       (ρ(cs + u − 2u x + uy − uz − 2uy uz ))/8  .           (3.5)
+                                                                                           
+                                       (ρ(c2s + u2x + 2u x uy − u x + u2y − uy − u2z ))/8 
+                                                                                          
+                                                                                          
+                                       (ρ(c2 + u2 − 2u u − u + u2 + u − u2 ))/8 
+                                            s     x      x  y     x     y     y    z      
+                                       (ρ(c2s + u2x + 2u x uz − u x − u2y + u2z − uz ))/8 
+                                                                                          
+                                                                                          
+                                       (ρ(c2s + u2x − 2u x uz − u x − u2y + u2z + uz ))/8 
+                                                                                          
+                                                                                          
+                                       −(ρ(−c2 − u2 + 2u2 + u + u − 2u u ))/8 
+                                                s             x     y     z      y z      
+                                                 2     2       2
+                                        −(ρ(−cs − u + 2u x + uy − uz + 2uy uz ))/8
+1044          W. Zhang, S. Kuang, Z. Chai and B. Shi / Adv. Appl. Math. Mech., 17 (2025), pp. 1037-1062
+
+
+We replace the density ρ multiplied by the velocities in the above EDFs with the average
+density ρ0 and get the following EDFs
+
+                                               −(ρ(3c2s − 2)+ ρ0 u2 )/2
+                                                                                       
+
+                                 (ρc2s + ρ0 (u2x + 2u x uy + u x + u2y + uy − u2z ))/8 
+                                                                                       
+                                                                                       
+                                 (ρc2 + ρ0 (u2 − 2u x uy + u x + u2 − uy − u2 ))/8 
+                                     s         x                     y          z      
+                                 (ρc2s + ρ0 (u2x + 2u x uz + u x − u2y + u2z + uz ))/8 
+                                                                                       
+                                                                                       
+                                 (ρc2 + ρ (u2 − 2u u + u − u2 + u2 − u ))/8 
+                                     s     0 x        x z      x     y     z    z      
+                                                                                       
+                                 (ρc2s + ρ0 (u2 − 2u2x + uy + uz + 2uy uz ))/8 
+                                                                                       
+             | f (eq) ( x,t)i =  (ρc2s + ρ0 (u2 − 2u2x + uy − uz − 2uy uz ))/8  .       (3.6)
+                                                                                       
+                                     2         2                     2          2
+                                                                                        
+                                 (ρcs + ρ0 (u x + 2u x uy − u x + uy − uy − uz ))/8 
+                                                                                       
+                                 (ρc2s + ρ0 (u2x − 2u x uy − u x + u2y + uy − u2z ))/8 
+                                                                                       
+                                                                                       
+                                 (ρc2 + ρ (u2 + 2u u − u − u2 + u2 − u ))/8 
+                                     s     0 x        x z      x     y     z    z      
+                                      2         2                     2    2
+                                                                                       
+                                 (ρcs + ρ0 (u x − 2u x uz − u x − uy + uz + uz ))/8 
+                                                                                       
+                                
+                                    ( ρc 2 + ρ ( u2 − 2u2 − u − u + 2u u )) /8          
+                                        s    0           x    y     z       y z        
+                                         2        2       2
+                                    (ρcs + ρ0 (u − 2u x − uy + uz − 2uy uz ))/8
+If we use the transformation matrix of the existing D3Q13 MRT LB models to multiply
+the above EDFs, we get the equilibrium moments of the ”incompressible” D3Q13 MRT
+LB model. Then we replace ρ0 multiplied by the velocities with 1 and replace the term
+                         (eq)          (eq)
+c2s ρ in the EDFs from f 1 ( x,t) to f 12 ( x,t) with the pressure p, and define the EDF in
+                                                            (eq)          (eq)
+the direction c0 as ρ0 minus the sum of EDFs from f 1 ( x,t) to f 12 ( x,t), then we get the
+following EDFs
+
+                                                 −(3/2) p + ρ0 − u2 /2
+                                                                                    
+
+                                    ( p +(u2x + 2u x uy + u x + u2y + uy − u2z ))/8 
+                                                                                    
+                                                                                    
+                                    ( p +(u2 − 2u x uy + u x + u2 − uy − u2 ))/8 
+                                             x                    y          z      
+                                    ( p +(u2x + 2u x uz + u x − u2y + u2z + uz ))/8 
+                                                                                    
+                                                                                    
+                                    ( p +(u2 − 2u u + u − u2 + u2 − u ))/8 
+                                             x     x   z    x     y     z    z      
+                                               2      2
+                                                                                     
+                                    ( p +(u − 2u x + uy + uz + 2uy uz ))/8 
+                                                                                    
+                | f (eq) ( x,t)i =  ( p +(u2 − 2u2x + uy − uz − 2uy uz ))/8  .       (3.7)
+                                                                                    
+                                            2                    2           2
+                                                                                     
+                                    ( p +(u x + 2u x uy − u x + uy − uy − uz ))/8 
+                                                                                    
+                                             2                    2           2
+                                    ( p +(u x − 2u x uy − u x + uy + uy − uz ))/8 
+                                                                                    
+                                                                                    
+                                    ( p +(u2 + 2u u − u − u2 + u2 − u ))/8 
+                                             x     x z      x     y     z    z      
+                                    ( p +(u2x − 2u x uz − u x − u2y + u2z + uz ))/8 
+                                                                                    
+                                                                                    
+                                    ( p +(u2 − 2u2x − uy − uz + 2uy uz ))/8 
+                                                                                    
+
+                                        ( p +(u2 − 2u2x − uy + uz − 2uy uz ))/8
+W. Zhang, S. Kuang, Z. Chai and B. Shi / Adv. Appl. Math. Mech., 17 (2025), pp. 1037-1062   1045
+
+
+If we use the transformation matrix of the existing D3Q13 MRT LB models to multiply the
+above EDFs, we will get the equilibrium moments of the current D3Q13 MRT LB model.
+
+3.3   The method to derive the formula to compute the pressure in the current
+      D3Q13 MRT LB model
+The Appendix presents the derivation of macroscopic equations of the current D3Q13
+MRT LB model. From Eq. (A.1), Eq. (A.6), and Eq. (A.13a), we know that e(1) is of order
+O(δt + M2 ). As m = ∑∞          n (n) , we have e = e(0) + εe(1) +··· . From Eq. (A.4a), we know
+                          n =0 ε m
+          ( 0
+that e = e = e) ( eq ) with the error of O(δt 2 + δt M2 ). From the definition of moments, we
+obtain
+                                   12
+                                               13        39
+                                 ∑ fi − 12 f0 = 2 |u|2 + 2 p − 12ρ0 .
+                                 i =1
+
+By using ρ0 = ∑12
+               i =0 f i , we have
+                                              2  12       | u |2 
+                                              3 i∑
+                                         p=          f i −          .
+                                                  =1
+                                                             2
+
+
+4     Numerical results and discussion
+In this section, to verify the effectiveness of the current D3Q13 MRT LB model, we sim-
+ulate three benchmark flow problems, i.e., the 3D Poiseuille flow, 3D pulsatile flow, and
+3D lid-driven cavity flow. The relaxation parameters in the collision matrix are set as
+λc = λe = 1.0, λh = 1.8. We also present the simulation results of the ”incompressible”
+D3Q13 MRT LB model and the D3Q19 MRT LB model [7]. For the ”incompressible”
+D3Q13 MRT LB model, the values of relaxation parameters in the collision matrix are the
+same as those in the current D3Q13 MRT LB model. For the D3Q19 MRT LB model, the
+relaxation parameters in the collision matrix are set as λc = 1.0, λe = 1.19, λε = λπ = 1.0,
+λq = 1.2, λm = 0.98. For the above three MRT LB models, the relaxation parameters re-
+lated to the kinematic viscosity are determined by the corresponding equations of the
+three MRT LB models. For example, in the current D3Q13 MRT LB model, λν and λ0ν
+are determined by Eq. (3.3). It should be noted that, in the following simulation, c is not
+always equal to 1. The treatment can be referred to [6]. In addition, the non-equilibrium
+extrapolation scheme [21] is used to treat the boundary condition.
+    The time-stepping method for the current D3Q13 MRT LB model, the ”incompress-
+ible” D3Q13 MRT LB model, and the D3Q19 MRT LB model in the simulation of 3D
+Poiseuille flow, 3D pulsatile flow, and 3D lid-driven cavity flow is summarized as fol-
+lows:
+
+ (1). Initialization: The values of parameters such as λν , δt, and δx are first set. Then, the
+      pressure and velocity are initialized based on the flows. Then, the initial equilib-
+      rium moments and moments are computed from Eq. (3.1). The initial distribution
+1046             W. Zhang, S. Kuang, Z. Chai and B. Shi / Adv. Appl. Math. Mech., 17 (2025), pp. 1037-1062
+
+
+       functions are determined by | f ( x,t)i = T −1 m( x,t), where T is the transformation
+       matrix as shown in Eq. (2.3).
+ (2). Collision: Firstly, we use m( x,t) = T | f ( x,t)i to obtain the moments m( x,t). Then,
+      we use Eq. (3.1) to compute the m(eq) ( x,t) based on the known pressure and ve-
+      locity. Then, we compute | f ∗ ( x,t)i = T −1 [m( x,t)− Λ̂(m( x,t)− m(eq) ( x,t))] based on
+      the right-hand side of Eq. (2.7), where | f ∗ ( x,t)i is the distribution function after a
+      collision.
+ (3). Propagation: The propagation step is conducted based on Eq. (2.7), that is, | f ( x +
+      ci δt,t + δt)i = | f ∗ ( x,t)i. Suppose f i∗ ( x,t) (0 ≤ i ≤ 12) is one component of the vector
+      | f ∗ ( x,t)i. In the propagation step, it is assigned to f i ( x + ci δt,t + δt), which is one
+      component of the vector | f ( x + ci δt,t + δt)i.
+ (4). Boundary condition treatment: The pressure and velocity on the boundary nodes
+      at t + δt are determined according to the boundary condition of the flows. The
+      distribution functions on the boundary nodes at t + δt are updated using the non-
+      equilibrium extrapolation scheme [21].
+ (5). Calculation of macroscopic quantities: The pressure and velocity at t + δt are com-
+      puted from Eq. (3.4) with the distribution functions f i ( x,t + δt) in the internal nodes
+      of the computational domain.
+ (6). Go to step (2) if the error precision is not satisfied.
+
+4.1    3D Poiseuille flow
+The flow domain of three-dimensional Poiseuille flow and the boundary conditions are
+shown in Fig. 1. The flow region is defined in a square duct: 0 ≤ x ≤ l, − a ≤ y ≤ a and
+−b ≤ z ≤ b, where l = 2, a = b = 0.5. If the boundary conditions are
+                                 u( x, ± a,z,t) = u( x,y, ±b,t) = 0,                                (4.1a)
+                                 p(0,y,z,t) = pin ,    p(l,y,z,t) = pout ,                         (4.1b)
+
+where pin and pout are the pressure at the inlet and outlet of the channel, the flow gov-
+erned by the incompressible N-S equations has a steady analytical solution [22],
+
+                  16a2  dp  ∞                             h     cosh(iπz/2a) i cos(iπy/2a)
+                                 ∑
+                                                   (i −1)/2
+ u x (y,z,t) =           −                  (− 1 )            1 −               ×            , (4.2a)
+                 ρ0 νπ 3   dx i=1,3,5,··· ,                       cosh(iπb/2a)        i3
+ uy ( x,y,z,t) = uz ( x,y,z,t) = 0,                                                                (4.2b)
+                  dp
+ p( x,t) = pin + x,                                                                                 (4.2c)
+                  dx
+where dp/dx = ( pout − pin )/l is the pressure gradient in the channel, ν is the kinematic
+viscosity of fluid.
+W. Zhang, S. Kuang, Z. Chai and B. Shi / Adv. Appl. Math. Mech., 17 (2025), pp. 1037-1062                           1047
+
+
+                                                      \
+
+
+
+                                                                 DWVROLGZDOOV
+                                                                      X[X\X]                      IORZRXW
+                             IORZLQ
+                                                                                                    SRXW
+                                SLQ                                                                             [
+                                                      2
+                                      
+                                                                 SUHVVXUHJUDGLHQW
+                                                      H[LVWVEHWZHHQWZRHQGVRIWKHFKDQQHO
+                                ]
+
+
+
+                  Figure 1: Simulation configurations of three-dimensional Poiseuille flow.
+
+
+    In the simulation, the initial condition is
+                                                                                                    pin + pout
+                        u( x,y,z,0) = 0,                        p(0 < x < l, y, z, 0) =                        ,    (4.3)
+                                                                                                        2
+where pout = 1.0, pin = pout + ∆p and ∆p is set to be different values in the simulation. The
+criterion for the steady state is,
+
+                            ∑ |u x ( xi ,t + 100δt)− u x ( xi ,t)|
+                            i
+                                                                                            ≤ 6.0 × 10−14 ,         (4.4)
+                                        ∑ |u x ( xi ,t + 100δt )|
+                                            i
+
+where ∑i denotes the summation over every grid point.
+    First, simulations are carried out for ν = 0.0075 and ∆p = 0.02 under the grid Nx × Ny ×
+Nz = 41 × 21 × 21 with the current D3Q13 MRT LB model. Fig. 2 shows the distribution
+of horizontal velocities in the y direction for different locations of z at section x = 1 and
+the distribution of pressure in the x direction for different locations of y at section z = 0.
+It can be seen from Fig. 2 that the numerical results are in excellent agreement with the
+analytical solutions.
+    We also conduct simulations for various values of ∆p with the current D3Q13 MRT
+LB model, the ”incompressible” D3Q13 MRT LB model, and the D3Q19 MRT LB model.
+The global relative error in the velocity field (GREu ) between the numerical solution and
+the analytical solution is defined as
+                            r h                            2              i
+                                              2                          2
+                              ∑ (u xn − u xa ) + uyn − uya +(uzn − uza )
+                               i
+                   GREu =                r h                   i             ,           (4.5)
+                                            ∑ u xa + uya + uza
+                                                 2    2     2
+                                                                       i
+
+where u xn , uyn , uzn and u xa , uya , uza denote the velocity components of numerical and an-
+alytical solutions, respectively, and the summation of i is over every grid point. The GREu
+for different values of ∆p and different MRT LB models are displayed in Table 1. From
+Table 1, we can see that the GREu of the current D3Q13 MRT LB model is the same as that
+1048                      W. Zhang, S. Kuang, Z. Chai and B. Shi / Adv. Appl. Math. Mech., 17 (2025), pp. 1037-1062
+
+
+
+         0.1                                                                               1.025
+
+        0.09
+                                                                                                                                 analytical solution
+        0.08                                                                                1.02                                 y=0, simulation result
+                                                                                                                                 y=−0.25, simulation result
+        0.07                                                                                                                     y=−0.4, simulation result
+
+
+        0.06                                                                               1.015
+   ux
+
+
+
+
+        0.05
+
+
+
+
+                                                                                       p
+        0.04                                                                                1.01
+
+        0.03
+                                     z=0, analytical solution
+                                     z=−0.25, analytical solution
+        0.02                                                                               1.005
+                                     z=−0.4, analytical solution
+                                     z=0, simulation result
+        0.01
+                                     z=−0.25, simulation result
+                                     z=−0.4, simulation result
+          0                                                                                   1
+               0   0.1   0.2   0.3   0.4     0.5     0.6     0.7    0.8   0.9   1                  0   0.2   0.4   0.6   0.8     1     1.2     1.4     1.6    1.8   2
+                                              y                                                                                  x
+
+
+
+                                           (a)                                                                                 (b)
+Figure 2: (a) shows the horizontal velocity profiles for Poiseuille flow at the section x = 1, while (b) shows the
+pressure profiles at the section z = 0. The simulation results come from the current D3Q13 MRT LB model.
+
+
+
+of the ”incompressible” D3Q13 MRT LB model under each value of ∆p. This shows that
+the current D3Q13 MRT LB model and the ”incompressible” D3Q13 MRT LB model have
+the same accuracy in simulating steady 3D Poiseuille flow. We can also see that the GREu
+of the D3Q19 MRT LB model is the smallest under each value of ∆p compared with the
+two D3Q13 MRT LB models. This may be because the D3Q19 MRT LB model has more
+discrete velocity directions than the two D3Q13 MRT LB models. As the lattice Boltz-
+mann evolution equation can be treated as an approximation to the Boltzmann equation,
+more discrete velocity directions may lead to higher numerical accuracy.
+
+
+
+Table 1: The variation of GREu with the pressure difference ∆p for Poiseuille flow by using different MRT LB
+models.
+                                                                                    GREu
+        ∆p
+                     current D3Q13 MRT model                              ”incompressible” D3Q13 MRT model                       D3Q19 MRT model
+       0.001                8.4337 × 10−3                                            8.4337 × 10−3                                 4.2196 × 10−3
+       0.005                8.4378 × 10−3                                            8.4378 × 10−3                                 4.2160 × 10−3
+        0.01                8.4508 × 10−3                                            8.4508 × 10−3                                 4.2043 × 10−3
+       0.015                8.4733 × 10−3                                            8.4733 × 10−3                                 4.1837 × 10−3
+        0.02                8.5066 × 10−3                                            8.5066 × 10−3                                 4.1528 × 10−3
+       0.025                8.5518 × 10−3                                            8.5518 × 10−3                                 4.1100 × 10−3
+        0.03                8.6106 × 10−3                                            8.6106 × 10−3                                 4.0538 × 10−3
+       0.035                8.6844 × 10−3                                            8.6844 × 10−3                                 3.9828 × 10−3
+        0.04                8.7748 × 10−3                                            8.7748 × 10−3                                 3.8959 × 10−3
+       0.045                8.8832 × 10−3                                            8.8832 × 10−3                                 3.7924 × 10−3
+        0.05                9.0109 × 10−3                                            9.0109 × 10−3                                 3.6721 × 10−3
+W. Zhang, S. Kuang, Z. Chai and B. Shi / Adv. Appl. Math. Mech., 17 (2025), pp. 1037-1062       1049
+
+
+4.2   3D Pulsatile flow
+In this section, the 3D pulsatile flow is used to assess the current D3Q13 MRT LB model
+for the unsteady incompressible flows. The flow domain and the initial and boundary
+conditions of the 3D pulsatile flow are the same as those used for the 3D Poiseuille flow.
+The difference between the pulsatile flow and the Poiseuille flow is that the former’s
+                                                                         dp   ∆p
+pressure gradient changes periodically. The pressure gradient is dx = l cos(ωt), where
+∆p = pout − pin is the the maximal pressure difference between the two ends of the channel,
+l is the length of the channel, and ω is the frequency.
+     The analytical solution of 3D pulsatile flow is [23]:
+                                                   ∞
+                             b ∆p −iπ/2               (−1)n h cosh(γn y/b) cos( pn z/b)
+                             2          
+            u x (y,z,t) =Re
+                             η 2 µl
+                                    e      1 −  2 ∑                cosh(γn a/b)
+                                                  n =0 p n
+                                                               
+                             cosh(σn z/b) cos(qn y/b)   i
+                           +                                eiωt ,                      (4.6)
+                                      cosh(σn )
+
+where
+                                   q                                       q
+                           γn =        p2n + iη 2 ,                 σn =       q2n + iη 2 ,   (4.7a)
+                                   2n + 1                                  2n + 1 b
+                            pn =          π,                        qn =         π ,          (4.7b)
+                                     2                                       2    a
+     √
+η = b ω/ν is the Womersley number, µ = ρ0 ν is the dynamic viscosity of fluid.
+    The simulation parameters are set as follows. The grid size is Nx × Ny × Nz = 41 ×
+21 × 21, the period of the changing pressure is T = 100 (ω = 2π/T), the pressure at the
+outlet (pout ) is set to be 1.0. δt = 0.05 is fixed in the simulation so that one period contains
+an integral step. The computation begins with t = 0. After the velocity field satisfies the
+following convergence criterion,
+
+                              ∑ |u x ( xi ,t + T )− u x ( xi ,t)|
+                               i
+                                                                    ≤ 6.0 × 10−14 ,            (4.8)
+                                     ∑ |u x ( xi ,t + T )|
+                                       i
+
+we make the computation iterate more steps to obtain the velocity at different times,
+which is the ultimate numerical solution. Here, |·| denotes the absolute value operator,
+and the summation of i is over every grid point.
+    First, we conduct simulations to get the velocity profiles across the channel at different
+times with the current D3Q13 MRT LB model. Fig. 3 shows the velocity profiles in the
+lines x = 1, z = 0 at four different times: t = T/4, T/2, 3T/4 and T under ∆p = 0.02. The
+fluid viscosity is set to be ν = 0.0075, and the corresponding Womersley number of the
+flow is η = 1.4472. The velocity has been normalized with Umax , which is the maximal
+horizontal velocity of Poiseuille flow with the pressure gradient −∆p/l. From the above
+figure, it can be seen that the numerical solution accords well with the analytical solution.
+1050             W. Zhang, S. Kuang, Z. Chai and B. Shi / Adv. Appl. Math. Mech., 17 (2025), pp. 1037-1062
+
+
+
+
+                                                  1
+
+                                                 0.8
+                                                                                    T/2
+
+                                                 0.6
+
+                                                 0.4
+                                                                                    3T/4
+                         ux(x=1,y,z=0,t)/Umax
+
+
+
+
+                                                 0.2
+
+                                                  0
+
+                                                −0.2
+                                                                                    T/4
+                                                −0.4
+
+                                                −0.6
+                                                                                     T
+                                                −0.8
+
+                                                 −1
+                                                 −0.5   −0.4   −0.3   −0.2   −0.1    0     0.1   0.2   0.3   0.4   0.5
+                                                                                     y
+
+
+
+Figure 3: The variation of u x with y for pulsatile flow at the location x = 1, z = 0, ∆p = 0.02, ν = 0.0075 and
+η = 1.4472. lines: analytical solutions, symbols: numerical solutions of the current D3Q13 MRT LB model.
+
+
+
+   Secondly, we conduct simulations for different values of ∆p varying from 0.001 to 0.05
+with the current D3Q13 MRT LB model, the ”incompressible” D3Q13 MRT LB model,
+and the D3Q19 MRT LB model. The GREu for different values of ∆p and different MRT
+LB models are listed in Table 2. From Table 2, we can see that the GREu of the three
+MRT LB models for 3D pulsatile flow is larger than that for 3D Poiseuille flow. This
+may be because the pressure difference is a constant in the 3D Poiseuille flow, while
+
+
+
+Table 2: The variation of GREu with the maximal pressure difference ∆p for pulsatile flow at t = T by using
+different MRT LB models, ν = 0.0075, 1/λν = 1.1.
+                                                                                GREu
+        ∆p
+               current D3Q13 MRT model                                ”incompressible” D3Q13 MRT model                   D3Q19 MRT model
+       0.001          1.0304 × 10−2                                              1.1412 × 10−2                             5.7481 × 10−3
+       0.005          1.0700 × 10−2                                              1.2422 × 10−2                             6.3609 × 10−3
+        0.01          1.1112 × 10−2                                              1.3731 × 10−2                             7.0284 × 10−3
+       0.015          1.1422 × 10−2                                              1.5079 × 10−2                             7.5777 × 10−3
+        0.02          1.1627 × 10−2                                              1.6455 × 10−2                             8.0039 × 10−3
+       0.025          1.1723 × 10−2                                              1.7850 × 10−2                             8.3046 × 10−3
+        0.03          1.1711 × 10−2                                              1.9261 × 10−2                             8.4785 × 10−3
+       0.035          1.1593 × 10−2                                              2.0682 × 10−2                             8.5259 × 10−3
+        0.04          1.1374 × 10−2                                              2.2113 × 10−2                             8.4477 × 10−3
+       0.045          1.1060 × 10−2                                              2.3550 × 10−2                             8.2462 × 10−3
+        0.05          1.0663 × 10−2                                              2.4993 × 10−2                             7.9260 × 10−3
+W. Zhang, S. Kuang, Z. Chai and B. Shi / Adv. Appl. Math. Mech., 17 (2025), pp. 1037-1062   1051
+
+
+in the pulsatile flow, the pressure difference is a periodic function of time. The flow
+becomes unsteady, which produces additional numerical errors for the three MRT LB
+models. From Table 2, we can also see that the GREu of the D3Q19 MRT LB model is
+still the smallest under each value of ∆p compared with the case of 3D Poiseuille flow.
+However, the GREu of the current D3Q13 MRT LB model is always smaller than that of
+the ”incompressible” D3Q13 MRT model. This is because the compressibility error of the
+second kind is eliminated in the current D3Q13 MRT LB model.
+
+
+4.3   3D lid-driven cavity flow
+In this section, the 3D lid-driven cavity flow is simulated to test the accuracy of the cur-
+rent D3Q13 MRT LB model. Based on this flow, we also evaluate the stability and effi-
+ciency of the current D3Q13 MRT LB model and compare this model with the ”incom-
+pressible” D3Q13 MRT LB model and D3Q19 MRT LB model.
+    The 3D lid-driven cavity flow is defined in a cubic box, as shown in Fig. 4. The cubic
+box is in the 3D Cartesian coordinate, and its domain is [0,1]×[0,1]×[0,1]. The flow in the
+cubic box is driven by the top sliding lid with a constant velocity U0 = 1.0. To make the
+flow satisfy the low Mach number assumption in the computation, we set c = 10. Then,
+we can use the current D3Q13 MRT LB model to simulate the 3D lid-driven cavity flow.
+    Ku et al. simulated the 3D lid-driven cavity flow with the pseudospectral method [24].
+
+
+
+                                             y
+
+                                          1
+                                                  sliding
+                                                 direction
+
+
+
+
+                                         0                                 1     x
+
+
+
+                               1
+                           z
+
+
+                    Figure 4: The schematic of three-dimensional lid-driven cavity flow.
+1052                     W. Zhang, S. Kuang, Z. Chai and B. Shi / Adv. Appl. Math. Mech., 17 (2025), pp. 1037-1062
+
+
+
+            1
+
+                                                                                    0.25
+           0.9                                              97×97×49
+                                                            81×81×41
+           0.8                                              65×65×33                                                                     97×97×49
+                                                            49×49×25                                                                     81×81×41
+                                                                                     0.2
+           0.7                                                                                                                           65×65×33
+                                                                                                                                         49×49×25
+           0.6
+
+                                                                                    0.15
+           0.5
+       y
+
+
+
+
+                                                                                y
+           0.4
+
+                                                                                     0.1
+           0.3
+
+           0.2
+
+                                                                                    0.05
+           0.1
+
+            0
+           −0.4   −0.2      0    0.2         0.4      0.6   0.8        1             −0.4     −0.35   −0.3   −0.25        −0.2   −0.15   −0.1
+                                        ux                                                                           ux
+
+
+
+                                   (a)                                                                          (b)
+Figure 5: The horizontal velocity distributions of the cavity flow at Re=1000 along the vertical center line at
+the section z = 0.5 for four different grid sizes. The rectangle region in (a) is magnified and shown in (b).
+
+
+Their results were also included to demonstrate the validity of the numerical methods
+involved [25–28]. Also, those published results validate the accuracy of the D3Q13 MRT
+LB model proposed in this paper. The initial velocities (except for the velocities on the
+sliding lid) and the pressure in the domain are all set to be zeros. At the section of z = 0.5,
+the symmetric boundary condition is set, i.e.,
+
+                                                         ∂u x ∂uy ∂p
+                                                             =    = = 0,                   uz = 0.                                                  (4.9)
+                                                          ∂z   ∂z  ∂z
+The convergence criterion for the velocity field is,
+
+                                       ∑ ∑ |uk ( xi ,t + 1000δt)− uk ( xi ,t)|
+                                       i k
+                                                                                            ≤ 6.0 × 10−14 ,                                     (4.10)
+                                                   ∑ ∑ |uk ( xi ,t + 1000δt)|
+                                                   i k
+
+where the summations of i and k are carried out over all the grid points and the velocities
+in all directions.
+    First, the grid independence study of the simulation is carried out. The horizontal
+velocity distributions of the cavity flow at Re=1000 along the vertical center line at the
+section z = 0.5 for four grids (97 × 97 × 49, 81 × 81 × 41, 65 × 65 × 33 and 49 × 49 × 25) are
+shown in Fig. 5. From Fig. 5, it can be seen that the difference in the velocity distribution
+between the adjacent grid sizes becomes smaller and smaller as the grid size increases.
+In the following, the grid size 97 × 97 × 49 is used to simulate cavity flow at different
+Reynolds numbers.
+    Secondly, the 3D lid-driven cavity flow at the Reynolds numbers 100, 400, and 1000
+are simulated with the current D3Q13 MRT LB model under the grid 97 × 97 × 49. The
+W. Zhang, S. Kuang, Z. Chai and B. Shi / Adv. Appl. Math. Mech., 17 (2025), pp. 1037-1062                                                      1053
+
+
+
+                1                                                          0.2
+
+               0.9                                                        0.15
+
+               0.8
+                                                                           0.1
+
+               0.7
+                                                                          0.05
+               0.6
+                                                                            0
+
+
+
+
+                                                                    uy
+               0.5
+           y
+
+
+
+
+                                                                         −0.05
+               0.4
+                                                                          −0.1
+               0.3
+
+                                                                         −0.15
+               0.2
+
+               0.1                                                        −0.2
+
+
+                0                                                        −0.25
+               −0.4   −0.2   0   0.2        0.4   0.6   0.8    1                 0   0.1   0.2   0.3   0.4   0.5   0.6   0.7   0.8   0.9   1
+                                       ux                                                                     x
+
+
+
+
+                                                              (a) Re=100
+                1                                                          0.3
+
+               0.9
+                                                                           0.2
+               0.8
+
+               0.7                                                         0.1
+
+
+               0.6
+                                                                            0
+                                                                     uy
+
+
+
+
+               0.5
+           y
+
+
+
+
+                                                                          −0.1
+               0.4
+
+               0.3                                                        −0.2
+
+               0.2
+                                                                          −0.3
+               0.1
+
+                0                                                         −0.4
+               −0.4   −0.2   0   0.2        0.4   0.6   0.8    1                 0   0.1   0.2   0.3   0.4   0.5   0.6   0.7   0.8   0.9   1
+                                       ux                                                                     x
+
+
+
+
+                                                              (b) Re=400
+                1                                                          0.3
+
+               0.9
+                                                                           0.2
+
+               0.8
+                                                                           0.1
+               0.7
+
+                                                                            0
+               0.6
+                                                                     uy
+
+
+
+
+               0.5                                                        −0.1
+           y
+
+
+
+
+               0.4
+                                                                          −0.2
+
+               0.3
+                                                                          −0.3
+               0.2
+
+                                                                          −0.4
+               0.1
+
+                0                                                         −0.5
+               −0.4   −0.2   0   0.2        0.4   0.6   0.8    1                 0   0.1   0.2   0.3   0.4   0.5   0.6   0.7   0.8   0.9   1
+                                       ux                                                                     x
+
+
+
+
+                                                              (c) Re=1000
+Figure 6: The velocity distribution in the vertical and horizontal center lines at the section z = 0.5 for the cavity
+flow at different Reynolds numbers, : the results of Ku et al., –: the simulation results by the current D3Q13
+MRT LB model.
+1054            W. Zhang, S. Kuang, Z. Chai and B. Shi / Adv. Appl. Math. Mech., 17 (2025), pp. 1037-1062
+
+
+
+Table 3: The convergence or divergence of the simulation of the 3D cavity flow at some Reynolds number for
+the current D3Q13 MRT LB model, the ”incompressible” D3Q13 MRT LB model, and the D3Q19 MRT LB
+model. The convergence criterion is that the computation does not blow up after 100000 iterations. In the
+table, the check mark means the simulation is convergent, while the cross means the simulation is divergent.
+                                                  Model type
+       Re
+             current D3Q13 MRT model       ”incompressible” D3Q13 MRT model         D3Q19 MRT model
+     100                !                                  !                              !
+     400                !                                  !                              !
+     1000               !                                  !                              !
+     1500               !                                  !                              !
+     7300               !                                  !                              !
+     7400               #                                  !                              !
+     7500               #                                  !                              !
+     7600               #                                  #                              !
+    18000               #                                  #                              !
+    18100               #                                  #                              #
+
+
+Reynolds number is defined as U0 L/ν, where L = 1.0 is the side length of the cubic box.
+On this basis, the simulation results are compared with those of Ku et al. The comparison
+is shown in Fig. 6. It can be seen that the agreement between the results of the current
+D3Q13 MRT LB model and those of the Ku et al. method is excellent.
+    Thirdly, the D3Q13 MRT LB model is compared in terms of stability with the ”incom-
+pressible” D3Q13 MRT LB model and the D3Q19 MRT LB model. The Reynolds number
+is increased constantly, and the convergence or divergence of the simulation of the 3D
+cavity flow at one Reynolds number under the grid 97×97×49 is recorded. The record for
+the current D3Q13 MRT LB model, the ”incompressible” D3Q13 MRT LB model, and the
+D3Q19 MRT LB model is shown in Table 3. From Table 3, we can see that the Reynolds
+number beyond which the simulation blew up (the critical Reynolds number) for the
+D3Q19 MRT LB model is much higher than those of the current D3Q13 MRT LB model
+and the ”incompressible” D3Q13 MRT LB model. This may be attributed to the D3Q19
+MRT LB model having more discrete velocity directions than the current D3Q13 MRT LB
+model and the ”incompressible” D3Q13 MRT LB model. However, the critical Reynolds
+number of the current D3Q13 MRT LB model is almost as high as that of the ”incompress-
+ible” D3Q13 MRT LB model. This may be because the current D3Q13 MRT LB model and
+the ”incompressible” D3Q13 MRT LB model have the same discrete velocity directions.
+    Fourth, the accuracy of the current D3Q13 MRT LB model, the ”incompressible”
+D3Q13 MRT LB model, and the D3Q19 MRT LB model are compared by simulating the
+cavity flow at Re=1000 under the grid 97 × 97 × 49. All three MRT LB models can simulate
+the 3D cavity flow at Re=1000. As seen from Fig. 7(a), the horizontal velocity distribu-
+tions of the cavity flow at Re=1000 along the vertical center line at the section z = 0.5 for
+the three MRT LB models are all in excellent agreement with the Ku et al. result. From
+Fig. 7(b), it can be seen that the horizontal velocity distributions for the two D3Q13 MRT
+LB models are the same. Moreover, in some locations, the results of the two D3Q13 MRT
+W. Zhang, S. Kuang, Z. Chai and B. Shi / Adv. Appl. Math. Mech., 17 (2025), pp. 1037-1062                                                             1055
+
+
+
+         1                                                                        0.25
+
+        0.9
+
+        0.8                                                                        0.2
+
+        0.7
+
+        0.6                                                                       0.15                            the D3Q19 MRT LB
+                                                                                                                  the current D3Q13 MRT LB
+        0.5                                                                                                       the "incompressible" D3Q13 MRT LB
+    y
+
+
+
+
+                                                                              y
+                                                                                                                  Ku et al.’s result
+        0.4                                                                        0.1
+
+        0.3
+
+        0.2                        the D3Q19 MRT LB                               0.05
+                                   the current D3Q13 MRT LB
+        0.1                        the "incompressible" D3Q13 MRT LB
+                                   Ku et al.’s result
+         0                                                                          0
+        −0.4   −0.2    0     0.2        0.4      0.6       0.8         1           −0.4   −0.35   −0.3   −0.25        −0.2   −0.15     −0.1
+                                   ux                                                                            ux
+
+
+
+                               (a)                                                                          (b)
+Figure 7: The comparison of the horizontal velocity distributions of the cavity flow at Re=1000 along the
+vertical center line at the section z = 0.5 for the current D3Q13 MRT LB model, the ”incompressible” D3Q13
+MRT LB model and the D3Q19 MRT LB model. The rectangle region in (a) is magnified and shown in (b).
+
+
+LB models agree better with the Ku et al. result. The D3Q19 MRT LB model’s result
+in some other locations agrees better with the Ku et al. result. It can be inferred that
+the accuracy of the current D3Q13 MRT LB model, the ”incompressible” D3Q13 MRT
+LB model, and the D3Q19 MRT LB model are nearly the same when the three MRT LB
+models are used to simulate the 3D cavity flow under the critical Reynolds numbers.
+    Lastly, the computational efficiency of the current D3Q13 MRT LB model, the ”in-
+compressible” D3Q13 MRT LB model, and the D3Q19 MRT LB model are compared by
+simulating the cavity flow at Re=100, 400, and 1000 under the grid 97 × 97 × 49. The com-
+putation is completed on a Tesla K40 graphic processing unit (GPU) card, and the code is
+compiled with the compute unified device architecture (CUDA). The computation time
+of the above three MRT LB models is listed in Table 4. From Table 4, we can see that the
+total and average run time of the current D3Q13 MRT LB model is very close to that of
+the ”incompressible” D3Q13 MRT LB model. However, the total and average run time
+
+
+
+Table 4: The computation time of the current D3Q13 MRT LB model (current D3Q13), the ”incompressible”
+D3Q13 MRT LB model (”incompressible” D3Q13) and the D3Q19 MRT LB model (D3Q19) in simulating the
+3D cavity flow at Re=100, 400, and 1000. ”steps” denotes the number of steps that the computation needs to
+reach the convergence criterion. ”time” denotes the total run time corresponding to the ”steps.” ”ave time”
+denotes the average run time per 104 steps. The units of ”time” and ”ave time” are both seconds (s).
+                        current D3Q13                             ”incompressible” D3Q13                               D3Q19
+     Re
+                 steps        time    ave time                  steps      time     ave time           steps            time          ave time
+     100        4 × 104      59.67s    14.91s                 4.0 × 104   57.77s     14.44s           4 × 104          98.07s          24.52s
+     400       9.3 × 104    138.64s    14.90s                 9.3 × 104   134.06s    14.41s          9.3 × 104         227.87s         24.50s
+    1000       1.86 × 105   277.23s    14.90s                1.85 × 105   265.17s    14.33s         1.93 × 105         473.10s         24.51s
+1056         W. Zhang, S. Kuang, Z. Chai and B. Shi / Adv. Appl. Math. Mech., 17 (2025), pp. 1037-1062
+
+
+of the current D3Q13 MRT LB model are approximately 60% of those of the D3Q19 MRT
+model. This may be attributed to the fact that the current D3Q13 MRT LB model and
+the ”incompressible” D3Q13 MRT LB model only have the 68% of the discrete velocity
+directions of the D3Q19 MRT LB model.
+
+
+5      Conclusions
+An alternative D3Q13 MRT LB model for incompressible Navier-Stokes equations is pro-
+posed in this study. The current D3Q13 MRT LB model can recover to the exact incom-
+pressible N-S equations only under the low Mach number assumption. This means the
+current D3Q13 MRT LB model can eliminate the compressibility error of the second kind
+associated with the solution of the incompressible N-S equations. Three benchmark flow
+problems, including 3D steady Poiseuille flow, 3D unsteady pulsatile flow, and 3D lid-
+driven cavity flow, are simulated to confirm the effectiveness of the current D3Q13 MRT
+LB model. The previous ”incompressible” D3Q13 MRT LB model and the D3Q19 MRT
+LB model are also used to simulate the above three benchmark flow problems.
+    First, the three MRT LB models above simulate the 3D steady Poiseuille flow and
+3D unsteady pulsatile flow under different (maximal) pressure differences. The GREu of
+the current D3Q13 MRT LB model is the same as that of the previous ”incompressible”
+D3Q13 MRT LB model when the two models are used to solve the velocity field for the
+3D steady Poiseuille flow under different pressure differences. However, the GREu of the
+current D3Q13 MRT LB model is always smaller than that of the previous ”incompress-
+ible” D3Q13 MRT LB model when the two models are used to solve the velocity field
+for the 3D unsteady pulsatile flow under different maximal pressure differences. This
+improvement may be attributed to the fact that the compressibility error of the second
+kind is eliminated in the current D3Q13 MRT LB model. The GREu of the D3Q19 MRT
+LB model is the smallest among the three MRT LB models when they are used to solve
+the velocity field for the 3D steady Poiseuille flow and the 3D unsteady pulsatile flow
+under different (maximal) pressure differences. The reason may be that the D3Q19 MRT
+LB model has 46% more discrete velocity directions than the two D3Q13 MRT LB models.
+    The three MRT LB models also simulate the 3D lid-driven cavity flow at Re=100,
+400, 1000, and higher Reynolds numbers. The D3Q19 MRT LB model can simulate the
+3D lid-driven cavity flow at a much higher Reynolds number than the current D3Q13
+MRT LB model and the ”incompressible” D3Q13 MRT LB model. However, the current
+D3Q13 MRT LB model and the ”incompressible” D3Q13 MRT LB model need much less
+runtime than the D3Q19 MRT LB model to complete the simulation of 3D lid-driven
+cavity flow at Re=100, 400, 1000. This difference is because the D3Q19 MRT LB model
+has more discrete velocity directions than the current D3Q13 MRT LB model and the
+”incompressible” D3Q13 MRT LB model. The previous ”incompressible” D3Q13 MRT LB
+model can simulate the 3D lid-driven cavity flow at a slightly higher Reynolds number
+than the current D3Q13 MRT LB model. However, their runtime to simulate 3D lid-
+W. Zhang, S. Kuang, Z. Chai and B. Shi / Adv. Appl. Math. Mech., 17 (2025), pp. 1037-1062     1057
+
+
+driven cavity flow at Re=100, 400, and 1000 is nearly identical.
+    It is established that for the MRT LB models, the relaxation parameters need to be
+adjusted according to the types of flow and the boundary treatment methods [29], so it
+is easier to set a smaller set of relaxation parameters for the MRT LB models. As the d-
+dimensional q-velocity MRT LB model generally has relaxation parameters comparable
+to q, the setting of the relaxation parameters for the current D3Q13 MRT LB model is
+more accessible than that for the D3Q15, D3Q19, and D3Q27 MRT LB models. More im-
+portantly, the current D3Q13 MRT LB model and the D3Q19 MRT LB model have nearly
+the same accuracy when the two models simulate the 3D cavity flow under one Reynolds
+number below the minimum of the critical Reynolds numbers of the two models. How-
+ever, the computational efficiency of the current D3Q13 MRT LB model is much higher
+than the D3Q19 MRT LB model. Therefore, the current D3Q13 MRT LB model has a sig-
+nificant advantage over the D3Q19 MRT LB model in computational efficiency when the
+two models can simulate the flows with nearly the same accuracy.
+
+
+
+Appendix
+
+In this section, we perform the Chapman-Enskog analysis for the current D3Q13 MRT
+LB model to recover to the incompressible Navier-Stokes equations. We know that for an
+incompressible flow,
+
+                           O(δp) = O(δρ) = O( M2 ),                    O(u) = O( M),         (A.1)
+
+where M represents the Mach number, δp and δρ are the pressure and density fluctua-
+tions, respectively. We first introduce the Taylor series expansion and multi-scale expan-
+sions:
+                                         ∞ n                     ∞               ∞
+                                            ε
+             f i ( x + ci δt ,t + δt ) = ∑ Dtn f i ( x,t), f i = ∑ εn f i , ∂t = ∑ εn ∂tn ,
+                                                                         (n)
+                                                                                            (A.2)
+                                        n=0 n!                  n =0            n =0
+
+where ε = δt and Dt = ∂t + ci ·∇ = ∂t + ciα · ∂α . By applying Taylor series expansion and
+the above multi-scale expansions, we can rewrite the lattice Boltzmann equation (2.1) in
+different orders of ε as follows:
+
+                                (0)            (eq)
+                   O(ε0 ) :    fi     = fi            ,                                     (A.3a)
+                                                          12
+                                               = − ∑ Λij f j ,
+                                         (0)                     (1)
+                   O(ε1 ) :   Dt 0 f i                                                      (A.3b)
+                                                          j =0
+                                                            12             12
+                                                     (1) 1
+                                                                   
+                                            + Dt0 f i − ∑ Λij f j     = − ∑ Λij f j ,
+                                      (0)                       (1)               (2)
+                   O(ε2 ) :   ∂ t1 f i                                                      (A.3c)
+                                                         2 j =0           j =0
+1058           W. Zhang, S. Kuang, Z. Chai and B. Shi / Adv. Appl. Math. Mech., 17 (2025), pp. 1037-1062
+
+
+where Dt0 = ∂t0 + ci ·∇, and Eq. (A.3b) has been substituted into Eq. (A.3c). We can trans-
+form Eq. (A.3) into the moment space:
+
+                        m(0) = m(eq) ,                                                                 (A.4a)
+                                             (0)          (1)
+                        (∂t0 I + Ĉk ∂k )m  = −Λ̂m ,                                                   (A.4b)
+                                                      1 
+                        ∂t1 m(0) +(∂t0 I + Ĉk ∂k ) I − Λ̂ m(1) = −Λ̂m(2) ,                            (A.4c)
+                                                       2
+where Ĉk = TCk T −1 , Ck is a diagonal matrix with the k-th component of every discrete
+velocity ci as the element, and
+                                                                                        0
+                                     (n)      (n)   (n)   (n)   (n)   (n)   (n)   (n)
+           m(n) = (0,0,0,0,e(n) ,3Sxx ,Sωω ,Sxy ,Syz ,Sxz ,h x ,hy ,hz ) ,                  n = 1,2.    (A.5)
+
+Expanding Eq. (A.4b), we have
+                                                                               
+                               ρ0                          ux                 uy
+                              ux                    u2 + p            u x uy 
+                                                    x                          
+                              u y
+                                                        u x u y
+                                                                         u2 + p 
+                                                                      y        
+                
+                              uz         
+                                          
+                                                      u u 
+                                                           x z 
+                                                                          u u 
+                                                                             y z 
+                 13u2 /2 + 39p/2 − 12ρ              u
+                                                                          uy
+                                                                                  
+                                       0                   x                    
+                          3u  2 −  u 2                     u               − u   /2
+                                                                               
+                             x                             x              y    
+                           u2y − u2z       + ∂x           0      + ∂y  uy /2 
+                                                                               
+           ∂ t0 
+                             u x uy                   uy /2             u x /2 
+                                                                               
+                                         
+                             uy uz                          0             uz /2 
+                                                                               
+                                                               
+                                                      uz /2 
+                                                                               
+                            u x uz                                         0     
+                                                      uy − u2z 
+                                                    2                          
+                               0                                        u x uy 
+                                                                          2
+                                                                          uz − u2x 
+                                                                                
+                               0                    −u x uy 
+                                0                         u x uz           −uy uz
+                                                         
+                                             0
+                            uz                0          
+                        u x uz                         
+                                            0          
+                        uy uz                          
+                                            0          
+                        u2 + p       
+                                                    ( 1 )
+                                                          
+                        z
+                        u
+                                     
+                                     
+                                       
+                                         −  λ  e e       
+                                                          
+                              y                       (1) 
+                                          −
+                                       
+                       
+                        −u /2 
+                                          λ ν  3S   xx 
+                              z                    (1) 
+                                                          
+                                          −
+                                    
+                  + ∂z  −uz /2  = − 
+                                         λ    S
+                                              ν ωω  .                                                  (A.6)
+                                               0 (1) 
+                                          −
+                                       
+                             0              λ  ν S xy 
+                                     
+                                    
+                                               0 (1) 
+                                                         
+                        uy /2           −λν Syz 
+                                     
+                                       
+                                        −λν S(xz1) 
+                        u x /2               0
+                                                       
+                        −u x uz 
+                                    
+                                        −λ h(x1) 
+                                                         
+                                             h
+                        uy uz        
+                                                    (1) 
+                                                          
+                                          −       h
+                                       
+                         u2x − u2y         λ  h y        
+                                                    (1)
+                                          −λh hz
+W. Zhang, S. Kuang, Z. Chai and B. Shi / Adv. Appl. Math. Mech., 17 (2025), pp. 1037-1062                 1059
+
+
+Taking the 1st to 4th rows of the above equations, we obtain
+                                         ∂t0 ρ0 + ∂ x u x + ∂y uy + ∂z uz = 0.                           (A.7)
+and
+                             ∂t0 u x + ∂ x ( p + u2x )+ ∂y (u x uy )+ ∂z (u x uz ) = 0,                 (A.8a)
+                             ∂t0 uy + ∂ x (u x uy )+ ∂y ( p + u2y )+ ∂z (uy uz ) = 0,                   (A.8b)
+                             ∂t0 uz + ∂ x (u x uz )+ ∂y (uy uz )+ ∂z ( p + u2z ) = 0.                   (A.8c)
+As ρ0 is a constant, Eq. (A.7) can lead to the continuity equation of the incompressible
+N-S equations.
+   From the expansion of Eq. (A.4c), we have
+                                       (1)                                                (1)
+        ∂t1 u x + ∂ x [(1 − λν /2)Sxx + 2(1 − λe /2)e(1) /39]+ ∂y [(1 − λ0ν /2)Sxy ]
+                                 (1)
+          + ∂z [(1 − λ0ν /2)Sxz ] = 0,                                                                  (A.9a)
+                                       (1)                       (1)     (1)
+        ∂t1 uy + ∂ x [(1 − λ0ν /2)Sxy ]+ ∂y [(1 − λν /2)(Sωω − Sxx )/2 + 2(1 − λe /2)e(1) /39]
+                                 (1)
+          + ∂z [(1 − λ0ν /2)Syz ] = 0,                                                                  (A.9b)
+                                       (1)                                                 (1)   (1)
+        ∂t1 uz + ∂ x [(1 − λ0ν /2)Sxz ]+ ∂z [2(1 − λe /2)e(1) /39 −(1 − λν /2)(Sωω + Sxx )/2]
+                                 (1)
+          + ∂y [(1 − λ0ν /2)Syz ] = 0.                                                                  (A.9c)
+Combining Eq. (A.8) and Eq. (A.9) with the operation (A.8)+ε×(A.9), we obtain
+        ∂t u x + ∂ x ( p + u2x )+ ∂y (u x uy )+ ∂z (u x uz )
+                                  (1)                          (1)
+        = −ε∂y [(1 − λ0ν /2) p xy ]− ε∂ x [(1 − λν /2)Sxx + 2(1 − λe /2)e(1) /39]
+                                  (1)
+           − ε∂z [(1 − λ0ν /2)Sxz ],                                                                   (A.10a)
+        ∂t uy + ∂ x (u x uy )+ ∂y ( p + u2y )+ ∂z (uy uz )
+                                   (1)                          (1)     (1)
+        = −ε∂ x [(1 − λ0ν /2) p xy ]− ε∂y [(1 − λν /2)(Sωω − Sxx )/2 + 2(1 − λe /2)e(1) /39]
+                                  (1)
+           − ε∂z [(1 − λ0ν /2)Syz ],                                                                   (A.10b)
+        ∂t uz + ∂ x (u x uz )+ ∂y (uy uz )+ ∂z ( p + u2z )
+                                  (1)                      (1)
+        = −ε∂ x [(1 − λ0ν /2)Sxz ]− ε∂y [(1 − λ0ν /2)Syz ]− ε∂z [2(1 − λe /2)e(1) /39
+                              (1)     (1)
+           −(1 − λν /2)(Sωω + Sxx )/2].                                                                (A.10c)
+According to Eq. (A.6), yields
+                    1
+            e (1) = − [∂t (13u2 /2 + 39p/2 − 12ρ0 )+(∂ x u x + ∂y uy + ∂z uz )],                       (A.11a)
+                   λe 0
+             (1)     1 h                            1       1     i
+            Sxx = −      ∂t0 (3u2x − u2 )+ ∂ x u x − ∂y uy − ∂z uz ,                                   (A.11b)
+                    3λν                             2       2
+1060           W. Zhang, S. Kuang, Z. Chai and B. Shi / Adv. Appl. Math. Mech., 17 (2025), pp. 1037-1062
+
+
+                               (1)   1 h                   1       1    i
+                             Sωω = −     ∂t0 (u2y − u2z )+ ∂y uy − ∂z uz ,                            (A.11c)
+                                    λν                     2       2
+                              (1)    1 h                 1       1    i
+                             Sxy = − 0 ∂t0 (u x uy )+ ∂ x uy + ∂y u x ,                               (A.11d)
+                                    λν                   2       2
+                              (1)    1 h                 1      1    i
+                             Syz = − 0 ∂t0 (uy uz )+ ∂y uz + ∂z uy ,                                  (A.11e)
+                                    λν                   2      2
+                              (1)    1 h                 1      1    i
+                             Sxz = − 0 ∂t0 (u x uz )+ ∂ x uz + ∂z u x .                               (A.11f)
+                                    λν                   2      2
+Using Eq. (A.8), we can estimate the terms ∂t0 u2x , ∂t0 u2y and ∂t0 u2z as
+
+                          ∂t0 u2x = −2u x (∂ x ( p + u2x )+ ∂y (u x uy )+ ∂z (u x uz )),              (A.12a)
+                          ∂t0 u2y = −2uy (∂ x (u x uy )+ ∂y ( p + u2y )+ ∂z (uy uz )),                (A.12b)
+                          ∂t0 u2z = −2uz (∂ x (u x uz )+ ∂y (uy uz )+ ∂z ( p + u2z )).                (A.12c)
+From Eq. (A.1), we can see that ∂t0 u2x , ∂t0 u2y and ∂t0 u2z are all in the order of O( M3 ). Omit-
+ting the O( M3 ) terms, Eq. (A.11) becomes
+                                  39
+                          e (1) = −  ∂t p,                                                            (A.13a)
+                                 2λe 0
+                           (1)     1                                   1
+                          Sxx = −     (2∂ x u x − ∂y uy − ∂z uz ) = −     ∂x ux ,                     (A.13b)
+                                  6λν                                 2λν
+                           (1)     1
+                          Sωω = −     ( ∂ y u y − ∂ z u z ),                                          (A.13c)
+                                  2λν
+                           (1)     1
+                          Sxy = − 0 (∂ x uy + ∂y u x ),                                               (A.13d)
+                                  2λν
+                           (1)     1
+                          Syz = − 0 (∂y uz + ∂z uy ),                                                 (A.13e)
+                                  2λν
+                           (1)     1
+                          Szx = − 0 (∂ x uz + ∂z u x ),                                               (A.13f)
+                                  2λν
+where the continuity equation has been substituted into Eq. (A.13a) and Eq. (A.13b), and
+the term ∂t0 u2 in Eq. (A.13a) has been omitted.
+    Substituting Eq. (A.13) into Eq. (A.10) and supposing
+                                         1                1
+                          ε = δt ,    ν = (1/λν − 1/2)δt = (1/λ0ν − 1/2)δt ,
+                                         4                2
+then we have
+        ∂t u x + ∂ x (u2x )+ ∂y (u x uy )+ ∂z (u x uz ) = −∂ x p + ν(∂2x u x + ∂2y u x + ∂2z u x ),   (A.14a)
+        ∂t uy + ∂ x (u x uy )+ ∂y (u2y )+ ∂z (uy uz ) = −∂y p + ν(∂2x uy + ∂2y uy + ∂2z uy ),         (A.14b)
+        ∂t uz + ∂ x (u x uz )+ ∂y (uy uz )+ ∂z (u2z ) = −∂z p + ν(∂2x uz + ∂2y uz + ∂2z uz ),         (A.14c)
+W. Zhang, S. Kuang, Z. Chai and B. Shi / Adv. Appl. Math. Mech., 17 (2025), pp. 1037-1062          1061
+
+
+which are the momentum equations of the incompressible N-S equations. It should be
+noted that the continuity equation has been used and the term ε∂α ∂t p (α = x,y,z) of order
+O(δt 2 + δt M2 ) is omitted in deriving the above equations.
+
+
+Acknowledgements
+The author would like to thank the referees for the helpful suggestions. The first author
+is sponsored by the K. C. Wong Magna Fund at Ningbo University.
+
+
+References
+ [1] R. B ENZI , S. S UCCI , AND M. V ERGASSOLA , The lattice Boltzmann equation: theory and applica-
+     tions, Phys. Rep., 222 (1992), pp. 145–197.
+ [2] S. S UCCI , The Lattice Boltzmann Equation for Fluid Dynamics and Beyond, Clarendon
+     Press, Oxford, 2001.
+ [3] D. D ’H UMI ÈRES , Generalized lattice-Boltzmann equations, in: B. D. Shizgal, D. P. Weaver
+     (Eds.), Rarefied Gas Dynamics: Theory and Simulations, in: Prog. Aeronaut. Astronaut.,
+     159 (1992), pp. 450–458.
+ [4] Z. L. G UO , B. C. S HI , AND N. C. WANG , Lattice BGK model for incompressible Navier-Stokes
+     equation, J. Comput. Phys., 165 (2000), pp. 288–306.
+ [5] N. Z. H E , N. C. WANG , B. C. S HI , AND Z. L. G UO , A unified incompressible lattice BGK model
+     and its application to three-dimensional lid-driven cavity flow, Chin. Phys., 13 (2004), pp. 40–46.
+ [6] R. D U , B. C. S HI , AND X. W. C HEN , Multi-relaxation-time lattice Boltzmann model for incom-
+     pressible flow, Phys. Lett. A, 359 (2006), pp. 564–572.
+ [7] R. D U , AND B. C. S HI , Incompressible multi-relaxation-time lattice Boltzmann model in 3-D
+     space, J. Hydrodyn. Ser. B, 22 (2010), pp. 782–787.
+ [8] T. Z HANG , B. C. S HI , Z. H. C HAI , AND F. M. R ONG , Lattice BGK model for incompressible
+     axisymmetric flows, Commun. Comput. Phys., 11 (2012), pp. 1569–1590.
+ [9] Q. S. Z OU , S. L. H OU , S. Y. C HEN , AND G. D. D OOLEN , An improved incompressible lattice
+     Boltzmann model for time-independent flows, J. Stat. Phys., 81 (1995), pp. 35–48.
+[10] Z. F. L IN , H. P. FANG , AND R. B. TAO , Improved lattice Boltzmann model for incompressible
+     two-dimensional steady flows, Phys. Rev. E, 54 (1996), 6323.
+[11] Y. C HEN , AND H. O HASHI , Lattice-BGK methods for simulating incompressible fluid flows, Int.
+     J. Mod. Phys. C, 8 (1997), pp. 793–803.
+[12] X. Y. H E , AND L. L. L UO , Lattice Boltzmann model for the incompressible Navier-Stokes equation,
+     J. Stat. Phys., 88 (1997), pp. 927–944.
+[13] Y. H. Q IAN , D. D ’H UMI ÈRES , AND P. L ALLEMAND , Lattice BGK models for Navier-Stokes
+     equation, Europhys. Lett., 17 (1992), pp. 479–484.
+[14] D. D ’H UMI ÈRES , M. B OUZIDI , AND P. L ALLEMAND , Thirteen-velocity three-dimensional lattice
+     Boltzmann model, Phys. Rev. E, 63 (2001), 066702.
+[15] D. D ’H UMI ÈRES , I. G INZBURG , M. K RAFCZYK , P. L ALLEMAND , AND L. S. L UO , Multiple-
+     relaxation-time lattice Boltzmann models in three dimensions, Philos. Trans. R. Soc. A, 360 (2002),
+     pp. 437–451.
+[16] K. S UGA , Y. K UWATA , K. TAKASHIMA , AND R. C HIKASUE , A D3Q27 multiple-relaxation-time
+     lattice Boltzmann method for turbulent flows, Comput. Math. Appl., 69 (2015), pp. 518–529.
+1062           W. Zhang, S. Kuang, Z. Chai and B. Shi / Adv. Appl. Math. Mech., 17 (2025), pp. 1037-1062
+
+
+[17] R. D U , AND B. C. S HI , Incompressible MRT lattice Boltzmann model with eight velocities in 2D
+     space, Int. J. Mod. Phys. C, 20 (2009), pp. 1023–1037.
+[18] W. H. Z HANG , B. C. S HI , AND Y. H. WANG , 14-velocity and 18-velocity multiple-relaxation-
+     time lattice Boltzmann models for three-dimensional incompressible flows, Comput. Math. Appl.,
+     69 (2015), pp. 997–1019.
+[19] J. Z HAO , AND Z. M. Z HANG , Seven-velocity three-dimensional vectorial lattice Boltzmann
+     method including various types of approximations to the pressure and two-parameterized second-
+     order boundary treatments, Comput. Math. Appl., 80 (2020), pp. 2764–2779.
+[20] J. Y. H U , W. H. Z HANG , Z. H. C HAI , B. C. S HI , AND Y. H. WANG , Three-dimensional 12-
+     velocity multiple-relaxation-time lattice Boltzmann model of incompressible flows, Acta Phys. Sin.,
+     68 (2019), 234701.
+[21] Z. L. G UO , C. G. Z HENG , AND B. C. S HI , Non-equilibrium extrapolation method for velocity
+     and pressure boundary conditions in the lattice Boltzmann method, Chin. Phys., 11 (2002), pp.
+     366–374.
+[22] F. M. W HITE , Viscous Fluid Flow, second ed., McGraw-Hill, New York, 2006.
+[23] V. O’B RIEN , Pulsatile fully developed flow in rectangular channels, J. Franklin I., 300 (1975), pp.
+     225–230.
+[24] H. C. K U , R. S. H IRSH , AND T. D. TAYLOR , A pseudospectral method for solution of the three-
+     dimensional incompressible Navier-Stokes equations, J. Comput. Phys., 70 (1987), pp. 439–462.
+[25] V. B ABU , AND S. A. K ORPELA , Numerical solution of the incompressible three-dimensional
+     Navier-Stokes equations, Comput. Fluids, 23 (1994), pp. 675–691.
+[26] H. D ING , C. S HU , K. S. Y EO , AND D. X U , Numerical computation of three-dimensional incom-
+     pressible viscous flows in the primitive variable form by local multiquadric differential quadrature
+     method, Comput. Method Appl. M., 195 (2006), pp. 516–533.
+[27] C. S HU , X. D. N IU , AND Y. T. C HEW, Taylor series expansion and least squares-based lattice
+     Boltzmann method: three-dimensional formulation and its applications, Int. J. Mod. Phys. C, 14
+     (2003), pp. 925–944.
+[28] J. W U , AND C. S HU , An improved immersed boundary-lattice Boltzmann method for simulating
+     three-dimensional incompressible flows, J. Comput. Phys., 229 (2010), pp. 5022–5042.
+[29] L. S. L UO , W. L IAO , X. W. C HEN , Y. P ENG , AND Y. Z HANG , Numerics of the lattice Boltzmann
+     method: Effects of collision models on the lattice Boltzmann simulations, Phys. Rev. E, 83 (2011),
+     056710.
+

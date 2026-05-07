@@ -1,0 +1,1049 @@
+                                                                                      J. Fluid Mech. (2018), vol. 849, pp. 355–372.   c Cambridge University Press 2018            355
+                                                                                      doi:10.1017/jfm.2018.451
+
+
+                                                                                             Flow reversals in two-dimensional thermal
+                                                                                                      convection in tilted cells
+
+                                                                                         Qi Wang1 , Shu-Ning Xia2 , Bo-Fu Wang2 , De-Jun Sun1 , Quan Zhou2 and
+                                                                                                                    Zhen-Hua Wan1, †
+                                                                                                1 Department of Modern Mechanics, University of Science and Technology of China,
+                                                                                                                                 Hefei 230027, China
+                                                                                                 2 Shanghai Institute of Applied Mathematics and Mechanics, Shanghai University,
+                                                                                                                               Shanghai 200072, China
+
+                                                                                                     (Received 9 February 2018; revised 23 April 2018; accepted 24 May 2018;
+                                                                                                                       first published online 18 June 2018)
+
+                                                                                      The influence of tilt on flow reversals in two-dimensional thermal convection in
+                                                                                      rectangular cells with two typical aspect ratios, Γ = width/height = 1 and 2, are
+                                                                                      investigated by means of direct numerical simulations. For Γ = 1, tilt tends to
+                                                                                      suppress flow reversals. However, it is found that flow reversals characterized by two
+                                                                                      main rolls are promoted by tilt for Γ = 2, which are even observed for some cases
+                                                                                      of small Prandtl numbers (Pr) and large tilt angles (β). Different from level cases
+                                                                                      where the four corner rolls all have opportunities to grow and trigger a flow reversal,
+                                                                                      the reversals in an anticlockwise tilted cell with Γ = 2 are always led by the growth
+                                                                                      of the bottom-right or the top-left corner roll. Tilt is favourable for the growth of
+                                                                                      the bottom-right or the top-left corner roll and thus for breaking the balance between
+                                                                                      the two main rolls and triggering a flow reversal. The mode decomposition analysis
+                                                                                      shows that the appearance of the intermediate single-roll mode is crucial for reversals,
+                                                                                      and flow reversals in a tilted cell with Γ = 2 can be viewed as a mode competition
+                                                                                      process between single-roll mode and horizontally adjacent double-roll mode. They
+                                                                                      can only occur in a limited range of β where the two modes have comparable
+                                                                                      strength. Furthermore, the Nusselt numbers at the hot plate Nuh and at the cold plate
+                                                                                      Nuc behave differently during a flow reversal for Γ = 2 due to the preference of
+https://doi.org/10.1017/jfm.2018.451 Published online by Cambridge University Press
+
+
+
+
+                                                                                      single corner roll growth.
+                                                                                      Key words: Bénard convection, convection, convection in cavities
+
+
+
+
+                                                                                      1. Introduction
+                                                                                        Spontaneous reversal phenomena are common in many buoyancy-driven fluid
+                                                                                      dynamical systems, including reversals of the Earth’s geomagnetic field (Glatzmaier
+                                                                                      & Roberts 1995), and large-scale fluid motion in the sea and the atmosphere (van
+                                                                                      Doorn et al. 2000). There also exist flow reversals of the large-scale circulation (LSC)
+                                                                                      in a model problem, i.e. Rayleigh–Bénard convection (RBC) where a fluid layer is
+                                                                                      heated from below and cooled from above (see Ahlers, Grossmann & Lohse 2009;
+                                                                                      Xia 2013; Verma, Kumar & Pandey 2017, and references therein). The study of flow
+
+                                                                                                           † Email address for correspondence: wanzh@ustc.edu.cn
+                                                                                      356       Q. Wang, S.-N. Xia, B.-F. Wang, D.-J. Sun, Q. Zhou and Z.-H. Wan
+                                                                                      reversals in a model system like RBC may enable us to gain more insights into
+                                                                                      general reversal phenomena in nature (Huang et al. 2015).
+                                                                                         In cylindrical cells, there are two categories of flow reversals (Brown, Nikolaenko
+                                                                                      & Ahlers 2005): one is rotation-led reversals, which are caused by incessant azimuthal
+                                                                                      meandering of the circulating plane; the other is cessation-led reversals, in which the
+                                                                                      LSC slows to a stop and restarts in a random new orientation. Flow reversals in
+                                                                                      cylindrical cells have been studied both experimentally (Brown et al. 2005; Brown
+                                                                                      & Ahlers 2006; Xi, Zhou & Xia 2006; Xi & Xia 2007, 2008a,b; Xi et al. 2016)
+                                                                                      and numerically (Mishra et al. 2011). Several models, either stochastic ones (Benzi
+                                                                                      2005; Brown & Ahlers 2007) or deterministic ones (Araujo, Grossmann & Lohse
+                                                                                      2005), have been proposed to account for the flow reversals. The model proposed
+                                                                                      by Brown & Ahlers (2007) consists of two stochastic ordinary differential equations,
+                                                                                      and it agrees well with many experimental results for LSC dynamics. The recent
+                                                                                      experimental work of Xi et al. (2016) found that the second mode and the remaining
+                                                                                      higher-order modes play important roles in the dynamical process of the reversal and
+                                                                                      the Nusselt number Nu drops to its minimum during a flow reversal. It was once
+                                                                                      thought that cessation-led reversals presumably would prevail in systems where the
+                                                                                      rotational invariance is broken (Brown et al. 2005). However, the cessations of the
+                                                                                      LSC have not been observed in a cubic cell where the rotational invariance is broken
+                                                                                      (Foroozani et al. 2017). It is still ambiguous why cessations are absent in a cubic cell.
+                                                                                         Without complicated three-dimensional (3D) structures, flow reversals in two-
+                                                                                      dimensional (2D) (Sugiyama et al. 2010; Chandra & Verma 2011, 2013; Petschel
+                                                                                      et al. 2011; Podvin & Sergent 2015; Verma, Ambhire & Pandey 2015; Castillo-
+                                                                                      Castellanos, Sergent & Rossi 2016; Xia et al. 2016; Mannattil et al. 2017; Podvin
+                                                                                      & Sergent 2017) or quasi-2D (Huang et al. 2015; Ni, Huang & Xia 2015; Huang &
+                                                                                      Xia 2016) square cavities have attracted much attention in recent years. Sugiyama
+                                                                                      et al. (2010) studied flow reversals in a square cavity with unit aspect ratio by means
+                                                                                      of 2D direct numerical simulations (DNS) combined with experiments performed in
+                                                                                      a quasi-2D cell, and found that the results of experiments and simulations are in very
+                                                                                      good agreement. They also showed that the growth of corner rolls both in kinetic
+                                                                                      energy and in size plays key roles in triggering flow reversals. They concluded that
+                                                                                      flow reversals in a 2D/quasi-2D cell occur only in a limited parameter space, that
+                                                                                      is to say, the reversals do not exist for too large or too small Pr as well as too
+                                                                                      large or too small Ra. Chandra & Verma (2011, 2013) used a mode decomposition
+https://doi.org/10.1017/jfm.2018.451 Published online by Cambridge University Press
+
+
+
+
+                                                                                      method to study flow reversals, and showed that flow reversals are caused by a
+                                                                                      vortex reconnection of two attracting rolls and the appearance of the (2, 2) mode
+                                                                                      is critical to trigger flow reversals. Podvin & Sergent (2015, 2017) used proper
+                                                                                      orthogonal decomposition to study flow reversals in a 2D square cell and proposed
+                                                                                      a 3D model that is based on the interaction of the LSC, the quadrupolar flow
+                                                                                      and horizontal rolls. Castillo-Castellanos et al. (2016) found that the reversal cycle is
+                                                                                      composed of three successive phases: acceleration, accumulation and release including
+                                                                                      a rebound event. Huang & Xia (2016) experimentally found that the frequency of flow
+                                                                                      reversals increases drastically in smaller Γ cells. It should be noted that 2D/quasi-2D
+                                                                                      convection promotes reversals particularly for topological reasons. In 3D cubic cells,
+                                                                                      reversals are very rare (Foroozani et al. 2017). Previous works are almost restricted
+                                                                                      to a unit-aspect-ratio cell where there exists only one LSC that spans the size of the
+                                                                                      convection cell. It has already been realized by Sugiyama et al. (2010) that Γ has
+                                                                                      a strong effect on the reversal dynamics. For a Γ = 2 cell, the flow is characterized
+                                                                                      by two main rolls and flow reversals also exist (Chandra & Verma 2011; Verma
+                                                                                      et al. 2015). However, much less work has so far been devoted to flow reversals in a
+                                                                                      Γ = 2 cell.
+                                                                                                    Flow reversals in 2D thermal convection in tilted cells              357
+                                                                                         There are several differences between flow reversals in 2D/quasi-2D and 3D
+                                                                                      geometries. Firstly, the mean time between successive reversals has a strong Ra
+                                                                                      dependence in the former (Sugiyama et al. 2010) while it has a weak Ra dependence
+                                                                                      in the latter (Brown & Ahlers 2006; Xi & Xia 2007). Secondly, flow reversals in
+                                                                                      2D/quasi-2D cells occur in a limited parameter space, and there are no reversals for
+                                                                                      Ra larger than 5 × 108 (2D) or 1.6 × 109 (quasi-2D) (Sugiyama et al. 2010). However,
+                                                                                      flow reversals in 3D cylindrical cells can occur at larger Ra (Ra > 1010 ) (Brown et al.
+                                                                                      2005; Brown & Ahlers 2006; Xi et al. 2016) and high Pr (Pr = 19.4) (Xie, Wei &
+                                                                                      Xia 2013). Whether 2D reversals and cessation-led reversals correspond to the same
+                                                                                      phenomenon is still an open question (Castillo-Castellanos et al. 2016).
+                                                                                         Almost all previous studies are conducted in a symmetrical system. However,
+                                                                                      flow reversals in the real world usually take place in an asymmetrical system. One
+                                                                                      example is that the heat flux on the core–mantle boundary in the Earth is non-uniform
+                                                                                      (Gubbins et al. 2011) and this has a great influence on the frequency of geomagnetic
+                                                                                      reversals (Glatzmaier et al. 1999). Another is the solar convection zone that has both
+                                                                                      torsional oscillations and periodic reversals (Howard & LaBonte 1980). Therefore, it
+                                                                                      is important to study the influence of symmetry breaking on flow reversals. Brown
+                                                                                      & Ahlers (2006, 2008) found that flow reversals in a Γ = 1 cylindrical container are
+                                                                                      suppressed significantly even for very small tilt angles. Sun, Xi & Xia (2005) also
+                                                                                      found that, in a cylindrical container with Γ = 0.5, a minor tilt of 2◦ will lock the
+                                                                                      LSC in the azimuthal plane along the tilted direction, and reversals are suppressed;
+                                                                                      similar results were also found in a rectangular cell with Γ = 0.5 (Wang et al. 2017).
+                                                                                      Xia et al. (2016) studied non-Oberbeck-Boussinesq (NOB) effects on flow reversals,
+                                                                                      and, interestingly, they found that, when considering NOB effects, flow reversals can
+                                                                                      be observed for relatively small Pr = 0.71. Huang et al. (2015) studied the influence
+                                                                                      of thermal boundary conditions on flow reversals. They claimed that the reversal of
+                                                                                      the LSC can be viewed as a process for the system to restore its symmetry in a
+                                                                                      statistical way.
+                                                                                         It is generally accepted that tilt will suppress flow reversals in a Γ = 1 cell.
+                                                                                      However, how cell tilt will influence flow reversals in larger-aspect-ratio cells where
+                                                                                      multiple convection rolls may exist is still an open question. In this paper, we try
+                                                                                      to fill this gap by studying the influence of cell tilt on flow reversals in a 2D
+                                                                                      rectangular cell with Γ = 2 where two convection rolls may develop; the results are
+                                                                                      also compared with those for Γ = 1 cases. The reason why we choose Γ = 2 is that
+https://doi.org/10.1017/jfm.2018.451 Published online by Cambridge University Press
+
+
+
+
+                                                                                      it has been found previously that flow reversals of a double-roll state exist in a Γ = 2
+                                                                                      cell (Chandra & Verma 2011; Verma et al. 2015), while whether flow reversals
+                                                                                      exist for Γ > 2 is still unknown. There are two advantages of 2D DNS: (i) The
+                                                                                      numerical effort required for 2D simulations is much smaller and thus we can study
+                                                                                      flow reversals in a considerable fraction of the Rayleigh number Ra/Prandtl number
+                                                                                      Pr versus tilt angle β parameter space for different Γ . (ii) The flow visualization is
+                                                                                      much easier, and a detailed flow reversal scenario can be obtained. In recent years,
+                                                                                      2D DNS has been used widely to study turbulent convection. For example, it has
+                                                                                      been used to study turbulent heat transfer (van der Poel, Stevens & Lohse 2011; van
+                                                                                      der Poel et al. 2012, 2014; Huang & Zhou 2013; Bao et al. 2015), to study boundary
+                                                                                      layer (BL) dynamics (Zhou et al. 2010, 2011; van der Poel et al. 2015; Zhang et al.
+                                                                                      2017a), to reveal NOB effects on flow organization (Sugiyama et al. 2009), to probe
+                                                                                      the effect of roughness on heat transfer (Shishkina & Wagner 2011; Toppaladoddi,
+                                                                                      Succi & Wettlaufer 2017; Zhu et al. 2017; Xu et al. 2018; Zhang et al. 2018), to
+                                                                                      investigate statistics of kinetic and thermal energy dissipation rates in RBC (Zhang,
+                                                                                      Zhou & Sun 2017b) and, more recently, to explore the transition to the ultimate
+                                                                                      regime (Zhu et al. 2018).
+                                                                                      358       Q. Wang, S.-N. Xia, B.-F. Wang, D.-J. Sun, Q. Zhou and Z.-H. Wan
+                                                                                         The remainder of the paper is organized as follows. In § 2, we introduce the
+                                                                                      governing equations and numerical methods. The main results are presented in § 3,
+                                                                                      which is divided into three parts. Section 3.1 studies the influence of tilt on flow
+                                                                                      reversals in Γ = 1 and Γ = 2 cells. In § 3.2, we use a mode decomposition method
+                                                                                      to reveal the inherent mechanism for the reversals in a tilted Γ = 2 cell. Section 3.3
+                                                                                      discusses the heat transfer properties during the reversals. Finally, a short summary
+                                                                                      is presented in § 4.
+
+                                                                                      2. Numerical procedures
+                                                                                         We studied flow reversals in a tilted cell with width Ŵ and height Ĥ (hatted
+                                                                                      quantities are dimensional), where the bottom plate has a constant high temperature
+                                                                                      T̂H while the top plate has a constant low temperature T̂C . Here, with Oberbeck–
+                                                                                      Boussinesq approximation, the dimensionless governing equations read
+                                                                                                                             ∇ · u = 0,                                    (2.1)
+                                                                                                              ∂u
+                                                                                                                                      r
+                                                                                                                                      Pr 2
+                                                                                                                 + u · ∇u = −∇p +        ∇ u + Te,                         (2.2)
+                                                                                                              ∂t                      Ra
+                                                                                                                  ∂T                1
+                                                                                                                       + u · ∇T = √      ∇ 2 T,                            (2.3)
+                                                                                                                   ∂t              Ra Pr
+                                                                                      where u = (v, w) and x = (y, z) are the velocity components and coordinates in
+                                                                                      the horizontal and vertical directions, p is the reduced kinetic pressure, T is the
+                                                                                      temperature, e is a unit vector defined by e = (sin(β), cos(β)), and β is the tilt angle,
+                                                                                      which is positive when the cell rotates anticlockwise. For non-dimensionalization, the
+                                                                                      free-fall velocity Û = (ĝα̂1T̂ Ĥ)1/2 and the height of the container Ĥ are used, where
+                                                                                      ĝ is the gravitational acceleration, α̂ is the isobaric thermal expansion coefficient, and
+                                                                                      1T̂ = T̂H − T̂C is the temperature difference. The reference time is the free-fall time
+                                                                                      t̂f = Ĥ/Û, and the dimensionless temperature is defined by T = (T̂ − T̂C )/1T̂. This
+                                                                                      problem is governed by three dimensionless parameters, i.e. the Prandtl number Pr,
+                                                                                      Rayleigh number Ra and aspect ratio Γ :
+                                                                                                                   ν̂            ĝα̂1T̂ Ĥ 3          Ŵ
+                                                                                                               Pr = ,     Ra =                ,   Γ=        ,          (2.4a−c)
+                                                                                                                   κ̂                ν̂ κ̂
+https://doi.org/10.1017/jfm.2018.451 Published online by Cambridge University Press
+
+
+
+
+                                                                                                                                                       Ĥ
+                                                                                      where κ̂ is the thermal diffusivity, and ν̂ is the kinematic viscosity. No-slip and
+                                                                                      impermeability conditions are imposed at all walls and the sidewalls are insulated.
+                                                                                         The governing equations are solved numerically by a well-validated in-house code
+                                                                                      lMn2d. All spatial terms are discretized using a second-order central difference
+                                                                                      scheme. A non-uniform grid with clustered grid points near walls is used to resolve
+                                                                                      small scales inside boundary layers. Pressure and velocities are staggered in space
+                                                                                      in order to avoid pressure–velocity decoupling. Time integration is accomplished by
+                                                                                      using the Adams–Bashforth scheme for the nonlinear terms and the Crank–Nicolson
+                                                                                      scheme for the viscous and diffusion terms. Detailed numerical schemes and
+                                                                                      validations of this code can be found in our previous work (Xia et al. 2016).
+                                                                                         The simulation parameters of this paper are listed in table 1. The initial field
+                                                                                      for cases with β = 0◦ is the conductive state with small perturbations added to the
+                                                                                      temperature field, while for tilted cases we use the flow field of β = 0◦ as the initial
+                                                                                      condition. In all cases, the simulations run for a long time to determine whether
+                                                                                      flow reversals exist. Moreover, in order to obtain better statistics of the flow reversal
+                                                                                      frequencies, the longest simulation is performed for 249 000 free-fall time units.
+                                                                                                            Flow reversals in 2D thermal convection in tilted cells              359
+
+                                                                                                                Γ          Ra            Pr         β (deg.)         Ny × Nz
+                                                                                                                1    [10 , 10 ]
+                                                                                                                           7     8
+                                                                                                                                          2         [0, 20]         256 × 256
+                                                                                                                1     5 × 107          [1.5, 5]     [0, 20]         256 × 256
+                                                                                                                2       107          [0.05, 4.38]   [0, 90]         512 × 256
+                                                                                                                2    [107 , 108 ]        0.3        [0, 60]         512 × 256
+                                                                                       TABLE 1. Simulation parameters. The columns from left to right indicate aspect ratio,
+                                                                                                Rayleigh number, Prandtl number, tilt angle and mesh resolution.
+
+
+                                                                                      (a)                                      (b)                            (c)
+                                                                                            1
+                                                                                                                                                                                 1.0
+
+
+
+                                                                                                                                                                                 0.5
+
+
+                                                                                                z
+                                                                                                                                                                                 0
+                                                                                                                       1
+                                                                                                    0   y
+
+                                                                                      F IGURE 1. (Colour online) Three snapshots of the temperature field superimposed with
+                                                                                      velocity vectors during one of the flow reversals for Ra = 5 × 107 , Pr = 2, β = 6◦ at
+                                                                                      different times: (a) t = 500, (b) t = 655 and (c) t = 705.
+
+
+                                                                                      3. Results and discussion
+                                                                                                         3.1. Flow reversals in two-dimensional tilted cells
+                                                                                      We start by studying the influence of tilt on flow reversals for a typical aspect ratio
+                                                                                      Γ = 1. Figure 1 shows snapshots of the temperature and velocity fields during one of
+                                                                                      the reversals at Ra = 5 × 107 , Pr = 2 and β = 6◦ . Although the symmetry of the system
+                                                                                      is broken, it is found that the reversal process is similar to the level case (Sugiyama
+                                                                                      et al. 2010). The two corner rolls grow simultaneously in kinetic energy and also in
+                                                                                      size due to the plume detachment from the boundary layers, until they merge as a new
+https://doi.org/10.1017/jfm.2018.451 Published online by Cambridge University Press
+
+
+
+
+                                                                                      LSC with the opposite direction, and a flow reversal happens. It is well known that
+                                                                                      flow reversals occur in a certain Ra–Pr parameter space for Γ = 1. For a system with
+                                                                                      only one main roll, the reversal process can be nicely indicated by a global quantity,
+                                                                                      i.e. the net angular momentum
+
+                                                                                                                 L(t) = h−(z − 1/2)v(x, t) + (y − 1/2)w(x, t)iV ,               (3.1)
+
+                                                                                      where h·iV represents averaging over the total area. Figure 2 shows the time evolution
+                                                                                      of L for the level case with β = 0◦ and the tilted case with β = 6◦ at Ra = 5 × 107 and
+                                                                                      Pr = 2. A sign change of L can reveal a reversal; frequent flow reversals in a level
+                                                                                      cell can be observed in figure 2(a). From figure 2(b), it is evident that the symmetry
+                                                                                      breaking induced by tilt greatly suppresses flow reversals for Γ = 1. One sees that
+                                                                                      the clockwise main roll with negative L stays for quite a short time before reversing
+                                                                                      its orientation. This is because, for the clockwise LSC, as shown in figure 1(c), tilt
+                                                                                      introduces a horizontal buoyancy force along the y direction so that the hot plumes
+                                                                                      are more likely to move up to the bottom-right corner roll and the cold plumes tend
+                                                                                      to move down to the top-left corner roll. The two corner rolls have more opportunities
+                                                                                      360       Q. Wang, S.-N. Xia, B.-F. Wang, D.-J. Sun, Q. Zhou and Z.-H. Wan
+
+                                                                                               (a) 0.1
+
+                                                                                                 L     0
+
+                                                                                                     –0.1
+                                                                                                            0     2            4              6          8          10
+
+                                                                                               (b) 0.1
+
+                                                                                                 L     0
+
+                                                                                                     –0.1
+                                                                                                            0         20             40             60              80
+                                                                                                                              t (free-fall time)
+
+                                                                                      F IGURE 2. Time evolution of the angular momentum L for Γ = 1, Ra = 5 × 107 and
+                                                                                      Pr = 2: (a) β = 0◦ and (b) β = 6◦ . The positive and negative signs indicate anticlockwise
+                                                                                      and clockwise circulations, respectively.
+
+
+                                                                                      to grow and trigger a reversal. Besides, the tilt may weaken the clockwise LSC since
+                                                                                      along the hot and cold plates the horizontal buoyancy force is in the opposite direction
+                                                                                      to the flow velocity of LSC. Thus the clockwise LSC is less stable and is easier
+                                                                                      to reverse its orientation, and it always stays for a much shorter time as shown in
+                                                                                      figure 2(b). Previous studies have shown that the main roll will be locked in the
+                                                                                      plane along the tilted direction both in cylindrical cells (Xi, Lam & Xia 2004; Brown
+                                                                                      & Ahlers 2006; Shishkina & Horn 2016) and in rectangular cells (Guo et al. 2015,
+                                                                                      2017) with Γ = 1. Thus the suppression of flow reversals by tilt for Γ = 1 is within
+                                                                                      expectation.
+                                                                                         We then map out phase diagrams for Γ = 1 over β–Pr parameter space with Ra =
+                                                                                      5 × 107 and over β–Ra parameter space with Pr = 2 in figure 3. We run for at least
+                                                                                      5000 large-eddy turnover times tE to detect whether flow reversals exist. Time tE is
+                                                                                      defined by tE := 4π/h|ωc (t)|i, where ωc denotes vorticity in the centre of the main
+                                                                                      roll. For some cases (for example, Ra = 108 , Pr = 2, Γ = 1, β = 3◦ ), we even
+                                                                                      calculate for more than 10 000 tE to conclude there are indeed no reversals. As shown
+                                                                                      in figure 3(a), the critical angle βc displays a non-monotonic relation with Pr. For
+https://doi.org/10.1017/jfm.2018.451 Published online by Cambridge University Press
+
+
+
+
+                                                                                      larger Pr, the βc value is smaller; for Pr = 5, a minor tilt of 1◦ will completely
+                                                                                      suppress flow reversals due to the fact that the thickness of the thermal BL is much
+                                                                                      smaller than the thickness of the kinetic BL and thermal coupling between the corner
+                                                                                      roll and the thermal BL is weakened, as stated previously (Sugiyama et al. 2010). For
+                                                                                      small Pr, thermal diffusion becomes dominant and suppresses the growth of the corner
+                                                                                      roll. Therefore, flow reversals in the tilted cell also occur more easily at intermediate
+                                                                                      Pr, and the corresponding βc is also larger. In figure 3(b), βc also displays a non-
+                                                                                      monotonic relation with Ra. For intermediate Ra, the corresponding βc is larger. The
+                                                                                      reason lies in the non-monotonic dependence of the flow reversal frequency on Ra. It
+                                                                                      can be seen in figure 3 of Sugiyama et al. (2010) that flow reversals are most frequent
+                                                                                      for intermediate Ra (approximately 7 × 107 for Pr = 4.3); any increase or decrease of
+                                                                                      Ra will reduce the flow reversal frequency. For the Pr = 2 considered in our work,
+                                                                                      the reversals are most frequent for Ra ∼ 4 × 107 , thus the corresponding βc is larger,
+                                                                                      and any increase or decrease of Ra will reduce βc . The reversals occur less and less
+                                                                                      frequently with increasing Ra and reversals disappear when Ra ⩾ 2 × 108 for Pr = 2
+                                                                                      (Sugiyama et al. 2010). Thus the main roll here is more sensitive to tilt at larger Ra,
+                                                                                      and a minor tilt of the cell will suppress flow reversals at relatively high Ra.
+                                                                                                             Flow reversals in 2D thermal convection in tilted cells            361
+
+                                                                                         (a)                                               (b)
+
+                                                                                                 5                                               10
+
+                                                                                                                                                  8
+                                                                                                 4
+
+                                                                                         Pr                                                 Ra 6
+                                                                                                 3
+                                                                                                                                                  4
+                                                                                                 2
+                                                                                                                                                  2
+
+                                                                                                 1                                                0
+                                                                                                     0         5      10         15   20              0         5   10   15   20
+
+
+
+                                                                                      F IGURE 3. (Colour online) (a) Phase diagram in the β–Pr plane for Ra = 5 × 107 , Γ =
+                                                                                      1. (b) Phase diagram in the β–Ra plane for Pr = 2, Γ = 1. Red filled diamonds (f)
+                                                                                      correspond to detected flow reversals, and green squares (p) to a single-roll state without
+                                                                                      reversals.
+
+                                                                                       (a) 1                                   (b)                        (c)
+
+                                                                                                                                                                                   1.0
+                                                                                             z
+
+
+                                                                                             0           y                 2                                                       0.5
+                                                                                      (d )                                     (e)                        (f)
+                                                                                                                                                                                   0
+
+
+
+
+                                                                                      F IGURE 4. (Colour online) Six snapshots of the temperature field superimposed with
+                                                                                      velocity vectors during one of the flow reversals for Ra = 107 , Pr = 0.71, β = 0◦ at
+                                                                                      different times: (a) t = 12 283, (b) t = 12 338, (c) t = 12 349, (d) t = 12 354, (e) t = 12 361
+                                                                                      and ( f ) t = 12 377.
+https://doi.org/10.1017/jfm.2018.451 Published online by Cambridge University Press
+
+
+
+
+                                                                                         Compared with Γ = 1, there have been fewer studies devoted to horizontally
+                                                                                      adjacent double-roll reversals in a Γ = 2 cell (Chandra & Verma 2011; Verma et al.
+                                                                                      2015). Here, we first explore the flow reversals in a Γ = 2 cell at a fixed Ra = 107 ,
+                                                                                      but varying Pr and β, as listed in table 1. The Ra dependence for a fixed Pr = 0.3
+                                                                                      is also studied. Figure 4 shows flow reversal scenarios for a level case with Ra = 107 ,
+                                                                                      Pr = 0.71 and Γ = 2; it is seen that the single corner roll growth leads to a flow
+                                                                                      reversal, which is qualitatively the same as that of Verma et al. (2015). Owing to
+                                                                                      the inherent symmetry of the system, the two bottom corner rolls in figure 4(a) and
+                                                                                      the two top corner rolls in figure 4( f ) all have opportunities to grow and trigger
+                                                                                      flow reversals. However, when the symmetry of the system is broken by tilt, the two
+                                                                                      corner rolls will no longer play equivalent roles.
+                                                                                         Figure 5 shows snapshots for two successive flow reversals at Ra = 107 , Pr = 0.71
+                                                                                      and β = 1◦ . As shown in figure 5(a), the flow field is characterized by two main
+                                                                                      rolls and two bottom corner rolls. Since tilt will introduce a horizontal buoyancy
+                                                                                      force along the y direction, the hot plumes detached from the lower BL will bear
+                                                                                      362        Q. Wang, S.-N. Xia, B.-F. Wang, D.-J. Sun, Q. Zhou and Z.-H. Wan
+
+                                                                                      (a) 1                          (b)                        (c)
+
+                                                                                             z
+
+                                                                                             0   y               2
+                                                                                                                                                                             1.0
+                                                                                      (d )                           (e)                       (f)
+                                                                                                                                                                             0.5
+
+
+                                                                                                                                                                             0
+                                                                                      (g)                            (h)                        (i)
+
+
+
+
+                                                                                      F IGURE 5. (Colour online) Nine snapshots of the temperature field superimposed with
+                                                                                      velocity vectors during two of the flow reversals for Ra = 107 , Pr = 0.71, β = 1◦ at
+                                                                                      different times: (a) t = 1684.5, (b) t = 1701, (c) t = 1704, (d) t = 1710, (e) t = 1711.5,
+                                                                                      ( f ) t = 1725, (g) t = 2860.5, (h) t = 2869.5 and (i) t = 2890.5.
+
+
+                                                                                      a top-right buoyancy force and be apt to feed the bottom-right corner roll. This is
+                                                                                      favourable for the growth of the bottom-right corner roll as illustrated in figure 5(b).
+                                                                                      The bottom-left corner roll, however, almost remains unchanged. The subsequent
+                                                                                      reversal process shown in figure 5(c–f ) is similar to that in a level case. Similarly,
+                                                                                      for the next reversal cycle, due to the y direction buoyancy force introduced by tilting
+                                                                                      the cell, the cold plumes detached from the upper BL are more likely to enter the
+                                                                                      top-left corner roll. Thus the top-left corner roll growth will lead to a flow reversal,
+                                                                                      as shown in figure 5(g–i). It should also be noted that the horizontal buoyancy force
+                                                                                      induced by tilt near the top and bottom walls is always in the opposite direction to
+                                                                                      the flow velocity of one of the two main rolls. Thus the effect of tilt on the main
+                                                                                      rolls may always play some roles in flow reversals in a tilted Γ = 2 cell, and the
+https://doi.org/10.1017/jfm.2018.451 Published online by Cambridge University Press
+
+
+
+
+                                                                                      unstable clockwise main roll will always first reverse its direction. Owing to the
+                                                                                      symmetry breaking, only the bottom-right corner roll in figure 5(a) and the top-left
+                                                                                      corner roll in figure 5( f ) have opportunities to grow and lead to a flow reversal; this
+                                                                                      is different from a level case where the four corner rolls all have opportunities to
+                                                                                      grow and trigger a flow reversal. This argument can be quantitatively demonstrated
+                                                                                      by investigating the long-time evolution of L as shown in figure 6. Note that L is
+                                                                                      calculated with respect to the centre point (1, 0.5) here. The flow is dominated by
+                                                                                      the double-roll mode with L ≃ 0 most of the time due to compensation of two main
+                                                                                      rolls. When flow reversal occurs, the clockwise/anticlockwise intermediate single-roll
+                                                                                      mode appears (see figures 4c and 5c), and thus large negative/positive L will appear,
+                                                                                      indicated by sharp spikes in figure 6. The large positive L indicates that it is the
+                                                                                      growth of the bottom-right corner roll shown in figure 5(a) or the top-left corner
+                                                                                      roll shown in figure 5( f ) that leads to flow reversals, while the large negative L
+                                                                                      indicates that it is the growth of the bottom-left corner roll shown in figure 4(a) or
+                                                                                      the top-right corner roll shown in figure 4( f ) that leads to a successful flow reversal.
+                                                                                      It is seen that both positive and negative spikes exist for the level case while only
+                                                                                      positive spikes exist for the tilted case. Thus only the growth of the bottom-right
+                                                                                                      Flow reversals in 2D thermal convection in tilted cells               363
+
+                                                                                                (a) 0.15
+
+                                                                                                L      0
+
+                                                                                                    –0.15
+
+                                                                                                (b) 0.15
+
+                                                                                                L      0
+
+                                                                                                    –0.15
+
+                                                                                                (c) 0.15
+
+                                                                                                L      0
+
+                                                                                                    –0.15
+                                                                                                            0               5                        10             15
+                                                                                                                                t (free-fall time)
+
+                                                                                      F IGURE 6. Time evolution of angular momentum L for Ra = 107 , Pr = 0.71 and Γ = 2:
+                                                                                                             (a) β = 0◦ , (b) β = 0.5◦ and (c) β = 1◦ .
+
+
+                                                                                                                10–1
+
+
+                                                                                                                10–2
+
+
+                                                                                                                10–3
+
+
+                                                                                                                10–4
+
+
+                                                                                                                10–5
+                                                                                                                       0    1     2     3      4      5   6
+https://doi.org/10.1017/jfm.2018.451 Published online by Cambridge University Press
+
+
+
+
+                                                                                      F IGURE 7. (Colour online) Flow reversal frequency f as a function of β. Red circles (E)
+                                                                                      for Ra = 5 × 107 , Pr = 2, Γ = 1; blue diamonds (6) for Ra = 107 , Pr = 0.71, Γ = 2.
+
+
+                                                                                      corner roll or the top-left corner roll will lead to a flow reversal in a tilted cell. From
+                                                                                      figure 6, we can also see that there are many more flow reversals in tilted cells,
+                                                                                      demonstrating that tilt will promote flow reversals for Γ = 2. To further quantify the
+                                                                                      promoting effect of cell tilt on the flow reversal, the reversal frequencies f defined by
+                                                                                      reversal numbers per free-fall time unit are calculated, which are plotted in figure 7.
+                                                                                      Clearly, for Γ = 1, f does not drop much for small β ⩽ 2◦ , while for β > 2◦ , f drops
+                                                                                      rapidly. In contrast, f increases monotonically with β for Γ = 2; it even increases
+                                                                                      more than an order from β = 0◦ to 1◦ . Thus a minor tilt will greatly promote flow
+                                                                                      reversals for Γ = 2.
+                                                                                         Again we map out flow states in β–Pr space for Ra = 107 and Γ = 2 in figure 8(a).
+                                                                                      We run for at least 4000 tE to detect whether flow reversals exist. As the position
+                                                                                      of the centre of the main roll changes after reversals (this is especially evident for
+                                                                                      364            Q. Wang, S.-N. Xia, B.-F. Wang, D.-J. Sun, Q. Zhou and Z.-H. Wan
+
+                                                                                        (a)                                            (b)
+                                                                                              101
+                                                                                                                                             10
+
+                                                                                                                                              8
+                                                                                              100
+                                                                                        Pr                                             Ra 6
+                                                                                                                                              4
+                                                                                              10–1
+                                                                                                                                              2
+
+                                                                                                                                              0
+                                                                                                     0   10 20 30 40 50 60 70 80 90               0   10   20   30   40   50   60
+
+
+
+                                                                                      F IGURE 8. (Colour online) (a) Phase diagram in the β–Pr plane for Ra = 107 , Γ =
+                                                                                      2. (b) Phase diagram in the β–Ra plane for Pr = 0.3, Γ = 2. Red filled diamonds
+                                                                                      (f) correspond to detected flow reversals; blue filled circles (u) denote double-roll state
+                                                                                      without flow reversals; green squares (p) represent single-roll state without flow reversals.
+
+
+                                                                                      reversals with large β), the large-eddy turnover time tE is better defined by tE := (W +
+                                                                                      2H)/uLSC , where uLSC is the typical velocity of the LSC measured at ∼H/10 from the
+                                                                                      sidewalls and plates (Zhou et al. 2011; Ni et al. 2015). Three different flow states
+                                                                                      are identified, which are the double-roll state without flow reversals, the double-roll
+                                                                                      state with flow reversals, and the single-roll state without flow reversals, respectively.
+                                                                                      One sees that, for Pr ⩽ 0.5 and small β, the flow stays in the stable double-roll state
+                                                                                      without flow reversals. When β is beyond a critical value, the double-roll state is
+                                                                                      no longer stable and flow reversals occur in the intermediate range of β. However,
+                                                                                      when β increases further, the flow becomes a stable one-roll state and no reversals can
+                                                                                      be observed any more. For 0.71 ⩽ Pr ⩽ 4.38, the flow transits directly from reversal
+                                                                                      state to one-roll state. It is interesting that for relatively small Pr ⩽ 0.5, flow reversals
+                                                                                      can only occur in tilted cells. It is worth mentioning that the reversals even occur at
+                                                                                      very small Pr and large β. For instance, there exist flow reversals for Pr = 0.05 and
+                                                                                      β = 70◦ , as seen in figure 8(a). This is in stark contrast to that in a Γ = 1 cell where
+                                                                                      no reversals exist for Pr ⩽ 0.71 (Sugiyama et al. 2010). Because flow reversals in
+https://doi.org/10.1017/jfm.2018.451 Published online by Cambridge University Press
+
+
+
+
+                                                                                      tilted cells with Γ = 2 tend to occur for small Pr, the Ra dependence of flow reversals
+                                                                                      is studied for a representative small Pr = 0.3. Figure 8(b) maps out flow states over
+                                                                                      the β–Ra parameter space for fixed Pr = 0.3. It is obvious that flow reversals can only
+                                                                                      be found in tilted cells, which even exist at Ra = 108 . Based on the above findings,
+                                                                                      we show that the symmetry breaking of the system induced by tilt has considerably
+                                                                                      broadened the original Ra–Pr parameter space of flow reversals for Γ = 2. However,
+                                                                                      the crucial question left in this section is why reversals only occur in a limited range
+                                                                                      of β for Γ = 2.
+
+                                                                                                              3.2. Mode decomposition analysis
+                                                                                      To find the answer to the question left in § 3.1, a mode decomposition method is
+                                                                                      employed. We project the velocity components v and w onto the following Fourier
+                                                                                      basis:
+                                                                                                                       √
+                                                                                                               v̂ m,n = 2 sin(mπy/2) cos(nπz),                    (3.2)
+                                                                                                                m,n
+                                                                                                                        √
+                                                                                                              ŵ = − 2 cos(mπy/2) sin(nπz).                       (3.3)
+                                                                                                     Flow reversals in 2D thermal convection in tilted cells                 365
+                                                                                      The velocity can be recovered by
+                                                                                                                                    X
+                                                                                                                     v(y, z, t) =         Aym,n (t)v̂ m,n ,                 (3.4)
+                                                                                                                                    m,n
+                                                                                                                                    X
+                                                                                                                     w(y, z, t) =         Azm,n (t)ŵm,n .                  (3.5)
+                                                                                                                                    m,n
+
+                                                                                      The projection is done componentwise by a scalar product in the L2 -space. The
+                                                                                                                   y (t) and Az (t) can be obtained by
+                                                                                      corresponding time series Am,n            m,n
+
+                                                                                                                        Z ymax Z zmax
+                                                                                                              y (t) =
+                                                                                                             Am,n                     v(y, z, t)v̂ m,n dy dz,   (3.6)
+                                                                                                                         0      0
+                                                                                                                        Z ymax Z zmax
+                                                                                                             Am,n
+                                                                                                              z   (t) =               w(y, z, t)ŵm,n dy dz.    (3.7)
+                                                                                                                          0     0
+                                                                                      A value M m,nq  (t) representing the contribution of different modes can be evaluated
+                                                                                      by M (t) = Am,n
+                                                                                             m,n
+                                                                                                          y (t) + Az (t) . The mode (m, n) corresponds to a flow structure
+                                                                                                               2    m,n  2
+
+                                                                                      with m rolls in the y direction and n rolls in the z direction. Although Fourier
+                                                                                      basis functions do not satisfy the no-slip boundary conditions, it has been shown
+                                                                                      that they capture the convective flow profiles well (Chandra & Verma 2011, 2013;
+                                                                                      Petschel et al. 2011; Verma et al. 2015). The Fourier mode decomposition method
+                                                                                      has been employed extensively to study 2D reversals (Chandra & Verma 2011, 2013;
+                                                                                      Petschel et al. 2011; Verma et al. 2015) and heat transfer in quasi-2D cells (Wagner
+                                                                                      & Shishkina 2013; Chong et al. 2018).
+                                                                                         We quantitatively analyse the flow mode competition for a representative case with
+                                                                                      Ra = 107 , Pr = 0.5 and Γ = 2 where flow reversals only happen in a limited β range,
+                                                                                      i.e. 7◦ ⩽ β ⩽ 13◦ . Figure 9 shows the time evolution of the amplitudes of dominated
+                                                                                      modes (2, 1) and (1, 1), and the vertical velocity at the centre of the cell wc for β = 8◦ .
+                                                                                      A sign change of wc can nicely indicate a reversal. The flow near the times t = 890
+                                                                                      and 2110, which are denoted by vertical dash-dotted lines, can be viewed as cessations
+                                                                                      in a Γ = 2 cell. The growth of corner rolls does not trigger successful reversals near
+                                                                                      these two moments. In figure 9, it is found that the transient M 2,1 (t) approaches zero
+                                                                                      during reversals, while M 1,1 (t) shows a spike. The vanishing of the (2, 1) mode and
+                                                                                      the appearance of the (1, 1) mode correspond to the appearance of the anticlockwise
+https://doi.org/10.1017/jfm.2018.451 Published online by Cambridge University Press
+
+
+
+
+                                                                                      single-roll structures during the reversal. So we conclude that the appearance of single-
+                                                                                      roll mode (1, 1) plays a critical role in triggering a reversal, similar to that in a Γ = 1
+                                                                                      cell where the (2, 2) mode plays the dominant role.
+                                                                                         To understand why the flow reversals occur in a limited range of β, the bifurcation
+                                                                                      diagram is further shown in figure 10. One sees that the flow is dominated by the
+                                                                                      (2, 1) mode for 0◦ ⩽ β ⩽ 6◦ and the amplitude of the (1, 1) mode approaches 0,
+                                                                                      which is referred to as regime I. The M 1,1 starts to grow rapidly beyond β = 7◦ , then
+                                                                                      flow reversals occur for 7◦ ⩽ β ⩽ 13◦ , and we call this regime II. In this regime, the
+                                                                                      flow is still dominated by the (2, 1) mode, but the M 2,1 and M 1,1 are comparable. For
+                                                                                      15◦ ⩽ β ⩽ 90◦ , the flow is dominated by the (1, 1) mode and the amplitude of the
+                                                                                      (2, 1) mode is close to 0, which is called regime III. It can be seen that the M 1,1
+                                                                                      decreases monotonically with increasing β in this regime; this is because the flow
+                                                                                      strength, which is denoted by the Reynolds number Re, decreases monotonically with
+                                                                                      increasing β in this regime (Guo et al. 2015; Shishkina & Horn 2016). It is clear that
+                                                                                      the reversals tend to happen in the intermediate β range where the (2, 1) mode and
+                                                                                      (1, 1) mode have comparable strengths. Based on the mode decomposition analysis,
+                                                                                      we conclude that the flow reversals in tilted cells for Γ = 2 can be viewed as a mode
+                                                                                      competition process between the (2, 1) mode and (1, 1) mode.
+                                                                                      366       Q. Wang, S.-N. Xia, B.-F. Wang, D.-J. Sun, Q. Zhou and Z.-H. Wan
+
+                                                                                                        (a) 0.6
+
+                                                                                                                     0.4
+
+
+                                                                                                                     0.2
+
+
+
+                                                                                                                          0
+
+                                                                                                        (b) 1.0
+
+                                                                                                                     0.5
+
+                                                                                                                          0
+
+                                                                                                              –0.5
+
+                                                                                                               –1.0
+                                                                                                                              0            1000         2000              3000        4000
+                                                                                                                                                  t (free-fall time)
+
+                                                                                      F IGURE 9. (Colour online) For Ra = 107 , Pr = 0.5 and β = 8◦ , the time evolution of
+                                                                                      (a) flow mode amplitude of M 2,1 (t) (red line) and M 1,1 (t) (black line); and (b) vertical
+                                                                                      velocity component wc at the centre location (1, 0.5).
+
+
+
+                                                                                                                          0.5
+
+                                                                                                                          0.4
+                                                                                                         Mode amplitude
+
+
+
+
+                                                                                                                          0.3
+                                                                                                                                  I   II                       III
+                                                                                                                          0.2
+
+                                                                                                                          0.1
+https://doi.org/10.1017/jfm.2018.451 Published online by Cambridge University Press
+
+
+
+
+                                                                                                                              0
+                                                                                                                                  0   10    20    30    40     50    60     70   80   90
+
+
+
+                                                                                      F IGURE 10. (Colour online) Time-averaged flow mode amplitudes M 1,1 and M 2,1 as a
+                                                                                      function of β for Ra = 107 , Pr = 0.5 and Γ = 2; the grey area denotes the angle at
+                                                                                      which flow reversals appear.
+
+
+                                                                                                                              3.3. Heat transfer during flow reversals
+                                                                                      Finally, we discuss the heat transfer properties during a flow reversal. It is well
+                                                                                      recognized that heat transfer is closely connected to the mean flow structures in both
+                                                                                      two dimensions (van der Poel et al. 2011) and three dimensions (Sun et al. 2005;
+                                                                                      Xi & Xia 2008b; Bailon-Cuba, Emran & Schumacher 2010; Weiss & Ahlers 2011;
+                                                                                      Xia 2011; Huang et al. 2013; Chong et al. 2015). As shown above, during a flow
+                                                                                      reversal, the flow structures change greatly, so a significant change of heat transfer is
+                                                                                                      Flow reversals in 2D thermal convection in tilted cells                                367
+
+                                                                                               (a)    1
+
+                                                                                                      0
+                                                                                                                       REV1                       REV2
+                                                                                                     –1
+
+                                                                                               (b)   20
+                                                                                                     15
+                                                                                                     10
+                                                                                                      5
+
+                                                                                               (c)   20
+                                                                                                     15
+                                                                                                     10
+                                                                                                      5
+                                                                                                          0     1000          2000            3000          4000              5000   6000
+                                                                                                                                     t (free-fall time)
+
+                                                                                      F IGURE 11. (Colour online) Time evolution of (a) vertical velocity at the cell centre wc ,
+                                                                                      (b) Nusselt number at the hot wall Nuh , and (c) Nusselt number at the cold wall Nuc , for
+                                                                                      Ra = 107 , Pr = 0.71 and β = 1◦ .
+
+
+                                                                                      expected. The Nusselt number (Nu), used to measure heat transport, is defined as
+
+                                                                                                                           Q̂            (hρ̂ ĉp ŵT̂iA + hk̂∂z T̂iA )
+                                                                                                              Nu(t) =                =                                    ,                 (3.8)
+                                                                                                                        k̂1T̂/Ĥ                  k̂1T̂/Ĥ
+
+                                                                                      where Q̂ is the heat flux across any horizontal plane (3D) or line (2D), and h·i denotes
+                                                                                      averaging over any horizontal plane (3D) or line (2D). Here, Nu averaged over the hot
+                                                                                      and cold plate are denoted as Nuh and Nuc , respectively.
+                                                                                         Figure 11 shows the time evolution of the vertical velocity component at the cell
+                                                                                      centre wc , Nuh and Nuc for Ra = 107 , Pr = 0.71, Γ = 2 and β = 1◦ . We distinguish
+https://doi.org/10.1017/jfm.2018.451 Published online by Cambridge University Press
+
+
+
+
+                                                                                      the two kinds of reversals by the sign change of wc , referred to as REV1 and REV2.
+                                                                                      For REV1, Nuh experiences a minor decrease, and then an overshoot; after a relatively
+                                                                                      long time, it returns to its normal value; Nuc has a drastic decrease during the reversal;
+                                                                                      after an overshoot, it returns to its normal value quickly. For REV2, the behaviour of
+                                                                                      Nuh is similar to that of Nuc in REV1 and Nuc is similar to that of Nuh in REV1.
+                                                                                      These phenomena are similar to that in a level case. The most significant feature for
+                                                                                      Γ = 2 is that Nuh and Nuc behave differently during a reversal.
+                                                                                         To better illustrate this point, the time evolutions of ensemble-averaged Nuh and
+                                                                                      Nuc are shown in figure 12. For Γ = 2, we first locate the data point where wc
+                                                                                      becomes zero corresponding to the appearance of a single-roll mode during reversals.
+                                                                                      Then starting from this data point we go forward and backward for 500 free-fall
+                                                                                      time units. We averaged over 59/62 samples for REV1/REV2, and the results are
+                                                                                      plotted in figure 12(a) and (b). Similar procedures were also used before (Castillo-
+                                                                                      Castellanos et al. 2016; Xi et al. 2016) and in the study of statistical properties of
+                                                                                      geomagnetic field reversals (Valet et al. 2012). One can see from figure 12(a) that
+                                                                                      both Nuh and Nuc drop to their minima at t ≈ 0 corresponding to the appearance of a
+                                                                                      single-roll mode during REV1. The Nuc has a more drastic decrease than Nuh , due to
+                                                                                      368        Q. Wang, S.-N. Xia, B.-F. Wang, D.-J. Sun, Q. Zhou and Z.-H. Wan
+
+                                                                                       (a) 16                                                     (b) 16
+
+                                                                                            14                                                        14
+
+                                                                                       Nu 12                                                          12
+
+                                                                                            10                                                        10
+
+                                                                                             8                                                         8
+                                                                                                 – 400    – 200     0      200        400                  – 400    – 200        0      200        400
+
+                                                                                        (c) 23                                                    (d) 23
+                                                                                            22                                                        22
+
+                                                                                            21                                                        21
+                                                                                       Nu
+                                                                                            20                                                        20
+
+                                                                                            19                                                        19
+
+                                                                                            18                                                        18
+                                                                                             –100        –50        0            50         100        –100        –50           0            50         100
+                                                                                                            t (free-fall time)                                           t (free-fall time)
+
+                                                                                      F IGURE 12. (Colour online) Time evolution of ensemble-averaged Nuc and Nuh during
+                                                                                      flow reversals for (a,b) Ra = 107 , Pr = 0.71, β = 1◦ and Γ = 2 and (c,d) Ra = 5 × 107 ,
+                                                                                      Pr = 2, β = 0◦ and Γ = 1. (a) REV1. (b) REV2. (c) The reversal from the clockwise
+                                                                                      single-roll mode to the anticlockwise single-roll mode. (d) The inverse process of (c).
+
+
+                                                                                      apparent top-down asymmetric flow structures as shown in figure 5(c). There is also a
+                                                                                      small overshoot for Nuh before reaching its local minimum. After reaching their local
+                                                                                      minima, both Nuh and Nuc increase rapidly. The Nuc experiences some fluctuations
+                                                                                      around its local maximum, and then returns to its normal value. While for Nuh , two
+                                                                                      local maxima are found, and it takes more time for Nuh to return to its normal value.
+                                                                                      For REV2, the behaviours of Nuh and Nuc are reversed compared to REV1, as shown
+                                                                                      in figure 12(b). For comparison, Nuh and Nuc for Γ = 1 during two kinds of flow
+https://doi.org/10.1017/jfm.2018.451 Published online by Cambridge University Press
+
+
+
+
+                                                                                      reversals are also plotted in figures 12(c) and 12(d). The time t = 0 is the time when
+                                                                                      the global angular momentum L becomes 0, corresponding to the appearance of the
+                                                                                      (2, 2) mode during the reversal, which is top-down symmetric. It is clear that Nuh
+                                                                                      and Nuc always have the same trend. It is interesting that the overshoot phenomenon
+                                                                                      is observed, which is similar to that in a cylindrical cell (Xi et al. 2016). In short, the
+                                                                                      heat transfer is directly connected with flow structures. The different trends of Nuh and
+                                                                                      Nuc during a reversal in a Γ = 2 cell are due to the preference for single corner roll
+                                                                                      growth during a reversal; while for Γ = 1, two corner rolls grow simultaneously, and
+                                                                                      the flow structure is symmetrical about the horizontal centreline, thus Nuc and Nuh
+                                                                                      behave the same.
+
+                                                                                      4. Summary
+                                                                                         In this work, we investigate the effect of cell tilt on flow reversals in Γ = 1 and
+                                                                                      2 cells by performing 2D DNS. It is found that flow reversals are suppressed by
+                                                                                      tilt for Γ = 1. However, flow reversals characterized by two main rolls are greatly
+                                                                                      promoted by tilt for Γ = 2. For Γ = 1, flow reversals in tilted cells are led by the
+                                                                                                       Flow reversals in 2D thermal convection in tilted cells                          369
+                                                                                      simultaneous growth of two corner rolls, which is qualitatively the same as those in
+                                                                                      level cases. For Γ = 2, due to the introduction of a horizontal buoyancy force by tilt,
+                                                                                      flow reversals in a tilted cell are always led by the growth of the bottom-right or
+                                                                                      the top-left corner roll, which is different from those in a level case, where the four
+                                                                                      corner rolls all have opportunities to grow and trigger a reversal. Tilt is favourable for
+                                                                                      the thermal plumes to feed the bottom-right or the top-left corner roll, thus breaking
+                                                                                      the balance between the two main rolls and leading to a reversal. As a result, the
+                                                                                      reversals are promoted by tilt and are much more frequent than those in level cells.
+                                                                                      Moreover, flow reversals in tilted cells with Γ = 2 tend to occur for small Pr. Tilt
+                                                                                      broadens the Ra–Pr parameter space for flow reversals to happen in a Γ = 2 cell. Our
+                                                                                      study expands the flow reversals in a canonical system to small Pr, which is relevant
+                                                                                      to many geophysical and astrophysical flows (Schumacher, Götzfried & Scheel 2015;
+                                                                                      Scheel & Schumacher 2016). By exploiting the large-scale mode decomposition
+                                                                                      analysis, we demonstrate that flow reversals in a tilted cell with Γ = 2 can be viewed
+                                                                                      as a mode competition process between the single-roll mode and horizontally adjacent
+                                                                                      double-roll mode. Reversals can only occur in an intermediate range of β where M 1,1
+                                                                                      and M 2,1 are comparable. Furthermore, we find that Nuh and Nuc behave the same
+                                                                                      during a reversal for Γ = 1, but they behave differently for Γ = 2 due to preference
+                                                                                      for single corner roll growth during a reversal.
+                                                                                         The present finding of more frequent flow reversals in a tilted Γ = 2 cell
+                                                                                      demonstrates that the effects of symmetry breaking on flow reversals are system-
+                                                                                      dependent, which should still be explored in asymmetrical systems to gain more
+                                                                                      physical insights into the various reversal phenomena in nature.
+
+                                                                                      Acknowledgements
+                                                                                        This work is supported by the National Natural Science Foundation of China
+                                                                                      under grants 11572314, 11502137, 11772323 and 11621202, and by the Fundamental
+                                                                                      Research Funds for the Central Universities.
+
+
+                                                                                                                                 REFERENCES
+
+                                                                                      A HLERS , G., G ROSSMANN , S. & L OHSE , D. 2009 Heat transfer and large scale dynamics in turbulent
+                                                                                              Rayleigh–Bénard convection. Rev. Mod. Phys. 81, 503–537.
+https://doi.org/10.1017/jfm.2018.451 Published online by Cambridge University Press
+
+
+
+
+                                                                                      A RAUJO , F. F., G ROSSMANN , S. & L OHSE , D. 2005 Wind reversals in turbulent Rayleigh–Bénard
+                                                                                              convection. Phys. Rev. Lett. 95, 084502.
+                                                                                      BAILON -C UBA , J., E MRAN , M. S. & S CHUMACHER , J. 2010 Aspect ratio dependence of heat transfer
+                                                                                              and large-scale flow in turbulent convection. J. Fluid Mech. 655, 152–173.
+                                                                                      BAO , Y., C HEN , J., L IU , B.-F., S HE , Z.-S., Z HANG , J. & Z HOU , Q. 2015 Enhanced heat transport
+                                                                                              in partitioned thermal convection. J. Fluid Mech. 784, R5.
+                                                                                      B ENZI , R. 2005 Flow reversal in a simple dynamical model of turbulence. Phys. Rev. Lett. 95,
+                                                                                              024502.
+                                                                                      B ROWN , E. & A HLERS , G. 2006 Rotations and cessations of the large-scale circulation in turbulent
+                                                                                              Rayleigh–Bénard convection. J. Fluid Mech. 568, 351–386.
+                                                                                      B ROWN , E. & A HLERS , G. 2007 Large-scale circulation model for turbulent Rayleigh–Bénard
+                                                                                              convection. Phys. Rev. Lett. 98, 134501.
+                                                                                      B ROWN , E. & A HLERS , G. 2008 Azimuthal asymmetries of the large-scale circulation in turbulent
+                                                                                              Rayleigh–Bénard convection. Phys. Fluids 20, 105105.
+                                                                                      B ROWN , E., N IKOLAENKO , A. & A HLERS , G. 2005 Reorientation of the large-scale circulation in
+                                                                                              turbulent Rayleigh–Bénard convection. Phys. Rev. Lett. 95, 084503.
+                                                                                      C ASTILLO -C ASTELLANOS , A., S ERGENT, A. & ROSSI , M. 2016 Reversal cycle in square Rayleigh–
+                                                                                              Bénard cells in turbulent regime. J. Fluid Mech. 808, 614–640.
+                                                                                      370         Q. Wang, S.-N. Xia, B.-F. Wang, D.-J. Sun, Q. Zhou and Z.-H. Wan
+                                                                                      C HANDRA , M. & V ERMA , M. K. 2011 Dynamics and symmetries of flow reversals in turbulent
+                                                                                              convection. Phys. Rev. E 83, 067303.
+                                                                                      C HANDRA , M. & V ERMA , M. K. 2013 Flow reversals in turbulent convection via vortex reconnections.
+                                                                                              Phys. Rev. Lett. 110, 114503.
+                                                                                      C HONG , K.-L., H UANG , S.-D., K ACZOROWSKI , M. & X IA , K.-Q. 2015 Condensation of coherent
+                                                                                              structures in turbulent flows. Phys. Rev. Lett. 115, 264503.
+                                                                                      C HONG , K.-L., WAGNER , S., K ACZOROWSKI , M., S HISHKINA , O. & X IA , K.-Q. 2018 Effect of
+                                                                                              Prandtl number on heat transport enhancement in Rayleigh–Bénard convection under geometrical
+                                                                                              confinement. Phys. Rev. Fluid 3 (1), 013501.
+                                                                                      VAN D OORN , E., D HRUVA , B., S REENIVASAN , K. R. & C ASSELLA , V. 2000 Statistics of wind
+                                                                                              direction and its increments. Phys. Fluids 12, 1529–1534.
+                                                                                      F OROOZANI , N., N IEMELA , J. J., A RMENIO , V. & S REENIVASAN , K. R. 2017 Reorientations of
+                                                                                              the large-scale flow in turbulent convection in a cube. Phys. Rev. E 95, 033107.
+                                                                                      G LATZMAIER , G. A., C OE , R. S., H ONGRE , L. & ROBERTS , P. H. 1999 The role of the Earth’s
+                                                                                              mantle in controlling the frequency of geomagnetic reversals. Nature 401, 885–890.
+                                                                                      G LATZMAIER , G. A. & ROBERTS , P. H. 1995 A three-dimensional self-consistent computer simulation
+                                                                                              of a geomagnetic field reversal. Nature 377, 203–209.
+                                                                                      G UBBINS , D., S REENIVASAN , B., M OUND , J. & ROST, S. 2011 Melting of the Earth’s inner core.
+                                                                                              Nature 473, 361–363.
+                                                                                      G UO , S.-X., Z HOU , S.-Q., C EN , X.-R., Q U , L., L U , Y.-Z., S UN , L. & S HANG , X.-D. 2015 The
+                                                                                              effect of cell tilting on turbulent thermal convection in a rectangular cell. J. Fluid Mech. 762,
+                                                                                              273–287.
+                                                                                      G UO , S.-X., Z HOU , S.-Q., Q U , L., L U , Y.-Z., S UN , L. & S HANG , X.-D. 2017 Evolution and
+                                                                                              statistics of thermal plumes in tilted turbulent convection. Intl J. Heat Mass Transfer 111,
+                                                                                              933–942.
+                                                                                      H OWARD , R. & L A B ONTE , B.-J. 1980 The Sun is observed to be a torsional oscillator with a period
+                                                                                              of 11 years. Astrophys. J. 239, L33–L36.
+                                                                                      H UANG , S.-D., K ACZOROWSKI , M., N I , R. & X IA , K.-Q. 2013 Confinement-induced heat-transport
+                                                                                              enhancement in turbulent thermal convection. Phys. Rev. Lett. 111, 104501.
+                                                                                      H UANG , S.-D., WANG , F., X I , H.-D. & X IA , K.-Q. 2015 Comparative experimental study of fixed
+                                                                                              temperature and fixed heat flux boundary conditions in turbulent thermal convection. Phys.
+                                                                                              Rev. Lett. 115, 154502.
+                                                                                      H UANG , S.-D. & X IA , K.-Q. 2016 Effects of geometric confinement in quasi-2-D turbulent Rayleigh–
+                                                                                              Bénard convection. J. Fluid Mech. 794, 639–654.
+                                                                                      H UANG , Y.-X. & Z HOU , Q. 2013 Counter-gradient heat transport in two-dimensional turbulent
+                                                                                              Rayleigh–Bénard convection. J. Fluid Mech. 737, R3.
+https://doi.org/10.1017/jfm.2018.451 Published online by Cambridge University Press
+
+
+
+
+                                                                                      M ANNATTIL , M., PANDEY, A., V ERMA , M. K. & C HAKRABORTY, S. 2017 On the applicability
+                                                                                              of low-dimensional models for convective flow reversals at extreme Prandtl numbers.
+                                                                                              Eur. Phys. J. B 90, 259.
+                                                                                      M ISHRA , P. K., D E , A. K., V ERMA , M. K. & E SWARAN , V. 2011 Dynamics of reorientations and
+                                                                                              reversals of large-scale flow in Rayleigh–Bénard convection. J. Fluid Mech. 668, 480–499.
+                                                                                      N I , R., H UANG , S.-D. & X IA , K.-Q. 2015 Reversals of the large-scale circulation in quasi-2D
+                                                                                              Rayleigh–Bénard convection. J. Fluid Mech. 778, R5.
+                                                                                      P ETSCHEL , K., W ILCZEK , M., B REUER , M., F RIEDRICH , R. & H ANSEN , U. 2011 Statistical analysis
+                                                                                              of global wind dynamics in vigorous Rayleigh–Bénard convection. Phys. Rev. E 84, 026309.
+                                                                                      P ODVIN , B. & S ERGENT, A. 2015 A large-scale investigation of wind reversal in a square Rayleigh–
+                                                                                              Bénard cell. J. Fluid Mech. 766, 172–201.
+                                                                                      P ODVIN , B. & S ERGENT, A. 2017 Precursor for wind reversal in a square Rayleigh–Bénard cell.
+                                                                                              Phys. Rev. E 95, 013112.
+                                                                                      VAN DER P OEL , E. P., O STILLA -M ÓNICO , R., V ERZICCO , R., G ROSSMANN , S. & L OHSE , D. 2015
+                                                                                              Logarithmic mean temperature profiles and their connection to plume emissions in turbulent
+                                                                                              Rayleigh–Bénard convection. Phys. Rev. Lett. 115, 154501.
+                                                                                                       Flow reversals in 2D thermal convection in tilted cells                          371
+                                                                                      VAN DER P OEL , E. P., O STILLA -M ÓNICO , R., V ERZICCO , R. & L OHSE , D. 2014 Effect of velocity
+                                                                                              boundary conditions on the heat transfer and flow topology in two-dimensional Rayleigh–Bénard
+                                                                                              convection. Phys. Rev. E 90, 013017.
+                                                                                      VAN DER P OEL , E. P., S TEVENS , R. J. A. M. & L OHSE , D. 2011 Connecting flow structures and
+                                                                                              heat flux in turbulent Rayleigh–Bénard convection. Phys. Rev. E 84, 045303.
+                                                                                      VAN DER P OEL , E. P., S TEVENS , R. J. A. M., S UGIYAMA , K. & L OHSE , D. 2012 Flow states
+                                                                                              in two-dimensional Rayleigh–Bénard convection as a function of aspect-ratio and Rayleigh
+                                                                                              number. Phys. Fluids 24, 085104.
+                                                                                      S CHEEL , J. D. & S CHUMACHER , J. 2016 Global and local statistics in turbulent convection at low
+                                                                                              Prandtl numbers. J. Fluid Mech. 802, 147–173.
+                                                                                      S CHUMACHER , J., G ÖTZFRIED , P. & S CHEEL , J. D. 2015 Enhanced enstrophy generation for turbulent
+                                                                                              convection in low-Prandtl-number fluids. Proc. Natl Acad. Sci. USA 112, 9530–9535.
+                                                                                      S HISHKINA , O. & H ORN , S. 2016 Thermal convection in inclined cylindrical containers. J. Fluid
+                                                                                              Mech. 790, R3.
+                                                                                      S HISHKINA , O. & WAGNER , C. 2011 Modelling the influence of wall roughness on heat transfer in
+                                                                                              thermal convection. J. Fluid Mech. 686, 568–582.
+                                                                                      S UGIYAMA , K., C ALZAVARINI , E., G ROSSMANN , S. & L OHSE , D. 2009 Flow organization in two-
+                                                                                              dimensional non-Oberbeck–Boussinesq Rayleigh–Bénard convection in water. J. Fluid Mech.
+                                                                                              637, 105–135.
+                                                                                      S UGIYAMA , K., N I , R., S TEVENS , R. J. A. M., C HAN , T.-S., Z HOU , S.-Q., X I , H.-D., S UN ,
+                                                                                              C., G ROSSMANN , S., X IA , K.-Q. & L OHSE , D. 2010 Flow reversals in thermally driven
+                                                                                              turbulence. Phys. Rev. Lett. 105, 034503.
+                                                                                      S UN , C., X I , H.-D. & X IA , K.-Q. 2005 Azimuthal symmetry, flow dynamics, and heat transport in
+                                                                                              turbulent thermal convection in a cylinder with an aspect ratio of 0.5. Phys. Rev. Lett. 95,
+                                                                                              074502.
+                                                                                      T OPPALADODDI , S., S UCCI , S. & W ETTLAUFER , J. S. 2017 Roughness as a route to the ultimate
+                                                                                              regime of thermal convection. Phys. Rev. Lett. 118, 074503.
+                                                                                      VALET, J. P., F OURNIER , A., C OURTILLOT, V. & H ERRERO -B ERVERA , E. 2012 Dynamical similarity
+                                                                                              of geomagnetic field reversals. Nature 490, 89–93.
+                                                                                      V ERMA , M. K., A MBHIRE , S. C. & PANDEY, A. 2015 Flow reversals in turbulent convection with
+                                                                                              free-slip walls. Phys. Fluids 27, 047102.
+                                                                                      V ERMA , M. K., K UMAR , A. & PANDEY, A. 2017 Phenomenology of buoyancy-driven turbulence:
+                                                                                              recent results. New J. Phys. 19, 025012.
+                                                                                      WAGNER , S. & S HISHKINA , O. 2013 Aspect-ratio dependency of Rayleigh–Bénard convection in
+                                                                                              box-shaped containers. Phys. Fluids 25, 085110.
+                                                                                      WANG , Q., X U , B.-L., X IA , S.-N., WAN , Z.-H. & S UN , D.-J. 2017 Thermal convection in a tilted
+https://doi.org/10.1017/jfm.2018.451 Published online by Cambridge University Press
+
+
+
+
+                                                                                              rectangular cell with aspect ratio 0.5. Chin. Phys. Lett. 34, 104401.
+                                                                                      W EISS , S. & A HLERS , G. 2011 Turbulent Rayleigh–Bénard convection in a cylindrical container with
+                                                                                              aspect ratio Γ = 0.50 and Prandtl number Pr = 4.38. J. Fluid Mech. 676, 5–40.
+                                                                                      X I , H.-D., L AM , S. & X IA , K.-Q. 2004 From laminar plumes to organized flows: the onset of
+                                                                                              large-scale circulation in turbulent thermal convection. J. Fluid Mech. 503, 47–56.
+                                                                                      X I , H.-D. & X IA , K.-Q. 2007 Cessations and reversals of the large-scale circulation in turbulent
+                                                                                              thermal convection. Phys. Rev. E 75, 066307.
+                                                                                      X I , H.-D. & X IA , K.-Q. 2008a Azimuthal motion, reorientation, cessation, and reversal of the large-
+                                                                                              scale circulation in turbulent thermal convection: a comparative study in aspect ratio one and
+                                                                                              one-half geometries. Phys. Rev. E 78, 036326.
+                                                                                      X I , H.-D. & X IA , K.-Q. 2008b Flow mode transitions in turbulent thermal convection. Phys. Fluids
+                                                                                              20, 055104.
+                                                                                      X I , H.-D., Z HANG , Y.-B., H AO , J.-T. & X IA , K.-Q. 2016 Higher-order flow modes in turbulent
+                                                                                              Rayleigh–Bénard convection. J. Fluid Mech. 805, 31–51.
+                                                                                      X I , H.-D., Z HOU , Q. & X IA , K.-Q. 2006 Azimuthal motion of the mean wind in turbulent thermal
+                                                                                              convection. Phys. Rev. E 73, 056312.
+                                                                                      X IA , K.-Q. 2011 How heat transfer efficiencies in turbulent thermal convection depend on internal
+                                                                                              flow modes. J. Fluid Mech. 676, 1–4.
+                                                                                      372         Q. Wang, S.-N. Xia, B.-F. Wang, D.-J. Sun, Q. Zhou and Z.-H. Wan
+                                                                                      X IA , K.-Q. 2013 Current trends and future directions in turbulent thermal convection. Theor. Appl.
+                                                                                              Mech. Lett. 3.
+                                                                                      X IA , S.-N., WAN , Z.-H., L IU , S., WANG , Q. & S UN , D.-J. 2016 Flow reversals in Rayleigh–Bénard
+                                                                                              convection with non-Oberbeck–Boussinesq effects. J. Fluid Mech. 798, 628–642.
+                                                                                      X IE , Y.-C., W EI , P. & X IA , K.-Q. 2013 Dynamics of the large-scale circulation in high-Prandtl-number
+                                                                                              turbulent thermal convection. J. Fluid Mech. 717, 322–346.
+                                                                                      X U , B.-L., WANG , Q., WAN , Z.-H., YAN , R. & S UN , D.-J. 2018 Heat transport enhancement and
+                                                                                              scaling law transition in two-dimensional Rayleigh–Bénard convection with rectangular-type
+                                                                                              roughness. Intl J. Heat Mass Transfer. 121, 872–883.
+                                                                                      Z HANG , Y., H UANG , Y.-X., J IANG , N., L IU , Y.-L., L U , Z.-M., Q IU , X. & Z HOU , Q. 2017a Statistics
+                                                                                              of velocity and temperature fluctuations in two-dimensional Rayleigh–Bénard convection. Phys.
+                                                                                              Rev. E 96, 023105.
+                                                                                      Z HANG , Y.-Z., S UN , C., BAO , Y. & Z HOU , Q. 2018 How surface roughness reduces heat transport
+                                                                                              for small roughness heights in turbulent Rayleigh–Bénard convection. J. Fluid Mech. 836.
+                                                                                      Z HANG , Y., Z HOU , Q. & S UN , C. 2017b Statistics of kinetic and thermal energy dissipation rates in
+                                                                                              two-dimensional turbulent Rayleigh–Bénard convection. J. Fluid Mech. 814, 165–184.
+                                                                                      Z HOU , Q., S TEVENS , R. J. A. M., S UGIYAMA , K., G ROSSMANN , S., L OHSE , D. & X IA , K.-Q. 2010
+                                                                                              Prandtl–Blasius temperature and velocity boundary-layer profiles in turbulent Rayleigh–Bénard
+                                                                                              convection. J. Fluid Mech. 664, 297–312.
+                                                                                      Z HOU , Q., S UGIYAMA , K., S TEVENS , R. J. A. M., G ROSSMANN , S., L OHSE , D. & X IA , K.-Q.
+                                                                                              2011 Horizontal structures of velocity and temperature boundary layers in two-dimensional
+                                                                                              numerical turbulent Rayleigh–Bénard convection. Phys. Fluids 23, 125104.
+                                                                                      Z HU , X.-J., M ATHAI , V., S TEVENS , R. J. A. M., V ERZICCO , R. & L OHSE , D. 2018 Transition
+                                                                                              to the ultimate regime in two-dimensional Rayleigh–Bénard convection. Phys. Rev. Lett. 120,
+                                                                                              144502.
+                                                                                      Z HU , X.-J., S TEVENS , R. J. A. M., V ERZICCO , R. & L OHSE , D. 2017 Roughness-facilitated local
+                                                                                              1/2 scaling does not imply the onset of the ultimate regime of thermal convection. Phys. Rev.
+                                                                                              Lett. 119, 154501.
+https://doi.org/10.1017/jfm.2018.451 Published online by Cambridge University Press
+

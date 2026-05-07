@@ -1,0 +1,7 @@
+interface:
+  display_name: "Benchmark Validation"
+  short_description: "Validate convergence and benchmark outputs after solver changes."
+  default_prompt: "Use $benchmark-validation to verify this solver change against the repo benchmarks."
+
+policy:
+  allow_implicit_invocation: true

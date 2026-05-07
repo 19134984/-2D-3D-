@@ -1,0 +1,7 @@
+interface:
+  display_name: "MPI Domain Decomposition"
+  short_description: "Handle rank layout, halos, and reductions in MPI solvers."
+  default_prompt: "Use $mpi-domain-decomposition to add or review MPI domain splitting in this solver."
+
+policy:
+  allow_implicit_invocation: true

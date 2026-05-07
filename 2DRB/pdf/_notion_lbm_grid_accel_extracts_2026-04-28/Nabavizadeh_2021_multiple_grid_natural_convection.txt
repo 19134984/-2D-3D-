@@ -1,0 +1,1614 @@
+               fluids
+Article
+A Multiple-Grid Lattice Boltzmann Method for Natural
+Convection under Low and High Prandtl Numbers
+Seyed Amin Nabavizadeh 1 , Himel Barua 1 , Mohsen Eshraghi 2, *                               and Sergio D. Felicelli 1
+
+                                          1   Auburn Science and Engineering Center, Department of Mechanical Engineering, The University of Akron,
+                                              101, Akron, OH 44325, USA; sn110@uakron.edu (S.A.N.); hb44@uakron.edu (H.B.);
+                                              sfelicelli@uakron.edu (S.D.F.)
+                                          2   Department of Mechanical Engineering, California State University, 5151 State University Drive,
+                                              Los Angeles, CA 90032, USA
+                                          *   Correspondence: mohsen.eshraghi@calstatela.edu
+
+
+                                          Abstract: A multi-distribution lattice Boltzmann Bhatnagar–Gross–Krook (BGK) model with a
+                                          multiple-grid lattice Boltzmann (MGLB) model is proposed to efficiently simulate natural convection
+                                          over a wide range of Prandtl numbers. In this method, different grid sizes and time steps for heat
+                                          transfer and fluid flow equations are chosen. The model is validated against natural convection in
+                                          a square cavity, since extensive benchmark solutions are available for that problem. The proposed
+                                          method can resolve the computational difficulty in simulating problems with very different time
+                                          scales, in particular, when using extremely low or high Prandtl numbers. The technique can also
+                                          enhance computational speed and stability while keeping the simplicity of the BGK method. Com-
+                                          pared with the conventional lattice Boltzmann method, the simulation time can be reduced up to
+         
+                                          one-tenth of the time while maintaining the accuracy in an acceptable range. The proposed model
+                                   can be extended to other lattice Boltzmann collision models and three-dimensional cases, making it a
+Citation: Nabavizadeh, S.A.; Barua,       great candidate for large-scale simulations.
+H.; Eshraghi, M.; Felicelli, S.D. A
+Multiple-Grid Lattice Boltzmann           Keywords: lattice Boltzmann; multiple grids; multiple time steps; natural convection
+Method for Natural Convection
+under Low and High
+Prandtl Numbers. Fluids 2021, 6, 148.
+https://doi.org/10.3390/fluids6040148     1. Introduction
+                                                The lattice Boltzmann (LB) method is considered a robust numerical method to solve
+Academic Editor: Ramesh Agarwal
+                                          fluid flow [1]. Unlike conventional Computational Fluid Dynamics (CFD) methods that
+                                          solve the Navier–Stokes (NS) equations involving nonlinear terms, the LB method equation
+Received: 25 March 2021
+                                          is linear in phase space. A distribution function f α (x, t) describes the motion and properties
+Accepted: 5 April 2021
+Published: 8 April 2021
+                                          of the fluid, which represents the probability of finding a particle at lattice position x at
+                                          time t in direction α. The particle motion is restricted to specific discrete directions that
+                                          are necessary for modeling hydrodynamic behavior on the macroscopic scale [2]. At each
+Publisher’s Note: MDPI stays neutral
+with regard to jurisdictional claims in
+                                          time step, the distribution functions of fluid particles propagate along with the discrete
+published maps and institutional affil-
+                                          directions from one lattice node to another in the streaming step. The particle distribution
+iations.                                  function relaxes back towards the local equilibrium distribution function through the
+                                          collision step [3]. At each time step, the macroscopic fluid properties can be recovered
+                                          through the summation of the distribution function [4]. Different approaches have been
+                                          introduced to model the collision step. The simplest method is the single relaxation time
+                                          (SRT), also known as BGK (after Bhatnagar, Gross, and Krook), and has been widely used
+Copyright: © 2021 by the authors.
+                                          by scholars due to its simplicity. However, the method becomes unstable at high Reynolds
+Licensee MDPI, Basel, Switzerland.
+This article is an open access article
+                                          numbers [5–7].
+distributed under the terms and
+                                                Several variations of the thermal LB method, including the multispeed model [8,9]
+conditions of the Creative Commons        and the double population approach [10–12], have been developed in the past two decades
+Attribution (CC BY) license (https://     to extend the LB method’s capability to heat transfer modeling. In the multispeed model,
+creativecommons.org/licenses/by/          the fluid distribution function f α (x, t) is altered by introducing a new discrete velocity
+4.0/).                                    to obtain the energy equation. However, the model was shown to suffer from severe
+
+
+
+Fluids 2021, 6, 148. https://doi.org/10.3390/fluids6040148                                                  https://www.mdpi.com/journal/fluids
+Fluids 2021, 6, 148                                                                                             2 of 20
+
+
+
+
+                      numerical instability and its application is limited to domains where the temperature
+                      variation is small, which restricts its application significantly [13]. In the double population
+                      approach, in addition to the fluid distribution function, a separate distribution function
+                      is introduced for solving the energy equation. The additional distribution function can
+                      enhance numerical stability. Therefore, the double population method has been widely
+                      employed to simulate various heat transfer problems [14–18]. However, using a single
+                      relaxation time for the collision step for fluid flow and heat transfer equations restricts the
+                      Prandtl number (Pr) to a relatively narrow range between 0.1 and 10. Outside this range,
+                      numerical instability occurs in the simulations [19,20] unless a very fine mesh is used. This
+                      restriction in the Pr number will be discussed in detail in Section 2.
+                            Different methods have been developed to address this issue, such as the multi-
+                      ple relaxation time (MRT) method [6,21–26], entropic LB method [27,28], cascaded LB
+                      method [29,30], and simplified thermal LB method [31–34]. The main difference between
+                      the MRT, entropic, and cascaded LB methods and the conventional SRT method lies in
+                      how the collision operator is modeled even though the streaming step is the same for all
+                      these methods [1]. For instance, in the MRT method, instead of using a single value for the
+                      relaxation parameter, a matrix with multiple variables related to the relaxation parameter is
+                      defined. In the simplified LB method, a predictor–corrector scheme is necessary to resolve
+                      the macroscopic variables. This method also needs to calculate non-equilibrium distribu-
+                      tion functions, which are calculated between two equilibrium distribution functions at
+                      different time levels and locations.
+                            Each of these methods deviates from the simplicity of the LB method by introducing
+                      new terms or steps, making it more computationally expensive. Although these pro-
+                      posed methods were successful in increasing the stability for modeling flows with high
+                      Rayleigh numbers; the Prandtl number was still chosen to be near 1 in most of these
+                      schemes [21,23–25,28–32,34], or the Rayleigh number was relatively low, in the order
+                      of 104 [6].
+                            Many researchers, especially for large-scale simulations, have resorted to using dif-
+                      ferent grid sizes for each equation to reduce computational time [35–39]. Although these
+                      attempts showed some success, most of the case studies were related to solidification
+                      modeling, which requires solving different equations simultaneously, making it difficult
+                      to verify the accuracy of the method. In addition, all the cases dealt with liquid metals,
+                      which had low Prandtl numbers. Here we analyze and extend our previously developed
+                      multiple-grid lattice Boltzmann (MGLB) [35,39] model in the context of natural convection
+                      for a wide range (both high and low) of Prandtl numbers. We propose a general model
+                      for selecting different grid sizes and time steps for the double population SRT method,
+                      which can reduce the computational time and increase the stability while keeping accept-
+                      able accuracy. The proposed model is tested with the well-known problem of natural
+                      convection inside a side heated square cavity, which provides abundant experimental and
+                      numerical benchmark solutions to validate the method’s accuracy. It is shown that the
+                      proposed method can enhance the stability of the original BGK method over a wide range
+                      of Prandtl numbers.
+                            Extensive research has been done on natural convection inside a square cavity. In
+                      fact, it is viewed as a benchmark problem to verify new numerical algorithms. Table 1
+                      summarizes several related studies on natural convection inside a square cavity.
+Fluids 2021, 6, 148                                                                                                            3 of 20
+
+
+
+
+                        Table 1. A summary of the research works on natural convection inside a square enclosure.
+
+                                              Natural Convection Inside a Heated Square Cavity
+                       Ref.                                  Physical Parameter                  Numerical Method/Remarks
+                                                                  Pr = 0.71                 Finite volume method with uniform and
+           Hortmann et al., 1990 [40]
+                                                               104 ≤ Ra ≤ 106                          non-uniform grid
+                                                              0.001 ≤ Pr ≤ 0.01              Control volume-based finite difference
+      Mohamad and Viskanta, 1991 [41]
+                                                              2000 ≤ Ra ≤ 105                   method with non-uniform grid
+                                                                  Pr = 0.71                  LB double distribution function with a
+              Guo et al., 2007 [42]
+                                                               104 ≤ Ra ≤ 106                            uniform grid
+                                                              0.0071 ≤ Pr ≤ 7.1                   Finite volume method with
+           Pesso and Piva, 2009 [43]
+                                                               103 ≤ Ra ≤ 105                          non-uniform grid
+                                                              0.005 ≤ Pr ≤ 0.01               LB double distribution function with
+                Li et al., 2016 [6]
+                                                               104 ≤ Ra ≤ 105                           MRT collision
+                                                                  Pr = 0.71
+              Chen et al., 2017 [31]                                                                 Simplified thermal LB
+                                                               103 ≤ Ra ≤ 108
+                                                                  Pr = 0.71
+   Hajabdollahi and Premnath, 2018 [29]                                                              Cascaded LB method
+                                                               103 ≤ Ra ≤ 108
+                                                                  Pr = 0.71                   LB double distribution function with
+                Xi et al., 2019 [26]
+                                                               106 ≤ Ra ≤ 107                        MRT collision model
+                                                        Rayleigh–Bernard Convection
+                                                               0.71 ≤ Pr ≤ 70
+           Ahlers and Xu, 2001 [44]                                                                      Experimental
+                                                              5000 ≤ Ra ≤ 105
+                                                               0.71 ≤ Pr ≤ 70                LB double distribution function with a
+            Kao and Yang, 2007 [45]
+                                                              5000 ≤ Ra ≤ 105                            uniform grid
+                                                              10−1 ≤ Pr ≤ 104                 Second-order cylindrical coordinate
+             Silano et al., 2010 [46]
+                                                              105 ≤ Ra ≤ 109                       finite-difference scheme
+                                                                  Pr = 0.71
+             Fei and Luo, 2018 [47]                                                                  Cascaded LB method
+                                                             2500 ≤ Ra ≤ 50, 000
+                                                               0.005 ≤ Pr ≤ 70
+            Pandey et al., 2018 [48]                                                          Direct numerical simulations (DNSs)
+                                                               105 ≤ Ra ≤ 107
+
+
+                                             The Prandtl and Rayleigh numbers determine the characteristics of the flow for natural
+                                        convection inside a side heated square cavity. Based on previous works, it is known that at
+                                        low Ra numbers the flow is governed by diffusion, while at high Ra numbers convection is
+                                        more important [20,49,50]. The assumption of laminar flow is valid up to Ra = 106 , where
+                                        the convection is strong enough to distort the isotherms [51]. Other studies suggest that
+                                        the assumption of laminar flow might still hold up to Ra = 108 [23,24].
+                                             The paper is organized as follows. In Section 2, a brief overview of the lattice Boltz-
+                                        mann method is introduced. Then, the multiple-grid lattice Boltzmann (MGLB) method
+                                        is proposed, showing how it can enhance the stability of the standard LB method. In
+                                        Section 3, the results of the proposed method are validated with experimental data or
+                                        previous studies. Later in Section 3, the accuracy and computational time saving of the
+                                        proposed model are presented and compared with the standard SRT method, particularly
+                                        under low and high Prandtl numbers.
+
+                                        2. Numerical Method
+                                             The proposed method, MGLB, was evaluated through the study of a typical example
+                                        of natural convection in a heated square cavity. The computational domain is shown in
+                                        Figure 1. The top and the bottom walls are adiabatic while the walls at the left and right
+                                        are maintained at Tc and Th , respectively, where TH > Tc . The natural convection inside
+                                        the cavity can be characterized by the dimensionless numbers Ra = gβ( TH − Tc ) H 3 /αν
+                                                                    + ∇·      = 0                                      (1)
+
+                           Momentum equation:
+
+Fluids 2021, 6, 148                            (    +    ·∇ ) = −       + ∇ · (μ∇ ) +       ( − )                    4 (2)
+                                                                                                                       of 20
+
+                           Energy equation:
+
+                        and Pr = ν/α, where β is the thermal          · ∇ = coefficient,
+                                                                 + expansion    ∇           ν is the kinematic viscosity
+                                                                                                                      (3)
+                        of the fluid, and α is the thermal diffusivity. The side length H is the characteristic length
+                                 Boussinesq
+                            Thesystem.
+                        of the               approximation
+                                        The flow   was assumedstates
+                                                                  as that           properties
+                                                                          the fluidlaminar,
+                                                                     Newtonian,              andare constant exceptwhile
+                                                                                                                     for
+                                                                                                  incompressible,
+                        Boussinesqthe
+                      calculating    approximation
+                                        density in thewas applied force
+                                                        buoyancy          as the
+                                                                   to model          ̅ (1 − ( force.
+                                                                                               − ));The
+                                                                                 = buoyancy            ̅ and
+                                                                                                          naturalare
+                                                                                                                  convec-
+                                                                                                                     the
+                        tion was
+                      average     simulated
+                                density       for different Pr
+                                         and temperature,      ranging from 0.01 to 100 for Ra = 106 . The governing
+                                                            respectively.
+                        equations for fluid flow and heat transfer can be written as:
+
+
+
+
+                        Figure 1. Boundary conditions for natural convection in a side-heated square cavity.
+                      Figure 1. Boundary conditions for natural convection in a side-heated square cavity.
+                               Continuity equation:
+                            In this study, two different distribution
+                                                                   ∂ρ    functions, ( , ) for fluid flow and        ( , )
+                                                                      + ρ∇·u = 0                                        (1)
+                      for heat transfer, were employed. The transport
+                                                                   ∂t        coefficients were considered temperature-
+                      independent,
+                               Momentum          fluid flow and energy equation could be solved independently. The
+                                         so theequation:
+                      system of equations was      only coupled
+                                                                   through the buoyancy force term in Equation (2).
+                      Therefore, not only could     ∂u the equations be solved with two different       numerical tech-
+                                                ρ      + u·∇u = −∇ P + ∇·(µ∇u) + ρgβ T − T                              (2)
+                      niques, such as the LB method for fluid flow and finite difference for energy equation, but
+                                                    ∂t
+                      the grid size dx and the time step dt could also be selected differently for fluid flow and
+                      energyEnergy       equation:
+                                equations.
+                                                                ∂T
+                            In this study, all results are reported + u·∇     = α ∇2 T
+                                                                        in Tnon-dimensional    form using the following (3)
+                                                                ∂t
+                      variables: X = / , Y = y/H,              =       ( − ) ,            =   / , V =       /   and     =
+                               The Boussinesq approximation states that the fluid properties are      constant except for
+                             .
+                        calculating the density in the buoyancy force as ρ = ρ 1 − β T − T ; ρ and T are the
+                                    density number,
+                            The Nusselt
+                        average                                  defined as the ratio of convection to conduction, is
+                                                        which isrespectively.
+                                             and temperature,
+                      writtenInas: this study, two different distribution functions, f α (x, t) for fluid flow and gα (x, t)
+                        for heat transfer, were employed. The transport coefficients were considered temperature-
+                        independent, so the fluid flow and energy equation could be solved independently. The
+                        system of equations was only coupled through the buoyancy force term in Equation (2).
+                        Therefore, not only could the equations be solved with two different numerical techniques,
+                        such as the LB method for fluid flow and finite difference for energy equation, but the
+                        grid size dx and the time step dt could also be selected differently for fluid flow and
+                        energy equations.
+                               In this study, all results are reportedp  in non-dimensional form using the following
+                        variables: X = x/H, Y = y/H, uc =                   gβ( Th − Th ) H, U = u x /uc , V = uy /uc and
+                                 T − TC
+                        θ = TH −T .
+                                       C
+                               The Nusselt number, which is defined as the ratio of convection to conduction, is
+                        written as:
+                                                                    h               ∂θ
+                                                          Nu =                  =                                       (4)
+                                                                  k/H x = H         ∂X X = H
+Fluids 2021, 6, 148                                                                                            5 of 20
+
+
+
+
+                      where k is thermal conductivity and h is the heat transfer coefficient. The average Nusselt
+                      number can be defined as:                     Z 1
+                                                                        ∂θ
+                                                        Nu ave =           dY                                 (5)
+                                                                     0 ∂X
+                            In the LB method, the fluid flow is described by the distribution function f α , which
+                      represents the probability of finding a fictive fluid particle at a given time and location.
+                      The particle motion and collision are modeled by the evolution of the distribution function
+                      f α in discrete directions. In this work, the D2 Q9 lattice was used to discretize the velocity
+                      space. In the D2 Q9 lattice, each node at position x has a distribution function f α (x, t) in
+                      any of the nine discrete directions eα , which is defined as:
+                                 
+                                 
+                                                  h e0 =i 0 h                    i         for α = 0
+                                                        ( α −1) π       ( α −1) π
+                                           eα = cos           2    , sin              c    for α = 1, 2, 3, 4     (6)
+                                            √  h                    i    h 2           i
+                                  eα = 2 cos (α−5)π + π , sin (α−5)π + π c for α = 5, 6, 7, 8
+                                 
+                                 
+                                                       2       4           2       4
+
+                      where c = ∆x  ∆t LB = 1 is the lattice speed, ∆x LB = 1 is the lattice spacing, and ∆t LB = 1
+                                       LB
+
+                      is the lattice time-step size. The multi-distribution lattice Boltzmann equations for fluid
+                      flow and heat transfer in the most general form can be written as:
+
+                                             f α (x + eα ∆t, t + ∆t) − f α (x, t) = Ω f + Fα (x, t)               (7)
+
+                                                  gα (x + eα ∆t, t + ∆t) − gα (x, t) = Ω g                        (8)
+                      where f α (x, t) and gα (x, t) are density distribution functions and temperature distribution
+                      functions, respectively. Fα (x, t) is the buoyancy force at each grid node. Ω is related to
+                      modeling the collision step. The simplest model is the linear Bhatnagar–Gross–Krook
+                      (BGK) collision model, which is also called the single relaxation time (SRT) and defines the
+                      collision terms as:
+                                                                 1                 eq
+                                                                                             
+                                                      Ωf = −         f α (x, t) − f α (x, t)                      (9)
+                                                                τf
+                                                                 1                 eq
+                                                                                             
+                                                      Ωg = −        gα (x, t) − gα (x, t)                       (10)
+                                                                τg
+                      where τ f and τg are the relaxation times for the fluid flow and temperature field. The
+                      relaxation time is related to the LB kinematic viscosity and thermal diffusivity. cs is the
+                      lattice sound speed and for the D2 Q9 lattice it is given by c2s = 1/3 [10].
+
+                                                           νLB, f = c2s ×(τ f − 0.5)                            (11)
+
+                                                           α LB,g = c2s ×(τ g − 0.5)                            (12)
+                           The relaxation time is required to be higher than 0.5 to ensure non-negative kinematic
+                      viscosity and thermal diffusivity. The LB kinematic viscosity and thermal diffusivity are
+                      related thorough Pr as:
+                                                                 νLB, f    νph
+                                                          Pr =          =                                    (13)
+                                                                 α LB,g    α ph
+                      where subscripts LB and ph correspond to lattice Boltzmann and physical units, respectively.
+                      From Equations (11) to (13), the relaxation time for fluid flow and temperature field are
+                      related as:
+                                                                τ f − 0.5
+                                                         τg =              + 0.5                             (14)
+                                                                     Pr
+                           The fluid equilibrium density distribution function in the D2 Q9 model is defined as:
+                                                                                               
+                                        eq            3                 9        2    2     2
+                                      f α = ωα ρ 1 + 2 eα ·uLB,f + 4 eα ·uLB,f − 2 uLB,f                     (15)
+                                                      c                 2c             3c
+Fluids 2021, 6, 148                                                                                             6 of 20
+
+
+
+
+                           Whereas for temperature field it is defined as:
+                                                                             
+                                                    eq                3     
+                                                  gα = ωα ρ 1 + 2 eα ·uLB,g                                      (16)
+                                                                     c
+
+                      where uLB, f and uLB,g are velocity vectors in the lattice units for fluid flow and temperature
+                      fields, respectively. If the grids used for fluid flow and temperature calculations are the
+                      same, then uLB,f = uLB,g . Otherwise, velocity must be “converted” to account for the
+                      different grids. This will be further discussed in Section 2.1. ωα is a weight coefficient
+                      defined as:                                     4
+                                                                      9 α = 0
+                                                       ωα =        1                                             (17)
+                                                                     α   = 1, 2, 3, 4
+                                                                91
+                                                                  36 α = 5, 6, 7, 8
+                           The macroscopic density, velocity, and temperature at each node are recovered through:
+
+                                                                               9
+                                                        ρ LB, f (x, t) =       ∑ f α (x, t)                      (18)
+                                                                           α=0
+
+                                                                                    9
+                                                 ρ LB, f (x, t)uLB,f (x, t) =      ∑ f α (x, t)eα                (19)
+                                                                                   α=0
+                                                                           9
+                                                          θ (x, t) =    ∑ gα (x, t)                              (20)
+                                                                       α=0
+
+                             With these settings and through the Chapman–Enskog expansion, Equations (1)–(3)
+                      can be recovered [52,53].
+                             The characteristic velocity is an essential parameter to non-dimensionalize the equa-
+                      tions. pFor natural convection problems, the characteristic velocity is usually defined as
+                      uc =       gβ∆TH, where H is the number of grid cells in the x-direction and ∆T is the tem-
+                      perature difference between the right and left walls. The value of uc in LB units should lie
+                      within the limit of incompressible flow (Ma = uc /cs < 0.3); therefore, it should be less than
+                      0.17 for the D2 Q9 lattice since the speed of sound c2s = 1/3. In this study, the characteristic
+                      velocity was chosen to be less than 0.1 in all cases to stay far away from the incompressible
+                      limit. The kinematic viscosity in lattice units can be calculated from the relation between
+                      Ra and Pr numbers, Ra = u2c HLB,    2        2
+                                                             f Pr/νLB, f . Then, the thermal diffusivity is calculated
+                      from Equation (13). Once the kinematic viscosity and thermal diffusivity in lattice units are
+                      known, both the thermal and fluid relaxation times can be calculated from Equations (11)
+                      and (12).
+                             As previously mentioned, both the relaxation times for fluid flow and temperature
+                      field should be greater than 0.5 for a physical fluid. Furthermore, it has been shown in the
+                      BGK method that the solution is unstable when the relaxation time approaches 0.5. Al-
+                      though there is no upper limit for relaxation time, when recovering the Navier–Stokes equa-
+                      tion through the Chapman–Enskog expansion, it is assumed that the distribution function
+                                                                                                    eq
+                      f α is departed from equilibrium through a small perturbation as f α = f α + ε f α1 + O ε2 ,
+                                                                                                                     
+
+                      where ε ∝ τ. As a result, smaller truncation errors can be achieved when relaxation times
+                      are less than 1.0. Therefore, in the BGK method, both relaxation times should be in the
+                      range (0.5–1] to obtain maximum stability and accuracy [22,24,51,54–56]. According to
+                      Equations (13) and (14), at very high or very low Pr numbers, the relaxation time for either
+                      fluid flow or energy equation becomes τ ≈ 0.5 or τ  1. The implicit relation between
+                      Pr number and relaxation times, in combination with the incompressible flow constraint,
+                      restricts the ability of the SRT model to simulate small or large Pr numbers.
+                                       flow constraint, restricts the ability of the SRT model to simulate small or large                        num-
+                                       bers.
+
+                                       2.1. Multiple-Grid Lattice Boltzmann (MGLB)
+Fluids 2021, 6, 148                          The idea behind the proposed method relies on the fact that by choosing different                  7 of 20
+                                       grid sizes and time steps for fluid flow and energy equations, the relaxation times in both
+                                       equations can be selected separately, resulting in the increase of stability.
+                                             The fluid flow equation needs the temperature at each node of the velocity grid to
+                                    2.1. Multiple-Grid
+                                       calculate            Lattice Boltzmann
+                                                   the buoyancy       force, while(MGLB)
+                                                                                       the energy equation needs the velocity at each node
+                                                idea behind grid
+                                          Thetemperature
+                                       of the                    the proposed
+                                                                       to calculate method    relies onterm
+                                                                                       the advection       the fact
+                                                                                                                in thethat  by choosing
+                                                                                                                         equilibrium        different
+                                                                                                                                         function.    The
+                                    grid  sizes andtotime
+                                       procedure              steps variables
+                                                          transfer   for fluid flow     and energy
+                                                                                  between     meshes  equations,    the relaxation
+                                                                                                         is explained                  times in
+                                                                                                                           in this section.      both 2
+                                                                                                                                               Figure
+                                    equations
+                                       shows the        be selected
+                                                  canposition         separately,
+                                                                 of two    arbitrary resulting
+                                                                                        fine andin coarse
+                                                                                                   the increase
+                                                                                                             meshes of stability.
+                                                                                                                        relative to each other. The
+                                          The   fluid   flow   equation    needs    the  temperature     at
+                                       following explanation assumes a fine mesh for velocity and a coarse   each  node             velocity
+                                                                                                                            of themesh    for grid   to
+                                                                                                                                              tempera-
+                                    calculate    the  buoyancy     force,   while   the  energy  equation      needs   the
+                                       ture, and the goal is to transfer temperature from the coarser grid to the finer grid.velocity  at each  node
+                                    of the temperature
+                                             If the velocity  grid     calculate thegrids
+                                                                andtotemperature         advection
+                                                                                              coincidetermat in the equilibrium
+                                                                                                              a node,                 function.
+                                                                                                                        the temperature           The
+                                                                                                                                             is directly
+                                    procedure
+                                       transferredto transfer
+                                                       from the variables   between
+                                                                  temperature       gridmeshes      explained
+                                                                                          to theisvelocity       in For
+                                                                                                              grid.  this asection.  Figure 2 shows
+                                                                                                                             non-coincident     node in
+                                         position
+                                    thethe          of   two  arbitrary   fine and    coarse  meshes    relative   to  each
+                                           velocity grid, the four nearest neighboring nodes in the temperature grid are foundother.  The  following
+                                       (as shown assumes
+                                    explanation      in Figurea2).fine  mesh
+                                                                     Then    thefor  velocity and
+                                                                                  temperature          coarse
+                                                                                                  inathe        mesh
+                                                                                                           velocity     for temperature,
+                                                                                                                      node    is determinedand fromthethe
+                                    goal  is to  transfer   temperature
+                                       interpolation weights, , as follows. from    the  coarser grid   to  the finer  grid.
+
+
+
+
+                                        (a)                                                                  (b)
+         Figure
+      Figure     2. Mapping
+              2. Mapping         the the
+                              from
+                           from          coarse
+                                      coarse gridgrid (temperature)
+                                                  (temperature)      tofine
+                                                                to the  the grid
+                                                                            fine (fluid flow)flow)
+                                                                                  grid (fluid        (a).properties
+                                                                                               (a). The             at anyat
+                                                                                                          The properties     anyinnode
+                                                                                                                           node         in the
+                                                                                                                                   the fine
+         fine grid are determined   from   the four nearest neighbor  nodes   of the coarse
+      grid are determined from the four nearest neighbor nodes of the coarse grid (b).       grid  (b).
+
+                                          If the velocity and temperature=grids coincide
+                                                                                  +       +        + the temperature is directly
+                                                                                           at a node,
+                                                                                                                               (21)
+                                    transferred from the temperature grid to the velocity grid. For a non-coincident node in
+                                    thewhere       to the
+                                         velocity grid,       known.
+                                                          arefour     Theneighboring
+                                                                  nearest weight coefficients
+                                                                                      nodes in themust            following
+                                                                                                       satisfy thegrid
+                                                                                                    temperature              condi-
+                                                                                                                       are found
+                                       tions:
+                                    (as shown in Figure 2). Then the temperature in the velocity node is determined from the
+                                    interpolation weights, wi , as follows.
+
+                                                                     θ f ine = w1 θ A + w2 θ B + w3 θC + w4 θ D                                  (21)
+
+                                    where θ A to θ D are known. The weight coefficients wi must satisfy the following conditions:
+
+                                                                                      ∑ wi = 1                                                   (22)
+
+                                                                        w1 d 1 = w2 d 2 = w3 d 3 = w4 d 4                                        (23)
+                                         These conditions provide four equations (one in Equation (22) and three in Equation (23))
+                                    for the four unknowns wi . The solutions are:
+                                                                                                 1
+                                                                                 w1 =      d      d   d
+                                                                                        1+ d1 + d1 + d1
+                                                                                             2      3   4
+                                                                                     w2 = dd1 w1                                                 (24)
+                                                                                               2
+                                                                                     w3 = dd1 w1
+                                                                                               3
+                                                                                     w4 = dd1 w1
+                                                                                               4
+Fluids 2021, 6, 148                                                                                           8 of 20
+
+
+
+
+                            Equations (22) and (24) provide the procedure to transfer the temperature values from
+                      the coarse grid to the fine velocity grid. The same technique can be used to transfer the
+                      velocity from the fine grid to the coarse temperature grid. It should be noted that the LB
+                      method for both velocity and temperature is second-order accurate in space. However, the
+                      mapping method for transferring variables between coarse and fine grids, as in Figure 2, is
+                      linear, which makes the model first-order accurate. Higher-order interpolation schemes
+                      can be used instead of linear interpolation with the drawback of higher computational time.
+                      As an example, quadratic interpolation needs 9 neighboring nodes instead of 4 nodes in
+                      the linear interpolation. The extra nodes will make the model computationally expensive.
+                            In addition to the previous interpolation procedure to transfer variables between the
+                      fine and coarse grids, the variables must also be “converted” to account for the different
+                      grids. The conversion between the fine and coarse grids can be achieved by equating the
+                      non-dimensional parameters such as Reynolds number (Re), Prandtl number (Pr), and/or
+                      any combination of non-dimensional numbers between the fine and coarse grids and
+                      physical scaling. The non-dimensional diffusion time scales are defined as t∗f = ∆tν H2
+                                                                                                               for
+                      fluid domain and t∗g = ∆tαH2
+                                                     for energy equation. H in the physical unit is defined as the
+                      actual length of the domain and in the LB unit is defined as the number of grids along the
+                      physical length. By equating the non-dimensional diffusion time scales in physical and LB
+                      units, we have:
+                                                                       !2
+                                                         νLB, f H ph        νLB, f           2
+                                            ∆t ph, f =                    =          ∆x ph, f                 (25)
+                                                          νph   HLB, f       νph
+                                                                            2
+                                                                   H ph
+                                                                                                     2
+                                                      α LB,g                         α LB,g 
+                                            ∆t ph,g =                            =            ∆x ph,g           (26)
+                                                       α ph        HLB,g              α ph
+                           By substituting the νLB, f and α LB,g from Equations (25) and (26) into Equations (11)
+                      and (12), the relationship between relaxation time and physical properties such as grid size
+                      and time step are obtained as:
+
+                                                              3νph ∆t ph, f
+                                                         τf =           2 + 0.5                               (27)
+                                                                ∆x ph, f
+
+                                                              3α ph ∆t ph,g
+                                                         τg =          2 + 0.5                                (28)
+                                                                ∆x ph,g
+
+                           By substituting the value of νph and α ph into the definition of Pr, the relation between
+                      relaxation time using MGLB can be obtained as:
+                                                                      !2
+                                                           ∆x ph, f        ∆t ph,g τ f −0.5
+                                                 τg =                                       + 0.5               (29)
+                                                           ∆x ph,g         ∆t ph, f Pr
+
+                           By comparing Equation (29) with Equation (14), it is noted that the value of τg is now
+                      also a function of grid size and time-step ratios.
+                           The velocities, u LB, f and u LB,g , required to calculate the equilibrium distribution
+                      function in Equations (15) and (16), are not equal in the MGLB model. To find the relation,
+                      the Courant number Cu = u∆t    ∆x must be equal in both LB and physical units as:
+
+                                                        ∆t ph, f u ph   ∆t LB, f u LB, f
+                                                                      =                                         (30)
+                                                         ∆x ph, f         ∆x LB, f
+
+                                                        ∆t ph,g u ph   ∆t LB,g u LB,g
+                                                                     =                                          (31)
+                                                         ∆x ph,g         ∆x LB,g
+Fluids 2021, 6, 148                                                                                                                   9 of 20
+
+
+
+
+                          Since both ∆t LB and ∆x LB are equal to 1, by equating the physical velocity in both
+                      equations, the relationship between u LB,g and u LB, f is obtained as:
+
+                                                                  ∆t ph,g ∆x ph, f
+                                                       u LB,g =                    u                                                      (32)
+                                                                  ∆t ph, f ∆x ph,g LB, f
+
+                           Equations (29) and (32) are written in general form, meaning that it is not implied
+                      whether the fine grid is chosen for the fluid flow or the energy equation. The selection
+                      of whether the fluid flow or energy equation should have a finer grid depends on the
+                      simulation’s goal. If the simulation’s purpose is to capture the small vortexes in the domain,
+                      then the velocity field should have a finer grid. However, if the aim of the simulation
+                      is to increase the overall stability or to reduce the total computational time, selecting
+                      different grid and time steps based on the value of the Pr number can help to alleviate
+                      the divergence problem as given by Equation (29). Here we only focus on stability and
+                      reducing the computational time issues.
+                           Therefore, for the case of Pr  1, when a uniform grid and time step is used, according
+                      to Equation (14), τg may become very large (τLB,g  1). To reduce τg by the MGLB method,
+                                                                                                    ∆x                       ∆t
+                      according to Equation (29), the grid and time step are selected as ∆x ph, f ≤ 1 and ∆t ph,g ≤ 1.
+                                                                                                         ph,g                     ph, f
+                      The selection implies that a finer mesh is chosen for fluid flow, while the energy equation
+                      has smaller time steps.
+                            The grid ratio (GR) is defined as the ratio of the number of cells in the x-direction of
+                      the fine grid to the cell number in the coarse grid. Therefore, for Pr  1, it can be written
+                                   ∆x       HLB, f
+                      as GR = ∆x ph,g =     HLB,g . The time-step ratio (n) is defined as the ratio of the time step in
+                                        ph, f
+                                                                                                             ∆t
+                      the finer grid (in this case fluid flow) to the time step in the coarse mesh: n = ∆t ph, f . The
+                                                                                                                ph,g
+                      effect of selecting different values for GR and n on stability and computational time will be
+                      discussed in the Section 3.
+                           With the same analogy, when Pr  1, τg could become very small when a uniform
+                      grid and time step are used. To increase the τg according to Equation(29), the grid size and
+                                                     ∆x                ∆t
+                      time step are chosen so that ∆x ph, f ≥ 1 and ∆t ph,g ≥ 1, which means a finer mesh for the
+                                                          ph,g              ph, f
+                      energy equation, while having smaller time steps for the fluid-flow model. Here the grid
+                                                                            H           ∆x                      ∆t
+                      ratio and time-step ratio are defined as GR = HLB,g = ∆x ph, f and n = ∆t ph,g , respectively.
+                                                                                LB, f        ph,g                    ph, f
+
+
+                      3. Results
+                           The stability and computational time enhancements of the LB model were tested
+                      by simulating natural convection in a side-heated square cavity, as described in Figure 1.
+                      Results reveal that the Pr number has a significant effect on the formation of vortices and
+                      flow patterns.
+
+                      3.1. Natural Convection Inside a Heated Square Cavity: Benchmark Test
+                           Initially, the natural convection inside a heated square cavity for Pr = 0.7 (air) was
+                      studied. The results obtained with the conventional SRT-LB model were validated against
+                      the results reported in references [40,42].
+                           To obtain grid-independent results, several different grid sizes have been examined,
+                      and a 400 × 400 grid was selected for both velocity and temperature fields. The streamlines
+                      and isotherms obtained with the LB model are plotted in Figure 3, which is in qualitative
+                      agreement with [40,42].
+                                     Initially, the natural convection inside a heated square cavity for Pr = 0.7 (air) was
+                                studied. The results obtained with the conventional SRT-LB model were validated against
+                                the results reported in references [40,42].
+                                     To obtain grid-independent results, several different grid sizes have been examined,
+Fluids 2021, 6, 148             and a 400×400 grid was selected for both velocity and temperature fields. The streamlines
+                                                                                                                      10 of 20
+                                and isotherms obtained with the LB model are plotted in Figure 3, which is in qualitative
+                                agreement with [40,42].
+
+
+
+
+                                                        (a)                                            (b)
+                                Figure                                                                           66
+                                            Naturalconvection
+                                 Figure3.3.Natural                   side-heatedcavity
+                                                    convectionininaaside-heated          forPr
+                                                                                  cavityfor  Pr==0.7
+                                                                                                  0.7atatRa
+                                                                                                          Ra==1010  obtainedwith
+                                                                                                                   obtained       thelattice
+                                                                                                                             withthe   lattice
+                                Boltzmann   (LB) model: (a) isotherms   and (b) streamlines.
+                                 Boltzmann (LB) model: (a) isotherms and (b) streamlines.
+
+                                       Theaverage
+                                      The             Nusseltnumber
+                                           averageNusselt     numberalong
+                                                                      along the
+                                                                              the right
+                                                                                  right wall in addition  to the
+                                                                                                addition to       maximumvelocity
+                                                                                                              the maximum      veloc-
+                                ity location
+                                  location   andmagnitude
+                                           and     magnitudewere
+                                                               werecompared
+                                                                    comparedwith        previous studies
+                                                                                 withprevious    studies and listed in    Table 2.
+                                                                                                                       in Table  2.AA
+                                  conversionofofthe
+                                conversion            currentstudy
+                                                  thecurrent  studyresults
+                                                                    resultstotothe
+                                                                                theway
+                                                                                     wayreferences   [40,42]reported
+                                                                                          references[40,42]              theirresults
+                                                                                                               reportedtheir   results
+                                  wasdone
+                                was         forconsistency.
+                                       donefor   consistency.
+
+                                Table    Quantitative
+                                 Table2. 2.            comparison
+                                            Quantitative           of Nusselt
+                                                          comparison          number
+                                                                       of Nusselt     and the
+                                                                                   number  andmaximum    velocity
+                                                                                                the maximum       location
+                                                                                                               velocity    and mag-
+                                                                                                                         location and
+                                nitude.  The values in parentheses are locations of maximum   velocity measured  from  the
+                                 magnitude. The values in parentheses are locations of maximum velocity measured from the  cavity
+                                center.
+                                 cavity center.
+
+                                                                      Nuave                    UUmax(y)                   VVmax(x)
+                                                                                                  max (y)                    max (x)
+                                    Current study                    8.85                   65.03(0.845)               215.8(0.0391)
+                                     Current study                     8.85                   65.03(0.845)              215.8(0.0391)
+                                        Ref.[42]
+                                      Ref.   [42]                   8.7746
+                                                                      8.7746                64.91(0.8516)
+                                                                                             64.91(0.8516)            218.90(0.0391)
+                                                                                                                        218.90(0.0391)
+                                        Ref.[40]
+                                      Ref.   [40]                   8.8251
+                                                                      8.8251                64.84(0.8505)
+                                                                                             64.84(0.8505)            220.46(0.0390)
+                                                                                                                        220.46(0.0390)
+
+                                     These results compare very well with the ones published in [40,42], showing a max-
+                                      These results compare very well with the ones published in [40,42], showing a max-
+                                imum error of 0.3% for both              and velocity, which demonstrates that the SRT-LB
+                                 imum error of 0.3% for both Nu ave and velocity, which demonstrates that the SRT-LB
+                                method is capable of generating correct results for natural convection for Ra = 106 for Pr    =
+                                 method is capable of generating correct results for natural convection for Ra = 106 for
+                                0.7.
+                                 Pr = 0.7.
+                                      Theaccuracy
+                                     The                 theconventional
+                                           accuracyofofthe   conventionalLBLB(SRT
+                                                                              (SRTmethod)
+                                                                                   method)for     modelingvarious
+                                                                                              formodeling   variousPrPrnumbers
+                                                                                                                        numbers
+                                 was further validated with the results reported in [41,43]. The same 400 × 400grid
+                                was  further  validated   with the results reported in [41,43].  The same   400  × 400  gridwas
+                                                                                                                            was
+                                 selectedasasbefore
+                                selected      beforefor both
+                                                      for bothvelocity and
+                                                                velocity   temperature
+                                                                         and temperaturefields. TheThe
+                                                                                           fields.  results are are
+                                                                                                                summarized
+                                                                                                       results               in
+                                                                                                                    summarized
+                                Table  3.
+                                 in Table 3.
+
+                                       Table 3. Comparison of Nu ave for different Pr numbers.
+
+                       Pr = 0.005          Pr = 0.007           Pr = 0.01           Pr = 0.071            Pr = 0.71           Pr = 7.1
+       Nuave
+                      Ra = 15,000          Ra = 105             Ra = 105            Ra = 105              Ra = 105            Ra = 105
+      Current            2.08                 2.65                3.18                 3.76                  4.45               4.68
+      Ref. [41]          2.10                 N/A                 3.23                 N/A                   N/A                N/A
+      Ref. [43]          N/A                  2.58                N/A                  3.80                  4.48               4.72
+
+
+                                      For the case Pr = 0.01 and Ra = 105 , we report the long-time average of the transient
+                                 Nu ave due to the oscillation of temperature in the domain with time. The results of this
+                                 validation revealed that the conventional SRT-LB method was capable of generating correct
+                                 results for natural convection in a wide range of Pr, although at the expense of using a very
+                                 fine mesh.
+                            For the case Pr = 0.01 and Ra = 105, we report the long-time average of the transient
+                              due to the oscillation of temperature in the domain with time. The results of this
+                      validation revealed that the conventional SRT-LB method was capable of generating cor-
+Fluids 2021, 6, 148                                                                                          11 of 20
+                      rect results for natural convection in a wide range of Pr, although at the expense of using
+                      a very fine mesh.
+
+                      3.2. Natural Convection with SRT Method for Prandtl Numbers 0.01 and 100
+                        3.2. Natural Convection with SRT Method for Prandtl Numbers 0.01 and 100
+                            In this section, numerical results for a fine grid with the SRT method at Pr = 0.01 and
+                              In this section, numerical results for a fine grid with the SRT method at Pr = 0.01 and
+                      100 for Ra = 106 6are presented. These results are later used as a reference for calculating
+                        100 for Ra = 10 are presented. These results are later used as a reference for calculating the
+                      the accuracy of the results obtained by the MGLB method.
+                        accuracy of the results obtained by the MGLB method.
+                            AA fine  grid
+                                  fine    of 400
+                                       grid       × 400
+                                             of 400   × cells was used
+                                                         400 cells   was for
+                                                                           used     SRT-LB
+                                                                               thefor         model model
+                                                                                                      to avoidtosolution
+                                                                                       the SRT-LB                            diver-
+                                                                                                                     avoid solution
+                      gence   and   achieve   grid-independent      results  for both   Pr  = 0.01  and   Pr
+                        divergence and achieve grid-independent results for both Pr = 0.01 and Pr = 100. The  = 100.  The  stream-
+                      lines  and isotherms
+                        streamlines            are shown
+                                       and isotherms    are in Figure
+                                                            shown        4. They4.provide
+                                                                     in Figure                detailed
+                                                                                    They provide         information
+                                                                                                     detailed            aboutabout
+                                                                                                                                the
+                                                                                                                 information
+                      nature   of heatoftransfer.
+                        the nature                At lowAt
+                                         heat transfer.    Prandtl   numbers
+                                                             low Prandtl         (Figure(Figure
+                                                                              numbers      4a,c), flow   is flow
+                                                                                                    4a,c),  dominated     by vorti-by
+                                                                                                                   is dominated
+                      ces  near   the center  of the  cavity.  By  increasing    Pr  (Figure   4b,d),  the   streamlines
+                        vortices near the center of the cavity. By increasing Pr (Figure 4b,d), the streamlines                  to
+                                                                                                                           startstart
+                      become     concentrated    near  the wall,  and   flow   moves   counterclockwise
+                        to become concentrated near the wall, and flow moves counterclockwise from the hot     from   the hot  wall
+                      upward.     With the
+                        wall upward.         increase
+                                          With          of Pr, fluid
+                                                the increase   of Pr,viscosity    increases,
+                                                                       fluid viscosity         which which
+                                                                                         increases,     eventually     causescauses
+                                                                                                                               con-
+                                                                                                                 eventually
+                      vection   to  dominate   over  conduction    in  transferring
+                        convection to dominate over conduction in transferring energy.energy.
+
+
+
+
+                                   (a)     = 0.01                             (b)     = 100
+
+
+
+
+                                   (c)     = 0.01                             (d)     = 100
+                      Figure
+                        Figure4. 4.
+                                 Isotherms  (a,b)
+                                    Isotherms     andand
+                                               (a,b)  streamlines (c,d)(c,d)
+                                                          streamlines        for different with
+                                                                        for different              = 10
+                                                                                           Pr with Ra     106 . results
+                                                                                                      = . The           for Prfor
+                                                                                                                 The results
+                      = 0.01 are  reported for Fourier number,  Fo = 3.0.
+                        Pr = 0.01 are reported for Fourier number, Fo = 3.0.
+
+                             Figure 5 shows the SRT-LB results of flow velocity and temperature profiles inside the
+                        side-heated cavity in the midsection along the vertical and horizontal directions.
+Fluids 2021, 6, x FOR PEER REVIEW                                                                                                        12 of 20
+
+
+Fluids 2021, 6, 148                                                                                                                       12 of 20
+                                         Figure 5 shows the SRT-LB results of flow velocity and temperature profiles inside
+                                    the side-heated cavity in the midsection along the vertical and horizontal directions.
+
+
+
+
+                                   (a)                                  (b)                                  (c)
+
+
+
+
+                                  (d)                                   (e)                                  (f)
+
+      Figure 5.
+      Figure      Non-dimensionalvelocity
+              5. Non-dimensional                x-direction
+                                            in in
+                                     velocity     x-direction(a,d), in y-direction
+                                                                (a,d),             (b,e)(b,e)
+                                                                       in y-direction         temperature
+                                                                                          and and             profiles
+                                                                                                    temperature        (c,f) along
+                                                                                                                   profiles         the mid-
+                                                                                                                             (c,f) along the
+      section of the cavity (X = 1/2 and Y = 1/2)  for different  Prandtl  numbers   and   Ra = 10 6. All the results for Pr = 0.7 and Pr =
+                                                                                                        6
+      midsection of the cavity (X = 1/2 and Y = 1/2) for different Prandtl numbers and Ra = 10 . All the results for Pr = 0.7 and
+      100 are reported in steady-state conditions, while for Pr = 0.01, the results are reported for a long-time average of the
+      Pr = 100 are reported in steady-state conditions, while for Pr = 0.01, the results are reported for a long-time average of the
+      transient velocity profiles.
+      transient velocity profiles.
+
+                                          For the
+                                         For       low Prandtl
+                                               the low          number (Pr
+                                                        Prandtl number   (Pr == 0.01),
+                                                                                0.01), the
+                                                                                        thelong-time       average of
+                                                                                            long-time average            the transient
+                                                                                                                      of the  transient velocity
+                                                                                                                                         velocity
+                                    profiles was reported. As other researchers have reported, the solution is oscillatory
+                                    profiles was   reported. As  other researchers    have   reported,     the  solution   is              in the
+                                                                                                                              oscillatory in  the
+                                    case of a  low  Prandtl  number   [6,57]. The  results   in  that   case   never   reach
+                                    case of a low Prandtl number [6,57]. The results in that case never reach the steady-state.the steady-state.
+                                    A more
+                                    A        detailed description
+                                       more detailed                 of the
+                                                        description of  the unsteady
+                                                                            unsteady nature
+                                                                                         nature of  of the        Prandtl number
+                                                                                                             low Prandtl
+                                                                                                       the low               number results     is
+                                                                                                                                       results is
+                                    discussed in
+                                    discussed       Appendix A.
+                                                 in Appendix   A.
+                                          The temperature profileisiscomparable
+                                         The   temperature   profile     comparablefor   forallall
+                                                                                                the  cases
+                                                                                                   the   cases   Figure
+                                                                                                              in in Figure5. However,
+                                                                                                                              5. However, the the
+                                                                                                                                              ve-
+                                    locity profile  shows  that the stability of  vortex  pairs    increases    with   increasing
+                                    velocity profile shows that the stability of vortex pairs increases with increasing Pr num-     Pr  number.
+                                    In lower
+                                    ber.       Pr numbers,
+                                         In lower            the breakdown
+                                                     Pr numbers,               of vortex
+                                                                   the breakdown            symmetry
+                                                                                       of vortex    symmetryis observed,    whichwhich
+                                                                                                                   is observed,      leads to  in-
+                                                                                                                                            leads
+                                    stability.
+                                    to instability.
+Fluids 2021, 6, 148                                                                                                        13 of 20
+
+
+
+
+                                 3.3. Natural Convection with MGLB Method
+                                      In this section, the MGLB model was employed to solve natural convection in the
+                                 side-heated square cavity with the two extreme values of Prandtl number: 0.01 and 100 for
+                                 Ra = 106 . As will be discussed in this section, unless a very fine mesh is used, numerical
+                                 instability is observed in the SRT method. This restriction in the Pr number was discussed
+                                 in detail in Section 2. The effects of selecting different time steps and grid sizes (different
+                                 values of n and GR) on stability, accuracy, and computational time was investigated
+                                 extensively. The accuracy of the proposed MGLB method was compared to the fine-grid
+                                 SRT model presented in Section 3.3.
+                                      The low Prandtl number was studied first via twelve cases with input parameters
+                                 shown in Table 4. The characteristic velocity, uc , was selected as 0.05 in all cases to satisfy
+                                 the incompressible limit, as explained in Section 2.1. The average Nusselt number, Nu ave ,
+                                 obtained with MGLB was compared with the average Nu number from SRT-LB simulations
+                                 presented in Section 3.2, as the reference for error calculation. The error is defined as
+                                 error = NuSRT_ f ine − Nu ave /NuSRT_ f ine × 100. The first two cases in Table 4 were
+                                 solved with the SRT method while the rest were solved with the MGLB method. The N/A
+                                 in the table for Case 1 indicates that the solution diverged due to the coarse grid. By using
+                                 a finer mesh, as in Case 2, the SRT method did eventually converge. The computational
+                                 time in each case was calculated and then normalized with respect to the computational
+                                 time of Case 2. The normalized time is a measure for comparing the computational time
+                                 between the MGLB and SRT methods. The Nu ave for all cases was measured, and the error
+                                 was calculated.
+
+      Table 4. Input parameters and simulation results for Ra = 106 , Pr = 0.01 for simulations with single relaxation time
+      (SRT) (Cases 1 and 2) and multiple-grid lattice Boltzmann (MGLB) (Cases 3 to 12). “N/A” indicates no convergence. The
+      characteristic velocity was selected as uc = 0.05 in all cases. The Time column is normalized by Case 2. The average Nu
+      number from SRT-LB simulations presented in Section 3.2 was 5.312.
+
+   Case No.           Hf           Hg             n            GR             τf             τg          Nuave          Time
+    1(SRT)            100          100            1              1          0.5015         0.6500         N/A           N/A
+    2(SRT)            200          200            1              1          0.5030         0.8000         5.345         1.000
+  3(MGLB)             100          100            2              1          0.5015         0.5750         5.105         0.193
+  4(MGLB)             150          100            1             1.5         0.5023         0.6000         5.350         0.456
+  5(MGLB)             150          100            2             1.5         0.5023         0.5500         5.343         0.491
+  6(MGLB)             150          100            3             1.5         0.5023         0.5333         5.350         0.544
+  7(MGLB)             200          100            1              2          0.5030         0.5750         5.467         0.719
+  8(MGLB)             200          100            2              2          0.5030         0.5375         5.461         0.737
+  9(MGLB)             200          100            3              2          0.5030         0.5250         5.455         0.789
+  10(MGLB)            300          100            1              3          0.5045         0.5500         5.538         1.965
+  11(MGLB)            300          100            2              3          0.5045         0.5250         5.539         2.000
+  12(MGLB)            300          100            3              3          0.5045         0.5167         5.535         2.053
+
+
+                                      Figure 6 summarizes the results obtained by the SRT and MGLB methods regarding
+                                 the accuracy and computational time. The horizontal and vertical solid lines define a
+                                 threshold for error and computational time, respectively. The acceptable error was defined
+                                 as 10%, while a normalized time of 1 was selected as a threshold for time. These two
+                                 lines divide the plane into four quadrants, where the points of interest lie above the third
+                                 quartile. In the third quartile, the computational time and error are acceptable. In all MGLB
+                                 cases, the simulation converged, with the total number of grid cells being much less than
+                                 the counterpart SRT method.
+                                     Case 3 demonstrates the ability of the MGLB method to increase stability and reduce
+                                computational time. While keeping the grid size the same as Case 1, by increasing n (the
+Fluids 2021, 6, 148             time-step ratio), the simulation converged with more than 80% reduction in computa-14 of 20
+                                tional time compared to Case 2.
+
+
+
+
+                      Figure 6. Effect of grid ratio (GR) and n on computational time and error for Pr = 0.01.
+                      Figure 6. Effect of grid ratio (GR) and n on computational time and error for Pr = 0.01.
+                                       Case 1 diverged very quickly due to the coarseness of the mesh. Case 2 converged
+                                 withThe    bestmesh
+                                       a finer      result    regarding
+                                                            while            the error was
+                                                                    the characteristic          obtained
+                                                                                             velocity        when GR the
+                                                                                                        uc remained      = 1.5,  in Cases
+                                                                                                                              same.           4, 5, and 6.
+                                                                                                                                        The simulation
+                                When    GR   =  2,  the   simulation       gets   computationally      more    expensive
+                                 time in Case 2 was used as the reference value for comparison with the MGLB method.        and   the   error  increases.
+                                       Case 3 demonstrates the ability of the MGLB method to increase stability and energy
+                                The increase        in  error    can   be   explained     by  the  coupling      between     fluid   flow    and    reduce
+                                equations.
+                                 computational In the  time.      method,
+                                                            SRTWhile            the grid
+                                                                          keeping                andthe
+                                                                                           sizesize
+                                                                                      the grid          time   stepasare
+                                                                                                            same      Casethe1,same,      which can
+                                                                                                                                 by increasing            be
+                                                                                                                                                     n (the
+                                considered      a coupling
+                                 time-step ratio),                betweenconverged
+                                                        the simulation          the two equations.
+                                                                                            with moreThe   thanMGLB     method weakens
+                                                                                                                 80% reduction                   the cou-
+                                                                                                                                     in computational
+                                pling   due to thetointermediate
+                                 time compared               Case 2.          interpolation step. For GR = 3, the computational time is
+                                higher   than    for  Case     2 even
+                                       The best result regarding the the though         total
+                                                                                    error  wasnumber
+                                                                                                 obtained of grid
+                                                                                                              when    GRis=less
+                                                                                                                   cells      1.5,than    Case 2.
+                                                                                                                                   in Cases      4, Figure
+                                                                                                                                                     5, and
+                                66.also shows      that    increasing      the  time-step   ratio  (n)  does
+                                     When GR = 2, the simulation gets computationally more expensive and the   not  lead  to  more    accurate    results.
+                                                                                                                                                      error
+                                Instead,
+                                 increases.it improves
+                                              The increase          stability
+                                                               the in  error can (compare     Cases 1byand
+                                                                                     be explained          the3,coupling
+                                                                                                                 for instance).
+                                                                                                                            betweenWhen      theflow
+                                                                                                                                                  simula-
+                                                                                                                                         fluid          and
+                                tion  diverges
+                                 energy   equations.for a In specific
+                                                                the SRT initial   parameter
+                                                                            method,            andsize
+                                                                                        the grid     gridandsize, increasing
+                                                                                                               time  step are then might
+                                                                                                                                      same,prevent
+                                                                                                                                               which can the
+                                simulation
+                                 be considered  from     diverging.between
+                                                      a coupling          It was alsothe observed     that forThe
+                                                                                         two equations.          GRMGLB
+                                                                                                                      = 1.5, 2,   and 3, weakens
+                                                                                                                               method      increasingthe   n
+                                only   makes
+                                 coupling    due thetosimulation        computationally
+                                                         the intermediate                      more
+                                                                                   interpolation       expensive.
+                                                                                                    step.   For GR = 3, the computational time
+                                      The MGLB
+                                 is higher   than for   modelCasewas2 even        appliedthe
+                                                                          alsothough       fortotal
+                                                                                                a high    Prandtl
+                                                                                                     number          grid cells(Pr
+                                                                                                                 of number        is =less
+                                                                                                                                        100),  as Case
+                                                                                                                                            than   shown   2.
+                                    Table6 5.
+                                 Figure
+                                in          also
+                                               The  shows      that increasing
+                                                       first three    cases werethe      time-step
+                                                                                       solved   with ratio
+                                                                                                       the SRT(n) does
+                                                                                                                  method.not lead    to more accurate
+                                                                                                                               The characteristic        ve-
+                                 results.
+                                locity  wasInstead,       it improves
+                                              again selected         as the    = stability
+                                                                                   0.05 in all
+                                                                                             (compare       Cases 1toand
+                                                                                                cases. Contrary         the3,        instance).
+                                                                                                                                for with
+                                                                                                                             cases                   When
+                                                                                                                                            low Prandtl
+                                 the simulation
+                                numbers,     a much    diverges      for is
+                                                            finer grid    a specific
+                                                                             requiredinitial    parameter
+                                                                                         to prevent            and grid
+                                                                                                        the solution       size,diverging,
+                                                                                                                        from      increasing   asnseen
+                                                                                                                                                     mightin
+                                       3. Ithe
+                                 prevent
+                                Case         was  simulation
+                                                     also checked  fromthat diverging.     It was
+                                                                                 the results        also observed
+                                                                                               obtained                that for
+                                                                                                            in case 3 were         GR = 1.5, 2, andIn
+                                                                                                                               grid-independent.           3,
+                                        4 andn 5,
+                                 increasing
+                                Cases             onlythemakes       the simulation
+                                                             same grid      as Case 1 was computationally
+                                                                                               used while trying more to
+                                                                                                                       expensive.
+                                                                                                                           increase the stability by
+                                       The MGLB
+                                increasing              model was
+                                               the time-step              alsoItapplied
+                                                                     ratio.               for that
+                                                                                  turns out    a high
+                                                                                                    thePrandtl
+                                                                                                          solutionnumber     (Pr = 100),
+                                                                                                                     still diverges          as shown
+                                                                                                                                         in those         in
+                                                                                                                                                     cases.
+                                 Table  5. The    first   three   cases    were    solved  with   the  SRT   method.     The
+                                Cases 6 through 8 show that increasing the time-step ratio for the same grid ratio GR = 1.5    characteristic     velocity
+                                 was again selected as uc = 0.05 in all cases. Contrary to the cases with low Prandtl
+                                 numbers, a much finer grid is required to prevent the solution from diverging, as seen in
+                                 Case 3. It was also checked that the results obtained in case 3 were grid-independent. In
+                                 Cases 4 and 5, the same grid as Case 1 was used while trying to increase the stability by
+                                 increasing the time-step ratio. It turns out that the solution still diverges in those cases.
+                                 Cases 6 through 8 show that increasing the time-step ratio for the same grid ratio GR = 1.5
+Fluids 2021, 6, x FOR PEER REVIEW                                                                                            15 of 20
+
+
+
+
+  Fluids 2021, 6, 148           would help to solve the divergence problem that occurred in Case 6. The computational           15 of 20
+                                time was normalized against Case 3.
+                                      The error was about 7 to 9% in all cases, as shown in Figure 7. For a high Pr number,
+                                the MGLB method successfully reduced the computational time to at least 1/3 of the SRT
+                                   would help to solve the divergence problem that occurred in Case 6. The computational
+                                method. Again, the same trend of increasing the time-step ratio on increasing computa-
+                                   time was normalized against Case 3.
+                                tional time and error was observed here. For the same GR, increasing the time-step ratio
+        Table 5. Input parameterscan
+                                  andimprove      results but
+                                               stability,
+                                       simulation                      6 , Pr on
+                                                              has=no10effect
+                                                          for Ra              = reducing    the error.with SRT (Cases 1 to 3) and
+                                                                                 100 for simulations
+        MGLB (Cases 4 to 14). “N/A” indicates that the solution diverged. The characteristic velocity was selected as uc = 0.05 in
+     Table 5. Input parameters and simulation results for      = 10 ,      = 100 for simulations with SRT (Cases 1 to 3) and
+        all cases. The average Nu number from SRT-LB simulations presented in Section 3.2 was 9.240.
+     MGLB (Cases 4 to 14). “N/A” indicates that the solution diverged. The characteristic velocity was selected as       = 0.05
+     in all cases.
+     Case No.      The average
+                        H      Nu number
+                                     H    from SRT-LB
+                                                    n   simulations
+                                                                  GRpresented  in Section
+                                                                                  τ       3.2 wasτ9.240.       Nu            Time
+                         f                g                                          f              g             ave
+
+     Case  No.
+       1(SRT)           100             100       n    1 GR         1    τf      0.6500     τg 0.5015            N/A         Time
+                                                                                                                                N/A
+       2(SRT)
+      1(SRT)            300
+                         100            300
+                                       100        1    1   1        1 0.6500 0.950 0.50150.5045             N/A  N/A         N/AN/A
+       3(SRT)           350             350            1            1            1.0250         0.5052          9.2980          1.000
+      2(SRT)
+     4(MGLB)
+                         300
+                        100
+                                       300
+                                        100
+                                                  1    2
+                                                           1        1
+                                                                       0.950 0.6500 0.50450.5030            N/A  N/A
+                                                                                                                             N/AN/A
+      3(SRT)
+     5(MGLB)             350
+                        100            350
+                                        100       1    3   1        1  1.0250    0.6500   0.50520.5045     9.2980N/A         1.000
+                                                                                                                                N/A
+     4(MGLB)
+     6(MGLB)             100
+                        100            100
+                                        150       2    1   1       1.5 0.6500 0.6500 0.50300.5034           N/A  N/A         N/AN/A
+     7(MGLB)
+     5(MGLB)            100
+                         100            150
+                                       100        3    2   1       1.5 0.6500    0.6500   0.50450.5067      N/A  8.523       N/A0.089
+     8(MGLB)            100             150            3           1.5           0.6500         0.5101           8.521          0.117
+     6(MGLB)             100           150        1       1.5          0.6500             0.5034            N/A              N/A
+     9(MGLB)            100             200            1            2            0.6500         0.5060           8.453          0.108
+     7(MGLB)
+    10(MGLB)             100
+                        100            150
+                                        200       2    2 1.5        2 0.6500 0.6500 0.50670.5120           8.523 8.451       0.089
+                                                                                                                                0.141
+     8(MGLB)
+    11(MGLB)             100
+                        100            150
+                                        200       3    3 1.5        2 0.6500 0.6500 0.51010.5180           8.521 8.450       0.117
+                                                                                                                                0.160
+    12(MGLB)
+     9(MGLB)            100
+                         100            300
+                                       200        1    1   2        3 0.6500 0.6500 0.50600.5135           8.453 8.489          0.178
+                                                                                                                             0.108
+    13(MGLB)
+    10(MGLB)            100
+                         100            300
+                                       200        2    2   2        3  0.6500    0.6500   0.51200.5270     8.451 8.487          0.239
+                                                                                                                             0.141
+    14(MGLB)            100             300            3            3            0.6500         0.5405           8.486          0.296
+    11(MGLB)            100            200        3        2           0.6500             0.5180           8.450             0.160
+    12(MGLB)            100            300        1        3           0.6500             0.5135           8.489             0.178
+    13(MGLB)            100            300  The error
+                                                  2   was about
+                                                           3    7 to 9%  in all
+                                                                       0.6500   cases, as shown
+                                                                                          0.5270   in Figure  7.
+                                                                                                           8.487 For  a high Pr number,
+                                                                                                                             0.239
+    14(MGLB)            100           the
+                                       300MGLB    method
+                                                  3       successfully
+                                                           3           reduced
+                                                                       0.6500     the computational
+                                                                                          0.5405       time  to
+                                                                                                           8.486 at least 1/3 of the SRT
+                                                                                                                             0.296
+                                      method. Again, the same trend of increasing the time-step ratio on increasing computa-
+                                      tional time and error was observed here. For the same GR, increasing the time-step ratio
+                                         Compared to the conventional SRT method, the MGLB method offers better stability
+                                      can improve stability, but has no effect on reducing the error.
+                                    and computational time with reasonable accuracy.
+
+
+
+
+                                 Figure
+                               Figure 7. 7. Effect
+                                         Effect of of
+                                                   GRGR and
+                                                      and   n on
+                                                          n on   computational
+                                                               computational   time
+                                                                             time   and
+                                                                                  and   error
+                                                                                      error      PrPr
+                                                                                            forfor    = 100.
+                                                                                                    = 100.
+
+                                          Compared to the conventional SRT method, the MGLB method offers better stability
+                                      and computational time with reasonable accuracy.
+Fluids 2021, 6, 148                                                                                            16 of 20
+
+
+
+
+                           Based on the MGLB method results for high and low Prandtl numbers, the following
+                      procedure is proposed to obtain the least computational time and error.
+                           For both low and high Prandtl numbers, GR = 1.5 yielded optimum results. The
+                      time-step ratio in both high and low Prandtl numbers controls the stability. It should be
+                      selected as n = 1 initially, and if the solution diverges, a higher value can be chosen.
+                           Nonetheless, the proposed MGLB method reduces the computational time signifi-
+                      cantly compared to the conventional SRT method. The MGLB method can also be employed
+                      with other collision models such as MRT, entropic, or cascaded LB rather than the SRT
+                      scheme. The main difference between these methods lies in how the collision operator is
+                      modeled, which is not affected by the proposed method.
+
+                      4. Conclusions
+                           A multiple-grid lattice Boltzmann (MGLB) single relaxation time (SRT) model has been
+                      proposed. The model implements a different grid and time step for fluid flow and energy
+                      equations. The simulations showed that the model enhances the stability of the standard
+                      SRT-LB method while maintaining its simplicity. Solving natural convection problems
+                      for extreme values of Prandtl number is particularly challenging in terms of numerical
+                      convergence and accuracy. This methodology took care of the problem by selecting an
+                      optimal grid and time step for each equation, depending on the value of Pr number. The
+                      method was validated against the classic example of natural convection in a side-heated
+                      square cavity for Ra = 106 and Pr = 0.7. The results were in good agreement with simulations
+                      performed with numerical results reported in the literature. By appropriate selections of the
+                      grid and time step, computational savings up to ten-fold could be obtained when compared
+                      with the conventional SRT method. Due to the increase in stability, the model was also
+                      able to simulate cases for which the SRT method would not even converge. Considering
+                      that these were relatively simple 2D simulations, the advantages of the proposed MGLB
+                      method are expected to be significantly better when applied to complex 3D problems. Since
+                      the MGLB is a general approach, independent of the way the collision is modeled, we
+                      expect that it can be successfully implemented for other collision models as well.
+
+                      Author Contributions: Conceptualization, S.A.N., M.E. and S.D.F.; methodology, S.A.N. and M.E.;
+                      software, S.A.N.; validation, H.B.; writing—original draft preparation, S.A.N. and H.B.; writing—
+                      review and editing, M.E. and S.D.F.; supervision, M.E. and S.D.F.; funding acquisition, M.E. and
+                      S.D.F. All authors have read and agreed to the published version of the manuscript.
+                      Funding: This research was partially funded by the National Aeronautics and Space Administration
+                      (NASA) through Grant Number 80NSSC20K0736.
+                      Institutional Review Board Statement: Not applicable.
+                      Informed Consent Statement: Not applicable.
+                      Data Availability Statement: Not applicable.
+                      Acknowledgments: The authors also acknowledge the University of Akron and California State
+                      University, Los Angeles, for their sponsorship.
+                      Conflicts of Interest: The authors declare no conflict of interest.
+
+                      Appendix A
+                          Figures A1 and A2 show the unsteady nature of the natural convection in a side-heated
+                      square cavity with a low Prandtl number.
+           Fluids 2021, 6, 148                                                                                                                   17 of 20
+           Fluids 2021, 6, x FOR PEER REVIEW                                                                                                    17 of 20
+021, 6, x FOR PEER REVIEW                                                                                                      17 of 20
+
+
+
+
+                                                      (a) Fo = 0.5                       (b) Fo = 1.0                         (c) Fo = 1.5
+                                     (a) Fo = 0.5                       (b) Fo = 1.0                        (c) Fo = 1.5
+
+
+
+
+                                                      (d) Fo = 2.0                        (e) Fo = 2.5                        (f) Fo = 3.0
+                                     (d) Fo = 2.0                       (e) Fo = 2.5                        (f) Fo = 3.0
+                                             Figure A1.
+                                             Figure       Streamlines
+                                                          Streamlines   at different times (a–f)
+                                                                                     times        for
+                                                                                                  for natural convection in
+                                                                                                              convection     aa side-heated square cav-
+                                                                                                                                            square
+                           Figure A1. Streamlines     A1.
+                                                      at different         different
+                                                                   timesat(a–f) for natural (a–f)     natural
+                                                                                             convection  in a side-heated in    side-heated
+                                                                                                                           square   cav-           cavity.
+                                             ity.
+                                             Pr = Pr = 0.01.
+                                                   0.01. The The solution
+                                                              solution is  is oscillatory
+                                                                          oscillatory and and  never
+                                                                                           never      reaches
+                                                                                                  reaches  the the steady-state.
+                                                                                                               steady-state.
+                           ity. Pr = 0.01. The solution is oscillatory and never reaches the steady-state.
+
+
+
+
+                                                       (a) Fo = 0.5                        (b) Fo = 1.0                        (c) Fo = 1.5
+                                      (a) Fo = 0.5                        (b) Fo = 1.0                        (c) Fo = 1.5
+
+
+
+
+                                                       (d) Fo = 2.0                        (e) Fo = 2.5                        (f) Fo = 3.0
+                                      (d) Fo = 2.0                        (e) Fo = 2.5                        (f) Fo = 3.0
+                                            Figure A2. Isotherms at different times (a–f) for natural convection in a side-heated square cavity.
+                           Figure A2.atIsotherms
+               Figure A2. Isotherms                at different
+                                        different times         times
+                                                         (a–f) for    (a–f)convection
+                                                                   natural  for naturalinconvection in a square
+                                                                                          a side-heated  side-heated
+                                                                                                                cavity.square cavity.
+                                                                                                                        Pr = 0.01. The isotherms
+                                            Pr = 0.01. The isotherms never reach the steady-state at low Prandtl numbers.
+                           the= steady-state
+               never reach Pr   0.01. The isotherms   never reach
+                                             at low Prandtl        the steady-state at low Prandtl numbers.
+                                                             numbers.
+                                                The isotherm and streamline plots show that a steady-state cannot be reached.
+                                The isotherm andThestreamline
+                                                     isotherm andplots  show that
+                                                                     streamline      a steady-state
+                                                                                  plots   show that acannot  be reached.
+                                                                                                       steady-state    cannot be reached.
+                                                Figure A3 shows the oscillatory variation of the Nu number through time. Although
+                                Figure A3 shows     the oscillatory
+                                                Figure  A3 shows the variation  of the
+                                                                        oscillatory     Nu number
+                                                                                     variation  of thethrough
+                                                                                                       Nu number time.through
+                                                                                                                        Although
+                                                                                                                               time. Although a
+                                             steady-statevalue
+                                          asteady-state             not reached,the
+                                                          valueisisnot              thelong-time
+                                                                                         long-time  averageofisof the         is 5.312.
+                                                                                                                    Nu ave is 5.312.
+                           a steady-state value  is not reached,   the reached,
+                                                                       long-time average          average
+                                                                                             of the             the
+                                                                                                                 5.312.
+Fluids  2021,6,6,148
+ Fluids2021,      x FOR PEER REVIEW                                                                                                 of20
+                                                                                                                                 18 of 20
+
+
+
+
+                                   FigureA3.
+                                  Figure A3.Nusselt  numbervariation
+                                             Nusseltnumber  variationwith timefor
+                                                                               forPr
+                                                                     withtime           0.01.
+                                                                                   Pr==0.01.
+
+ References
+References
+ 1.   Aidun, C.K.; Clausen, J.R. Lattice-Boltzmann Method for Complex Flows. Annu. Rev. Fluid Mech. 2010, 42, 439–472,
+1.   Aidun, C.K.; Clausen, J.R. Lattice-Boltzmann Method for Complex Flows. Annu. Rev. Fluid Mech. 2010, 42, 439–472. [CrossRef]
+      doi:10.1146/annurev-fluid-121108-145519.
+2.   D’Orazio, A.; Corcione, M.; Celata, G.P. Application to Natural Convection Enclosed Flows of a Lattice Boltzmann BGK Model
+ 2.   D’Orazio, A.; Corcione, M.; Celata, G.P. Application to Natural Convection Enclosed Flows of a Lattice Boltzmann BGK Model
+     Coupled with a General Purpose Thermal Boundary Condition. Int. J. Therm. Sci. 2004, 43, 575–586. [CrossRef]
+      Coupled with a General Purpose Thermal Boundary Condition. Int. J. Therm. Sci. 2004, 43, 575–586, doi:10.1016/j.ijther-
+3.   Connington, K.; Lee, T. A Review of Spurious Currents in the Lattice Boltzmann Method for Multiphase Flows. J. Mech. Sci.
+      malsci.2003.11.002.
+     Technol. 2012, 26, 3857–3863. [CrossRef]
+ 3.   Connington, K.; Lee, T. A Review of Spurious Currents in the Lattice Boltzmann Method for Multiphase Flows. J. Mech. Sci.
+4.   He, X.; Luo, L.S. A Priori Derivation of the Lattice Boltzmann Equation. Phys. Rev. E Stat. Phys. Plasmas Fluids Relat. Interdiscip.
+      Technol. 2012, 26, 3857–3863, doi:10.1007/s12206-012-1011-5.
+     Top. 1997, 55. [CrossRef]
+ 4.   He, X.; Luo, L.S. A Priori Derivation of the Lattice Boltzmann Equation. Phys. Rev. E Stat. Phys. Plasmas Fluids Relat. Interdiscip.
+5.   Shih, H.C.; Huang, C.L. Image Analysis and Interpretation for Semantics Categorization in Baseball Video. Proc. ITCC 2003 Int.
+      Top. 1997, 55, doi:10.1103/PhysRevE.55.R6333.
+     Conf. Inf. Technol. Comput. Commun. 2003, 94, 379–383. [CrossRef]
+ 5.   Shih, H.C.; Huang, C.L. Image Analysis and Interpretation for Semantics Categorization in Baseball Video. Proc. ITCC 2003 Int.
+6.   Li, Z.; Yang, M.; Zhang, Y. Double MRT Thermal Lattice Boltzmann Method for Simulating Natural Convection of Low Prandtl
+      Conf. Inf. Technol. Comput. Commun. 2003, 94, 379–383, doi:10.1109/ITCC.2003.1197559.
+     Number Fluids. Int. J. Numer. Methods Head Fluid 2016, 26. [CrossRef]
+ 6.   Li, Z.; Yang, M.; Zhang, Y. Double MRT Thermal Lattice Boltzmann Method for Simulating Natural Convection of Low Prandtl
+7.   Perumal, D.A.; Dass, A.K. A Review on the Development of Lattice Boltzmann Computation of Macro Fluid Flows and Heat
+      Number Fluids. Int. J. Numer. Methods Head Fluid 2016, 26, doi:10.1108/HFF-04-2015-0135.
+     Transfer. Alex. Eng. J. 2015, 54, 955–971. [CrossRef]
+ 7.   Perumal, D.A.; Dass, A.K. A Review on the Development of Lattice Boltzmann Computation of Macro Fluid Flows and Heat
+8.   McNamara, G.; Alder, B. Analysis of the Lattice Boltzmann Treatment of Hydrodynamics. Phys. A Stat. Mech. Appl. 1993, 194,
+      Transfer. Alex. Eng. J. 2015, 54, 955–971, doi:10.1016/j.aej.2015.07.015.
+     218–228. [CrossRef]
+ 8.   McNamara, G.; Alder, B. Analysis of the Lattice Boltzmann Treatment of Hydrodynamics. Phys. A Stat. Mech. Appl. 1993, 194,
+9.   Alexander, F.J.; Chen, S.; Sterling, J.D. Lattice Boltzmann Thermohydrodynamics. Phys. Rev. E 1993, 47, R2249–R2252. [CrossRef]
+      218–228, doi:10.1016/0378-4371(93)90356-9.
+     [PubMed]
+ 9.   Alexander, F.J.; Chen, S.; Sterling, J.D. Lattice Boltzmann Thermohydrodynamics. Phys. Rev. E 1993, 47, R2249–R2252,
+10. Qian, Y.H. Simulating Thermohydrodynamics with Lattice BGK Models. J. Sci. Comput. 1993, 8, 231–242. [CrossRef]
+      doi:10.1103/PhysRevE.47.R2249.
+11. Nie, X.; Qian, Y.H.; Doolen, G.D.; Chen, S. Lattice Boltzmann Simulation of the Two-Dimensional Rayleigh-Taylor Instability.
+ 10. Qian, Y.H. Simulating Thermohydrodynamics with Lattice BGK Models. J. Sci. Comput. 1993, 8, 231–242,
+     Phys. Rev. E Stat. Phys. Plasmas Fluids Relat. Interdiscip. Top. 1998, 58, 6861–6864. [CrossRef]
+      doi:10.1007/BF01060932.
+12. He, X.; Chen, S.; Zhang, R. A Lattice Boltzmann Scheme for Incompressible Multiphase Flow and Its Application in Simulation of
+ 11. Nie, X.; Qian, Y.H.; Doolen, G.D.; Chen, S. Lattice Boltzmann Simulation of the Two-Dimensional Rayleigh-Taylor Instability.
+     Rayleigh-Taylor Instability. J. Comput. Phys. 1999, 152, 642–663. [CrossRef]
+      Phys. Rev. E Stat. Phys. Plasmas Fluids Relat. Interdiscip. Top. 1998, 58, 6861–6864, doi:10.1103/PhysRevE.58.6861.
+13. McNamara, G.R.; Garcia, A.L.; Alder, B.J. Stabilization of Thermal Lattice Boltzmann Models. J. Stat. Phys. 1995, 81, 395–408.
+ 12. He, X.; Chen, S.; Zhang, R. A Lattice Boltzmann Scheme for Incompressible Multiphase Flow and Its Application in Simulation
+     [CrossRef]
+      of Rayleigh-Taylor Instability. J. Comput. Phys. 1999, 152, 642–663, doi:10.1006/jcph.1999.6257.
+14. Li, Q.; Luo, K.H.; He, Y.L.; Gao, Y.J.; Tao, W.Q. Coupling Lattice Boltzmann Model for Simulation of Thermal Flows on Standard
+ 13. McNamara, G.R.; Garcia, A.L.; Alder, B.J. Stabilization of Thermal Lattice Boltzmann Models. J. Stat. Phys. 1995, 81, 395–408,
+     Lattices. Phys. Rev. E Stat. Nonlinear Soft Matter Phys. 2012, 85, 16710. [CrossRef]
+      doi:10.1007/BF02179986.
+15. Nabavizadeh, S.A.; Talebi, S.; Sefid, M.; Nourmohammadzadeh, M. Natural Convection in a Square Cavity Containing a
+ 14. Li, Q.; Luo, K.H.; He, Y.L.; Gao, Y.J.; Tao, W.Q. Coupling Lattice Boltzmann Model for Simulation of Thermal Flows on Standard
+     Sinusoidal Cylinder. Int. J. Therm. Sci. 2012, 51, 112–120. [CrossRef]
+      Lattices. Phys. Rev. E Stat. Nonlinear Soft Matter Phys. 2012, 85, 16710, doi:10.1103/PhysRevE.85.016710.
+16. Prasianakis, N.I.; Karlin, I.V. Lattice Boltzmann Method for Thermal Flow Simulation on Standard Lattices. Phys. Rev. E Stat.
+ 15. Nabavizadeh, S.A.; Talebi, S.; Sefid, M.; Nourmohammadzadeh, M. Natural Convection in a Square Cavity Containing a Sinus-
+     Nonlinear Soft Matter Phys. 2007, 76. [CrossRef]
+      oidal Cylinder. Int. J. Therm. Sci. 2012, 51, 112–120, doi:10.1016/j.ijthermalsci.2011.08.021.
+17. Fattahi, E.; Farhadi, M.; Sedighi, K. Lattice Boltzmann Simulation of Natural Convection Heat Transfer in Eccentric Annulus. Int.
+ 16. Prasianakis, N.I.; Karlin, I.V. Lattice Boltzmann Method for Thermal Flow Simulation on Standard Lattices. Phys. Rev. E Stat.
+     J. Therm. Sci. 2010, 49, 2353–2362. [CrossRef]
+      Nonlinear Soft Matter Phys. 2007, 76, doi:10.1103/PhysRevE.76.016702.
+18. Souayeh, B.; Ben-Cheikh, N.; Ben-Beya, B. Numerical Simulation of Three-Dimensional Natural Convection in a Cubic Enclosure
+ 17. Fattahi, E.; Farhadi, M.; Sedighi, K. Lattice Boltzmann Simulation of Natural Convection Heat Transfer in Eccentric Annulus.
+     Induced by an Isothermally-Heated Circular Cylinder at Different Inclinations. Int. J. Therm. Sci. 2016, 110, 325–339. [CrossRef]
+      Int. J. Therm. Sci. 2010, 49, 2353–2362, doi:10.1016/j.ijthermalsci.2010.07.014.
+19. Parmigiani, A.; Huber, C.; Chopard, B.; Latt, J.; Bachmann, O. Application of the Multi Distribution Function Lattice Boltzmann
+ 18. Souayeh, B.; Ben-Cheikh, N.; Ben-Beya, B. Numerical Simulation of Three-Dimensional Natural Convection in a Cubic Enclo-
+     Approach to Thermal Flows. Eur. Phys. J. Spec. Top. 2009, 171, 37–43. [CrossRef]
+      sure Induced by an Isothermally-Heated Circular Cylinder at Different Inclinations. Int. J. Therm. Sci. 2016, 110, 325–339,
+20. Dixit, H.N.; Babu, V. Simulation of High Rayleigh Number Natural Convection in a Square Cavity Using the Lattice Boltzmann
+      doi:10.1016/j.ijthermalsci.2016.08.003.
+     Method. Int. J. Heat Mass Transf. 2006, 49, 727–739. [CrossRef]
+ 19. Parmigiani, A.; Huber, C.; Chopard, B.; Latt, J.; Bachmann, O. Application of the Multi Distribution Function Lattice Boltzmann
+21. Li, Z.; Yang, M.; Zhang, Y. Lattice Boltzmann Method Simulation of 3-D Natural Convection with Double MRT Model. Int. J. Heat
+      Approach to Thermal Flows. Eur. Phys. J. Spec. Top. 2009, 171, 37–43, doi:10.1140/epjst/e2009-01009-7.
+     Mass Transf. 2016, 94, 222–238. [CrossRef]
+ 20. Dixit, H.N.; Babu, V. Simulation of High Rayleigh Number Natural Convection in a Square Cavity Using the Lattice Boltzmann
+22. D’Humières, D.; Ginzburg, I.; Krafczyk, M.; Lallemand, P.; Luo, L.S. Multiple-Relaxation-Time Lattice Boltzmann Models in
+      Method. Int. J. Heat Mass Transf. 2006, 49, 727–739, doi:10.1016/j.ijheatmasstransfer.2005.07.046.
+     Three Dimensions. Philos. Trans. R. Soc. A Math. Phys. Eng. Sci. 2002, 360, 437–451. [CrossRef] [PubMed]
+Fluids 2021, 6, 148                                                                                                           19 of 20
+
+
+
+
+23.   Wang, J.; Wang, D.; Lallemand, P.; Luo, L.S. Lattice Boltzmann Simulations of Thermal Convective Flows in Two Dimensions.
+      Comp. Math. Appl. 2013, 65, 262–286. [CrossRef]
+24.   Contrino, D.; Lallemand, P.; Asinari, P.; Luo, L.S. Lattice-Boltzmann Simulations of the Thermally Driven 2D Square Cavity at
+      High Rayleigh Numbers. J. Comput. Phys. 2014, 275, 257–272. [CrossRef]
+25.   Mezrhab, A.; Amine Moussaoui, M.; Jami, M.; Naji, H.; Bouzidi, M. Double MRT Thermal Lattice Boltzmann Method for
+      Simulating Convective Flows. Phys. Lett. Sect. A Gen. At. Solid State Phys. 2010, 374, 3499–3507. [CrossRef]
+26.   Xu, A.; Shi, L.; Xi, H.D. Lattice Boltzmann Simulations of Three-Dimensional Thermal Convective Flows at High Rayleigh
+      Number. Int. J. Heat Mass Transf. 2019, 140, 359–370. [CrossRef]
+27.   Karlin, I.V.; Ferrante, A.; Öttinger, H.C. Perfect Entropy Functions of the Lattice Boltzmann Method. Europhys. Lett. 1999, 47,
+      182–188. [CrossRef]
+28.   Pareschi, G.; Frapolli, N.; Chikatamarla, S.S.; Karlin, I.V. Conjugate Heat Transfer with the Entropic Lattice Boltzmann Method.
+      Phys. Rev. E 2016, 94. [CrossRef] [PubMed]
+29.   Hajabdollahi, F.; Premnath, K.N. Central Moments-Based Cascaded Lattice Boltzmann Method for Thermal Convective Flows in
+      Three-Dimensions. Int. J. Heat Mass Transf. 2018, 120, 838–850. [CrossRef]
+30.   Sharma, K.V.; Straka, R.; Tavares, F.W. New Cascaded Thermal Lattice Boltzmann Method for Simulations of Advection-Diffusion
+      and Convective Heat Transfer. Int. J. Therm. Sci. 2017, 118, 259–277. [CrossRef]
+31.   Chen, Z.; Shu, C.; Tan, D. A Simplified Thermal Lattice Boltzmann Method without Evolution of Distribution Functions. Int. J.
+      Heat Mass Transf. 2017, 105, 741–757. [CrossRef]
+32.   Chen, Z.; Shu, C.; Tan, D.; Wu, C. On Improvements of Simplified and Highly Stable Lattice Boltzmann Method: Formulations,
+      Boundary Treatment, and Stability Analysis. Int. J. Numer. Methods Fluids 2018, 87, 161–179. [CrossRef]
+33.   Chen, Z.; Shu, C.; Wang, Y.; Yang, L.M.; Tan, D. A Simplified Lattice Boltzmann Method without Evolution of Distribution
+      Function. Adv. Appl. Math. Mech. 2017, 9, 1–22. [CrossRef]
+34.   Chen, Z.; Shu, C.; Tan, D. High-Order Simplified Thermal Lattice Boltzmann Method for Incompressible Thermal Flows. Int. J.
+      Heat Mass Transf. 2018, 127, 1–16. [CrossRef]
+35.   Dorari, E.; Eshraghi, M.; Felicelli, S.D. A Multiple-Grid-Time-Step Lattice Boltzmann Method for Transport Phenomena with
+      Dissimilar Time Scales: Application in Dendritic Solidification. Appl. Math. Model. 2018, 62, 580–594. [CrossRef]
+36.   Sakane, S.; Takaki, T.; Ohno, M.; Shibuta, Y. Simulation Method Based on Phase-Field Lattice Boltzmann Model for Long-Distance
+      Sedimentation of Single Equiaxed Dendrite. Comput. Mater. Sci. 2019, 164, 39–45. [CrossRef]
+37.   López, J.; Gómez, P.; Hernández, J.; Faura, F. A Two-Grid Adaptive Volume of Fluid Approach for Dendritic Solidification.
+      Comput. Fluids 2013, 86, 326–342. [CrossRef]
+38.   Sakane, S.; Takaki, T.; Ohno, M.; Shibuta, Y.; Aoki, T. Acceleration of Phase-Field Lattice Boltzmann Simulation of Dendrite
+      Growth with Thermosolutal Convection by the Multi-GPUs Parallel Computation with Multiple Mesh and Time Step Method.
+      Model. Simul. Mater. Sci. Eng. 2019, 27. [CrossRef]
+39.   Nabavizadeh, S.A.; Eshraghi, M.; Felicelli, S.D. A Comparative Study of Multiphase Lattice Boltzmann Methods for Bubble-
+      Dendrite Interaction during Solidification of Alloys. Appl. Sci. 2018, 9, 57. [CrossRef]
+40.   Hortmann, M.; Perić, M.; Scheuerer, G. Finite Volume Multigrid Prediction of Laminar Natural Convection: Benchmark Solutions.
+      Int. J. Numer. Methods Fluids 1990, 11, 189–207. [CrossRef]
+41.   Mohamad, A.A.; Viskanta, R. Transient Natural Convection of Low-Prandtl-number Fluids in a Differentially Heated Cavity. Int.
+      J. Numer. Methods Fluids 1991, 13, 61–81. [CrossRef]
+42.   Guo, Z.; Zheng, C.; Shi, B.; Zhao, T.S. Thermal Lattice Boltzmann Equation for Low Mach Number Flows: Decoupling Model.
+      Phys. Rev. E Stat. Nonlinear Soft Matter Phys. 2007, 75. [CrossRef]
+43.   Pesso, T.; Piva, S. Laminar Natural Convection in a Square Cavity: Low Prandtl Numbers and Large Density Differences. Int. J.
+      Heat Mass Transf. 2009, 52, 1036–1043. [CrossRef]
+44.   Ahlers, G.; Xu, X. Prandtl-Number Dependence of Heat Transport in Turbulent Rayleigh-Bénard Convection. Phys. Rev. Lett.
+      2001, 86, 3320–3323. [CrossRef] [PubMed]
+45.   Kao, P.H.; Yang, R.J. Simulating Oscillatory Flows in Rayleigh-Bénard Convection Using the Lattice Boltzmann Method. Int. J.
+      Heat Mass Transf. 2007, 50, 3315–3328. [CrossRef]
+46.   Silano, G.; Sreenivasan, K.R.; Verzicco, R. Numerical Simulations of Rayleigh-Bénard Convection for Prandtl Numbers between
+      101 and 104 and Rayleigh Numbers between 105 and 109. J. Fluid Mech. 2010, 662, 409–446. [CrossRef]
+47.   Fei, L.; Luo, K.H. Cascaded Lattice Boltzmann Method for Thermal Flows on Standard Lattices. Int. J. Therm. Sci. 2018, 132,
+      368–377. [CrossRef]
+48.   Pandey, A.; Scheel, J.D.; Schumacher, J. Turbulent Superstructures in Rayleigh-Bénard Convection. Nat. Commun. 2018, 9.
+      [CrossRef]
+49.   De Vahl Davis, G. Natural Convection of Air in a Square Cavity: A Bench Mark Numerical Solution. Int. J. Numer. Methods Fluids
+      1983, 3, 249–264. [CrossRef]
+50.   Bessonov, O.A.; Brailovskaya, V.A.; Nikitin, S.A.; Polezhaev, V.I. Three-Dimensional Natural Convection in a Cubical Enclosure:
+      A Bench Mark Numerical Solution. In Proceedings of the International Symposium on Advances in Computational Heat Transfer,
+      Çesme, Turkey, 26–30 May 1997. [CrossRef]
+Fluids 2021, 6, 148                                                                                                             20 of 20
+
+
+
+
+51.   Guo, Z.; Shi, B.; Zheng, C. A Coupled Lattice BGK Model for the Boussinesq Equations. Int. J. Numer. Methods Fluids 2002, 39,
+      325–342. [CrossRef]
+52.   Qian, Y.H.; D’Humières, D.; Lallemand, P. Lattice Bgk Models for Navier-Stokes Equation. EPL 1992, 17, 479–484. [CrossRef]
+53.   Benzi, R.; Succi, S.; Vergassola, M. The Lattice Boltzmann Equation: Theory and Applications. Phys. Rep. 1992, 145–197. [CrossRef]
+54.   Luo, L.S.; Liao, W.; Chen, X.; Peng, Y.; Zhang, W. Numerics of the Lattice Boltzmann Method: Effects of Collision Models on the
+      Lattice Boltzmann Simulations. Phys. Rev. E Stat. Nonlinear Soft Matter Phys. 2011, 83. [CrossRef] [PubMed]
+55.   Pan, C.; Luo, L.S.; Miller, C.T. An Evaluation of Lattice Boltzmann Schemes for Porous Medium Flow Simulation. Comput. Fluids
+      2006, 35, 898–909. [CrossRef]
+56.   Zhao, F. Optimal Relaxation Collisions for Lattice Boltzmann Methods. Comput. Math. Appl. 2013, 65, 172–185. [CrossRef]
+57.   Li, Z.; Yang, M.; Zhang, Y. Numerical Simulation of Melting Problems Using the Lattice Boltzmann Method with the Interfacial
+      Tracking Method. Numer. Heat Transf. Part. A Appl. 2015, 68, 1175–1197. [CrossRef]
+

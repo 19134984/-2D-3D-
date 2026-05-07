@@ -1,0 +1,1328 @@
+                                                        International Journal of Heat and Mass Transfer 108 (2017) 41–62
+
+
+
+                                                                 Contents lists available at ScienceDirect
+
+
+                                     International Journal of Heat and Mass Transfer
+                                                     journal homepage: www.elsevier.com/locate/ijhmt
+
+
+
+
+Lattice Boltzmann models for the convection-diffusion equation:
+D2Q5 vs D2Q9
+Like Li a,⇑, Renwei Mei a, James F. Klausner b
+a
+    Department of Mechanical and Aerospace Engineering, University of Florida, Gainesville, FL 32611, USA
+b
+    Department of Mechanical Engineering, Michigan State University, East Lansing, MI 48824, USA
+
+
+
+a r t i c l e           i n f o                           a b s t r a c t
+
+Article history:                                          A comparison study between the two most popular lattice Boltzmann (LB) models – D2Q5 and D2Q9 in
+Received 1 September 2016                                 two dimensions with five and nine discrete lattice velocities, respectively – for the convection-diffusion
+Received in revised form 23 November 2016                 equation (CDE) for scalar transport is presented in this work. The local equilibria in both the discrete
+Accepted 26 November 2016
+                                                          velocity space and the moment space are provided for the LB models examined, including the generalized
+Available online 10 December 2016
+                                                          D2Q5 model without high-order velocity terms and four various D2Q9 models frequently used in the lit-
+                                                          erature. The boundary condition treatment is discussed with particular Dirichlet and Neumann boundary
+Keywords:
+                                                          schemes presented for each LB model. In particular, the non-uniqueness in the splitting of the normal flux
+Lattice Boltzmann (LB)
+Convection-diffusion equation
+                                                          into three lattice directions in D2Q9 model for Neumann conditions is highlighted. Five representative
+D2Q5                                                      numerical tests are presented to assess the performance of the D2Q5 and D2Q9 LB models.
+D2Q9                                                      Performance metrics include the numerical accuracy and convergence orders of the interior distribution
+Dirichlet boundary condition                              of the scalar variable / and its derivatives as well as the boundary flux, boundary scalar values, and total
+Neumann boundary condition                                boundary heat/mass transfer rate. The results demonstrate that (i) without the boundary effect, both the
+                                                          D2Q5 and D2Q9 models have second-order convergence for / and its derivatives, and the D2Q5 model
+                                                          has smaller numerical errors at low and moderate Péclet numbers while the D2Q9 models have better
+                                                          accuracy at high Péclet numbers; (ii) for the CDE with specific boundary conditions on straight walls,
+                                                          the D2Q5 model with the interpolation based boundary schemes is able to preserve the second-order
+                                                          accuracy for all the quantities of interest for both Dirichlet and Neumann problems; when the D2Q9 mod-
+                                                          els are applied, these boundary schemes result in second- and first-order accurate / field for the Dirichlet
+                                                          and Neumann problems, respectively; in addition, the convergence orders for the interior derivatives and
+                                                          the boundary flux or boundary values are also degraded for both types of problems; (iii) when curved
+                                                          geometry is encountered, the D2Q5 model also shows better accuracy and/or higher convergence orders
+                                                          than the D2Q9 models. Clearly, D2Q5 is more appealing to D2Q9 for the CDE when the convection is not
+                                                          very strong and the boundary effect is significant. The same behavior in the respective 3-D numerical
+                                                          solutions is observed when the performance of D3Q7 and D3Q19 LB models are compared.
+                                                                                                                               Ó 2016 Elsevier Ltd. All rights reserved.
+
+
+
+
+1. Introduction                                                                              dimensional (2D, 3D) lattices include D2Q9, D3Q15 and D3Q19,
+                                                                                             respectively, (DnQm denotes m discrete velocities in n dimensions)
+   The lattice Boltzmann (LB) method simulates the particle inter-                           in the LB models for fluid dynamics simulations [6,8,9].
+actions on a discrete phase space with a specific set of discrete                                Extension of the hydrodynamic version of the LB models to sim-
+velocities. The evolution of the microscopic particle distribution                           ulate heat and mass transfer problems has been conducted since
+functions (also called density distribution functions) is governed                           the beginning of the development of the LB method [10–26]. The
+by the lattice Boltzmann equation (LBE) [1–3], from which the                                technique of treating the thermal and mass transport processes
+macroscopic Navier-Stokes equations (NSE) can be recovered via                               as general convection and diffusion of a scalar variable (tempera-
+a multiscale analysis such as the Chapman-Enskog expansion [4–                               ture/concentration in heat/mass transfer) has achieved much suc-
+6] or the asymptotic analysis [7]. The typical two- and three-                               cess. A variety of LB models have been developed to recover the
+                                                                                             general convection-diffusion equation (CDE) [15,17–26]. In these
+                                                                                             scalar transport LB models, a separate set of microscopic
+    ⇑ Corresponding author.                                                                  distribution functions is defined, and the macroscopic temperature
+      E-mail address: likelichina@ufl.edu (L. Li).                                           or concentration is obtained from the zeroth moment of these
+
+http://dx.doi.org/10.1016/j.ijheatmasstransfer.2016.11.092
+0017-9310/Ó 2016 Elsevier Ltd. All rights reserved.
+42                                      L. Li et al. / International Journal of Heat and Mass Transfer 108 (2017) 41–62
+
+
+distribution functions. This proves to be much more effective and                 where / is a scalar variable such as temperature in heat transfer or
+efficient than constructing specific LB models by treating the                    concentration in mass transfer problems, t is the time, vj is the jth-
+macroscopic internal or total energy as a higher-order moment                     component of the velocity vector u in the xj-direction, Dij is the dif-
+of the density distribution functions as in [14,16].                              fusion coefficient, and G is the general source term.
+    There exist two most popular types of lattice model, i.e., D2Q9                  A microscopic distribution function, g(x, n, t), is defined in the
+and D2Q5 in 2D, and D3Q15/D3Q19 and D3Q7 in 3D, for solving                       discrete velocity space to recover the CDE (1) and its evolution is
+the CDE. The D2Q9 and D3Q15/D3Q19 LB models                                       governed by the lattice Boltzmann equation (LBE)
+[13,14,16,18,21–23,26] involve both orthogonal and diagonal
+                                                                                  g a ðx þ ea dt; t þ dtÞ  g a ðx; tÞ ¼ ½L  ðg  geq Þðx; tÞa
+lattice velocity vectors and they are direct extensions from the
+hydrodynamic versions. The D2Q5 and D3Q7 models                                                                           þ xa Gðx; tÞdt;                   ð2Þ
+[17,19,20–22,24,25] have only orthogonal lattice vectors. They
+                                                                                  where ga(x, t)  g(x, na, t), n is the particle velocity vector and it is
+are simpler in form and easier to code for curved boundary. While
+                                                                                  discretized to a small set of discrete velocities {na|a = 0, 1, . . ., m  1},
+it is obvious that the D2Q5 model is more computationally efficient
+                                                                                  ea is the ath discrete velocity vector, dt is the time step, L is the col-
+than D2Q9 (this is more pronounced in 3D cases), one would tend
+                                                                                  lision operator in the LBE method, g eqa ðx; tÞ is the equilibrium distri-
+to believe that D2Q9 could be more accurate and applicable to
+                                                                                  bution function, and xa is the weight coefficient. The macroscopic
+more complex situations compared to D2Q5 because it has more
+                                                                                  scalar variable can be obtained from
+lattice vectors and components of the distribution function.
+    Another crucial aspect in assessing LB models is to ascertain                              X
+                                                                                               m1
+
+how the boundary condition treatment affects the performance                      /ðx; tÞ ¼           g a ðx; tÞ:                                           ð3Þ
+                                                                                                a¼0
+of the respective model. With the discrete lattice velocities only
+in the orthogonal directions, D2Q5 requires a much simpler bound-                 For unit lattice spacing dx = 1 and unit time step dt = 1 in 2D prob-
+ary treatment compared to D2Q9. In particular, for D2Q5, second-                  lems, the sets of {ea} for the two most widely used lattice struc-
+order accurate boundary schemes for both Dirichlet and Neumann                    tures, D2Q5 and D2Q9, are defined as
+conditions have been proposed in [24] with a detailed asymptotic                          
+                                                                                              ð0; 0             a¼0
+analysis and numerical verification. Their application to curved                   ea ¼                                        ;     for D2Q 5; and        ð4aÞ
+boundaries was also examined in [24]. For D2Q9, although various                              ð1; 0Þ; ð0; 1Þ; a ¼ 1; 2; 3; 4
+boundary schemes have been proposed in the literature, there still                     8
+exists ambiguity regarding their orders of accuracy, especially for                    < ð0; 0Þ;
+                                                                                       >                                          a¼0
+Neumann conditions and for both types of boundary conditions                       ea ¼ ðcos½ða  1Þp=2;sin½ða  1Þp=2Þ;        a ¼ 1; 2; 3; 4 ; for D2Q 9:
+                                                                                       >
+                                                                                       : pﬃﬃﬃ
+on curved boundaries.                                                                      2ðcos½ð2a  1Þp=4; sin½ð2a  1Þp=4Þ; a ¼ 5; 6; 7; 8
+    In this paper, we try to address which of the above mentioned                                                                                          ð4bÞ
+two types of LB models is preferred by presenting direct compar-
+isons of the numerical solutions for scalar transport obtained using                 The equilibrium distribution function can be similarly defined
+these two models for the CDE. The main focus is on 2D cases, i.e.,                as that in the hydrodynamic LB model by replacing the density q
+D2Q5 vs D2Q9; and similar conclusions in 3D are verified by com-                  with the scalar variable /
+                                                                                                "                    #
+paring results from using D3Q7 and D3Q19 models. The effects of                                 ea  u ðea  uÞ2 u2
+the boundary condition treatment (for both Dirichlet and Neu-                     g a ¼ xa / 1 þ 2 þ
+                                                                                    eq
+                                                                                                                 2 ;                                      ð5aÞ
+                                                                                                 cs      2c4s    2cs
+mann conditions) on the accuracy and convergence of the LB mod-
+els are also examined in detail.                                                  where the arguments (x, t) are dropped for brevity (all the distribu-
+    A series of numerical tests, including isotropic/anisotropic                  tion functions g a and g eqa below are obtained at (x, t) if not given
+convection-diffusion with straight/curved boundaries, are pre-                    explicitly)     and    cs    is    the  speed     of   sound      with
+sented to compare the performance of D2Q5/D3Q7 and D2Q9/                                 pﬃﬃﬃ           pﬃﬃﬃ      pﬃﬃﬃ
+                                                                                  cs ¼ c= 3 ¼ ðdx=dtÞ= 3 ¼ 1= 3. Realizing that only the zeroth-
+D3Q19 models. The numerically examined quantities include the
+                                                                                  order moment of the distribution functions needs to be conserved
+interior distribution of the scalar variable / and its derivatives in
+                                                                                  (see Eq. (3)) to recover the CDE, one can drop the higher order veloc-
+both Dirichlet and Neumann problems, the local boundary flux
+                                                                                  ity terms in Eq. (5a) and simplify it to be [17,20]
+and overall boundary heat/mass flow rate over the entire boundary                                        
+in Dirichlet problems, and the boundary scalar values in Neumann                                   ea  u
+                                                                                  g eq
+                                                                                    a  ¼ x a / 1 þ         :                                              ð5bÞ
+problems. From both model analysis and numerical testing it                                         c2s
+becomes evident that the D2Q5/D3Q7 models are more attractive
+                                                                                  It should be noted that the choice of the coefficients for each term in
+to the D2Q9/D3Q19 models available in the literature. Thus the
+                                                                                  Eqs. (5a), (5b) is not unique. For general cases, they can be rewritten
+D2Q5/D3Q7 models for the CDE are recommended in general. It
+                                                                                  as
+should be noted, however, opportunities exist for the construction
+                                                                                                "                            #
+of optimized D2Q9 models with improved boundary condition                                          ea  u  ðea  uÞ2     u2
+treatments, which could have better numerical accuracy than the                   g a ¼ xa / 1 þ aa 2 þ ba
+                                                                                    eq
+                                                                                                                      ca 2 ;                              ð5cÞ
+                                                                                                    cs       2c4s        2cs
+basic D2Q5 model, considering the flexibility in the model con-
+struction with additional lattice vectors in D2Q9. This is out of                 where aa, ba, and ca are constants. The numerical values of the con-
+the scope of the present paper which focuses on the comparison                    stants and the weight coefficient xa will be given according to the
+of the existing D2Q5 and D2Q9 models.                                             specific models discussed below.
+                                                                                      Regarding the collision operator L, there are three popular mod-
+2. LB models for the convection-diffusion equation                                els in the literature. The earliest and simplest one is the BGK [27] or
+                                                                                  single-relaxation-time (SRT) model
+   The macroscopic convection-diffusion equation (CDE) can be
+                                                                                                                       1
+written as                                                                                                      a Þ ¼  ðg a  g a Þ;
+                                                                                  ½L  ðg  geq Þa ¼ kðg a  g eq               eq
+                                                                                                                                                           ð6aÞ
+                                                                                                                         s
+@/   @            @       @/
+   þ   ðv j /Þ ¼      Dij       þ G;                                    ð1Þ       where k is the eigenvalue and s ¼ 1=k is usually called the relax-
+@t @xj           @xi      @xj                                                     ation coefficient/parameter.
+                                                     L. Li et al. / International Journal of Heat and Mass Transfer 108 (2017) 41–62                                     43
+
+
+    The second one is the two-relaxation-time (TRT) model                                      problems with strong convection and a high Mach number. Their
+introduced by Ginzburg and Ginzburg et al. [21,28], in which the                               matrix S can be rewritten as
+distribution function is decomposed into its symmetric (even)                                           2                                                   3
+                                                                    þ
+                                                                                                            s0   0    0     0      0   0    0     0    0
+and anti-symmetric (odd) parts: g a ¼ g þ                    þ
+                                             a þ g a , with g a ¼ g a ,                            60
+        
+g a ¼ g a and ea ¼ ea . This decomposition also applies to its                                  6            s1   0     0      0   0    0     0    077
+                                                                                                    6                                                    7
+equilibrium: g eq     eq;þ
+                           þ g eq;                                                                 60           0    s2    0      0   0    0     0    07
+                 a ¼ ga        a . A pair of even and odd relation                                  6                                                    7
+                                                                                                    6                                                    7
+coefficients is thus used and the collision operator becomes                                        60           0    0 sxx s34 sxy s36           0    07
+                                                                                                6                                                    7
+                                                                                                 1 6                                                    7
+½L  ðg  geq Þa ¼ kþa g þa  g eq;þ   þ ka g a  g eq;   :                    ð6bÞ         S ¼60            0    0  0  s4 0 0                0    0 7; for D2Q 9;
+                                 a                     a                                            6                                                    7
+                                                                                                    60           0    0 syx s54 syy s56           0    07
+In the most general multiple-relaxation-time (MRT) model, a trans-                                  6                                                    7
+                                                                                                    6                                                    7
+formation matrix M is introduced to map the distribution functions                                  60           0    0  0   0   0  s6            0    07
+                                                                                                    6                                                    7
+to the moment space: m = Mg and meq = Mgeq, and the collision                                     6                                                    7
+                                                                                                    40           0    0     0      0   0    0    s7    05
+operator is
+                                                                                                            0    0    0     0      0   0    0     0    s8
+½L  ðg  geq Þa ¼ ½M1 SM  ðg  geq Þa                                                                                                                              ð9Þ
+                     ¼ ½M1 S  ðm  meq Þa ;                                     ð6cÞ       with s34 ¼ 3Dxx , s36 ¼ 3Dxy , s54 ¼ 3Dyx , and s56 ¼ 3Dyy in addition to
+where S is a matrix of relaxation time coefficients. The transforma-                           those given in Eq. (8).
+tion matrices for D2Q5 and D2Q9 LB models are [19,20,24–                                           For general purposes, we formulate the LB models used in this
+26,29,30]                                                                                      work in the MRT framework and the LBE evolution equation (2)
+    2                   3       2                  3                                           is solved in two steps
+      1 1 1 1 1                   s0 0 0 0 0                                                       collision step:
+    6                   7       6                  7
+    6 0 1 1 0 0 7              6 0 sxx sxy 0 0 7
+    6                   7 1 6                     7                                           g^a ðx; tÞ ¼ g a ðx; tÞ  ½M1 S  ðm  meq Þðx; tÞa
+M¼6                     7       6                  7
+    6 0 0 0 1 1 7; S ¼ 6 0 syx syy 0 0 7; for D2Q 5; and
+    6                   7       6                  7                                                         þ xa Gðx; tÞdt; and                                    ð10aÞ
+    4 4 1 1 1 1 5           4 0 0 0 s3 0 5
+      0 1 1 1 1                  0 0 0 0 s4                                                  streaming step:
+                                                                 ð7aÞ
+                                                                                               g a ðx þ ea dt; t þ dtÞ ¼ g^a ðx; tÞ;                                ð10bÞ
+      2                                                               3
+          1      1       1      1    1     1     1       1        1                            where g^a represents the post-collision state.
+    6 4 1 1 1 1 2 2            2 7
+    6                            2     7                                                          One of the main objectives of this study is to show a direct com-
+    6                                  7
+    6 4 2 2 2 2 1 1          1  1  7                                                       parison between the D2Q5 and D2Q9 models for representative
+    6                                  7
+    6                                  7                                                       convection-diffusion problems, and we summarize the expressions
+    6  0  1   0 1    0   1 1  1  1  7
+    6                                  7                                                       for geq and meq for each LB model studied in this work in Table 1.
+M¼6 6 0 2 0      2   0 1 1 1 1 7    7;
+    6                                  7                                                       The information for the D3Q7 and D3Q19 LB models is provided in
+    6 0   0   1   0 1 1 1 1 1 7                                                             the Appendix A.
+    6                                  7
+    6 0   0 2 0      2 1 1 1 1 7
+    6                                  7
+    6                                  7                                                           Remark I: The constant a in the D2Q5 model in Table 1 is
+    4 0   1 1 1 1 0 0          0  0 5
+                      0 1 1 1 1                                                                  bounded by a 2 (1, 4). In [20,24,32–37], a = 2/3 was used
+       0  0   0   0                                                                                                      
+     2                             3                                                               which gives g eq          ea u
+       s0 0 0 0 0 0 0 0 0                                                                                        a ¼ xa / 1 þ c2   and x0 = 2x1,2,3,4 = 1/3. This
+                                                                                                                                       s
+     60 s                   0 0 07                                                                 is the form of the D2Q5 model studied in the present work if
+     6     1 0  0   0   0          7
+     6                             7                                                               not otherwise stated. Notably, the effect of a on the accuracy
+     6 0 0 s2 0     0   0   0 0 07
+     6                             7
+     6                             7                                                               and stability of the LBE solutions was studied in [25,31]. It
+     6 0 0 0 sxx 0 sxy 0 0 0 7
+     6                             7                                                               should be noted that the fourth row of the M matrix in
+ 1  6
+S ¼6 0 0 0                  0 0 07
+                0 s4 0             7; for D2Q 9;                                   ð7bÞ            [25,31] has an opposite sign as that in Eq. (7a), and thus the
+     6                             7
+     6 0 0 0 syx 0 syy 0 0 0 7                                                                     constant a is also of opposite sign as that in Table 1.
+     6                             7
+     60 0 0     0   0   0 s6 0 0 7                                                                 Remark II: D2Q9-II in Table 1 is formulated the same way as that
+     6                             7
+     6                             7                                                               for the hydrodynamic version for fluid flow. D2Q9-I can be con-
+     40 0 0     0   0   0   0 s7 0 5
+                                                                                                   sidered as a simplified version of D2Q9-II without the higher
+        0 0 0   0   0   0   0 0 s8
+                                                                                                   order velocity terms in geq and meq. D2Q9-I and D2Q9-II are
+where the relaxation coefficients need to satisfy                                                  the most popular LB models studied in the literature for the
+                                                                                                   9-velocity lattice structure. D2Q9-III is the modified MRT LB
+      1          dt
+sij ¼ dij þ             Dij ;                                                        ð8Þ           model by Huang and Wu [26] for which the relaxation matrix
+      2        eD dx2                                                                              is given in Eq. (9), noting that the original matrix S instead of
+in order to recover the anisotropic CDE (1). The constant eD in Eq. (8)                            S1 is given in [26]. D2Q9-IV has the same ‘‘mass” and convec-
+is eD = (4  a)/10 (see Table 1 for the definition of a, and eD = 1/3 at                           tion weights as D2Q9-III, and it includes the higher order veloc-
+a = 2/3) for D2Q5 [24,25,31,32] and eD = 1/3 for D2Q9 [26]. It should                              ity terms. In [26], the models D2Q9-II, III, IV were denoted as
+be noted that the MRT collision operator in Eq. (6c) reduces to the                                MRT-B1, -A, -B2, respectively. Another MRT-B3 model, which
+BGK version in Eq. (6a) when all the diagonal elements in the S1                                  is the same as D2Q9-III but with S in Eq. (7b) rather than Eq.
+matrix are equal to s, and the off-diagonal ones are set to zeros;                                 (9), was also studied in [26].
+and it reduces to the TRT version in Eq. (6b) when its even/odd                                    Remark III: The relaxation coefficients sxx, sxy, syx, and syy, are
+eigenvalues take specific values, kþ     
+                                     a /ka , respectively.
+                                                                                                   determined by the diffusion coefficient Dij as shown in Eq. (8).
+    It is noted that one can also tune the relaxation coefficients in                              The other relaxation coefficients are free with a lower bound
+the S matrix to construct other specific LB models. For instance,                                  sP > 0.5 (P = 0, 3, 4 in D2Q5 and 0, 1, 2, 4, 6, 7, 8 in D2Q9). Impor-
+Huang and Wu [26] modified S in their D2Q9 MRT model to elim-                                      tantly, the expressions for meq in Table 1 clearly show that s4
+inate some ‘‘deviation” terms that exist in convection-diffusion                                   and s6 in the D2Q9 models are also related to the respective
+44                                                    L. Li et al. / International Journal of Heat and Mass Transfer 108 (2017) 41–62
+
+
+Table 1
+The equilibria geq, meq and the weight coefficient xa in the various 2D LB models.
+                                                  h                            i
+     MRT-LB models                      g eq             ea u   ðea uÞ2  u2                meq = Mgeq                                                           xa
+                                          a ¼ xa / 1 þ aa c2 þ ba 2c4  ca 2c2
+                                                                s      s        s
+                                                                                                                                                                    1þa
+     D2Q5 (S in Eq. (7a))              aa ¼ 3ð4aÞ
+                                              10
+                                                  ,                                                                T
+                                                                                             /ð1; ux ; uy ; a; 0; 0Þ                                                  5 ; a¼0
+                                                                                                                                                                      20 ;a¼14
+                                                                                                                                                                     4a
+                                       ba = 0, ca = 0
+                                                                                                                                                                   8
+     D2Q9-I (S in Eq. (7b))            aa = 1, ba = 0, ca = 0                                /ð1; 2; 1; ux ; ux ; uy ; uy ; 0; 0ÞT                              < 4=9;  a¼0
+                                                                                                                                                                     1=9;  a ¼14
+                                                                                                                                                                   :
+                                                                                                                                                                     1=36; a ¼ 5  8
+                                                                                                                                                                   8
+     D2Q9-II (S in Eq. (7b))           aa = 1, ba = 1, ca = 1                                                                                                  T
+                                                                                             /ð1; 2 þ 3u2 ; 1  3u2 ; ux ; ux ; uy ; uy ; u2x  u2y ; ux uy Þ   < 4=9;  a¼0
+                                                                                                                                                                     1=9;  a ¼14
+                                                                                                                                                                   :
+                                                                                                                                                                     1=36; a ¼ 5  8
+                                             8                                                                                                                     8
+     D2Q9-III (S in Eq. (9))                 < 0;     a¼0                                    /ð1; 2; 2; ux ; ux ; uy ; uy ; 0; 0ÞT                              < 5=9;  a¼0
+                                       aa ¼     2;    a ¼ 1  4,                                                                                                     1=18; a ¼ 1  4
+                                             :                                                                                                                     :
+                                                1=2; a ¼ 5  8                                                                                                       1=18; a ¼ 5  8
+                                       ba = 0, ca = 0
+                                             8                                                                                                                     8
+     D2Q9-IV (S in Eq. (7b))                 < 0;     a¼0                                                                                                      T
+                                                                                             /ð1; 2 þ 3u2 ; 2  3u2 ; ux ; ux ; uy ; uy ; u2x  u2y ; ux uy Þ   < 5=9;    a¼0
+                                       aa ¼ 2;        a ¼ 1  4,                                                                                                     1=18;   a ¼14
+                                             :                                                                                                                     :
+                                                1=2; a ¼ 5  8                                                                                                       1=18;   a ¼58
+                                             8
+                                             < 0;     a¼0
+                                       ba ¼ 2;        a ¼ 1 4,
+                                             :
+                                                1=2; a ¼ 5  8
+                                            8
+                                            < 4=5; a ¼ 0
+                                       ca ¼ 2;        a¼14
+                                            :
+                                               1=2; a ¼ 5  8
+
+
+
+
+      convection terms ux/ and –uy/. According to the TRT LB model                                   @/
+                                                                                                r1      þ r2 / ¼ r3 ;                                                             ð11Þ
+      [21,28], these are also anti-symmetric (odd) components, thus                                  @n
+      s4 = sxx and s6 = syy are used throughout this work. In addition,                         where n is the inward normal of the local boundary geometry, r1 ,
+      s0 is the relaxation coefficient for the conserved scalar variable                        r2 , and r3 are given functions on the boundary. Eq. (11) reduces
+      /, which is the first element in meq for each of the LB models in                         to the Dirichlet condition /w ¼ Ud when r1 ¼ 0, and to the Neu-
+      Table 1. In the hydrodynamic LB models, the relaxation coeffi-
+                                                                                                mann condition Dn @/@n
+                                                                                                                        ¼ Un when r2 ¼ 0.
+      cients for the conserved moments of mass and momentum
+                                                                                                   The lattice cut by the boundary wall with arbitrary intersection
+      are set to zero [29]. As an analogy, one can set s0 = 0, for which
+                                                                                                distance is illustrated in Fig. 1. The lattice spacing is set to be unity
+      the choice of meq                                      eq
+                       a¼0 does not come into play, thus ma¼0 = 0 was                           (dx = 1), and the fraction of the intersected link in the field to be
+      used in [19,24,32–34,36,37]. Notably, d’Humieres and Ginzburg
+                                                                                                solved is denoted by D = ||xf  xw||/||xf  xe|| with 0 6 D 6 1. A
+      [38] derived that in the TRT model, the combination of the two
+                                                                                            boundary condition treatment is required during the streaming
+      relaxation coefficient, K ¼ sD  12 sP  12 , ‘‘magically” deter-                         step (Eq. (10b)) when unknown populations from the exterior
+      mines the LB solution for the CDE. For consistency, we use                                nodes (xe in Fig. 1) to the ‘‘field” nodes (xf) are encountered.
+      sP = 1 (including s0 = 1) for all the simulation results shown in
+      this paper.                                                                               3.1. Halfway boundary schemes at D = 0.5
+
+3. Boundary conditions in the LB models                                                             The halfway intersection (D = 0.5) represents the simplest case.
+                                                                                                For the Dirichlet boundary condition /w ¼ Ud , the most popular
+   Since the LB method deals with the distribution functions, the                               ‘‘anti-bounce-back” scheme can be written as [39]
+conversion of a macroscopic boundary condition into that for the                                g a ðxf ; t þ dtÞ ¼ g^a ðxf ; tÞ þ 2g eq;þ
+                                                                                                                                        a ðxw ; t þ dtÞ
+microscopic distribution functions is of essential significance in                                                                           "                         #
+LB modeling. The most widely encountered boundary conditions                                                                                         ðea  uÞ2     u2
+                                                                                                                   ¼ g^a ðxf ; tÞ þ 2xa Ud 1 þ ba              ca 2 :
+for the CDE include the Dirichlet (boundary value) condition,                                                                                           2c4s       2cs
+Neumann (flux) condition and their combination, the Robin                                                                                                                         ð12Þ
+(mixed) condition. They can be written in a general form as
+
+
+
+
+                               Fig. 1. Schematic depiction of the lattice links intersected by a boundary wall in (a) D2Q5, and (b) D2Q9 LB models.
+                                                      L. Li et al. / International Journal of Heat and Mass Transfer 108 (2017) 41–62                                                    45
+
+
+The high order velocity terms are usually neglected [20,24–26], and                               nodes, and up to ‘‘third-order” accurate boundary schemes were
+the anti-bounce-back Dirichlet schemes for the D2Q5 and D2Q9                                      derived for the Dirichlet condition. A detailed study on the numer-
+models in Table 1 become                                                                          ical accuracy and stability of the second-order Dirichlet and Neu-
+                                                                                                  mann schemes and their applicability on curved boundaries can
+                                                 4a
+D2Q5 : g a ðxf ; t þ dtÞ ¼ g^a ðxf ; tÞ þ          Ud ;        a ¼ 1  4;         ð13aÞ         be found in [24,37]. In this work, we also use these interpolated
+                                                  10
+                                                                                                  schemes for 0 6 D 6 1 in the D2Q5 model and its extension to
+                                                  (                                               D2Q9 models are also discussed in the following.
+                                                      g^a ðxf ; tÞ þ 29 Ud ; a ¼ 1  4;
+D2Q 9  I; D2Q 9  II : g a ðxf ; t þ dtÞ ¼
+                                                      g^a ðxf ; tÞ þ 18
+                                                                       1
+                                                                         Ud ; a ¼ 5  8;          3.2.1. Dirichlet condition treatment
+                                                                                    ð13bÞ            Following [24], in the interpolation based Dirichlet boundary
+                                                                                                  treatment for both D2Q5 and D2Q9, the single anti-bounce-back
+                                                              1                                   population in Eq. (12) is replaced with a combination of three
+D2Q 9  III; D2Q 9  IV : g a ðxf ; t þ dtÞ ¼ g^a ðxf ; tÞ þ Ud ;           a ¼ 1  8:
+                                                              9                                   weighted populations
+                                                                                    ð13cÞ
+                                                                                                  g a ðxf ; t þ dtÞ ¼ ½cd1 g^a ðxf ; tÞ þ cd2 g^a ðxff ; tÞ þ cd3 g^a ðxf ; tÞ
+    For the zero-flux Neumann boundary condition Un ¼ 0, the                                                            þ cd4 ð2xa Ud Þ;                                             ð16Þ
+                                            ^a ðxf ; tÞ, which is widely
+‘‘bounce-back” scheme, g a ðxf ; t þ dtÞ ¼ g
+used in the hydrodynamic LB models to impose a no-slip condition                                  where xff is the second interior lattice node along the ea direction,
+for momentum can be similarly implemented [19,25]. For the gen-                                   i.e., xff = xf + ea dt, cd1–cd4 are coefficients related to the local link
+eral non-zero Neumann condition Dn @/               ¼ Un , Yoshida and                           fraction D, and the coefficient xa for the D2Q5 and D2Q9 models
+                                                @n
+Nagaoka [20] proposed a convenient scheme for the D2Q5 model.                                     can be found in Table 1. The asymptotic boundary analysis in
+Using the notations in this work, it can be written as                                            [24], which can be directly extended to D2Q9 LB models, showed
+                                                                                                  that second-order accuracy is preserved for the Dirichlet treatment
+D2Q5 : g a ðxf ; t þ dtÞ ¼ g^a ðxf ; tÞ þ Una ;       a ¼ 1  4;                   ð14Þ         (16) when the following relationship is maintained, with cd1 (–1) an
+                                                                                                  adjustable variable
+where Una is the boundary flux along the ea direction from the exte-
+rior to the field. When the normal n is aligned with ea ,                                                   2Dcd1 þ 1                   cd1 þ 2D             cd1 þ 1
+                                                                                                  cd2 ¼               ;        cd3 ¼             ; and cd4 ¼          :             ð17Þ
+Una ¼ Un ¼ Dn @/
+                 @n
+                    can be directly used.                                                                     2D þ 1                      2D þ 1               2D þ 1
+    The Neumann boundary condition for the D2Q9 model is more                                     Note that the relationships cd1  cd2 þ cd3 ¼ 1 and cd3 þ cd4 ¼ 1
+complex than that for D2Q5 as one needs to split the boundary flux                                hold. The three particular Dirichlet schemes examined in [24] have
+into those along three different lattice velocity directions. As                                  the following specific choices of cd1
+shown in Fig. 1b, the weighted Neumann boundary scheme can                                           Scheme 1:
+be constructed as                                                                                            (
+       8                                                                                                         2D; ð0 6 D 6 0:5Þ;
+                                                                                                  cd1 ¼                                                                             ð18aÞ
+       < g 1 ðxf ; t þ dtÞ ¼ g^3 ðxf ; tÞ þ jr Un ;
+       >                                                                                                          21D ; ðD > 0:5Þ;
+D2Q9 :   g 5 ðxf ; t þ dtÞ ¼ g^7 ðxf ; tÞ þ jd Un ;           with jr þ 2jd ¼ 1:
+       >
+       :
+         g 8 ðxf ; t þ dtÞ ¼ g^6 ðxf ; tÞ þ jd Un ;                                               Scheme 2:
+                                                                                     ð15Þ         cd1 ¼ 2ð1  DÞ; and                                                              ð18bÞ
+
+A ‘‘4-1-1” splitting scheme with jr = 4/6 and jd = 1/6 was proposed                               Scheme 3:
+by Zhang et al. [40]. We will show that the splitting is not unique;                              cd1 ¼ 1:                                                                         ð18cÞ
+and thus other splitting schemes including jr = jd = 1/3 are also
+examined in this work.                                                                            All three schemes will be applied in this study for both D2Q5 and
+                                                                                                  D2Q9 models. We would like to point out that for certain cases,
+3.2. Interpolation based boundary schemes for 0 6 D 6 1                                           such as the corner nodes in the D2Q9 lattice, xff could be out of
+                                                                                                  the interior domain, and thus the ‘‘one-node” second-order Dirich-
+      For a local intersection of the lattice link by the boundary wall                           let scheme can be implemented with cd1 ¼ 1=ð2DÞ for 0 < D 6 1,
+with an arbitrary D value, one can combine the (anti-) bounce-                                    for which case cd2 = 0 in Eq. (16).
+back schemes with spatial interpolation of the distribution func-
+tions (populations) at the lattice nodes near the boundary to con-                                3.2.2. Neumann condition treatment
+struct second- or higher-order boundary schemes. Li et al. [24]                                      Similarly, the interpolated Neumann treatment using the same
+developed second-order accurate Dirichlet and Neumann bound-                                      populations is
+ary treatments using three post-collision neighboring values,
+g^a ðxf ; tÞ, g^a ðxff ; tÞ, and g^a ðxf ; tÞ for each unknown population                        D2Q5 : g a ðxf ; t þ dtÞ ¼ cn1 g^a ðxf ; tÞ þ cn2 g^a ðxff ; tÞ þ cn3 g^a ðxf ; tÞ
+g a ðxf ; t þ dtÞ in the D2Q5 LB model. The ‘‘multi-reflection” schemes                                                            þ cn4 Una ;     a ¼ 1  4;                     ð19aÞ
+in [39] utilize five post-collision populations involving three field
+
+
+
+
+           (
+               g a ðxf ; t þ dtÞ ¼ cn1 g^a ðxf ; tÞ þ cn2 g^a ðxff ; tÞ þ cn3 g^a ðxf ; tÞ þ cn4 jr Un ;       a ¼ 1  4;
+D2Q9 :                                                                                                                      with jr þ 2jd ¼ 1;                                      ð19bÞ
+               g a ðxf ; t þ dtÞ ¼ cn1 g^a ðxf ; tÞ þ cn2 g^a ðxff ; tÞ þ cn3 g^a ðxf ; tÞ þ cn4 jd Un ;       a ¼ 5  8;
+46                                                    L. Li et al. / International Journal of Heat and Mass Transfer 108 (2017) 41–62
+
+
+For the D2Q5 model, the asymptotic analysis in [24] showed that                                 necessary to obtain first-order accurate LB solutions when using
+the coefficients cn1-cn4 in Eq. (11) are unique for second-order accu-                          the D2Q5 model. While for the D2Q9 model, construction of such
+racy with                                                                                       a decomposition scheme is much more complicated due to the
+                                                                                                additional lattice velocities along the diagonal directions. The
+                      1  2D                2D  1               2
+cn1 ¼ 1;      cn2 ¼          ;      cn3 ¼          ; and cn4 ¼        :                ð20Þ     numerical results in Section 4.3.2 show that when a proper split-
+                      2D þ 1                2D þ 1             2D þ 1
+                                                                                                ting coefficient is selected (e.g., jr ¼ jd ¼ 1=3), the Neumann
+where the relationships cn1 þ cn2 þ cn3 ¼ 1 and cn3 þ cn4 ¼ 1 are                               boundary scheme in (19b) is able to yield first-order accurate
+readily noticed. The same choice for the coefficients is used for                               results with the D2Q9 model for curved boundaries.
+the D2Q9 models in this work.
+    As emphasized in [24,33], when the local boundary normal n is                               3.3. Evaluation of boundary flux/boundary value and interior
+aligned with ea (Fig. 1a), Una ¼ Un and thus the Neumann scheme                               derivatives
+(19a) in D2Q5 can be directly applied. When n is not in the ea
+direction, which is usually encountered on inclined or curved                                       By combining the Dirichlet and Neumann boundary schemes in
+boundaries, Una is not equal to Un and it also depends on the                                  Eqs. (16) and (19a), analytical formulas for obtaining the boundary
+unknown tangential flux Ut , i.e., Una ¼ Un cos hna þ Ut sin hna (see                        flux/boundary / values for given Dirichlet/Neumann problems
+Fig. 2). Since the well-posedness of a mathematical problem for                                 have been proposed in [24] for D2Q5. For completeness, they are
+CDE does not even allow the specification of Ut in addition to Un                               listed below.
+on the same boundary, a Cartesian decomposition method was                                          The boundary flux for a Dirichlet problem can be evaluated
+proposed in [24] to obtain Una from Un :                                                       from
+                                                                                                                           
+            1                                                                                                        1  cd1
+Una ¼          ½ðc0  c0d1 Þg^b ðx0f ; tÞ þ ðc0n2  c0d2 Þg^b ðx0ff ; tÞ                       D2Q5 : Una ¼                   ð2D þ 1Þg^a ðxf ; tÞ
+           c0d4 n1                                                                                                      2
+                                                                                                                                                                
+                                                    1                                                                           2                          2
+           þ ðc0n3  c0d3 Þg^b ðx0f ; tÞ sin h      ½ðcn1  cd1 Þg^a ðxf ; tÞ                                    þ 2D              g^a ðxff ; tÞ þ           1 g^a ðxf ; tÞ
+                                                   cd4                                                                       1  cd1                    1  cd1
+                                                                                                                            
+                                                                                 c0 dt
+           þ cn2  cd2 Þg^a ðxff ; tÞ þ ðcn3  cd3 Þg^a ðxf ; tÞ sin h þ n4            Un                         þ 2xa Ud ;                                               ð22Þ
+                                                                                 c0d4 dx
+                                                  
+                cn4 dt             c0 dt
+                       sin h þ n4            cos h ;                                     ð21Þ   and the boundary / value for a Neumann problem can be evaluated
+                cd4 dx             c0d4 dx                                                      using
+where the coefficients c0di and c0ni (i = 1, 2, 3 and 4) are determined                                                                                      
+                                                                                                                     1                              2
+from Eqs. (17) and (20) by setting D = 0 in the eb direction, i.e.,                             D2Q5 : Ud ¼           ð2D þ 1Þg^a ðxf ; tÞ þ              2D g^a ðxff ; tÞ
+                                                                                                                  2xa                            1  cd1
+c0di ¼ cdi ðD0 Þ ¼ cdi ðD ¼ 0Þ, and c0ni ¼ cni ðD0 Þ ¼ cni ðD ¼ 0Þ; g^b and g^b                                                                             
+                                                                                                                           2                          2
+are the post-collision distribution functions along the lattice direc-                                            þ 1           g^a ðxf ; tÞ þ             Una ;        ð23Þ
+                                                                                                                        1  cd1                    1  cd1
+tions eb and eb that are perpendicular to ea and ea , and they are
+evaluated at the intersection nodes x0f ¼ xw and x0ff ¼ xw þ eb dt                             where the coefficients in Eqs. (17), (20) were used. It is emphasized
+                                                                                                that Una in Eqs. (22), (23) is the boundary flux along the lattice vec-
+(see Fig. 2) with interpolation or extrapolation of the neighboring
+                                                                                                tor ea direction.
+distribution functions. For more details about the Neumann condi-
+                                                                                                    Extension of the above technique in D2Q5 to that in D2Q9 is
+tion treatment in the D2Q5 model for curved boundaries and its
+                                                                                                more sophisticated. First, we consider the boundary flux evaluation
+extension to mixed boundary conditions please refer to [24].
+                                                                                                for a Dirichlet problem with a straight boundary and its normal
+   It should be noted that as reported in [24,32–34,36,37] and also
+                                                                                                aligned with the orthogonal lattice vector ea as shown in Fig. 3.
+Section 4.3.2 of this work, such a flux decomposition scheme is
+
+
+
+
+Fig. 2. Layout of the D2Q5 lattice and a curved boundary (solid circles: field nodes;           Fig. 3. Layout of the D2Q9 lattice and a straight boundary for the illustration of
+solid squares: boundary nodes; open circles: exterior nodes). Adapted from [24].                boundary flux evaluation.
+                                                   L. Li et al. / International Journal of Heat and Mass Transfer 108 (2017) 41–62                                   47
+
+
+For the distributions in the orthogonal lattice direction, i.e., a = 1–                      boundaries. In this work we have no intention to pursue more
+4, the boundary flux Una is the same as the normal flux Un (e.g., on                        complex boundary flux evaluation schemes for curved boundaries
+the boundary node xw1 in Fig. 3). Thus the boundary flux evalua-                             in D2Q9 since the scheme in D2Q5 has already been demonstrated
+tion scheme (see Eq. (24a) below) can be similarly constructed                               to be accurate and much simpler.
+by combining Eqs. (16) and (19b). Based on numerical verification                               Second, for the Neumann problem, the method for evaluating
+(see Section 4.2.1 below), we notice that the particular choice of                           boundary / in D2Q5 can be directly extended to D2Q9 in all lattice
+jr = 4/6 for D2Q9-I, -II and jr = 1/3 for D2Q9-III, -IV is required. It                      directions. However the choice of jr and jd is not unique,
+
+
+       8            h                                                                                i
+       >
+       < Ud ¼ 2x1 a ð2D þ 1Þg^a ðxf ; tÞ þ 1c2  2D g^a ðxff ; tÞ þ 1  1c2 g^a ðxf ; tÞ þ 1c2 jr Un ; a ¼ 1  4;
+                                               d1                            d1                   d1
+D2Q9 :              h                                                                                i                                   with jr þ 2jd ¼ 1:
+       >
+       : Ud ¼ 2x1 ð2D þ 1Þg^a ðxf ; tÞ þ 1c2  2D g^a ðxff ; tÞ þ 1  1c2 g^a ðxf ; tÞ þ 1c2 jd Un ; a ¼ 5  8;
+                  a                                       d1                                 d1                    d1
+
+                                                                                                                                                                   ð26Þ
+
+
+
+should be noted that the boundary flux can also be obtained from                                For both Dirichlet and Neumann problems, the interior deriva-
+the distributions along the diagonal lattice directions (a = 5–8).                           tives can be obtained using [24,41]
+Inspired by the above technique derived in D2Q5 and the intersec-
+                                                                                                    @/   1 m1X
+tion of the lattice links in D2Q9 by the boundary (e.g., xw2 and xw3                         sij      ¼                a ;
+                                                                                                                  eai g neq                                        ð27Þ
+in Fig. 3), the following scheme for boundary flux evaluation is                                    @xj eD dx a¼1
+proposed
+                                                                                           where g neq           eq
+                                                                                                       a ¼ g a  g a is the non-equilibrium component of the
+                       1  cd1
+                       1                                                                     distribution function and the constant eD is discussed in Eq. (8).
+D2Q9 : Un ðxw1 Þ ¼                ð2D þ 1Þg^3 ðxf 1 ; tÞ
+                   jr     2                                                                  Eq. (27) is a local scheme, i.e., it requires only the populations
+                                    
+                                2                                                            at the local lattice node and is thus more efficient than using
+                   þ 2D              g^3 ðxff 1 ; tÞ
+                             1  cd1                                                         finite-difference computations. The second-order accuracy of the
+                                                                                          scheme has been verified in [24,32–34,36,37] for D2Q5 and [41]
+                          2
+                   þ            1 g^1 ðxf 1 ; tÞ þ 2x1 Ud ðxw1 Þ ;                          for D2Q9 models, where only isotropic diffusion is considered.
+                       1  cd1
+                                                                                             In this work, fully anisotropic diffusion is also tested and the
+                  with jr ¼ 4=6 for D2Q9  I;  II; and
+                                                                                             numerical accuracy of Eq. (27) in both D2Q5 and D2Q9 is
+                  jr ¼ 1=3 for D2Q9  III;  IV:                                   ð24aÞ     investigated.
+                                  
+                       1 1  cd1                                                             3.4. Total heat/mass transfer on a boundary
+D2Q9 : Un ðxw2;3 Þ ¼                     ð2D þ 1Þg^6 ðxf 2 ; tÞ
+                     2jd       2
+                                      
+                                  2                                                             With the boundary flux obtained from Eq. (22) in the D2Q5 LB
+                     þ 2D              g^6 ðxff 2 ; tÞ
+                               1  cd1                                                       model, Li et al. [33] proposed a simple and robust scheme for the
+                                                                                          computation of total flow rate per unit time step dt based on the
+                            2
+                     þ            1 g^8 ðxf 2 ; tÞ þ 2x8 Ud ðxw2 Þ                          principle of energy conversation. For 2D problems, it was
+                         1  cd1
+                                                                                          expressed as
+                                                             2
+                     þ ð2D þ 1Þg^7 ðxf 3 ; tÞ þ 2D                 g^7 ðxff 3 ; tÞ                             XX
+                                                          1  cd1                            D2Q5 : Q_ w ¼         ½Una ðdxÞ2   ½1  wðxf þ ea dtÞ;            ð28Þ
+                                                                                                                    –0
+                            2                                                                                   wb ¼1 a
+                     þ            1 g^5 ðxf 3 ; tÞ þ 2x5 Ud ðxw3 Þ ;
+                         1  cd1                                                             where the depth of the boundary is assumed to be one lattice unit
+                   with jd ¼ 1=6 for D2Q9  I;  II; and jd ¼ 1=3                            dx thus the effective surface area for each heat flux Una in the lattice
+                   for D2Q9  III;  IV:                                           ð24bÞ     vector direction is ðdxÞ2 , w(i, j) and wb(i, j) are two scalar arrays with
+                                                                                             w(i, j) = 1 for all the field nodes xf, w(i, j) = 0 for all the exterior
+The notations for xfi and xffi (i = 1–3) are shown in Fig. 3. One can
+                                                                                             nodes xe, and wb(i, j) is set to zero everywhere except for those field
+notice from (24b) that Un ðxw2 Þ and Un ðxw3 Þ are assumed the same
+                                                                                             nodes that satisfy xf + ea dt = xe (see Figs. 1 and 2), where a value of 1
+and approximated from the average of the distributions along the
+                                                                                             is assigned [33]. Eq. (28) requires no surface area approximation
+two discrete lattice vectors. The most accurate result is
+                                                                                             and is thus very powerful for heat/mass transfer computations on
+expected at D = 0.5, for which xw2 = xw3 and the scheme in (24a,
+                                                                                             curved boundaries. Numerical tests were conducted in [33] to
+b) reduces to
+                                                                                             demonstrate its second- and first-order accuracy for straight and
+                       1                                                                     curved boundaries, respectively.
+D2Q9 : Un ðxw1 Þ ¼         2g^3 ðxf 1 ; tÞþ2x1 Ud ðxw1 Þ;                        ð25aÞ        For the D2Q9 LB models, as discussed in Section 3.3, the bound-
+                     jr
+                                                                                             ary flux evaluation given by Eqs. (24 and 25) is only applicable to
+with jr = 4/6 for D2Q9-I, -II, and jr = 1/3 for D2Q9-III, -IV.                               straight walls. Since the surface area can be exactly obtained for
+                                  1                                                          straight boundaries, one can directly use Eqs. (24, 25) to calculate
+D2Q 9 : Un ðxw2 Þ ¼ Un ðxw3 Þ ¼        ½g^6 ðxf 2 ; tÞ  g^7 ðxf 3 ; tÞ þ 2x5 Ud ðxw2 Þ;   the total flow rate. The order of accuracy is the same as that for
+                                  jd
+                                                                                             boundary flux evaluation. On the other hand, for curved
+                                                                                   ð25bÞ
+                                                                                             boundaries, although the local boundary flux cannot be
+with jd = 1/6 for D2Q9-I, -II, and jd = 1/3 for D2Q9-III, -IV.                               obtained from Eqs. (24, 25), the following alternative schemes for
+   We would like to point out that the schemes in Eqs. (24, 25) are                          the total flow rate computation are proposed in this work follow-
+necessitated for the purpose of comparing the boundary fluxes                                ing the force evaluation in the hydrodynamic D2Q9 LB model
+between D2Q5 and D2Q9; they are only applicable to straight                                  [45,46]
+48                                                        L. Li et al. / International Journal of Heat and Mass Transfer 108 (2017) 41–62
+
+              X X1                  1
+                                               
+                                                                                                    the CDE in each test. For 3D verification, the D3Q7 and D3Q19
+D2Q9 : Q_ w ¼             Unr ðdxÞ2 þ Und ðdxÞ2  ½1  wðxf þ ea dtÞ;
+                    –0
+              w ¼1 a
+                        2            4                                                              models in the Appendix A are implemented. Test 1 is for the
+                      b
+                                                                                                    convection-diffusion of a Gaussian hill, in which both isotropic
+                                                                                        ð29Þ
+                                                                                                    and fully anisotropic diffusion at early stage (small times) are con-
+where Unr and Und are similar to the respective formulas in                                         sidered. Periodic boundary conditions are applied for all sides of
+Eq. (24a, b), i.e.,                                                                                 the domain in 2D and 3D cases in Test 1 so that the effect of bound-
+                                                                                               ary condition treatment is excluded. Thus the focus is on the direct
+        1   1  cd1                                    2
+Unr ¼                  ð2D þ 1Þg^a ðxf ; tÞ þ 2D           g^a ðxff ; tÞ                          comparison of the LB models. Both Dirichlet and Neumann bound-
+        jr     2                                    1  cd1                                         ary conditions are imposed in each of Tests 2 and 3, of which Test 2
+                                            
+              2                                                                                     is on the study of the convection-diffusion in a straight 2D channel
+        þ           1 g^a ðxf ; tÞ þ 2xa Ud ; a ¼ 1  4;           ð30aÞ
+           1  cd1                                                                                  with a constant plug flow assumed, while Test 3 is on the study of
+                                                                                                    the pure diffusion in a 2D circular domain. The performance of
+with jr = 4/6 for D2Q9-I, -II, and jr = 1/3 for D2Q9-III, -IV,
+                                                                                               D2Q5 and D2Q9 models in the evaluation of total heat/mass trans-
+         1  1  cd1                                    2                                            fer rate over a curved boundary is investigated in Test 4. Test 5 is
+Und ¼                  ð2D þ 1Þg^a ðxf ; tÞ þ 2D           g^a ðxff ; tÞ
+        jd     2                                    1  cd1                                         designed to confirm the observations in Test 3 when the D3Q7
+                                           
+              2                                                                                     and D3Q19 models are applied to simulate pure diffusion in a 3D
+        þ           1 g^a ðxf ; tÞ þ 2xa Ud ; a ¼ 5  8;          ð30bÞ                           domain. We assess the accuracy of the interior distribution of /
+           1  cd1
+                                                                                                    and its derivatives in all cases, as well as that of the boundary
+with jd = 1/6 for D2Q9-I, -II, and jd = 1/3 for D2Q9-III, -IV.                                      flux/boundary / values in the Dirichlet/Neumann problems,
+    The selection of the coefficients 1/2 and 1/4 in Eq. (29) is based                              respectively.
+on the observation that the effective surface areas for the flux
+obtained from the distributions in the orthogonal and diagonal lat-                                 4.1. Transient convection and anisotropic diffusion of a Gaussian hill
+tice directions are (dx)2/2 and (dx)2/4, respectively (see Fig. 3). This
+treatment will be validated with a numerical test in Section 4.4. For                                   The transient convection-diffusion in a square domain H = L for
+comparison, another treatment with effective surface area (dx)2 for                                 2D and a cubic domain (H = L = W) for 3D is considered in this test.
+all flux components in Eq. (30a, b) is also examined, which yields                                  Assuming an initial condition of Gaussian distribution (a Gaussian
+                    XX
+D2Q9 : Q_ w ¼         ½Unr ðdxÞ2 þ Und ðdxÞ2   ½1  wðxf þ ea dtÞ:                               hill)
+                           –0
+                    wb ¼1 a
+                                                                                                                                              
+                                                                                                                              /0           x2
+                                                                                                    /ðx; t ¼ 0Þ ¼                  exp         ;                                   ð34Þ
+                                                                                        ð31Þ                           ð2pr2 Þ
+                                                                                                                               d=2        2r20
+                                                                                                                                0
+    Realizing that the computation of Unr and Und in Eq. (30a, b)
+                                                                                                    with /0 being the total concentration, r20 being the initial variance
+using three distributions at two lattice nodes should have only
+                                                                                                    and d denoting the dimensions, and periodic boundaries on the
+first-order accuracy, we can further approximate them by assum-
+                                                                                                    boundary walls, the exact solution can be obtained [20,26,41]
+ing halfway intersection (D = 0.5) everywhere such that                                                                                    
+                                                                                                                         /0                  1
+        1                                                                                           /ex ðx; tÞ ¼           pﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃ exp   r1 : ½ðx  utÞðx  utÞ ;            ð35Þ
+Unr ¼        ½2g^a ðxf ; tÞ þ 2xa Ud ;          a ¼ 1  4;                           ð32aÞ                        ð2pÞd=2 krt k            2 t
+        jr
+with jr = 4/6 for D2Q9-I, -II, and jr = 1/3 for D2Q9-III, -IV,                                      where rt = r20 I + 2tD, D is the anisotropic diffusion tensor, and krt k
+                                                                                                    and r1
+                                                                                                          t   are the determinant and inverse of rt, respectively. This
+         1
+Und ¼        ½2g^a ðxf ; tÞ þ 2xa Ud ;          a ¼ 5  8;                           ð32bÞ        Gaussian hill convection-diffusion problem is characterized by the
+        jd                                                                                          Péclet number. For convenience, we choose D22 to define the Péclet
+with jd = 1/6 for D2Q9-I, -II, and jd = 1/3 for D2Q9-III, -IV.                                      number as Pe = UH/D22. For the periodic boundary conditions to
+   Lastly, we also consider a treatment that is directly extended                                   hold, a large computational domain is chosen so that for all small
+from the force evaluation in the hydrodynamic D2Q9 model in                                         but finite times r1 t  : ½ðx  utÞðx  utÞ  1 remains valid at the
+[46]. Using the present notations, it is written as                                                 boundary for / to be effectively zero.
+                   XX                                                                                  The 2D simulations are discussed first. In the LB computation,
+D2Q9 : Q_ w ¼                    ea g a ðxf ; t þ dtÞ þ ea g^a ðxf ; tÞ ðdxÞ2
+                          –0
+                   wb ¼1 a
+                                                                                                    r20 ¼ ð0:025LÞ2 is used, the relaxation coefficients sij are deter-
+                                                                                                    mined from Eq. (8), and both isotropic (D11 = D22 = 0.01,
+                   ½1  wðxf þ ea dtÞ
+                   XX                                                                               D12 = D21 = 0) and fully anisotropic (D11 = 0.015, D12 = 0.0025,
+                 ¼        ½2g^a ðxf ; tÞ þ 2xa Ud ðdxÞ2  ½1  wðxf þ ea dtÞ:                    D21 = 0.002, D22 = 0.01) diffusion cases are considered. The initial
+                          –0
+                   wb ¼1 a                                                                          treatment       for  the       microscopic     distribution  functions
+                                                                                                                    
+                                                                                        ð33Þ                              dtuj                    @/ex;t¼0 1 1
+                                                                                                    g a ðx; t ¼ 0Þ ¼ xa þ dxeD eaj xa /ex;t¼0  dx @xj ðM S Mej xÞa , as
+In Section 4.4, a numerical test will be presented to show the appli-                               proposed in [20], is applied here for all the D2Q5 and D2Q9 models.
+cability of the various schemes for the total flow rate computation,                                The accuracy of the LB results is evaluated at tm when
+including the combinations of (29, 30), (29, 32), (31, 30), and (33).                               /max ðx; t m Þ ¼ 0:5/max ðx; 0Þ; that is,
+All schemes have a first-order accuracy. While the scheme in (33)                                                qﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃ
+is the simplest in terms of implementation, the scheme in Eqs.                                             r20    ðD11 þ D22 Þ2 þ 12kDk  ðD11 þ D22 Þ
+(29, 30) has the best numerical accuracy.                                                           tm ¼                                                                   ;        ð36Þ
+                                                                                                            4                          kDk
+
+4. Numerical results and discussion                                                                 with the determinant kDk ¼ D11 D22  D12 D21 . The following
+                                                                                                    L2-norm errors are defined to assess the accuracy of the LB results
+   The LB results for five numerical tests are presented in this sec-                                      "                                     ,                       #1=2
+tion. The D2Q5 and D2Q9 I-IV models listed in Table 1 are imple-                                                  X                          2
+                                                                                                                                                     X
+                                                                                                    E2 ¼                     ð/LBE  /ex Þ                        /2ex          ;   ð37Þ
+mented and their accuracy and convergence are compared with                                                 interior nodes                       interior nodes
+each other with reference to the available analytical solution to
+                                                      L. Li et al. / International Journal of Heat and Mass Transfer 108 (2017) 41–62                                              49
+
+
+
+
+Fig. 4. Relative L2-norm error, E2, of the interior distribution of / versus the grid resolution, 1/L, for (a) isotropic diffusion at Pe = 0, (b) anisotropic diffusion at Pe = 0, (c)
+isotropic diffusion at Pe = 32, (d) anisotropic diffusion at Pe = 32, (e) isotropic diffusion at Pe = 320, and (f) anisotropic diffusion at Pe = 320 in the Gaussian hill convection-
+diffusion problem.
+
+
+
+
+              (                                                         2 , X                        2 )1=2
+                      X                   @/       @/           @/       @/                        @/     @/
+E2 @/=@x ¼                         sxx      þ sxy         sxx    þ sxy                        sxx þ sxy           ;                                                         ð38aÞ
+              interior nodes
+                                          @x       @y LBE       @x       @y ex   interior nodes
+                                                                                                   @x     @y ex
+
+              (                                                         2 , X                        2 )1=2
+                      X                   @/       @/           @/       @/                        @/     @/
+E2 @/=@y ¼                         syx      þ syy         syx    þ syy                        syx þ syy           ;                                                         ð38bÞ
+                  interior nodes
+                                          @x       @y LBE       @x       @y ex   interior nodes
+                                                                                                   @x     @y ex
+50                                                 L. Li et al. / International Journal of Heat and Mass Transfer 108 (2017) 41–62
+
+
+
+
+Fig. 5. Relative L2-norm errors, E2_o//ox and E2_o//oy, of the interior derivatives versus the grid resolution, 1/L, for (a) isotropic diffusion at Pe = 0, (b) anisotropic diffusion at
+Pe = 0, (c) isotropic diffusion at Pe = 32, (d) anisotropic diffusion at Pe = 32, (e) isotropic diffusion at Pe = 320, and (f) anisotropic diffusion at Pe = 320 in the Gaussian hill
+convection-diffusion problem.
+
+
+
+where E2 measures the error of the interior / distribution, and                                pic diffusion in this test, thus only E2 @/=@x is shown in Fig. 5a, c, e.
+E2 @/=@x , E2 @/=@y measures the errors in evaluating the respective                         Furthermore, the comparison between the results for D2Q5 and the
+partial derivatives using Eq. (27). The values of ð@/=@xÞex and                                D2Q9 models implies that in general the D2Q5 model is more accu-
+ð@/=@yÞex are calculated directly from the solution in Eq. (35).                               rate in the cases with relatively weak convection at Pe = 0 and 32,
+    Figs. 4a–f and 5a–f show the relative L2-norm errors defined in                            while for strong convection cases (e.g., Pe = 320), the D2Q5 model
+Eqs. (37, 38), respectively, at Pe = 0 (pure diffusion) and Pe = 32,                           gives larger errors and the D2Q9 models seem to have better accu-
+320 (convection-diffusion with ux = uy = U) when the D2Q5 and                                  racy. To elucidate this comparison, Fig. 6a–d shows the respective
+D2Q9 LB models in Table 1 are implemented. The results clearly                                 results of E2 and E2 @/=@x versus Pe at two different values sD = 0.53
+demonstrate that second-order accuracy is obtained for all cases.                              and 0.8 with sP = 1 and L = 64. The error behavior in the increase of
+It should be noted that for Pe = 0, D2Q9-I and D2Q9-II are identical                           E2 and E2 @/=@x with increasing Pe is quite similar. For very large Pe,
+as indicated in Figs. 4a, b and 5a, b, and E2 @/=@x = E2 @/=@y for isotro-                   the numerical error increases considerably and a stable computa-
+                                                       L. Li et al. / International Journal of Heat and Mass Transfer 108 (2017) 41–62                                                             51
+
+
+
+
+Fig. 6. Relative L2-norm errors (a) E2 at (sD, sP) = (0.53, 1.0), (b) E2_o//ox at (sD, sP) = (0.53, 1.0), (c) E2 at (sD, sP) = (0.8, 1.0), and (d) E2_o//ox at (sD, sP) = (0.8, 1.0) versus the Péclet
+number, Pe, for the Gaussian hill convection-diffusion problem.
+
+
+
+
+                Fig. 7. Relative L2-norm errors (a) E2, and (b) E2_o//ox versus the grid resolution, 1/L, for the Gaussian hill convection-diffusion problem in 3D.
+
+
+                                                                                                             ð41=3 1Þr2
+tion would necessitate high resolution. The results in Fig. 6 indicate                                tm ¼ 2D22 0 when /max ðx; tm Þ ¼ 0:5/max ðx; 0Þ. Again, second-
+that in general D2Q5 performs as well as D2Q9 in terms of both                                        order accuracy for both quantities is obtained for each LB model.
+numerical accuracy and stability.                                                                     The change of the error magnitude with Pe is also similar to those
+   To verify that the above observations are equally valid in 3D, the                                 shown in Figs. 4 and 5; and D3Q7 proves to be more attractive than
+Gaussian hill convection-isotropic diffusion is also simulated in a                                   D3Q19, especially at moderate and low Pe values.
+cube using both D3Q7 and D3Q19 models (see the Appendix A                                                 It should be emphasized that due to the periodic boundary con-
+for model details). The simulation parameters are kept the same                                       ditions imposed in this test, the effects of the boundary treatment
+as those for the 2D isotropic case with sD = 0.53 and sP = 1.                                         on the numerical accuracy are eliminated. For general cases, such
+Fig. 7a, b shows the L2-norm errors E2 and E2_o//ox defined in Eqs.                                   effects cannot be avoided, and the tests in the following sections
+(37), (38a) when extended to 3D versus the grid resolution at                                         will be focused on these issues.
+52                                                 L. Li et al. / International Journal of Heat and Mass Transfer 108 (2017) 41–62
+
+
+                                                                                             accuracy and convergence of the proposed boundary and/or conju-
+                                                                                             gate interface schemes. The geometric configuration and the lattice
+                                                                                             distributions are schematically depicted in Fig. 8. Following [24],
+                                                                                             Dirichlet or Neumann boundary conditions are imposed on the
+                                                                                             top and bottom walls, and periodic boundary conditions are
+                                                                                             assumed in the x-direction for both / and the distribution function
+                                                                                             ga. Assuming a constant plug flow u = (U, 0), the characteristic
+                                                                                             Péclet number reads Pe = UH/D, where H is the channel height
+                                                                                             and D is the isotropic diffusion coefficient.
+
+                                                                                             4.2.1. Dirichlet boundary condition
+                                                                                                With the following Dirichlet boundary conditions imposed on
+                                                                                             the bottom and top walls
+                                                                                             /ðx; y ¼ 0Þ ¼ /ðx; y ¼ HÞ ¼ cosðkxÞ;                with k ¼ 2p=L;                   ð39Þ
+                                                                                             the exact solution is [24]
+                                                                                                                                              
+                                                                                                                     1  ekH ky    1  ekH ky
+                                                                                             /ex ðx; yÞ ¼ Real eikx kH        e              e    ;                              ð40Þ
+                                                                                                                    e  ekH       ekH  ekH
+
+Fig. 8. Schematic depiction of the computational domain and the lattice distribu-            where ‘‘Real” means taking the real part of a complex variable and
+                                                                                                  qﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃ
+tion for convection-diffusion in a channel.
+                                                                                             k ¼ k 1 þ Dk   iU
+                                                                                                                .
+4.2. Steady convection and isotropic diffusion in a 2D channel                                  In addition to the L2-norm errors defined in Eqs. (37, 38), another
+                                                                                             L2-norm error for the boundary flux is defined following [24]
+   In this test, the steady convection-diffusion in a 2D channel                                       "                                               ,                              #1=2
+                                                                                                               X                                           X
+with imposed Dirichlet or Neumann boundary conditions is exam-                               E2 qw ¼                    ½ðD@/=@yÞLBE  ðD@/=@yÞex 2                    ðD@/=@yÞ2ex          ;
+ined. This plug flow problem has a simple analytical solution and                                          boundary nodes                              boundary nodes
+
+has been applied in [24,32–34,36,37,42,43] to assess the numerical                                                                                                                    ð41Þ
+
+
+
+
+Fig. 9. Relative L2-norm errors, (a) E2, (b) E2_o//ox and E2_o//oy, and (c) E2_qw versus the grid resolution, 1/H, for the steady convection-diffusion in a 2D channel with Dirichlet
+conditions at Pe = 0 and D = 0.5.
+                                                   L. Li et al. / International Journal of Heat and Mass Transfer 108 (2017) 41–62                                                 53
+
+
+where ðD@T=@yÞLBE ¼ Un is obtained using the flux schemes in Eq.                              rate results for (@//@y)LBE while the convergence order for (@//@
+(22) for the D2Q5 model and Eq. (24) for the D2Q9 models,                                     x)LBE is 1.5; for D2Q9-III, the convergence order is 1.5 for both
+respectively.                                                                                 (@//@x)LBE and (@//@y)LBE; first-order accuracy for the boundary
+    Fig. 9a–c shows the results for E2, E2_o//ox and E2_o//oy, and E2_qw                      flux Un is observed for all the D2Q9 models; and second-order
+defined in Eqs. (37, 38a, b, and 41), respectively, at Pe = 0 and                             accuracy is preserved for all the quantities E2, E2_o//ox, E2_o//oy,
+D = 0.5. The relaxation coefficients sxx = syy = sD = 0.75 are used                           and E2_qw when using the D2Q5 model. The same behavior is con-
+for all cases (see Remark III of Section 2 for details of the other                           firmed for other cases including (Pe, D) = (0, 0.75), (20, 0.25), and
+relaxation coefficients). For the special case of D = 0.5, the anti-                          (200, 0.5), for which the results are not shown for brevity.
+bounce-back schemes in Eq. (13a–c) are implemented for the                                        It should be noted that the causes for the different convergence
+Dirichlet condition. Notably, fourth-order accuracy is observed                               orders between E2_o//ox and E2_o//oy in Figs. 10b and 11b for D2Q9-I,
+for E2, E2_o//ox and E2_o//oy when the D2Q9-I and D2Q9-II models                              -II and -IV are different. In Fig. 10b with Dy = 0.25, the interpolation
+are used (D2Q9-II is identical to D2Q9-I at Pe = 0). The other LB                             based Dirichlet scheme (16) would result in a degraded conver-
+models, D2Q5, D2Q9-III and D2Q9-IV, yield second-order accuracy                               gence order of 1.5 for the interior derivative (@//@x)LBE in the x-
+with very close error magnitude as seen from Fig. 9a, b. For the                              direction, which is perpendicular to the intersected lattice link
+boundary flux errors in Fig. 9c, all the LB models examined are able                          Dy; while (@//@y)LBE is still second-order accurate as periodic
+to preserve second-order accuracy, and D2Q5 has smaller error                                 boundary conditions are applied in the x-direction and Pe = 0. To
+magnitude than the D2Q9 models.                                                               confirm this observation, we also conduct another numerical test
+    It is of great interest to investigate the accuracy of the LB results                     for pure diffusion in a square block (H = L) with Dirichlet boundary
+for more general cases. Figs. 10 and 11 show E2, E2_o//ox and E2_o//oy,                       conditions on all boundaries, i.e., /ðx ¼ 0; yÞ ¼ 0:5 sinðpy=HÞ on the
+and E2_qw versus 1/H at Pe = 0, D = 0.25 and Pe = 20, D = 0.5, respec-                        left wall and /ðx ¼ L; yÞ ¼ /ðx; y ¼ 0Þ ¼ /ðx; y ¼ HÞ ¼ 0 on the other
+tively. Schemes 1, 2 and 3 (abbreviated as S1, S2, S3 in Fig. 10b, c)                         three walls. The schematic is shown in Fig. 12, and the analytical
+represent the particular interpolation based Dirichlet schemes                                                                             p
+                                                                                              solution for / is /ex ðx; yÞ ¼ sinh½ðx=LL=HÞ
+                                                                                                                               2 sinhðpL=HÞ
+                                                                                                                                              sinðpy=HÞ. The Dirichlet
+with the adjustable parameter determined in Eqs. (18a–c). Each                                schemes in Eq. (18a-c) are also implemented for D2Q9-I, -II and -
+of the relative L2-norm errors exhibits the same convergence order
+                                                                                              IV, noting that for the four corner nodes, cd1 ¼ 1=ð2DÞ is used thus
+for both (Pe = 0, D = 0.25) and (Pe = 20, D = 0.5). Specifically,
+                                                                                              cd2 = 0 and g^a ðxff ; tÞ is not needed to implement the second-order
+second-order accuracy of E2 is obtained for all four D2Q9 models
+                                                                                              Dirichlet scheme in Eq. (16) when xff is in the exterior of the block.
+I to IV for the interior /LBE distribution; the D2Q9-I, -II and -IV LB
+                                                                                              Using the same LB simulation parameters as in the plug flow prob-
+models with Dirichlet boundary schemes yield second-order accu-
+
+
+
+
+Fig. 10. Relative L2-norm errors, (a) E2, (b) E2_o//ox and E2_o//oy, and (c) E2_qw versus the grid resolution, 1/H, for the steady convection-diffusion in a 2D channel with Dirichlet
+conditions at Pe = 0 and D = 0.25.
+54                                                 L. Li et al. / International Journal of Heat and Mass Transfer 108 (2017) 41–62
+
+
+lem at Pe = 0, the orders of convergence, denoted as Px and Py, for
+the respective E2_o//ox and E2_o//oy are (Px, Py) = (1.5, 2) at (Dx, Dy)
+= (0.5, 0.25), (Px, Py) = (2, 1.5) at (Dx, Dy) = (0.25, 0.5), and (Px, Py)
+= (1.5, 1.5) at (Dx, Dy) = (0.25, 0.25), confirming the observed con-
+vergence orders in Fig. 10b. On the other hand, the lower conver-
+gence order of 1.5 for E2_o//ox than second-order for E2_o//oy in
+Fig. 11b is due to the effect of convection in the x-direction in this
+channel flow problem at Pe > 0. It is worth noting that although
+second-order convergence was reported in [41] for both the inte-
+rior flux in the x- and y-directions, the examined thermal couette
+flow and planar thermal Poiseuille flow problems have no varia-
+tions in the x-direction, resulting in @//ox = 0 and the flux in the
+x-direction is essentially the convection flux (U/) that is only
+related to the interior / values. Thus the present results are not
+inconsistent with those reported in [41] for the interior / values
+and derivatives.
+   Furthermore, similar to the results in Fig. 6, the variations of E2,
+E2_o//ox and E2_o//oy, and E2_qw with Pe are shown in Fig. 13a–c at
+H = 64, D = 0.5 and (sD, sP) = (0.75, 1.0). The results in Fig. 13
+demonstrate that for convection-diffusion problems with specific
+Dirichlet boundary conditions, the D2Q5 LB model has better
+numerical accuracy compared to the D2Q9 models examined.                                      Fig. 12. Schematic depiction of the computational domain and lattice distribution
+   The above results for the D2Q5 and D2Q9 LB models in Table 1                               for the square block diffusion problem with Dirichlet conditions.
+
+for convection-diffusion problems with Dirichlet conditions on
+straight boundaries can be summarized as follows. For the very                                interior distribution of / and its derivatives @//@x and @//@y, while
+special case Pe = 0 and D = 0.5, i.e., pure diffusion with the                                D2Q9-III and -IV have second-order accuracy for both quantities.
+boundary located ‘‘halfway” between two lattice nodes, the                                    The boundary flux scheme yields second-order accuracy for all LB
+D2Q9-I and -II models are able to give fourth-order accuracy                                  models considered. For general cases, both the placement of the
+
+
+
+
+Fig. 11. Relative L2-norm errors, (a) E2, (b) E2_o//ox and E2_o//oy, and (c) E2_qw versus the grid resolution, 1/H, for the steady convection-diffusion in a 2D channel with Dirichlet
+conditions at Pe = 20 and D = 0.5.
+                                                  L. Li et al. / International Journal of Heat and Mass Transfer 108 (2017) 41–62                                               55
+
+
+boundary in the lattice and the convection affect the orders of                                In addition to the L2-norm errors for the interior / and its
+accuracy of the interior derivatives and the boundary flux when                             derivatives in Eqs. (37, 38), the relative L2-norm error for the
+using the D2Q9 models. Nevertheless, second-order accuracy for                              boundary / values is defined following [24]
+the / field is always preserved for the D2Q9 models when the
+                                                                                                      "                                  ,                       #1=2
+interpolation based Dirichlet schemes are implemented. Consis-                                               X                       2
+                                                                                                                                              X
+tent with [24], the D2Q5 model is able to preserve second-order                             E2 /w ¼                      ð/LBE  /ex Þ                    /2ex          ;    ð44Þ
+                                                                                                        boundary nodes                   boundary nodes
+accuracy for all three quantities for all cases. Compared with the
+results in Fig. 6, where periodic boundary conditions were used,
+the increase of the numerical errors with the Péclet number in                              where /LBE at the boundary nodes are obtained using the schemes
+Fig. 13 also demonstrates that for a wide range of Pe values exam-                          in Eq. (23) for D2Q5 and Eq. (26) for D2Q9.
+ined, the D2Q5 model has better numerical accuracy than the                                     The Neumann boundary schemes in Eq. (19a, b) for the D2Q5
+D2Q9 models when a Dirichlet condition is implemented.                                      and D2Q9 LB models are implemented (they reduce to the respec-
+                                                                                            tive ‘‘bounce-back” schemes in Eqs. (14), (15) at D = 0.5). Figs. 14–
+4.2.2. Neumann boundary condition                                                           16 show the results for E2, E2_o//ox and E2_o//oy, and E2_/w defined in
+   The above channel flow problem is also ideal for examining the                           Eqs. (37, 38a, b, and 44), respectively, at different Pe and D values.
+effect of Neumann boundary schemes on the performance of vari-                              In all cases, the flux splitting weights are jr = 4/6 for D2Q9-I, -II
+ous LB models. By replacing the boundary conditions in Eq. (32)                             and jr = 1/3 for D2Q9-III, -IV with jr + 2jd = 1 enforced for all four
+with the following and keeping the other conditions the same                                models. The coefficient in Scheme 2 is used for the adjustable
+                                                                                           parameter cd1 when computing the boundary values using Eqs.
+@/                                                                                        (23), (26) at D – 0.5. Clearly, first-order accuracy is obtained for
+          ¼     cosðkxÞ=H;                                                       ð42Þ
+@y y¼0;H                                                                                   E2, E2_o//oy, and E2_/w, and the convergence order is 0.5 for
+                                                                                            E2_o//ox, for each case in Figs. 14–16 when using the four D2Q9
+the exact solution becomes [24]
+                                                                                            models. On the other hand, the D2Q5 model is able to preserve
+                                                                           
+                             ekH þ 1               ekH þ 1                                 second-order accuracy for all the quantities examined, which is
+/ex ðx; yÞ ¼ Real eikx                     eky þ                 eky            :          consistent with the results reported in [24]. Compared to the
+                           kHðekH  ekH Þ       kHðekH  ekH Þ
+                                                                                            results in Figs. 10a, b and 11a, b for the Dirichlet problem, the order
+                                                                                 ð43Þ
+                                                                                            of accuracy for both the interior distribution / and its derivatives is
+
+
+
+
+Fig. 13. Relative L2-norm errors, (a) E2, (b) E2_o//ox and E2_o//oy, and (c) E2_qw versus the Péclet number, Pe, for the steady convection-diffusion in a 2D channel with Dirichlet
+conditions.
+56                                             L. Li et al. / International Journal of Heat and Mass Transfer 108 (2017) 41–62
+
+
+
+
+Fig. 14. Relative L2-norm error E2, for the interior distribution of / versus the grid resolution, 1/H, for the steady convection-diffusion in a 2D channel with Neumann
+conditions at (a) Pe = 0 and D = 0.5, (b) Pe = 0 and D = 0.25, and (c) Pe = 20 and D = 0.5.
+
+
+
+degraded by one degree in Figs. 14b, c and 15b, c for D2Q9 models.                       investigated in [24]. Here we also apply various D2Q9 models in
+It should also be noted that the magnitude of the relative errors in                     Table 1 to study the same isotropic diffusion problem in a 2D cir-
+the D2Q5 model is generally much smaller than that in the D2Q9                           cular domain. The geometry and lattice distribution are depicted
+models.                                                                                  in Fig. 18.
+    To elucidate the effect of the flux splitting weights jr and jd
+(see Eqs. (15), (19b)) on the accuracy and convergence order of
+                                                                                         4.3.1. Dirichlet boundary condition
+the D2Q9 LB results, Fig. 17a–c shows E2, E2_o//ox and E2_o//oy, and
+                                                                                            With a steady Dirichlet boundary condition on the wall
+E2_/w, respectively, versus 1/H at Pe = 20 and D = 0.5 when using
+different weights (jr + 2jd = 1 is maintained) for D2Q9-I. Very
+                                                                                         /ðr ¼ RÞ ¼ f ðuÞ ¼ cosðnuÞ; n ¼ integer;                                 ð45Þ
+close results are noticed for the other three D2Q9 models, and
+the same behavior is checked for different Pe and D values; thus                         the exact solution for the pure isotropic diffusion problem is [24]
+they are not shown for brevity. It is obvious that the specific choice
+of the splitting weights jr and jd has little effect on the numerical                    /ex ðr; uÞ ¼ ðr=RÞn cosðnuÞ:                                             ð46Þ
+accuracy and the same convergence orders are obtained for all dif-
+ferent choices. This confirms that the splitting weights in the Neu-                        The interpolation based Dirichlet boundary scheme in Eq. (16)
+mann schemes in D2Q9 are not unique.                                                     with the adjustable parameter determined in Scheme 2 (Eq.
+                                                                                         (18b)) is implemented for D2Q5 and all four D2Q9 LB models listed
+                                                                                         in Table 1. A relaxation coefficient sD = 0.75 and n = 4 are used for
+4.3. Steady isotropic diffusion in a 2D circle                                           both the Dirichlet and Neumann problems in this test. Fig. 19a, b
+                                                                                         shows the L2-norm errors E2 and E2_o//ox defined in Eqs. (37, 38)
+   A curved boundary has a significant effect on the accuracy and                        for the interior distribution of / and its derivatives
+convergence order of the LB results due to the irregular                                 (E2_o//oy = E2_o//ox), respectively. It is observed that second-order
+distribution of the intersection D values along the boundary                             accuracy of the interior / field is preserved for all the LB models,
+[20,24,32–37,42]. The interpolation based Dirichlet and Neumann                          and the D2Q9-I, -II (identical for pure diffusion problems) models
+boundary schemes are capable of preserving the curved geometry                           have better accuracy than the D2Q5 and D2Q9-III, -IV models; a
+when the local D values along each intersection link direction are                       convergence order of 1.5 is obtained for the interior derivatives.
+prescribed. The applicability and numerical accuracy of the D2Q5                         The orders of convergence for the D2Q9 models are consistent with
+model along with the Dirichlet and Neumann schemes have been                             those in the above channel flow Dirichlet problem and the block
+                                                  L. Li et al. / International Journal of Heat and Mass Transfer 108 (2017) 41–62                                                57
+
+
+
+
+Fig. 15. Relative L2-norm errors, E2_o//ox and E2_o//oy, for the interior derivatives of / versus the grid resolution, 1/H, for the steady convection-diffusion in a 2D channel with
+Neumann conditions at (a) Pe = 0 and D = 0.5, (b) Pe = 0 and D = 0.25, and (c) Pe = 20 and D = 0.5.
+
+
+
+diffusion Dirichlet problem at Pe = 0 and D – 0.5. For D2Q5, the                                 Notably, the magnitude of the relative errors is substantially
+order of accuracy for the interior derivatives is degraded due to                            smaller when using the D2Q5 model compared to the D2Q9 mod-
+the curved boundary [24].                                                                    els in each figure. In addition, first-order convergence is obtained
+    It should be noted that since the local boundary flux evaluation                         for both the interior and boundary / values (Fig. 20a, c) when
+scheme in Eq. (24) for the D2Q9 models is only applicable to                                 D2Q5, D2Q9-I and D2Q9-II are applied; while the relative errors
+straight boundaries, the results for E2_qw is not available for the                          converge to a magnitude close to 0.1 for 1/R < 0.04 for both E2
+D2Q9 models in this problem with a curved boundary. In contrast,                             and E2_/w when using D2Q9-III and D2Q9-IV, indicating that the
+as reported in [24], the boundary flux in the lattice directions can                         D2Q9-I and D2Q9-II LB models are more robust than D2Q9-III
+be obtained in the D2Q5 model using the scheme in Eq. (22) with                              and D2Q9-IV. Furthermore, a convergence order of 0.5 for the inte-
+first-order accuracy for E2_qw. Therefore, the D2Q5 model still                              rior derivative is observed for all four D2Q9 models, which is con-
+proves to be a better choice than the D2Q9 models for Dirichlet                              sistent with that in Figs. 15 and 17 for the channel flow Neumann
+problems with curved boundaries.                                                             problem. The convergence order of 1.5 for E2_o//ox for D2Q5 is con-
+                                                                                             sistent with that reported in [24].
+4.3.2. Neumann boundary condition
+   For the Neumann problem, one can replace the boundary condi-                              4.4. Transient isotropic diffusion in a 2D circle
+tion in Eq. (45) with
+                                                                                                In this test we consider transient isotropic diffusion in a circle
+@/=@rjr¼R ¼ n cosðnuÞ=R;                                                         ð47Þ        as shown in Fig. 18 to compare the total heat/mass transfer evalu-
+which yields the same analytical solution as given by Eq. (46).                              ation using the Schemes given by Eq. (28) for D2Q5 and Eq. (29) for
+   Fig. 20a–c shows the L2-norm errors, E2, E2_o//ox, and E2_/w                              D2Q9. This problem has been studied in [24] to verify the Dirichlet
+defined in Eqs. (37, 38, 44), respectively, versus the grid resolution,                      boundary scheme for transient problems and in [33] to verify the
+1/R. The Neumann boundary schemes include Eq. (19a) for D2Q5                                 total heat transfer evaluation in the D2Q5 model. The transient
+with the Cartesian decomposition method given by Eq. (21) to                                 Dirichlet condition reads
+obtain Una , and the normal flux splitting scheme in Eq. (19b) with                         Tðt; r ¼ RÞ ¼ f ðtÞ ¼ sinðxtÞ;                                                   ð48Þ
+jr = jd = 1/3 for D2Q9 I-IV. Again, the coefficient in Scheme 2 is
+used for the adjustable parameter cd1 when computing the bound-                              where x is the frequency of the oscillation. This transient problem
+                                                                                                                                                                         2
+ary /w values using Eqs. (23), (26) at D – 0.5.                                              is characterized by the Stokes number, St, defined as St 2 ¼ R2pxD. With
+58                                                   L. Li et al. / International Journal of Heat and Mass Transfer 108 (2017) 41–62
+
+
+no variation in the azimuthal direction, the analytical solution for                           Scheme 2 in Eq. (18b) is used for all cases. The presented data are
+this 2-D problem can be obtained as [24]                                                       for D2Q9-I (identical to D2Q9-II without convection); very close
+                                                                                               results are noticed for D2Q9-III and D2Q9-IV, and thus they are
+                        2X 1
+                               J 0 ðbn rÞ             2
+/ex ðr; tÞ ¼ f ðtÞ                         ½f ð0ÞeDbn t                                      not shown.
+                        R n¼1 bn J 1 ðbn RÞ                                                       The results in Fig. 21 clearly show that for a curved boundary,
+               Z t
+                         2                2X  1
+                                                xJ0 ðbn rÞ                                     the total flow rate computation in both D2Q5 and D2Q9 models
+           þ         eDbn ðtsÞ df ðsÞ ¼ sinðxtÞ                                            has first-order accuracy. The interpolation based scheme in Eqs.
+              0                           R     b
+                                            n¼1 n 1
+                                                    J ðbn RÞ
+             "                                      #                                          (29, 30) proves to be the most stable and accurate one for D2Q9.
+                2                         2 Db2n t
+              Dbn cosðxtÞ þ x sinðxtÞ  Dbn e                                                  The anti-bounce-back based schemes in Eqs. (29, 32) and (33) have
+                               2
+                                                     ;                             ð49Þ
+                         ðDb2n Þ þ x2                                                          large oscillations and the average of the error magnitude is close to
+                                                                                               that in (29, 30). The scheme from using Eqs. (31, 30) has signifi-
+where Ji(br) (i = 0, 1) is the Bessel’s function of the first kind of order                    cantly larger errors (about two orders of magnitude higher in
+i, and bn is determined from the roots of J 0 ðbn RÞ ¼ 0.                                      Fig. 21). This comparison clearly demonstrates that the effective
+    Following [33], we defined the following error norm to assess                              surface area with (dx)2/2 and (dx)2/4 for the respective Unr and
+the heat transfer evaluation schemes                                                           Und in Eq. (30a, b) is a much better choice for D2Q9 models. Never-
+             Z 2p=x                                                                            theless, the comparison between the results using D2Q5 and D2Q9
+       1 x
+E2 ¼                  jQ_ w LBE ðt Þ  Q_ w ex ðt Þjdt                                       shows that the D2Q5 model is still more attractive than the much
+       r 0 2p 0                                                                                more complex D2Q9 models in evaluating the total heat/mass
+           Z
+       1 1 _                                                                                   transfer over a closed curved boundary.
+     ¼       jQ w LBE ðt Þ  Q_ w ex ðt Þjdt ;                                   ð50Þ
+       r0 0
+
+where t⁄ = xt/2p, Q_ w LBE is obtained from Eq. (28) for the D2Q5                             4.5. Steady isotropic diffusion in a 3D sphere
+model and Eqs. (29, 31, 33) for the D2Q9 models. To eliminate the
+effect of the initial variations, the computation is performed for a                              The foregoing comparisons demonstrate that the simpler D2Q5
+sufficiently long period of time (t⁄  1) [34,33]. After the dynamic                           LB model with just orthogonal lattice vectors performs as well as or
+steady state is reached, the average error E2 defined in Eq. (50) is                           better than the D2Q9 models that include the diagonal lattice vec-
+computed and the results are shown in Fig. 21. The Stokes number                               tors. To demonstrate that the same conclusions apply to 3D LB
+St is set to be unity, and the coefficient cd1 determined from                                 models for scalar convection-diffusion problems with curved
+
+
+
+
+Fig. 16. Relative L2-norm error, E2_/w, for the boundary /w values versus the grid resolution, 1/H, for the steady convection-diffusion in a 2D channel with Neumann
+conditions at (a) Pe = 0 and D = 0.5, (b) Pe = 0 and D = 0.25, and (c) Pe = 20 and D = 0.5.
+                                                    L. Li et al. / International Journal of Heat and Mass Transfer 108 (2017) 41–62                                              59
+
+
+
+
+Fig. 17. Relative L2-norm errors, (a) E2, (b) E2_o//ox and E2_o//oy, and (c) E2_/w versus the grid resolution, 1/H, for the steady convection-diffusion in a 2D channel with Neumann
+conditions at Pe = 20 and D = 0.5 by using various flux splitting weights jr and jd (jr + 2jd = 1). The D2Q9-I model is used in the simulations.
+
+
+
+
+                                                                                              the central cross-section on the x-y plane. An axisymmetric
+                                                                                              Dirichlet boundary condition of a Legendre polynomial Pn(l = cosh)
+                                                                                              with respect to the vertical y-axis is imposed on the sphere surface,
+                                                                                              r = R, where h is the azimuthal angle. Thus the analytical solution is
+                                                                                              [34]
+
+
+                                                                                              /ex ðr; lÞ ¼ ðr=RÞn Pn ðlÞ;                                                     ð51Þ
+
+                                                                                              A representative case of P4 ðlÞ ¼ ð35l4  30l2 þ 3Þ=8 is used in the
+                                                                                              simulations. When the local lattice link fractions are calculated, the
+                                                                                              interpolation based Dirichlet schemes are implemented.
+                                                                                                 Fig. 22a, b shows the L2-norm errors, E2 and E2_o//oxi, for the
+                                                                                              interior distribution of / and its derivatives defined in Eqs. (37,
+                                                                                              38) that are extended to the 3D isotropic case. Note that E2_o//ox =
+                                                                                              E2_o//oz due to axisymmetry and thus only E2_o//ox and E2_o//oy are
+                                                                                              shown in Fig. 22b. Realizing the similar performance of the various
+                                                                                              D2Q9 models in Section 4.3.1 with curved geometry, only one
+                                                                                              D3Q19 model that is directly extended from D2Q9-I in Table 1 is
+Fig. 18. Schematic layout of the lattice around a circle. The intersection D values in        chosen for demonstration, and the relaxation coefficient is again
+all lattice directions, ea , are calculated for each lattice node adjacent to the curved     (sD, sP) = (0.75, 1.0). Clearly, second-order accuracy for the distri-
+boundary, e.g., the representative nodes P1 in D2Q5 and P2 in D2Q9.                           bution of / and a superlinear convergence order of 1.5 for the inte-
+                                                                                              rior derivatives are obtained. The results are consistent with those
+                                                                                              in Fig. 19 for the 2D problem. It is important to note that the error
+geometry, the steady isotropic diffusion in a sphere is considered.                           magnitudes for the D3Q7 and D3Q19 models are very close to each
+The 2D lattice layout and computational domain in Fig. 18 is                                  other. Recalling that D3Q7 is significantly less expensive than
+extended to 3D, and Fig. 18 represents the lattice distribution in                            D3Q19, the preference of D3Q7 over D3Q19 becomes obvious.
+60                                              L. Li et al. / International Journal of Heat and Mass Transfer 108 (2017) 41–62
+
+
+
+
+          Fig. 19. Relative L2-norm errors, (a) E2, and (b) E2_o//ox versus the grid resolution, 1/R, for the steady diffusion in a circle with a Dirichlet condition.
+
+
+
+
+     Fig. 20. Relative L2-norm errors, (a) E2, (b) E2_o//ox, and (c) E2_/w versus the grid resolution, 1/R, for the steady diffusion in a circle with a Neumann condition.
+
+
+
+5. Conclusions                                                                             constant parameter when the high-order velocity terms are
+                                                                                           neglected. Four different D2Q9 models are used and the results
+   The comparison between the D2Q5 and D2Q9 lattice Boltzmann                              are directly compared with those from the D2Q5 model. With
+(LB) models for the convection-diffusion equation (CDE) for scalar                         the additional diagonal lattice velocities, boundary condition treat-
+transport is investigated. Similar observations are confirmed by                           ment for the D2Q9 LB model is more complex than that for D2Q5.
+comparing the performance of D3Q7 and D3Q19 LB models for                                  The interpolation based second-order accurate Dirichlet and Neu-
+3D problems. For the D2Q5 model, there is essentially one tunable                          mann boundary treatments that have been verified in D2Q5 are
+                                                  L. Li et al. / International Journal of Heat and Mass Transfer 108 (2017) 41–62                                                61
+
+
+                                                                                            are obtained, respectively; the convergence orders for the interior
+                                                                                            derivatives are degraded to 1.5 (‘‘superlinear”) in the Dirichlet
+                                                                                            problem and 0.5 (‘‘sublinear”) in the Neumann problem; and only
+                                                                                            first-order accurate boundary flux/boundary values are obtained
+                                                                                            for the Dirichlet/Neumann problems.
+                                                                                                Third, the diffusion problem in a circle with a curved boundary
+                                                                                            demonstrates that (i) for the Dirichlet problem, both the D2Q5 and
+                                                                                            D2Q9 models have second-order accuracy for the interior distribu-
+                                                                                            tion of /, a superlinear (order 1.5) convergence for its interior
+                                                                                            derivatives, and a first-order convergence for the overall heat/mass
+                                                                                            transfer; the local boundary flux evaluation scheme in D2Q5 still
+                                                                                            has first-order accuracy while it is not directly applicable to the
+                                                                                            D2Q9 models; and (ii) for the Neumann problem, first-order accu-
+                                                                                            rate interior and boundary / values are obtained for both the D2Q5
+                                                                                            and D2Q9 models, while the convergence orders for the interior
+                                                                                            derivatives are 1.5 and 0.5 for D2Q5 and D2Q9, respectively; more
+                                                                                            importantly, the error magnitude in the D2Q5 model is much smal-
+                                                                                            ler compared to that in the D2Q9 models in the Neumann problem.
+                                                                                            The simulation of diffusion in a sphere with the D3Q7 and D3Q19
+                                                                                            models confirms the comparison between the D2Q5 and D2Q9
+Fig. 21. The error E2 defined in Eq. (50) for the boundary flow rate versus the grid        models for scalar transport with curved geometry.
+resolution, 1/R, for the transient diffusion in a circle with a Dirichlet condition.
+                                                                                                It is concluded that the D2Q5 (D3Q7) LB model is more robust
+                                                                                            and accurate than the D2Q9 (D3Q19) LB models for the CDE when
+                                                                                            the convection is not very strong and the boundary effect is signif-
+extended to D2Q9. It is confirmed that the Dirichlet treatment is
+                                                                                            icant. It takes less computational resources and is more convenient
+directly applicable while the Neumann treatment should be com-
+                                                                                            in handling curved boundaries.
+bined with a normal flux splitting scheme with adjustable weights
+in D2Q9.
+                                                                                            Acknowledgement
+    Several representative numerical tests with analytical solutions
+are conducted to assess the performance of the D2Q5 and D2Q9 LB
+                                                                                              This paper was prepared with the support of the U.S. Depart-
+models in terms of the numerical accuracy and convergence orders
+                                                                                            ment of Energy, ARPA-E, under Award No. DEAR0000184.
+of the interior distribution of the scalar variable / and its deriva-
+tives as well as the boundary flux, total flow rate through the
+boundary, and boundary scalar values.                                                       Appendix A. D3Q7 and D3Q19 LB models for the convection-
+    First, the second-order accuracy for / and its derivatives is ver-                      diffusion equation
+ified for both D2Q5 and D2Q9 in the Gaussian hill convection-
+anisotropic diffusion problem with periodic boundary conditions                                The D3Q7 and D3Q19 models have the following sets of discrete
+where the boundary effect is eliminated. The D2Q5 model shows                               velocities
+smaller errors when the convection is weak or moderate, while                                       
+                                                                                                        ð0; 0Þ;                              a ¼ 0;
+the D2Q9 models have better accuracy when the convection is very                             ea ¼                                                           for D3Q7; and
+                                                                                                        ð1; 0; 0Þ; ð0; 1; 0Þ; ð0; 0; 1Þ; a ¼ 1  6;
+strong.
+    Second, for the CDE with specific boundary conditions on                                                                                                                ðA1aÞ
+straight walls, the D2Q5 model with the interpolation based                                      8
+boundary schemes is able to preserve the second-order accuracy                                   < ð0; 0; 0Þ;
+                                                                                                 >                                        a ¼ 0;
+for all the quantities of interest in both Dirichlet and Neumann                             ea ¼ ð1; 0; 0Þ; ð0; 1; 0Þ; ð0; 0; 1Þ;     a ¼ 1  6; for D3Q19:
+                                                                                                 >
+                                                                                                 :
+problems. For the D2Q9 models, second- and first-order accurate                                    ð1; 1; 0Þ; ð1; 0; 1Þ; ð0; 1; 1Þ; a ¼ 7  18;
+interior distribution of / for the Dirichlet and Neumann problems                                                                                                          ðA1bÞ
+
+
+
+
+     Fig. 22. Relative L2-norm errors, (a) E2, and (b) E2_o//ox and E2_o//oy versus the grid resolution, 1/R, for the steady diffusion in a sphere with a Dirichlet condition.
+62                                                 L. Li et al. / International Journal of Heat and Mass Transfer 108 (2017) 41–62
+
+
+   The equilibrium distribution functions without the higher order                           [17] B. Servan-Camas, F.T.-C. Tsai, Lattice Boltzmann method with two relaxation
+                                                                                                  times for advection-diffusion equation: third order analysis and stability
+velocity terms are defined as
+                                                                                                  analysis, Adv. Water Resour. 31 (2008) 1113–1126.
+                        
+                  ea  u                                                                     [18] B.C. Shi, Z. Guo, Lattice Boltzmann model for nonlinear convection-diffusion
+  a ¼ xa / 1 þ aa
+g eq                      ;             for D3Q7; and                           ðA2aÞ             equations, Phys. Rev. E 79 (2009) 016701.
+                   c2s                                                                       [19] A. Mezrhab, M.A. Moussaoui, M. Jami, H. Naji, M. Bouzidi, Double MRT thermal
+                                                                                                  lattice Boltzmann method for simulating convective flows, Phys. Lett. A 374
+                                                                                                (2010) 3499–3507.
+               ea  u
+  a ¼ xa / 1 þ
+g eq                   ;           for D3Q19:                                   ðA2bÞ        [20] H. Yoshida, M. Nagaoka, Multiple-relaxation-time lattice Boltzmann model for
+                c2s                                                                               the convection and anisotropic diffusion equation, J. Comput. Phys. 229 (2010)
+                                                                                                  7774–7795.
+The transformation matrix M can be found in [20] for D3Q7 and [9]                            [21] I. Ginzburg, D. d’Humières, A. Kuzmin, Optimal stability of advection-diffusion
+for D3Q19. Thus the equilibria in the moment space are                                            lattice Boltzmann models with two relaxation times for positive/negative
+                                                                                                  equilibrium, J. Stat. Phys. 139 (2010) 1090–1143.
+meq ¼ /ð1; ux ; uy ; uz ; a; 0; 0ÞT ;     for D3Q7; and                         ðA3aÞ        [22] I. Ginzburg, Multiple anisotropic collisions for advection–diffusion Lattice
+                                                                                                  Boltzmann schemes, Adv. Water Resour. 51 (2013) 381–404.
+                                                                          T                [23] Z. Chai, T.S. Zhao, Lattice Boltzmann model for the convection-diffusion
+                        2         2          2                                                    equation, Phys. Rev. E 87 (2013) 063309.
+meq ¼ / 1; 11; 3;ux ;  ux ;uy ; uy ;uz ;  uz ;0;0; 0; 0; 0;0; 0; 0; 0;0 ; for D3Q 19:
+                        3         3          3                                               [24] L. Li, R. Mei, J.F. Klausner, Boundary conditions for thermal lattice Boltzmann
+                                                                                  ðA3bÞ           equation method, J. Comput. Phys. 237 (2013) 366–395.
+                                                                                             [25] J. Wang, D. Wang, P. Lallemand, L.-S. Luo, Lattice Boltzmann simulations of
+The weight coefficients in Eq. (A2a) for D3Q7 can then be written as                              thermal convective flows in two dimensions, Comput. Math. Appl. 65 (2013)
+                                                                                                  262–286.
+                               
+        7                          ð1 þ aÞ=7;       a ¼ 0;                                   [26] R. Huang, H. Wu, A modified multiple-relaxation-time lattice Boltzmann
+aa ¼       ; and xa ¼                                               for D3Q7:                     model for convection-diffusion equation, J. Comput. Phys. 274 (2014) 50–63.
+       6a                         ð6  aÞ=42; a ¼ 1  6;                                    [27] P.L. Bhatnagar, E.P. Gross, M. Krook, A model for collision processes in gases. I.
+                                                                                  ðA4Þ            small amplitude processes in charged and neutral one-component systems,
+                                                                                                  Phys. Rev. 94 (1954) 511–525.
+With a particular choice a = 3/4, the coefficients in (A4) become the                        [28] I. Ginzburg, Lattice Boltzmann modeling with discontinuous collision
+                                                                                                  components. Hydrodynamic and advection-diffusion equations, J. Stat. Phys.
+same as those in [20] and eD = 1/4 is noticed for the relationship in                             126 (2007) 157–203.
+Eq. (8). This choice is used in the present work when applying                               [29] P. Lallemand, L.-S. Luo, Theory of the lattice Boltzmann method: dispersion,
+D3Q7. For D3Q19, the weight coefficients in Eq. (A2b) follows those                               dissipation, isotropy, Galilean invariance, and stability, Phys. Rev. E 61 (2000)
+                                                                                                  6546–6562.
+in [44,8,9]                                                                                  [30] D. Yu, R. Mei, L.-S. Luo, W. Shyy, Viscous flow computations with the method of
+    8                                                                                             lattice Boltzmann equation, Prog. Aerosp. Sci. 39 (2003) 329–367.
+    >
+    < 1=3;  a ¼ 0;                                                                           [31] D. Contrino, P. Lallemand, P. Asinari, L.-S. Luo, Lattice-Boltzmann simulations
+xa ¼ 1=18; a ¼ 1  6;                   for D3Q19;                                ðA5Þ            of the thermally driven 2D square cavity at high Rayleigh numbers, J. Comput.
+    >
+    :                                                                                             Phys. 275 (2014) 257–272.
+      1=36; a ¼ 7  18;                                                                      [32] L. Li, C. Chen, R. Mei, J.F. Klausner, Conjugate heat and mass transfer in the
+                                                                                                  lattice Boltzmann equation method, Phys. Rev. E 89 (2014) 043308.
+and eD = 1/3 is maintained for the relationship in Eq. (8).                                  [33] L. Li, R. Mei, J.F. Klausner, Heat transfer evaluation on curved boundaries in
+                                                                                                  thermal lattice Boltzmann equation method, ASME J. Heat Transfer 136 (2014)
+                                                                                                  012403.
+References
+                                                                                             [34] L. Li, R. Mei, J.F. Klausner, Multiple-relaxation-time lattice Boltzmann model
+                                                                                                  for the axisymmetric convection diffusion equation, Int. J. Heat Mass Transfer
+ [1] G.R. McNamara, G. Zanetti, Use of the Boltzmann equation to simulate lattice-                67 (2013) 338–351.
+     gas automata, Phys. Rev. Lett. 61 (1988) 2332–2335.                                     [35] H. Yoshida, T. Kobayashi, H. Hayashi, T. Kinjo, H. Washizu, K. Fukuzawa,
+ [2] F.J. Higuera, S. Succi, R. Benzi, Lattice gas dynamics with enhanced collisions,             Boundary condition at a two-phase interface in the lattice Boltzmann method
+     Europhys. Lett. 9 (1989) 345–349.                                                            for the convection-diffusion equation, Phys. Rev. E 90 (2014) 013303.
+ [3] R. Benzi, S. Succi, M. Vergassola, The lattice Boltzmann equation: theory and           [36] K. Guo, L. Li, G. Xiao, N. AuYeung, R. Mei, Lattice Boltzmann method for
+     applications, Phys. Rep. 222 (1992) 145–197.                                                 conjugate heat and mass transfer with interfacial jump conditions, Int. J. Heat
+ [4] S. Chapman, T. Cowling, The Mathematical Theory of Non-uniform Gases,                        Mass Transfer 88 (2015) 306–322.
+     Cambridge University Press, 1990.                                                       [37] L. Li, N. AuYeung, R. Mei, J.F. Klausner, Effects of tangential-type boundary
+ [5] X. He, L.-S. Luo, Lattice Boltzmann model for the incompressible Navier-Stokes               condition discontinuities on the accuracy of lattice Boltzmann method for heat
+     equation, J. Stat. Phys. 88 (1997) 927–944.                                                  and mass transfer, Phys. Rev. E 94 (2016) 023307.
+ [6] S. Chen, G.D. Doolen, Lattice Boltzmann method for fluid flows, Annu. Rev.              [38] D. d’Humieres, I. Ginzburg, Viscosity independent numerical errors for lattice
+     Fluid Mech. 30 (1998) 329–364.                                                               Boltzmann models: from recurrence equations to ‘‘magic” collision numbers,
+ [7] M. Junk, A. Klar, L.-S. Luo, Asymptotic analysis of the lattice Boltzmann                    Comput. Math. Appl. 58 (2009) 823–840.
+     equation, J. Comput. Phys. 210 (2005) 676–704.                                          [39] I. Ginzburg, Generic boundary conditions for lattice Boltzmann models and
+ [8] R. Mei, W. Shyy, D. Yu, L.-S. Luo, Lattice Boltzmann method for 3-D flows with               their application to advection and anisotropic-dispersion equations, Adv.
+     curved boundary, J. Comput. Phys. 161 (2000) 680–699.                                        Water Res. 28 (2005) 1196–1216.
+ [9] D. d’Humières, I. Ginzburg, M. Krafczyk, P. Lallemand, L.-S. Luo, Multiple-             [40] X. Zhang, J.W. Crawford, A.G. Bengough, I.M. Young, On boundary conditions in
+     relaxation-time lattice Boltzmann models in three dimensions, Philos. Trans. R.              the lattice Boltzmann model for advection and anisotropic dispersion
+     Soc. Lond. A 360 (2002) 4437–4451.                                                           equation, Adv. Water Res. 25 (2002) 601–609.
+[10] F.J. Alexander, S. Chen, J.D. Sterling, Lattice Boltzmann thermohydrodynamics,          [41] Z. Chai, T.S. Zhao, Nonequilibrium scheme for computing the flux of the
+     Phys. Rev. E 47 (1993) R2249.                                                                convection-diffusion equation in the framework of the lattice Boltzmann
+[11] X. Shan, Solution of Rayleigh-Benard convection using a lattice Boltzmann                    method, Phys. Rev. E 90 (2014) 013305.
+     method, Phys. Rev. E 55 (1997) 2780.                                                    [42] G. Le, O. Oulaid, J. Zhang, Counter-extrapolation method for conjugate
+[12] Y. Chen, H. Ohashi, M. Akiyama, Thermal lattice Bhatnagar-Gross-Krook model                  interfaces in computational heat and mass transfer, Phys. Rev. E 91 (2015)
+     without nonlinear deviations in macrodynamic equations, Phys. Rev. E 50                      033306.
+     (1994) 2776.                                                                            [43] H. Karani, C. Huber, Lattice Boltzmann formulation for conjugate heat transfer
+[13] P. Lallemand, L.-S. Luo, Theory of the lattice Boltzmann method: acoustic and                in heterogeneous media, Phys. Rev. E 91 (2015) 023304.
+     thermal properties in two and three dimensions, Phys. Rev. E 68 (2003)                  [44] X. He, L.-S. Luo, Theory of the lattice Boltzmann method: from the Boltzmann
+     036706.                                                                                      equation to the lattice Boltzmann equation, Phys. Rev. E 56 (1997) 6811.
+[14] X. He, S. Chen, G.D. Doolen, A novel thermal model for the lattice Boltzmann            [45] A.J.C. Ladd, Numerical simulations of particulate suspensions via a discretized
+     method in incompressible limit, J. Comput. Phys. 146 (1998) 282–300.                         Boltzmann equation. Part 2. Numerical results, J. Fluid Mech. 271 (1994) 311–
+[15] R.G.M. van der Sman, M.H. Ernst, Convection-diffusion lattice Boltzmann                      339.
+     scheme for irregular lattices, J. Comput. Phys. 160 (2000) 766–782.                     [46] R. Mei, D. Yu, W. Shyy, L.-S. Luo, Force evaluation in the lattice Boltzmann
+[16] Z. Guo, C. Zheng, B. Shi, Thermal lattice Boltzmann equation for low Mach                    method involving curved geometry, Phys. Rev. E 65 (2002) 041203.
+     number flows: decoupling model, Phys. Rev. E 75 (2007) 036704.
+

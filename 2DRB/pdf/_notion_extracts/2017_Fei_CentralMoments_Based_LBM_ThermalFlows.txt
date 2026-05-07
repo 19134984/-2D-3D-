@@ -1,0 +1,882 @@
+                                                             Modeling incompressible thermal flows using a central-moment-based
+                                                                                 lattice Boltzmann method
+
+                                                                                      Linlin Feia , K. H. Luoa,b,∗, Chuandong Lina , Qing Lic
+                                                          a Center for Combustion Energy; Key laboratory for Thermal Science and Power Engineering of Ministry of Education,
+
+                                                                            Department of Thermal Engineering, Tsinghua University, Beijing 100084, China
+                                                             b Department of Mechanical Engineering, University College London, Torrington Place, London WC1E 7JE, UK
+arXiv:1710.10569v1 [physics.comp-ph] 29 Oct 2017
+
+
+
+
+                                                                     c School of Energy Science and Engineering, Central South University, Changsha 410083, China
+
+
+
+
+                                                        Abstract
+                                                        In this paper, a central-moment-based lattice Boltzmann (CLB) method for incompressible thermal flows is
+                                                        proposed. In the method, the incompressible Navier-Stokes equations and the convection-diffusion equation
+                                                        for the temperature field are sloved separately by two different CLB equations. Through the Chapman-
+                                                        Enskog analysis, the macroscopic governing equations for incompressible thermal flows can be reproduced.
+                                                        For the flow field, the tedious implementation for CLB method is simplified by using the shift matrix with
+                                                        a simplified central-moment set, and the consistent forcing scheme is adopted to incorporate forcing effects.
+                                                        Compared with several D2Q5 multiple-relaxation-time (MRT) lattice Boltzmann methods for the tempera-
+                                                        ture equation, the proposed method is shown to be better Galilean invariant through measuring the thermal
+                                                        diffusivities on a moving reference frame. Thus a higher Mach number can be used for convection flows,
+                                                        which decreases the computational load significantly. Numerical simulations for several typical problems
+                                                        confirm the accuracy, efficiency, and stability of the present method. The grid convergence tests indicate
+                                                        that the proposed CLB method for incompressible thermal flows is of second-order accuracy in space.
+                                                        Keywords: CLB, incompressible flows, thermal flows
+                                                        2010 MSC: 00-01, 99-00
+
+
+
+                                                        1. Introduction
+
+                                                            As a mesoscopic numerical method based on the kinetic theory, the lattice Boltzmann method (LBM)
+                                                        [1, 2, 3] has obtained remarkable success in the applications to fluid flows and heat transfer problems during
+                                                        the past three decades [4, 5, 6, 7, 8, 9]. The LBM solves a discreted Boltzmann equation, designed to recover
+                                                        the Navier-Stokes (N-S) equations in the macroscopic limit. The highly efficient and easy algorithm of LBM
+                                                        makes it at afforadable computatinal cost, while the meso-scale nature allows its natural incorporation of
+                                                        micro and/or meso-scale physics [7].
+                                                            In the standard collision-streaming algorithm for LBM, the simplest collision operator is the single-
+                                                        relaxation-time (SRT) or BGK operator, in which all the distirbution functions are relaxed to their local
+                                                   10   equilibrium values at a common rate [1]. However, the BGK-LBM may meet troubles of inaccuracy in im-
+                                                        plementing the boundary conditions [10, 11, 12], as well as numerical instability at high Reynolds numebr or
+                                                        low-viscosity flows [13]. To overcome these difficulties, other collision operators, such as multiple-relaxation-
+                                                        time (MRT) operator [14, 13], entropic operator [15, 16, 17] and two-relaxation-time (TRT) operator [18, 19]
+                                                        have been developed. Recently, a cascaded or central-moment-based operator was proposed by Geier et al.
+                                                        [20]. The collision in the central-moment-based Lattice Boltzmann method (CLBM) is carried out by re-
+                                                        laxing central moments of the discrete distribution functions separately, rather than raw moments as in the
+
+                                                          ∗ Corresponding author
+
+                                                           Email address: K.Luo@ucl.ac.uk (K. H. Luo)
+
+                                                        Preprint submitted to International Journal of Heat and Mass Transfer                                  March 22, 2021
+     MRT-LBM. By matching the higher order central moments of the continuous Maxwell-Boltzmann distri-
+     bution naturally, CLBM achieves a higher order of Galilean invariance [20]. Meanwhile, as mentioned by
+     Geier et al. [20], central moments can be expressed as polynomials of raw moments at the same order and
+20   below, which means relaxing raw moments (in MRT) affects the independent relaxation for central moments
+     at higher orders. The “cross-talk” is a source of numerical instability, and can be removed through relaxing
+     central moments in CLBM. By setting high-oder central moments to their equilibrim values, CLBM has been
+     used to simulate turbulence flow at Re = 1400000 using coarse grids without resorting to any turbulence
+     models or entropic stabilization [20]. More recently, CLBM has been extended to multiphase flows based
+     on the interaction potential method [21] by Lycett-Brown and Luo [22] . Compared with the BGK-LBM
+     for multiphase flows, the proposed multiphase CLBM enables significant improvment in reducing spurious
+     currents near the phase interface [22], and achieving higher stability range for the Reynolds number [23].
+     They further extended the model with an improved forcing scheme [24], and made a breakthrough for large
+     density ratio multiphase flow with high Reynolds and Weber numbers simultaneously [25].
+30       Although CLBM has gained success in high Reynolds number single-phase flows and multiphase flows,
+     its applications are still mainly limited to isothermal flows [26]. The motivation of the present work is
+     to extend CLBM to incompressible thermal flows. Up to now, the double-distribution function (DDF)
+     approach has been extensively used for constructing thermal LBMs [8, 27, 28, 29, 30, 31, 32, 33]. In DDF-
+     based incompressible thermal LBMs, a density or pressure distribution function is used to solve the velocity
+     field, with another distribution for temperature field, where the two fields are usually coupled through the
+     Boussinesq approximation [29, 30]. Due to the simplicity of the convection diffusion equation, a simpler
+     lattice is often used for the temperature field to decrease the computational load and save the memory
+     storage [29, 34]. The MRT operator is also widely used for the temperature field to achieve better numerical
+     stability and more accuarte boundary conditions [35, 36, 37]. Inspired by these studies, we try to extend
+40   the CLBM to incompressible thermal flows in the present study based on the DDF approach. Specifically,
+     a density distribution function and a temperature distribution function are used to simulate the velocity
+     field and the temperature field, respectively, and both of them are relaxed using the central-moment-based
+     operater.
+         The rest of the paper is structured as follows: In Section 2, the 2D CLBM for incompressible thermal
+     flows is presented in detail. Numerical experiments are carried out for several benchmark problems to
+     validate the proposed method in Section 3. Finally, concluding remarks are given in Section 4.
+
+     2. CLBM for incompressible thermal flows
+       In this section, details for the construction of the CLBM for incompressible thermal flows are given. The
+     macroscopic govering equations for the flow fields are
+                                                      ∇ · u = 0,                                            (1a)
+
+                                          ∂u                1
+                                              + u · ∇u = − ∇p + ν∇2 u + F,                                   (1b)
+                                           ∂t              ρ0
+     where u, p, ρ0 , F and ν are the velocity, pressure, reference density, force field and kinematic viscosity,
+     respectively. The convection-diffusion equation for a scalar variable φ with diffusion coefficient D can be
+     written as
+                                               ∂φ
+                                                   + u · ∇φ = ∇ · (D∇φ).                                      (2)
+                                                ∂t
+     For the incompressible thermal flows considered in this study, the scalar variable and diffusion coefficient
+     are specified as temperature T and thermal diffusivity α, respectively. To include the effect of temperature
+     field on the flow field, the Boussinesq assumption is used and the force field is defined by
+                                              F = −gβ(T − T0 ) + Fv ,                                        (3)
+     where the gravitational acceleration vector g points to the negative direction of y-axis, β is the thermal
+     expansion coefficient, T0 is the reference temperature, and Fv is an external body force.
+                                                          2
+50   2.1. CLBM for the flow field
+         The two-dimensional (2D) problems are considered in this study, and the D2Q9 lattice [1] is used for the
+     flow field. The lattice speed c = ∆x/∆t = 1 is adopted, in which ∆x and ∆t are the lattice spacing and
+     time step. The discrete velocities ei = [|eix i , |eiy i] are defined by
+
+                                              |eix i = [0, 1, 0, −1, 0, 1, −1, −1, 1]⊤,                       (4a)
+
+
+                                              |eiy i = [0, 0, 1, 0, −1, 1, 1, −1, −1]⊤,                       (4b)
+     where i = 0...8, |·i indicates the colunm vector, and the superscript ⊤ indicates the transposition.
+         To construct the central-moment-based collision operator, raw moments and central moments for the
+     discreted distribution functions (DFs) fi are introduced,
+
+                                                        kmn = fi em   n
+                                                                  ix eiy ,                                    (5a)
+
+                                                                          m               n
+                                             k̃mn = hfi |(eix − ux ) (eiy − uy ) i ,                          (5b)
+                                 eq       eq
+     and the equilibrium values kmn and k̃mn are defined analogously by replacing fi with the discrete equilibrium
+                                     eq
+     distribution functions (EDFs) fi . In the literature, many researchers [20, 22, 23, 25, 26, 38, 39] using the
+     recombined raw moments k20 + k02 , k20 − k02 , to treat the trace of the pressure tensor and the normal stress
+     difference independently. To simplify the tedious implementation of using the recombined raw-moment set,
+     a simplified method was proposed in [40], where the raw moments k20 , k02 were used and some modifications
+     were made in the relaxation matrix. In this work, the simplified raw-moment set is adopted,
+
+                                      |Γi i = [k00 , k10 , k01 , k20 , k02 , k11 , k21 , k12 , k22 ]⊤ ,        (6)
+
+     and so do the recombined central moments Γ̃i . To be more specific, the raw moments can be given from fi
+     through a transformation matrix M by |Γi i = M   E |fi i, and the central moments shifted from raw moments
+     can be realized through a shfit matrix N by Γ̃i = N |Γi i. Similar to the expressions in [38], M and N are
+     written as,                                                                  
+                                            1 1 1 1          1 1 1         1    1
+                                         0 1 0 −1 0 1 −1 −1 1 
+                                                                                  
+                                         0 0 1 0 −1 1 1 −1 −1 
+                                                                                  
+                                         0 1 0 1            0 1 1         1    1 
+                                                                                  
+                                   M=   0 0 1 0            1 1 1         1    1 ,                      (7a)
+                                         0 0 0 0            0   1   −1    1   −1  
+                                                                                  
+                                         0 0 0 0            0 1 1 −1 −1 
+                                                                                  
+                                         0 0 0 0            0 1 −1 −1 1 
+                                            0 0 0 0          0 1 1         1    1
+                                                                                                
+                               1        0        0          0      0      0       0     0      0
+                          −ux          1        0          0      0      0       0     0      0 
+                                                                                                
+                          −uy          0        1          0      0      0       0     0      0 
+                          u2x
+                                                                                                
+                                      −2ux       0          1      0      0       0     0      0 
+                                2
+                                                                                                
+                    N=   uy           0       2uy         0      1      0       0     0      0 
+                                                                                                 .        (7b)
+                          ux uy      −u  y     −u  x       0      0      1       0     0      0 
+                          −u2x uy 2ux uy        u2x
+                                                                                                
+                                                          −uy      0    −2ux      1     0      0 
+                          −u2y ux     uy 2
+                                                                                                
+                                               2ux uy       0    −ux −2uy         0     1      0 
+                            u2x u2y −2uxu2y −2uy u2x u2y          u2x 4ux uy −2uy −2ux 1
+     By relaxing each central moment to its equilibrium counterpart independently, the post-collision central
+     moments are given by            E             E         E
+                                 Γ̃∗i = (I − S) Γ̃i + S Γ̃eq
+                                                          i    + (I − S/2) |Ci i ,                        (8)
+                                                                     3
+where Ci are the forcing source terms in central moments space, and the block-diagonal relation matrix is
+given by,                                                                        
+                                                    s+ , s−
+                              S = diag [0, 0, 0],             , [sv , s3 , s3 , s4 ] ,                (9)
+                                                    s− , s+
+with s+ = (sb + sν )/2 and s− = (sb − sν )/2. The equalibrium central moments of the fieq are set equal to
+the continuous central moments of the Maxwellian-Boltzmann distribution in continuous velocity space,
+                                       E                                     ⊤
+                                  Γ̃eq
+                                    i   = ρ, 0, 0, ρc2s , ρc2s , 0, 0, 0, ρc4s ,                     (10)
+                                       p
+where ρ is the fluid density, and cs = 1/3 is the lattice sound speed. The corresponding EDF is in fact a
+generalized local equilibrium [40, 39]. Consistently, the forcing source terms in central moments space are
+given by [38],
+                              |Ci i = NM |Ri i = [0, Fx , Fy , 0, 0, 0, c2s Fy , c2s Fx , 0]⊤ .        (11)
+   In the streaming step, the post-collision discrete DFs in space x and time t stream to their neighbors in
+the next time step as usual
+                                       fi (x + ei ∆t, t + ∆t) = fi∗ (x, t),                            (12)
+                                                                             E
+where the post-collision discrete DFs are determined by |fi∗ i = M−1 N−1 Γ̃∗i . Using the Chapman-Enskog
+analysis, the incompressible N-S equaltions in Eq. (1) can be reproduced in the low-Mach number limit [39].
+The hydrodynamics variables are obtained by,
+                                           X                     X                  ∆t
+                                      ρ=           fi ,   ρu =           f i ei +      F.                       (13)
+                                               i                     i              2
+The kinematic and bulk viscosities are related to the relaxation parameters by ν = (1/sν − 0.5)c2s ∆t and
+ξ = (1/sb − 0.5)c2s ∆t, respectively.
+
+2.2. CLBM for the temperature field
+    A new D2Q5 (the five discrete velocity set is defined in Eq. (4), {ei = [|eix i , |eiy i] |i = 0, 1, ...4 }) CLBM
+is proposed to solve the convection-diffusion equation for the temperature field. Similarly, the raw moments
+and central moments of the temperature distribution functions gi can be defined by
+                                                    T
+                                                   kmn = gi em   n
+                                                             ix eiy ,                                          (14a)
+
+                                         T                       m                   n
+                                       k̃mn = hgi |(eix − ux ) (eiy − uy ) i.                                  (14b)
+In the D2Q5 lattice, the following five raw moments are considered,
+                                             T T T T T ⊤
+                                      ΓTi = k00 , k10 , k01 , k20 , k02 ,                       (15)
+                                              E
+and so do the recombined central moments Γ̃Ti . Analogously, the raw moments and central moments can
+be calculated through a transformation matrix MT and a shift matrix NT ,respectively
+                                                           E
+                                   ΓTi = MT |gi i , Γ̃Ti = NT ΓTi .                             (16)
+
+Explicitly, the transformation matrix MT is expressed as
+                                                          
+                                              1 1 1 1    1
+                                             0 1 0 −1 0 
+                                                          
+                                      MT =  0 0 1 0 −1  ,                                                    (17)
+                                                           
+                                             0 1 0 1    0 
+                                              0 0 1 0    1
+                                                            4
+     and the shift matrix NT is given by
+                                                                                   
+                                                1         0         0         0   0
+                                              −ux        1         0         0   0 
+                                                                                   
+                                              −u2y
+                                        NT =             0         1         0   0 
+                                                                                    .                          (18)
+                                              ux        −2ux       0         1   0 
+                                                u2y       0        −2uy       0   1
+
+     The collision in central moments can also be written as
+                                              E                 E            E
+                                        Γ̃T,∗
+                                          i     = (I − ST ) Γ̃Ti + ST Γ̃T,eq
+                                                                        i      ,                                (19)
+
+     where ST = diag(λo , λ1 , λ1 , λ2 , λ2 ) is the diagonal relaxation matrix. The equibrium values of the central
+     moments are given by                              E                          ⊤
+                                                Γ̃T,eq
+                                                  i     = T, 0, 0, T c2T,s, T c2T,s ,                           (20)
+
+     where c2T,s is the sound speed in the D2Q5 lattice. The post-collision temperature distribution functions gi∗
+     can be obtained by                                               E
+                                                                  T,∗
+                                               gi∗ = M−1T N −1
+                                                            T  Γ̃ i     .                                    (21)
+     The streaming step for gi∗ are also as usual
+
+                                            gi (x + ei ∆t, t + ∆t) = gi∗ (x, t).                                (22)
+
+     The temperature T is computed as
+                                                           X4
+                                                     T =               gi .                                     (23)
+                                                                 i=0
+     As shown in Appendix A, the convection-diffusion Eq. (2) can be recovered by the D2Q5 CLBM presented in
+     this subsection, and the thermal diffusivity is related to the relaxation parameter by α = (1/λ1 − 0.5)c2T,s ∆t.
+
+     3. Numerical experiments
+
+         In this section, we conduct several benchmark cases to verify the effectiveness and accuracy of the
+     proposed CLBM for incompressible thermal flows. Unless otherwise specified, the lattice sound speed for
+60   the D2Q5 CLBM is set to csT = 1/2, the tunable relaxation parameters for high-order central moments are
+     set to 1.0, and the the non-equilibrium bounce-back method [41] and non-equilibrium extrapolation method
+     [42] are adopted for velocity and temperature boundary conditions in simulations, respectively.
+
+     3.1. The decay of a temperature wave
+         Firstly, the decay of a temperature wave on a moving frame is considered. The problem is specified by
+     the following velocity and temperature fields:
+
+                                                        u = [0, A].                                            (24a)
+
+
+                                        T = T0 + B sin [φ(y − At)] exp(−φ2 αt).                                (24b)
+     where φ = 2π/L, A represents the vertical reference velocity component, and B is the initial amplitude of
+     the temperature wave. Periodic boundary conditions are used along the x and y axes. In the simulations,
+     T0 = 1.0, L = 100, and the initial amplitude is set to B = 0.01. The velocity field is given, thus only the
+     D2Q5 CLBM is adopted to solve the temperature field. Another two D2Q5 MRT LBMs in [36] and [37]
+     are also used for comparison, and they are denoted by MRT-LBM1 and MRT-LBM2, respectively. Firstly,
+     the case at Mach number Ma =A/cs = 0.3 is considered. The profiles for the dimensionless temperature
+70   T ∗ in different methods at the time t∗ = 2.0 are shown in Fig. 1, where T ∗ = (T − T0 )/B and t∗ = φ2 αt.
+                                                             5
+                                0.2
+
+
+
+
+                                0.1
+
+
+
+
+                                  0
+
+
+
+
+                                -0.1
+
+
+
+
+                                -0.2
+                                       0         0.2         0.4        0.6         0.8          1
+
+
+
+
+              Figure 1: Comparison of the temperature profiles at t∗ = 2.0 simulated by different methods.
+
+
+It is found that the simulation result of the present CLBM is in good agreement of the analytical solution,
+while there are visible differences between the analytical solution and numerical solutions by the other two
+methods. The measured thermal diffusivity of the simulated fluid is obtained by measuring the time decay
+of the temperature wave. Then, the measured thermal diffusivities of each method at different values of the
+Mach number are compared in Fig. 2, while the originally given thermal diffusivity is α = 0.05. For the
+
+                               0.06
+
+
+                               0.05
+
+
+                               0.04
+
+
+                               0.03
+
+
+                               0.02
+
+
+                               0.01
+
+
+                                       0
+                                           0   0.1     0.2     0.3     0.4    0.5         0.6   0.7
+
+
+
+          Figure 2: Comparison of the measured thermal diffusivities of each method at different values of M a.
+
+present D2Q5 CLBM, the measured thermal diffusivity is independent of the reference velocity (or M a) and
+always agrees with the given value. For the other two D2Q5 MRT LBMs, the measured diffusivities decrease
+with the increase of the reference velocity. To be specific, the relative errors at M a = 0.3 are around 12%
+and 8% for MRT-LBM1 and MRT-LBM2, respectively.
+
+
+                                                                   6
+80   3.2. Normal plate velocity problem with a temperature difference
+         The normal plate velocity problem is a fully developed channel flow, where the upper plate moves with
+     a uniform velocity u0 , and a uniform normal flow with velocity v0 is injected through the bottom plate and
+     withdrawn from the upper plate. The analytical solution of the flow is given by [43],
+                                                      ua   exp(Re · y/L)−1
+                                                         =                 ,                                                   (25)
+                                                      u0     exp(Re)−1
+
+     where the Reynolds number is based on the width of the channel, L, and defined by Re = v0 L/ν. For the
+     present study, a temperature difference ∆T = TH − TL is considered, where TH and TL are the temperatures
+     at upper hot plate and bottom cold plate, respectively. The steady temperature profile satisfies [29],
+
+                                                 Ta − TL   exp(ReP r · y/L)−1
+                                                         =                    ,                                                (26)
+                                                   ∆T        exp(ReP r)−1
+     where P r = ν/α is the Prandtl number.
+        In the simulations, TH = 1.0 and TL = 0 are used, and the viscosity is set to ν = 0.1. Firstly, we set the
+     Reynolds number Re = 10, u0 = v0 = Reν/L with L = 50. Periodic boundary conditions are adopted at
+     the inlet and outlet of channel, and the length of the channel is covered by 5 grids to save the computational
+     cost. Three simulation cases with P r = [0.1, 1, 10] are conducted to verify the numerical performace of the
+     present method at a wide range of the Prandtl number. The tunable parameter λ2 is set according to the
+     zero-numerical-slip condition [37], λ2 = 12(λ1 − 2)/(λ1 − 12). The residual error ER < 1 × 10−9 is used as
+
+
+                                         1
+
+
+
+
+                                       0.8
+
+
+
+
+                                       0.6
+
+
+
+
+                                       0.4
+
+
+
+
+                                       0.2
+
+
+
+
+                                         0
+                                             0        0.2       0.4       0.6        0.8        1
+
+
+
+
+     Figure 3: Comparison of numerical temperature profiles (symbols) and the analytical solutions (solid lines) at different values
+     of the P r.
+
+     the convergent criterion, the defination of ER can be seen in [38]. As shown in Fig. 3, the numerical results
+     for the non-dimensional temperature T ∗ = (T − T0 )/∆T agree very well with the analytical solutions.
+         Then we set the Prandtl number corresponding to air, P r = 0.71, with different values of the Reynolds
+     number, Re = [10, 20, 30]. The width of the channel covered by a series of grid nodes, L = [30, 60, 90, 120, 150],
+     are considered to validate the convergence rate in space. The relative errors of temperature and velocity are
+     calculated according to the following definations,
+                                           sP                      sP
+                                                 (T − Ta )2              (u − ua )2
+                                     ET =        P 2        , Eu =       P 2 .                                    (27)
+                                                    Ta                      ua
+                                                                      7
+                 -2.5
+                                                                       -1.5
+
+
+                  -3
+                                                                        -2
+
+                 -3.5
+
+                                                                       -2.5
+
+                  -4
+
+
+                                                                        -3
+                 -4.5
+
+
+                                                                       -3.5
+                  -5
+
+
+
+                 -5.5                                                   -4
+                        -2.2     -2       -1.8     -1.6     -1.4              -2.2    -2      -1.8     -1.6     -1.4
+
+
+
+
+      Figure 4: Relative errors of temperature (left) and velocity (right) change with lattice spacings at P r = 0.71 and Re =
+      [10, 20, 30].
+
+
+90     The relationships between grid size and relative errors of the present method are plotted in Fig. 4, and
+      the slopes of each fitting lines are very close to 2.0. This demonstrates that the method proposed is of
+      second-order convergence rate in space.
+
+      3.3. Rayleigh-Bénard convection
+          In this section, the Rayleigh-Bénard convective flow is conducted to check the ability of simulating
+      incompressible thermal flows with an external force field. In the 2D Rayleigh-Bénard convective flow, the
+      fluid is enclosed between two parallel stationary walls, with high temperature TH at the bottom and low
+      temperature TL at the top, and experiences the gravity. The gravity field is incorporated by Eq. (3).
+          The flow is characterized by the length-width ratio of the flow domain L : H, the Prandtl number
+      P r = ν/α and Rayleigh number Ra = gβ∆T H 3 /(να). In the simulations, we set L × H = 60 × 30,
+                √ TH = 1.05, TL = 0.95, and T0 = (TH + TL )/2 = 1.0. The characteristic velocity of the convection
+      P r = 0.71,
+      is uc = gβ∆T H, by which the Mach number is defined,    p      M a = uc /cs . For a given Rayleigh number,
+      the viscosity is calculated according to ν = M acs H Pr /Ra. To set up the simulation, a initial small
+      disturbance is given to the density field along the horizontal center line,
+
+                                            ρ(x, H/2) = ρ0 [1.0 + 0.001 cos(2πx/L)] ,                                    (28)
+
+      where ρ0 = 1.0, while other points are initialized as ρ0 .
+          The characteristic time of the system can be expressed by tc ∼ H/uc = Hcs /M a. It is known that the
+100   iterations needed for the convergence are proportional to tc . Firstly, we change 1/M a from 0.1 to 0.31 with
+      a 0.03 interval, and calculte the needed time steps until convergence. From Fig. 5, we certainly confirm
+      the linear relation between the needed time steps and 1/M a. Throughout the variation range of M a, the
+      relative changes of the Nusselt number (defined in Eq. 29) are only 0.11%, 0.10% and 0.08% for the Rayleigh
+      numbers at 2500, 3000, and 5000, respectively. Based on this, a higher Mach number can be used in the
+      present method to reduce the computational cost, but not affects the numerical accuracy. In the following
+      simulations, the Mach number is set to M a = 0.3.
+          According to the linear stability theory, the driven force by the density variations induced by the tempera-
+      ture variations will be balanced by the viscous force when Rayleigh number is lower than a critical value Rac ,
+      while if the Rayleigh number is increased above the threshold, the driving force will dominate and convec-
+110   tion will be induced. To determine the critical Rayleigh number, we measure the evolution of the maximun
+      vertical velocity in the system Vmax for a series of Rayleigh numbers, Ra = [1702, 1704, 1706, 1708, 1710].
+      It can be seen in Fig 6 that Vmax will keep increasing/decreasing approximately linearly in the early pe-
+      riod, depending on Ra. The critical Rayleigh number is determined by solving zero value for the grow rate
+                                                                   8
+                                   0
+                               00
+                              80
+                                   0
+                               00
+                              60
+                                   0
+                               00
+                              40
+                                   0
+                               00
+                              20
+                                   0
+
+
+
+
+                                        2                    4                   6                       8                   10
+
+
+
+
+                   Figure 5: Time steps needed for convergence change with the reciprocal of M a.
+                                     5
+                                   -0
+                                4E
+                              1.
+
+                                     5
+                                   -0
+                                2E
+                              1.
+
+
+
+
+                                             +   +       +   +   +   +   +   +   +       +   +   +   +   +   +   +   +   +   +
+                                     5
+                                   -0
+                               1E
+
+
+
+
+                                                     +
+                                     6
+                                   -0
+                               8E
+                                     6
+
+
+
+
+                                         0               10000               20000                   30000               40000
+                                 -0
+                               6E
+
+
+
+
+                   Figure 6: The evolution of Vmax with time at Ra = [1702, 1704, 1706, 1708, 1710].
+
+
+
+of Vmax with the least-squre method [35]. Compared with the exact value in the linear stability theory,
+Rac = 1707.76, the value based on our method, 1706.82, is satisfying.
+   Flows at different Rayleigh numbers are then simulated. Figs. 7 display the normalized temperature
+(T − T0 ) /∆T at Ra = 2000, 10000 and 50000. When the Rayleigh number increases, we can see two clear
+trends in the figures: the mixing of the hot and cold fluids is enhanced, and the temperature gradients near
+the bottom and top walls are increased, both of which mean the convective heat transfer is enhanced in the
+domain. In the meantime, as shown in Figs .8, the vortex is gradually distorted with the increase of the
+Rayleigh number, which also means the enhancement of convection.To quantify this, the Nusselt number in
+the system is calculated,
+                                                        huy T i H
+                                             Nu = 1 +             ,                                     (29)
+                                                          α∆T
+                                                                                     9
+            Figure 7: Isotherms for Rayleigh-Bénard convective flows. From top to bottom, Ra = 2000, 10000 and 50000.
+
+
+      where the square bracket represents the average over the whole system. Nusselt numbers obtained at
+      various Rayleigh numbers are compared with the reference data in Table 1. The simulation results are in
+      good agreement with the analytical values in Ref .[44]. On the whole, the relative errors for the present
+      method are smaller than the method in [45], while only 30 nodes are used in the present method rather than
+120   50 nodes as in [45].
+         In the end, it is interesting to find that the proposed method is stable for Ra reaching up to 109 with
+      only 220 nodes in the vertical direction as shown in Fig .9, which confirms the commendable stability of the
+      method. However, the study of high-Rayleigh-number thermal convection is beyond the scope of the current
+      paper.
+
+      4. Conclusions
+
+          In this paper, we have developed a central-moment-based lattice Boltzmann (CLB) model for simulation
+      of incompressible thermal flows. Combined with the D2Q9 CLB equation for the flow field, another D2Q5
+                                                               10
+            Figure 8: Streamlines for Rayleigh-Bénard convective flows. From top to bottom, Ra = 2000, 10000 and 50000.
+
+
+      CLB equation is designed to reproduce the temperature equation. Through the Chapman-Enskog analysis,
+      the macroscopic govering equations for incompressible thermal flows can be recovered. By matching the
+130   higher order central moments of continuous Maxwell-Boltzmann distribution naturally, the proposed thermal
+      model achieves better Galilean invariance compared with some existing thermal LBMs. Thus a higher Mach
+      number can be adopted for convection flows in the present model, which reduces the computational cost
+      significantly. Through the simulation of several canonical problems, the accuray, efficiency, stability and the
+      second-order convergence rate in space for the present model are verified. The method developed retains
+      the simplicty and numerical efficiency of the standard LBM. In principle, the method can be extended to
+      three-dimensional readily. Besides, the model developed can also be applied to other convection-diffusion
+      problems directly.
+
+
+
+
+                                                                11
+           Table 1: Comparison of Nusselt number between the present numerical results and the results in Ref. [44, 45].
+
+                                                          Present method             Results in Ref .[45]
+                       Cases    Analytic Nu [44]        Nu      Relative error       Nu     Relative error
+                       2000            1.212           1.213          0.08            -             -
+                       2500            1.475           1.477          0.13         1.474          0.07
+                       3000            1.663           1.667          0.24            -             -
+                       5000            2.116           2.121          0.24         2.104          0.57
+                       10000           2.661           2.672          0.41         2.664          0.64
+                       20000           3.258           3.271          0.4             -             -
+                       30000           3.662           3.668          0.16         3.605          1.56
+                       50000           4.245           4.229          0.38         4.133          2.64
+
+
+
+
+                                     Figure 9: Snapshot of the temperature field at Ra = 109 .
+
+
+      Acknowledgments
+
+          Support from the MOST National Key Research and Development Programme (Project No. 2016YFB0600805)
+140   and the Center for Combustion Energy at Tsinghua University is gratefully acknowledged. The simulations
+      were partly performed on the Tsinghua High-Performance Parallel Computer supported by the Tsinghua Na-
+      tional Laboratory for Information Science and Technology and partly on ARCHER funded under the EPSRC
+      project “UK Consortium on Mesoscale Engineering Sciences (UKCOMES)” (Grant No. EP/L00030X/1).
+
+      Appendix A. Chapman-Enskog analysis of the CLBM for temperature field
+
+         The explicit expressions for M−1      −1
+                                       T and NT are as follows.
+                                                                      
+                                              1   0       0     −1 −1
+                                             0 1/2       0     1/2 0 
+                                        −1
+                                                                      
+                                      MT =  0
+                                                 0      1/2     0 1/2 
+                                                                       ,                                                  (30)
+                                             0 −1/2      0     1/2 0 
+                                              0   0     −1/2 0 1/2
+
+
+
+                                                                12
+                                                                                             
+                                                   1                  0          0     0    0
+                                                 ux                  1          0     0    0 
+                                           N−1
+                                                                                             
+                                            T =  uy                  0          1     0    0 
+                                                                                              .                   (31)
+                                                
+                                                 u2x                2ux         0     1    0 
+                                                  u2y                 0         2uy    0    1
+The collision step in Eq. (19) and streaming step in Eq. (22) and can be integratged into one step as,
+                                                                                  eq
+                      gi (x + ei ∆t, t + ∆t) − gi (x, t) = −M−1 −1
+                                                             T NT ST NT MT |gi − gi i .                            (32)
+
+According to the Chapmann-Enskog expansion, the following multiscale expansions are usually introduced,
+                                                                     X∞ ε n
+                             gi (x + ei ∆t, t + ∆t) =                        (∂t +ei · ∇)n gi (x, t),             (33a)
+                                                                      i=0 n!
+
+
+                                (0)           (1)           (2)
+                         gi = gi      + εgi         + ε2 g i      + ..., ∂t = ε∂t1 + ε2 ∂t2 , ∇ = ε∇i ,           (33b)
+where ε is the expansion parameter. Using these expansions, the D2Q5 CLBM in Eq. (32) can be written
+in the consecutive orders of ε,
+                                                     (0)
+                                           O(ε0 ) : gi = gieq ,                               (34a)
+
+                                                               (0)        1                      (1)
+                                                                                                     E
+                         O(ε1 ) : (∂t1 + ei · ∇1 )gi                 =−      M−1  −1
+                                                                              T N T ST N T M T g i     ,          (34b)
+                                                                          ∆t
+
+                                        (0)                ∆t               (1)   (0)
+                        O(ε2 ) : ∂t2 gi                        (∂t1 + ei · ∇1 )2 gi =
+                                              + (∂t1 + ei · ∇1 )gi                +
+                                                             2                                    (34c)
+                                                      1    −1 −1                  (2)
+                                                                                      E
+                                                    − M T N T ST N T M T g i            .
+                                                     ∆t
+If we multiply the matrix MT on both sides of Eqs. (34), the corresponding equations in the raw moment
+can be rewritten as,
+                                                  T,(0)
+                                        O(ε0 ) : Γi     = ΓT,eq
+                                                           i    ,                                 (35a)
+
+                                                                            T,(0)          1 −1         T,(1)
+                        O(ε1 ) : (I∂t1 + Ex ∂x1 + Ey ∂y1 )Γi                          =−     N ST N T Γ i     ,   (35b)
+                                                                                           ∆t T
+
+                                   T,(0)                                   1           T,(1)
+                    O(ε2 ) : ∂t2 Γi        + (I∂t1 + Ex ∂x1 + Ey ∂y1 )(I − N−1 ST NT )Γi      =
+                                                                           2 T                                    (35c)
+                                                                             1            T,(2)
+                                                                          − N−1  ST N T Γ i     ,
+                                                                            ∆t T
+where Ei = MT [diag(e0i , e1,i , ..., e4i )]M−1
+                                             T (i = x, y) can be written explicitly as
+                                                                     
+                                                     0 1 0 0 0
+                                                    0 0 0 1 0 
+                                                                     
+                                             Ex =  0 0 0 0 0 ,                                                 (36a)
+                                                                      
+                                                    0 1 0 0 0 
+                                                     0 0 0 0 0
+                                                                                        
+                                                           0          0     1     0    0
+                                                          0          0     0     0    0 
+                                                                                        
+                                                          0
+                                                    Ey =             0     0     0      .
+                                                                                       1                         (36b)
+                                                          0          0     0     0    0 
+                                                           0          0     1     0    0
+                                                                       13
+      Writting out the equations for the conserved raw moment ΓT0 , the following equations can be obtained,
+                                                                          T,(0)
+                                                           O(ε0 ) : Γ0            = ΓT,eq
+                                                                                     0    ,                                    (37a)
+
+
+                                                       T,(0)          T,(0)             T,(0)        λ0 T,(1)
+                                     O(ε1 ) : ∂t1 Γ0           + ∂x1 Γ1         + ∂y1 Γ2        =−     Γ      ,                (37b)
+                                                                                                     ∆t 0
+                                                                                              
+                                               T,(0)             λ0 T,(1)               λ1 T,(1)
+                               O(ε2 ) : ∂t2 Γ0         + ∂t1 (1 − )Γ0       + ∂x1 (1 − )Γ1         +
+                                                                 2                      2
+                                                                                                                             (37c)
+                                                                            λ1 T,(1)      λ0 T,(2)
+                                                                  ∂y1 (1 − )Γ2         = − Γ0 .
+                                                                            2             ∆t
+                                                 T,(n)
+      According to Eq. (37a), we have Γ0                 = 0(n > 0). From Eq. (35b), we can get,
+
+                                            T,(1)         ∆t 
+                                                               ∂t1 (T ux ) + ∂x1 (T c2T,s + T u2x) ,
+                                                                                                  
+                                          Γ1        =−                                                                         (38a)
+                                                          λ1
+
+                                            T,(1)         ∆t 
+                                                              ∂t1 (T uy ) + ∂y1 (T c2T,s + T u2y ) .
+                                                                                                  
+                                          Γ2        =−                                                                         (38b)
+                                                          λ1
+      Substituting Eqs.(38) into Eq.(37a), we can get
+
+                                                             ∂t1 (T ux ) + ∂x1 (T c2T,s + T u2x )
+                                                                                              
+                      2                     1/λ1 − 0.5, 0
+                  O(ε ) : ∂t2 T − ∇1 ∆t                                                              = 0.                        (39)
+                                            0,1/λ1 − 0.5     ∂t1 (T uy ) + ∂y1 (T c2T,s + T u2y )
+
+      Combining Eq.(37b) with Eq.(39) and Eq.(1a), we can obtain
+
+                                                         ∂t T + u · ∇T = ∇ · (α∇T ) ,                                            (40)
+
+      where α = (1/λ1 − 0.5)c2T,s ∆t is the thermal diffusion coefficient.
+
+      References
+
+      References
+       [1] Y. Qian, D. d’Humières, P. Lallemand, Lattice bgk models for navier-stokes equation, EPL (Europhysics Letters) 17 (6)
+           (1992) 479.
+150    [2] Y.-H. Qian, S. Succi, S. Orszag, Recent advances in lattice boltzmann computing, Annu. Rev. Comput. Phys 3 (1995)
+           195–242.
+       [3] S. Chen, G. D. Doolen, Lattice boltzmann method for fluid flows, Annual review of fluid mechanics 30 (1) (1998) 329–364.
+       [4] S. Succi, The lattice Boltzmann equation: for fluid dynamics and beyond, Oxford university press, 2001.
+       [5] S. Gong, P. Cheng, A lattice boltzmann method for simulation of liquidâĂŞvapor phase-change heat transfer, International
+           Journal of Heat and Mass Transfer 55 (17-18) (2012) 4923–4927.
+       [6] Q. Li, Q. J. Kang, M. M. Francois, Y. L. He, K. H. Luo, Lattice boltzmann modeling of boiling heat transfer: The boiling
+           curve and the effects of wettability, International Journal of Heat and Mass Transfer 85 (2015) 787–796.
+       [7] Q. Li, K. Luo, Q. Kang, Y. He, Q. Chen, Q. Liu, Lattice boltzmann methods for multiphase flow and phase-change heat
+           transfer, Progress in Energy and Combustion Science 52 (2016) 62–105.
+160    [8] S. Chen, B. Yang, K. H. Luo, X. Xiong, C. Zheng, Double diffusion natural convection in a square cavity filled with
+           nanofluid, International Journal of Heat and Mass Transfer 95 (2016) 1070–1083.
+       [9] W. Gong, S. Chen, Y. Yan, A thermal immiscible multiphase flow simulation by lattice boltzmann method, International
+           Communications in Heat and Mass Transfer (2017) In press.
+      [10] I. Ginzburg, D. dâĂŹHumières, Multireflection boundary conditions for lattice boltzmann models, Physical Review E
+           68 (6) (2003) 066614.
+      [11] C. Pan, L.-S. Luo, C. T. Miller, An evaluation of lattice boltzmann schemes for porous medium flow simulation, Computers
+           & fluids 35 (8) (2006) 898–909.
+      [12] Z. Guo, C. Zheng, Analysis of lattice boltzmann equation for microscale gas flows: relaxation times, boundary conditions
+           and the knudsen layer, International Journal of Computational Fluid Dynamics 22 (7) (2008) 465–473.
+
+                                                                           14
+170   [13] P. Lallemand, L.-S. Luo, Theory of the lattice boltzmann method: Dispersion, dissipation, isotropy, galilean invariance,
+           and stability, Physical Review E 61 (6) (2000) 6546.
+      [14] D. d’Humieres, Generalized lattice-boltzmann equations, Rarefied gas dynamics- Theory and simulations (1994) 450–458.
+      [15] I. Karlin, A. Ferrante, H. Öttinger, Perfect entropy functions of the lattice boltzmann method, EPL (Europhysics Letters)
+           47 (2) (1999) 182.
+      [16] S. Ansumali, I. V. Karlin, Stabilization of the lattice boltzmann method by the h theorem: A numerical test, Physical
+           Review E 62 (6) (2000) 7999.
+      [17] S. Ansumali, I. V. Karlin, H. C. Öttinger, Minimal entropic kinetic models for hydrodynamics, EPL (Europhysics Letters)
+           63 (6) (2003) 798.
+      [18] I. Ginzburg, Equilibrium-type and link-type lattice boltzmann models for generic advection and anisotropic-dispersion
+180        equation, Advances in Water resources 28 (11) (2005) 1171–1195.
+      [19] I. Ginzburg, F. Verhaeghe, D. dâĂŹHumieres, Two-relaxation-time lattice boltzmann scheme: About parametrization,
+           velocity, pressure and mixed boundary conditions, Communications in computational physics 3 (2) (2008) 427–478.
+      [20] M. Geier, A. Greiner, J. G. Korvink, Cascaded digital lattice boltzmann automata for high reynolds number flow, Physical
+           Review E 73 (6) (2006) 066705.
+      [21] X. Shan, H. Chen, Lattice boltzmann model for simulating flows with multiple phases and components, Physical Review
+           E 47 (3) (1993) 1815.
+      [22] D. Lycett-Brown, K. H. Luo, Multiphase cascaded lattice boltzmann method, Computers & Mathematics with Applications
+           67 (2) (2014) 350–362.
+      [23] D. Lycett-Brown, K. H. Luo, R. Liu, P. Lv, Binary droplet collision simulations by a multiphase cascaded lattice boltzmann
+190        method, Physics of Fluids 26 (2) (2014) 023303.
+      [24] D. Lycett-Brown, K. H. Luo, Improved forcing scheme in pseudopotential lattice boltzmann methods for multiphase flow
+           at arbitrarily high density ratios, Physical Review E 91 (2) (2015) 023305.
+      [25] D. Lycett-Brown, K. H. Luo, Cascaded lattice boltzmann method with improved forcing scheme for large-density-ratio
+           multiphase flow at high reynolds and weber numbers, Physical Review E 94 (5) (2016) 053313.
+      [26] L. Fei, K. Luo, Thermal cascaded lattice boltzmann method, arXiv preprint arXiv:1610.07114.
+      [27] X. Shan, Simulation of rayleigh-bénard convection using a lattice boltzmann method, Physical Review E 55 (3) (1997)
+           2780.
+      [28] X. He, S. Chen, G. D. Doolen, A novel thermal model for the lattice boltzmann method in incompressible limit, Journal
+           of Computational Physics 146 (1) (1998) 282–300.
+200   [29] Z. Guo, B. Shi, C. Zheng, A coupled lattice bgk model for the boussinesq equations, International Journal for Numerical
+           Methods in Fluids 39 (4) (2002) 325–342.
+      [30] Q. Li, Y. He, Y. Wang, G. Tang, An improved thermal lattice boltzmann model for flows without viscous heat dissipation
+           and compression work, International Journal of Modern Physics C 19 (01) (2008) 125–150.
+      [31] Y. Wang, Y. L. He, Q. Li, G. H. Tang, Numerical simulations of gas resonant oscillations in a closed tube using lattice
+           boltzmann method, International Journal of Heat and Mass Transfer 51 (11âĂŞ12) (2008) 3082–3090.
+      [32] S. Gong, P. Cheng, Lattice boltzmann simulation of periodic bubble nucleation, growth and departure from a heated
+           surface in pool boiling, International Journal of Heat and Mass Transfer 64 (3) (2013) 122–132.
+      [33] B. Yang, S. Chen, C. Cao, Z. Liu, C. Zheng, Lattice boltzmann simulation of two cold particles settling in newtonian fluid
+           with thermal convection, International Journal of Heat and Mass Transfer 93 (2016) 477–490.
+210   [34] A. Mezrhab, M. A. Moussaoui, M. Jami, H. Naji, M. Bouzidi, Double mrt thermal lattice boltzmann method for simulating
+           convective flows, Physics Letters A 374 (34) (2010) 3499–3507.
+      [35] J. Wang, D. Wang, P. Lallemand, L.-S. Luo, Lattice boltzmann simulations of thermal convective flows in two dimensions,
+           Computers & Mathematics with Applications 65 (2) (2013) 262–286.
+      [36] Q. Liu, Y.-L. He, D. Li, Q. Li, Non-orthogonal multiple-relaxation-time lattice boltzmann method for incompressible
+           thermal flows, International Journal of Heat and Mass Transfer 102 (2016) 1334–1344.
+      [37] S. Cui, N. Hong, B. Shi, Z. Chai, Discrete effect on the halfway bounce-back boundary condition of multiple-relaxation-time
+           lattice boltzmann model for convection-diffusion equations, Physical Review E 93 (4) (2016) 043311.
+      [38] L. Fei, K. Luo, Consistent forcing scheme in the cascaded lattice boltzmann method, arXiv preprint arXiv:1705.11092v2.
+      [39] K. N. Premnath, S. Banerjee, Incorporating forcing terms in cascaded lattice boltzmann approach by method of central
+220        moments, Physical Review E 80 (3) (2009) 036702.
+      [40] P. Asinari, Generalized local equilibrium in the cascaded lattice boltzmann method, Phys Rev E 78 (2) (2008) 016701.
+      [41] Q. Zou, X. He, On pressure and velocity boundary conditions for the lattice boltzmann bgk model, Physics of fluids 9 (6)
+           (1997) 1591–1598.
+      [42] Z. Guo, C. Zheng, B. Shi, T. Zhao, Thermal lattice boltzmann equation for low mach number flows: decoupling model,
+           Physical Review E 75 (3) (2007) 036704.
+      [43] D. R. Noble, S. Chen, J. G. Georgiadis, R. O. Buckius, A consistent hydrodynamic boundary condition for the lattice
+           boltzmann method, Physics of Fluids 7 (1) (1995) 203–209.
+      [44] R. Clever, F. Busse, Transition to time-dependent convection, Journal of Fluid Mechanics 65 (04) (1974) 625–645.
+      [45] N. I. Prasianakis, I. V. Karlin, Lattice boltzmann method for thermal flow simulation on standard lattices, Physical Review
+230        E 76 (1) (2007) 016702.
+
+
+
+
+                                                                    15
+

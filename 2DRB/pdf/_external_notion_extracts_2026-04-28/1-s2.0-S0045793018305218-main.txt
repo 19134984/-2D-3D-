@@ -1,0 +1,1119 @@
+                                                                      Computers and Fluids 175 (2018) 2–19
+
+
+
+                                                                 Contents lists available at ScienceDirect
+
+
+                                                                  Computers and Fluids
+                                                         journal homepage: www.elsevier.com/locate/compfluid
+
+
+Benchmark solutions
+
+Entropic lattice Boltzmann simulation of thermal convective
+turbulence
+N. Frapolli a, S.S. Chikatamarla a, I.V. Karlin a,∗
+Department of Mechanical and Process Engineering, ETH Zurich, Zurich CH-8092, Switzerland
+
+
+
+
+a r t i c l e           i n f o                            a b s t r a c t
+
+Article history:                                           We present a comprehensive study of thermal convective turbulence using a two-population entropic
+Received 16 October 2017                                   multi-relaxation lattice Boltzmann model. Both the canonical non-rotating and rotating Rayleigh–Bénard
+Revised 5 July 2018
+                                                           problems are addressed by the lattice Boltzmann simulation in the turbulent regime, ranging from high
+Accepted 20 August 2018
+                                                           Rayleigh numbers convection in the former to geostrophic turbulence in the latter. Special attention is
+Available online 25 August 2018
+                                                           payed to evaluating the lattice Boltzmann method as an alternative for coarse-grid simulation in the
+                                                           rapidly rotating Rayleigh–Bénard regime. Results obtained for the Nusselt number scaling and ﬂow struc-
+                                                           ture are compared to direct numerical simulation and predictions of the reduced non-hydrostatic quasi-
+                                                           geostrophic equations. It is found that, even under a severe under-resolution of Ekman layer, the present
+                                                           lattice Boltzmann model is capable of capturing various regimes of thermal convective turbulence in a
+                                                           quantitative fashion. This study demonstrates that lattice Boltzmann method can serve an alternative to
+                                                           conventional turbulence modeling approaches.
+                                                                                                                             © 2018 Elsevier Ltd. All rights reserved.
+
+
+
+
+1. Introduction                                                                             relevance to planetary systems, providing the limit behavior when
+                                                                                            convection overcomes rotational effects. In particular, convective
+    Thermal convective turbulence is ubiquitous in Nature and                               heat transfer in RBC gives the upper bound on that of the rotat-
+technological applications. In the geophysical and astrophysical                            ing systems [18].
+context, convective motion driven by temperature stratiﬁcation un-                              In RBC, a ﬂuid layer of height H is heated from below, cooled
+der the effect of gravity takes place in stars and planets [1–4], as                        from above, and is under the inﬂuence of buoyancy forces. The
+well as in atmospheric and oceanic circulation [5–8]. Buoyancy-                             non-dimensional groups characterizing the system are the Rayleigh
+driven ﬂows also occur in biological systems in the thermal-bio-                            number Ra, representing the ratio between thermally induced
+convection phenomena [9,10]. In engineering and technological ap-                           buoyancy and the viscosity and thermal diffusivity forces, the
+plications, thermal convection plays important role in process tech-                        Prandtl number Pr, representing the ratio between viscous and
+nology [11], heat exchangers and chip cooling [12], as well as in                           thermal diffusion, and the aspect ratio A of the geometry:
+the quality of indoor circulation [13]. Most of the above exam-
+ples combine thermal convection with other relevant physical phe-
+nomena such as rotation of the frame of reference, radiative and
+                                                                                                   gλT H 3              ν     H
+                                                                                            Ra =              ,   Pr =     , A= .                               (1.1)
+conjugate heat transfer, phase change, compressibility or magneto-                                   να                  α     L
+hydrodynamic effects, or chemical reactions [14].
+    A paradigm for these situations is the Rayleigh–Bénard convec-                              Here g is gravitational acceleration, λ is the thermal expansion
+tion (RBC) [15,16] when the reference frame is at rest, or the ro-                          coeﬃcient, T is the temperature difference between the bottom
+tating Rayleigh–Bénard convection (RRBC) in the case of rotating                            and top boundaries of the ﬂuid layer, H is the distance between the
+reference frame [17,18]. RBC plays a prominent role in the devel-                           boundaries, ν is the kinematic viscosity, α is the thermal diffusiv-
+opment of stability theory in hydrodynamics [19,20] as well as in                           ity and L the horizontal characteristic size of the domain. When
+pattern formation and spatial-temporal chaos [21,22]. Special at-                           the Rayleigh number exceeds the critical value Rac , the system be-
+tention was devoted for long to the non-rotating RBC because of its                         comes unstable to convective motion. For the canonical Rayleigh–
+                                                                                            Bénard problem without rotation, with no-slip boundaries, the crit-
+                                                                                            ical Rayleigh number is Rac = 1708 [23].
+  ∗
+      Corresponding author.                                                                     The key response of the system to the imposed Rayleigh num-
+      E-mail address: karlin@lav.mavt.ethz.ch (I.V. Karlin).                                ber is the heat ﬂux h from bottom to top. The dimensionless
+
+https://doi.org/10.1016/j.compﬂuid.2018.08.021
+0045-7930/© 2018 Elsevier Ltd. All rights reserved.
+                                                 N. Frapolli et al. / Computers and Fluids 175 (2018) 2–19                                               3
+
+
+heat ﬂux,                                                                       convection, Large Eddy Simulation (LES) strategies were used as
+        hH                                                                      preferable path to reaching very high Rayleigh numbers [48–50].
+Nu =              ,                                                 (1.2)       However, in order to capture the near-wall stresses and heat trans-
+       α T
+                                                                                fer, grid resolution requirements become similar to DNS in the
+is the Nusselt number representing the ratio between the ac-                    near-wall region. Even higher values of Rayleigh number up to
+tual heat ﬂux and its pure conductive part. With the Oberbeck–                  Ra ࣃ 2 · 1016 , were addressed by the transient RANS simulations
+Boussinesq approximation [24,25], the Nusselt number for incom-                 [51,52]. However, due to the empirical nature of modeling and pa-
+pressible ﬂow becomes                                                           rameter tuning, prediction strength reduces [50]. Concerning RRBC,
+       uz T A − α∂z T A                                                     a system of reduced equations valid in the limit (Roc , E) → 0, where
+Nu =                        ,                                       (1.3)       Roc = E Ra/Pr is the convective Rossby number, was developed
+             α T /H
+                                                                                by Julien et al. [53,54], non-hydrostatic quasi-geostrophic equa-
+where  · A denotes averaging over any horizontal plane and over
+                                                                                tions (NH-QGE). Simulations using NH-QGE allowed to discover a
+the time. Nusselt number is a particularly important quantity in
+                                                                                rich dynamical behavior in the low Ekman - high Rayleigh number
+RBC since it provides a global characterization of the strength of
+                                                                                regimes. However, NH-QGE are limited to the stress-free bound-
+convection. Much work has been done in order to estimate scaling
+                                                                                ary conditions; thus, while the behavior described by this reduced
+laws for the turbulent heat transport, Nu = Nu(Ra, Pr, A ). Two main
+                                                                                set of equations in the bulk of the ﬂow is well reproduced, the
+theories were veriﬁed by experiments: the classical scaling law of
+                                                                                heat transfer in the near-wall regions may be affected as compared
+Malkus [26], Nu ∼ (Ra/Rac )1/3 , which mainly holds for Ra ࣡ 1010 and
+                                                                                to the no-slip boundary [46]. Recently, the NH-QGE system was
+another one, more appropriate for moderate regimes (Ra ࣠ 1010 ),
+                                                                                extended to include the inﬂuence the effect of Ekman pumping
+with Nu ∼ Ra2/7 [27,28]. Other scaling laws were proposed for dif-
+                                                                                by including parametric boundary conditions (composite NH-QGE
+ferent Rayleigh and Prandtl number regimes [15,29,30]. The unify-
+                                                                                (CNH-QGE), [41,55]), and their implications on the large-scale dy-
+ing theory by Grossmann and Lohse [31,32] provides a synthesis of
+                                                                                namics are currently a research topic [40,41].
+various scaling regimes in a wide range of parameters.
+                                                                                    More recently, the lattice Boltzmann method (LBM) was gain-
+   With rotational effects included, new modes of convection may
+                                                                                ing attention as an alternative for ﬂuid dynamics [56,57]. In par-
+develop depending on the strength of rotation. Importance of vis-
+                                                                                ticular, the entropic LBM formulation demonstrates interesting ap-
+cosity against Coriolis forces is characterized by the Ekman number
+                                                                                plications ranging from turbulent ﬂows in complex moving ge-
+E,
+                                                                                ometries [58], transitional ﬂows [59], multiphase [60], compress-
+       ν                                                                        ible ﬂows [61] and magnetohydrodynamics [62], to mention some
+E=            ,                                                     (1.4)
+     2 H 2                                                                     recent examples. LBM is a recast of the ﬂuid dynamics equations
+where  is the angular rotation rate. Rotation tends to suppress or             into a kinetic framework for discretized distribution function (pop-
+delay the onset of convection [33]. The critical Rayleigh number for            ulations) fi = fi (x, t ) at position x and time t, associated with dis-
+the onset of convection is not constant anymore but instead grows               crete velocities vi , i = 1, . . . , Q, and designed to recover the Navier–
+with the rotation rate as                                                       Stokes equations in the hydrodynamic limit. Discrete velocities ﬁt
+                                                                                into a regular Cartesian lattice; this allows eﬃcient “stream-along-
+Rac = c2 E−4/3 ,                                                    (1.5)
+                                                                                links-and-equilibrate-at-nodes” computation algorithm. Extension
+where c2 ࣃ 8.696 as E → 0 [19]. Moreover, the Ekman number in-                  of LBM to thermal ﬂows was considered by many authors through
+ﬂuences the turbulent heat transfer so that the parameter space                 introducing another set of populations gi to recover the temper-
+becomes even wider with respect to RBC, i.e. Nu = Nu(Ra, E, Pr, A ).            ature dynamics in the Oberbeck-Boussinesq approximation (so-
+By assuming that Malkus marginal boundary layer arguments                       called two-population LBM; different versions were presented, e. g.
+[19] hold also for rotating systems, [34] predicted that rotating               by He et al. [63–66]). Many works reported two-dimensional RBC
+convective heat transfer scales as Nu ∼ (Ra/Rac )3 , and that this              simulation as a matter of validation, or the vertical or other kind of
+steep, cubic scaling holds from the onset of convection up to the               natural convection [67–71]. Three-dimensional LBM simulations of
+Rayleigh number RaT at which the thermal boundary layer be-                     RBC turbulence and related setups have been used to demonstrate,
+comes nested within the Ekman layer, i.e. RaT ∼ E−3/2 [18]. Above               for the ﬁrst time, the so-called ultimate [29] scaling Nu ∼ Ra1/2 in
+RaT , the scaling Nu ∼ Ra2/7 sets in, in agreement with the non-                the turbulent bulk (without boundaries) [72]; to address and ob-
+rotating RBC.                                                                   serve the Bolgiano-Obukhov scaling of structure functions [73,74],
+    RBC was studied extensively using both experiments and sim-                 to detect anisotropies in the scaling exponents of velocity and tem-
+ulations. The goal is not only to explore the response of the sys-              perature structure functions [75]; to study the effect of an imposed
+tem in a range of parameters but rather to ﬁnd an asymptotic                    wind on the heat ﬂux scaling [76]. Extensions to convection in
+regime in the high-Rayleigh-number convection. With recent ex-                  particle-laden [77] and multiphase ﬂows [78] were also addressed.
+periments, it was possible to reach Ra ≃ 1014 − 1017 [35–38] while              Typical range of Rayleigh numbers addressed in these works is of
+direct numerical simulations (DNS) started exploring the transi-                the order of Ra ∼ 107 . However, to-date, only a limited number of
+tion regime Ra ࣃ 1012 where the boundary layer becomes turbu-                   works can be found in the literature for the simulation of non-
+lent [14,39]. While a reasonably wide parameter range was studied               rotating RBC at high Rayleigh number, of the orders of the state-
+for non-rotating Rayleigh–Béneard convection, it is different for the           of-the-art DNS and, to the best of our knowledge, none for the ro-
+rotating RBC [40,41], see [42] and references therein [43–45]. Both             tating RBC.
+experiments and DNS face diﬃculties in the turbulent but rota-                      In this paper, we present simulations of three-dimensional RBC
+tionally constrained regime [46]. Experiments can reach high lev-               and RRBC for a wide range of Rayleigh numbers, and for dif-
+els of turbulence relatively easily but encounter problems in en-               ferent rotation rates, in the range of state-of-the-art DNS. We
+suring dominance of Coriolis forces in the force balance. On the                demonstrate capabilities of the recently introduced two-population
+other hand, DNS suffers from a large range of spatial and tem-                  entropic multi-relaxation lattice Boltzmann model [65,66,79] for
+poral scales that need to be resolved [46]. Contemporary experi-                performing coarse-grid simulations. Differently from LES for RBC,
+ments and DNS for RRBC are restricted to E  10−8 , Ra ࣠ 1013 and               coarse grids can be employed near the walls, while still retaining
+E  10−7 , Ra ࣠ 1012 , respectively, according to [47].                         the accuracy necessary to capture ﬁrst- and second-order statis-
+    Alternative modeling and simulation approaches were devel-                  tics. Moreover, differently from NH-QGE, no-slip boundary condi-
+oped for both RBC and RRBC. For the non-rotating Rayleigh–Bénard                tions can be employed and, even under severe under-resolution of
+4                                                           N. Frapolli et al. / Computers and Fluids 175 (2018) 2–19
+
+
+Ekman layer, the main features of the ﬂow are demonstrated. We                                             Table 1
+                                                                                                           Generating equilibria and quasi-equilibria using the form
+thus demonstrate that the two-population entropic multirelaxation
+                                                                                                           Fi (2.12).
+lattice Boltzmann model is a viable alternative to study thermal
+convective turbulence.                                                                                        Pr              Fi          M0          Mα                    Mαβ
+    The paper is organized as follows: in Section 2, the two-                                                 any Pr          f ieq       ρ           ρ uα                   eq
+                                                                                                                                                                            Pαβ
+population entropic multi-relaxation lattice Boltzmann model is                                               any Pr          geq
+                                                                                                                                i
+                                                                                                                                          2ρ E         eq
+                                                                                                                                                      qα                    Req
+                                                                                                                                                                             αβ
+presented, together with the implementation of gravity and Cori-                                              Pr ⩽ 1          f i∗        ρ           ρ uα                   eq
+                                                                                                                                                                            Pαβ
+                                                                                                                                                              
+olis forces. On the technical side, the LBM model of Section 2 is a                                           Pr ⩽ 1          g∗i         2ρ E                         eq
+                                                                                                                                                      qα − 2uβ Pαβ − Pαβ    Req
+                                                                                                                                                                             αβ
+generalization of the previously introduced two-population models                                             Pr > 1          f i∗        ρ           ρ uα                  Pαβ
+                                                                                                                                                              
+by Karlin et al. [65,66] where the entropic multi-relaxation prin-                                            Pr > 1          g∗i         2ρ E        qeq             eq
+                                                                                                                                                       α + 2uβ Pαβ − Pαβ    Req
+                                                                                                                                                                             αβ
+ciple is now extended to any Prandtl number. In Section 3, we
+present results for the non-rotating RBC for the Rayleigh number
+in the range Ra = 107 − 1011 . Performance of LBM in the under-                            Eq. (2.4) recover the conventional LBGK collision. Before identify-
+resolved simulation is evaluated through comparison of the ﬂow                             ing the mirror state of the entropic multi-relaxation LBM, we shall
+structure with recent DNS study of [80]. In Section 4, we consider                         specify the equilibrium and quasi-equilibrium populations.
+the rotating Rayleigh–Bénard problem for Ekman number in the
+mildly rotating range, E = 4.3 · 10−3 − 5.6 · 10−5 , and compare re-                       2.2. Equilibrium and quasi-equilibrium populations
+sults with the DNS of [17]. In Section 5, we study the rapidly rotat-
+ing Rayleigh–Bénard convection (RRRBC) for E = 10−7 and Rayleigh                              Equilibrium populations fi
+                                                                                                                                                 eq
+                                                                                                                                                      are obtained by minimizing the en-
+number up to Ra = 0.5 · 1012 . The LBM simulation is shown to re-                          tropy function H,
+cover a series of different ﬂow regimes of RRRBC, from cellular
+to geostrophic turbulence and we discuss emergence of large-scale                                       
+                                                                                                        Q
+                                                                                                                             fi
+                                                                                           H( f ) =            fi ln                  ,                                                (2.6)
+vortex structures. Conclusions are drawn in Section 6.                                                                       Wi
+                                                                                                        i=1
+
+2. Thermal entropic multi-relaxation lattice Boltzmann model                               subject to ﬁxed mass and momentum, (2.1) and (2.2). We use the
+                                                                                           standard lattice with Q = 27 discrete velocities vi = (vix , viy , viz )
+2.1. Kinetic equations                                                                     constructed as tensor product of three copies of the fundamen-
+                                                                                           tal one-dimensional set, viα ∈ {−1, 0, 1}. For this D3Q27 lattice, the
+                                                                                                                 =3
+   In the thermal two-population LBM, one considers two sets of                            weights are: Wi = D  α Wviα , with W0 = 2/3, and W−1 = W1 = 1/6
+kinetic equations for the populations fi , responsible for the mass                        [81]. Let us introduce the pressure tensor Pαβ and the energy ﬂux
+and momentum equations, and the populations gi , responsible for                           vector qα ,
+the energy. The locally conserved ﬁelds are deﬁned as follows:                                     
+                                                                                                   Q
+                                                                                           Pαβ =           v iα v iβ f i ,                                                             (2.7)
+     
+     Q
+ρ=         fi ,                                                                (2.1)                i=1
+
+     i=1
+                                                                                                  
+                                                                                                  Q
+                                                                                           qα =         v iα g i .                                                                     (2.8)
+       
+       Q
+                                                                                                  i=1
+ρu =         f i vi ,                                                         (2.2)
+       i=1                                                                                 For low Mach numbers, the pressure tensor, the energy ﬂux and
+                                                                                                                               eq
+                                                                                           the contracted fourth-order tensor Rαβ assume the following val-
+                          
+                          Q                                                                ues at equilibrium [65]:
+2ρ E =Dρ T + ρ u2 =             gi ,                                          (2.3)
+                                                                                                    
+                                                                                                    Q
+                          i=1                                                               eq
+                                                                                           Pαβ =            viα viβ fieq = ρ T0 δαβ + ρ uα uβ ,                                        (2.9)
+where ρ is the density, u is the ﬂow velocity, E is the total energy,                                i=1
+with D the space dimension (D = 3 below), and T is the tempera-
+ture. LBM kinetic equations for f- and g-populations are compactly                                 
+                                                                                                   Q
+
+written [65,66],                                                                           qeq
+                                                                                            α =            viα geq
+                                                                                                                i
+                                                                                                                   = 2ρ Euα + 2ρ T0 uα ,                                           (2.10)
+                                                                                                    i=1
+fi (x + vi , t + 1 ) = fi (x, t ) = (1 − β ) fi + β fimirr
+                                                 
+                        + 2(β − β1 ) fi∗ − fieq ,                             (2.4)                 
+                                                                                                    Q
+                                                                                                                                                                
+                                                                                           Req
+                                                                                            αβ =           viα viβ geq
+                                                                                                                    i
+                                                                                                                       = 2ρ E T0 δαβ + uα uβ +2ρ T0 T0 δαβ + 2uα uβ ,
+                                                                                                    i=1
+                                                                                                                                                                                 (2.11)
+gi (x + vi , t + 1 ) = gi (x, t ) = gi + 2β geq
+                                              i
+                                                 − gi
+                                                                                         where T0 = 1/3 is the reference temperature of the D3Q27 lattice.
+                        + 2(β − β1 ) g∗i − geq
+                                            i
+                                               .                              (2.5)        For low Mach numbers, minimization of the entropy function can
+Here the left-hand side of both equations represents the advec-                            be treated using expansion to second order in the velocity u. This
+tion and the right-hand side represents the post-collision popula-                         allows to generate equilibrium and quasi-equilibrium populations
+tions fi and gi . Furthermore, fi and gi are the equilibrium pop-                        from a quadratic form,
+                                   eq      eq
+                     ∗      ∗
+ulations, while fi and gi are the quasi-equilibrium populations.                                                                                                               
+The choice of the quasi-equilibrium is dictated by the value of the                                          M α v iα   Mαβ − M0 T0 δαβ viα viβ − T0 δαβ
+                                                                                           Fi = Wi      M0 +          +                                                            ,
+Prandtl number, and two sets { fi∗ , g∗i } shall be speciﬁed below for                                         T0                     2T02
+two separate cases, Pr ⩽ 1 and Pr > 1. Relaxation parameters β and
+β 1 are related to kinematic viscosity ν and thermal diffusivity α .                                                                                                               (2.12)
+Finally, fimirr is the over-relaxed mirror state of the f-populations.                     where summation convention is assumed, and where the scalar
+                                                                eq
+Note that, when the mirror state is speciﬁed as fimirr = 2 fi − fi ,                       M0 , the vector Mα and the tensor Mαβ are speciﬁed in Table 1
+                                                             N. Frapolli et al. / Computers and Fluids 175 (2018) 2–19                                                    5
+
+
+                                  Table 2
+                                  Simulations parameters and estimated length scales for Rayleigh–Bénard simulations. From left to
+                                  right: Rayleigh number Ra, grid points in x- and y-directions Nx and Ny , grid points in the z-direction
+                                  Nz , aspect ratio A, non-dimensional grid spacing x/H = y/H = z/H, non-dimensional dissipation
+                                  scale η/H, non-dimensional Taylor micro-scale λ/H, non-dimensional thermal boundary layer δ T /H, rel-
+                                  ative grid spacing with respect to dissipation scale z/η and relative grid spacing with respect to
+                                  thermal boundary layer z/δ T .
+
+                                    Ra      Nx = Ny     Nz       A       x, y, z/H       η /H       λ/H             δ T /H           z/η    z/δ T
+                                       7
+                                    10      736         92       8       0.0109             0.0076     0.0834          0.0295           1.43    0.37
+                                    109     768         384      2       0.0026             0.0017     0.0406          0.0079           1.52    0.33
+                                    1011    384         768      0.5     0.0013             0.0 0 04   0.0271          0.0021           3.25    0.62
+
+
+
+
+Fig. 1. Visualization of instantaneous ﬂow ﬁeld at Ra = 107 . Top: volume rendering of temperature T; Bottom left: slice at z = 0.5δT of instantaneous temperature T; Bottom
+right: slice at z = 0.5δT of instantaneous normalized vorticity ω.
+              eq   eq
+to obtain fi , gi , fi∗ and g∗i upon substitution of pertinent com-                         the D3Q27,
+binations of vectors and tensors (2.7)–(2.11). Note that while the
+                                                                                                       
+                                                                                                       Q
+equilibrium populations are independent of the Prandtl number,                              M pqr =          fi vixp vqiy vriz ,       p, q, r ∈ {0, 1, 2}.         (2.13)
+the quasi-equilibria differ for Pr ⩽ 1 and Pr > 1. For Pr ⩽ 1, the                                     i=1
+quasi-equilibrium f-populations are identical with the equilibrium,
+        eq
+fi∗ = fi , and the last term in the kinetic Eq. (2.4) vanishes. This                        Inverting the linear system (2.13), populations fi are represented
+model is analogous to Shakhov’s S-model in the conventional ki-                             in terms of linear combination of moments Mpqr (expicit formulas
+netic theory [82] (the quasi-equilibrium g-population depends on                            can be found elsewhere, see e.g., [86]. or Appendix A of [58], and
+the nonequilibrium energy ﬂux (2.8)), and was ﬁrst introduced by                            are not reproduced here). With this moment representation, popu-
+Karlin et al. [65] in the two-population LBM context. For Pr > 1,                           lations are split in the following way,
+the quasi-equilibrium f-population depends on the nonequilibrium
+                                                                                             f i = ki + si + hi ,                                                   (2.14)
+pressure tensor (2.7), and this model is analogous to Levermore’s
+model [83,84]. The need for two separate models in order to cover                           where ki is the kinematic part which depends only on the locally
+the entire range of Prandtl number was earlier highlighted by An-                           conserved ﬁelds, ρ = M000 , ρ ux = M100 , ρ uy = M010 and ρ uz =
+sumali et al. [85].                                                                         M001 ; the shear part si depends on the pressure tensor Pαβ
+                                                                                            (2.7) (Pxy = M110 , Pyz = M011 , Pxz = M101 , Pxx = M200 , Pyy = M020 and
+                                                                                            Pzz = M002 ) while hi lumps all the remaining higher-order mo-
+2.3. Entropic multi-relaxation formulation                                                  ments. With this representation, the mirror-state fimirr is written
+                                                                                            in the form:
+    Following [79], we now specify the mirror populations fimirr in                                                                                        
+(2.4). To that end, let us recall the full set of natural moments of                         fimirr = ki + 2seq
+                                                                                                             i
+                                                                                                                − si + γ hi + (1 − γ )heq
+                                                                                                                                       i
+                                                                                                                                          ,                         (2.15)
+6                                                          N. Frapolli et al. / Computers and Fluids 175 (2018) 2–19
+
+
+
+
+Fig. 2. Visualization of instantaneous ﬂow ﬁeld at Ra = 109 . Top: Volume rendering of temperature T; Bottom left: Slice at z = 0.5δT of instantaneous temperature T; Bottom
+right: Slice at z = 0.5δT of instantaneous normalized vorticity ω.
+
+
+
+where the entropic stabilizer γ is computed by minimizing the en-                                             Table 3
+                                                                                                              Nusselt number comparison to scaling
+tropy (2.6) in the post-collision state. It is suﬃcient to use ﬁrst-
+                                                                                                              laws. Scaling 1 (valid for Ra ⩽ 1010 ):
+order analytical approximation [79],                                                                          Nu = 0.16 Ra0.284 [18]; Scaling 2 (valid for
+                                                                                                             Ra > 1010 ): Nu = 0.075 Ra0.322 [18].
+       1             1    s|h 2(β − β1 )  f ∗ |h
+γ=         − 2−                   −                      ,                  (2.16)
+      β1            β1    h|h    β1       h|h                                                            Ra        Present       Scaling 1   Scaling 2
+
+                                                                                                                 107       15.35         15.56       13.46
+where deviations from equilibrium are               si = si − seq
+                                                               h i = h i −
+                                                                i
+                                                                   ,                                             109       62.40         57.56       59.3
+hi and  fi∗ = fi∗ − fi , while  · | ·  is the entropic scalar product,
+  eq                        eq
+                                                                                                                 1011      236.50        212.87      261.25
+         
+X |Y  = Qi=1 XiYi / fieq . For Pr ⩽ 1, the last term in (2.16) vanishes
+                 eq
+because fi∗ = fi ; in this case (2.16) reduces to the formula de-
+rived by Karlin et al. [79]. However, for Pr > 1 the quasi-equilibrium                    while in the case of rotation also the Coriolis force is applied,
+populations fi∗ differ from the equilibrium (cf. Table 1); hence,
+                                                                                          {Fx , Fy , Fz } = {−2ρ uy , 2ρ ux , ρ gλ(T − Tm )},                               (2.18)
+(2.16) extends the entropic stabilizer to the entire range of Prandtl
+number. With this remark, the kinetic equations (2.4) and (2.5) are                       where Tm = T0 + 0.5T is the mean temperature between hot and
+fully speciﬁed. Further details concerning the entropic multi-                            cold walls and where we set  = 0 for the non-rotating RBC.
+relaxation formulation were discussed by Karlin et al. [58,79,86],
+and particularly for the two-population thermal LBM see [66,87].                          2.5. Hydrodynamic limit
+
+2.4. Buoyancy and coriolis forces                                                             Taken together, the two-population entropic multi-relaxation
+                                                                                          lattice Boltzmann model described in Sections 2.1–2.4 recovers hy-
+   Forces are included via the exact difference method [88]. The                          drodynamic equations as follows [65]:
+post-collision f-populations in the kinetic equation (2.4) are modi-                      ∂t ρ + ∇ · (ρ u ) = 0,                                                              (2.19)
+ﬁed according to:
+                                              
+fi → fi + fieq (ρ , u + δ u ) − fieq (ρ , u ) ,                           (2.17)                                     1                 1            1
+                                                                                          ∂t u + (u · ∇ )u = − ∇ (T0 ρ ) − ∇ ·  + F ,                                        (2.20)
+where δ u = (F /ρ )δt, is the velocity increment due to the force                                             ρ           ρ       ρ
+F, with the time step δt = 1. Below, two types of forces act on
+the system depending on the case of interest. For the non-rotating                                                T                  1                    1
+                                                                                          ∂t T + u · ∇ T = − 0 ∇ · u −                   (∇ u ) :  +         ∇ · (ρα∇ T ),
+Rayleigh–Bénard convection, only the buoyancy force is included                                                   cv             ρ cv                     ρ
+for which the Oberbeck-Boussinesq approximation is employed,                                                                                                                  (2.21)
+                                                          N. Frapolli et al. / Computers and Fluids 175 (2018) 2–19                                                     7
+
+
+
+
+Fig. 3. Visualization of instantaneous ﬂow ﬁeld at Ra = 1011 . Top: volume rendering of the temperature T; Bottom left: slice at z = 0.5δT of instantaneous temperature T;
+Bottom right: slice at z = 0.5δT of instantaneous normalized vorticity ω.
+
+
+
+                                                                                         so that the Prandtl number Pr = ν /α reads
+                                                                                                (1 − β )β1                   (1 − β1 )β
+                                                                                         Pr =              , if Pr ⩽ 1; Pr =            , if Pr > 1. (2.24)
+                                                                                                (1 − β1 )β                   (1 − β )β1
+                                                                                         Note that contributions of the ﬁrst and of the second term on
+                                                                                         the right hand side of the temperature Eq. (2.21) (compres-
+                                                                                         sion work and viscous dissipation, respectively) are negligible in
+                                                                                         the Rayleigh–Bénard set-up under consideration. Hence, the two-
+                                                                                         population lattice Boltzmann model maintains the standard quasi-
+                                                                                         incompressible Oberbeck-Boussinesq approximation.
+
+                                                                                         2.6. Simulations set-up
+
+                                                                                             Simulations were performed in a three-dimensional rectangular
+Fig. 4. Mean Nusselt number for the different Rayleigh numbers considered in RBC.        domain with the dimensions [Lx × Ly × Lz ] = [HA × HA × H ], where
+                                                                                         A is the aspect ratio. Cold TC and hot TH temperatures are ﬁxed on
+                                                                                         the top and bottom walls, respectively, while the no-slip boundary
+where cv = D/2 is the speciﬁc heat of a D-dimensional ideal gas                          condition for the velocity is applied at both walls. The wall bound-
+and  = −ρν (∇ u + ∇ u† ) is the viscous stress tensor. Kinematic                        ary conditions were realized through Grad’s approximation [66]. In
+viscosity ν and thermal diffusivity α are expressed through relax-                       the x- and y-directions, periodic boundary conditions are used in
+ation parameters β and β 1 as follows, depending on the Prandtl                          all the simulations in order to approximate an inﬁnite horizontal
+number                                                                                   extent (A → ∞). This approximation is valid when the largest char-
+   1   1
+                                 1         1                                            acteristic horizontal length-scales appearing naturally in the solu-
+ν=    −   T0 ,             α=           −     T0 ,      if Pr ⩽ 1,         (2.22)        tion are smaller than the horizontal extent HA. The aspect ratio
+   2β   2                         2β1       2
+                                                                                         A was adapted for each simulation in order to comply with this
+   1    1
+                               1   1
+                                                                                         assumption at a reasonable
+                                                                                                                      computational cost. The characteristic
+ν=     −   T0 ,             α=    −   T0 ,              if Pr > 1,         (2.23)        free-fall velocity, U = gλT H was maintained below U < 0.06. All
+   2β1   2                     2β   2                                                    statistical quantities were collected after the initial transient of the
+8                                                          N. Frapolli et al. / Computers and Fluids 175 (2018) 2–19
+
+
+
+
+Fig. 5. Temperature and velocity ﬁeld statistics. (a): Mean and root mean square temperature along vertical direction; (b): Root mean square x- and z-components of velocity
+along vertical direction. Symbol: present LBM; Line: DNS of [80].
+
+                                                                                                               √                 1/4
+                                                                                          tion scale as η/H = Pr/[(Nu − 1 )Ra] . For LES simulations, the
+                                                                                          requirement on grid resolution is often expressed in terms of mean
+                                                                                          grid spacing, which is usually set to be at√least half of the Tay-
+                                                                                                                                                            1/2
+                                                                                          lor micro-scale λ, according to [50], λ/H = 15u∗ /[(Nu − 1 )Ra] ,
+                                                                                          where
+                                                                                          
+                                                                                                  ∗
+                                                                                                 u is also estimated, and is given by Peng et al. [50,89]: u∗ =
+                                                                                            0.0027Ra1.04 + 0.0312Ra0.92 . Moreover, LESs typically require res-
+                                                                                          olution similar to that of the DNS in the near-wall region in order
+                                                                                          to resolve the thermal boundary layer [50], δT /H = 0.5/Nu. All sim-
+                                                                                          ulations of this section were at Prandtl number Pr = 0.7.
+                                                                                              Table 2 summarizes the cases simulated in this part of our
+                                                                                          study, together with the parameters and grid sizes as well as var-
+                                                                                          ious length scales estimates. Note that, for the estimate of Nus-
+Fig. 6. Production of root mean square temperature along vertical direction. Sym-         selt number, correlations Nu = 0.16 Ra0.284 and Nu = 0.075 Ra0.322
+bol: present LBM; Line: DNS of [80].                                                      were used for Ra ≤ 1010 and Ra > 1010 , respectively [18]. Table 2 re-
+                                                                                          veals that the dissipation scale is somewhat under-resolved for
+simulation, and until statistical convergence was reached. Statis-                        Ra = 107 and Ra = 109 , and even more for Ra = 1011 . However,
+tics were collected every ts = 5tc , where tc = H/U is the large eddy                     previous studies of sub-grid features of KBC model for various non-
+turnover time, in order to avoid correlation of the ﬁelds.                                thermal ﬂows [58,59,87] give us some conﬁdence about capturing
+                                                                                          low-order statistical properties of the ﬂow at this degree of under-
+                                                                                          resolution. On the other hand, the thermal boundary layer is re-
+3. Non-rotating Rayleigh-Bénard convection
+                                                                                          solved with about three grid points for Ra = 107 and Ra = 109 , and
+                                                                                          with at most two points for Ra = 1011 . This renders the present
+3.1. Parameter range
+                                                                                          simulations particularly challenging since both DNS and LES use a
+                                                                                          much more resolved grid in near-wall regions. We shall continue
+    Before presenting results for the non-rotating RBC, a discussion
+                                                                                          discussion of resolution requirements for the thermal KBC model
+of various length scales involved in the simulations is in order.
+                                                                                          in Sections 3.4 and 3.5.
+As a general rule, in the DNS simulations, the minimal grid size
+is bounded by two key scales, i.e. dissipation scale η = (ν 3 / )1/4 ,
+where  is the dissipation of turbulent kinetic energy [89,90], and                       3.2. Flow morphology
+the viscous and thermal boundary layers thickness, δ and δ T , re-
+spectively. In DNS, it is common to resolve the layers with at least                         In Figs. 1–3, instantaneous volume rendering of temperature
+six grid points [50]. Speciﬁcally for RBC, [89] estimates the dissipa-                    is shown for the three cases of Rayleigh number, together with
+
+
+
+
+Fig. 7. Temperature and velocity ﬁeld statistics for the different girds H = 32, H = 64 and H = 92. (a): Mean and root mean square temperature distribution along vertical
+direction; (b): Root mean square x- and z-components of velocity distribution along the vertical direction.
+                                                                 N. Frapolli et al. / Computers and Fluids 175 (2018) 2–19                                           9
+
+
+         Table 4                                                                                duction at the walls,
+         Nusselt number evaluation with two different methods,                                              
+         Eqs. (3.1) and (3.2), and for three different grids H = 32,                                   ∂ T  H
+                                                                                                Nu = −           ,                                               (3.2)
+         H = 64 and H = 92. Reported is also the relative error  with
+         respect to the reference value NuDNS = 15.59 of [80].
+                                                                                                       ∂ z w T
+           H                                   32           64           92                     where mean temperature gradient is evaluated by a semi-second-
+                   √                                                                            order ﬁnite difference scheme.
+           Nu = 1 + RaUPrwT
+                           T
+                              V
+                                 , Eq. (3.1)   12.33        14.93        15.35
+           Relative error  [%]                20.9         4.2          1.5
+                                                                                                    Results for the Nusselt number are reported in Table 3 where
+           Nu = − ∂∂Tz HT , Eq. (3.2)         10.89        14.63        15.48                  Eq. (3.1) was used for evaluation in all three cases. Good com-
+           Relative error  [%]                30.15        6.16         0.7                    parison is observed with respect to scaling laws as reported by
+                                                                                                Cheng et al. [18], in agreement with the 2/7 scaling for Ra < 1010
+                                                                                                [27,28,94] and the steeper 1/3 scaling for Ra > 1010 [26] when
+                                                                                                the boundary layer becomes turbulent. Note that, even using Eq.
+a slice of temperature and normalized vorticity ω = |ω|H /U, near
+                                                                                                (3.1) leads in an under-prediction of the Nusselt number when the
+the bottom wall, at the half-height of the thermal boundary layer
+                                                                                                under resolution is severe, as it is in the case Ra = 1011 . This is be
+z = 0.5δT . For rendering, red toward orange/yellow colors repre-
+                                                                                                attributed to the fact that at Ra = 1011 only one to two grid points
+sent hot temperatures while blue toward light blue colors repre-
+                                                                                                reside in the thermal boundary layer. Nevertheless, a fair estimate
+sent cold temperatures.
+                                                                                                for the Nusselt number is observed in all cases.
+    For all three cases, thermal plumes are clearly visible as lo-
+calized portions of ﬂuid with a temperature contrast to the back-
+ground. With the increase of Rayleigh number, thermal plumes be-                                3.4. Flow ﬁeld analysis at Ra = 107
+come smaller and less coherent. This is also reﬂected in the tem-
+perature slices near the bottom wall, where thermal plumes can                                      The case Ra = 107 is particularly interesting here since grid re-
+be clearly distinguished by the dark red color. Hot and cold plumes                             quirements in both LES [50] and DNS [80] can be compared to
+detaching from the bottom and the top walls, respectively, are re-                              LBM. Note that both LES and DNS use non-uniform grids with
+sponsible for the large amount of heat transport. As can be seen                                more resolution at the walls, unlike the LBM which operates on
+clearly in Figs. 1–3, thermal plumes have a mushroom-like shape,                                a uniform Cartesian grid. As compared to the DNS of [80], the
+while close to the walls they become sheet-like. With the help                                  LBM grid is 2.35 times ﬁner in the x- and y-directions. How-
+of the slices of temperature, one can see that sheet-like plumes                                ever, in the z-direction from bulk to wall, the LBM grid is 1.31
+create a thin network surrounding thermal cells while mushroom-                                 to 84.12 times coarser than DNS. Reﬁnement in the horizon-
+like plumes are emitted from the intersection spots, as shown in                                tal directions happens simply because LBM uses a Cartesian grid
+the volume renderings. For lower Rayleigh number, plumes are of                                 with constant spacing, and by itself is not a resolution require-
+the order of domain size and are distributed more or less homoge-                               ment. Similarly, the LES grid of [50] is up to 5.19 times ﬁner
+neously over the domain. When the Rayleigh number is increased,                                 in the near-wall region in the vertical direction. To summarize,
+thermal plumes tend to organize at the borders of convection cells                              while LBM operates on a somewhat ﬁner grid in the horizon-
+which become more coherent and visible. This is attributed to a                                 tal direction, it features a much coarser grid in near-wall regions,
+large-scale circulation (“wind”) developing progressively stronger                              also with respect to LES. In fact, while LES can use coarser grid
+with increasing Rayleigh number [91–93]. A decrease of plumes                                   in the bulk, it still requires DNS-like resolution near the walls
+size is also clearly visible on the slice of vorticity, Fig. 3.                                 [50].
+                                                                                                    The case Ra = 107 is taken here as a reference for which a
+                                                                                                more detailed study is performed, thanks to DNS data of [80].
+                                                                                                Mean temperature T and root mean square (rms) temperature Trms
+3.3. Nusselt number scaling
+                                                                                                are presented in Fig. 5a as a function of reduced vertical coordi-
+                                                                                                nate (normal to the bottom wall), z∗ = zNu/H. While the thermal
+   Different ways of computing the Nusselt number exist; resort-
+                                                                                                boundary layer is resolved with only three points in the LBM sim-
+ing to the conductive and convective heat transfer deﬁnitions, one
+                                                                                                ulation (z/δT = 0.37, see Table 2), both ﬁrst- and second-order
+can write, following [89]:
+                                                                                                statistics compare well with DNS. The mean and rms temperatures
+           √
+            RaPrwT V                                                                          demonstrate typical RBC behavior: after T drops through the ther-
+Nu = 1 +               ,                                                             (3.1)      mal boundary layer, a state of perfect mixing Tm = (TH + TC )/2 is
+             U T
+                                                                                                achieved and continues until the opposite wall is approached; Trms
+where ·V represent the average over the entire volume. Another                                goes through a maximum in the thermal boundary layer where
+approach computes the Nusselt number directly from the heat con-                                plumes emission is most frequent thus enhancing mixing with
+
+
+                                         Table 5
+                                         Simulations parameters and grid sizes for rotating Rayleigh–Bénard convection. From left to
+                                         right: compensated Rayleigh number Ra , Rayleigh number Ra, Ekman number E, number of
+                                         grid points in x- and y-direction Nx and Ny , number of grid points in z-direction Nz , non-
+                                         dimensional grid spacing x/H = y/H = z/H and relative grid spacing with respect to
+                                         thermal boundary layer z/δ T .
+
+                                           Case        
+                                                       Ra           Ra           E             Nx = Ny     Nz      x, y, z/H   z/δ T
+                                           RRBC1       21.4         3.09 · 104   4.27 · 10−3   128         64      0.0156         0.05
+                                           RRBC2       28.1         7.03 · 104   2.83 · 10−3   128         64      0.0156         0.08
+                                           RRBC3       44.6         2.81 · 105   1.41 · 10−3   128         64      0.0156         0.15
+                                           RRBC4       57.2         5.91 · 105   9.76 · 10−4   128         64      0.0156         0.20
+                                           RRBC5       92.9         2.53 · 106   4.72 · 10−4   256         128     0.0078         0.16
+                                           RRBC6       138.7        8.44 · 106   2.58 · 10−4   256         128     0.0078         0.23
+                                           RRBC7       207.2        2.81 · 107   1.42 · 10−4   384         192     0.0052         0.21
+                                           RRBC8       326.5        1.10 · 108   7.15 · 10−5   384         192     0.0052         0.31
+10                                                         N. Frapolli et al. / Computers and Fluids 175 (2018) 2–19
+
+
+
+
+Fig. 8. Visualization of instantaneous ﬂow ﬁeld at Ra = 3.09 · 104 . Top: Volume rendering of temperature T; Bottom left: Slice at z = 0.5δT of instantaneous temperature T;
+Bottom right: Slice at z = 0.5δT of instantaneous vertical vorticity ωz .
+
+
+
+
+the bulk ﬂow. Fig. 5b shows the rms of x- and z-components of                             velocities are underpredicted. However, the main physical mech-
+velocity, urms and wrms , respectively. LBM results compare well                          anism of the ﬂows is still qualitatively captured even with such
+with DNS. Vertical wrms and horizontal urms behave differently.                           a severely coarse grid. For the ﬁner grid H = 64, the statistics al-
+According to [80], the vertical rms velocity, produced by buoy-                           ready does not show any appreciable deviation from the correct
+ancy, reaches its maximum in the bulk and is transported to-                              values reported for a grid of H = 92, even if also in this case the
+ward the boundary by pressure mechanisms. In the boundary layer,                          under-resolution is quite signiﬁcant.
+wrms is redistributed to the horizontal rms velocity components by                            Table 4 reports Nusselt number evaluated with both
+pressure-strain rate making urms to reach maximum. The horizontal                         Eqs. (3.1) and (3.2). For the coarsest grid H = 32, Nusselt num-
+rms velocity components are both transported to the bulk and re-                          ber is under-predicted by at least  = 20.9%, with both ways of
+distributed in the boundary layer where both rms components are                           evaluation, as the result of over-estimated thermal boundary layer.
+dissipated. Finally, in Fig. 6 we compare a more subtle quantity, the                     However, with the grid H = 64, the error drops below  = 5%
+production of the rms of temperature, ς = −2w T  (dT /dz ), which                       when evaluated with the mean convective heat ﬂux (3.1), while
+includes correlation of vertical velocity and temperature w T  (tur-                    direct computation of the gradient in Eq. (3.2) results in a some-
+bulent kinetic energy production), where T  = T − T , and dT /dz is                      what larger error attributed to remaining slight over-estimation
+the mean vertical temperature gradient. While a small deviation in                        of the thermal boundary layer at this still coarse resolution. In-
+the peak value is noted, agreement between LBM and DNS is rea-                            deed, for H = 64, Kolmogorov scale is underestimated by a factor
+sonable also in this case. Summarizing, in spite of a much coarser                        z/η = 2.06 while the thermal layer is resolved with only about
+grid in the near-wall region, LBM compares well with DNS results                          two grid points: δT /z = 1.89.
+for a range of ﬁrst- and second-order statistics.                                             Summarizing, for the test-case Ra = 107 the required minimum
+                                                                                          resolution is achieved with Cartesian grid H = 64. Implicit sub-grid
+                                                                                          property of entropic LBMs has been known for some time, e. g.,
+3.5. Sub-grid features and grid requirement
+                                                                                          [58,59,87]. Here, it indicates that LBM can be useful for thermal
+                                                                                          convection simulation on relatively coarse grids. These estimations
+   In order to further probe into the sub-grid features of the ther-
+                                                                                          also explain the under-prediction of the Nusselt number of the
+mal LBM, we run the Ra = 107 case on different grids. In Fig. 7,
+                                                                                          case Ra = 1011 in Table 3. In this case, only less than two points
+the mean and rms temperatures, and rms x- and z-velocity are re-
+                                                                                          are present within the theoretical size of the thermal boundary
+ported for a coarse H = 32 and a ﬁner H = 64 grids in compari-
+                                                                                          layer; such an under-resolution leads in fact to an over-estimation
+son with the results for H = 92 reported in previous section. For a
+                                                                                          of the thermal boundary layer size, and consequently of an under-
+very coarse grid H = 32, the boundary layer in the mean temper-
+                                                                                          estimation of the Nusselt number.
+ature is overestimated, while the rms temperature and both rms
+                                                           N. Frapolli et al. / Computers and Fluids 175 (2018) 2–19                                                      11
+
+
+
+
+Fig. 9. Visualization of instantaneous ﬂow ﬁeld at Ra = 5.91 · 106 . Top: Volume rendering of temperature T; Bottom left: Slice at z = 0.5δT of instantaneous temperature T;
+Bottom right: Slice at z = 0.5δT of instantaneous vertical vorticity ωz .
+
+
+
+
+Fig. 10. Visualization of instantaneous ﬂow ﬁeld at Ra = 8.44 · 106 . Top: Volume rendering of temperature T; Bottom left: Slice at z = 0.5δT of instantaneous temperature T;
+Bottom right: Slice at z = 0.5δT of instantaneous vertical vorticity ωz .
+12                                                            N. Frapolli et al. / Computers and Fluids 175 (2018) 2–19
+
+
+
+
+Fig. 11. Visualization of instantaneous ﬂow ﬁeld at Ra = 1.1 · 108 . Top: Volume rendering of temperature T; Bottom left: Slice at z = 0.5δT of instantaneous temperature T;
+Bottom right: Slice at z = 0.5δT of instantaneous vertical vorticity ωz .
+
+
+
+
+                                                                                             Fig. 13. Negative of mean temperature gradient at mid-layer as a function of
+Fig. 12. Mean temperature proﬁles in RRBC. Three cases shown correspond to                   Raleigh number. Squares: present LBM, cases RRBC1-RRBC8 of Table 5; Circles: ref-
+RRBC1 (Ra = 3.09 · 104 ), RRBC3 (Ra = 2.81 · 105 ) and RRBC8 (Ra = 1.10 · 108 ) of Table     erence work of [43]; Full line: reference DNS of [17]. Asymptotic value is indicated
+5. Symbol: present LBM; Line: reference DNS of [17].                                         with dashed line.
+
+
+
+                                                                                             ulation parameters are reported in Table 5. Resolution of the ther-
+4. Rotating Rayleigh–Bénard convection                                                       mal boundary layer was maintained in a range from twenty down
+                                                                                             to three grid points, from RRBC1 to RRBC8. In accord with the anal-
+4.1. Parameter range                                                                         ysis in the previous sections, this complies with the minimum re-
+                                                                                             quired resolution. All simulations were done with no-slip bound-
+    We now proceed with the results for the rotating Rayleigh–                               ary conditions, and will be compared with the DNS of [17]. Prandtl
+Bénard convection (RRBC) where the viscous ﬂuid layer is un-                                 number is Pr = 1 and convective Rossby number Roc = E Ra/Pr is
+der the effect of rotation. This is reﬂected by the Ekman number                             Roc = 0.75 in all simulations.
+(1.4) that decreases with increasing rotation rate. Owing for the es-
+timate for the critical Rayleigh number (1.5), it is convenient to in-                       4.2. Flow morphology
+troduce the compensated Rayleigh number Ra      = Ra E4/3 as a mea-
+sure of super-criticality [46]. In this section we consider weak to                             Flow ﬁeld is visualized exemplary for four cases of Table 5 in
+medium rotational strength, E = 4.3 · 10−3 − 5.6 · 10−5 , for various                        Figs. 8 (RRBC1)– 11 (RRBC8). Each case is demonstrated with in-
+Rayleigh numbers. Eight cases were considered, the respective sim-                           stantaneous volume renderings of temperature and a slice of tem-
+                                                         N. Frapolli et al. / Computers and Fluids 175 (2018) 2–19                                                   13
+
+
+
+
+Fig. 14. Second-order statistics of RRBC on the mid-plane. (a) Reduced root mean square temperature Trms . (b) Reduced root mean square vertical velocity wrms . Symbol:
+present LBM; Full line: reference DNS [17]. Asymptotic scaling laws, Trms ∼ Ra−0.14 and wrms ∼ Ra0.431 [17] are indicated with dashed lines.
+
+
+
+                                                                                        4.3. Flow ﬁeld analysis
+
+                                                                                            We proceed with quantitative comparison of ﬂow ﬁeld of RRBC
+                                                                                        with the DNS of [17]. Mean temperature proﬁles for different
+                                                                                        Rayleigh numbers are shown to match very well with the DNS in
+                                                                                        Fig. 12. Fig. 12 demonstrates important implication of rotation on
+                                                                                        thermal convection, that is ﬁniteness of mean temperature gradi-
+                                                                                        ent ∂ T /∂ z in the bulk of ﬂuid layer. This is in contrast to non-
+                                                                                        rotating RBC, where the mean temperature gradient in the bulk
+                                                                                        vanishes if Rayleigh number is high enough. The magnitude of
+                                                                                        mean temperature gradient as a function of Rayleigh number is
+                                                                                        shown in Fig. 13. Both the present LBM simulation and the refer-
+                                                                                        ence DNS of [17] consistently conﬁrm saturation
+                                                                                                                                          of the mean tem-
+Fig. 15. Nusselt number dependence on Rayleigh number in RRBC. Symbol: present          perature gradient at a value of about (∂ T /∂ z )(H/T ) ≈ 0.2. Ex-
+LBM; Full line: reference DNS [17]. Non-rotating RBC scaling, Nu ∼ Ra2/7 is shown       planation for this saturation invokes RRBC-speciﬁc vortical ﬂow as-
+with dashed line.                                                                       sociated with thermal plumes: Cyclonic character of vortices men-
+                                                                                        tioned above induces their co-rotation (attraction and merging).
+                                                                                        Co-rotation and merging promotes mixing of the ﬂuid along hor-
+                                                                                        izontal planes (“lateral mixing”, [17]); this impedes penetration of
+                                                                                        buoyant elements at greater distances away from the boundaries
+perature and of vertical vorticity ωz near bottom wall, at the half-
+                                                                                        causing stratiﬁcation of the temperature and hence a ﬁnite mean
+height of the thermal boundary layer z = 0.5δT . The case RRBC1
+                                                                                        temperature gradient.
+in Fig. 8 for low Ra = 3.09 · 104 is characterized by convection-
+                                                                                            Second-order statistics in the bulk compares well with refer-
+rolls pattern associated with Küppers-Lortz instability [17], clearly
+                                                                                        ence DNS over a wide range of Rayleigh number, see Fig. 14. Note
+visible in both temperature and vertical vorticity. With Rayleigh
+                                                                                        that the scaling found in [17] is reproduced for both rms tempera-
+number increasing, convection rolls give way to chaotic interac-
+                                                                                        ture and vertical velocity, Trms ∼ Ra−0.14 and wrms ∼ Ra0.431 , respec-
+tions between vertical vortices associated with convection cells
+                                                                                        tively. Furthermore, the scaling exponent are consistent with those
+[17]. This scenario is realized in the RRBC4 simulation shown in
+                                                                                        of the non-rotating RBC, −0.14 ≈ −1/7 for Trms and 0.431 ≈ 3/7 for
+Fig. 9 for Ra = 5.91 · 105 . Thermal plumes start to be distinguish-
+                                                                                        wrms . This corresponds to the free-fall behavior, also observed in
+able in the volume rendering by the mushroom-like shapes but
+                                                                                        the non-rotating RBC and indicates that Rayleigh number is suf-
+also in the temperature slice by the dark red color. This state per-
+                                                                                        ﬁciently high so that dynamics of thermal plumes in the bulk
+sists up to Rayleigh number of the order Ra ∼ 6 · 105 , above which
+                                                                                        are no longer controlled by the boundary conditions [17]. How-
+thin thermal plumes spontaneously appear in the ﬂow ﬁeld. Ther-
+                                                                                        ever, this does not imply that turbulence in the bulk is indepen-
+mal plumes prevail near the junctions of convection cells where
+                                                                                        dent of the rotation rate. Indeed, the prefactor for Trms ∼ Ra−0.14
+cell boundaries merge with the thermal boundary layers attached                                        0.431 depends on the convective Rossby number Ro =
+to the hot and cold walls [17]. As the Rayleigh number is fur-                             wrms ∼ Ra
+                                                                                        and                                                                 c
+                                                                                        E Ra/Pr and differs from that of the non-rotating RBC. In fact,
+ther increased above Ra > 2 · 106 the ﬂow ﬁeld becomes domi-
+                                                                                        turbulence dynamics inherits a dependence on Roc from the near-
+nated by coherent plumes while the cellular convection pattern
+                                                                                        boundary motions, which in turn are strongly affected by rotation.
+becomes progressively more diﬃcult to discern. This states are re-
+alized with the RRBC6 and RRBC8 simulations shown in Fig. 10 for
+Ra = 8.44 · 106 and Fig. 11 for Ra = 1.1 · 108 . It is interesting to no-               4.4. Nusselt number scaling
+tice that, unlike in the non-rotating thermal convection, the ver-
+tical vorticity associated with thermal plumes is always cyclonic                          It is interesting to note that, in the high Rayleigh
+(of the same sign with the externally applied rotation). This is re-                    number regime, the Nusselt number can by estimated as
+ﬂected in the vertical vorticity slices of Figs. 9– 11, where vertical                  Nu ∼ (2Trms /T)(wrms H/2α ). When the above approximate scaling
+vorticity is negative (blue) in the zones associated with thermal                       Trms ∼ Ra−1/7 and wrms ∼ Ra3/7 are used, this estimate in turn gives
+plumes, also discernible as the intersection of the boundary ther-                      Nu ∼ Ra2/7 , similar to the scaling in the non-rotating RBC. This
+mal cells.                                                                              is conﬁrmed in Fig. 15, where Nusselt number computed in the
+14                                                            N. Frapolli et al. / Computers and Fluids 175 (2018) 2–19
+
+
+                          Table 6
+                          Simulations parameters and grid sizes for rapidly rotating Rayleigh–Bénard convection. From left to right: compensated
+                          Rayleigh number Ra   , Rayleigh number Ra, Ekman number E, number of grid points in x-, y- and z-directions Nx , Ny
+                          and Nz , aspect ratio A, non-dimensional grid spacing x/H = y/H = z/H, thermal boundary layer δ T , Ekman layer δ E ,
+                          relative grid spacing with respect to the thermal boundary layer z/δ T and relative grid spacing with respect to the
+                          Ekman layer z/δ E .
+                            
+                            Ra      Ra               E         Nx = Ny     Nz        A        x,y,z      δT            δE           z        z
+                                                                                                 H          H             H            δT        δE
+                                                         −7
+                            11      2.36988 · 1010
+                                                     10        256         1024      0.25    0.0 0 0977    0.2451         0.0 0 0316   0.00399   3.0895
+                            30      6.46330 · 1010   10−7      256         1024      0.25    0.0 0 0977    0.0267         0.0 0 0316   0.03659   3.0895
+                            90      1.93899 · 1011   10−7      256         1024      0.25    0.0 0 0977    0.0086         0.0 0 0316   0.11333   3.0895
+                            240     5.17064 · 1011   10−7      256         1024      0.25    0.0 0 0977    0.0033         0.0 0 0316   0.29642   3.0895
+
+
+
+
+present simulations is compared with the reference DNS. Also for                                 The case Ra = 11 in Fig. 16a represents the cellular regime
+the Nusselt number, the present simulation is in good agreement                              [46] which closely resembles the single-mode, or single-
+with the reference, and the correct scaling is recovered.                                    wavenumber solutions [54,96], with temperature anomaly θ ,
+    Summarizing, also for the rotating Rayleigh–Bénard problem,                              vertical velocity w and vertical vorticity ωz exhibiting strong
+compliance with the minimum resolution requirement for thermal                               vertical coherence over the entire layer depth. Cellular columns
+layer delivers excellent comparison to the DNS in a range of sta-                            are characterized by horizontal length scale, lcol = 4.8E1/3 H =
+tistical quantities. Note that estimated Ekman layer, δ E ∼ E1/2 H im-                       22.8, according to [46], in agreement with the seminal work of
+plies 4.1 ࣠ δ E ࣠ 1.6 for all cases of Table 5. In other words, at least                     [97] and which is close to the mean spacing observed in the
+one to two grid points are preserved in the Ekman layer by the                               present simulation, lcol ∼ 25.6.
+KBC simulation in the mildly rotating case.                                                      At greater forcing, i.e. by increasing Ra, and for Pr ⩽ 1 (see
+                                                                                             the case Ra = 30 in Fig. 16b), plumes-like structures form; ther-
+5. Rapidly rotating Rayleigh–Bénard convection                                               mal structures still spans over part of the depth of the ﬂuid layer,
+                                                                                             but the strong vertical coherence of the cellular regime is lost.
+5.1. Parameter range                                                                         We note in passing that, for Pr > 1 an intermediate state between
+                                                                                             cellular regime and plumes regime, the convective Taylor column
+    Finally, we address the rapidly rotating Rayleigh–Bénard con-                            regime, would appear [46]; however, this is beyond the scope of
+vection (RRRBC). Additional diﬃculty arises in this regime because                           present study. By further increasing the thermal forcing, as for the
+of a relatively low value of Ekman number, E = 10−7 considered                                      = 90 of Fig. 16c, geostrophic turbulence regime sets in:
+                                                                                             case Ra
+herein. Small Ekman number implies a thin Ekman layer of order                               all of the system-scale coherence is lost, and the ﬂow ﬁeld be-
+∼ E1/2 H. This renders RRRBC particularly challenging for state-of-                          comes anisotropic, with only some degree of coherence along the
+the-art DNS where Ekman layer typically needs to be resolved by                              vertical direction with respect to the horizontal directions observ-
+at least ten grid points [18].                                                               able [47]. Finally, when the compensated Rayleigh number is fur-
+    We consider here four cases, with parameters and length scales                           ther increased to Ra = 240 (Fig. 16d), a large-scale circulation ﬂow
+summarized in Table 6. Note that, the three lower Rayleigh num-                              forms on top of geostrophic turbulence. All ﬂow structures shown
+ber cases correspond to the parameter range considered in the                                in Fig. 16 agree qualitatively with the DNS and reduced system
+recent DNS studies of [41,46] while the fourth case of Ra   = 290
+                                                                                             simulations reported in the literature for the speciﬁed parameter
+corresponds to Ra = 0.517064 · 1012 and is about 2.5 times higher                            range [46,54,96].
+than what was reported in the DNS literature, to the best of our
+knowledge. Based on estimates of grid spacing relative to ther-
+                                                                                             5.3. Nusselt number scaling
+mal and Ekman layers, the challenge is the under-resolution of
+the latter and not of the former. In view of grid resolution anal-
+                                                                                                 Nusselt number is compared with the DNS of [46] in Fig. 17.
+ysis of non-rotating RBC in Section 3.5, the minimum of three grid                                                                            = 11, 30, 90, LBM
+                                                                                             While for lower Rayleigh number regimes, Ra
+points for resolving the thermal boundary layer is maintained at                                                                                          = 240,
+                                                                                             results are plotted against DNS data directly, the case Ra
+even the highest Rayleigh number. However, unlike the mildly ro-
+                                                                                             Fig. 16d, was compared with a ﬁt on the signiﬁcant DNS results
+tating regime of Section 4, the Ekman layer is not resolved. It is                             > 30) since we failed to ﬁnd published data for this very high
+                                                                                             (Ra
+well known that Ekman pumping (generation of vertical velocity)                                                                                            cases,
+                                                                                             Rayleigh number RRRBC regime. For the three highest Ra
+related to thin Ekman layer greatly inﬂuences heat transport at                               = 30, 90, 240, comparison is very good, and which demon-
+                                                                                             Ra
+the boundaries [55]. In that regards, the so-called thermal wind
+                                                                                             strates capability of LBM to capture the net heat transfer cor-
+or middle layer which mediates the enhanced transport of tem-
+                                                                                             rectly even without fully resolving the Ekman layer. For the lowest
+perature ﬂuctuations and vorticity between the Ekman layer and                                = 11, the Nusselt number is somewhat under-predicted which
+                                                                                             Ra
+the bulk ([46,55,95], see e. g. Fig. 2 in [55]) and is of the order
+                                                                                             probably attributes to insuﬃcient resolution. Indeed, the Rayleigh
+O(E1/3 H) ∼ 4.75, appears to be resolved by about four to ﬁve points
+                                                                                             number in this case is only slightly above the critical, Ra/Rac ࣃ 1.27,
+in present simulation. Thus, the low Ekman number regime scruti-
+                                                                                             where Rac ≃ 8.6956 · E−4/3 . Closeness to the stable regime makes
+nizes implicit sub-grid features of LBM.
+                                                                                             this special case particularly sensitive to under-resolution.
+5.2. Flow morphology
+                                                                                             5.4. Large scale circulation
+   Each of the four cases listed in Table 6 represents a particular
+RRRBC ﬂow regime exemplary demonstrated in Fig. 16 by volume                                     Using free-slip boundary conditions, a number of recent DNS
+rendering of the temperature anomaly,                                                        and reduced models simulations reported a large-scale circulation
+                                                                                             in RRRBC when the parameters are within the range considered
+θ (x, y, z ) = T (x, y, z ) − T (z ),                                             (5.1)                          ≃ 90, see [46,47,96,98,99]. However, with no-
+                                                                                             above, E = 10−7 , Ra
+where T (z ) is the mean temperature on the corresponding plane                              slip boundary conditions, the situation is different. In the recent
+at a given height.                                                                           study of [41], neither DNS nor the Ekman pumping-supplemented
+                                                         N. Frapolli et al. / Computers and Fluids 175 (2018) 2–19                                                         15
+
+
+
+
+Fig. 16. Volume rendering of temperature anomaly θ for various ﬂow regimes of rapidly rotating Rayleigh–Bénard convection at Ekman number E = 10−7 and Prandtl number
+                                                               = 30; (c) Geostrophic turbulence, Ra
+                                 = 11; (b) Plumes structure, Ra
+Pr = 1. (a) Cellular structure, Ra                                                                                                      = 240.
+                                                                                                   = 90; (d) Large scale circulation, Ra
+
+
+
+                                                                                        composite NH-QG model of [55] have found a persistent large-
+                                                                                                                          ≃ 90 and Pr = 1. Moreover, DNS
+                                                                                        scale circulation at E = 10−7 , Ra
+                                                                                        of [40] at a somewhat different parameter range argues that the
+                                                                                        no-slip boundary may even prevent formation of inverse cas-
+                                                                                        cade needed for spectral condensation. However, present simula-
+                                                                                        tion with no-slip boundary conditions demonstrates that persis-
+                                                                                        tent large-scale circulation structures do appear at higher Rayleigh
+                                                                                        numbers, as we have already pointed it out for the case E = 10−7 ,
+                                                                                         = 240, see Fig. 16d corresponding to Ra = 0.517064 · 1012 . It is
+                                                                                        Ra
+                                                                                        the goal of this section to quantify the large-scale circulation ob-
+                                                                                        served in this case.
+                                                                                           To that end, it is convenient to introduce the vertically-averaged
+                                                                                        2D horizontal ﬂow, or the 2D-mode,
+                                                                                                            H                                      H
+                                                                                                       1                                       1
+                                                                                        uz (x, y ) =             u(x, y, z )dz, vz (x, y ) =             v(x, y, z )dz, (5.2)
+                                                                                                       H    0                                  H    0
+Fig. 17. Nusselt number as a function of Rayleigh number for the rapidly rotating
+Rayleigh–Bénard convection. Symbol: present LBM; Full line: reference DNS [46].
+                                   > 30.                                               where u and v are the velocity components in the x- and y- direc-
+Thin line is a ﬁt on DNS data for Ra
+                                                                                        tions, respectively. Fast 3D ﬂuctuations, or the 3D-mode, are de-
+16                                                           N. Frapolli et al. / Computers and Fluids 175 (2018) 2–19
+
+
+
+
+                                                             ≃ 240. (a): Volume rendering of vertical vorticity ωz ; (b): Vertically averaged vertical vorticity ωz ; (c): Distri-
+Fig. 18. Large scale vortex ﬂow visualization for RRRBC at Ra
+bution of kinetic energy of the 2D-mode, k2D = (uz + vz )/2. .
+                                                   2  2
+
+
+
+
+ﬁned as:                                                                                        Table 7
+                                                                                                Evolution of kinetic energy of 2D-mode and of 3D horizontal and vertical
+u (x, y, z ) =u(x, y, z ) − uz (x, y ),                                        (5.3)           modes over six sequential time instances (time is in lattice units).
+
+                                                                                                  Time          1 · 106   2 · 106    3 · 106    4 · 106    5 · 106    6 · 106
+
+v (x, y, z ) =v(x, y, z ) − v (x, y ),
+                                z                                               (5.4)             K2D × 107     1.0797    2.2362     3.4950     5.2812     14.204     17.450
+                                                                                                  K3HD × 107    1.4335    1.3084     1.1789     2.3976     3.6301     3.5805
+                                                                                                  K3VD × 107    1.2541    1.0852     1.0206     2.1239     3.1024     2.9864
+
+w (x, y, z ) =w(x, y, z ).                                                     (5.5)
+The purely horizontal kinetic energy K2D associated with the 2D-
+mode and the horizontal and vertical components of kinetic en-
+ergy of the 3D-mode, K3HD and K3VD , respectively, are deﬁned as fol-                       of the vertical vorticity ωz in Fig. 18a shows formation of a
+lows:                                                                                       large-scale vortex on the right, surrounded by smaller turbulent
+                                                                                          structures. Snapshots of the vertically averaged vertical vorticity,
+         1                                                                                         
+K2D =             (u2z + v2z )dxdy,                                             (5.6)       (1/H ) 0H ωz dz, and distribution of kinetic energy of the 2D-mode,
+         2
+                                                                                            k2D = (u2z + v2z )/2, are demonstrated in Fig. 18b and18c, respec-
+                                                                                         tively. Both Fig. 18b and 18c clearly show a large-scale vortex.
+         1
+K3HD =             (u2 + v2 )dxdydz,                                          (5.7)           History of the various components of kinetic energy is pre-
+         2
+                                                                                            sented in Table 7. At the beginning of simulation, kinetic energy of
+                                                                                         the 2D-mode associated with the large-scale circulation is smaller
+         1
+K3VD =              w2 dxdydz.                                                 (5.8)       compared to the 3D-modes. However, at later times, the 2D-mode
+         2
+                                                                                            becomes progressively more energetic, up to reaching the values
+                                                          ≃ 240
+   Visualizations of the large-scale circulation ﬂow for Ra                                 of about ﬁve times larger than kinetic energy of each of the 3D-
+is presented by various means in Fig. 18. Volume rendering                                  modes.
+                                                            N. Frapolli et al. / Computers and Fluids 175 (2018) 2–19                                                       17
+
+
+                                                                                           model is capable of quantitatively capturing the low-order statis-
+                                                                                           tics of the ﬂow and temperature dynamics. In our study, we used
+                                                                                           the uniform grid in order to present a compelling, simplest lattice
+                                                                                           Boltzmann algorithm. However, enhanced capabilities are readily
+                                                                                           available when using grid reﬁnement strategies [87]. Also, more
+                                                                                           isotropic lattices with enhanced Galilean invariance can be used
+                                                                                           in order to increase the range of velocity magnitude in the low
+                                                                                           Mach number lattice Boltzmann formulation [103]. It is thus pos-
+                                                                                           sible that the present model can serve a viable alternative to more
+                                                                                           conventional LES, RANS and other methods to study demanding
+                                                                                           regimes of thermal convection.
+
+                                                                                           Acknowledgments
+
+                                                                                              This work was supported by the European Research Council
+ 19. Energy spectra of 2D (dashed line) and 3D (solid line) modes, κ =
+Fig.
+  κx2 + κy2 is the absolute value of the horizontal wave-vector. The 3D-mode displays      (ERC) Advanced Grant No. 291094-ELBM. The computational re-
+inertial range K3D ∼ κ −5/3 while the 2D-mode displays inertial range K2D ∼ κ −3 .         sources at the Swiss National Super Computing Center CSCS were
+                                                                                           provided under the grant s492 and s630.
+
+    Finally, in order to provide further quantitative evidence of a                        References
+large-scale circulation, Fig. 19 shows energy spectra of 2D and 3D
+modes (both horizontal and vertical components taken together                                [1] Busse FH. Differential rotation in stellar convection zones. Astrophys J
+for the latter). Down from the convective scale κ c ∼ 4, the iner-                               1970;159:629.
+                                                                                             [2] McKenzie DP, Roberts JM, Weiss NO. Convection in the earth’s mantle: to-
+tial range of the 3D-mode is consistent with Kolmogorov’s scaling,                               wards a numerical simulation. J Fluid Mech 1974;62(03):465–538.
+K3D ∼ κ −5/3 . On the other hand, energy spectrum of the 2D-mode                             [3] Cardin P, Olson P. Chaotic thermal convection in a rapidly rotating spheri-
+demonstrates inertial range with the scaling K2D ∼ κ −3 , typical of                             cal shell: consequences for ﬂow in the outer core. Phys Earth Planet Inter
+                                                                                                 1994;82(3–4):235–59.
+two-dimensional turbulence in the presence of spectral condensa-                             [4] Cattaneo F, Emonet T, Weiss N. On the interaction between convection and
+tion [100] or 3D rotating turbulence at moderate Rossby number                                   magnetic ﬁelds. Astrophys J 2003;588(2):1183.
+[101]. Dominance of the large-scale 2D-mode is evidenced by a                                [5] Wyngaard JC. Atmospheric turbulence. Annu Rev Fluid Mech
+                                                                                                 1992;24(1):205–34.
+higher energy content at smaller wave-numbers compared to that                               [6] Hartmann DL, Moy LA, Fu Q. Tropical convection and the energy balance at
+of the 3D-mode, while ﬂattening of the 3D mode at small κ indi-                                  the top of the atmosphere. J Clim 2001;14(24):4495–511.
+cating presence of large-scale overturning structures [99]. In gen-                          [7] Marshall J, Schott F. Open-ocean convection: observations, theory, and mod-
+                                                                                                 els. Rev Geophys 1999;37(1):1–64.
+eral, the spectra of both modes upscale from their local minima at
+                                                                                             [8] Thorpe SA. Langmuir circulation. Annu Rev Fluid Mech 2004;36:55–79.
+κ ࣠ 100 are similar to those found by the NH-QGS model for free-                             [9] Ghorai S, Hill NA. Penetrative phototactic bioconvection. Phys Fluids
+                          = 90, E = 10−7 , and by the DNS and the
+slip boundaries [47] at Ra                                                                       2005;17(7):074101. (1994-present).
+                                                                                            [10] Kuznetsov AV. Bio-thermal convection induced by two different species of mi-
+Ekman pumping-supplemented NH-QGS model in [41]. The inertial
+                                                                                                 croorganisms. Int Commun Heat Mass Trans 2011;38(5):548–53.
+range for the 3D mode is somewhat larger in Fig. 19 than that re-                           [11] Brent AD, Voller VR, Reid KTJ. Enthalpy-porosity technique for modeling con-
+ported in [41,47] which might be due to the higher Rayleigh num-                                 vection-diffusion phase change: application to the melting of a pure metal.
+ber in the present simulation.                                                                   Numer Heat Trans Part A Appl 1988;13(3):297–318.
+                                                                                            [12] Incropera FP. Convection heat transfer in electronic equipment cooling. J Heat
+    However, present simulation also demonstrates a strong and                                   Transfer 1988;110(4b):1097–111.
+relatively narrow peak downscale in both spectra. Similarly shaped                          [13] Hunt GR, Linden PP. The ﬂuid mechanics of natural ventilation? displace-
+peaks were also observed in the simulation of forced 2D turbu-                                   ment ventilation by buoyancy-driven ﬂows assisted by wind. Build Env
+                                                                                                 1999;34(6):707–20.
+lence [100] and of forced rotating stratiﬁed turbulence [102], at the                       [14] Chillà F, Schumacher J. New perspectives in turbulent Rayleigh–Bénard con-
+corresponding scales associated with the forcing. We speculate that                              vection. Eur Phys J E 2012;35(7):1–25.
+apparent forcing in the present high-Rayleigh number simulation is                          [15] Siggia ED. High rayleigh number convection. Annu Rev Fluid Mech
+                                                                                                 1994;26(1):137–68.
+an effect of vortical dynamics in the middle sub-layer and its role                         [16] Ahlers G, Grossmann S, Lohse D. Heat transfer and large scale dynamics in
+is to enhance the otherwise non-local inverse cascade [40,41,47] of                              turbulent Rayleigh–Bénard convection. Rev Mod Phys 2009;81(2):503.
+the 2D-mode to produce a sustainable large-scale circulation. Cer-                          [17] Julien K, Legg S, McWilliams J, Werne J. Rapidly rotating turbulent
+                                                                                                 Rayleigh–Bénard convection. J Fluid Mech 1996;322:243–73.
+tainly, this question needs a much deeper study with more reso-
+                                                                                            [18] Cheng JS, Stellmach S, Ribeiro A, Grannan A, King EM, Aurnou JM. Laborato-
+lution for the Ekman layer, but it goes beyond the purpose of the                                ry-numerical models of rapidly rotating convection in planetary cores. Geo-
+present contribution. To summarize, simulation of rapidly rotating                               phys J Int 2015;201(1):1–17.
+                                                                                            [19] Chandrasekhar S. Hydrodynamic and hydromagnetic stability. Dover, Cam-
+RBC hints at the appearance of sustainable large-scale circulation
+                                                                                                 bridge; 1981.
+also in the case of no-slip boundaries, once the Rayleigh number                            [20] Drazin PG, Reid WH. Hydrodynamic stability. Cambridge University Press,
+is large enough.                                                                                 Cambridge; 1981.
+                                                                                            [21] Getling AV. Structures and dynamics in advanced series in nonlinear dynam-
+                                                                                                 ics 11. World Scientiﬁc Publishing Co., Inc., River Edge, NJ; 1998.
+6. Conclusion                                                                               [22] Bodenschatz E, Pesch W, Ahlers G. Recent developments in Rayleigh–Bénard
+                                                                                                 convection. Annu Rev Fluid Mech 20 0 0;32(1):709–78.
+                                                                                            [23] Pellew A, Southwell RV. On maintained convective motion in a ﬂuid heated
+    In this paper, we have accessed capabilities of the new two-
+                                                                                                 from below. In: Proceedings of the royal society of london a: mathematical,
+population entropic multi-relaxation lattice Boltzmann in a range                                physical and engineering sciences, 176. The Royal Society; 1940. p. 312–43.
+of problems related to turbulent thermal convection. Extensive                              [24] Oberbeck A. Über die wärmeleitung der ﬂüssigkeiten bei berücksich-
+                                                                                                 tigung der strömungen infolge von temperaturdifferenzen. Ann Phys
+simulation plan was carried out for both non-rotating and rotat-
+                                                                                                 1879;243(6):271–92.
+ing Rayleigh-Bénard convection, including the demanding rotation-                           [25] Boussinesq J. Théorie analytique de la chaleur: mise en harmonie avec la ther-
+ally constrained situation for the latter. Select cases were com-                                modynamique et avec la théorie mécanique de la lumière, 2. Gauthier-Villars;
+pared to existing DNS and asymptotic reduced models. Overall, this                               1903.
+                                                                                            [26] Malkus WVR. The heat transport and spectrum of thermal turbulence. In:
+study demonstrates that even with the modest grid resolution re-                                 Proceedings of the royal society of london a: mathematical, physical and en-
+quirements as compared to both DNS and LES, the present KBC                                      gineering sciences, 225. The Royal Society; 1954. p. 196–212.
+18                                                          N. Frapolli et al. / Computers and Fluids 175 (2018) 2–19
+
+
+[27] Chillá F, Ciliberto S, Innocenti C, Pampaloni E. Boundary layer and scal-              [64] Guo Z, Zheng C, Shi B, Zhao TS. Thermal lattice Boltzmann equation for low
+     ing properties in turbulent thermal convection. Il Nuovo Cimento D                          mach number ﬂows: decoupling model. Phys Rev E 2007;75(3):036704.
+     1993;15(9):1229–49.                                                                    [65] Karlin IV, Sichau D, Chikatamarla SS. Consistent two-population lattice Boltz-
+[28] Glazier JA, Segawa T, Naert A, Sano M. Evidence against ultrahard thermal                   mann model for thermal ﬂows. Phys Rev E 2013;88(6):063310.
+     turbulence at very high rayleigh numbers. Nature 1999;398(6725):307–10.                [66] Pareschi G, Frapolli N, Chikatamarla SS, Karlin IV. Conjugate heat transfer
+[29] Kraichnan RH. Turbulent thermal convection at arbitrary prandtl number.                     with the entropic lattice Boltzmann method. Phys Rev E 2016;94(1):013305.
+     Phys Fluids 1962;5(11):1374–89. (1958–1988).                                           [67] Shan XW. Simulation of rayleigh–bénard convection using a lattice Boltzmann
+[30] Shraiman BI, Siggia ED. Heat transport in high-rayleigh-number convection.                  method. Phys Rev E 1997;55(3):2780.
+     Phys Rev A 1990;42(6):3650.                                                            [68] Barrios G, Rechtman R, Rojas J, Tovar R. The lattice Boltzmann equation for
+[31] Grossmann S, Lohse D. Scaling in thermal convection: a unifying theory. J                   natural convection in a two-dimensional cavity with a partially heated wall.
+     Fluid Mech 20 0 0;407:27–56.                                                                J Fluid Mech 20 05;522:91–10 0.
+[32] Grossmann S, Lohse D. Multiple scaling in the ultimate regime of thermal               [69] Kao P-H, Yang R-J. Simulating oscillatory ﬂows in Rayleigh–Bénard con-
+     convection. Phys Fluids 2011;23(4):045108. (1994-present).                                  vection using the lattice Boltzmann method. Int J Heat Mass Trans
+[33] Nakagawa Y, Frenzen P. A theoretical and experimental study of cellular con-                2007;50(17):3315–28.
+     vection in rotating ﬂuids. Tellus 1955;7(1):1–21.                                      [70] Ripesi P, Biferale L, Sbragaglia M, Wirth A. Natural convection with mixed in-
+[34] King EM, Aurnou JM. Thermal evidence for taylor columns in turbulent rotat-                 sulating and conducting boundary conditions: low- and high-rayleigh-num-
+     ing Rayleigh-Bénard convection. Phys Rev E 2012;85(1):016313.                               ber regimes. J Fluid Mech 2014;742:636–63.
+[35] Niemela JJ, Skrbek L, Sreenivasan KR, Donnelly RJ. Turbulent convection at             [71] Wei Y, Wang Z, Yang J, Dou H-S, Qian Y-H. A simple lattice Boltzmann
+     very high rayleigh numbers. Nature 20 0 0;404(6780):837–40.                                 model for turbulence Rayleigh–Bénard thermal convection. Comput Fluids
+[36] Burnishev Y, Segre E, Steinberg V. Strong symmetrical non-oberbeck–boussi-                  2015;118:167–71.
+     nesq turbulent convection and the role of compressibility. Phys Fluids                 [72] Lohse D, Toschi F. Ultimate state of thermal convection. Phys Rev Lett
+     2010;22(3):035108. (1994-present).                                                          2003;90:034502.
+[37] Urban P, Musilová V, Skrbek L. Eﬃciency of heat transfer in turbulent                  [73] Benzi R, Toschi F, Tripiccione R. On the heat transfer in Rayleigh-Bénard sys-
+     Rayleigh–Bénard convection. Phys Rev Lett 2011;107(1):014302.                               tems. J Stat Phys 1998;93:901–18.
+[38] He X, Funfschilling D, Nobach H, Bodenschatz E, Ahlers G. Transition to                [74] Calzavarini E, Toschi F, Tripiccione R. Evidence of Bolgiano-Obhukhov
+     the ultimate state of turbulent rayleigh–bénard convection. Phys Rev Lett                   scaling in three-dimensional Rayleigh-Bénard convection. Phys Rev E
+     2012;108(2):024502.                                                                         2002;66:016304.
+[39] Stevens RJAM, Lohse D, Verzicco R. Prandtl and rayleigh number dependence              [75] Biferale L, Calzavarini E, Toschi F, Tripiccione R. Universality of anisotropic
+     of heat transport in high rayleigh number thermal convection. J Fluid Mech                  ﬂuctuations from numerical simulations of turbulent ﬂows. Europhys Lett
+     2011;688:31–43.                                                                             2003;64:461–7.
+[40] Kunnen RPJ, Ostilla-Mnico R, van der Poel EP, Verzicco R, Lohse D. Transition          [76] Scagliarini A, Gylfason A, Toschi F. Heat-ﬂux scaling in turbulent
+     to geostrophic convection: the role of the boundary conditions. J Fluid Mech                Rayleigh-Bénard convection with an imposed longitudinal wind. Phys
+     2016;799:413–32.                                                                            Rev E 2014;89:043012.
+[41] Plumley M, Julien K, Marti P, Stellmach S. The effects of Ekman pumping on             [77] Clercx HJH, Lavezzo V, Toschi F. Direct numerical simulation and lagrangian
+     quasi-geostrophic Rayleigh-Bénard convection. J Fluid Mech 2016;803:51–71.                  particle tracking in turbulent Rayleigh–Bénard convection. In: Direct and
+[42] Stevens RJAM, Clercx HJH, Lohse D. Heat transport and ﬂow structure in ro-                  large-eddy simulation VIII. Springer; 2011. p. 365–70.
+     tating Rayleigh-Bénard convection. Eur J Mech B Fluids 2013;40:41–9.                   [78] Biferale L, Perlekar P, Sbragaglia M, Toschi F. Convection in multiphase ﬂuid
+[43] Kunnen RPJ, Geurts BJ, Clercx HJH. Turbulence statistics and energy budget in               ﬂows using lattice Boltzmann methods. Phys Rev Lett 2012;108(10):104502.
+     rotating Rayleigh-Bénard convection. Eur J Mech B Fluids 2009;28:578–89.               [79] Karlin IV, Bösch F, Chikatamarla SS. Gibbs’ Principle for the lattice-kinetic the-
+[44] Kunnen RPJ, Clercx HJH, Geurts BJ. Heat ﬂux intensiﬁcation by vortical ﬂow                  ory of ﬂuid dynamics. Phys Rev E 2014;90(3):031302.
+     localization in rotating convection. Phys Rev E 2006;74:056306.                        [80] Togni R, Cimarelli A, De Angelis E. Physical and scale-by-scale analysis of
+[45] Kunnen RPJ, Geurts BJ, Clercx HJH. Experimental and numerical investigation                 Rayleigh–Bénard convection. J Fluid Mech 2015;782:380–404.
+     of turbulent convection in a rotating cylinder. J Fluid Mech 2010;642:445–76.          [81] Karlin IV, Ferrante A, Öttinger HC. Perfect entropy functions of the lattice
+[46] Stellmach S, Lischper M, Julien K, Vasil G, Cheng JS, Ribeiro A, et al. Approach-           Boltzmann method. Europhys Lett 1999;47(2):182.
+     ing the asymptotic regime of rapidly rotating convection: boundary layers              [82] Shakhov EM. Generalization of the krook kinetic relaxation equation. Fluid
+     versus interior dynamics. Phys Rev Lett 2014;113(25):254501.                                Dyn 1968;3:95–6.
+[47] Aurnou JM, Calkins MA, Cheng JS, Julien K, King EM, Nieves D, et al. Rotating          [83] Levermore D. Moment closure hierarchies for kinetic theories. J Stat Phys
+     convective turbulence in earth and planetary cores. Phys Earth Planet Inter                 1996;83:1021–65.
+     2015;246:52–71.                                                                        [84] Gorban AN, Karlin IV. General approach to constructing models of the boltz-
+[48] Eidson TM. Numerical simulation of the turbulent Rayleigh–Bénard problem                    mann equation. Phys A 1994;206:401–20.
+     using subgrid modelling. J Fluid Mech 1985;158:245–68.                                 [85] Ansumali S, Arcidiacono S, Chikatamarla SS, Prasianakis NI, Gorban AN,
+[49] Kimmel SJ, Domaradzki AJ. Large eddy simulations of Rayleigh–Bénard con-                    Karlin IV. Quasi-equilibrium lattice boltzmann method. Eur Phys J B
+     vection using subgrid scale estimation model. Phys Fluids 20 0 0;12(1):169–84.              2007;56(2):135–9.
+     (1994-present).                                                                        [86] Bösch F, Chikatamarla SS, Karlin IV. Entropic multirelaxation lattice Boltz-
+[50] Peng S-H, Hanjalic K, Davidson L. Large-eddy simulation and deduced scaling                 mann models for turbulent ﬂows. Phys Rev E 2015;92:043309. doi:10.1103/
+     analysis of Rayleigh–Bénard convection up to ra=109 . J Turbul 2006(7):N66.                 PhysRevE.92.043309. http://link.aps.org/doi/10.1103/PhysRevE.92.043309.
+[51] Kenjereš S, Hanjalić K. Transient analysis of Rayleigh–Bénard convection with         [87] Dorschner B, Frapolli N, Chikatamarla SS, Karlin IV. Grid reﬁnment for en-
+     a RANS model. Int J Heat Fluid Flow 1999;20(3):329–40.                                      tropic lattice Boltzmann models. Phys Rev E 2016;94(5):053311.
+[52] Kenjereš S, Hanjalić K. Numerical insight into ﬂow structure in ultraturbulent        [88] Kupershtokh AL. New method of incorporating a body force term into the lat-
+     thermal convection. Phys Rev E 2002;66(3):036307.                                           tice Boltzmann equation. In: Proceedings of the 5th international EHD work-
+[53] Julien K, Knobloch E, Werne J. A new class of equations for rotationally con-               shop, university of Poitiers, Poitiers, France; 2004. p. 241–6.
+     strained ﬂows. Theor Comput Fluid Dyn 1998;11(3–4):251–61.                             [89] Kerr RM. Rayleigh number scaling in numerical convection. J Fluid Mech
+[54] Sprague M, Julien K, Knobloch E, Werne J. Numerical simulation of an asymp-                 1996;310:139–79.
+     totically reduced system for rotationally constrained convection. J Fluid Mech         [90] Grötzbach G. Spatial resolution requirements for direct numerical simulation
+     2006;551:141–74.                                                                            of the Rayleigh–Bénard convection. J Comput Phys 1983;49(2):241–64.
+[55] Julien K, Aurnou JM, Calkins MA, Knobloch E, Marti P, Stellmach S, et al. A            [91] Niemela JJ, Skrbek L, Sreenivasan KR, Donnelly RJ. The wind in conﬁned ther-
+     nonlinear model for rotationally constrained convection with Ekman pump-                    mal convection. J Fluid Mech 2001;449:169–78.
+     ing. J Fluid Mech 2016;798:50–87.                                                      [92] Verzicco R, Camussi R. Numerical experiments on strongly turbulent thermal
+[56] Succi S. The lattice boltzmann equation: for ﬂuid dynamics and beyond. Ox-                  convection in a slender cylindrical cell. J Fluid Mech 2003;477:19–49.
+     ford University Press; 2001.                                                           [93] Gayen B, Hughes GO, Griﬃths RW. Completing the mechanical en-
+[57] Krüger T, Kusumaatmaja H, Kuzmin A, Shardt O, Silva G, Viggen E. The lattice                ergy pathways in turbulent Rayleigh–Bénard convection. Phys Rev Lett
+     Boltzmann method. principles and practice. Springer; 2017.                                  2013;111(12):124301.
+[58] Dorschner B, Bösch F, Chikatamarla SS, Boulouchos K, Karlin IV. Entropic mul-          [94] Rossby HT. A study of Bénard convection with and without rotation. J Fluid
+     ti-relaxation time lattice Boltzmann model for complex ﬂows. J Fluid Mech                   Mech 1969;36(02):309–35.
+     2016;801:623–51.                                                                       [95] Heard WB, Veronis G. Asymptotic treatment of the stability of a rotating layer
+[59] Dorschner B, Chikatamarla SS, Karlin IV. Transitional ﬂows with the entropic                of ﬂuid with rigid boundaries. Geophys Fluid Dyn 1971;2:299–316.
+     lattice Boltzmann method. J Fluid Mech 2017;824:388–412.                               [96] Nieves D, Rubio AM, Julien K. Statistical classiﬁcation of ﬂow morphology in
+[60] Mazloomi Moqaddam A, Chikatamarla SS, Karlin IV. Drops bouncing off                         rapidly rotating Rayleigh–Bénard convection. Phys Fluids 2014;26(8):086602.
+     macro-textured superhydrophobic surfaces. J Fluid Mech 2017;824:866–85.                [97] Veronis G. Cellular convection with ﬁnite amplitude in a rotating ﬂuid. J Fluid
+[61] Frapolli N, Chikatamarla SS, Karlin IV. Entropic lattice Boltzmann model for                Mech 1959;5(03):401–35.
+     compressible ﬂows. Phys Rev E 2015;92(6):061301.                                       [98] Favier B, Silvers LJ, Proctor MRE. Inverse cascade and symmetry breaking in
+[62] Flint C, Vahala G. Partial entropic stabilization of lattice Boltzmann magneto-             rapidly rotating boussinesq convection. Phys Fluids 2014;26(9):096605.
+     hydrodynamics. Phys Rev E 2018;97:013302.                                              [99] Rubio AM, Julien K, Knobloch E, Weiss JB. Upscale energy transfer in
+[63] He X, Chen S, Doolen GD. A novel thermal model for the lattice Boltzmann                    three-dimensional rapidly rotating turbulent convection. Phys Rev Lett
+     method in incompressible limit. J Comput Phys 1998;146(1):282–300.                          2014;112(14):144501.
+                                                         N. Frapolli et al. / Computers and Fluids 175 (2018) 2–19                                                       19
+
+
+[100] Chertkov M, Connaughton C, Kolokolov I, Lebedev V. Dynamics of energy con-        [102] Smith LM, Waleffe F. Generation of slow large scales in forced rotating strat-
+      densation in two-dimensional turbulence. Phys Rev Lett 2007;99(8):084501.               iﬁed turbulence. J Fluid Mech 2002;451:145–68.
+[101] Smith LM, Waleffe F. Transfer of energy to two-dimensional large                  [103] Chikatamarla SS, Frouzakis CE, Karlin IV, Tomboulides AG, Boulouchos KB. Lat-
+      scales in forced, rotating three-dimensional turbulence. Phys ﬂuids                     tice boltzmann method for direct numerical simulation of turbulent ﬂows. J
+      1999;11(6):1608–22.                                                                     Fluid Mech 2010;656:298–308.
+

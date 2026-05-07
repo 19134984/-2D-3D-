@@ -1,0 +1,7 @@
+interface:
+  display_name: "OpenACC Porting"
+  short_description: "Port and review repo kernels in OpenACC style."
+  default_prompt: "Use $openacc-porting to port this CPU kernel to the repo OpenACC style."
+
+policy:
+  allow_implicit_invocation: true

@@ -1,0 +1,760 @@
+                              RESEARCH ARTICLE         APPLIED PHYSICAL SCIENCES                                                      OPEN ACCESS
+
+
+
+
+Hierarchical network of thermal plumes and their dynamics in
+turbulent Rayleigh–Bénard convection
+Prafulla P. Shevkara , Roshan J. Samuela , Georgy Zinchenkoa , Mathis Bodeb , Jörg Schumachera,c ID , and Katepalli R. Sreenivasanc,d,e,1 ID
+
+Contributed by Katepalli R. Sreenivasan; received February 7, 2025; accepted July 6, 2025; reviewed by Genta Kawahara and Fabian Waleffe
+
+
+The link between characteristic coherent structures and their statistical properties in
+turbulent flows remains largely unclear and is thus a central bottleneck for a better                               Significance
+understanding of turbulent flows. Here, we demonstrate this link for the important
+problem of thermal convection. We show how the hierarchical plume network in the                                    Every turbulent flow organizes
+near-wall region of the flow, which becomes increasingly sparse with increasing distance                            part of its motion into ordered
+away from the wall, is connected to the marginal stability of the thermal boundary                                  coherent structures, but
+layer and the resulting global heat transport. Our results, which are based on a series                             determining their nature is
+of direct numerical simulations for Rayleigh numbers up to Ra = 1011 in a relatively                                difficult because of the
+shallow layer, suggest a highly fluctuating thermal boundary layer that is composed of                              surrounding randomness. Here,
+local building blocks in terms of plumes, which are the essential drivers of turbulent                              we address this difficulty for the
+heat transport. These thermal plumes are found in a dynamically perpetual process of                                important problem of thermal
+formation and aggregation that can be described, particularly well for Rayleigh numbers                             convection. We demonstrate that
+Ra ≳ 109 , by a von Smoluchowski equation resulting in a gamma distribution of the                                  this complex system is
+local plume spacing, consistent with measurements. Similarity manifests with respect
+                                                                                                                    hierarchically organized bottom
+to the horizontal extension of the network, the vertical hierarchical plume clustering
+                                                                                                                    up from thermal plumes—the
+away from the wall and the number of plumes, over an order of magnitude of the
+thermal boundary layer thickness. Our findings suggest the dominance of dynamical                                   elementary “quanta”—which
+local processes near the wall, rather than a global boundary layer instability.                                     cluster to form large-scale
+                                                                                                                    patterns by ongoing extinction
+turbulent convection | boundary layer instability | thermal plumes | self-similarity                                and renewal processes,
+                                                                                                                    analogous to particle coagulation
+Turbulence at high Reynolds number is characterized by an irregular motion over a wide                              in multiphase phenomena. Heat
+range of length and time scales. However, this does not imply that the fluid motion is                              transport originates locally in a
+featureless. It is often organized into eddies that are coherent over different lengths and                         strongly fluctuating environment,
+time scales. Examples of such coherent features are vortex tube tangles in isotropic flows                          challenging the picture of a global
+(1–8), very large-scale streamwise motions in atmospheric boundary layers as well as                                fluid layer instability near the wall.
+pipes (9–11), large-scale cellular, and roll patterns in turbulent convection (12–16), and
+coherent updrafts and downdrafts in the core–mantle boundary inside the Earth (17). The
+tight connection between flow structures and statistical properties is still a major unknown
+in turbulence research. Despite the considerable research on this topic, which has resulted
+in various reduced models that encapsulate large-scale organization (18–21), or act as                          Author affiliations: a Institut für Thermo- und
+                                                                                                                Fluiddynamik, Department of Mechanical Engineering,
+essential building blocks of the flow structure (22), the general way of incorporating                          Ilmenau D-98684, Germany; b Jülich Supercomputing
+coherent structures into an optimal statistical description has remained largely elusive.                       Centre, Forschungszentrum Jülich GmbH, Jülich D-52425,
+                                                                                                                Germany; c Department of Mechanical and Aerospace
+   In this paper, we focus on this connection for the particular case of buoyancy-driven                        Engineering, Tandon School of Engineering, New York
+turbulence. The paradigm for this case is Rayleigh–Bénard convection (RBC), which is                            City, NY 11201; d Department of Mathematics, Courant
+                                                                                                                Institute of Mathematical Sciences, New York City,
+a fluid layer of height H between two impermeable walls, uniformly heated from below                            NY 10012; and e Department of Physics, New York
+and cooled from above (23–26). In RBC, the characteristic near-wall flow structure                              University, New York City, NY 10012
+that carries heat from the bottom to the top is the thermal plume, an unstable local
+fragment of the thermal boundary layer lumped together near the top and bottom walls.
+Thermal plumes contain colder or hotter fluid that falls or rises, respectively, forming                        Author contributions: P.P.S., R.J.S., G.Z., M.B., J.S., and
+                                                                                                                K.R.S. designed research; performed research; analyzed
+a network near the boundary planes when viewed from the top. Plumes and their                                   data; and wrote the paper.
+geometrical configurations have been identified and analyzed in experiments (27–33)                             Reviewers: G.K., Osaka University; and F.W., University of
+and simulations (16, 34–38), using methods that separate plumes from boundary layers                            Wisconsin-Madison.
+(39), or are based on plume-conditioned statistics (40), but these analyses are limited                         The authors declare no competing interest.
+to low and moderate Rayleigh numbers Ra, the dimensionless measure of the thermal                               Copyright © 2025 the Author(s). Published by PNAS.
+                                                                                                                This open access article is distributed under Creative
+driving of RBC. Even at these low Ra, questions such as the influence of geometry with                          Commons       Attribution-NonCommercial-NoDerivatives
+increasing Rayleigh number, detailed relationship of the morphology of thermal plume                            License 4.0 (CC BY-NC-ND).
+network to the transport of momentum and heat, and the instability mechanisms that                              1 To whom correspondence may be addressed. Email:
+
+trigger the network’s formation and temporal evolution, have remained unanswered. The                           katepalli.sreenivasan@nyu.edu.
+
+network formation seems to start with local processes near the wall, which successively                         This article contains supporting information online
+                                                                                                                at https://www.pnas.org/lookup/suppl/doi:10.1073/pnas.
+cluster and coarsen with increasing distance away from the wall, initiating a bottom–                           2502972122/-/DCSupplemental.
+up process for global transport and large-scale structure. Similar scenarios have been                          Published August 5, 2025.
+
+
+
+
+PNAS     2025     Vol. 122     No. 32     e2502972122                                                       https://doi.org/10.1073/pnas.2502972122                      1 of 12
+   suggested for other complex nonliving processes in nature—such          the stability analysis of the thermal boundary layer in the spirit
+   as nanoflares, which can aggregate to larger magnetic loops and         of L.N. Howard.
+   active regions for coronal heating at the Sun (41, 42)—and living
+   processes—such as neural networks in the human brain that begin
+                                                                           2. Numerical Method
+   with the local firing dynamics of neurons (43), which cluster to
+   form complex structures and result in hub nodes on the global           We solve the three-dimensional Boussinesq equations (54) for the
+   scale (44).                                                             coupled velocity and temperature fields, u(x, t) = (ux , uy , uz )
+      Our goal here is to connect the network of thermal plumes            and T (x, t), with a spectral element method applying the GPU-
+   formed within the fluctuating thermal boundary layers to the            accelerated software package nekRS (55). The dimensionless
+   classical concept of marginally stable boundary layers that dates       forms of the equations are given by
+   back to Malkus, Spiegel, and Howard (45–47). One measure
+   of success is the bridging of the geometric properties of RBC
+                                                                                     ∂u
+                                                                                                                          r
+                                                                                                                              Pr 2
+   turbulence near the wall to the laws of heat transport, based on our                 + (u · ∇)u = −∇p + T ẑ +                ∇ u,        [1]
+   comprehensive data base of direct numerical simulations (DNS)                     ∂t                                       Ra
+   for Rayleigh numbers Ra ≤ 1011 (48). In this work, we showed                     ∂T                     1
+                                                                                        + (u · ∇)T = √         ∇ 2 T,                        [2]
+   that sustained mean flow is absent near the wall and that the                    ∂t                    PrRa
+   large-scale configuration is a collection of many shear-dominated                           ∇ · u = 0.                                    [3]
+   patches with time-dependent orientation, interspersed by regions
+   of no coherence. This points to the importance of locally               The two parameters are the Rayleigh number Ra, a measure of
+   determined dynamics in the boundary regions near the top                the thermal driving, and the Prandtl number Pr, the ratio of
+   and bottom walls. The key to a firmer conclusion is a better            momentum to temperature diffusion. They are defined as
+   understanding of the thermal plume formation processes, which
+   we undertake.                                                                                  g𝛼ΔTH 3                    𝜈
+                                                                                           Ra =                and    Pr =     ,             [4]
+                                                                                                    𝜈𝜅                       𝜅
+
+   1.1. Major Contributions of this Work. To address this challenge,       with the thermal expansion coefficient 𝛼, the acceleration due
+   we extract the mean thermal plume spacing by means of a                 to gravity g, the imposed temperature difference ΔT > 0, the
+   multistep image segmentation. We find that this scale follows           kinematic viscosity 𝜈, and the temperature diffusivity 𝜅. The
+   an approximate 1/3-scaling with the Rayleigh number over six            height of the fluid layer is H .
+   orders of magnitude, suggesting similarity in Ra. In addition,             The simulation domain is a Cartesian slab of size 4H ×4H ×H .
+   using two different detection methods, we obtain the ratio of the       The aspect ratio is given by Γ = L/H = 4, where L is the side
+   mean plume spacing h𝜆p i to the mean thickness of the thermal           length. In the following, all p  lengths are given in units of H ,
+   boundary layer (BL), 𝛿T , which varies only between 6 and 9 over        velocities in units of Uf = g𝛼ΔTH , and times in units of
+   the six decades of Ra. These results suggest that the same local        H /Uf . Periodic boundary conditions are enforced on all side
+   instability mechanism is at work, and that plume formation and          walls for all fields. On the solid bottom and top walls, no-slip
+   thus the spatiotemporal organization of heat transport are rather       boundary conditions are applied for the velocity field, u = 0.
+   the result of an aggregation process of inherently local dynamics,      Uniform temperatures Ttop and Tbot = Ttop + ΔT are enforced
+   which proceeds in terms of near-wall building blocks. The local         on top and bottom walls, respectively. In ref. 48, we demonstrated
+   dynamics of the line-like thermal plumes in the network is the          the sufficient spectral resolution and statistical convergence of all
+   result of an ongoing formation, aggregation, and coalescence            DNS runs of this series, with the spectral vertical resolution of
+   that follows a von Smoluchowski equation (49, 50), leading to           at least 16 points within the thermal boundary layer at Rayleigh
+   a gamma distribution for the local plume spacing 𝜆p , similar to        numbers 105 ≤ Ra ≤ 1011 . The Prandtl number Pr = 0.7 for
+   droplet dynamics in atmospheric clouds (51) and passive scalar          all cases.
+   mixing at high Schmidt numbers (52, 53).                                   We should state our rationale for this particular choice of
+      Furthermore, to validate our argument, we show that a linear         convection configuration. RBC is an intrinsically large aspect
+   stability analysis of the mean thermal BL profile results in a          ratio problem which begs the question of whether details of
+   critical wavelength 𝜆∗ ≃ 4𝛿T , thus bounding from below                 the small aspect ratio problem apply to it. The use of periodic
+   the numerically determined mean plume spacing. The critical             boundaries on the side walls is intended to reflect a horizontally
+   Rayleigh number for instability is O(100). Both results suggest         extended case, approaching the theoretical paradigm.
+   that the boundary layers in the simulations are linearly unstable          In the turbulent convection regime, thermal boundary layers
+   for the Rayleigh numbers investigated here, which drives the            form on the walls, z = 0 and 1. The mean thermal BL thickness
+   formation of the plumes as suggested in ref. 47. Finally, we            𝛿T is given, following tradition, by
+   demonstrate the self-similarity of the vertical clustering of thermal
+   plumes toward the bulk of the convection layer, which is                                 𝜅(ΔT /2)/𝛿T = Nu(𝜅ΔT /H ).                       [5]
+   particularly pronounced in the incoherent near-wall regions,
+   where the mean plume spacing is systematically smaller than             The thickness defines the Nusselt number Nu, the dimensionless
+   that for the whole region. We also show that the number of              measure of turbulent heat transport. For further details on the
+   coalescing plumes varies inversely with height while preserving a       DNS series, we refer to ref. 48. In this reference, we have
+   well-defined similarity.                                                also shown that the viscous boundary region is different from
+      Section 2 provides details of the numerical method, followed         canonical boundary layers in simple wall-bounded flows because
+   by a summary of the principal results in Section 3 and their            of the absence of a significant mean flow and the dominance of
+   discussion in Section 4. SI Appendix provides details of the            strong fluctuations of the velocity field, which exceed the small
+   methods used to detect plume spacing and the model used for             or zero mean by orders of magnitude.
+
+
+2 of 12   https://doi.org/10.1073/pnas.2502972122                                                                                       pnas.org
+                             A
+
+
+
+
+                             B                                                              C
+
+
+
+
+Fig. 1. Self-similar thermal plume networks in turbulent Rayleigh–Bénard convection close to the Bottom boundary, shown by bright regions. Horizontal cuts
+of the temperature field T at half the mean thermal boundary layer thickness, z = 𝛿T /2, are shown. (A) The Top row displays the full cross-section of 4H × 4H
+for Rayleigh numbers from Ra = 107 to 1011 from Left to Right. The second row displays data for Ra = 1011 only; we crop and enlarge successive squares of
+side length L/𝛼 p for p = 0, . . . , 4 and 𝛼 = 101/3 from Right to Left, as indicated by the arrow at the Bottom. Each panel in the Bottom row should be compared
+for correspondence with the panel above it. In the two Lower rows this procedure is repeated. (B) Rayleigh numbers are increased in steps of 102 in the
+corresponding Top row and cropped squares are magnified by 𝛼 = 102/3 in the corresponding Bottom row. (C) Rayleigh number is increased by 104 and the
+cropped square is magnified by 𝛼 = 104/3 .
+
+
+
+3. Results                                                                         obtained by pixel addition; the mean plume spacing scale h𝜆p i
+                                                                                   then follows, as in refs. 31 and 33, from the relation
+3.1. Horizontal Mean Plume Spacing. We first provide a quali-
+tative description of the characteristic spacing of thermal plumes
+near the wall. The Top row of Fig. 1A shows horizontal snapshots                                             A
+                                                                                                  h𝜆p i =            with    A = 4H × 4H .                   [6]
+of the plume network for the entire cross-section inside the                                                hLp i
+thermal BL for Rayleigh numbers increasing in steps by a factor of
+10 from left to right. The Bottom row of Fig. 1A shows successively
+cropped and rescaled sections for the case Ra = 1011 that should                   The successive steps of this extraction process, which start with
+be compared with the corresponding snapshots in the Top row.                       the original field snapshots T (x, y) and divh (x, y) at z = z0 , are
+It is clear that the plume spacings in Top–Bottom row pairs are                    shown in Fig. 2 for a near-wall plane at Ra = 108 , for both C1
+approximately equal, suggesting an intrinsic self-similarity. The                  and C2. The figure demonstrates that both criteria lead essentially
+scaling factor was chosen to be 𝛼 = 101/3 in the Bottom row.                       to a similar (though not exactly the same) skeleton of line-like
+This self-similarity can be carried even further, as shown in Fig.                 plumes, as seen in panels (D and H ) of the figure. We add that the
+1 B and C, where we progress in steps of 102 and 104 in Ra, and                    extraction of the mean plume spacing using the corresponding
+                                                                                   Fourier spectra was unwieldy because of the broad plateau regions
+use scale factors of 102/3 and 104/3 , respectively.                               instead of adequately sharp maxima.
+   The distance between neighboring thermal plumes—the                                Fig. 3 A and D plot against Ra the mean plume spacing h𝜆p i
+plume spacing scale 𝜆p —is determined by two complementary
+                                                                                   for both methods, obtained from 20 statistically independent
+methods both inside and at the edge of the thermal BL. Both
+estimates are based on image segmentation into plume regions                       snapshots in 7 DNS runs (48). To quantify the uncertainty of
+and plume-free regions. Criterion 1 (C1) for the plume-filled                      the plume extraction algorithm, an adaptive thresholding, with
+region at height z = z0 is given by the temperature condition                      different sensitivity values in the range of 0.75 and 1 in steps
+T > Trms = hT 2 i1/2 . Criterion 2 (C2) is given by the                            of 0.01, was used for each individual snapshot. This results in
+horizontal velocity field divergence divh < 0 at z = z0 with                       26 sensitivity values times 20 snapshots, i.e., 520 scale values
+divh = ∇h · uh = −∂uz /∂z. A given horizontal cross-section                        to determine h𝜆p i for each Ra. In both panels, a 1/3-power
+of the temperature field is segmented into plume and plume-free                    is a plausible approximation to the data for Rayleigh numbers
+regions, by using criterion C1 or C2, resulting in a network of                    Ra ≳ 108 . We recall that the thermal boundary layer thickness
+line-like plume ridges. The plume ridges are extracted using a                     𝛿T follows a similar classical scaling with respect to Ra. In both
+multistep image processing protocol, as detailed in SI Appendix.                   Insets of Fig. 3 A and D the ratio h𝜆p i/𝛿T is seen to level off to
+The total length of the line-like plume ridges, hLp i, can be                      about 9 for C1 and 6 for C2. Table 1 summarizes all values and
+
+
+PNAS     2025     Vol. 122     No. 32     e2502972122                                                     https://doi.org/10.1073/pnas.2502972122              3 of 12
+                 A                                       B                                C                                 D
+
+
+
+
+                 E                                      F                                 G                                 H
+
+
+
+
+   Fig. 2. Thermal plume extraction at the bottom near-wall region for Ra = 108 . Data are analyzed at height z = 𝛿T for the temperature in panels (A, B, C, D) and
+   the horizontal divergence in panels (E, F, G, H). Panels (A and E) show the temperature field, T , and the divergence, divh , respectively. The color bars are clipped
+   to enhance the contrast; full ranges are T ∈ [0, 1] in units of ΔT and divh ∈ [−47, 15] in units of Uf /H . Panels (B and F ) show the same field thresholded by criteria
+   C1 and C2, as described in the text. Regions where T ≤ Trms and divh ≥ 0 are clipped to zero. Panels (C and G) plot the corresponding binary versions. Finally,
+   the resulting line plume networks are given in panels (D and H). Such images are used to determine the plume spacing.
+
+
+   also contains the maximum and minimum estimates of the mean                            boundary layer flow varies strongly as shown in Fig. 3B, where
+   plume scales, the differences between which are shown as error                         we plot streamlines of the horizontal velocity field (ux , uy ) for a
+   bars in Fig. 3 A and D.                                                                snapshot of the entire cross-section at Ra = 1010 and z = 𝛿T .
+      Next, we refine the analysis of plume spacing by decomposing                        The local orientation of the horizontal velocity vector field is seen
+   the flow near the wall into shear-dominated coherent regions                           to vary strongly from point to point. Shear-dominated regions
+   and incoherent regions of no shear (48). The orientation of the                        of aligned streamline bundles are interspersed by regions with no
+
+
+
+                                  A                                    B                                    C
+
+
+
+
+                                  D                                    E                                    F
+
+
+
+
+   Fig. 3. Mean thermal plume spacing h𝜆p i in thermal boundary layer as a function of the Rayleigh number. Three scales are plotted: mean plume spacing
+   conditioned on coherent shear-dominated near-wall regions h𝜆p icoh (green squares), mean plume spacing conditioned on incoherent shear-free near-wall
+   regions h𝜆p iincoh (blue triangles), and the mean spacing h𝜆p i over whole cross-section plane (red circles). (A) Plume spacing scales obtained from criterion C1
+   based on the root mean square temperature threshold, Trms , versus Ra. (B) Snapshot of the velocity streamlines in the near-wall region at height z = 𝛿T at
+   Ra = 1010 . The whole horizontal cross-section is shown. (C) Corresponding temperature field T at the same time instant. (D) Plume spacing as obtained from
+   criterion C2 based on the horizontal velocity field divergence, divh . The Insets in panels (A and D) show the same data compensated by mean thermal boundary
+   layer thickness 𝛿T . In both main panels a Ra1/3 -scaling is indicated by dotted lines. Error bars indicate the maxima and minima across the data record, which are
+   listed in Table 1. (E) Segmentation of the cross-section from panel (B) into coherent (green) and incoherent (blue) flow regions. (F ) Local pointwise orientation
+   angle 𝜑 of the horizontal velocity field vector from panel (B).
+
+
+
+4 of 12   https://doi.org/10.1073/pnas.2502972122                                                                                                                pnas.org
+Table 1.        Numerical values of plume spacing scales
+Ra            Criterion            h𝜆p i/𝛿T          Min           Max           h𝜆p icoh /𝛿T            Min            Max            h𝜆p iincoh /𝛿T           Min           Max
+1                 2                   3               4             5                  6                  7              8                    9                 10            11
+105                C1                5.64            4.81          7.00             12.19              8.18            18.54                4.19               3.52           5.46
+                   C2                5.45            4.71          6.85             8.86               5.91            19.15                4.42               3.56           5.57
+106                C1                6.64            6.07          7.53             17.18              11.18           29.68                4.72               4.27           5.37
+                   C2                6.37            5.87          7.00             13.01              9.46            18.74                4.76               4.28           5.36
+107                C1                7.51            7.15          8.27             16.32              12.27           21.13                5.55               5.18           6.03
+                   C2                7.03            6.59          7.70             12.71              10.84           16.12                5.45               4.96           5.82
+108                C1                8.33            7.72          8.79             14.64              13.06           17.16                6.51               6.14           6.76
+                   C2                7.44            7.03          7.92             11.00              9.82            13.04                6.15               5.66           6.47
+109                C1                8.73            8.38          9.23             11.76              10.88           12.91                7.49               7.17           7.92
+                   C2                7.45            7.04          8.02             8.62               7.83            9.45                 6.85               6.46           7.35
+1010               C1                8.94            8.54          9.32             10.40              9.80            11.09                8.19               7.84           8.52
+                   C2                7.20            6.66          7.66             7.33               6.66            7.84                 7.12               6.69           7.55
+1011               C1                9.16            8.82          9.50             9.27               8.76            9.78                 9.10               8.82           9.33
+                   C2                7.01            6.50          7.52             6.28               5.60            6.90                 7.58               7.18           7.97
+We list the normalized averages together with the minimum and maximum plume spacing values. Analysis is presented for the whole cross-section in columns 3 to 5, for the coherent
+regions in columns 6 to 8 and incoherent regions in columns 9 to 11. In all cases, the Prandtl number is Pr = 0.7 and the aspect ratio Γ = 4. The error bars in Fig. 3 are the differences
+between the maxima and minima.
+
+
+
+coherent horizontal motion, occupying about 40% of the total                                    aims of the standard linear stability analysis (58), our goal is to
+area for all values of Ra (48), more recently shown to hold also                                understand the local processes near the bottom plate by assuming
+for very low Prandtl numbers (56). This is further supported by                                 that the top BL is far away, H  𝛿T , decoupled from the bottom
+panel (F ) of the figure. Here, we plot the pointwise orientation                               BL; see also ref. 59. The characteristic length will be the mean
+angle of the horizontal velocity field vector, which is given by                                BL thickness and the characteristic temperature is (half of) the
+𝜑 = arctan(uy /ux ) ∈ [−𝜋, 𝜋]. The data correspond to those of                                  globally imposed temperature difference, ΔT ; see Fig. 4.
+panels (B and C).                                                                                  The starting points of the analysis are Eqs. 1 to 3. In keeping
+   For completeness, we briefly describe the method of decom-                                   with our point of view, the appropriate free-fall Reynolds number
+posing the flow in a plane into coherent and incoherent patches.                                Ref is
+We cover the horizontal plane into 104 disjoint squares of area                                                      s
+content Ai = A/104 , where A = 4H × 4H . We then calculate                                                 vf 𝛿T        Ra                q
+                                                                                                                              with vf = g𝛼(ΔT /2)𝛿T , [9]
+                                                                                                                        e
+the mean horizontal velocity ūh (Ai ) in each of the boxes Ai . The                               Ref =          =
+                                                                                                             𝜈          Pr
+segmentation of the horizontal domain is done by the threshold
+criterion                                                                                             e = g𝛼ΔT 𝛿 3 /(2𝜈𝜅) is the Rayleigh number based on
+                                                                                                where Ra           T
+                                                                                                BL thickness 𝛿T and half temperature difference ΔT /2. The
+                          : |ūh (Ai )| > Urms
+               coh                          h (z = 𝛿 )
+                 Ai                                    T                                        dimensionless temperature is given by
+        Ai =       incoh                     h             ,      [7]
+                 Ai       : |ūh (Ai )| ≤ Urms (z = 𝛿T )
+                                                                                                                                          T − T0
+                                                                                                                                   𝜃=            ,                                 [10]
+where                                q                                                                                                    ΔT /2
+                       h
+                     Urms (z) =          hu2x ix,y,t + hu2y ix,y,t .                 [8]        which leads to 𝜃(z/𝛿T = 0) = 1 and 𝜃(z/𝛿T = 1) = 0. Here,
+                                                                                                T0 is the constant mean bulk temperature outside the thermal
+We point out that similar decompositions of extended flow
+domains have been applied in pattern analysis of spatiotemporal
+intermittency during the transition to turbulence in spatially
+extended wall flows (57). Fig. 3E shows the result of the
+decomposition where green represents coherent shear-dominated
+regions and blue represents incoherent shear-free regions. Com-
+pared with panel (B) of the same figure, panel (C) shows the
+corresponding temperature field, which displays regions with a
+wider plume spacing than others. The refined plume spacing
+scales, which are conditioned on coherent and incoherent area
+fractions, are added to panels (A and D) of the figure. The
+analysis in Fig. 3 A and D confirms that the coherent flow
+regions have a wider plume spacing compared to incoherent flow
+regions.
+
+3.2. Mean Plume Spacing from Linear Instability of Thermal                                      Fig. 4. (A) Schematic of the temperature variation close to the heated
+Boundary Layer. In the previous subsection, we have seen that                                   bottom wall with Tw = Tbot . (B) Mean temperature profile Ts . The solid
+the ratio 6 ≲ h𝜆p i/𝛿T ≲ 9. In the following, we will present a                                 line is used traditionally to characterize the BL thickness. The thickness
+                                                                                                of the latter, defined in some sensible way, could be a few times that of
+two-dimensional linear stability analysis of the mean temperature                               the former. The fluid is increasingly lighter as one approaches the bottom
+profile close to the bottom wall and obtain the mean plume                                      wall. T0 = (Tbot + Ttop )/2 is the characteristic bulk temperature. Bulk and
+spacing in the form of a critical wavelength. In contrast to the                                boundary layer (BL) regions are indicated by different shading.
+
+
+PNAS       2025      Vol. 122       No. 32       e2502972122                                                               https://doi.org/10.1073/pnas.2502972122                      5 of 12
+   boundary layer; see Fig. 4. The solution can be represented as a
+   sum of stationary solution (s) and small perturbations,
+
+                           𝜃 = 𝜃s + 𝜃 0 ,   𝜃 0  𝜃s
+                           u = us + u0 ,    us = 0
+
+   The linearized equations for the first-order perturbations of
+   velocity and temperature fields, which follow from Eqs. 1 to
+   3, are given in dimensionless form by
+
+                                         1
+                     ∂t u0 = −∇p0 +         ∇2 u0 + 𝜃 0 ez ,
+                                       Ref
+                                                                      [11]
+                                1                 d𝜃s
+                     ∂t 𝜃 0 =        ∇2 𝜃 0 − u0z     ,
+                              Ref Pr              dz
+
+   with d 𝜃s /dz = −1 and mass conservation condition, ∇·u0 = 0;
+   note that u = u0 . The boundary conditions are chosen here so              Fig. 5. Comparison of the numerical linear stability analysis results with the
+   that the perturbations are absent at the bottom wall and can reach         DNS data. In the main figure, the solid line for the critical Rayleigh number
+   their maximum at the edge of the thermal boundary layer at                  f ∗ is compared to the DNS values of Ra𝛿 = g𝛼ΔT 𝛿 3 /(𝜈𝜅 ) from ref. 48.
+                                                                              2Ra
+                                                                                                                             T            T
+   z = 1. This translates to no-slip condition at the bottom, u0 = 0          See also SI Appendix for details on the analysis. The Inset compares the mean
+   and 𝜃 = 0. At the top, we choose boundary conditions in the                ratios of h𝜆p i/𝛿T to the resulting critical wavelength range of 𝜆∗ /𝛿T ≈ 4.0,
+                                                                              marked again by solid gray line.
+   same way as in ref. 60. This results in ∂u0z /∂z = 0 and ∂𝜃/∂z = 0
+   plus a further symmetry condition for the vertical component,
+   ∂ 3 u0z /∂z 3 = 0. In other words, free and mirror-symmetric inflow        which are inserted into Eq. 13. Within the thermal boundary
+   and outflow conditions will be taken at the edge of the thermal            layer for 0 ≤ z ≤ 1, we obtain a critical wavenumber q∗ ≈
+   boundary layer, above which a well-mixed bulk region of heavier                                              e ∗ ≈ 106, and thus a critical
+                                                                              1.56, a critical Rayleigh number Ra
+                                                                                                ∗
+                                                                              wavelength of 𝜆 ≈ 4.0. The critical Rayleigh numbers follows
+   fluid is placed, in contrast to the standard linear stability analysis.
+   The definition of the edge of the boundary based on the piecewise          from Rae ∗ = Pr(Re∗ )2 with Pr = 0.7. This confirms the results
+                                                                                                  f
+   linear mean temperature profile has been the standard practice
+                                                                              of ref. 60 and is much smaller than the estimate of 103 suggested
+   in the convection literature; see Fig. 4B. Recall that the thickness                                              e ∗ ≈ 212, it falls in the
+   based on the slope at z = 0 would be 𝛿T . Substituting the normal          by Howard (47). When doubled to 2Ra
+   mode ansatz for the perturbations in Eq. 11, we have                       range of the DNS values for Ra𝛿T = g𝛼ΔT 𝛿T3 /(𝜈𝜅) from ref.
+                                                                              48. The critical wavelength 𝜆∗ ≈ 4.0 bounds the detected plume
+                      u0 (x, t) = U (z) exp(𝜔t + iq · r)                      spacing h𝜆p i from below. Both results are summarized in Fig. 5.
+                                                                      [12]       The alternative formulation of the free outflow conditions,
+                      𝜃 0 (x, t) = Θ(z) exp(𝜔t + iq · r)                      Θ0 (1) = 0, Uz0 (1) = 0, and Uz00 (1) = 0 (which corresponds
+   with q = (qx , qy ), r = (x, y). Performing a curl operation               to ∂u0 /∂z = 0) leads to 2Ra  e ∗ ≈ 444 > Ra𝛿T and smaller
+                                                                                              ∗
+                                                                              wavelengths 𝜆 ≈ 3.2. As already said, the critical value of the
+   twice for the momentum equation to eliminate the pressure
+   gradient ∇p0 , we obtain the following coupled system of ordinary          Rayleigh number Ra, e defined via Eq. 9, was found by Waleffe
+   differential equations Uz (z) and Θ(z)                                     et al. (60). The following argumentation can also be given. At
+                                                                              the onset of thermal convection with Rac = g𝛼ΔTH 3 /(𝜈𝜅) =
+                                1 4                                           1,708 (62), one has 𝛿T = H /2. This leads to a critical Rayleigh
+                 𝜔D̂2 Uz (z) =     D̂ Uz (z) − q2 Θ(z),
+                               Ref                                            number Ra  e ∗ = Rac /16 ≈ 106.75 when additionally ΔT is
+                                                                      [13]    replaced by ΔT /2. It is this Rayleigh number that sets the
+                                 1
+                       𝜔Θ(z) =        D̂2 Θ(z)+Uz (z) ,                       threshold for the marginal stability of the boundary layers.
+                               Ref Pr
+                                                                              Their analysis yields the estimate Nu ∼ 0.084 Ra1/3 , which
+                                                                              is closely matched when exact coherent states in two (60) and
+   with the operator D̂2 = ∂ 2 /∂z 2 − q2 and q2 = qx2 + qy2 . The            three dimensions (63) are carried out at high Rayleigh numbers.
+   no-slip boundary conditions at z = 0 translate to Uz (0) = 0,              The result also compares well with the experimental result,
+   Uz0 (0) = 0, in addition to Θ(0) = 0. The outflow conditions at            Nu = 0.088 Ra0.32 , obtained by Niemela et al. (64).
+   z = 1 become Uz0 (1) = 0, Uz000 (1) = 0 together with Θ0 (1) =
+   0, where the prime denotes now a derivative with respect to
+                                                                              3.3. Plume Aggregation and Distribution of Plume Spacing
+   the vertical coordinate z. Eq. 13 are converted into a linear
+                                                                              Scales. The self-similar plume network is in permanent change,
+   system by a finite expansion of Uz (z) and Θ(z) into Chebyshev
+   polynomials, which satisfy the boundary conditions. More details           individual line-like plume filaments shift positions, merge, and
+   on the numerical solution of the resulting eigenvalue problem by           coalesce with other filaments, even as new ones arise by local BL
+   a Tau method (61) are given in SI Appendix. The starting point             instabilities. This combination of processes results in a continuum
+   of the analysis are the expansions                                         range of plume spacing scales. The corresponding probability
+                                                                              density function (PDF) can thus be considered the result of
+               M                                M                             an aggregation dynamics, similar to that suggested first by M.
+    Uz (z) =
+               X
+                     an Tn (2z −1) , Θ(z) =
+                                                X
+                                                       bn Tn (2z −1) , [14]   von Smoluchowski for chemical processes (49). This model has
+                                                                              been successfully applied for passive scalar mixing in turbulent
+               n=0                              n=0
+
+
+
+6 of 12   https://doi.org/10.1073/pnas.2502972122                                                                                                pnas.org
+flows at high Schmidt numbers where the distribution of the                        The convolution integral yields Q̃ 2 . In a dense plume network for
+passive concentration field results from the aggregation and                       the higher Rayleigh numbers, an aggregation of k independent
+self-convolution of the scalar filaments in the so-called viscous-                 line-like plume filaments is expected to occur. This generalizes the
+convective range (52, 53).                                                         original convolution term 𝛾 Q̃ 2 in Eq. 16. In the Laplace space,
+   We apply the Smoluchowski coagulation (49, 50) equation,                        we thus change the transform Q̃ to Q̃ k =: P̃. Thus, Eq. 16
+which is an integro-differential equation, to mimic plume                          changes for the case of k subsequent aggregations to an equation
+dynamics. We consider each plume to have an individual size
+                                                                                   for P̃ as
+`, with a size distribution Q(`, t) given by
+                                                                                                    ∂ P̃        ∂ P̃
+   ∂Q(`, t)  ∂                                                                                           = − 𝛾s      + 𝛾kP̃ 1+1/k − 𝛾kP̃ .                 [17]
+            = [v(`)Q(`, t)]                                                                         ∂t          ∂s
+     ∂t      ∂`
+                1 `                                                                Eq. 17 has the steady state solution (∂t P̃ = 0) given by
+                 Z
+             +       K(` − `0 , `0 )Q(` − `0 , t)Q(`0 , t)d`0
+                2 0                                                                                                     s −k
+                                                                                                                               .
+                       Z ∞
+                                                                                                             P̃(s) = 1 +                                   [18]
+             − Q(`, t)     K(`, `0 )Q(`0 , t)d`0 .         [15]                                                          k
+                                0
+                                                                                   The backward Laplace transformation of Eq. 18 leads to a
+The first term on the right is an additional deposition term in                    simplified version of the gamma distribution (see, e.g., ref. 65, p.
+the size space; here v(`) is a deposition velocity. The second                     99) given by
+integral term is a collision term with a (symmetric) kernel K
+and the third term stands for particle aggregation. Reference                                                      C k−1
+                                                                                                        P(`) =         ` exp(−k`) ,                        [19]
+to Eq. 6 makes the correspondence of `, `0 and `00 clear: The                                                     Γ(k)
+plume filaments are our particles, which undergo merger and
+coalescence as they evolve. The kernel in our equation can be                      with the normalization constant C. For k = 1, Eq. 19 leads to
+simplified to a constant “collision” rate, K = 𝛾; this simplifies                  an exponential PDF; for k → ∞ the distribution P(`) becomes
+the two integral                                                                   increasingly concentrated around the mean.
+             R ∞ terms of Eq. 15. The last integral vanishes                          For the present application, we have to connect a particle of
+then, since 0 Q(`, t)d ` = 1. In analogy to ref. 52, the
+merger of our “particles” is expected to be a linear process.                      size ` with the plume spacing scale, ` → 𝜆p . This is illustrated
+Furthermore, we set v(`) = 𝛾`. A Laplace                                           in Fig. 6A. The fictitious “radii” of two coagulating “particles,”
+                                        R ∞ transformation of                      `/2 and `/20 result in 𝜆p . When rescaling the plume spacing by
+Eq. 15, which is given by Q̃(s, t) = 0 Q(`, t) exp(−s`)d `,
+                                                                                   its mean value, only one fit parameter k results, which will be
+changes Eq. 15 to
+                                                                                   discussed further below. Note also that one can always recalculate
+                                                                                   the actual distribution via P(𝜆p /h𝜆p i)d (𝜆p /h𝜆p i) = P(𝜆p )d𝜆p .
+                   ∂ Q̃        ∂ Q̃  𝛾                                                We now provide the plume spacing scale distributions for
+                        = − 𝛾s      + Q̃ 2 − 𝛾 Q̃ .                     [16]
+                   ∂t           ∂s   2                                             Ra = 109 , 1010 , and 1011 at the cross-sectional plane A at a
+
+
+
+
+Fig. 6. Distribution of the rescaled plume spacing scale 𝜆p /h𝜆p i for the largest Rayleigh numbers Ra = 109 , 1010 , and 1011 . Panel (A) sketches how the
+fictitious particle size scale is translated into the plume spacing scale picture. See Eq. 15. The distributions in panels (B–D) correspond to criterion C2 based
+on the horizontal velocity field divergence at height z = 𝛿T . The dashed lines are one-parameter fits of the gamma distribution to the data; see Eq. 19. The
+corresponding fit coefficient k is annotated in each panel.
+
+
+
+
+PNAS     2025     Vol. 122     No. 32     e2502972122                                                     https://doi.org/10.1073/pnas.2502972122              7 of 12
+                             A                                  B                                   C
+
+
+
+
+                             D                                  E                                  F
+
+
+
+
+   Fig. 7. Coarsening of the thermal plume network with increasing distance from the wall. (A) Horizontal instantaneous cut through the simulation domain at
+   height of z = 𝛿T at a Rayleigh number of Ra = 1010 . (B) Corresponding plume network obtained by criterion C1. (C–E) Horizontal cuts through the temperature
+   field at heights z = 2𝛿T , 4𝛿T , and 8𝛿T . The snapshots are the same conditions as in panel (A). Panel (F ) shows the mean plume spacing scale rescaled by the
+   corresponding boundary layer thickness at heights z = {1, 2, 4, 8}𝛿T for Rayleigh Ra ≥ 108 . A reason for the slight increase of the ratio with Ra could be the
+   increasing magnitude of horizontal near-wall fluctuations of the velocity field.
+
+
+
+   height of one 𝛿T for each case. The temperature field contour                     Smoluchowski equation. In this subsection, we investigate
+   plane is divided, respectively, into 5 × 5, 10 × 10, and 20 × 20                  the vertical organization of the plume network by repeating
+   disjoint squares for criterion C2. Fig. 6 reports the outcome                     the analysis successively further away from the wall, at four
+   (specifics and more details for the criterion C1 will be discussed                logarithmically spaced distances of 𝛿T , 2𝛿T , 4𝛿T , and 8𝛿T
+   later). Fits to the gamma distribution (29) for the best values                   using detection criterion C1 based on temperature fluctuations.
+   of k are shown in panels (B to D) of Fig. 6. The fits broadly                     Criterion C2, which is based on the horizontal velocity field
+   support the notion of an ongoing horizontal aggregation of the                    divergence, is increasingly less appropriate as we move away
+   thermal plumes near the walls. The fit parameter k decreases                      from the solid wall due to the increase of vertical velocity
+   with increasing Rayleigh number. Since k is the number of                         fluctuations.
+   line-like plume filaments, this observation implies that fewer                       Fig. 7 summarizes our findings. Panel (A) displays the plume
+   plumes aggregate, presumably because of stronger alignment                        network for an instant of time at Ra = 1010 together with the
+   and advection by local shearing motion in the boundary layer.                     corresponding line-like network in panel (B). To demonstrate
+   Both processes act perpendicular to the direction of plume                        the successive coarsening of the network with increasing distance
+   coalescence. The trend confirms earlier experimental observations
+                                                                                     from the wall, we also provide horizontal cuts through the
+   of individual plumes in refs. 33, 66, and 67. The decrease
+   of k is in line with a growing range of 𝜆p /h𝜆p i with Ra,                        temperature field at heights {2, 4, 8}𝛿T . Panel (F ) shows the ratio
+   caused probably by the increasing level of near-wall velocity                     of h𝜆p i/𝛿T for the four largest Rayleigh numbers, Ra ≥ 108 , for
+   fluctuations (48).                                                                which we have seen sufficient scale separation between the mean
+      There is a visible difference in the skewness of the PDFs be-                  plume spacing at the wall and the loose large-scale circulation
+   tween theoretical prediction and numerical results, in particular                 patches that fill the bulk of the cell. The ratio increases slightly
+   as a result of differences on the left tail. There are several points to          with Ra but remains essentially constant.
+   be made in this respect: 1) We observe that the fits improve with                    Similarity in the vertical direction is further demonstrated
+   increasing Ra. 2) The fits are best for z = 𝛿T . 3) With increasing               qualitatively in Fig. 8. Panel (A) replots the data from Fig. 7A.
+                                                                                                                                                  2n𝛿       n𝛿
+   Ra the plume network becomes increasingly finer as shown in                       In panel (B) of the figure, we list the ratios h𝜆p T i/h𝜆p T i
+   Fig. 1; thus the statistics (and the tail behavior of the PDFs)                   versus Ra. The ratio is seen to be close to a factor of 1.2 in
+   improve. We had only 20 full DNS snapshots for each run. With                     all instances. Vertical self-similarity is illustrated in panels (C
+   increasing distance from the wall, turbulent dispersion interferes                and D). The cropped area of panel (A) is rescaled by a factor of
+   the successive plume merger in addition to the coarsening of the                  approximately 1.2 obtained from (B); see panel (C) of Fig. 8.
+   plume network with height. This again means that fewer plume                      This rescaled network is compared to the full cross-sectional
+   ridges are available for statistical analysis.                                    plot at z = 2𝛿T in panel (D); see also Fig. 7C. The two
+                                                                                     panels confirm the same spacing in the networks. Finally, we
+   3.4. Vertical Plume Clustering. The previous subsection showed                    can speculate from this sequence of pictures that the coarsening
+   that the horizontal organization of the plume network at                          of the plume network eventually leads to the formation of
+   the edge of the thermal boundary layer can be described                           a prominent ridge structure (in yellow) of hotter upwelling
+   as a statistically steady aggregation process that follows the                    fluid in Fig. 7E, which defines a region of enhanced turbulent
+
+
+
+8 of 12   https://doi.org/10.1073/pnas.2502972122                                                                                                       pnas.org
+                                                                                   as seen in Fig. 8B. The physical interpretation of this result is
+A                                        B                                         that the vertical plume merging process proceeds at a reduced
+                                                                                   rate with increasing height. The plumes are deflected, partially
+                                                                                   bundled together, and partly diluted by local flow patterns that
+                                                                                   can be locally coherent or incoherent, as reported in ref. 48. This
+                                                                                   is seen in panels (B and C) of Fig. 10 where the vertical near-wall
+                                                                                   structure of the full temperature field and the corresponding
+                                                                                   temperature fluctuations are shown for a time instant. This
+                                                                                   dynamical scenario would then also rationalize the decreasing
+                                                                                   trend of k with increasing distance from the wall (because the
+                                                                                   range of plume spacing increases).
+
+C                                        D
+                                                                                   4. Discussion
+                                                                                   We have analyzed the near-wall dynamics numerically in a con-
+                                                                                   vection layer, whose geometric configuration can be considered
+                                                                                   the paradigm for large aspect ratios. It is the latter configuration
+                                                                                   for which the fundamental physical questions on the primary and
+                                                                                   secondary instability mechanisms (58), the subsequent pattern
+                                                                                   formation processes (72), and the turbulent transport of heat
+                                                                                   and momentum, have been formulated starting with refs. 45–47;
+Fig. 8. Vertical self-similarity of the plume network. (A) Horizontal cut
+                                                                                   see also refs. 24–26 for reviews. The plumes, which are unstable
+through the simulation domain at heights of z = 𝛿T . Panel (B) demonstrates        fragments of the thermal boundary layer detaching from the wall,
+the vertical self-similarity in terms of the mean plume spacing scale ratios       form the local building blocks of the near-wall dynamics; they can
+ 2n𝛿      n𝛿
+h𝜆p T i/h𝜆p T i for n = 1, 2, 4. Here, h𝜆zp i is the mean plume spacing scale at   be considered in some sense to be the “quanta” of the convective
+distance z. Panel (C) shows a cropped area of panel (A) which is indicated by      turbulent heat transport.
+the cyan box in (A) and rescaled by the scaling factor of 1.2 obtained from (B).      The average plume spacing scales on the thickness of the
+Panel (D) shows the data on the plume network at z = 2𝛿T for comparison
+with (C). Data are for a Rayleigh number of Ra = 1010 .
+                                                                                   thermal boundary layer. This similarity is valid over six orders of
+                                                                                   magnitude in Ra. The plume network is continually reshaped
+                                                                                   by aggregation, coalescence, and new appearance of network
+mixing, and thus of the boundary of large-scale circulation                        edges. The network becomes coarser with increasing distance
+cells, which were termed turbulent superstructures of convection                   from the walls. The vertical coarsening occurs in a self-affine
+(15, 16). The superstructures can also be regarded as the nearly                   form, ranging from thin line-like plumes in the vicinity of
+coherent structures from a Lagrangian perspective (68, 69).                        the wall to prominent large-scale ridges of coherently up-
+Thus, our study confirms the previous work that identified the                     welling hotter or down-welling colder fluid all the way in
+plume clustering process by means of kinetic energy spectra                        the bulk of the convection layer. The latter flow features
+(70, 71).                                                                          are likely to build up turbulent superstructures of convection
+    Finally, we have determined the plume spacing distributions                    (15, 16). Thus, we can see a hierarchy of structures and
+P(𝜆p /h𝜆p i) at four heights of {𝛿T , 2𝛿T , 4𝛿T , 8𝛿T } with detection             dynamical processes, which emerges from the smallest ingredient
+criterion C1 and fitted the corresponding gamma distributions to                   in the vicinity of the wall to the large-scale patterns of the
+the data, as in Fig. 6 for one height. The distributions, the fits, and            convection flow and forms the backbone of turbulent heat
+the fit parameters k for the 12 cases are noted in Fig. 9. Recall that             transport.
+wider gamma distributions correspond to a decreasing k, which                         We connected the local plume formation in the near-wall
+is observed with respect to both increasing Rayleigh number and                    regions to the marginally unstable thermal boundary layers.
+increasing distance from the wall. If we assume a strict binary                    This was achieved by extending the classical ideas of Howard
+hierarchy of the plume network for heights zn = 2n 𝛿T , we have                    (47) on the initial diffusive growth of the thermal boundary
+                                                                                   layer (SI Appendix), later extended by Theerthan and Arakeri
+kzn0 = 1 with zn0 = zn /𝛿T ≃ (zn /H )Ra1/3 . Thus, we can expect
+                                                                                   (39) to a local model that combines steady plume solutions with
+for the present case a relation
+                                                                                   pieces of a steady laminar boundary layer in-between. We also
+                                      const.                                       recall the marginal instability analysis performed by Waleffe
+                           kRa1/3 ≈          .                     [20]
+                                       z/H                                         et al. (60) who obtained the Nusselt–Rayleigh scaling to be
+                                                                                   1/3. In particular, we obtained critical Rayleigh numbers that
+   A few observations are in order. First, we note that the above                  are consistently in the range of the observed thermal BL-based
+scaling relation, confirmed by Fig. 10A, separates the effect of                   Rayleigh numbers Ra𝛿T (see also ref. 48); in addition, we obtain
+Rayleigh numbers from that of varying the height z. Second,                        a critical wavelength that bounds the mean plume spacing scale
+Fig. 10A confirms that the constant in Eq. 20 is approximately                     h𝜆p i consistently from below.
+400. Currently, it is difficult to ascertain the characteristics that                 Dynamically, the thermal plumes, and thus the time dynamics
+determine this constant, but the aspect ratio of the convection                    of the network as a whole, can be described by the Smoluchowski
+configuration will probably play an important role. Finally, the                   aggregation dynamics, both horizontally and vertically away
+fact that the scaling factors for k−1 and z are different from                     from the wall. We obtained a gamma distribution of the
+each other means that the similarity observed here is self-affine,                 continuously varying plume spacing, corresponding to a steady-
+rather than self-similar. An exact self-similar hierarchy would                    state solution of such dynamics. A mean plume spacing scaling
+                         2n𝛿       n𝛿
+imply that the ratio h𝜆p T i/h𝜆p T i = 2; this ratio is only 1.2                   of h𝜆p i ∼ Ra−1/3 implies that a critical wavenumber q ∼
+
+
+PNAS     2025      Vol. 122     No. 32     e2502972122                                                 https://doi.org/10.1073/pnas.2502972122        9 of 12
+   Fig. 9. Fit of gamma functions to the plume spacing scale distributions at different heights for the three highest Rayleigh numbers of the DNS series starting
+   with z = 𝛿T in panels (A, B, C), z = 2𝛿T in panels (D, E, F), z = 4𝛿T in panels (G, H, I), and z = 8𝛿T in panels (J, K, L). The first column (A, D, G, and J) is for
+   Ra = 109 , the second column (B, E, H, and K ) for Ra = 1010 , and the third one (C, F, I, and L) for Ra = 1011 . Distances away from the wall are the corresponding
+   {𝛿T , 2𝛿T , 4𝛿T , 8𝛿T } as indicated in each panel. Furthermore, the fit coefficient k is given in each panel. All data are obtained by applying criterion C1 for which the
+   full cross-section planes into disjoint squares numbering 4 × 4 for Ra = 109 , 8 × 8 for Ra = 1010 , and 16 × 16 for Ra = 1011 .
+
+
+
+
+   Ra1/3 is connected with the marginally stable boundary layer.                           but also from the local plumes, which impact the boundary
+   Which mechanisms maintain the smallness of the boundary                                 regions next to the ejection regions; see also refs. 73 and 74.
+   structure at the bottom, shown here to cluster hierarchically                           They will prevent the boundary layer from growing without
+   away from the wall, and prevent it from growing indefinitely?                           limit. Recall also that the plume spacing is systematically larger
+   As we have shown in Fig. 10, there will be recirculation of                             in the coherent regions that overlap with impact positions
+   velocities, triggered partly from the large-scale superstructures,                      (see Inset of Fig. 3A) thus stabilizing wavenumbers q < qc .
+
+
+
+10 of 12    https://doi.org/10.1073/pnas.2502972122                                                                                                                pnas.org
+                                                                                                                  What are further implications of our findings? First, it
+                                                                                                               offers a further prominent example of nonlinear multiscale
+                                                                                                               dynamics for which a characteristic local structural unit, or
+                                                                                                               the building block, grows successively to the largest scales of
+                                                                                                               the system in a hierarchical manner. Our findings indicate
+                                                                                                               that, though the phenomena are complex, they are seated in
+                                                                                                               the instabilities in the boundary layer, and are predominantly
+                                                                                                               local in character. They then follow a dynamical process of
+                                                                                                               coagulation or aggregation, which we have successfully modeled
+                                                                                                               by the Smoluchowski equation. Our analysis underlines the
+                                                                                                               likelihood that convective turbulence in this configuration
+                                                                                                               follows a bottom–up scenario. Second, the essential agree-
+                                                                                                               ment between the local instability calculations and simulations
+                                                                                                               suggests that a global instability mechanism in the boundary
+                                                                                                               layers is unlikely, at least for the parameter range accessed
+                                                                                                               in the present simulations. Finally, we note that efforts are
+                                                                                                               currently under way to extend the range of Rayleigh number
+                                                                                                               to higher values for this configuration, as was done in ref.
+                                                                                                               75 for a slender closed cell. Those results will be reported
+                                                                                                               elsewhere.
+
+                                                                                                               Data, Materials, and Software Availability. Data slices and analysis soft-
+                                                                                                               ware, which were used for the present work, are available in Zenodo (76).
+
+                                                                                                               ACKNOWLEDGMENTS. The research of P.P.S. and R.J.S. is funded by the
+                                                                                                               European Union (European Research Council, MesoComp, 101052786). Views
+                                                                                                               and opinions expressed are however those of the authors only and do not
+                                                                                                               necessarily reflect those of the European Union or the European Research
+Fig. 10. Vertical hierarchy of thermal plumes. (A) Scaling of line-like plume                                  Council. G.Z. acknowledges financial support by Deutsche Forschungsgemein-
+number k with respect to wall distance z. Data are for Rayleigh numbers
+                                                                                                               schaft (DFG, German Research Foundation) within the Priority Programme
+Ra = 109 , 1010 , and 1011 . Distances from the wall are shown by different
+symbols as indicated in the legend. (B) Vertical near-wall contour cut of the                                  DFG-SPP 2410 CoScaRa. We gratefully acknowledge the Gauss Centre for
+instantaneous temperature field T at a Rayleigh number Ra = 1010 . The side                                    Supercomputing (GCS) e.V. (https://www.gauss-centre.eu) for funding the
+length is 0.5H . Multiples of the boundary layer thickness 𝛿T are indicated                                    project nonbou by providing computing time through the John von Neumann
+by dashed horizontal lines. (C) is a replot of the corresponding temperature
+fluctuations 𝜃 = T − hT (z)iA,t in the same cross-section plane as B, and                                      Institute for Computing on the GCS Supercomputer JUWELS Booster at Jülich
+highlights the plumes.                                                                                         Supercomputing Centre and through the JUPITER Research and Early Access
+                                                                                                               Program. K.R.S. thanks New York University for the support of this research.
+These processes need to be investigated further by disentan-                                                   J.S. thanks Michael Le Bars, Andreas Tilgner, and Emmanuel Villermaux for
+gling the coherent and incoherent motions in the near-wall                                                     insightful discussions. Special thanks go to Thomas Boeck for his help with the
+regions.                                                                                                       linear stability analysis.
+
+1.  J. M. Burgers, A mathematical model illustrating the theory of turbulence. Adv. Appl. Mech. 1,             16. A. Pandey, J. D. Scheel, J. Schumacher, Turbulent superstructures in Rayleigh-Bénard convection.
+    171–199 (1948).                                                                                                Nat. Commun. 9, 2118 (2018).
+2. W. T. Ashurst, A. R. Kerstein, R. M. Kerr, C. H. Gibson, Alignment of vorticity and scalar gradient with    17. H. C. Nataf, J. VonDecar, Seismological detection of a mantle plume? Nature 364, 115–120 (1993).
+    strain rate in simulated Navier-Stokes turbulence. Phys. Fluids 30, 2343–2353 (1987).                      18. F. H. Busse, The sequence-of-bifurcations approach towards understanding turbulent fluid flow.
+3. Z. S. She, E. Jackson, S. A. Orszag, Intermittent vortex structures in homogeneous isotropic                    Surv. Geophys. 24, 269–288 (2003).
+    turbulence. Nature 344, 226–228 (1990).                                                                    19. J. Bailon-Cuba, M. S. Emran, J. Schumacher, Aspect ratio dependence of heat transfer and
+4. D. I. Pullin, P. G. Saffman, Vortex dynamics in turbulence. Annu. Rev. Fluid Mech. 30, 31–51                    large-scale flow in turbulent convection. J. Fluid Mech. 655, 152–173 (2010).
+    (1998).                                                                                                    20. S. Horn, P. Schmid, Prograde, retrograde, and oscillatory modes in rotating Rayleigh-Bénard
+5. T. Ishihara, Y. Kaneda, M. Yokokawa, K. Itakura, A. Uno, Small-scale statistics in high-resolution              convection. J. Fluid Mech. 831, 182–211 (2017).
+    direct numerical simulation of turbulence: Reynolds number dependence of one-point velocity                21. I. Marusic, J. Monty, Attached eddy model of wall turbulence. Annu. Rev. Fluid Mech. 51, 49–74
+    gradient statistics. J. Fluid Mech. 592, 335–366 (2007).                                                       (2019).
+6. J. Schumacher, B. Eckhardt, C. R. Doering, Extreme vorticity growth in Navier-Stokes turbulence.            22. B. Podvin, J. Lumley, A low-dimensional approach for the minimal flow unit. J. Fluid Mech. 362,
+    Phys. Lett. A 374, 861–865 (2010).                                                                             121–155 (1998).
+7. D. Buaria, A. Pumir, E. Bodenschatz, Self-attenuation of extreme events in Navier-Stokes turbulence.        23. L. P. Kadanoff, Turbulent heat flow: Structures and scaling. Phys. Today 54, 34–39 (2001).
+    Nat. Commun. 11, 5852 (2020).                                                                              24. G. Ahlers, S. Grossmann, D. Lohse, Heat transfer and large scale dynamics in turbulent Rayleigh-
+8. W. Shen, J. Yao, Y. Yang, Designing turbulence with entangled vortices. Proc. Natl. Acad. Sci. U.S.A.           Bénard convection. Rev. Mod. Phys. 81, 503–537 (2009).
+    121, e2405351121 (2024).                                                                                   25. F. Chillà, J. Schumacher, New perspectives in turbulent Rayleigh-Bénard convection. Eur. Phys. J. E
+9. N. Hutchins, I. Marusic, Evidence of very long meandering features in the logarithmic region of                 35, 58 (2012).
+    turbulent boundary layers. J. Fluid Mech. 579, 1–28 (2007).                                                26. D. Lohse, O. Shishkina, Ultimate Rayleigh-Bénard turbulence. Rev. Mod. Phys. 96, 035001 (2024).
+10. I. Marusic, R. Mathis, N. Hutchins, Predictive model for wall-bounded turbulent flow. Science 329,         27. A. A. Townsend, Temperature fluctuations over a heated horizontal surface. J. Fluid Mech. 5, 209–
+    193–196 (2010).                                                                                                241 (1959).
+11. S. C. C. Bailey, A. J. Smits, Experimental investigation of the structure of large- and very-large-scale   28. T. Haramina, A. Tilgner, Coherent structures in boundary layers of Rayleigh-Bénard convection.
+    motions in turbulent pipe flow. J. Fluid Mech. 651, 339–356 (2010).                                            Phys. Rev. E 69, 056306 (2004).
+12. R. Markson, Atmospheric electrical detection of organized convection. Science 188, 1171–1177               29. B. A. Puthenveettil, J. H. Arakeri, Plume structure in high-Rayleigh-number convection. J. Fluid
+    (1975).                                                                                                        Mech. 542, 217–249 (2005).
+13. T. Hartlep, A. Tilgner, F. H. Busse, Transition to turbulent convection in a fluid layer heated from       30. Q. Zhou, C. Sun, K. Q. Xia, Morphological evolution of thermal plumes in turbulent Rayleigh-
+    below at moderate aspect ratio. J. Fluid Mech. 554, 309–322 (2005).                                            Bénard convection. Phys. Rev. Lett. 98, 074501 (2007).
+14. M. S. Emran, J. Schumacher, Large-scale mean patterns in turbulent convection. J. Fluid Mech.              31. B. A. Puthenveettil et al., Length of near-wall plumes in turbulent convection. J. Fluid Mech. 685,
+    776, 96–108 (2015).                                                                                            335–364 (2011).
+15. R. J. A. M. Stevens, A. Blass, X. Zhu, R. Verzicco, D. Lohse, Turbulent thermal superstructures in         32. J. Bosbach, S. Weiss, G. Ahlers, Plume fragmentation by bulk interactions in turbulent Rayleigh-
+    Rayleigh-Bénard convection. Phys. Rev. Fluids 3, 041501(R) (2018).                                             Bénard convection. Phys. Rev. Lett. 108, 054501 (2012).
+
+
+
+
+PNAS         2025        Vol. 122          No. 32         e2502972122                                                                        https://doi.org/10.1073/pnas.2502972122                                11 of 12
+   33. P. P. Shevkar et al., On separating plumes from boundary layers in turbulent convection. J. Fluid          56. S. Alam et al., Turbulent mesoscale convection in the Boussinesq limit and beyond. Int. J. Heat Fluid
+       Mech. 941, A5 (2022).                                                                                          Flow 115, 109856 (2025).
+   34. O. Shishkina, C. Wagner, Analysis of thermal dissipation rates in turbulent Rayleigh-Bénard                57. B. Hof, Directed percolation and the transition to turbulence. Nat. Rev. Phys. 5, 62–72 (2022).
+       convection. J. Fluid Mech. 546, 51–60 (2006).                                                              58. O. M. Lord Rayleigh, LIX. On convection currents in a horizontal layer of fluid, when the higher
+   35. O. Shishkina, C. Wagner, Analysis of sheet-like thermal plumes in turbulent Rayleigh-Bénard                    temperature is on the under side. Philos. Mag. 32, 529–546 (1916).
+       convection. J. Fluid Mech. 599, 383–404 (2008).                                                            59. V. Valori, J. Schumacher, Connecting boundary layer dynamics with extreme bulk dissipation
+   36. E. Fonda, A. Pandey, J. Schumacher, K. R. Sreenivasan, Deep learning in turbulent convection                   events in Rayleigh-Bénard flow. Europhys. Lett. 134, 34004 (2021).
+       networks. Proc. Natl. Acad. Sci. U.S.A. 116, 8667–8672 (2019).                                             60. F. Waleffe, A. Boonkasame, L. M. Smith, Heat transport by coherent Rayleigh-Bénard convection.
+   37. N. O. Aksamit, R. Hartmann, D. Lohse, G. Haller, Interplay between advective, diffusive and active             Phys. Fluids 27, 051702 (2015).
+       barriers in (rotating) Rayleigh-Bénard flow. J. Fluid Mech. 696, A27 (2023).                               61. D. Gottlieb, S. A. Orszag, Numerical Analysis of Spectral Methods: Theory and Applications (SIAM,
+   38. D. Noto, J. A. Letelier, H. N. Ulloa, Plume-scale confinement on thermal convection. Proc. Natl. Acad.         Philadelphia, 1977).
+       Sci. U.S.A. 121, e2403699121 (2024).                                                                       62. S. Chandrasekhar, Hydrodynamic and Hydromagnetic Instability (Dover Publications, Mineola,
+   39. S. A. Theerthan, J. H. Arakeri, A model for near-wall dynamics in turbulent Rayleigh-Bénard                    1961).
+       convection. J. Fluid Mech. 373, 221–254 (1998).                                                            63. S. Motoki, G. Kawahara, M. Shimizu, Multi-scale steady solution for Rayleigh-Bénard convection.
+   40. Y. Wang, X. He, P. Tong, Turbulent fluctuations in a closed Rayleigh-Bénard convection cell. J. Fluid          J. Fluid Mech. 914, A14 (2018).
+       Mech. 874, 263–284 (2019).                                                                                 64. J. J. Niemela, L. Skrbek, K. R. Sreenivasan, R. J. Donnelly, Turbulent convection at very high
+   41. P. J. Cargill, H. P. Warren, S. J. Bradshaw, Modelling nanoflares in active regions and implications           Rayleigh numbers. Nature 404, 837–840 (2000).
+       for coronal heating mechanisms. Philos. Trans. R. Soc. A 373, 20140260 (2015).                             65. G. Casella, R. L. Berger, Statistical Inference (Duxbury, Pacific Grove, CA, 2002).
+   42. M. J. Aschwanden et al., 25 years of self-organized criticality: Solar and astrophysics. Space Sci. Rev.   66. G. S. Gunasegarane, B. A. Puthenveettil, Dynamics of line plumes on horizontal surfaces in
+       198, 47–166 (2016).                                                                                            turbulent convection. J. Fluid Mech. 749, 33–78 (2014).
+   43. D. S. Bassett, O. Sporns, Network neuroscience. Nat. Neurosci. 20, 353–364 (2017).                         67. P. P. Shevkar, G. S. Gunasegarane, S. K. Mohanan, B. A. Puthenveettil, Effect of shear on coherent
+   44. D. J. Watts, S. H. Strogatz, Collective dynamics of ‘small-world’ networks. Nature 393, 440–442                structures in turbulent convection. Phys. Rev. Fluids 4, 043502 (2019).
+       (1998).                                                                                                    68. C. Schneide, A. Pandey, K. Padberg-Gehle, J. Schumacher, Probing turbulent superstructures
+   45. W. V. R. Malkus, The heat transport and spectrum of thermal turbulence. Proc. R. Soc. Lond. Ser. A             in Rayleigh-Bénard convection by Lagrangian trajectory clusters. Phys. Rev. Fluids 3, 113501
+       225, 196–212 (1954).                                                                                           (2018).
+   46. E. A. Spiegel, “On the Malkus theory of turbulence” in Mécanique de la Turbulence (Centre National         69. C. Schneide, P. Vieweg, J. Schumacher, K. Padberg-Gehle, Evolutionary clustering of Lagrangian
+       de la Recherche Scientifique, 1962), pp. 181–201.                                                              trajectories in turbulent Rayleigh-Bénard convection flows. Chaos 32, 013123 (2022).
+   47. L. N. Howard, “Convection at high Rayleigh number” in Applied Mechanics, 11th Congress of                  70. T. Hartlep, A. Tilgner, F. H. Busse, Large scale structures in Rayleigh-Bénard convection at high
+       Applied Mechanics, H. Goertler, Ed. (Springer, Berlin, Heidelberg, 1966), pp. 1109–1115.                       Rayleigh numbers. Phys. Rev. Lett. 91, 064501 (2003).
+   48. R. J. Samuel, M. Bode, J. D. Scheel, K. R. Sreenivasan, J. Schumacher, No sustained mean velocity          71. A. Parodi, J. von Hardenberg, G. Passoni, A. Provenzale, E. A. Spiegel, Clustering of plumes in
+       in the boundary region of plane thermal convection. J. Fluid Mech. 996, A49 (2024).                            turbulent convection. Phys. Rev. Lett. 92, 194503 (2004).
+   49. M. von Smoluchowski, Versuch einer mathematischen Theorie der Koallugationskinetik kolloidaler             72. F. H. Busse, Non-linear properties of thermal convection. Rep. Prog. Phys. 41, 1929–1967
+       Lösungen. Z. Phys. Chem. 92U, 129–168 (1918).                                                                  (1978).
+   50. F. Reiff, Fundamentals of Statistical and Thermal Physics (McGraw-Hill, Singapore, 1965).                  73. V. Bandaru, A. Kolchinskaya, K. Padberg-Gehle, J. Schumacher, Role of critical points of the skin
+   51. G. Falkovich, A. Fouxon, M. G. Stepanov, Acceleration of rain initiation by cloud turbulence. Nature           friction field in formation of plumes in thermal convection. Phys. Rev. E 92, 043006 (2015).
+       419, 151–154 (2002).                                                                                       74. X. Zhu, V. Mathai, R. J. A. M. Stevens, R. Verzicco, D. Lohse, Transition to the ultimate regime in
+   52. E. Villermaux, J. Duplat, Mixing as an aggregation process. Phys. Rev. Lett. 91, 184501 (2003).                two-dimensional Rayleigh-Bénard convection. Phys. Rev. Lett. 120, 144502 (2018).
+   53. E. Villermaux, Mixing versus stirring. Annu. Rev. Fluid Mech. 51, 245–273 (2019).                          75. K. Iyer, J. D. Scheel, J. Schumacher, K. R. Sreenivasan, Classical 1/3 scaling of convection holds up
+   54. M. K. Verma, Physics of Buoyant Flows (World Scientific, Singapore, 2018).                                     to Ra = 1015 . Proc. Natl. Acad. Sci. U.S.A. 117, 7594–7598 (2020).
+   55. P. F. Fischer et al., NekRS, a GPU-accelerated spectral element Navier-Stokes solver.                      76. P. P. Shevkar et al., “Repository for hierarchical network of thermal plumes in turbulent Rayleigh-
+       Parallel Comput. 114, 102982 (2022).                                                                           Bénard convection”, Zenodo. https://doi.org/10.5281/zenodo.16310868. Deposited 22 July 2025.
+
+
+
+
+12 of 12      https://doi.org/10.1073/pnas.2502972122                                                                                                                                                        pnas.org
+

@@ -1,0 +1,756 @@
+      Journal of Turbulence
+
+
+
+
+      ISSN: 1468-5248 (Online) Journal homepage: www.tandfonline.com/journals/tjot20
+
+
+
+
+Sidewall controlling large-scale ﬂow structure and
+reversal in turbulent Rayleigh-Bénard convection
+
+Jie-Jie Cheng, Jian-Zhao Wu, Yu-Lu Liu & Zhi-Ming Lu
+
+To cite this article: Jie-Jie Cheng, Jian-Zhao Wu, Yu-Lu Liu & Zhi-Ming Lu (2021) Sidewall
+controlling large-scale ﬂow structure and reversal in turbulent Rayleigh-Bénard convection,
+Journal of Turbulence, 22:6, 380-392, DOI: 10.1080/14685248.2021.1916023
+
+To link to this article: https://doi.org/10.1080/14685248.2021.1916023
+
+
+
+
+       View supplementary material
+
+
+
+       Published online: 26 Apr 2021.
+
+
+
+       Submit your article to this journal
+
+
+
+       Article views: 387
+
+
+
+       View related articles
+
+
+
+       View Crossmark data
+
+
+
+       Citing articles: 1 View citing articles
+
+
+
+
+                      Full Terms & Conditions of access and use can be found at
+             https://www.tandfonline.com/action/journalInformation?journalCode=tjot20
+JOURNAL OF TURBULENCE
+2021, VOL. 22, NO. 6, 380–392
+https://doi.org/10.1080/14685248.2021.1916023
+
+
+
+
+Sidewall controlling large-scale flow structure and reversal in
+turbulent Rayleigh-Bénard convection
+Jie-Jie Chenga , Jian-Zhao Wu                     a , Yu-Lu Liua,b and Zhi-Ming Lua
+
+a Shanghai Key Laboratory of Mechanics in Energy Engineering, Shanghai Institute of Applied Mathematics
+and Mechanics, School of Mechanics and Engineering Science, Shanghai University, Shanghai, People’s
+Republic of China; b School of Science, Shanghai Institute of Technology, Shanghai, People’s Republic of China
+
+
+    ABSTRACT                                                                              ARTICLE HISTORY
+    Spontaneous and stochastic reversal of large scale flow structure is                  Received 6 February 2021
+    an intriguing and crucial phenomenon in turbulent Rayleigh-Bénard                     Accepted 2 April 2021
+    type natural convection. This paper proposes a new control approach                   KEYWORDS
+    to eliminate the reversals through stabilising the corner flows using                 Rayleigh-Bénard turbulence;
+    two small sidewall controllers. Based on a series of direct numer-                    large-scale circulation; ﬂow
+    ical simulations, it is shown that the control can successfully stop                  reversal; sidewall control
+    the growth of corner vortices and suppress the reversal of large-
+    scale circulation, if the width of sidewall controllers installed within or
+    near the top of corner vortices is large enough. When the controllers
+    are located around the centre, they can easily break up the large-
+    scale structures or even divide the single roll mode into a double-roll
+    mode for very large widths. Moreover, the influence of sidewall con-
+    trollers on the heat transport is studied. It is shown that the heat
+    transport efficiency can be slightly enhanced or suppressed when the
+    proper location and width are chosen. The present findings provide
+    a new idea to control the large-scale flow structure and reversals in
+    thermally driven convection through sidewall controlling.
+
+
+
+1. Introduction
+The Rayleigh-Bénard (RB) convection, i.e. a fluid layer heated from below and cooled from
+above, is one of the fundamental models conceived for the purpose of investigating the
+buoyancy-driven convection in astrophysical, geophysical and engineering problems [1,2].
+This system is characterised by the Rayleigh number Ra = αgH 3 /(νκ) and the Prandtl
+number Pr = ν/κ, where H is the RB cell height, g is the gravitation magnitude,  is the
+temperature difference between top and bottom plates, ν, κ, and α respectively are the
+kinematic viscosity, the thermal diffusivity, and the thermal expansion coefficient of the
+working fluid. When Ra exceeds the critical Rayleigh number, the convective instability
+occurs, thermal plumes triggered from the bottom and top thermal boundary layers (BL)
+self-organise into a large-scale circulation (LSC) [3–6]. One intriguing and crucial feature
+
+CONTACT Jian-Zhao Wu            jianzhao_wu@shu.edu.cn        Shanghai Key Laboratory of Mechanics in Energy
+Engineering, Shanghai Institute of Applied Mathematics and Mechanics, School of Mechanics and Engineering Science,
+Shanghai University, Shanghai 200072, People’s Republic of China
+    Supplemental data for this article can be accessed here. https://doi.org/10.1080/14685248.2021.1916023
+
+© 2021 Informa UK Limited, trading as Taylor & Francis Group
+                                                                JOURNAL OF TURBULENCE       381
+
+
+of the LSC is the stochastic and subsequent reversal of its circulation orientation. The phe-
+nomena of LSC reversal involved turbulent RB convection has been studied extensively in
+the past two decades.
+    The theoretical and experimental works on LSC reversals in turbulent RB convection
+are rich. Deterministic or stochastic models [7–10] were developed to describe the LSC
+dynamics and capture the physical mechanisms of LSC reversals. Assaf et al. [11] extended
+the previous models and achieved to predict the tails of the probability distribution of LSC
+reversals, which agree well with the experimental data. Sugiyama et al. [12] experimen-
+tally analysed the LSC reversal in thermal convection in a rectangular geometry and found
+that the corner vortices play an important role in the reversal. It is shown that as thermal
+plumes detach from the BLs, the corner vortices grow both in size and in kinetic energy
+contained, then take over the large-scale diagonal roll, thereby resulting in the flow rever-
+sal. Wang et al. [13] further pointed out that the LSC reversal is stimulated by the rare
+massive eruption of thermal plumes. The finding of Vasil’ev et al. [14] showed that the
+LSC reversal process depends on both the Rayleigh number and the aspect-ratio between
+the cell thickness and the side length in the circulation plane. Ni et al. [15] presented
+an experimental study on the LSC reversal in quasi-two-dimensional (2D) turbulent RB
+convection. Recently, Chen et al. [16] discovered a transition in LSC reversal frequency
+in the quasi-2D geometry, which corresponds to a change in flow structure from a single
+roll regime to a less-stable abnormal single-roll regime with substructures inside the main
+roll. It is also shown that although the corner vortices trigger the event of LSC reversal, the
+reversal frequency mainly relates to the LSC stability. In order to study the quantitative role
+of the corner vortices on the reversal. the experiments on RB convection in a corner-less
+cell were carried out and it is found that removing the corner significantly decreases the
+reversal frequency [17].
+    Since the rapid development of computational capacity, direct numerical simulation
+(DNS) and analysis of RB convection and LSC dynamics become popular. In numerical
+studies of the LSC reversal, (quasi) 2D rectangular geometry is usually chosen to elimi-
+nate the three-dimensional dynamic feature of the LSC [18,19], such as the torsional or
+sloshing effect found in cylindrical geometry [20–23]. Through Fourier decomposition
+analysis on DNS data, Chandra et al. [24,25] showed that the large-scale Fourier modes
+are effective tools to characterise the flow structure and reversal in RB convection and
+large fluctuations in time series of heat transport efficiency are located in the process of
+flow reconfiguration during the reversal. Podvin et al. [26] applied the proper orthogonal
+decomposition analysis on the dynamics of LSC in a 2D RB square cell and showed that the
+LSC reversal can be identified by sharp fluctuations in the amplitude of each modes. Huang
+et al. [27] presented a numerical study on turbulent RB convection using the fixed heat flux
+for boundary conditions and proved that the fixed heat flux boundary condition has the
+ability to suppress the reversal frequency. Xia et al. [18] numerically investigated the LSC
+reversal in 2D RB convection with accounting for the non-Oberbeck-Boussinesq effects.
+Xu et al. [28] discussed the dependency of the reversal event on the Prandtl number in 2D
+circular convection geometry. Wang et al. [29] studied the tilt influence on the LSC rever-
+sal in a 2D cavity and found that a small tilt angle can lead to a drastic decrease of reversal
+frequency. Dong et al. [19] discussed the roughness distribution effects on the flow struc-
+ture and pointed out that the asymmetric wall roughness can promote the LSC reversal
+events.
+382      J.-J. CHENG ET AL.
+
+
+   To our knowledge, many strategies have been proposed to control turbulent RB con-
+vection, such as imposing vibrational pulsation [30], applying wall roughness [31–33],
+introducing wall temperature oscillation [34,35], through confinement [36,37], using
+active particles [38], via reinforcement learning[39], etc. However, most of these focus on
+controlling the heat transport mechanism, but the research on controlling the structure
+and reversal of LSC still lacks. Recently, Zhang et al. [40] introduced the local constant-
+temperature condition on sidewalls to successfully control the LSC reversal when the
+sidewall constant-temperature condition is imposed in the proper location and size. In this
+paper, we proposed a new control approach – imposing small solid rectangular controllers
+on sidewalls to stabilise the dynamics of corner flows and eliminate the LSC reversal. This
+paper is organised as follows: Section 2 details the governing equations of RB system and
+numerical methods; Section 3 gives the results obtained for the sidewall controlling LSC
+reversal in turbulent RB convection; the conclusions are given in Section 4.
+
+2. Numerical set-up
+In this investigation, we consider turbulent RB convection in a 2D cavity of size H. Two
+small solid rectangles of width w and height h are introduced on the cavity sidewalls to
+control the large-scale flow structures and reversals, as shown in Figure 1. The left rectan-
+gular controller is installed at a distance of l from the cold (top) wall and the right one at
+the same distance from the hot (bottom) wall.
+   Under the Boussinesq approximation, the dimensionless governing equations of RB
+turbulence are given by
+
+                         ∇ · u = 0,                                                       (1)
+                                                      1
+                         ∂t u + (u · ∇)u = −∇p + √        ∇ 2 u + θ ey ,                  (2)
+                                                    Ra/Pr
+                                             1
+                         ∂t θ + (u · ∇)θ = √     ∇ 2θ ,                                   (3)
+                                            RaPr
+                                                                       
+where u is the fluid velocity normalised by the free-fall velocity αgH, t the time
+                                         
+normalised by the free-fall time scale H/(αg), θ the temperature normalised by the
+temperature difference , p the dimensionless kinematic pressure field and ey the unit
+vector in vertical direction, respectively.
+   To systematically study the sidewall controlling effect on the large-scale flow structure
+and reversal, we carried out a series of direct numerical simulations of RB turbulence over
+the range of 0 ≤ w ≤ 0.1 and 0 ≤ l ≤ 0.5 at fixed Pr = 4.3 and h = 0.02. The Rayleigh
+number is chosen at Ra = 108 , where the LSC reversal easily occurs without sidewall
+controllers. The coupled equations of u and θ (Equations (1)–(3)) are resolved using the
+second-order central difference code, which has been well validated in the simulations of
+thermal convection over both smooth and rough walls in literatures [19,40–42]. For the
+standard RB convection, no-slip boundary conditions are used for u at all solid bound-
+aries, constant temperatures θtop = −0.5 and θbot = 0.5 are held at top and bottom plates,
+and the adiabatic conditions are applied at all side walls. In cases of RB simulations with
+sidewall controllers, the immersed boundary approach is introduced to impose the desired
+boundary conditions at the left and right controllers, i.e. a direct forcing is applied to
+                                                                         JOURNAL OF TURBULENCE           383
+
+
+
+
+Figure 1. Sketch of Rayleigh-Bénard turbulence (Fluids contained in a box heated from below and
+cooled from above) with two small rectangular sidewall controllers of height h and width w. The left con-
+troller is installed at a distance of l from the top wall and the right one is installed at the same distance
+from the bottom wall.
+
+
+achieve no-slip boundary conditions for u and adiabatic conditions for θ on the surface
+of both controllers. The grid size 512 × 512 is well chosen to adequately solve both the
+Kolmogorov length scale for u and the Batchelor length scale for θ, as followed in previous
+studies [43–45].
+   In our investigations, the flow reversal is characterised by the angular momentum L(t),
+which is defined as [12]
+
+                                L(t) = v · (x − xc ) − u · (y − yc )v ,                                (4)
+
+where u, v are the horizontal and vertical velocities, x, y are the corresponding coordinates,
+xc , yc are the coordinates of the cell central position, and ·v denote the volume averaging.
+The LSC reversal event is identified using the criteria as followed by Huang and Xia [46]:
+(i) the clockwise (L(t) < 0) and counter-clockwise (L(t) > 0) LSC state should be clearly
+distinguished from each other; (ii) when the LSC transits from one state to the other, L(t)
+should first cross over the maximum of the current state; (iii) the LSC at new state should
+keep for more than one turnover time. Note that all statistics for each run are calculated
+over an averaging time of more than 4000 turnover times.
+
+
+3. Results and analysis
+3.1. Sidewall controlling large-scale flow reversals
+Figure 2(a–c) depicts the instantaneous flow structures in standard RB turbulence at
+t = 9748, 9816, 9875 for Ra = 108 and Pr = 4.3. It is observed that at t = 9748, a clockwise
+384       J.-J. CHENG ET AL.
+
+
+
+
+Figure 2. Flow structure and reversal in standard turbulent RB convection at Ra = 108 and Pr = 4.3. (a)
+t = 9748; (b) t = 9816; (c) t = 9875.
+
+
+
+large-scale roll is present with two small second vortices located in the diagonal corners in
+Figure 2(a); At t = 9816, the corner vortices grow in both amplitude and size, gradually
+break up the large-scale main roll (seeing Figure 2(b)), then merge together into a novel
+large-scale roll, but circulating in the counter-clockwise direction at t = 9875 as shown
+in Figure 2(c). This observation is consistent with the previous experimental and numer-
+ical results [15,19,46]. Figure 2(a–c) presents a complete LSC reversal process and it is
+shown that the dynamics of corner vortices plays an important role on the occurrence of
+LSC reversals. Based on this, we introduce sidewall controllers to stabilise the corner flow
+structures, thereby control the dynamics of LSC and suppress the flow reversals.
+   Figure 3 shows the time series of the globally averaged angular momentum L(t) at
+Ra = 108 and Pr = 4.3 without and with sidewall controllers. The time coordinate is nor-
+malised by the LSC turnover time tE . Here, tE = 4π/wc t , where wc = |∂x v − ∂y u| is the
+absolute value of fluid vorticity at the cell central position and ·t denotes the temporally
+averaging. L(t) < 0 generally refers to a clockwise LSC and vice versa, which is consistent
+with the usage in literatures [12,40]. In Figure 3(a) without controllers, L(t) changes its sign
+frequently, i.e. 72 times in the time interval from 1500tE to 3500tE . The mean time period
+between successive flow reversals is approximately 27.78tE .
+   When sidewall controllers of h = 0.02 and w = 0.01 at a distance of l = 0.25 are applied,
+the flow reversal still occurs but its frequency decreases, i.e. the reversal times is reduced to
+42 and the mean time period between successive reversals is enhanced to 47.62tE (seeing
+Figure 3(b)). When we increase the controller width to w = 0.02, it is surprisedly found
+that L(t) is always negative in the whole time interval as shown in Figure 3(c), indicating
+that LSC is always in clockwise direction and the flow reversal is completely suppressed.
+The same result is also accomplished when we move the sidewall controllers to l = 0.35,
+as presented in Figure 3(d). This implies that applying sidewall controllers is an effective
+way to control the LSC reversals in turbulent RB system.
+
+
+3.2. Phase diagram of sidewall controlling flow reversals
+Figure 4 shows the phase diagram of flow structure and reversal occurrence in turbulent
+RB convection for fixed Ra = 108 , Pr = 4.3, h = 0.02 and varying the control parameters
+                                                                      JOURNAL OF TURBULENCE         385
+
+
+         0.1
+                (a)                                                                no control
+  L(t)
+           0
+
+         -0.1
+          0.1
+                (b)                                                                l=0.25,w=0.01
+  L(t)
+
+
+
+
+           0
+
+         -0.1
+          0.1
+                (c)                                                                l=0.25,w=0.02
+  L(t)
+
+
+
+
+           0
+
+         -0.1
+          0.1
+                (d)                                                                l=0.35,w=0.01
+  L(t)
+
+
+
+
+           0
+
+         -0.1
+            1500              2000                  2500                  3000                  3500
+                                                     t/tE
+
+Figure 3. Time series of L(t) in turbulent RB convection at Ra = 108 and Pr = 4.3. (a) Without sidewall
+controlling; (b) Sidewall controlling with l = 0.25 and w = 0.01; (c) Sidewall controlling with l = 0.25
+and w = 0.02; (d) Sidewall controlling with l = 0.35 and w = 0.01.
+
+
+l and w over the range of 0.05 ≤ l ≤ 0.5 and of 0.01 ≤ w ≤ 0.1. It is clearly seen that apply-
+ing sidewall controllers can affect both the flow structures and reversals. When both the
+width w and the distance l from the wall are chosen in proper ranges, sidewall controllers
+can completely eliminate the reversal or change the flow structure from single-roll state to
+double-roll state.
+   When l ≤ 0.1, the sidewall controllers are immersed within the averaged corner vor-
+tices (ACV) obtained from the mean flow in RB convection without controllers, the LSC
+reversal still happens for small w, whereas it is completely eliminated for very large w. This
+is because when sidewall controllers are installed near the top and bottom walls, diago-
+nal corner vortices can easily cross over small controllers (seeing Figure 5(a)), but can be
+restrained and stabilised between the controllers and wall if the width w is large enough
+(seeing Figure 5(d)). It implies that it is very hard for sidewall controllers of small widths
+near the walls to eliminate the reversals. On the other hand, when l ≥ 0.4, the controllers
+are far away from the zone of AVCs and near the cell centre. It is found that for very small
+w, the controllers have few influences on both LSC and the corner vortices as depicted in
+Figure 5(c), thereby the LSC reversal still occurs; whereas for large w, the controllers can
+386         J.-J. CHENG ET AL.
+
+
+          0.6
+
+
+
+          0.5
+
+
+
+          0.4
+
+
+
+          0.3
+  l
+
+
+
+
+          0.2
+
+
+
+          0.1
+
+
+
+            0
+                0                0.02   0.04           0.06           0.08           0.1
+
+                                                    w
+Figure 4. Phase diagram in the w-l plane for RB turbulence with sidewall controllers at Ra = 108 and
+Pr = 4.38. Regime 1: LSC with detected reversals; × Regime 2: LSC with no detected reversals; Regime
+3: Transition region from single-roll state to double-roll state; Regime 4: Double-roll state;
+
+
+
+affect or even break up the large-scale roll. In case of sufficiently large w, the single-roll
+structure is divided into double-roll structure as shown in Figure 5(f).
+   In the range of 0.1 < l < 0.4, the controllers are near the top of AVCs and the sidewall
+control is very effective. Specially, when l is comparable to the length of AVCs, for instance,
+l = 0.2 or 0.25, the flow reversal can be effectively eliminated for a wide range of the con-
+troller size 0.01 ≤ w < 0.1. It is also found that if the controllers are within AVCs, the
+width w should be large enough to stop the growth of corner flows and stabilise them.
+With increasing the distance l from the wall, the controllers are closer to the top of AVCs,
+the critical width w, above which the LSC reversal is suppressed, become smaller; If the
+controllers are installed outside AVCs, controllers of small widths are effective to stabilise
+the growth of corner flows and eliminate the LSC reversal (seeing Figure 5(b)), but ones
+of large w break the circulating roll and make flow structures complicated as shown in
+Figure 5(e).
+   According to the characteristics of L(t) and flow structures, the sidewall controlled RB
+convection can be categorised into four different regimes shown in Figure 4:
+
+      • Regime 1 (LSC with detected reversals): L(t) is positive or negative, and the probabil-
+        ity density function (PDF) of L(t) exhibits bimodal form as shown in Figure 6(a,b).
+                                                                        JOURNAL OF TURBULENCE           387
+
+
+
+
+Figure 5. Flow structures in turbulent RB convection with sidewall controlling at Ra = 108 and Pr =
+4.3. (a) l = 0.15 and w = 0.01; (b) l = 0.35 and w = 0.01; (c) l = 0.5 and w = 0.01; (d) l = 0.15 and
+w = 0.04; (e) l = 0.35 and w = 0.04; (f) l = 0.5 and w = 0.08. In the blue dashed zone, it is clearly
+seen that the corner ﬂows go across the sidewall controller in Figure 5(a) or are stabilised by the sidewall
+controller in Figure 5(b,d).
+
+
+
+     The two peaks of PDF correspond to the two circulating states: clockwise LSC and
+     counter-clockwise LSC.
+   • Regime 2 (LSC with no detected reversals): L(t) is always negative. In this regime,
+     the flow reversals are completely eliminated by sidewall controlling. Since the corner
+     vortices are restrained by the sidewall controllers, the LSC is always in the clock-
+     wise direction (L(t) < 0) and the PDF of L(t) exhibits monomodal form as shown in
+     Figure 6(c,d).
+   • Regime 3 (Transition from single-roll state to double-roll state): L(t) is preferentially
+     positive or negative, and the PDF of L(t) is monomodal but asymmetrical as shown
+     in Figure 6(e,f). In this regime, since the width of controllers are large, they can break
+     up the large-scale main roll and make the flow structures complicated as presented
+     in Figure 5(e).
+   • Regime 4 (Double-roll state): L(t) takes small values and its PDF exhibits monomodal
+     and symmetrical as shown in Figure 6(g,h). Sidewall controllers of sufficiently large
+     width divide the large-scale single-roll into upper and lower rolls as shown in
+     Figure 5(f).
+
+
+3.3. Influences on heat transport mechanism
+Further, we are interested in the influences of sidewall controllers on the convective heat
+transport mechanism. In RB system, the global heat√transport efficiency is quantified by
+the Nusselt number Nu, which is defined as Nu = RaPrvθv,t − ∂y θ v,t , where ·v,t
+denotes the spatially and temporally averaging. Figure 7 shows the ratio of Nusselt number
+388                J.-J. CHENG ET AL.
+
+
+                                                                                             10 -2
+             0.1                                                                      2
+ (a)                                                        l=0.15,w=0.01      (b)
+      L(t)
+               0
+                                                                                      1
+
+             -0.1
+                1500              2000   2500        3000               3500
+                                         t/t E
+                                                                                            -0.05    0    0.05
+                                                                                             10 -3
+             0.1                                                               (d) 0.8
+ (c)                                                        l=0.2,w=0.02
+      L(t)
+
+
+
+
+               0
+                                                                                     0.4
+             -0.1
+                1500              2000   2500        3000               3500
+                                         t/t E                                             -0.01     0     0.01
+                                                                                             10 -2
+             0.1                                                               (f)
+ (e)                                                        l=0.35,w=0.05
+                                                                                      1
+      L(t)
+
+
+
+
+               0
+                                                                                     0.5
+             -0.1
+                1500              2000   2500        3000               3500
+                                         t/t E                                               -0.05   0   0.05
+                                                                                             10 -3
+             0.1                                                               (h)
+ (g)                                                        l=0.45,w=0.08
+                                                                                     0.9
+      L(t)
+
+
+
+
+               0
+                                                                                     0.5
+             -0.1
+                1500              2000   2500        3000               3500
+                                         t/t E                                               -0.01   0   0.01
+
+
+Figure 6. Time series of the globally averaged angular momentum L(t) and the corresponding proba-
+                                              − L(t)t at Ra = 10 and Pr = 4.3. (a)-(b) l = 0.15 and
+bility density functions of the ﬂuctuations L(t)                   8
+
+w = 0.01 in Regime 1: L(t)t = 0.0030 and L2 (t) − L(t)2t = 0.0346; (c)-(d) l = 0.20 and w = 0.02
+                                      
+in Regime 2: L(t)t = −0.0463 and L2 (t) − L(t)2t = 0.0022; (e)-(f) l = 0.35 and w = 0.05 in
+                                 
+Regime 3: L(t)t = −0.0298 and L2 (t) − L(t)2t = 0.0137; (g)-(h) l = 0.45 and w = 0.08 in Regime
+                       
+4: L(t)t = 0.0039 and L2 (t) − L(t)2t = 0.0031.
+
+
+
+
+Nu/Nu0 as a function of the controller width w with various l at fixed Ra = 108 , Pr = 4.3
+and h = 0.02. Here, Nu0 is the Nusselt number for the RB convection without sidewall
+controllers. It is observed that sidewall controllers can slightly enhance or suppress the heat
+transport efficiency, when both control parameters l and w are well chosen. In Figure 7(a),
+for a fixed h smaller than 0.2, Nu/Nu0 almost decreases with increasing w, except for the
+abrupt jump due to the transition from Regime 1 to Regime 2. For a fixed w, Nu/Nu0
+becomes larger with increasing l. In Figure 7(b), Nu/Nu0 also decreases with increasing
+w, except for the abrupt change due to the transition from Regime 3 to Regime 4. But for
+a fixed w, Nu/Nu0 increases with decreasing l. It is concluded that the heat transport can
+be enhanced when the sidewall controllers move towards the top of ACVs and suppressed
+when away from the top of ACVs.
+                                                                                                 JOURNAL OF TURBULENCE                         389
+
+
+               (a)                                                          (b)
+             1.04                                                         1.08
+                                                                                                                        l=0.25      l=0.4
+                                                                                                                        l=0.3       l=0.45
+                                                                                                                        l=0.35      l=0.5
+                                                                          1.04
+
+               1
+  Nu / Nu0
+
+
+
+
+                                                                            1
+
+
+
+             0.96
+
+                        l=0.05                                            0.96
+                        l=0.1
+                        l=0.15
+                        l=0.2
+             0.92                                                         0.92
+                    0   0.02     0.04       0.06       0.08      0.1             0       0.02      0.04        0.06         0.08         0.1
+                                        w                                                                    w
+
+Figure 7. Ratios of the Nusselt number Nu/Nu0 as a function of w with various l at Ra = 108 and Pr =
+4.3. (a) 0.05 ≤ l ≤ 0.20; (b) 0.25 ≤ l ≤ 0.50. The arrows point in the direction of increasing l.
+
+   Next, we come to study the effects on Nu in different regimes. Figure 7(a–b) are split
+into four figures in different regimes: Figure 8(a) in Regime 1, Figure 8(b) in Regime 2,
+Figure 8(c) in Regime 3, Figure 8(d) in Regime 4. It is found that in Regimes 1 and 2,
+Nu/Nu0 decreases with increasing w. This is because in those regimes, the flow structure
+is mainly composed of the LSC and two corner vortices. If the sidewall controllers are
+wider, larger corner vortices are stabilised and more heat are trapped within the corner
+
+  (a) 1.08                                                             (b) 1.04
+                                              l=0.05          l=0.25
+                                              l=0.1           l=0.4
+             1.04
+                                              l=0.15          l=0.45             1
+  Nu / Nu0
+
+
+
+
+                                              l=0.2           l=0.5
+                1
+                                                                            0.96
+                                                                                          l=0.05           l=0.25
+             0.96
+                                                                                          l=0.1            l=0.3
+                                                                                          l=0.15           l=0.35
+                                                                                          l=0.2
+             0.92                                                           0.92
+                    0   0.02     0.04   0.06       0.08         0.1                  0    0.02      0.04         0.06       0.08         0.1
+                                        w                                                                     w
+  (c) 1.04                                                             (d) 0.96
+                                              l=0.25          l=0.4                       l=0.4
+                                              l=0.3           l=0.45                      l=0.45
+                                              l=0.35          l=0.5                       l=0.5
+                1
+  Nu / Nu0
+
+
+
+
+                                                                            0.94
+
+             0.96
+
+
+
+
+             0.92                                                           0.92
+                    0   0.02     0.04   0.06       0.08         0.1                      0.06                0.08                  0.1
+                                        w                                                                     w
+
+Figure 8. Ratios of the Nusselt number Nu/Nu0 as a function of w in diﬀerent regimes. (a) Regime 1; (b)
+Regime 2; (c) Regime 3; (d) Regime 4.
+390       J.-J. CHENG ET AL.
+
+
+flows, which suppress the heat transport. In Regimes 3 and 4, the sidewall controllers are
+of larger width and installed around the cell centre, then breaks up the LSC and make the
+flow structure complicated, which resulting in the intricate behaviour of convective heat
+transport.
+
+4. Conlusions
+The spontaneous LSC reversals commonly take place in standard RB turbulence in a cer-
+tain range of Ra and Pr and the corner flows play a crucial role in the reversal event. In
+this paper, we report a novel sidewall controlling strategy to stabilise the corner flows and
+eliminate the LSC reversals. Through a series of direct numerical simulations in 2D RB
+turbulence at Ra = 108 and Pr = 4.3, it is shown that when the rectangular sidewall con-
+trollers are installed near the top of corner vortices obtained from standard RB convection,
+it is very effective to stabilise the growth of corner flows, thereby achieve to suppress the
+LSC reversal. As the controllers move towards the plates (decreasing l), the corner vortices
+can be stabilised and the LSC reversal successfully eliminated if the width w is large enough.
+As the controllers move towards the cell centre (increasing l), it is found that they easily
+break up the large-scale main roll, therefore, make the flow structures complicated; for
+very large width w, the single roll can be completely broken into double rolls. In addition,
+the sidewall controllers have the ability to slightly enhance or suppress the heat transport,
+when the width w and the distance l are in the proper ranges.
+    The findings of our works open a new avenue to control the LSC reversal through impos-
+ing small controllers on the sidewalls. This kind of control strategies can be easily realised
+in engineering, in which only small modifications are applied on the geometries.
+
+Acknowledgements
+This work was supported by the Natural Science Foundation of China under grant nos. 92052201,
+11732010, 11825204, 12032016 and 11972220, the Program of Shanghai Academic Research Leader
+under grant no. 19XD1421400, Shanghai Science and Technology Program under Project No.
+19JC1412802, and China Postdoctoral Science Foundation under grant no. 2020M681259.
+
+Disclosure statement
+No potential conflict of interest was reported by the authors.
+
+Funding
+This work was supported by China Postdoctoral Science Foundation [2020M681259], National Nat-
+ural Science Foundation of China (NSFC) [11988102, 11732010, 11825204, 11972220,12032016,
+92052201] and Science and Technology Commission of Shanghai Municipality [19JC1412802,
+19XD1421400].
+
+ORCID
+Jian-Zhao Wu       http://orcid.org/0000-0002-7981-3623
+
+References
+ [1] Ahlers G, Grossmann S, Lohse D. Heat transfer and large scale dynamics in turbulent Rayleigh-
+     Bénard convection. Rev Mod Phys. 2009 Apr;81:503–537.
+                                                                     JOURNAL OF TURBULENCE         391
+
+
+ [2] Lohse D, Xia KQ. Small-scale properties of turbulent Rayleigh-Bénard convection. Annu Rev
+     Fluid Mech. 2010;42(1):335–364.
+ [3] Hartlep T, Tilgner A, Busse F. Large scale structures in Rayleigh-Bénard convection at high
+     Rayleigh numbers. Phys Rev Lett. 2003;91(6):064501.
+ [4] Huang YX, Zhou Q. Counter-gradient heat transport in two-dimensional turbulent
+     Rayleigh–Bénard convection. J Fluid Mech. 2013;737:R3.
+ [5] Park S, Lee C. Analysis of coherent structures in Rayleigh-Bénard convection. J Turbul.
+     2015;16(12):1162–1178.
+ [6] He X, Tong P, Ching ES. Statistics of the locally averaged thermal dissipation rate in turbulent
+     Rayleigh-Bénard convection. J Turbul. 2010;(11):N35.
+ [7] Sreenivasan KR, Bershadskii A, Niemela JJ. Mean wind and its reversal in thermal convection.
+     Phys Rev E. 2002 May;65:056306.
+ [8] Benzi R. Flow reversal in a simple dynamical model of turbulence. Phys Rev Lett. 2005
+     Jul;95:024502.
+ [9] Araujo FF, Grossmann S, Lohse D. Wind reversals in turbulent Rayleigh-Bénard convection.
+     Phys Rev Lett. 2005 Aug;95:084502.
+[10] Brown E, Ahlers G. Large-scale circulation model for turbulent Rayleigh-Bénard convection.
+     Phys Rev Lett. 2007 Mar;98:134501.
+[11] Assaf M, Angheluta L, Goldenfeld N. Rare fluctuations and large-scale circulation cessations
+     in turbulent convection. Phys Rev Lett. 2011 Jul;107:044502.
+[12] Sugiyama K, Ni R, Stevens RJ, et al. Flow reversals in thermally driven turbulence. Phys Rev
+     Lett. 2010;105(3):034503.
+[13] Wang Y, Lai PY, Song H, et al. Mechanism of large-scale flow reversals in turbulent thermal
+     convection. Sci Adv. 2018;4(11):eaat7480.
+[14] Vasil’ev AY, Frick PG. Reversals of large-scale circulation in turbulent convection in rectangular
+     cavities. JETP Lett. 2011;93(6):330–334.
+[15] Ni R, Huang SD, Xia KQ. Reversals of the large-scale circulation in quasi-2D Rayleigh–Bénard
+     convection. J Fluid Mech. 2015;778:R5.
+[16] Chen X, Huang SD, Xia KQ, et al. Emergence of substructures inside the large-scale circula-
+     tion induces transition in flow reversals in turbulent thermal convection. J Fluid Mech. 2019;
+     877:R1.
+[17] Chen X, Wang DP, Xi HD. Reduced flow reversals in turbulent convection in the absence of
+     corner vortices. J Fluid Mech. 2020;891.
+[18] Xia SN, Wan ZH, Liu S, et al. Flow reversals in Rayleigh–Bénard convection with non-
+     Oberbeck–Boussinesq effects. J Fluid Mech. 2016;798:628–642.
+[19] Dong DL, Wang BF, Dong YH, et al. Influence of spatial arrangements of roughness elements
+     on turbulent Rayleigh-Bénard convection. Phys Fluids. 2020;32(4):045114.
+[20] Funfschilling D, Ahlers G. Plume motion and large-scale circulation in a cylindrical Rayleigh-
+     Bénard cell. Phys Rev Lett. 2004 May;92:194502.
+[21] Brown E, Nikolaenko A, Ahlers G. Reorientation of the large-scale circulation in turbulent
+     Rayleigh-Bénard convection. Phys Rev Lett. 2005;95(8):084503.
+[22] Xi HD, Zhou SQ, Zhou Q, et al. Origin of the temperature oscillation in turbulent thermal
+     convection. Phys Rev Lett. 2009;102(4):044503.
+[23] Zhu X, Jiang LF, Zhou Q, et al. Turbulent Rayleigh–Bénard convection in an annular cell. J
+     Fluid Mech. 2019;869:R5.
+[24] Chandra M, Verma MK. Dynamics and symmetries of flow reversals in turbulent convection.
+     Phys Rev E. 2011 Jun;83:067303.
+[25] Chandra M, Verma MK. Flow reversals in turbulent convection via vortex reconnections. Phys
+     Rev Lett. 2013 Mar;110:114503.
+[26] Podvin B, Sergent A. A large-scale investigation of wind reversal in a square Rayleigh-Bénard
+     cell. J Fluid Mech. 2015;766:172–201.
+[27] Huang SD, Wang F, Xi HD, et al. Comparative experimental study of fixed temperature and
+     fixed heat flux boundary conditions in turbulent thermal convection. Phys Rev Lett. 2015
+     Oct;115:154502.
+392       J.-J. CHENG ET AL.
+
+
+[28] Xu A, Chen X, Xi HD. Tristable flow states and reversal of the large-scale circulation in two-
+     dimensional circular convection cells. J Fluid Mech. 2021;910:A33.
+[29] Wang Q, Xia SN, Bo-Fu W, et al. Flow reversals in two-dimensional thermal convection in
+     tilted cells. J Fluid Mech. 2018;849:355–372.
+[30] Wang BF, Zhou Q, Sun C. Vibration-induced boundary-layer destabilization achieves massive
+     heat-transport enhancement. Sci Adv. 2020;6(21):eaaz8239.
+[31] Du YB, Tong P. Enhanced heat transport in turbulent convection over a rough surface. Phys
+     Rev Lett. 1998;81(5):987.
+[32] Jiang H, Zhu X, Mathai V, et al. Controlling heat transport and flow structures in thermal
+     turbulence using ratchet surfaces. Phys Rev Lett. 2018;120(4):044501.
+[33] Zhu X, Stevens RJ, Verzicco R, et al. Roughness-facilitated local 1/2 scaling does not imply the
+     onset of the ultimate regime of thermal convection. Phys Rev Lett. 2017;119(15):154501.
+[34] Yang R, Chong KL, Wang Q, et al. Periodically modulated thermal convection. Phys Rev Lett.
+     2020 Oct;125:154502.
+[35] Ahlers G, Hohenberg P, Lücke M. Thermal convection under external modulation of the
+     driving force. I. The Lorenz model. Phys Review A. 1985;32(6):3493.
+[36] Huang SD, Kaczorowski M, Ni R, et al. Confinement-induced heat-transport enhancement in
+     turbulent thermal convection. Phys Rev Lett. 2013 Sep;111:104501.
+[37] Chong KL, Yang Y, Huang SD, et al. Confined Rayleigh-Bénard, rotating Rayleigh-Bénard, and
+     double diffusive convection: A unifying view on turbulent transport enhancement through
+     coherent structure manipulation. Phys Rev Lett. 2017 Aug;119:064501.
+[38] Wang Z, Mathai V, Sun C. Self-sustained biphasic catalytic particle turbulence. Nat Commun.
+     2019;10(1):1–7.
+[39] Beintema G, Corbetta A, Biferale L, et al. Controlling Rayleigh-Bénard convection via rein-
+     forcement learning. J Turbul. 2020;21(9-10):585–605.
+[40] Zhang S, Xia Z, Zhou Q, et al. Controlling flow reversal in two-dimensional Rayleigh–Bénard
+     convection. J Fluid Mech. 2020;891:R4.
+[41] Zhang YZ, Xia SN, Dong YH, et al. An efficient parallel algorithm for DNS of buoyancy-driven
+     turbulent flows. J Hydrodyn. 2019;31(6):1159–1169.
+[42] Zhang YZ, Sun C, Bao Y, et al. How surface roughness reduces heat transport for small
+     roughness heights in turbulent Rayleigh–Bénard convection. J Fluid Mech. 2018;836:R2.
+[43] Zhang Y, Zhou Q, Sun C. Statistics of kinetic and thermal energy dissipation rates in two-
+     dimensional turbulent Rayleigh–Bénard convection. J Fluid Mech. 2017;814:165–184.
+[44] Zhang Y, Huang YX, Jiang N, et al. Statistics of velocity and temperature fluctuations in two-
+     dimensional Rayleigh-Bénard convection. Phys Rev E. 2017;96(2):023105.
+[45] Wagner S, Shishkina O. Aspect-ratio dependency of Rayleigh-Bénard convection in box-
+     shaped containers. Phys Fluids. 2013;25(8):085110.
+[46] Huang SD, Xia KQ. Effects of geometric confinement in quasi-2D turbulent Rayleigh–Bénard
+     convection. J Fluid Mech. 2016;794:639–654.
+
