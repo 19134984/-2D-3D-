@@ -106,9 +106,15 @@ module commondata3dOpenacc
   ! 是否在计算前从旧算例重启
   integer(kind=4), parameter :: loadInitField=0
 
-  ! 在 loadInitField=1 的前提下：
-  integer(kind=4), parameter :: reloadDimensionlessTime=0
-  integer(kind=4), parameter :: reloadFileNum=0  ! 读取的严格重启文件编号；非稳态续算时也作为快照编号偏移
+  ! 正常断电续算只需要设置 loadInitField=1；
+  ! 代码会读取 <reloadFilePrefix>-latest.meta，并从里面找到最新的 .bin。
+  ! 正常续算不用改 reloadFileNum；只有 latest .meta 缺失时，
+  ! 才手动设置 reloadFileNum 作为保守推断编号。
+  integer(kind=4) :: reloadFileNum=0              ! latest .meta 存在时会被覆盖；meta 缺失时作为手工兜底编号
+  !===============================================================================================
+  real(kind=8) :: reloadDimensionlessTime=0.0d0   ! 续算前已累计的 t_ff；优先从 latest .meta 读取，meta 缺失时由代码推断
+  integer(kind=4) :: restartItcOffset=0           ! 续算前已累计的格子步数；优先从 latest .meta 读取，meta 缺失时由代码推断
+  logical :: reloadMetadataLoaded=.false.         ! 标记是否成功读取 reload 元数据文件
   !===============================================================================================
 
   !===============================================================================================
@@ -182,7 +188,7 @@ module commondata3dOpenacc
   real(kind=8), parameter :: outputPltFileInterval=100.0d0  ! Tecplot 文件周期输出间隔（单位：t_ff）
   real(kind=8), parameter :: unsteadyRunDuration=1000.0d0
   ! 以下三个参数只控制非稳态结束后的 Nu/Re 统计平均窗口，不改变推进时长或采样频率。
-  ! 时间以本次运行段的 t_ff 计；写出统计文件时会自动叠加 reloadDimensionlessTime。
+  ! 时间窗口按完整算例的绝对 t_ff 计；续算后处理会从完整 .dat 历史重建。
   real(kind=8), parameter :: unsteadyAverageStartTf=0.5d0*unsteadyRunDuration  ! 平均窗口起点
   real(kind=8), parameter :: unsteadyAverageEndTf=unsteadyRunDuration          ! 平均窗口终点
   real(kind=8), parameter :: unsteadyAverageMidTf=0.5d0*(unsteadyAverageStartTf+unsteadyAverageEndTf) ! 前/后半分界
@@ -270,11 +276,16 @@ program main3dOpenacc
   integer(kind=4) :: numAccDevices
   integer(kind=8) :: wallClockStart, wallClockEnd, wallClockRate
 #ifdef unsteadyFlow
-  integer(kind=4) :: nextSampleItc
+  integer(kind=4) :: nextSampleItc, nextSampleAbsItc, unsteadyItcRemaining
 #endif
 
   ! 先写日志头，并初始化 OpenACC 设备
-  open(unit=00, file=trim(settingsFile), status='replace')
+  if (loadInitField .EQ. 1) then
+    open(unit=00, file=trim(settingsFile), status='unknown', position='append')
+    write(00,*) '================ Restart continuation begins ================'
+  else
+    open(unit=00, file=trim(settingsFile), status='replace')
+  endif
   string = ctime(time())
   write(00,*) 'Start: ', string
   write(00,*) 'Starting OpenACC >>>>>>'
@@ -284,6 +295,11 @@ program main3dOpenacc
   close(00)
 
   call initial3d()
+#ifdef unsteadyFlow
+  ! 非稳态的 itc_max 是整个算例的总目标步数；
+  ! 续算时 restartItcOffset 是旧算例已经完成的步数，本次只推进剩余步数。
+  unsteadyItcRemaining = max(0, itc_max - restartItcOffset)
+#endif
   call enter_data_3d_openacc()     !把主要数组和常量映射到 OpenACC 设备端
 
   call CPU_TIME(timeStart)
@@ -294,7 +310,7 @@ program main3dOpenacc
   do while (((errorU .GT. epsU) .OR. (errorT .GT. epsT)) .AND. (itc .LE. itc_max))
 #endif
 #ifdef unsteadyFlow
-  do while (itc .LT. itc_max)
+  do while (itc .LT. unsteadyItcRemaining)
 #endif
     itc = itc + 1
 
@@ -310,25 +326,29 @@ program main3dOpenacc
     !$acc wait(1)   ! 等待 async(1) 队列上的 GPU kernel 全部完成，后面的检查/输出才能读取一致结果
 
 #ifdef steadyFlow
-    if (mod(itc, 2000) .EQ. 0) call check3d()
-    if ((outputPltFile .EQ. 1) .AND. (mod(itc, outputPltFileIntervalItc) .EQ. 0)) then
+    ! 周期输出按累计格子步判断，续算时才能接回不断电运行应有的输出节奏。
+    if (mod(restartItcOffset+itc, 2000) .EQ. 0) call check3d()
+    if ((outputPltFile .EQ. 1) .AND. (mod(restartItcOffset+itc, outputPltFileIntervalItc) .EQ. 0)) then
       call update_host_tecplot_3d_openacc()
       call output_Tecplot3d()
     endif
-    if ((outputSnapshotFile .EQ. 1) .AND. (mod(itc, outputSnapshotIntervalItc) .EQ. 0)) then
+    if ((outputSnapshotFile .EQ. 1) .AND. (mod(restartItcOffset+itc, outputSnapshotIntervalItc) .EQ. 0)) then
       call update_host_snapshot_3d_openacc()
       call output_SnapshotFile3d()
     endif
-    if ((outputReloadFile .EQ. 1) .AND. (mod(itc, reloadFileIntervalItc) .EQ. 0)) then
+    if ((outputReloadFile .EQ. 1) .AND. (mod(restartItcOffset+itc, reloadFileIntervalItc) .EQ. 0)) then
       call update_host_reload_3d_openacc()
       call output_ReloadFile3d()
     endif
 #endif
 
 #ifdef unsteadyFlow
-    do while(dimensionlessTime .LT. unsteadySampleCount)
-      ! 每个目标采样时刻都重新从 t_ff 换算到 itc，以避免累积误差导致的采样时间点漂移
-      nextSampleItc = max(1, int(real(dimensionlessTime+1,kind=8)*outputSnapshotInterval*timeUnit+0.5d0))
+    do while( (reloadDimensionlessTime + real(dimensionlessTime,kind=8)*outputSnapshotInterval) &
+         .LT. unsteadyRunDuration )
+      ! 每个目标采样时刻都按绝对 t_ff 换算到本次运行段的 itc，续算时不会重复旧样本。
+      nextSampleAbsItc = max(1, int((reloadDimensionlessTime + &
+           real(dimensionlessTime+1,kind=8)*outputSnapshotInterval)*timeUnit+0.5d0))
+      nextSampleItc = max(1, nextSampleAbsItc - restartItcOffset)
       if(itc .LT. nextSampleItc) exit
       call calNuRe3d()
       if (outputSnapshotFile .EQ. 1) then
@@ -336,11 +356,11 @@ program main3dOpenacc
         call output_SnapshotFile3d()     !每 0.5 t_ff 输出一次 u、v、w、T、rho 的二进制快照文件
       endif
     enddo
-    if ((outputPltFile .EQ. 1) .AND. (mod(itc, outputPltFileIntervalItc) .EQ. 0)) then
+    if ((outputPltFile .EQ. 1) .AND. (mod(restartItcOffset+itc, outputPltFileIntervalItc) .EQ. 0)) then
       call update_host_tecplot_3d_openacc()
       call output_Tecplot3d()
     endif
-    if ((outputReloadFile .EQ. 1) .AND. (mod(itc, reloadFileIntervalItc) .EQ. 0)) then
+    if ((outputReloadFile .EQ. 1) .AND. (mod(restartItcOffset+itc, reloadFileIntervalItc) .EQ. 0)) then
       call update_host_reload_3d_openacc()
       call output_ReloadFile3d()
     endif
@@ -443,6 +463,10 @@ subroutine initial3d()
   itc = 0
   errorU = 100.0d0
   errorT = 100.0d0
+  snapshotFileNum = 0
+  pltFileNum = 0
+  restartItcOffset = 0
+  reloadMetadataLoaded = .false.
 
   ! 把按自由落体时间给出的输出/备份间隔换算成格子步数 itc
   outputSnapshotIntervalItc = max(1, int(outputSnapshotInterval * timeUnit + 0.5d0))
@@ -520,7 +544,7 @@ subroutine initial3d()
   write(00,*) 'unsteadySampleCount =', unsteadySampleCount
 #endif
   if (loadInitField .EQ. 1) then
-    write(00,*) 'reloadDimensionlessTime =', reloadDimensionlessTime
+    write(00,*) 'Restart offsets will be read from reload metadata when available.'
   endif
   write(00,*) 'itc_max =', itc_max
   write(00,*) 'default epsU =', real(epsU,kind=8), '; epsT =', real(epsT,kind=8)
@@ -601,7 +625,7 @@ subroutine initial3d()
 
   if (loadInitField .EQ. 0) then
     write(00,*) 'Initial field is set exactly'
-    if (reloadDimensionlessTime .NE. 0) then
+    if (reloadDimensionlessTime .NE. 0.0d0) then
       write(00,*) 'Error: since loadInitField .EQ. 0, reloadDimensionlessTime should also be 0'
       close(00)
       stop
@@ -709,15 +733,20 @@ subroutine initial3d()
     enddo
 
   elseif (loadInitField .EQ. 1) then
-    if (reloadDimensionlessTime .EQ. 0) then
-      write(00,*) 'WARNING: since loadInitField .EQ. 1, please confirm reloadDimensionlessTime', reloadDimensionlessTime
-      close(00)
-      stop
+    ! 正常断电续算时，先读取 <reloadFilePrefix>-latest.meta；
+    ! meta 会告诉代码实际要读哪个 <reloadFilePrefix>-*.bin，以及旧算例已经累计到哪里。
+    ! 这一步在 enter_data_3d_openacc() 之前完成，后续 copyin 会把恢复后的主机端状态送到 GPU。
+    write(00,*) 'Read reload metadata before choosing the restart .bin file.'
+    write(reloadFileName,'(i12.12)') reloadFileNum             ! latest .meta 缺失时才依赖这个手工编号
+    reloadFileName = adjustl(reloadFileName)                  ! adjustl 把前导空格移到字符串末尾
+    call read_reload_metadata3d(reloadFileName)
+    write(00,*) 'Load initial field from previous simulation: ', &
+         trim(reloadFilePrefix), '-', trim(reloadFileName), '.bin'
+    if (.not. reloadMetadataLoaded) then
+      write(00,*) 'WARNING: no reload metadata file found; restart offsets were inferred.'
+      write(00,*) '         For exact continuation, use reload files written after this patch.'
     endif
-    write(00,*) 'Load initial field from previous simulation: ', trim(reloadFilePrefix), '- >>>'
-    write(reloadFileName,'(i12.12)') reloadFileNum
-    reloadFileName = adjustl(reloadFileName)
-    open(unit=01, file=trim(reloadFilePrefix)//'-'//trim(adjustl(reloadFileName))//'.bin', &
+    open(unit=01, file=trim(reloadFilePrefix)//'-'//trim(reloadFileName)//'.bin', &
          form='unformatted', access='sequential', status='old')
     write(00,*) 'Reloading strict restart state from file'
     read(01) ((((f(alpha,i,j,k), i=1,nx), j=1,ny), k=1,nz), alpha=0,qf-1)
@@ -729,7 +758,10 @@ subroutine initial3d()
 #endif
     close(01)
     call reconstruct_macro_from_fg3d()
-    write(00,*) 'Raw data is loaded from the file: ', trim(reloadFilePrefix), '-', trim(adjustl(reloadFileName)), '.bin'
+    write(00,*) 'Raw data is loaded from the file: ', trim(reloadFilePrefix), '-', trim(reloadFileName), '.bin'
+    write(00,*) 'Restart offset itc =', restartItcOffset
+    write(00,*) 'Restart offset time_tf =', real(reloadDimensionlessTime,kind=8)
+    write(00,*) 'Continue output counters: snapshot/plt/reload =', snapshotFileNum, pltFileNum, reloadFileNum
   else
     write(00,*) 'Error: initial field is not properly set'
     close(00)
@@ -739,18 +771,34 @@ subroutine initial3d()
   write(00,*) '-------------------------------------------------------------------------------'
   close(00)
 
-#ifdef steadyFlow
-  up = 0.0d0
-  vp = 0.0d0
-  wp = 0.0d0
-  Tp = 0.0d0
-#endif
-
   f_post = 0.0d0
   g_post = 0.0d0
-  snapshotFileNum = 0
-  pltFileNum = 0
+  if (loadInitField .EQ. 0) then
+    snapshotFileNum = 0
+    pltFileNum = 0
+    reloadFileNum = 0
+    restartItcOffset = 0
+    reloadDimensionlessTime = 0.0d0
+#ifdef steadyFlow
+    ! 新算例第一段收敛误差应从初始场开始比较。
+    up = u
+    vp = v
+    wp = w
+    Tp = T
+#endif
+  else
+#ifdef steadyFlow
+    ! 重启后第一段收敛误差应从载入场继续比较。
+    up = u
+    vp = v
+    wp = w
+    Tp = T
+#endif
+  endif
   dimensionlessTime = 0
+  ! 新算例：清零，开始记录新历史。
+  ! 续算：也清零，但不是丢旧历史；旧历史在 .dat 文件里，新数组只记录本次续算段。
+  ! 写出时间轴时会叠加 reloadDimensionlessTime，所以不会从 0 t_ff 重新编号。
   NuVolAvg = 0.0d0
   ReVolAvg = 0.0d0
 
@@ -1693,12 +1741,12 @@ subroutine check3d()
     errorT = error5
   endif
 
-  call append_convergence_tecplot3d('convergence3D.plt', itc, errorU, errorT)
+  call append_convergence_tecplot3d('convergence3D.plt', restartItcOffset+itc, errorU, errorT)
 
   write(caseTag,'("Ra=",ES10.3E2,",nx=",I0,",ny=",I0,",nz=",I0,",useG=",L1,",old=",L1)') &
        real(Rayleigh,kind=8), nx, ny, nz, useG, useLegacyThermalScheme
-  call append_convergence_master_tecplot3d('convergence_all_3D.plt', caseTag, itc, errorU, errorT)
-  write(*,'(I12,1X,ES24.16E3,1X,ES24.16E3)') itc, real(errorU,kind=8), real(errorT,kind=8)
+  call append_convergence_master_tecplot3d('convergence_all_3D.plt', caseTag, restartItcOffset+itc, errorU, errorT)
+  write(*,'(I12,1X,ES24.16E3,1X,ES24.16E3)') restartItcOffset+itc, real(errorU,kind=8), real(errorT,kind=8)
 
 end subroutine check3d
 #endif
@@ -1709,21 +1757,35 @@ end subroutine check3d
 ! 作用: 向单个收敛历史文件追加一条误差记录。
 !===========================================================================================================================
 subroutine append_convergence_tecplot3d(filename, itcLoc, errorULoc, errorTLoc)
+  use commondata3dOpenacc, only: loadInitField
   implicit none
   character(len=*), intent(in) :: filename
   integer(kind=4), intent(in) :: itcLoc
   real(kind=8), intent(in) :: errorULoc, errorTLoc
   integer(kind=4) :: u
+  logical :: ex
   logical, save :: first_write = .true.
 
   if (first_write) then
-    open(newunit=u, file=trim(filename), status='replace', action='write', form='formatted')
-    write(u,'(A)') 'VARIABLES = "itc" "errorU" "errorT"'
-    write(u,'(A)') 'ZONE T="conv3d", F=POINT'
+    inquire(file=trim(filename), exist=ex)
+    if ((loadInitField .EQ. 1) .AND. ex) then
+      ! 续算：旧收敛曲线继续追加，横坐标已经传入累计 itc。
+      open(newunit=u, file=trim(filename), status='old', position='append', action='write', form='formatted')
+    elseif (loadInitField .EQ. 1) then
+      ! 续算要求旧收敛文件必须存在；否则会丢掉断电前的收敛历史。
+      write(*,*) 'Error: restart requested but convergence file is missing: ', trim(filename)
+      stop
+    else
+      ! 新算例：清掉旧历史，避免不同算例的数据混在一起。
+      open(newunit=u, file=trim(filename), status='replace', action='write', form='formatted')
+      write(u,'(A)') 'VARIABLES = "itc" "errorU" "errorT"'
+      write(u,'(A)') 'ZONE T="conv3d", F=POINT'
+    endif
     write(u,'(I12,1X,ES24.16E3,1X,ES24.16E3)') itcLoc, real(errorULoc,kind=8), real(errorTLoc,kind=8)
     close(u)
     first_write = .false.
   else
+    ! 同一次运行的后续调用：追加数据行
     open(newunit=u, file=trim(filename), status='old', position='append', action='write', form='formatted')
     write(u,'(I12,1X,ES24.16E3,1X,ES24.16E3)') itcLoc, real(errorULoc,kind=8), real(errorTLoc,kind=8)
     close(u)
@@ -1737,6 +1799,7 @@ end subroutine append_convergence_tecplot3d
 ! 作用: 向带 zone 名称的收敛历史文件追加一条记录。
 !===========================================================================================================================
 subroutine append_convergence_master_tecplot3d(filename, zoneName, itcLoc, errorULoc, errorTLoc)
+  use commondata3dOpenacc, only: loadInitField
   implicit none
   character(len=*), intent(in) :: filename, zoneName
   integer(kind=4), intent(in) :: itcLoc
@@ -1748,14 +1811,20 @@ subroutine append_convergence_master_tecplot3d(filename, zoneName, itcLoc, error
   if (.not. zone_started) then
     inquire(file=trim(filename), exist=ex)
     if (.not. ex) then
-      open(newunit=u, file=trim(filename), status='replace', action='write', form='formatted')
+      if (loadInitField .EQ. 1) then
+        write(*,*) 'Error: restart requested but master convergence file is missing: ', trim(filename)
+        stop
+      endif
+      open(newunit=u, file=trim(filename), status='new', action='write', form='formatted')
       write(u,'(A)') 'TITLE = "Convergence comparison 3D"'
       write(u,'(A)') 'VARIABLES = "itc" "errorU" "errorT"'
       close(u)
     endif
-    open(newunit=u, file=trim(filename), status='old', position='append', action='write', form='formatted')
-    write(u,'(A)') 'ZONE T="'//trim(zoneName)//'", F=POINT'
-    close(u)
+    if (loadInitField .EQ. 0) then
+      open(newunit=u, file=trim(filename), status='old', position='append', action='write', form='formatted')
+      write(u,'(A)') 'ZONE T="'//trim(zoneName)//'", F=POINT'
+      close(u)
+    endif
     zone_started = .true.
   endif
 
@@ -1780,12 +1849,11 @@ subroutine output_SnapshotFile3d()
   ! 这是给后处理看的快照文件
   ! 输出的是已经乘上 velocityScaleCompare 的无量纲速度场
 #ifdef steadyFlow
-  write(filename,'(i12.12)') itc
+  write(filename,'(i12.12)') restartItcOffset+itc
 #endif
 #ifdef unsteadyFlow
   snapshotFileNum = snapshotFileNum + 1
-  if (loadInitField .EQ. 0) write(filename,'(i12.12)') snapshotFileNum
-  if (loadInitField .EQ. 1) write(filename,'(i12.12)') snapshotFileNum + reloadFileNum
+  write(filename,'(i12.12)') snapshotFileNum
 #endif
 
   filename = adjustl(filename)
@@ -1815,10 +1883,12 @@ subroutine output_ReloadFile3d()
   ! 这是严格重启文件
   ! f/g 恢复宏观量；EnableUseG 的历史热流必须原样保存，不能由当前 u*T 近似替代。
 #ifdef steadyFlow
-  write(filename,'(i12.12)') itc
+  reloadFileNum = restartItcOffset+itc
+  write(filename,'(i12.12)') reloadFileNum
 #endif
 #ifdef unsteadyFlow
-  write(filename,'(i12.12)') itc
+  reloadFileNum = reloadFileNum + 1
+  write(filename,'(i12.12)') reloadFileNum
 #endif
 
   filename = adjustl(filename)
@@ -1831,13 +1901,215 @@ subroutine output_ReloadFile3d()
   write(05) (((real(Bz_prev(i,j,k),kind=8), i=1,nx), j=1,ny), k=1,nz)
 #endif
   close(05)
+  call write_reload_metadata3d(trim(filename))
 
   open(unit=00, file=trim(settingsFile), status='unknown', position='append')
-  write(00,*) 'Backup strict restart state to the file: ', trim(reloadFilePrefix), '-', trim(filename), '.bin'
+  write(00,*) 'Backup f/g restart state to: ', trim(reloadFilePrefix), '-', trim(filename), '.bin'
+  write(00,*) 'Backup restart metadata to: ', trim(reloadFilePrefix), '-latest.meta'
   close(00)
 
   return
 end subroutine output_ReloadFile3d
+
+
+!===========================================================================================================================
+! 子程序: write_reload_metadata3d
+! 作用: 覆盖写出最新 reload 续算账本，恢复累计步数、t_ff、输出编号和最新 .bin 文件名。
+!===========================================================================================================================
+subroutine write_reload_metadata3d(filename)
+  use commondata3dOpenacc
+  implicit none
+  character(len=*), intent(in) :: filename
+  integer(kind=4) :: metaUnit, totalItc
+  real(kind=8) :: totalTf
+
+  totalItc = restartItcOffset + itc
+  totalTf = real(totalItc,kind=8) / timeUnit
+
+  open(newunit=metaUnit, file=trim(reloadFilePrefix)//'-latest.meta', &
+       status='replace', action='write', form='formatted')
+  write(metaUnit,'(A,1X,I0)') 'reload_meta_version', 2
+#ifdef steadyFlow
+  write(metaUnit,'(A,1X,A)') 'flowMode', 'steadyFlow'
+#endif
+#ifdef unsteadyFlow
+  write(metaUnit,'(A,1X,A)') 'flowMode', 'unsteadyFlow'
+#endif
+  write(metaUnit,'(A,1X,I0)') 'nx', nx
+  write(metaUnit,'(A,1X,I0)') 'ny', ny
+  write(metaUnit,'(A,1X,I0)') 'nz', nz
+  write(metaUnit,'(A,1X,A)') 'reloadFileName', trim(filename)
+  write(metaUnit,'(A,1X,I0)') 'itc_total', totalItc
+  write(metaUnit,'(A,1X,ES24.16E3)') 'time_tf', totalTf
+  write(metaUnit,'(A,1X,I0)') 'snapshotFileNum', snapshotFileNum
+  write(metaUnit,'(A,1X,I0)') 'pltFileNum', pltFileNum
+  write(metaUnit,'(A,1X,I0)') 'reloadFileNum', reloadFileNum
+  close(metaUnit)
+
+  return
+end subroutine write_reload_metadata3d
+
+
+!===========================================================================================================================
+! 子程序: read_reload_metadata3d
+! 作用: 优先读取 latest .meta；若没有，则根据手工编号做保守推断。
+!===========================================================================================================================
+subroutine read_reload_metadata3d(reloadFileName)
+  use commondata3dOpenacc
+  implicit none
+  character(len=*), intent(inout) :: reloadFileName
+  character(len=64) :: label
+  character(len=32) :: metaFlowMode, currentFlowMode
+  character(len=100) :: metaReloadFileName
+  character(len=256) :: metaFile
+  integer(kind=4) :: metaUnit, ios
+  integer(kind=4) :: metaVersion, metaNx, metaNy, metaNz
+  integer(kind=4) :: metaItc, metaSnapshotFileNum, metaPltFileNum, metaReloadFileNum
+  real(kind=8) :: metaTf
+  logical :: metaExists
+
+  reloadMetadataLoaded = .false.
+  metaFile = trim(reloadFilePrefix)//'-latest.meta'
+  inquire(file=trim(metaFile), exist=metaExists)                 ! 优先检查最新账本
+
+  if (.not. metaExists) then                                     ! latest meta 不存在时，只能保守推断
+    call infer_reload_offsets_without_metadata3d()
+    return
+  endif
+
+  open(newunit=metaUnit, file=trim(metaFile), status='old', action='read', &
+       form='formatted', iostat=ios)                             ! ios==0 表示成功，非 0 表示打开失败
+  if (ios .NE. 0) then
+    write(*,*) 'Error: failed to open reload metadata: ', trim(metaFile)
+    stop
+  endif
+
+  read(metaUnit,*,iostat=ios) label, metaVersion
+  if ((ios .NE. 0) .OR. (trim(label) .NE. 'reload_meta_version') .OR. (metaVersion .NE. 2)) then
+    write(*,*) 'Error: invalid reload metadata version in ', trim(metaFile)
+    stop
+  endif
+
+  read(metaUnit,*,iostat=ios) label, metaFlowMode
+  if ((ios .NE. 0) .OR. (trim(label) .NE. 'flowMode')) then
+    write(*,*) 'Error: invalid flowMode entry in ', trim(metaFile)
+    stop
+  endif
+
+  read(metaUnit,*,iostat=ios) label, metaNx
+  if ((ios .NE. 0) .OR. (trim(label) .NE. 'nx')) then
+    write(*,*) 'Error: invalid nx entry in ', trim(metaFile)
+    stop
+  endif
+
+  read(metaUnit,*,iostat=ios) label, metaNy
+  if ((ios .NE. 0) .OR. (trim(label) .NE. 'ny')) then
+    write(*,*) 'Error: invalid ny entry in ', trim(metaFile)
+    stop
+  endif
+
+  read(metaUnit,*,iostat=ios) label, metaNz
+  if ((ios .NE. 0) .OR. (trim(label) .NE. 'nz')) then
+    write(*,*) 'Error: invalid nz entry in ', trim(metaFile)
+    stop
+  endif
+
+  read(metaUnit,*,iostat=ios) label, metaReloadFileName
+  if ((ios .NE. 0) .OR. (trim(label) .NE. 'reloadFileName')) then
+    write(*,*) 'Error: invalid reloadFileName entry in ', trim(metaFile)
+    stop
+  endif
+  metaReloadFileName = adjustl(metaReloadFileName)
+
+  read(metaUnit,*,iostat=ios) label, metaItc
+  if ((ios .NE. 0) .OR. (trim(label) .NE. 'itc_total')) then
+    write(*,*) 'Error: invalid itc_total entry in ', trim(metaFile)
+    stop
+  endif
+
+  read(metaUnit,*,iostat=ios) label, metaTf
+  if ((ios .NE. 0) .OR. (trim(label) .NE. 'time_tf')) then
+    write(*,*) 'Error: invalid time_tf entry in ', trim(metaFile)
+    stop
+  endif
+
+  read(metaUnit,*,iostat=ios) label, metaSnapshotFileNum
+  if ((ios .NE. 0) .OR. (trim(label) .NE. 'snapshotFileNum')) then
+    write(*,*) 'Error: invalid snapshotFileNum entry in ', trim(metaFile)
+    stop
+  endif
+
+  read(metaUnit,*,iostat=ios) label, metaPltFileNum
+  if ((ios .NE. 0) .OR. (trim(label) .NE. 'pltFileNum')) then
+    write(*,*) 'Error: invalid pltFileNum entry in ', trim(metaFile)
+    stop
+  endif
+
+  read(metaUnit,*,iostat=ios) label, metaReloadFileNum
+  if ((ios .NE. 0) .OR. (trim(label) .NE. 'reloadFileNum')) then
+    write(*,*) 'Error: invalid reloadFileNum entry in ', trim(metaFile)
+    stop
+  endif
+  close(metaUnit)
+
+  currentFlowMode = 'unknown'
+#ifdef steadyFlow
+  currentFlowMode = 'steadyFlow'
+#endif
+#ifdef unsteadyFlow
+  currentFlowMode = 'unsteadyFlow'
+#endif
+
+  if (trim(metaFlowMode) .NE. trim(currentFlowMode)) then
+    write(*,*) 'Error: reload metadata flowMode differs: ', trim(metaFlowMode), trim(currentFlowMode)
+    stop
+  endif
+  if ((metaNx .NE. nx) .OR. (metaNy .NE. ny) .OR. (metaNz .NE. nz)) then
+    write(*,*) 'Error: reload metadata mesh mismatch: ', metaNx, metaNy, metaNz, nx, ny, nz
+    stop
+  endif
+
+  restartItcOffset = metaItc
+  reloadDimensionlessTime = metaTf
+  snapshotFileNum = metaSnapshotFileNum
+  pltFileNum = metaPltFileNum
+  ! reloadFileNum 是整数计数器，给后续 output_ReloadFile3d() 继续编号，避免覆盖旧 reload 文件。
+  ! reloadFileName 是字符串文件名，本次续算马上用它打开 <reloadFilePrefix>-<reloadFileName>.bin。
+  reloadFileNum = metaReloadFileNum
+  reloadFileName = trim(metaReloadFileName)
+  reloadMetadataLoaded = .true.
+
+  return
+end subroutine read_reload_metadata3d
+
+
+!===========================================================================================================================
+! 子程序: infer_reload_offsets_without_metadata3d
+! 作用: 没有 latest .meta 时，只能根据文件编号和当前手工参数推断。
+! 根据文件名编号和当前参数“猜一个合理值”，保证续算的时间/步数尽量连续。
+!===========================================================================================================================
+subroutine infer_reload_offsets_without_metadata3d()
+  use commondata3dOpenacc
+  implicit none
+
+  restartItcOffset = 0
+#ifdef steadyFlow
+  restartItcOffset = max(0, reloadFileNum)  ! 稳态的 reload 文件名本来就是用 itc 写的
+  if (reloadDimensionlessTime .EQ. 0.0d0) then
+    reloadDimensionlessTime = real(restartItcOffset,kind=8) / timeUnit
+  endif
+#endif
+#ifdef unsteadyFlow
+  if (reloadDimensionlessTime .EQ. 0.0d0) then
+    reloadDimensionlessTime = real(max(0,reloadFileNum),kind=8) * reloadFileInterval
+  endif
+  restartItcOffset = max(0, int(reloadDimensionlessTime*timeUnit+0.5d0))
+  snapshotFileNum = max(0, int(reloadDimensionlessTime/outputSnapshotInterval+0.5d0))
+  pltFileNum = max(0, int(reloadDimensionlessTime/outputPltFileInterval+0.5d0))
+#endif
+
+  return
+end subroutine infer_reload_offsets_without_metadata3d
 
 
 !===========================================================================================================================
@@ -1851,7 +2123,7 @@ subroutine output_Tecplot3d()
   character(len=100) :: filename
 
 #ifdef steadyFlow
-  write(filename,'(i12.12)') itc
+  write(filename,'(i12.12)') restartItcOffset+itc
 #endif
 #ifdef unsteadyFlow
   pltFileNum = pltFileNum + 1
@@ -1881,6 +2153,9 @@ subroutine calNuRe3d()
 
   integer(kind=4) :: i, j, k
   real(kind=8) :: NuVolAvg_temp, ReVolAvg_temp
+  real(kind=8) :: sampleTime
+  logical :: exNu, exRe
+  logical, save :: first_nure_write = .true.
 
   ! 这里记录的是时间序列版本的体平均 Nu / Re：
   ! NuVolAvg : 体平均对流热通量对应的 Nu
@@ -1893,6 +2168,26 @@ subroutine calNuRe3d()
     stop
   endif
   dimensionlessTime = dimensionlessTime + 1
+#ifdef steadyFlow
+  sampleTime = real(restartItcOffset+itc,kind=8)
+#endif
+#ifdef unsteadyFlow
+  sampleTime = reloadDimensionlessTime + real(dimensionlessTime,kind=8)*outputSnapshotInterval
+#endif
+
+  if ((first_nure_write) .AND. (loadInitField .EQ. 1)) then
+    inquire(file='Nu_VolAvg_3D.dat', exist=exNu)
+    inquire(file='Re_VolAvg_3D.dat', exist=exRe)
+    if ((.not. exNu) .OR. (.not. exRe)) then
+      write(*,*) 'Error: restart requested but old Nu/Re time-series files are missing.'
+      open(unit=00, file=trim(settingsFile), status='unknown', position='append')
+      write(00,*) 'Error: restart requested but old Nu/Re time-series files are missing.'
+      write(00,*) 'Nu_VolAvg_3D.dat exists =', exNu
+      write(00,*) 'Re_VolAvg_3D.dat exists =', exRe
+      close(00)
+      stop
+    endif
+  endif
 
   NuVolAvg_temp = 0.0d0
 #ifdef SideHeatedCell
@@ -1917,9 +2212,13 @@ subroutine calNuRe3d()
 #endif
 
   NuVolAvg(dimensionlessTime) = NuVolAvg_temp / dble(nx * ny * nz) * velocityScaleCompare + 1.0d0
-  open(unit=01, file='Nu_VolAvg_3D.dat', status='unknown', position='append')
+  if ((first_nure_write) .AND. (loadInitField .EQ. 0)) then
+    open(unit=01, file='Nu_VolAvg_3D.dat', status='replace', action='write')
+  else
+    open(unit=01, file='Nu_VolAvg_3D.dat', status='unknown', position='append', action='write')
+  endif
   write(01,'(2(ES24.16E3,1X))') &
-       real(reloadDimensionlessTime + dimensionlessTime * outputSnapshotInterval, kind=8), &
+       real(sampleTime, kind=8), &
        real(NuVolAvg(dimensionlessTime), kind=8)
   close(01)
 
@@ -1933,11 +2232,16 @@ subroutine calNuRe3d()
     enddo
   enddo
   ReVolAvg(dimensionlessTime) = dsqrt(ReVolAvg_temp / dble(nx * ny * nz)) * lengthUnit / viscosity
-  open(unit=02, file='Re_VolAvg_3D.dat', status='unknown', position='append')
+  if ((first_nure_write) .AND. (loadInitField .EQ. 0)) then
+    open(unit=02, file='Re_VolAvg_3D.dat', status='replace', action='write')
+  else
+    open(unit=02, file='Re_VolAvg_3D.dat', status='unknown', position='append', action='write')
+  endif
   write(02,'(2(ES24.16E3,1X))') &
-       real(reloadDimensionlessTime + dimensionlessTime * outputSnapshotInterval, kind=8), &
+       real(sampleTime, kind=8), &
        real(ReVolAvg(dimensionlessTime), kind=8)
   close(02)
+  first_nure_write = .false.
 
   write(*,'(a,1x,ES24.16E3)') 'NuVolAvg =', real(NuVolAvg(dimensionlessTime),kind=8)
   write(*,'(a,1x,ES24.16E3)') 'ReVolAvg =', real(ReVolAvg(dimensionlessTime),kind=8)
@@ -1949,55 +2253,54 @@ end subroutine calNuRe3d
 #ifdef unsteadyFlow
 !===========================================================================================================================
 ! Subroutine: output_unsteady_NuRe_postprocess3d
-! Purpose: write unsteady Nu/Re series, running means, and window averages from cached samples.
+! Purpose: rebuild unsteady Nu/Re series, running means, and window averages from full .dat history.
 !===========================================================================================================================
 subroutine output_unsteady_NuRe_postprocess3d()
   use commondata3dOpenacc
   implicit none
 
-  integer(kind=4) :: k, n
+  integer(kind=4) :: k, history_count
   integer(kind=4) :: whole_count, first_count, second_count
-  real(kind=8) :: timeLoc, Nu_Accum, Re_Accum
+  integer(kind=4) :: iosNu, iosRe
+  integer(kind=4) :: nuUnit, reUnit, seriesUnit, runningUnit
+  real(kind=8) :: timeLoc, timeNu, timeRe, NuVal, ReVal, Nu_Accum, Re_Accum
   real(kind=8) :: startTf, midTf, endTf
   real(kind=8) :: Nu_WholeSum, Re_WholeSum, Nu_FirstSum, Re_FirstSum, Nu_SecondSum, Re_SecondSum
   real(kind=8) :: Nu_WholeAvg, Re_WholeAvg, Nu_FirstAvg, Re_FirstAvg, Nu_SecondAvg, Re_SecondAvg
   real(kind=8) :: Nu_FirstRelErr, Re_FirstRelErr, Nu_SecondRelErr, Re_SecondRelErr
+  logical :: exNu, exRe
 
-  n = dimensionlessTime
-  if (n <= 0) then
-    write(*,'(A)') 'Error: no unsteady Nu/Re samples were collected before postprocessing.'
+  inquire(file='Nu_VolAvg_3D.dat', exist=exNu)
+  inquire(file='Re_VolAvg_3D.dat', exist=exRe)
+  if ((.not. exNu) .OR. (.not. exRe)) then
+    write(*,'(A)') 'Error: Nu/Re history files are missing before postprocessing.'
     open(unit=00, file=trim(settingsFile), status='unknown', position='append')
-    write(00,'(A)') 'Error: no unsteady Nu/Re samples were collected before postprocessing.'
+    write(00,'(A)') 'Error: Nu/Re history files are missing before postprocessing.'
     close(00)
     error stop 1
   endif
 
-  open(unit=31, file='NuRe_VolAvg_3DOpenacc.plt', status='replace', action='write', form='formatted')
-  write(31,'(A)') 'TITLE = "3D OpenACC Nu/Re volume averages"'
-  write(31,'(A)') 'VARIABLES = "time" "NuVolAvg" "ReVolAvg"'
-  write(31,'(A)') 'ZONE T="NuReVolAvg", F=POINT'
+  open(newunit=nuUnit, file='Nu_VolAvg_3D.dat', status='old', action='read', form='formatted')
+  open(newunit=reUnit, file='Re_VolAvg_3D.dat', status='old', action='read', form='formatted')
 
-  open(unit=32, file='NuRe_VolAvg_runningMean_3DOpenacc.plt', status='replace', action='write', form='formatted')
-  write(32,'(A)') 'TITLE = "3D OpenACC Nu/Re running means"'
-  write(32,'(A)') 'VARIABLES = "time" "NuVolAvgMean" "ReVolAvgMean"'
-  write(32,'(A)') 'ZONE T="NuReRunningMean", F=POINT'
+  ! These files are derived views of the full .dat history, so rebuild one continuous ZONE.
+  open(newunit=seriesUnit, file='NuRe_VolAvg_3DOpenacc.plt', status='replace', action='write', form='formatted')
+  write(seriesUnit,'(A)') 'TITLE = "3D OpenACC Nu/Re volume averages"'
+  write(seriesUnit,'(A)') 'VARIABLES = "time" "NuVolAvg" "ReVolAvg"'
+  write(seriesUnit,'(A)') 'ZONE T="NuReVolAvg", F=POINT'
+
+  open(newunit=runningUnit, file='NuRe_VolAvg_runningMean_3DOpenacc.plt', status='replace', action='write', &
+       form='formatted')
+  write(runningUnit,'(A)') 'TITLE = "3D OpenACC Nu/Re running means"'
+  write(runningUnit,'(A)') 'VARIABLES = "time" "NuVolAvgMean" "ReVolAvgMean"'
+  write(runningUnit,'(A)') 'ZONE T="NuReRunningMean", F=POINT'
+
+  startTf = unsteadyAverageStartTf
+  midTf = unsteadyAverageMidTf
+  endTf = unsteadyAverageEndTf
 
   Nu_Accum = 0.0d0
   Re_Accum = 0.0d0
-  do k = 1, n
-    timeLoc = real(reloadDimensionlessTime,kind=8) + real(k,kind=8)*outputSnapshotInterval
-    Nu_Accum = Nu_Accum + NuVolAvg(k)
-    Re_Accum = Re_Accum + ReVolAvg(k)
-    write(31,'(ES24.16E3,1X,ES24.16E3,1X,ES24.16E3)') timeLoc, NuVolAvg(k), ReVolAvg(k)
-    write(32,'(ES24.16E3,1X,ES24.16E3,1X,ES24.16E3)') timeLoc, Nu_Accum/dble(k), Re_Accum/dble(k)
-  enddo
-  close(31)
-  close(32)
-
-  startTf = real(reloadDimensionlessTime,kind=8) + unsteadyAverageStartTf
-  midTf = real(reloadDimensionlessTime,kind=8) + unsteadyAverageMidTf
-  endTf = real(reloadDimensionlessTime,kind=8) + unsteadyAverageEndTf
-
   Nu_WholeSum = 0.0d0
   Re_WholeSum = 0.0d0
   Nu_FirstSum = 0.0d0
@@ -2007,25 +2310,88 @@ subroutine output_unsteady_NuRe_postprocess3d()
   whole_count = 0
   first_count = 0
   second_count = 0
+  history_count = 0
 
-  do k = 1, n
-    timeLoc = real(reloadDimensionlessTime,kind=8) + real(k,kind=8)*outputSnapshotInterval
+  do k = 1, unsteadySampleCount
+    read(nuUnit,*,iostat=iosNu) timeNu, NuVal
+    read(reUnit,*,iostat=iosRe) timeRe, ReVal
+    ! iostat: 0=成功读到一行；小于0=到达文件末尾；大于0=格式或读入错误。
+    ! 循环内只要不是 0，就说明文件短于 unsteadySampleCount，或者某一行格式坏了。
+    if ((iosNu .NE. 0) .OR. (iosRe .NE. 0)) then
+      write(*,'(A)') 'Error: Nu/Re history files are shorter than unsteadySampleCount or contain invalid rows.'
+      open(unit=00, file=trim(settingsFile), status='unknown', position='append')
+      write(00,'(A)') 'Error: Nu/Re history files are shorter than unsteadySampleCount or contain invalid rows.'
+      close(00)
+      error stop 1
+    endif
+    ! 确保 Nu 和 Re 是同一个时间采样点的数据，不是错行配对的数据。
+    if (abs(timeNu-timeRe) .GT. 1.0d-10*max(1.0d0,abs(timeNu))) then
+      write(*,'(A)') 'Error: Nu/Re history time columns do not match.'
+      open(unit=00, file=trim(settingsFile), status='unknown', position='append')
+      write(00,'(A)') 'Error: Nu/Re history time columns do not match.'
+      close(00)
+      error stop 1
+    endif
+
+    timeLoc = timeNu
+    history_count = k
+    Nu_Accum = Nu_Accum + NuVal
+    Re_Accum = Re_Accum + ReVal
+    write(seriesUnit,'(ES24.16E3,1X,ES24.16E3,1X,ES24.16E3)') timeLoc, NuVal, ReVal
+    write(runningUnit,'(ES24.16E3,1X,ES24.16E3,1X,ES24.16E3)') &
+         timeLoc, Nu_Accum/dble(history_count), Re_Accum/dble(history_count)
+
     if ((timeLoc >= startTf) .and. (timeLoc <= endTf)) then
-      Nu_WholeSum = Nu_WholeSum + NuVolAvg(k)
-      Re_WholeSum = Re_WholeSum + ReVolAvg(k)
+      Nu_WholeSum = Nu_WholeSum + NuVal
+      Re_WholeSum = Re_WholeSum + ReVal
       whole_count = whole_count + 1
     endif
     if ((timeLoc >= startTf) .and. (timeLoc < midTf)) then
-      Nu_FirstSum = Nu_FirstSum + NuVolAvg(k)
-      Re_FirstSum = Re_FirstSum + ReVolAvg(k)
+      Nu_FirstSum = Nu_FirstSum + NuVal
+      Re_FirstSum = Re_FirstSum + ReVal
       first_count = first_count + 1
     endif
     if ((timeLoc >= midTf) .and. (timeLoc <= endTf)) then
-      Nu_SecondSum = Nu_SecondSum + NuVolAvg(k)
-      Re_SecondSum = Re_SecondSum + ReVolAvg(k)
+      Nu_SecondSum = Nu_SecondSum + NuVal
+      Re_SecondSum = Re_SecondSum + ReVal
       second_count = second_count + 1
     endif
   enddo
+
+  ! 上面的循环已经读完预期的 unsteadySampleCount 行；这里再试读一行，
+  ! 不是为了继续计算，而是确认 Nu/Re 两个历史文件后面没有多余数据。
+  read(nuUnit,*,iostat=iosNu) timeNu, NuVal
+  read(reUnit,*,iostat=iosRe) timeRe, ReVal
+  ! 任意一个 iostat 等于 0，都表示至少一个文件还成功读到了额外一行。
+  ! 如果放过这种情况，后处理会静默丢掉超过 unsteadySampleCount 的尾部样本。
+  if ((iosNu .EQ. 0) .OR. (iosRe .EQ. 0)) then
+    write(*,'(A)') 'Error: Nu/Re history files contain more rows than unsteadySampleCount.'
+    open(unit=00, file=trim(settingsFile), status='unknown', position='append')
+    write(00,'(A)') 'Error: Nu/Re history files contain more rows than unsteadySampleCount.'
+    close(00)
+    error stop 1
+  endif
+  ! 正常结尾必须是两个文件都到达 EOF，也就是两个 iostat 都小于 0。
+  ! 其他组合说明一个文件尾部异常，或 Nu/Re 文件长度不一致。
+  if (.not. ((iosNu .LT. 0) .AND. (iosRe .LT. 0))) then
+    write(*,'(A)') 'Error: Nu/Re history files have inconsistent trailing rows.'
+    open(unit=00, file=trim(settingsFile), status='unknown', position='append')
+    write(00,'(A)') 'Error: Nu/Re history files have inconsistent trailing rows.'
+    close(00)
+    error stop 1
+  endif
+  close(nuUnit)
+  close(reUnit)
+  close(seriesUnit)
+  close(runningUnit)
+
+  if (history_count <= 0) then
+    write(*,'(A)') 'Error: no Nu/Re history samples were found before postprocessing.'
+    open(unit=00, file=trim(settingsFile), status='unknown', position='append')
+    write(00,'(A)') 'Error: no Nu/Re history samples were found before postprocessing.'
+    close(00)
+    error stop 1
+  endif
 
   if ((whole_count <= 0) .or. (first_count <= 0) .or. (second_count <= 0)) then
     write(*,'(A)') 'Error: no complete unsteady average window was found for Nu/Re postprocessing.'

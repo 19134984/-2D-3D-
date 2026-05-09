@@ -82,12 +82,13 @@
         integer(kind=4), parameter :: loadInitField=0   ! 0: 不重启；1: 按 latest .meta 自动续算
 
         ! 正常断电续算只需要设置 loadInitField=1；
-        ! 代码会优先读取 <reloadFilePrefix>-latest.meta，并从里面找到最新的 .bin。
-        ! reloadFileNum 只作为旧格式/手动指定 checkpoint 的 fallback 编号。
-        integer(kind=4) :: reloadFileNum=0              ! fallback 重启文件编号；latest .meta 存在时会被覆盖
+        ! 代码只读取 <reloadFilePrefix>-latest.meta，并从里面找到最新的 .bin。
+        ! 正常续算不用改 reloadFileNum；只有 latest .meta 缺失时，
+        ! 才手动设置 reloadFileNum 作为保守推断编号。重启文件的编号
+        integer(kind=4) :: reloadFileNum=0              ! latest .meta 存在时会被覆盖；meta 缺失时作为手工兜底编号
         !===============================================================================================
-        real(kind=8) :: reloadDimensionlessTime=0.0d0   ! 续算前已累计的 t_ff；优先从 latest .meta 读取，旧文件缺 .meta 时可手工给定
-        integer(kind=4) :: restartItcOffset=0           ! 续算前已累计的格子步数；优先从 latest .meta 读取，旧文件缺 .meta 时由代码推断
+        real(kind=8) :: reloadDimensionlessTime=0.0d0   ! 续算前已累计的 t_ff；优先从 latest .meta 读取，meta 缺失时由代码推断
+        integer(kind=4) :: restartItcOffset=0           ! 续算前已累计的格子步数；优先从 latest .meta 读取，meta 缺失时由代码推断
         logical :: reloadMetadataLoaded=.false.         ! 标记是否成功读取 reload 元数据文件
         !===============================================================================================
 
@@ -173,7 +174,7 @@
         real(kind=8), parameter :: unsteadyAverageStartTf=0.5d0*unsteadyRunDuration  ! 平均窗口起点
         real(kind=8), parameter :: unsteadyAverageEndTf=unsteadyRunDuration          ! 平均窗口终点
         real(kind=8), parameter :: unsteadyAverageMidTf=0.5d0*(unsteadyAverageStartTf+unsteadyAverageEndTf) ! 前/后半分界
-        integer(kind=4), parameter :: unsteadySampleCount=max(1, int(unsteadyRunDuration/outputSnapshotInterval+0.5d0))   !计数器
+        integer(kind=4), parameter :: unsteadySampleCount=max(1, int(unsteadyRunDuration/outputSnapshotInterval+0.5d0))   !计数器，输出多少次快照
         integer(kind=4), parameter :: dimensionlessTimeMax=unsteadySampleCount
         integer(kind=4), parameter :: outputSnapshotFile=1   ! 是否输出后处理快照文件：0=不输出，1=输出
         integer(kind=4), parameter :: outputPltFile=1   ! 是否输出 plt 文件：0=不输出，1=输出
@@ -298,6 +299,8 @@
     call initial()
     call enter_data_2d_openacc()
 #ifdef unsteadyFlow
+    ! 非稳态的 itc_max 是整个算例的总目标步数；
+    ! 续算时 restartItcOffset 是旧算例已经完成的步数，本次只推进剩余步数。
     unsteadyItcRemaining = max(0, itc_max - restartItcOffset)
 #endif
 
@@ -335,16 +338,18 @@
         !$acc wait(1)
 
 #ifdef steadyFlow
-        if(MOD(itc,2000).EQ.0) call check()
-        if( (outputPltFile.EQ.1).AND.(MOD(itc, outputPltFileIntervalItc).EQ.0) ) then
+        ! 周期输出按累计格子步判断；否则从 1050tf 续算会在 1150tf 才输出，
+        ! 而不是接回不断电运行应有的 1100tf、1200tf、...
+        if(MOD(restartItcOffset+itc,2000).EQ.0) call check()
+        if( (outputPltFile.EQ.1).AND.(MOD(restartItcOffset+itc, outputPltFileIntervalItc).EQ.0) ) then
             call update_host_tecplot_2d_openacc()
             call output_Tecplot()  !稳态模式下的可选周期 Tecplot 输出
         endif
-        if( (outputSnapshotFile.EQ.1).AND.(MOD(itc, outputSnapshotIntervalItc).EQ.0) ) then
+        if( (outputSnapshotFile.EQ.1).AND.(MOD(restartItcOffset+itc, outputSnapshotIntervalItc).EQ.0) ) then
             call update_host_snapshot_2d_openacc()
             call output_SnapshotFile()  !稳态模式下的可选周期 uvTrho 快照输出
         endif
-        if( (outputReloadFile.EQ.1).AND.(MOD(itc, reloadFileIntervalItc).EQ.0) ) then
+        if( (outputReloadFile.EQ.1).AND.(MOD(restartItcOffset+itc, reloadFileIntervalItc).EQ.0) ) then
             call update_host_reload_2d_openacc()
             call output_ReloadFile()      !稳态模式下的可选周期 f/g 重启文件输出
         endif
@@ -364,11 +369,11 @@
                 call output_SnapshotFile()          !每 0.5 t_ff 输出一次后处理 uvTrho 快照
             endif
         enddo
-        if( (outputPltFile.EQ.1).AND.(MOD(itc, outputPltFileIntervalItc).EQ.0) ) then
+        if( (outputPltFile.EQ.1).AND.(MOD(restartItcOffset+itc, outputPltFileIntervalItc).EQ.0) ) then
             call update_host_tecplot_2d_openacc()
             call output_Tecplot()  !非稳态模式下的可选周期 Tecplot 输出
         endif
-        if( (outputReloadFile.EQ.1).AND.(MOD(itc, reloadFileIntervalItc).EQ.0) ) then
+        if( (outputReloadFile.EQ.1).AND.(MOD(restartItcOffset+itc, reloadFileIntervalItc).EQ.0) ) then
             call update_host_reload_2d_openacc()
             call output_ReloadFile()      !非稳态模式下的可选周期 f/g 重启文件输出
         endif
@@ -760,13 +765,17 @@
 
 
 
-    elseif(loadInitField.EQ.1) then                               !续算：优先由 latest .meta 决定读取哪个 reload .bin
+    elseif(loadInitField.EQ.1) then                               !续算分支：从旧的严格重启文件恢复 f/g 和输出计数
+    ! 正常断电续算时，先读取 <reloadFilePrefix>-latest.meta；
+    ! meta 会告诉代码实际要读哪个 <reloadFilePrefix>-*.bin，以及旧算例已经累计到哪里。
     !这里可以让 reloadDimensionlessTime 等于0，反正最后都可以通过meta文件读取到新的 reloadDimensionlessTime
-        write(00,*) "Load initial field from previous simulation: ", trim(reloadFilePrefix), "- >>>"
-        write(reloadFileName,'(i12.12)') reloadFileNum             !旧格式 fallback：没有 latest .meta 时才依赖这个编号
+        write(00,*) "Read reload metadata before choosing the restart .bin file."
+        write(reloadFileName,'(i12.12)') reloadFileNum             !latest .meta 缺失时才依赖这个手工编号
         reloadFileName = adjustl(reloadFileName)                  !adjustl把字符串左对齐，把前导空格移到字符串末尾
-        !latest .meta 存在时：精确读取旧账本并更新 reloadFileName；不存在时兼容旧编号 .meta 或推断。
+        !latest .meta 存在时：精确读取账本并更新 reloadFileName；不存在时保守推断。
         call read_reload_metadata(reloadFileName)
+        write(00,*) "Load initial field from previous simulation: ", &
+            trim(reloadFilePrefix), "-", trim(reloadFileName), ".bin"
         if(.not.reloadMetadataLoaded) then
             write(00,*) "WARNING: no reload metadata file found; restart offsets were inferred."
             write(00,*) "         For exact continuation, use reload files written after this patch."
@@ -1506,6 +1515,7 @@ subroutine append_convergence_tecplot(filename, itc, errorU, errorT)
       ! 续算：旧收敛曲线继续追加，横坐标已经传入累计 itc。
       open(newunit=u, file=trim(filename), status='old', position='append', action='write', form='formatted')
     elseif(loadInitField.EQ.1) then
+      ! 续算要求旧收敛文件必须存在；否则会丢掉断电前的收敛历史。
       write(*,*) 'Error: restart requested but convergence file is missing: ', trim(filename)
       stop
     else
@@ -1557,7 +1567,7 @@ subroutine append_convergence_master_tecplot(filename, zoneName, itc, errorU, er
         write(*,*) 'Error: restart requested but master convergence file is missing: ', trim(filename)
         stop
       endif
-      open(newunit=u, file=trim(filename), status='replace', action='write', form='formatted')
+      open(newunit=u, file=trim(filename), status='new', action='write', form='formatted')
       write(u,'(A)') 'TITLE = "Convergence comparison"'
       write(u,'(A)') 'VARIABLES = "itc" "errorU" "errorT"'
       close(u)
@@ -1712,7 +1722,7 @@ end subroutine append_convergence_master_tecplot
 
 !===================================================================================================
 ! 子程序: read_reload_metadata
-! 作用: 优先读取 latest .meta；若没有，则兼容旧同名 .meta；都没有时做保守推断。
+! 作用: 优先读取 latest .meta；若没有，则根据手工编号做保守推断。
 !===================================================================================================
   subroutine read_reload_metadata(reloadFileName)
     use commondata
@@ -1732,12 +1742,7 @@ end subroutine append_convergence_master_tecplot
     metaFile = trim(reloadFilePrefix)//'-latest.meta'
     inquire(file=trim(metaFile), exist=metaExists)                 !优先检查最新账本
 
-    if(.not.metaExists) then
-        metaFile = trim(reloadFilePrefix)//'-'//trim(reloadFileName)//'.meta'
-        inquire(file=trim(metaFile), exist=metaExists)             !旧格式：同名 .meta
-    endif
-
-    if(.not.metaExists) then                                       !如果不存在，就调用
+    if(.not.metaExists) then                                       !latest meta 不存在时，只能保守推断
         call infer_reload_offsets_without_metadata()
         return                                                     !退出当前这个子程序
     endif
@@ -1750,56 +1755,60 @@ end subroutine append_convergence_master_tecplot
     endif
 
     read(metaUnit,*,iostat=ios) label, metaVersion
-    if((ios.NE.0).OR.(trim(label).NE.'reload_meta_version').OR. &
-        ((metaVersion.NE.1).AND.(metaVersion.NE.2))) then
+    if((ios.NE.0).OR.(trim(label).NE.'reload_meta_version').OR.(metaVersion.NE.2)) then
         write(*,*) 'Error: invalid reload metadata version in ', trim(metaFile)
-        stop    !如果读取失败，或者标签不是 reload_meta_version，或者版本号不支持，就说明文件格式不对，停止。
+        stop    !如果读取失败，或者标签不是 reload_meta_version，或者版本号不是 2，就说明文件格式不对，停止。
     endif
+
     read(metaUnit,*,iostat=ios) label, metaFlowMode
     if((ios.NE.0).OR.(trim(label).NE.'flowMode')) then
         write(*,*) 'Error: invalid flowMode entry in ', trim(metaFile)
         stop
     endif
+
     read(metaUnit,*,iostat=ios) label, metaNx
     if((ios.NE.0).OR.(trim(label).NE.'nx')) then
         write(*,*) 'Error: invalid nx entry in ', trim(metaFile)
         stop
     endif
+
     read(metaUnit,*,iostat=ios) label, metaNy
     if((ios.NE.0).OR.(trim(label).NE.'ny')) then
         write(*,*) 'Error: invalid ny entry in ', trim(metaFile)
         stop
     endif
-    if(metaVersion.EQ.2) then
-        read(metaUnit,*,iostat=ios) label, metaReloadFileName
-        if((ios.NE.0).OR.(trim(label).NE.'reloadFileName')) then
-            write(*,*) 'Error: invalid reloadFileName entry in ', trim(metaFile)
-            stop
-        endif
-        metaReloadFileName = adjustl(metaReloadFileName)
-    else
-        metaReloadFileName = trim(reloadFileName)                  !旧版本没有文件名，沿用手动 fallback 编号
+
+    read(metaUnit,*,iostat=ios) label, metaReloadFileName
+    if((ios.NE.0).OR.(trim(label).NE.'reloadFileName')) then
+        write(*,*) 'Error: invalid reloadFileName entry in ', trim(metaFile)
+        stop
     endif
+    metaReloadFileName = adjustl(metaReloadFileName)   ! 处理左边空格，把内容左对齐
+    
     read(metaUnit,*,iostat=ios) label, metaItc
     if((ios.NE.0).OR.(trim(label).NE.'itc_total')) then
         write(*,*) 'Error: invalid itc_total entry in ', trim(metaFile)
         stop
     endif
+
     read(metaUnit,*,iostat=ios) label, metaTf
     if((ios.NE.0).OR.(trim(label).NE.'time_tf')) then
         write(*,*) 'Error: invalid time_tf entry in ', trim(metaFile)
         stop
     endif
+
     read(metaUnit,*,iostat=ios) label, metaSnapshotFileNum
     if((ios.NE.0).OR.(trim(label).NE.'snapshotFileNum')) then
         write(*,*) 'Error: invalid snapshotFileNum entry in ', trim(metaFile)
         stop
     endif
+
     read(metaUnit,*,iostat=ios) label, metaPltFileNum
     if((ios.NE.0).OR.(trim(label).NE.'pltFileNum')) then
         write(*,*) 'Error: invalid pltFileNum entry in ', trim(metaFile)
         stop
     endif
+
     read(metaUnit,*,iostat=ios) label, metaReloadFileNum
     if((ios.NE.0).OR.(trim(label).NE.'reloadFileNum')) then
         write(*,*) 'Error: invalid reloadFileNum entry in ', trim(metaFile)
@@ -1828,8 +1837,10 @@ end subroutine append_convergence_master_tecplot
     reloadDimensionlessTime = metaTf
     snapshotFileNum = metaSnapshotFileNum
     pltFileNum = metaPltFileNum
+    ! reloadFileNum 是整数计数器，给后续 output_ReloadFile() 继续编号，避免覆盖旧 reload 文件。
+    ! reloadFileName 是字符串文件名，本次续算马上用它打开 <reloadFilePrefix>-<reloadFileName>.bin。
     reloadFileNum = metaReloadFileNum
-    reloadFileName = trim(metaReloadFileName)
+    reloadFileName = trim(metaReloadFileName)     ! 处理右边空格，删掉尾部空格
     reloadMetadataLoaded = .true.
 
     return
@@ -1839,7 +1850,7 @@ end subroutine append_convergence_master_tecplot
 
 !===================================================================================================
 ! 子程序: infer_reload_offsets_without_metadata
-! 作用: 兼容旧 reload 文件；没有 .meta 时只能根据文件编号和当前手工参数推断。
+! 作用: 没有 latest .meta 时，只能根据文件编号和当前手工参数推断。
 ! 根据文件名编号和当前参数“猜一个合理值”，保证续算的时间/步数是连续的。
 !===================================================================================================
   subroutine infer_reload_offsets_without_metadata()
@@ -2205,6 +2216,8 @@ end subroutine append_convergence_master_tecplot
     do k = 1, unsteadySampleCount
         read(nuUnit,*,iostat=iosNu) timeNu, NuVal
         read(reUnit,*,iostat=iosRe) timeRe, ReVal
+        ! iostat: 0=成功读到一行；小于0=到达文件末尾；大于0=格式或读入错误。
+        ! 循环内只要不是 0，就说明文件短于 unsteadySampleCount，或者某一行格式坏了。
         if((iosNu.NE.0).OR.(iosRe.NE.0)) then
             write(*,'(A)') 'Error: Nu/Re history files are shorter than unsteadySampleCount or contain invalid rows.'
             open(unit=00,file=trim(settingsFile),status='unknown',position='append')
@@ -2212,7 +2225,7 @@ end subroutine append_convergence_master_tecplot
             close(00)
             error stop 1
         endif
-        if(abs(timeNu-timeRe).GT.1.0d-10*max(1.0d0,abs(timeNu))) then
+        if(abs(timeNu-timeRe).GT.1.0d-10*max(1.0d0,abs(timeNu))) then     !确保 Nu 和 Re 是同一个时间采样点的数据，不是错行配对的数据
             write(*,'(A)') 'Error: Nu/Re history time columns do not match.'
             open(unit=00,file=trim(settingsFile),status='unknown',position='append')
             write(00,'(A)') 'Error: Nu/Re history time columns do not match.'
@@ -2245,8 +2258,12 @@ end subroutine append_convergence_master_tecplot
         endif
     enddo
 
+    ! 上面的循环已经读完预期的 unsteadySampleCount 行；这里再试读一行，
+    ! 不是为了继续计算，而是确认 Nu/Re 两个历史文件后面没有多余数据。
     read(nuUnit,*,iostat=iosNu) timeNu, NuVal
     read(reUnit,*,iostat=iosRe) timeRe, ReVal
+    ! 任意一个 iostat 等于 0，都表示至少一个文件还成功读到了额外一行。
+    ! 如果放过这种情况，后处理会静默丢掉超过 unsteadySampleCount 的尾部样本。
     if((iosNu.EQ.0).OR.(iosRe.EQ.0)) then
         write(*,'(A)') 'Error: Nu/Re history files contain more rows than unsteadySampleCount.'
         open(unit=00,file=trim(settingsFile),status='unknown',position='append')
@@ -2254,6 +2271,8 @@ end subroutine append_convergence_master_tecplot
         close(00)
         error stop 1
     endif
+    ! 正常结尾必须是两个文件都到达 EOF，也就是两个 iostat 都小于 0。
+    ! 其他组合说明一个文件尾部异常，或 Nu/Re 文件长度不一致。
     if(.not.((iosNu.LT.0).AND.(iosRe.LT.0))) then
         write(*,'(A)') 'Error: Nu/Re history files have inconsistent trailing rows.'
         open(unit=00,file=trim(settingsFile),status='unknown',position='append')
