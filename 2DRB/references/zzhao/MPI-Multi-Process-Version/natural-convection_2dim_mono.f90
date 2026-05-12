@@ -84,16 +84,25 @@ subroutine mesh()
         ! Compute grid coordinates
         constA = 3.2d0
         do i = 0, nx+1
+        !原始 erf 范围：[-erf(0.5A), +erf(0.5A)]
+        !除以 erf(0.5A) 后：[-1, +1]
+        !加 1 后：[0, 2]
+        !乘 0.5 后：[0, 1]
+        !中间坐标跳得大 -> 网格间距大 -> 中间较疏
+        !靠近两端坐标跳得小 -> 网格间距小 -> 边界附近较密
             xGrid(i) = 0.5d0 * (erf(constA  * (dble(i) / dble(nx+1) - 0.5d0)) / erf(0.5d0 * constA ) + 1.0d0)
         end do
         do j = 0, ny+1
             y(j) = 0.5d0 * (erf(constA  * (dble(j) / dble(ny+1) - 0.5d0)) / erf(0.5d0 * constA ) + 1.0d0)
         end do
 
-        ! Compute grid spacing using array slicing
+        ! 由相邻坐标点相减得到非均匀网格的局部间距。
+        ! dx(k) = xGrid(k)-xGrid(k-1)，dy(k) = y(k)-y(k-1)。
         dx(1:nx+1) = xGrid(1:nx+1) - xGrid(0:nx)
         dy(1:ny+1) = y(1:ny+1) - y(0:ny)
+        ! 取第一段 x 向网格间距作为 0-system 中的参考空间步长。
         dx0 = dx(1)
+        ! 这里把 0-system 的参考时间步长设为 dx0。
         dt0 = dx0
         write(*,*) "nx =", nx, ", ny =", ny
         write(*,*) "Ra =", real(Ra)
@@ -115,18 +124,37 @@ subroutine mesh()
         xGrid=xGrid*length_LB
         y=y*length_LB
     endif
+      !0 system:
+      !腔体坐标约在 [0,1]
+      !dx0 是归一化几何坐标下的参考网格间距
+      !dt0 = dx0
 
+      !LB system:
+      !用 length_LB = 1/dx0 把坐标放大
+      !使第一段网格间距变成 1
+      !dt = dt0 * length_LB，通常也变成 1
+
+
+    ! 广播 LB 时间步 dt：
+    ! dt 是发送/接收缓冲区；1 表示发送 1 个 real(kind=8) 标量；
+    ! MPI_REAL8 是数据类型；0 表示由 rank 0 作为 root 发出；
+    ! MPI_COMM_WORLD 表示所有 rank 都参与；IERR 接收 MPI 调用错误码。
     call MPI_BCAST(dt,1,MPI_REAL8,0,MPI_COMM_WORLD,IERR)
 
+    ! length_LB 是从 0-system 转到 LB system 的长度缩放因子，所有 rank 必须一致。
     call MPI_BCAST(length_LB,1,MPI_REAL8,0,MPI_COMM_WORLD,IERR)
 
+    ! x 方向没有被 MPI 切分，所以把完整的 xGrid(1:nx) 广播给所有 rank。
     call MPI_BCAST(xGrid(1),nx,MPI_REAL8,0,MPI_COMM_WORLD,IERR)
 
+    ! y 方向被一维切分：rank 0 按 count1d/displ1d 把全局 y 坐标分发到各 rank 的 yGrid(1:nyLocal)。
     call MPI_SCATTERV(y(1),count1d,displ1d,MPI_REAL8,yGrid(1),count1d(MYID),MPI_REAL8,0,MPI_COMM_WORLD,IERR)
 
+    ! 交换 yGrid 的上侧 halo：把本 rank 的第一层 yGrid(1) 发给下方邻居，同时从上方邻居接收其边界到 yGrid(nyLocal+1)。
     call MPI_SENDRECV(yGrid(1),1,MPI_REAL8,downid,0,yGrid(nyLocal+1),1,MPI_REAL8,upid,0&
     ,MPI_COMM_WORLD,ISTATUS,IERR)
 
+    ! 交换 yGrid 的下侧 halo：把本 rank 的最后一层 yGrid(nyLocal) 发给上方邻居，同时从下方邻居接收其边界到 yGrid(0)。
     call MPI_SENDRECV(yGrid(nyLocal),1,MPI_REAL8,upid,1,yGrid(0),1,MPI_REAL8,downid,1&
     ,MPI_COMM_WORLD,ISTATUS,IERR)
 
@@ -285,19 +313,28 @@ program main
     implicit none
     real(8) :: timestart, timeEnd
     !----------------------------------------------------------
+    ! 初始化 MPI 运行环境；后续 MPI 调用都必须在它之后执行。
     call MPI_INIT(IERR)
+    ! 获取 MPI_COMM_WORLD 通信域中的总进程数，保存到 NPROC。
     call MPI_COMM_SIZE(MPI_COMM_WORLD,NPROC,IERR)
+    ! 获取当前进程在 MPI_COMM_WORLD 中的编号 MYID，编号范围为 0 到 NPROC-1。
     call MPI_COMM_RANK(MPI_COMM_WORLD,MYID,IERR)
 
+    ! 本程序沿 y 方向做一维区域切分：MYID+1 是上方邻居，MYID-1 是下方邻居。
     upid=MYID+1
     downid=MYID-1
+    ! 最下方 rank 没有下方邻居，用 MPI_PROC_NULL 表示该方向不通信。
     if(MYID == 0)downid=MPI_PROC_NULL
+    ! 最上方 rank 没有上方邻居，用 MPI_PROC_NULL 表示该方向不通信。
     if(MYID == NPROC-1)upid=MPI_PROC_NULL
     !----------------------------------------------------------
     call StartEnd(1, ny)
+    ! 从切分结果中取出当前 rank 负责的 y 方向本地网格数。
     nyLocal = count1d(MYID)
 
+    ! 计时前先同步所有 rank，避免有的进程还没准备好就开始计时。
     call MPI_BARRIER(MPI_COMM_WORLD, IERR)
+    ! 记录 MPI 墙钟时间，后面用来统计总运行时间和 MLUPS。
     timestart = MPI_WTIME()
 
     call mesh()
@@ -396,32 +433,50 @@ subroutine StartEnd(iS1, iS2)
     allocate (count2d(0:NPROC-1))
     allocate (displ2d(0:NPROC-1))
 
+    ! 待切分区间的总长度；这里调用 StartEnd(1, ny)，所以 leng = ny。
     leng = iS2-iS1+1
+    ! 每个 rank 至少分到的基础网格数，整数除法会自动舍去余数。
     iBlock = leng/NPROC
+    ! 不能被 NPROC 整除的剩余网格数；前 ir 个 rank 每个多分 1 个。
     ir= leng-iBlock*NPROC
 
     do i = 0, NPROC-1
 
         if(i.LT.ir) then
+            ! 前 ir 个 rank 负责多出来的余数部分，因此本地 y 方向长度为 iBlock+1。
             count1d(i) = iBlock+1
+            ! 当前 rank 在全局 y 区间中的起始下标。
             start1d(i) = iS1+i*(iBlock+1)
+            ! 当前 rank 在全局 y 区间中的结束下标。
             end1d(i) = start1d(i)+count1d(i)-1
             !-----------------------------------------------------------
+            ! 二维场按完整 x 方向乘以本地 y 长度来统计元素数，用于 MPI_GATHERV。
             count2d(i) = (iBlock+1)*nx
+            ! 当前 rank 的二维场在全局二维数组一维连续存储视角下的起始位置。
             start2d(i) = iS1+i*(iBlock+1)*nx
+            ! 当前 rank 的二维场在全局二维数组一维连续存储视角下的结束位置。
             end2d(i) = start2d(i)+count2d(i)-1
 
         else
+            ! 其余 rank 没有额外余数，只负责基础长度 iBlock。
             count1d(i) = iBlock
+            ! 起始下标需要加上 ir，表示前 ir 个 rank 已经各自多拿了 1 个网格。
             start1d(i) = iS1+i*iBlock+ir
+            ! 当前 rank 在全局 y 区间中的结束下标。
             end1d(i) = start1d(i)+count1d(i)-1
             !-----------------------------------------------------------
+            ! 二维场元素数仍然等于完整 x 方向长度乘以本地 y 长度。
             count2d(i) = iBlock*nx
+            ! 二维连续存储视角下的起始位置，同样要跳过前 ir 个 rank 多拿的 nx 个元素。
             start2d(i) = iS1+i*iBlock*nx+ir*nx
+            ! 当前 rank 的二维场在全局二维数组一维连续存储视角下的结束位置。
             end2d(i) = start2d(i)+count2d(i)-1
         endif
 
+        ! ScatterV/GatherV 使用的是相对发送缓冲区起点的偏移量，而不是全局下标。
+        !从发送/接收大数组的起点开始，跳过多少个元素，才轮到第 i 个 rank 的数据
         displ1d(i) = start1d(i)-iS1
+        ! 二维场按一维连续内存收集时使用的偏移量。
         displ2d(i) = start2d(i)-iS1
 
     enddo
