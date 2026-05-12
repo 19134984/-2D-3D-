@@ -220,6 +220,7 @@
 #endif
         real(kind=8), allocatable :: f(:,:,:), f_post(:,:,:)
         real(kind=8), allocatable :: g(:,:,:), g_post(:,:,:)
+        logical :: f_active_post = .false., g_active_post = .false.
         real(kind=8), allocatable :: Fx(:,:), Fy(:,:)
 
         real(kind=8), allocatable :: Bx_prev(:,:), By_prev(:,:)
@@ -241,10 +242,14 @@
         
         
         !格子离散速度和权重
-        integer(kind=4) :: ex(0:8), ey(0:8)
+        integer(kind=4) :: ex(0:8), ey(0:8), opp(0:8)
         data ex/0, 1, 0, -1,  0, 1, -1, -1,  1/
         data ey/0, 0, 1,  0, -1, 1,  1, -1, -1/
+        data opp/0, 3, 4, 1, 2, 7, 8, 5, 6/
+        integer(kind=4) :: oppT(0:4)
+        data oppT/0, 3, 4, 1, 2/
         real(kind=8) :: omega(0:8), omegaT(0:4)
+        real(kind=8) :: sFlow(0:8), qThermal(0:4)
         !===============================================================================================
 
     end module commondata
@@ -315,19 +320,11 @@
 
         itc = itc+1
         
-        call collision()
-
-        call streaming()
-
-        call bounceback()
+        call fused_flow_update_cpu()
 
         call macro()
 
-        call collisionT()
-
-        call streamingT()
-
-        call bouncebackT()
+        call fused_thermal_update_cpu()
         
         call macroT()
 
@@ -619,9 +616,9 @@
 #endif
 
     allocate (f(0:8,nx,ny))
-    allocate (f_post(0:8,0:nx+1,0:ny+1))
+    allocate (f_post(0:8,nx,ny))
     allocate (g(0:4,nx,ny))
-    allocate (g_post(0:4,0:nx+1,0:ny+1))
+    allocate (g_post(0:4,nx,ny))
 
     allocate (Fx(nx,ny))
     allocate (Fy(nx,ny))
@@ -655,6 +652,11 @@
         omegaT(alpha) = 1.0d0/6.0d0
     enddo
 #endif
+
+    sFlow = (/ 0.0d0, Snu, Snu, 0.0d0, Sq, 0.0d0, Sq, Snu, Snu /)
+    qThermal = (/ 0.0d0, Qk, Qk, Qnu, Qnu /)
+    f_active_post = .false.
+    g_active_post = .false.
 
     if(loadInitField.EQ.0) then                    !在不加载文件的情况下，都是零场为初值
     
@@ -833,7 +835,7 @@ close(00)
 ! 作用: 完成流场分布函数 f 的碰撞更新，并处理体力项离散修正。
 ! 用途: 在主程序时间推进循环中调用，位于 streaming 之前。
 !===================================================================================================
-  subroutine collision()
+  subroutine legacy_collision_unused()
     use commondata
     implicit none
     integer(kind=4) :: i, j
@@ -924,7 +926,7 @@ close(00)
     !$omp end parallel do
     
     return
-  end subroutine collision
+  end subroutine legacy_collision_unused
 !===================================================================================================
 ! collision 结束: 流场碰撞步骤完成。
 !===================================================================================================
@@ -935,7 +937,7 @@ close(00)
 ! 作用: 完成流场分布函数 f 的迁移，把碰撞后的信息传播到相邻格点。
 ! 用途: 在主程序时间推进循环中调用，位于 collision 之后、bounceback 之前。
 !===================================================================================================
-  subroutine streaming()                                    !先迁移，再边界处理
+  subroutine legacy_streaming_unused()                                    !先迁移，再边界处理
     use commondata                                            !迁移步骤：pull streaming，把碰撞后的 f_post 拉取到当前格点
     implicit none
     integer(kind=4) :: i, j
@@ -956,7 +958,7 @@ close(00)
     !$omp end parallel do
 
     return
-  end subroutine streaming
+  end subroutine legacy_streaming_unused
 !===================================================================================================
 ! streaming 结束: 完成流场分布函数 f 的迁移，把碰撞后的信息传播到相邻格点。
 !===================================================================================================
@@ -969,7 +971,7 @@ close(00)
 ! 作用: 处理流场边界条件，包括无滑移壁面和相关反弹格式。
 ! 用途: 在主程序时间推进循环中调用，位于 streaming 之后、macro 之前。
 !===================================================================================================
-  subroutine bounceback()
+  subroutine legacy_bounceback_unused()
     use commondata
     implicit none
     integer(kind=4) :: i, j
@@ -1024,7 +1026,7 @@ close(00)
 #endif
 
     return
-  end subroutine bounceback
+  end subroutine legacy_bounceback_unused
 !===================================================================================================
 ! bounceback 结束: 处理流场边界条件，包括无滑移壁面和相关反弹格式。
 !===================================================================================================
@@ -1041,15 +1043,30 @@ close(00)
     implicit none
     integer(kind=4) :: i, j
 
-    !$omp parallel do default(none) shared(f,rho,u,v,Fx,Fy) private(i,j)
-    do j = 1, ny
+    if(f_active_post) then
+      !$omp parallel do schedule(static) default(none) shared(f_post,rho,u,v,Fx,Fy) private(i,j)
+      do j = 1, ny
         do i = 1, nx
-            rho(i,j) = f(0,i,j)+f(1,i,j)+f(2,i,j)+f(3,i,j)+f(4,i,j)+f(5,i,j)+f(6,i,j)+f(7,i,j)+f(8,i,j)
-            u(i,j) = ( f(1,i,j)-f(3,i,j)+f(5,i,j)-f(6,i,j)-f(7,i,j)+f(8,i,j)+0.5d0*Fx(i,j) )/rho(i,j)     !含力LBM的半步动量修正：rho*u = Σ f e + 0.5*F，对应Guo forcing的二阶定义
-            v(i,j) = ( f(2,i,j)-f(4,i,j)+f(5,i,j)+f(6,i,j)-f(7,i,j)-f(8,i,j)+0.5d0*Fy(i,j) )/rho(i,j)
+          rho(i,j) = f_post(0,i,j)+f_post(1,i,j)+f_post(2,i,j)+f_post(3,i,j)+f_post(4,i,j)+ &
+                     f_post(5,i,j)+f_post(6,i,j)+f_post(7,i,j)+f_post(8,i,j)
+          u(i,j) = ( f_post(1,i,j)-f_post(3,i,j)+f_post(5,i,j)-f_post(6,i,j)-f_post(7,i,j)+ &
+                     f_post(8,i,j)+0.5d0*Fx(i,j) )/rho(i,j)
+          v(i,j) = ( f_post(2,i,j)-f_post(4,i,j)+f_post(5,i,j)+f_post(6,i,j)-f_post(7,i,j)- &
+                     f_post(8,i,j)+0.5d0*Fy(i,j) )/rho(i,j)
         enddo
-    enddo
-    !$omp end parallel do
+      enddo
+      !$omp end parallel do
+    else
+      !$omp parallel do schedule(static) default(none) shared(f,rho,u,v,Fx,Fy) private(i,j)
+      do j = 1, ny
+        do i = 1, nx
+          rho(i,j) = f(0,i,j)+f(1,i,j)+f(2,i,j)+f(3,i,j)+f(4,i,j)+f(5,i,j)+f(6,i,j)+f(7,i,j)+f(8,i,j)
+          u(i,j) = ( f(1,i,j)-f(3,i,j)+f(5,i,j)-f(6,i,j)-f(7,i,j)+f(8,i,j)+0.5d0*Fx(i,j) )/rho(i,j)
+          v(i,j) = ( f(2,i,j)-f(4,i,j)+f(5,i,j)+f(6,i,j)-f(7,i,j)-f(8,i,j)+0.5d0*Fy(i,j) )/rho(i,j)
+        enddo
+      enddo
+      !$omp end parallel do
+    endif
     
     return
   end subroutine macro
@@ -1064,7 +1081,7 @@ close(00)
 ! 作用: 完成温度分布函数 g 的碰撞更新，并加入热流修正项。
 ! 用途: 在主程序时间推进循环中调用，位于流场 macro 之后。
 !===================================================================================================
-    subroutine collisionT()
+    subroutine legacy_collisionT_unused()
     use commondata
     implicit none
     integer(kind=4) :: i, j
@@ -1138,7 +1155,7 @@ close(00)
     !$omp end parallel do
     
     return
-    end subroutine collisionT
+    end subroutine legacy_collisionT_unused
 !===================================================================================================
 ! collisionT 结束: 完成温度分布函数 g 的碰撞更新，并加入热流修正项。
 !===================================================================================================
@@ -1151,7 +1168,7 @@ close(00)
 ! 作用: 完成温度分布函数 g 的迁移，把碰撞后的温度信息传播到相邻格点。
 ! 用途: 在主程序时间推进循环中调用，位于 collisionT 之后、bouncebackT 之前。
 !===================================================================================================
-    subroutine streamingT()
+    subroutine legacy_streamingT_unused()
     use commondata
     implicit none
     integer(kind=4) :: i, j
@@ -1172,7 +1189,7 @@ close(00)
     !$omp end parallel do
 
     return
-    end subroutine streamingT
+    end subroutine legacy_streamingT_unused
 !===================================================================================================
 ! streamingT 结束: 完成温度分布函数 g 的迁移，把碰撞后的温度信息传播到相邻格点。
 !===================================================================================================
@@ -1184,7 +1201,7 @@ close(00)
 ! 作用: 处理温度边界条件，包括恒温、绝热和周期边界。
 ! 用途: 在主程序时间推进循环中调用，位于 streamingT 之后、macroT 之前。
 !===================================================================================================
-    subroutine bouncebackT()
+    subroutine legacy_bouncebackT_unused()
     use commondata
     implicit none
     integer(kind=4) :: i, j
@@ -1265,7 +1282,7 @@ close(00)
 #endif
 
     return
-    end subroutine bouncebackT
+    end subroutine legacy_bouncebackT_unused
 !===================================================================================================
 ! bouncebackT 结束: 处理温度边界条件，包括恒温、绝热和周期边界。
 !===================================================================================================
@@ -1283,18 +1300,423 @@ close(00)
     implicit none
     integer(kind=4) :: i, j
 
-    !$omp parallel do default(none) shared(g, T) private(i,j)
-    do j = 1, ny
+    if(g_active_post) then
+      !$omp parallel do schedule(static) default(none) shared(g_post,T) private(i,j)
+      do j = 1, ny
         do i = 1, nx
-            T(i,j) = g(0,i,j)+g(1,i,j)+g(2,i,j)+g(3,i,j)+g(4,i,j)
+          T(i,j) = g_post(0,i,j)+g_post(1,i,j)+g_post(2,i,j)+g_post(3,i,j)+g_post(4,i,j)
         enddo
-    enddo
-    !$omp end parallel do
-    
+      enddo
+      !$omp end parallel do
+    else
+      !$omp parallel do schedule(static) default(none) shared(g,T) private(i,j)
+      do j = 1, ny
+        do i = 1, nx
+          T(i,j) = g(0,i,j)+g(1,i,j)+g(2,i,j)+g(3,i,j)+g(4,i,j)
+        enddo
+      enddo
+      !$omp end parallel do
+    endif
+
     return
     end subroutine macroT
 !===================================================================================================
 ! macroT 结束: 由温度分布函数恢复宏观温度场 T。
+!===================================================================================================
+
+
+!===================================================================================================
+! 子程序: ensure_primary_distributions_openmp
+! 作用: 写严格重启文件前，把 active ping-pong 缓冲归一回 f/g，保持原 restart 顺序。
+!===================================================================================================
+  subroutine ensure_primary_distributions_openmp()
+    use commondata
+    implicit none
+    integer(kind=4) :: i, j, alpha
+
+    if(f_active_post) then
+      !$omp parallel do collapse(2) schedule(static) default(none) shared(f,f_post) private(i,j,alpha)
+      do j = 1, ny
+        do i = 1, nx
+          do alpha = 0, 8
+            f(alpha,i,j) = f_post(alpha,i,j)
+          enddo
+        enddo
+      enddo
+      !$omp end parallel do
+      f_active_post = .false.
+    endif
+
+    if(g_active_post) then
+      !$omp parallel do collapse(2) schedule(static) default(none) shared(g,g_post) private(i,j,alpha)
+      do j = 1, ny
+        do i = 1, nx
+          do alpha = 0, 4
+            g(alpha,i,j) = g_post(alpha,i,j)
+          enddo
+        enddo
+      enddo
+      !$omp end parallel do
+      g_active_post = .false.
+    endif
+  end subroutine ensure_primary_distributions_openmp
+!===================================================================================================
+
+
+!===================================================================================================
+! 子程序: fused_flow_update_cpu
+! 作用: CPU 版 q-first fused flow update，融合碰撞、迁移和速度边界处理。
+!===================================================================================================
+  subroutine fused_flow_update_cpu()
+    use commondata
+    implicit none
+    integer(kind=4) :: i, j, alpha, ip, jp
+    logical :: hitWall
+    real(kind=8) :: fIn(0:8), fOut(0:8)
+    real(kind=8) :: m(0:8), m_post(0:8), meq(0:8), fSource(0:8)
+
+    if(f_active_post) then
+      !$omp parallel do collapse(2) schedule(static) default(none) &
+      !$omp& shared(f,f_post,rho,u,v,Fx,Fy,T,ex,ey,opp,sFlow) &
+      !$omp& private(i,j,alpha,ip,jp,hitWall,fIn,fOut,m,m_post,meq,fSource)
+      do j = 1, ny
+        do i = 1, nx
+          do alpha = 0, 8
+            fIn(alpha) = f_post(alpha,i,j)
+          enddo
+          call fused_flow_node_2d_cpu(i,j,fIn,fOut,m,m_post,meq,fSource)
+          do alpha = 0, 8
+            ip = i + ex(alpha)
+            jp = j + ey(alpha)
+            hitWall = .false.
+#ifdef VerticalWallsNoslip
+            if((ip.LT.1).OR.(ip.GT.nx)) hitWall = .true.
+#endif
+#ifdef HorizontalWallsNoslip
+            if((jp.LT.1).OR.(jp.GT.ny)) hitWall = .true.
+#endif
+            if(hitWall) then
+              f(opp(alpha),i,j) = fOut(alpha)
+            else
+#ifdef VerticalWallsPeriodicalU
+              if(ip.LT.1) ip = nx
+              if(ip.GT.nx) ip = 1
+#endif
+              f(alpha,ip,jp) = fOut(alpha)
+            endif
+          enddo
+        enddo
+      enddo
+      !$omp end parallel do
+      f_active_post = .false.
+    else
+      !$omp parallel do collapse(2) schedule(static) default(none) &
+      !$omp& shared(f,f_post,rho,u,v,Fx,Fy,T,ex,ey,opp,sFlow) &
+      !$omp& private(i,j,alpha,ip,jp,hitWall,fIn,fOut,m,m_post,meq,fSource)
+      do j = 1, ny
+        do i = 1, nx
+          do alpha = 0, 8
+            fIn(alpha) = f(alpha,i,j)
+          enddo
+          call fused_flow_node_2d_cpu(i,j,fIn,fOut,m,m_post,meq,fSource)
+          do alpha = 0, 8
+            ip = i + ex(alpha)
+            jp = j + ey(alpha)
+            hitWall = .false.
+#ifdef VerticalWallsNoslip
+            if((ip.LT.1).OR.(ip.GT.nx)) hitWall = .true.
+#endif
+#ifdef HorizontalWallsNoslip
+            if((jp.LT.1).OR.(jp.GT.ny)) hitWall = .true.
+#endif
+            if(hitWall) then
+              f_post(opp(alpha),i,j) = fOut(alpha)
+            else
+#ifdef VerticalWallsPeriodicalU
+              if(ip.LT.1) ip = nx
+              if(ip.GT.nx) ip = 1
+#endif
+              f_post(alpha,ip,jp) = fOut(alpha)
+            endif
+          enddo
+        enddo
+      enddo
+      !$omp end parallel do
+      f_active_post = .true.
+    endif
+  end subroutine fused_flow_update_cpu
+!===================================================================================================
+
+
+!===================================================================================================
+! 子程序: fused_flow_node_2d_cpu
+! 作用: 单格点 D2Q9 MRT 碰撞，输入/输出使用 alpha 连续的小数组。
+!===================================================================================================
+  subroutine fused_flow_node_2d_cpu(i,j,fIn,fOut,m,m_post,meq,fSource)
+    use commondata
+    implicit none
+    integer(kind=4), intent(in) :: i, j
+    real(kind=8), intent(in) :: fIn(0:8)
+    real(kind=8), intent(out) :: fOut(0:8)
+    real(kind=8), intent(inout) :: m(0:8), m_post(0:8), meq(0:8), fSource(0:8)
+    integer(kind=4) :: alpha
+    real(kind=8) :: rhoLoc, uLoc, vLoc, u2, FxLoc, FyLoc, uDotF
+
+    rhoLoc = rho(i,j)
+    uLoc = u(i,j)
+    vLoc = v(i,j)
+    u2 = uLoc*uLoc + vLoc*vLoc
+
+    m(0) = fIn(0)+fIn(1)+fIn(2)+fIn(3)+fIn(4)+fIn(5)+fIn(6)+fIn(7)+fIn(8)
+    m(1) = -4.0d0*fIn(0)-fIn(1)-fIn(2)-fIn(3)-fIn(4)+2.0d0*(fIn(5)+fIn(6)+fIn(7)+fIn(8))
+    m(2) = 4.0d0*fIn(0)-2.0d0*(fIn(1)+fIn(2)+fIn(3)+fIn(4))+fIn(5)+fIn(6)+fIn(7)+fIn(8)
+    m(3) = fIn(1)-fIn(3)+fIn(5)-fIn(6)-fIn(7)+fIn(8)
+    m(4) = -2.0d0*fIn(1)+2.0d0*fIn(3)+fIn(5)-fIn(6)-fIn(7)+fIn(8)
+    m(5) = fIn(2)-fIn(4)+fIn(5)+fIn(6)-fIn(7)-fIn(8)
+    m(6) = -2.0d0*fIn(2)+2.0d0*fIn(4)+fIn(5)+fIn(6)-fIn(7)-fIn(8)
+    m(7) = fIn(1)-fIn(2)+fIn(3)-fIn(4)
+    m(8) = fIn(5)-fIn(6)+fIn(7)-fIn(8)
+
+    meq(0) = rhoLoc
+    meq(1) = rhoLoc*(-2.0d0+3.0d0*u2)
+    meq(2) = rhoLoc*( 1.0d0-3.0d0*u2)
+    meq(3) = rhoLoc*uLoc
+    meq(4) = -rhoLoc*uLoc
+    meq(5) = rhoLoc*vLoc
+    meq(6) = -rhoLoc*vLoc
+    meq(7) = rhoLoc*(uLoc*uLoc-vLoc*vLoc)
+    meq(8) = rhoLoc*(uLoc*vLoc)
+
+    FxLoc = 0.0d0
+    FyLoc = rhoLoc*gBeta*(T(i,j)-Tref)
+#ifdef    SideHeatedHa
+    FxLoc = B2sigemarho*(vLoc*sin(phi)*cos(phi)-uLoc*sin(phi)*sin(phi))
+    FyLoc = rhoLoc*gBeta*(T(i,j)-Tref)+rhoLoc*B2sigemarho*(uLoc*sin(phi)*cos(phi)-vLoc*cos(phi)*cos(phi))
+#endif
+    Fx(i,j) = FxLoc
+    Fy(i,j) = FyLoc
+    uDotF = uLoc*FxLoc + vLoc*FyLoc
+
+    fSource(0) = 0.0d0
+    fSource(1) = (6.0d0-3.0d0*sFlow(1))*uDotF
+    fSource(2) = -(6.0d0-3.0d0*sFlow(2))*uDotF
+    fSource(3) = (1.0d0-0.5d0*sFlow(3))*FxLoc
+    fSource(4) = -(1.0d0-0.5d0*sFlow(4))*FxLoc
+    fSource(5) = (1.0d0-0.5d0*sFlow(5))*FyLoc
+    fSource(6) = -(1.0d0-0.5d0*sFlow(6))*FyLoc
+    fSource(7) = (2.0d0-sFlow(7))*(uLoc*FxLoc-vLoc*FyLoc)
+    fSource(8) = (1.0d0-0.5d0*sFlow(8))*(uLoc*FyLoc+vLoc*FxLoc)
+
+    do alpha = 0, 8
+      m_post(alpha) = m(alpha)-sFlow(alpha)*(m(alpha)-meq(alpha))+fSource(alpha)
+    enddo
+
+    fOut(0) = m_post(0)/9.0d0-m_post(1)/9.0d0+m_post(2)/9.0d0
+    fOut(1) = m_post(0)/9.0d0-m_post(1)/36.0d0-m_post(2)/18.0d0+m_post(3)/6.0d0-m_post(4)/6.0d0 &
+              +m_post(7)/4.0d0
+    fOut(2) = m_post(0)/9.0d0-m_post(1)/36.0d0-m_post(2)/18.0d0 &
+              +m_post(5)/6.0d0-m_post(6)/6.0d0-m_post(7)/4.0d0
+    fOut(3) = m_post(0)/9.0d0-m_post(1)/36.0d0-m_post(2)/18.0d0-m_post(3)/6.0d0+m_post(4)/6.0d0 &
+              +m_post(7)/4.0d0
+    fOut(4) = m_post(0)/9.0d0-m_post(1)/36.0d0-m_post(2)/18.0d0 &
+              -m_post(5)/6.0d0+m_post(6)/6.0d0-m_post(7)/4.0d0
+    fOut(5) = m_post(0)/9.0d0+m_post(1)/18.0d0+m_post(2)/36.0d0+m_post(3)/6.0d0+m_post(4)/12.0d0 &
+              +m_post(5)/6.0d0+m_post(6)/12.0d0+m_post(8)/4.0d0
+    fOut(6) = m_post(0)/9.0d0+m_post(1)/18.0d0+m_post(2)/36.0d0-m_post(3)/6.0d0-m_post(4)/12.0d0 &
+              +m_post(5)/6.0d0+m_post(6)/12.0d0-m_post(8)/4.0d0
+    fOut(7) = m_post(0)/9.0d0+m_post(1)/18.0d0+m_post(2)/36.0d0-m_post(3)/6.0d0-m_post(4)/12.0d0 &
+              -m_post(5)/6.0d0-m_post(6)/12.0d0+m_post(8)/4.0d0
+    fOut(8) = m_post(0)/9.0d0+m_post(1)/18.0d0+m_post(2)/36.0d0+m_post(3)/6.0d0+m_post(4)/12.0d0 &
+              -m_post(5)/6.0d0-m_post(6)/12.0d0-m_post(8)/4.0d0
+  end subroutine fused_flow_node_2d_cpu
+!===================================================================================================
+
+
+!===================================================================================================
+! 子程序: fused_thermal_update_cpu
+! 作用: CPU 版 q-first fused thermal update，融合碰撞、迁移和温度边界处理。
+!===================================================================================================
+  subroutine fused_thermal_update_cpu()
+    use commondata
+    implicit none
+    integer(kind=4) :: i, j, alpha, ip, jp
+    logical :: hitBoundary, constWall
+    real(kind=8) :: wallT
+    real(kind=8) :: gIn(0:4), gOut(0:4)
+    real(kind=8) :: n(0:4), n_post(0:4), neq(0:4)
+    real(kind=8) :: Bx, By, dBx, dBy
+    real(kind=8), parameter :: SG = 1.0d0 - 0.5d0*Qk
+
+    if(g_active_post) then
+      !$omp parallel do collapse(2) schedule(static) default(none) &
+      !$omp& shared(g,g_post,u,v,T,Bx_prev,By_prev,ex,ey,oppT,omegaT,qThermal) &
+      !$omp& private(i,j,alpha,ip,jp,hitBoundary,constWall,wallT,gIn,gOut,n,n_post,neq,Bx,By,dBx,dBy)
+      do j = 1, ny
+        do i = 1, nx
+          do alpha = 0, 4
+            gIn(alpha) = g_post(alpha,i,j)
+          enddo
+          call fused_thermal_node_2d_cpu(i,j,gIn,gOut,n,n_post,neq,Bx,By,dBx,dBy,SG)
+          do alpha = 0, 4
+            ip = i + ex(alpha)
+            jp = j + ey(alpha)
+            hitBoundary = .false.
+            constWall = .false.
+            wallT = 0.0d0
+#ifdef VerticalWallsConstT
+            if((ip.LT.1).OR.(ip.GT.nx)) then
+              hitBoundary = .true.
+              constWall = .true.
+              if(ip.LT.1) wallT = Thot
+              if(ip.GT.nx) wallT = Tcold
+            endif
+#endif
+#ifdef VerticalWallsAdiabatic
+            if((ip.LT.1).OR.(ip.GT.nx)) hitBoundary = .true.
+#endif
+#ifdef HorizontalWallsConstT
+            if((jp.LT.1).OR.(jp.GT.ny)) then
+              hitBoundary = .true.
+              constWall = .true.
+              if(jp.LT.1) wallT = Thot
+              if(jp.GT.ny) wallT = Tcold
+            endif
+#endif
+#ifdef HorizontalWallsAdiabatic
+            if((jp.LT.1).OR.(jp.GT.ny)) hitBoundary = .true.
+#endif
+            if(hitBoundary) then
+              if(constWall) then
+                g(oppT(alpha),i,j) = -gOut(alpha) + 2.0d0*omegaT(alpha)*wallT
+              else
+                g(oppT(alpha),i,j) = gOut(alpha)
+              endif
+            else
+#ifdef VerticalWallsPeriodicalT
+              if(ip.LT.1) ip = nx
+              if(ip.GT.nx) ip = 1
+#endif
+              g(alpha,ip,jp) = gOut(alpha)
+            endif
+          enddo
+        enddo
+      enddo
+      !$omp end parallel do
+      g_active_post = .false.
+    else
+      !$omp parallel do collapse(2) schedule(static) default(none) &
+      !$omp& shared(g,g_post,u,v,T,Bx_prev,By_prev,ex,ey,oppT,omegaT,qThermal) &
+      !$omp& private(i,j,alpha,ip,jp,hitBoundary,constWall,wallT,gIn,gOut,n,n_post,neq,Bx,By,dBx,dBy)
+      do j = 1, ny
+        do i = 1, nx
+          do alpha = 0, 4
+            gIn(alpha) = g(alpha,i,j)
+          enddo
+          call fused_thermal_node_2d_cpu(i,j,gIn,gOut,n,n_post,neq,Bx,By,dBx,dBy,SG)
+          do alpha = 0, 4
+            ip = i + ex(alpha)
+            jp = j + ey(alpha)
+            hitBoundary = .false.
+            constWall = .false.
+            wallT = 0.0d0
+#ifdef VerticalWallsConstT
+            if((ip.LT.1).OR.(ip.GT.nx)) then
+              hitBoundary = .true.
+              constWall = .true.
+              if(ip.LT.1) wallT = Thot
+              if(ip.GT.nx) wallT = Tcold
+            endif
+#endif
+#ifdef VerticalWallsAdiabatic
+            if((ip.LT.1).OR.(ip.GT.nx)) hitBoundary = .true.
+#endif
+#ifdef HorizontalWallsConstT
+            if((jp.LT.1).OR.(jp.GT.ny)) then
+              hitBoundary = .true.
+              constWall = .true.
+              if(jp.LT.1) wallT = Thot
+              if(jp.GT.ny) wallT = Tcold
+            endif
+#endif
+#ifdef HorizontalWallsAdiabatic
+            if((jp.LT.1).OR.(jp.GT.ny)) hitBoundary = .true.
+#endif
+            if(hitBoundary) then
+              if(constWall) then
+                g_post(oppT(alpha),i,j) = -gOut(alpha) + 2.0d0*omegaT(alpha)*wallT
+              else
+                g_post(oppT(alpha),i,j) = gOut(alpha)
+              endif
+            else
+#ifdef VerticalWallsPeriodicalT
+              if(ip.LT.1) ip = nx
+              if(ip.GT.nx) ip = 1
+#endif
+              g_post(alpha,ip,jp) = gOut(alpha)
+            endif
+          enddo
+        enddo
+      enddo
+      !$omp end parallel do
+      g_active_post = .true.
+    endif
+  end subroutine fused_thermal_update_cpu
+!===================================================================================================
+
+
+!===================================================================================================
+! 子程序: fused_thermal_node_2d_cpu
+! 作用: 单格点 D2Q5 温度 MRT 碰撞，保留 EnableUseG 历史热流修正。
+!===================================================================================================
+  subroutine fused_thermal_node_2d_cpu(i,j,gIn,gOut,n,n_post,neq,Bx,By,dBx,dBy,SG)
+    use commondata
+    implicit none
+    integer(kind=4), intent(in) :: i, j
+    real(kind=8), intent(in) :: gIn(0:4), SG
+    real(kind=8), intent(out) :: gOut(0:4)
+    real(kind=8), intent(inout) :: n(0:4), n_post(0:4), neq(0:4)
+    real(kind=8), intent(inout) :: Bx, By, dBx, dBy
+
+    Bx = u(i,j) * T(i,j)
+    By = v(i,j) * T(i,j)
+#ifdef EnableUseG
+    dBx = Bx - Bx_prev(i,j)
+    dBy = By - By_prev(i,j)
+    Bx_prev(i,j) = Bx
+    By_prev(i,j) = By
+#else
+    dBx = 0.0d0
+    dBy = 0.0d0
+#endif
+
+    n(0) = gIn(0)+gIn(1)+gIn(2)+gIn(3)+gIn(4)
+    n(1) = gIn(1)-gIn(3)
+    n(2) = gIn(2)-gIn(4)
+    n(3) = -4.0d0*gIn(0)+gIn(1)+gIn(2)+gIn(3)+gIn(4)
+    n(4) = gIn(1)-gIn(2)+gIn(3)-gIn(4)
+
+    neq(0) = T(i,j)
+    neq(1) = T(i,j)*u(i,j)
+    neq(2) = T(i,j)*v(i,j)
+#ifdef EnableLegacyThermalScheme
+    neq(3) = T(i,j)*paraA
+#else
+    neq(3) = T(i,j)*(-2.0d0/3.0d0)
+#endif
+    neq(4) = 0.0d0
+
+    n_post(0) = n(0)-qThermal(0)*(n(0)-neq(0))
+    n_post(1) = n(1)-qThermal(1)*(n(1)-neq(1))+SG*dBx
+    n_post(2) = n(2)-qThermal(2)*(n(2)-neq(2))+SG*dBy
+    n_post(3) = n(3)-qThermal(3)*(n(3)-neq(3))
+    n_post(4) = n(4)-qThermal(4)*(n(4)-neq(4))
+
+    gOut(0) = 0.2d0*n_post(0)-0.2d0*n_post(3)
+    gOut(1) = 0.2d0*n_post(0)+0.5d0*n_post(1)+0.05d0*n_post(3)+0.25d0*n_post(4)
+    gOut(2) = 0.2d0*n_post(0)+0.5d0*n_post(2)+0.05d0*n_post(3)-0.25d0*n_post(4)
+    gOut(3) = 0.2d0*n_post(0)-0.5d0*n_post(1)+0.05d0*n_post(3)+0.25d0*n_post(4)
+    gOut(4) = 0.2d0*n_post(0)-0.5d0*n_post(2)+0.05d0*n_post(3)-0.25d0*n_post(4)
+  end subroutine fused_thermal_node_2d_cpu
 !===================================================================================================
 
 
@@ -1576,6 +1998,8 @@ end subroutine append_convergence_master_tecplot
     implicit none
     integer(kind=4) :: i, j, alpha
     character(len=100) :: filename
+
+    call ensure_primary_distributions_openmp()
 
 #ifdef steadyFlow
     reloadFileNum = restartItcOffset+itc

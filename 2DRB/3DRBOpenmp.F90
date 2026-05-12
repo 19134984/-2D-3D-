@@ -230,8 +230,9 @@ module commondata3d
 #ifdef steadyFlow
   real(kind=8), allocatable :: up(:,:,:), vp(:,:,:), wp(:,:,:), Tp(:,:,:) ! 上一次 check 的场，用于稳态残差
 #endif
-  real(kind=8), allocatable :: f(:,:,:,:), f_post(:,:,:,:)      ! 流场分布函数及碰撞后缓冲
-  real(kind=8), allocatable :: g(:,:,:,:), g_post(:,:,:,:)      ! 温度分布函数及碰撞后缓冲
+  real(kind=8), allocatable :: f(:,:,:,:), f_post(:,:,:,:)      ! 流场分布函数及 ping-pong 缓冲
+  real(kind=8), allocatable :: g(:,:,:,:), g_post(:,:,:,:)      ! 温度分布函数及 ping-pong 缓冲
+  logical :: f_active_post = .false., g_active_post = .false.
   real(kind=8), allocatable :: Bx_prev(:,:,:), By_prev(:,:,:), Bz_prev(:,:,:) ! EnableUseG 的上一时间步 B=uT
 
   integer(kind=4) :: itc
@@ -256,6 +257,7 @@ module commondata3d
   integer(kind=4) :: ex(0:qf-1), ey(0:qf-1), ez(0:qf-1), opp(0:qf-1)
   integer(kind=4) :: exT(0:qt-1), eyT(0:qt-1), ezT(0:qt-1), oppT(0:qt-1)
   real(kind=8) :: omega(0:qf-1), omegaT(0:qt-1)
+  real(kind=8) :: sFlow(0:qf-1), qThermal(0:qt-1)
 
   !===============================================================================================
 end module commondata3d
@@ -318,19 +320,11 @@ program main3d
   
     itc = itc+1
 
-    call collision()
-
-    call streaming()
-
-    call bounceback()
+    call fused_flow_update_cpu()
 
     call macro()
 
-    call collisionT()
-
-    call streamingT()
-
-    call bouncebackT()
+    call fused_thermal_update_cpu()
 
     call macroT()
 
@@ -606,8 +600,8 @@ subroutine initial()
 #ifdef steadyFlow
   allocate(up(nx,ny,nz), vp(nx,ny,nz), wp(nx,ny,nz), Tp(nx,ny,nz))
 #endif
-  allocate(f(0:qf-1,nx,ny,nz), f_post(0:qf-1,0:nx+1,0:ny+1,0:nz+1))
-  allocate(g(0:qt-1,nx,ny,nz), g_post(0:qt-1,0:nx+1,0:ny+1,0:nz+1))
+  allocate(f(0:qf-1,nx,ny,nz), f_post(0:qf-1,nx,ny,nz))
+  allocate(g(0:qt-1,nx,ny,nz), g_post(0:qt-1,nx,ny,nz))
   allocate(Bx_prev(nx,ny,nz), By_prev(nx,ny,nz), Bz_prev(nx,ny,nz))
 
   !-----------------------------------------------------------------------------------------------
@@ -845,6 +839,12 @@ subroutine init_lattice_constants()
   omegaT(1:6) = 1.0d0 / 8.0d0
 #endif
 
+  sFlow = (/ 0.0d0, Se, Seps, 0.0d0, Sq, 0.0d0, Sq, 0.0d0, Sq, &
+             Snu, Spi, Snu, Spi, Snu, Snu, Snu, Sm, Sm, Sm /)
+  qThermal = (/ 0.0d0, Qk, Qk, Qk, Qnu, Qnu, Qnu /)
+  f_active_post = .false.
+  g_active_post = .false.
+
 end subroutine init_lattice_constants
 
 
@@ -855,7 +855,7 @@ end subroutine init_lattice_constants
 ! 作用: 流场碰撞步骤，在矩空间完成松弛并加入浮力源项修正。
 ! 用途: 在主程序时间推进循环中调用，位于 streaming 之前。
 !===========================================================================================================================
-subroutine collision()
+subroutine legacy_collision_unused()
   use commondata3d
   implicit none
 
@@ -1115,7 +1115,7 @@ subroutine collision()
   enddo
   !$omp end parallel do
 
-end subroutine collision
+end subroutine legacy_collision_unused
 
 
 !===========================================================================================================================
@@ -1123,7 +1123,7 @@ end subroutine collision
 ! 作用: 对流场分布函数执行三维 pull streaming。
 ! 用途: 在主程序时间推进循环中调用，位于 collision 之后、bounceback 之前。
 !===========================================================================================================================
-subroutine streaming()
+subroutine legacy_streaming_unused()
   use commondata3d
   implicit none
 
@@ -1145,7 +1145,7 @@ subroutine streaming()
   enddo
   !$omp end parallel do
 
-end subroutine streaming
+end subroutine legacy_streaming_unused
 
 
 !===========================================================================================================================
@@ -1153,7 +1153,7 @@ end subroutine streaming
 ! 作用: 施加流场边界条件，包括无滑移壁面和周期边界配套处理。
 ! 用途: 在主程序时间推进循环中调用，位于 streaming 之后、macro 之前。
 !===========================================================================================================================
-subroutine bounceback()
+subroutine legacy_bounceback_unused()
   use commondata3d
   implicit none
 
@@ -1269,7 +1269,7 @@ subroutine bounceback()
   !$omp end parallel do
 #endif
 
-end subroutine bounceback
+end subroutine legacy_bounceback_unused
 
 
 !===========================================================================================================================
@@ -1284,30 +1284,54 @@ subroutine macro()
   integer(kind=4) :: i, j, k
   real(kind=8) :: FyLoc
 
-  !$omp parallel do collapse(3) default(none) &
-  !$omp& shared(f,rho,u,v,w,T) &
-  !$omp& private(i,j,k,FyLoc)
-  do k = 1, nz
-    do j = 1, ny
-      do i = 1, nx
-        rho(i,j,k) = f(0,i,j,k) + f(1,i,j,k) + f(2,i,j,k) + f(3,i,j,k) + f(4,i,j,k) + f(5,i,j,k) + &
-             f(6,i,j,k) + f(7,i,j,k) + f(8,i,j,k) + f(9,i,j,k) + f(10,i,j,k) + f(11,i,j,k) + &
-             f(12,i,j,k) + f(13,i,j,k) + f(14,i,j,k) + f(15,i,j,k) + f(16,i,j,k) + f(17,i,j,k) + f(18,i,j,k)
-
-        FyLoc = rho(i,j,k) * gBeta * (T(i,j,k) - Tref)
-
-        u(i,j,k) = ( f(1,i,j,k) - f(2,i,j,k) + f(7,i,j,k) - f(8,i,j,k) + f(9,i,j,k) - f(10,i,j,k) + &
-             f(11,i,j,k) - f(12,i,j,k) + f(13,i,j,k) - f(14,i,j,k) ) / rho(i,j,k)
-
-        v(i,j,k) = ( f(3,i,j,k) - f(4,i,j,k) + f(7,i,j,k) + f(8,i,j,k) - f(9,i,j,k) - f(10,i,j,k) + &
-             f(15,i,j,k) - f(16,i,j,k) + f(17,i,j,k) - f(18,i,j,k) + 0.5d0 * FyLoc ) / rho(i,j,k)
-
-        w(i,j,k) = ( f(5,i,j,k) - f(6,i,j,k) + f(11,i,j,k) + f(12,i,j,k) - f(13,i,j,k) - f(14,i,j,k) + &
-             f(15,i,j,k) + f(16,i,j,k) - f(17,i,j,k) - f(18,i,j,k) ) / rho(i,j,k)
+  if(f_active_post) then
+    !$omp parallel do collapse(3) schedule(static) default(none) &
+    !$omp& shared(f_post,rho,u,v,w,T) &
+    !$omp& private(i,j,k,FyLoc)
+    do k = 1, nz
+      do j = 1, ny
+        do i = 1, nx
+          rho(i,j,k) = f_post(0,i,j,k) + f_post(1,i,j,k) + f_post(2,i,j,k) + f_post(3,i,j,k) + &
+               f_post(4,i,j,k) + f_post(5,i,j,k) + f_post(6,i,j,k) + f_post(7,i,j,k) + &
+               f_post(8,i,j,k) + f_post(9,i,j,k) + f_post(10,i,j,k) + f_post(11,i,j,k) + &
+               f_post(12,i,j,k) + f_post(13,i,j,k) + f_post(14,i,j,k) + f_post(15,i,j,k) + &
+               f_post(16,i,j,k) + f_post(17,i,j,k) + f_post(18,i,j,k)
+          FyLoc = rho(i,j,k) * gBeta * (T(i,j,k) - Tref)
+          u(i,j,k) = ( f_post(1,i,j,k) - f_post(2,i,j,k) + f_post(7,i,j,k) - f_post(8,i,j,k) + &
+               f_post(9,i,j,k) - f_post(10,i,j,k) + f_post(11,i,j,k) - f_post(12,i,j,k) + &
+               f_post(13,i,j,k) - f_post(14,i,j,k) ) / rho(i,j,k)
+          v(i,j,k) = ( f_post(3,i,j,k) - f_post(4,i,j,k) + f_post(7,i,j,k) + f_post(8,i,j,k) - &
+               f_post(9,i,j,k) - f_post(10,i,j,k) + f_post(15,i,j,k) - f_post(16,i,j,k) + &
+               f_post(17,i,j,k) - f_post(18,i,j,k) + 0.5d0 * FyLoc ) / rho(i,j,k)
+          w(i,j,k) = ( f_post(5,i,j,k) - f_post(6,i,j,k) + f_post(11,i,j,k) + f_post(12,i,j,k) - &
+               f_post(13,i,j,k) - f_post(14,i,j,k) + f_post(15,i,j,k) + f_post(16,i,j,k) - &
+               f_post(17,i,j,k) - f_post(18,i,j,k) ) / rho(i,j,k)
+        enddo
       enddo
     enddo
-  enddo
-  !$omp end parallel do
+    !$omp end parallel do
+  else
+    !$omp parallel do collapse(3) schedule(static) default(none) &
+    !$omp& shared(f,rho,u,v,w,T) &
+    !$omp& private(i,j,k,FyLoc)
+    do k = 1, nz
+      do j = 1, ny
+        do i = 1, nx
+          rho(i,j,k) = f(0,i,j,k) + f(1,i,j,k) + f(2,i,j,k) + f(3,i,j,k) + f(4,i,j,k) + f(5,i,j,k) + &
+               f(6,i,j,k) + f(7,i,j,k) + f(8,i,j,k) + f(9,i,j,k) + f(10,i,j,k) + f(11,i,j,k) + &
+               f(12,i,j,k) + f(13,i,j,k) + f(14,i,j,k) + f(15,i,j,k) + f(16,i,j,k) + f(17,i,j,k) + f(18,i,j,k)
+          FyLoc = rho(i,j,k) * gBeta * (T(i,j,k) - Tref)
+          u(i,j,k) = ( f(1,i,j,k) - f(2,i,j,k) + f(7,i,j,k) - f(8,i,j,k) + f(9,i,j,k) - f(10,i,j,k) + &
+               f(11,i,j,k) - f(12,i,j,k) + f(13,i,j,k) - f(14,i,j,k) ) / rho(i,j,k)
+          v(i,j,k) = ( f(3,i,j,k) - f(4,i,j,k) + f(7,i,j,k) + f(8,i,j,k) - f(9,i,j,k) - f(10,i,j,k) + &
+               f(15,i,j,k) - f(16,i,j,k) + f(17,i,j,k) - f(18,i,j,k) + 0.5d0 * FyLoc ) / rho(i,j,k)
+          w(i,j,k) = ( f(5,i,j,k) - f(6,i,j,k) + f(11,i,j,k) + f(12,i,j,k) - f(13,i,j,k) - f(14,i,j,k) + &
+               f(15,i,j,k) + f(16,i,j,k) - f(17,i,j,k) - f(18,i,j,k) ) / rho(i,j,k)
+        enddo
+      enddo
+    enddo
+    !$omp end parallel do
+  endif
 
 end subroutine macro
 
@@ -1317,7 +1341,7 @@ end subroutine macro
 ! 作用: 温度场碰撞步骤
 ! 用途: 在主程序时间推进循环中调用，位于流场 macro 之后。
 !===========================================================================================================================
-subroutine collisionT()
+subroutine legacy_collisionT_unused()
   use commondata3d
   implicit none
 
@@ -1409,7 +1433,7 @@ subroutine collisionT()
   !$omp end parallel do
 
   return
-end subroutine collisionT
+end subroutine legacy_collisionT_unused
 !===========================================================================================================================
 ! collisionT 结束: 完成温度分布函数 g 的碰撞更新
 !===========================================================================================================================
@@ -1420,7 +1444,7 @@ end subroutine collisionT
 ! 作用: 对温度分布函数执行三维 pull streaming。
 ! 用途: 在主程序时间推进循环中调用，位于 collisionT 之后、bouncebackT 之前。
 !===========================================================================================================================
-subroutine streamingT()
+subroutine legacy_streamingT_unused()
   use commondata3d
   implicit none
 
@@ -1443,7 +1467,7 @@ subroutine streamingT()
   !$omp end parallel do
 
   return
-end subroutine streamingT
+end subroutine legacy_streamingT_unused
 !===========================================================================================================================
 ! streamingT 结束: 完成温度分布函数 g 的迁移，把碰撞后的温度信息传播到相邻格点。
 !===========================================================================================================================
@@ -1454,7 +1478,7 @@ end subroutine streamingT
 ! 作用: 施加温度边界条件，包括恒温、绝热和周期边界。
 ! 用途: 在主程序时间推进循环中调用，位于 streamingT 之后、macroT 之前。
 !===========================================================================================================================
-subroutine bouncebackT()
+subroutine legacy_bouncebackT_unused()
   use commondata3d
   implicit none
 
@@ -1548,7 +1572,7 @@ subroutine bouncebackT()
 #endif
 
   return
-end subroutine bouncebackT
+end subroutine legacy_bouncebackT_unused
 !===========================================================================================================================
 ! bouncebackT 结束: 处理温度边界条件，包括恒温、绝热和周期边界。
 !===========================================================================================================================
@@ -1565,22 +1589,572 @@ subroutine macroT()
 
   integer(kind=4) :: i, j, k
 
-  ! 温度恢复就是对 7 个方向的 g 求和
-  !$omp parallel do collapse(3) default(none) shared(g,T) private(i,j,k)
-  do k = 1, nz
-    do j = 1, ny
-      do i = 1, nx
-        T(i,j,k) = g(0,i,j,k) + g(1,i,j,k) + g(2,i,j,k) + g(3,i,j,k) + &
-                   g(4,i,j,k) + g(5,i,j,k) + g(6,i,j,k)
+  if(g_active_post) then
+    !$omp parallel do collapse(3) schedule(static) default(none) shared(g_post,T) private(i,j,k)
+    do k = 1, nz
+      do j = 1, ny
+        do i = 1, nx
+          T(i,j,k) = g_post(0,i,j,k) + g_post(1,i,j,k) + g_post(2,i,j,k) + g_post(3,i,j,k) + &
+                     g_post(4,i,j,k) + g_post(5,i,j,k) + g_post(6,i,j,k)
+        enddo
       enddo
     enddo
-  enddo
-  !$omp end parallel do
+    !$omp end parallel do
+  else
+    !$omp parallel do collapse(3) schedule(static) default(none) shared(g,T) private(i,j,k)
+    do k = 1, nz
+      do j = 1, ny
+        do i = 1, nx
+          T(i,j,k) = g(0,i,j,k) + g(1,i,j,k) + g(2,i,j,k) + g(3,i,j,k) + &
+                     g(4,i,j,k) + g(5,i,j,k) + g(6,i,j,k)
+        enddo
+      enddo
+    enddo
+    !$omp end parallel do
+  endif
 
   return
 end subroutine macroT
 !===========================================================================================================================
 ! macroT 结束: 由温度分布函数恢复宏观温度场 T。
+!===========================================================================================================================
+
+
+!===========================================================================================================================
+! 子程序: ensure_primary_distributions_openmp
+! 作用: 写严格重启文件前，把 active ping-pong 缓冲归一回 f/g，保持原 restart 顺序。
+!===========================================================================================================================
+subroutine ensure_primary_distributions_openmp()
+  use commondata3d
+  implicit none
+
+  integer(kind=4) :: i, j, k, alpha
+
+  if(f_active_post) then
+    !$omp parallel do collapse(3) schedule(static) default(none) shared(f,f_post) private(i,j,k,alpha)
+    do k = 1, nz
+      do j = 1, ny
+        do i = 1, nx
+          do alpha = 0, qf-1
+            f(alpha,i,j,k) = f_post(alpha,i,j,k)
+          enddo
+        enddo
+      enddo
+    enddo
+    !$omp end parallel do
+    f_active_post = .false.
+  endif
+
+  if(g_active_post) then
+    !$omp parallel do collapse(3) schedule(static) default(none) shared(g,g_post) private(i,j,k,alpha)
+    do k = 1, nz
+      do j = 1, ny
+        do i = 1, nx
+          do alpha = 0, qt-1
+            g(alpha,i,j,k) = g_post(alpha,i,j,k)
+          enddo
+        enddo
+      enddo
+    enddo
+    !$omp end parallel do
+    g_active_post = .false.
+  endif
+end subroutine ensure_primary_distributions_openmp
+!===========================================================================================================================
+
+
+!===========================================================================================================================
+! 子程序: fused_flow_update_cpu
+! 作用: CPU 版 q-first fused flow update，融合 D3Q19 碰撞、迁移和速度边界处理。
+!===========================================================================================================================
+subroutine fused_flow_update_cpu()
+  use commondata3d
+  implicit none
+
+  integer(kind=4) :: i, j, k, alpha, ip, jp, kp
+  logical :: hitWall
+  real(kind=8) :: fIn(0:qf-1), fOut(0:qf-1)
+  real(kind=8) :: m(0:qf-1), meq(0:qf-1), m_post(0:qf-1), fSource(0:qf-1)
+
+  if(f_active_post) then
+    !$omp parallel do collapse(3) schedule(static) default(none) &
+    !$omp& shared(f,f_post,rho,u,v,w,T,ex,ey,ez,opp,sFlow) &
+    !$omp& private(i,j,k,alpha,ip,jp,kp,hitWall,fIn,fOut,m,meq,m_post,fSource)
+    do k = 1, nz
+      do j = 1, ny
+        do i = 1, nx
+          do alpha = 0, qf-1
+            fIn(alpha) = f_post(alpha,i,j,k)
+          enddo
+          call fused_flow_node_3d_cpu(i,j,k,fIn,fOut,m,meq,m_post,fSource)
+          do alpha = 0, qf-1
+            ip = i + ex(alpha)
+            jp = j + ey(alpha)
+            kp = k + ez(alpha)
+            hitWall = .false.
+#ifdef VerticalWallsNoslip
+            if((ip.LT.1).OR.(ip.GT.nx)) hitWall = .true.
+#endif
+#ifdef HorizontalWallsNoslip
+            if((jp.LT.1).OR.(jp.GT.ny)) hitWall = .true.
+#endif
+#ifdef SpanwiseWallsNoslip
+            if((kp.LT.1).OR.(kp.GT.nz)) hitWall = .true.
+#endif
+            if(hitWall) then
+              f(opp(alpha),i,j,k) = fOut(alpha)
+            else
+#ifdef VerticalWallsPeriodicalU
+              if(ip.LT.1) ip = nx
+              if(ip.GT.nx) ip = 1
+#endif
+#ifdef SpanwiseWallsPeriodicalU
+              if(kp.LT.1) kp = nz
+              if(kp.GT.nz) kp = 1
+#endif
+              f(alpha,ip,jp,kp) = fOut(alpha)
+            endif
+          enddo
+        enddo
+      enddo
+    enddo
+    !$omp end parallel do
+    f_active_post = .false.
+  else
+    !$omp parallel do collapse(3) schedule(static) default(none) &
+    !$omp& shared(f,f_post,rho,u,v,w,T,ex,ey,ez,opp,sFlow) &
+    !$omp& private(i,j,k,alpha,ip,jp,kp,hitWall,fIn,fOut,m,meq,m_post,fSource)
+    do k = 1, nz
+      do j = 1, ny
+        do i = 1, nx
+          do alpha = 0, qf-1
+            fIn(alpha) = f(alpha,i,j,k)
+          enddo
+          call fused_flow_node_3d_cpu(i,j,k,fIn,fOut,m,meq,m_post,fSource)
+          do alpha = 0, qf-1
+            ip = i + ex(alpha)
+            jp = j + ey(alpha)
+            kp = k + ez(alpha)
+            hitWall = .false.
+#ifdef VerticalWallsNoslip
+            if((ip.LT.1).OR.(ip.GT.nx)) hitWall = .true.
+#endif
+#ifdef HorizontalWallsNoslip
+            if((jp.LT.1).OR.(jp.GT.ny)) hitWall = .true.
+#endif
+#ifdef SpanwiseWallsNoslip
+            if((kp.LT.1).OR.(kp.GT.nz)) hitWall = .true.
+#endif
+            if(hitWall) then
+              f_post(opp(alpha),i,j,k) = fOut(alpha)
+            else
+#ifdef VerticalWallsPeriodicalU
+              if(ip.LT.1) ip = nx
+              if(ip.GT.nx) ip = 1
+#endif
+#ifdef SpanwiseWallsPeriodicalU
+              if(kp.LT.1) kp = nz
+              if(kp.GT.nz) kp = 1
+#endif
+              f_post(alpha,ip,jp,kp) = fOut(alpha)
+            endif
+          enddo
+        enddo
+      enddo
+    enddo
+    !$omp end parallel do
+    f_active_post = .true.
+  endif
+end subroutine fused_flow_update_cpu
+!===========================================================================================================================
+
+
+!===========================================================================================================================
+! 子程序: fused_flow_node_3d_cpu
+! 作用: 单格点 D3Q19 MRT 碰撞，输入/输出使用 alpha 连续的小数组。
+!===========================================================================================================================
+subroutine fused_flow_node_3d_cpu(i,j,k,fIn,fOut,m,meq,m_post,fSource)
+  use commondata3d
+  implicit none
+
+  integer(kind=4), intent(in) :: i, j, k
+  real(kind=8), intent(in) :: fIn(0:qf-1)
+  real(kind=8), intent(out) :: fOut(0:qf-1)
+  real(kind=8), intent(inout) :: m(0:qf-1), meq(0:qf-1), m_post(0:qf-1), fSource(0:qf-1)
+  integer(kind=4) :: alpha
+  real(kind=8) :: rhoLoc, uLoc, vLoc, wLoc, u2, uDotF
+  real(kind=8) :: FxLoc, FyLoc, FzLoc
+
+  rhoLoc = rho(i,j,k)
+  uLoc = u(i,j,k)
+  vLoc = v(i,j,k)
+  wLoc = w(i,j,k)
+  u2 = uLoc*uLoc + vLoc*vLoc + wLoc*wLoc
+
+  m(0) = fIn(0) + fIn(1) + fIn(2) + fIn(3) + fIn(4) + fIn(5) + &
+       fIn(6) + fIn(7) + fIn(8) + fIn(9) + fIn(10) + fIn(11) + &
+       fIn(12) + fIn(13) + fIn(14) + fIn(15) + fIn(16) + fIn(17) + fIn(18)
+  m(1) = -30.0d0*fIn(0) - 11.0d0*(fIn(1)+fIn(2)+fIn(3)+fIn(4)+fIn(5)+fIn(6)) + &
+       8.0d0*(fIn(7)+fIn(8)+fIn(9)+fIn(10)+fIn(11)+fIn(12)+fIn(13)+fIn(14)+fIn(15)+fIn(16)+fIn(17)+fIn(18))
+  m(2) = 12.0d0*fIn(0) - 4.0d0*(fIn(1)+fIn(2)+fIn(3)+fIn(4)+fIn(5)+fIn(6)) + &
+       (fIn(7)+fIn(8)+fIn(9)+fIn(10)+fIn(11)+fIn(12)+fIn(13)+fIn(14)+fIn(15)+fIn(16)+fIn(17)+fIn(18))
+  m(3) = fIn(1)-fIn(2)+fIn(7)-fIn(8)+fIn(9)-fIn(10)+fIn(11)-fIn(12)+fIn(13)-fIn(14)
+  m(4) = -4.0d0*fIn(1)+4.0d0*fIn(2)+fIn(7)-fIn(8)+fIn(9)-fIn(10)+fIn(11)-fIn(12)+fIn(13)-fIn(14)
+  m(5) = fIn(3)-fIn(4)+fIn(7)+fIn(8)-fIn(9)-fIn(10)+fIn(15)-fIn(16)+fIn(17)-fIn(18)
+  m(6) = -4.0d0*fIn(3)+4.0d0*fIn(4)+fIn(7)+fIn(8)-fIn(9)-fIn(10)+fIn(15)-fIn(16)+fIn(17)-fIn(18)
+  m(7) = fIn(5)-fIn(6)+fIn(11)+fIn(12)-fIn(13)-fIn(14)+fIn(15)+fIn(16)-fIn(17)-fIn(18)
+  m(8) = -4.0d0*fIn(5)+4.0d0*fIn(6)+fIn(11)+fIn(12)-fIn(13)-fIn(14)+fIn(15)+fIn(16)-fIn(17)-fIn(18)
+  m(9) = 2.0d0*(fIn(1)+fIn(2))-(fIn(3)+fIn(4)+fIn(5)+fIn(6)) + &
+       (fIn(7)+fIn(8)+fIn(9)+fIn(10)+fIn(11)+fIn(12)+fIn(13)+fIn(14))-2.0d0*(fIn(15)+fIn(16)+fIn(17)+fIn(18))
+  m(10) = -4.0d0*(fIn(1)+fIn(2))+2.0d0*(fIn(3)+fIn(4)+fIn(5)+fIn(6)) + &
+       (fIn(7)+fIn(8)+fIn(9)+fIn(10)+fIn(11)+fIn(12)+fIn(13)+fIn(14))-2.0d0*(fIn(15)+fIn(16)+fIn(17)+fIn(18))
+  m(11) = (fIn(3)+fIn(4))-(fIn(5)+fIn(6))+(fIn(7)+fIn(8)+fIn(9)+fIn(10))-(fIn(11)+fIn(12)+fIn(13)+fIn(14))
+  m(12) = -2.0d0*(fIn(3)+fIn(4))+2.0d0*(fIn(5)+fIn(6))+(fIn(7)+fIn(8)+fIn(9)+fIn(10)) - &
+       (fIn(11)+fIn(12)+fIn(13)+fIn(14))
+  m(13) = fIn(7)-fIn(8)-fIn(9)+fIn(10)
+  m(14) = fIn(15)-fIn(16)-fIn(17)+fIn(18)
+  m(15) = fIn(11)-fIn(12)-fIn(13)+fIn(14)
+  m(16) = fIn(7)-fIn(8)+fIn(9)-fIn(10)-fIn(11)+fIn(12)-fIn(13)+fIn(14)
+  m(17) = -fIn(7)-fIn(8)+fIn(9)+fIn(10)+fIn(15)-fIn(16)+fIn(17)-fIn(18)
+  m(18) = fIn(11)+fIn(12)-fIn(13)-fIn(14)-fIn(15)-fIn(16)+fIn(17)+fIn(18)
+
+  meq(0)  = rhoLoc
+  meq(1)  = rhoLoc*(-11.0d0 + 19.0d0*u2)
+  meq(2)  = rhoLoc*(3.0d0 - 11.0d0*u2/2.0d0)
+  meq(3)  = rhoLoc*uLoc
+  meq(4)  = -2.0d0*rhoLoc*uLoc/3.0d0
+  meq(5)  = rhoLoc*vLoc
+  meq(6)  = -2.0d0*rhoLoc*vLoc/3.0d0
+  meq(7)  = rhoLoc*wLoc
+  meq(8)  = -2.0d0*rhoLoc*wLoc/3.0d0
+  meq(9)  = rhoLoc*(2.0d0*uLoc*uLoc - vLoc*vLoc - wLoc*wLoc)
+  meq(10) = -0.5d0*meq(9)
+  meq(11) = rhoLoc*(vLoc*vLoc - wLoc*wLoc)
+  meq(12) = -0.5d0*meq(11)
+  meq(13) = rhoLoc*uLoc*vLoc
+  meq(14) = rhoLoc*vLoc*wLoc
+  meq(15) = rhoLoc*uLoc*wLoc
+  meq(16) = 0.0d0
+  meq(17) = 0.0d0
+  meq(18) = 0.0d0
+
+  FxLoc = 0.0d0
+  FyLoc = rhoLoc*gBeta*(T(i,j,k)-Tref)
+  FzLoc = 0.0d0
+  uDotF = uLoc*FxLoc + vLoc*FyLoc + wLoc*FzLoc
+
+  fSource(0)  = 0.0d0
+  fSource(1)  = (1.0d0-0.5d0*sFlow(1))  * 38.0d0 * uDotF
+  fSource(2)  = (1.0d0-0.5d0*sFlow(2))  * (-11.0d0) * uDotF
+  fSource(3)  = (1.0d0-0.5d0*sFlow(3))  * FxLoc
+  fSource(4)  = (1.0d0-0.5d0*sFlow(4))  * (-2.0d0/3.0d0) * FxLoc
+  fSource(5)  = (1.0d0-0.5d0*sFlow(5))  * FyLoc
+  fSource(6)  = (1.0d0-0.5d0*sFlow(6))  * (-2.0d0/3.0d0) * FyLoc
+  fSource(7)  = (1.0d0-0.5d0*sFlow(7))  * FzLoc
+  fSource(8)  = (1.0d0-0.5d0*sFlow(8))  * (-2.0d0/3.0d0) * FzLoc
+  fSource(9)  = (1.0d0-0.5d0*sFlow(9))  * (4.0d0*uLoc*FxLoc - 2.0d0*vLoc*FyLoc - 2.0d0*wLoc*FzLoc)
+  fSource(10) = (1.0d0-0.5d0*sFlow(10)) * (-2.0d0*uLoc*FxLoc + vLoc*FyLoc + wLoc*FzLoc)
+  fSource(11) = (1.0d0-0.5d0*sFlow(11)) * (2.0d0*vLoc*FyLoc - 2.0d0*wLoc*FzLoc)
+  fSource(12) = (1.0d0-0.5d0*sFlow(12)) * (-vLoc*FyLoc + wLoc*FzLoc)
+  fSource(13) = (1.0d0-0.5d0*sFlow(13)) * (uLoc*FyLoc + vLoc*FxLoc)
+  fSource(14) = (1.0d0-0.5d0*sFlow(14)) * (vLoc*FzLoc + wLoc*FyLoc)
+  fSource(15) = (1.0d0-0.5d0*sFlow(15)) * (uLoc*FzLoc + wLoc*FxLoc)
+  fSource(16) = 0.0d0
+  fSource(17) = 0.0d0
+  fSource(18) = 0.0d0
+
+  do alpha = 0, qf-1
+    m_post(alpha) = m(alpha) - sFlow(alpha)*(m(alpha)-meq(alpha)) + fSource(alpha)
+  enddo
+
+  fOut(0) =  m_post(0)/19.0d0 - 5.0d0*m_post(1)/399.0d0 + m_post(2)/21.0d0
+  fOut(1) =  m_post(0)/19.0d0 - 11.0d0*m_post(1)/2394.0d0 - m_post(2)/63.0d0 + &
+       m_post(3)/10.0d0 - m_post(4)/10.0d0 + m_post(9)/18.0d0 - m_post(10)/18.0d0
+  fOut(2) =  m_post(0)/19.0d0 - 11.0d0*m_post(1)/2394.0d0 - m_post(2)/63.0d0 - &
+       m_post(3)/10.0d0 + m_post(4)/10.0d0 + m_post(9)/18.0d0 - m_post(10)/18.0d0
+  fOut(3) =  m_post(0)/19.0d0 - 11.0d0*m_post(1)/2394.0d0 - m_post(2)/63.0d0 + &
+       m_post(5)/10.0d0 - m_post(6)/10.0d0 - m_post(9)/36.0d0 + m_post(10)/36.0d0 + &
+       m_post(11)/12.0d0 - m_post(12)/12.0d0
+  fOut(4) =  m_post(0)/19.0d0 - 11.0d0*m_post(1)/2394.0d0 - m_post(2)/63.0d0 - &
+       m_post(5)/10.0d0 + m_post(6)/10.0d0 - m_post(9)/36.0d0 + m_post(10)/36.0d0 + &
+       m_post(11)/12.0d0 - m_post(12)/12.0d0
+  fOut(5) =  m_post(0)/19.0d0 - 11.0d0*m_post(1)/2394.0d0 - m_post(2)/63.0d0 + &
+       m_post(7)/10.0d0 - m_post(8)/10.0d0 - m_post(9)/36.0d0 + m_post(10)/36.0d0 - &
+       m_post(11)/12.0d0 + m_post(12)/12.0d0
+  fOut(6) =  m_post(0)/19.0d0 - 11.0d0*m_post(1)/2394.0d0 - m_post(2)/63.0d0 - &
+       m_post(7)/10.0d0 + m_post(8)/10.0d0 - m_post(9)/36.0d0 + m_post(10)/36.0d0 - &
+       m_post(11)/12.0d0 + m_post(12)/12.0d0
+  fOut(7) =  m_post(0)/19.0d0 + 4.0d0*m_post(1)/1197.0d0 + m_post(2)/252.0d0 + &
+       m_post(3)/10.0d0 + m_post(4)/40.0d0 + m_post(5)/10.0d0 + m_post(6)/40.0d0 + &
+       m_post(9)/36.0d0 + m_post(10)/72.0d0 + m_post(11)/12.0d0 + m_post(12)/24.0d0 + &
+       m_post(13)/4.0d0 + m_post(16)/8.0d0 - m_post(17)/8.0d0
+  fOut(8) =  m_post(0)/19.0d0 + 4.0d0*m_post(1)/1197.0d0 + m_post(2)/252.0d0 - &
+       m_post(3)/10.0d0 - m_post(4)/40.0d0 + m_post(5)/10.0d0 + m_post(6)/40.0d0 + &
+       m_post(9)/36.0d0 + m_post(10)/72.0d0 + m_post(11)/12.0d0 + m_post(12)/24.0d0 - &
+       m_post(13)/4.0d0 - m_post(16)/8.0d0 - m_post(17)/8.0d0
+  fOut(9) =  m_post(0)/19.0d0 + 4.0d0*m_post(1)/1197.0d0 + m_post(2)/252.0d0 + &
+       m_post(3)/10.0d0 + m_post(4)/40.0d0 - m_post(5)/10.0d0 - m_post(6)/40.0d0 + &
+       m_post(9)/36.0d0 + m_post(10)/72.0d0 + m_post(11)/12.0d0 + m_post(12)/24.0d0 - &
+       m_post(13)/4.0d0 + m_post(16)/8.0d0 + m_post(17)/8.0d0
+  fOut(10) = m_post(0)/19.0d0 + 4.0d0*m_post(1)/1197.0d0 + m_post(2)/252.0d0 - &
+       m_post(3)/10.0d0 - m_post(4)/40.0d0 - m_post(5)/10.0d0 - m_post(6)/40.0d0 + &
+       m_post(9)/36.0d0 + m_post(10)/72.0d0 + m_post(11)/12.0d0 + m_post(12)/24.0d0 + &
+       m_post(13)/4.0d0 - m_post(16)/8.0d0 + m_post(17)/8.0d0
+  fOut(11) = m_post(0)/19.0d0 + 4.0d0*m_post(1)/1197.0d0 + m_post(2)/252.0d0 + &
+       m_post(3)/10.0d0 + m_post(4)/40.0d0 + m_post(7)/10.0d0 + m_post(8)/40.0d0 + &
+       m_post(9)/36.0d0 + m_post(10)/72.0d0 - m_post(11)/12.0d0 - m_post(12)/24.0d0 + &
+       m_post(15)/4.0d0 - m_post(16)/8.0d0 + m_post(18)/8.0d0
+  fOut(12) = m_post(0)/19.0d0 + 4.0d0*m_post(1)/1197.0d0 + m_post(2)/252.0d0 - &
+       m_post(3)/10.0d0 - m_post(4)/40.0d0 + m_post(7)/10.0d0 + m_post(8)/40.0d0 + &
+       m_post(9)/36.0d0 + m_post(10)/72.0d0 - m_post(11)/12.0d0 - m_post(12)/24.0d0 - &
+       m_post(15)/4.0d0 + m_post(16)/8.0d0 + m_post(18)/8.0d0
+  fOut(13) = m_post(0)/19.0d0 + 4.0d0*m_post(1)/1197.0d0 + m_post(2)/252.0d0 + &
+       m_post(3)/10.0d0 + m_post(4)/40.0d0 - m_post(7)/10.0d0 - m_post(8)/40.0d0 + &
+       m_post(9)/36.0d0 + m_post(10)/72.0d0 - m_post(11)/12.0d0 - m_post(12)/24.0d0 - &
+       m_post(15)/4.0d0 - m_post(16)/8.0d0 - m_post(18)/8.0d0
+  fOut(14) = m_post(0)/19.0d0 + 4.0d0*m_post(1)/1197.0d0 + m_post(2)/252.0d0 - &
+       m_post(3)/10.0d0 - m_post(4)/40.0d0 - m_post(7)/10.0d0 - m_post(8)/40.0d0 + &
+       m_post(9)/36.0d0 + m_post(10)/72.0d0 - m_post(11)/12.0d0 - m_post(12)/24.0d0 + &
+       m_post(15)/4.0d0 + m_post(16)/8.0d0 - m_post(18)/8.0d0
+  fOut(15) = m_post(0)/19.0d0 + 4.0d0*m_post(1)/1197.0d0 + m_post(2)/252.0d0 + &
+       m_post(5)/10.0d0 + m_post(6)/40.0d0 + m_post(7)/10.0d0 + m_post(8)/40.0d0 - &
+       m_post(9)/18.0d0 - m_post(10)/36.0d0 + m_post(14)/4.0d0 + m_post(17)/8.0d0 - &
+       m_post(18)/8.0d0
+  fOut(16) = m_post(0)/19.0d0 + 4.0d0*m_post(1)/1197.0d0 + m_post(2)/252.0d0 - &
+       m_post(5)/10.0d0 - m_post(6)/40.0d0 + m_post(7)/10.0d0 + m_post(8)/40.0d0 - &
+       m_post(9)/18.0d0 - m_post(10)/36.0d0 - m_post(14)/4.0d0 - m_post(17)/8.0d0 - &
+       m_post(18)/8.0d0
+  fOut(17) = m_post(0)/19.0d0 + 4.0d0*m_post(1)/1197.0d0 + m_post(2)/252.0d0 + &
+       m_post(5)/10.0d0 + m_post(6)/40.0d0 - m_post(7)/10.0d0 - m_post(8)/40.0d0 - &
+       m_post(9)/18.0d0 - m_post(10)/36.0d0 - m_post(14)/4.0d0 + m_post(17)/8.0d0 + &
+       m_post(18)/8.0d0
+  fOut(18) = m_post(0)/19.0d0 + 4.0d0*m_post(1)/1197.0d0 + m_post(2)/252.0d0 - &
+       m_post(5)/10.0d0 - m_post(6)/40.0d0 - m_post(7)/10.0d0 - m_post(8)/40.0d0 - &
+       m_post(9)/18.0d0 - m_post(10)/36.0d0 + m_post(14)/4.0d0 - m_post(17)/8.0d0 + &
+       m_post(18)/8.0d0
+end subroutine fused_flow_node_3d_cpu
+!===========================================================================================================================
+
+
+!===========================================================================================================================
+! 子程序: fused_thermal_update_cpu
+! 作用: CPU 版 q-first fused thermal update，融合 D3Q7 碰撞、迁移和温度边界处理。
+!===========================================================================================================================
+subroutine fused_thermal_update_cpu()
+  use commondata3d
+  implicit none
+
+  integer(kind=4) :: i, j, k, alpha, ip, jp, kp
+  logical :: hitBoundary, constWall
+  real(kind=8) :: wallT
+  real(kind=8) :: gIn(0:qt-1), gOut(0:qt-1)
+  real(kind=8) :: n(0:qt-1), neq(0:qt-1), n_post(0:qt-1)
+  real(kind=8) :: Bx, By, Bz, dBx, dBy, dBz
+  real(kind=8), parameter :: SG = 1.0d0 - 0.5d0*Qk
+
+  if(g_active_post) then
+    !$omp parallel do collapse(3) schedule(static) default(none) &
+    !$omp& shared(g,g_post,u,v,w,T,Bx_prev,By_prev,Bz_prev,exT,eyT,ezT,oppT,omegaT,qThermal) &
+    !$omp& private(i,j,k,alpha,ip,jp,kp,hitBoundary,constWall,wallT,gIn,gOut,n,neq,n_post,Bx,By,Bz,dBx,dBy,dBz)
+    do k = 1, nz
+      do j = 1, ny
+        do i = 1, nx
+          do alpha = 0, qt-1
+            gIn(alpha) = g_post(alpha,i,j,k)
+          enddo
+          call fused_thermal_node_3d_cpu(i,j,k,gIn,gOut,n,neq,n_post,Bx,By,Bz,dBx,dBy,dBz,SG)
+          do alpha = 0, qt-1
+            ip = i + exT(alpha)
+            jp = j + eyT(alpha)
+            kp = k + ezT(alpha)
+            hitBoundary = .false.
+            constWall = .false.
+            wallT = 0.0d0
+#ifdef VerticalWallsConstT
+            if((ip.LT.1).OR.(ip.GT.nx)) then
+              hitBoundary = .true.
+              constWall = .true.
+              if(ip.LT.1) wallT = Thot
+              if(ip.GT.nx) wallT = Tcold
+            endif
+#endif
+#ifdef VerticalWallsAdiabatic
+            if((ip.LT.1).OR.(ip.GT.nx)) hitBoundary = .true.
+#endif
+#ifdef HorizontalWallsConstT
+            if((jp.LT.1).OR.(jp.GT.ny)) then
+              hitBoundary = .true.
+              constWall = .true.
+              if(jp.LT.1) wallT = Thot
+              if(jp.GT.ny) wallT = Tcold
+            endif
+#endif
+#ifdef HorizontalWallsAdiabatic
+            if((jp.LT.1).OR.(jp.GT.ny)) hitBoundary = .true.
+#endif
+#ifdef SpanwiseWallsAdiabatic
+            if((kp.LT.1).OR.(kp.GT.nz)) hitBoundary = .true.
+#endif
+            if(hitBoundary) then
+              if(constWall) then
+                g(oppT(alpha),i,j,k) = -gOut(alpha) + 2.0d0*omegaT(alpha)*wallT
+              else
+                g(oppT(alpha),i,j,k) = gOut(alpha)
+              endif
+            else
+#ifdef VerticalWallsPeriodicalT
+              if(ip.LT.1) ip = nx
+              if(ip.GT.nx) ip = 1
+#endif
+#ifdef SpanwiseWallsPeriodicalT
+              if(kp.LT.1) kp = nz
+              if(kp.GT.nz) kp = 1
+#endif
+              g(alpha,ip,jp,kp) = gOut(alpha)
+            endif
+          enddo
+        enddo
+      enddo
+    enddo
+    !$omp end parallel do
+    g_active_post = .false.
+  else
+    !$omp parallel do collapse(3) schedule(static) default(none) &
+    !$omp& shared(g,g_post,u,v,w,T,Bx_prev,By_prev,Bz_prev,exT,eyT,ezT,oppT,omegaT,qThermal) &
+    !$omp& private(i,j,k,alpha,ip,jp,kp,hitBoundary,constWall,wallT,gIn,gOut,n,neq,n_post,Bx,By,Bz,dBx,dBy,dBz)
+    do k = 1, nz
+      do j = 1, ny
+        do i = 1, nx
+          do alpha = 0, qt-1
+            gIn(alpha) = g(alpha,i,j,k)
+          enddo
+          call fused_thermal_node_3d_cpu(i,j,k,gIn,gOut,n,neq,n_post,Bx,By,Bz,dBx,dBy,dBz,SG)
+          do alpha = 0, qt-1
+            ip = i + exT(alpha)
+            jp = j + eyT(alpha)
+            kp = k + ezT(alpha)
+            hitBoundary = .false.
+            constWall = .false.
+            wallT = 0.0d0
+#ifdef VerticalWallsConstT
+            if((ip.LT.1).OR.(ip.GT.nx)) then
+              hitBoundary = .true.
+              constWall = .true.
+              if(ip.LT.1) wallT = Thot
+              if(ip.GT.nx) wallT = Tcold
+            endif
+#endif
+#ifdef VerticalWallsAdiabatic
+            if((ip.LT.1).OR.(ip.GT.nx)) hitBoundary = .true.
+#endif
+#ifdef HorizontalWallsConstT
+            if((jp.LT.1).OR.(jp.GT.ny)) then
+              hitBoundary = .true.
+              constWall = .true.
+              if(jp.LT.1) wallT = Thot
+              if(jp.GT.ny) wallT = Tcold
+            endif
+#endif
+#ifdef HorizontalWallsAdiabatic
+            if((jp.LT.1).OR.(jp.GT.ny)) hitBoundary = .true.
+#endif
+#ifdef SpanwiseWallsAdiabatic
+            if((kp.LT.1).OR.(kp.GT.nz)) hitBoundary = .true.
+#endif
+            if(hitBoundary) then
+              if(constWall) then
+                g_post(oppT(alpha),i,j,k) = -gOut(alpha) + 2.0d0*omegaT(alpha)*wallT
+              else
+                g_post(oppT(alpha),i,j,k) = gOut(alpha)
+              endif
+            else
+#ifdef VerticalWallsPeriodicalT
+              if(ip.LT.1) ip = nx
+              if(ip.GT.nx) ip = 1
+#endif
+#ifdef SpanwiseWallsPeriodicalT
+              if(kp.LT.1) kp = nz
+              if(kp.GT.nz) kp = 1
+#endif
+              g_post(alpha,ip,jp,kp) = gOut(alpha)
+            endif
+          enddo
+        enddo
+      enddo
+    enddo
+    !$omp end parallel do
+    g_active_post = .true.
+  endif
+end subroutine fused_thermal_update_cpu
+!===========================================================================================================================
+
+
+!===========================================================================================================================
+! 子程序: fused_thermal_node_3d_cpu
+! 作用: 单格点 D3Q7 温度 MRT 碰撞，保留 EnableUseG 历史热流修正。
+!===========================================================================================================================
+subroutine fused_thermal_node_3d_cpu(i,j,k,gIn,gOut,n,neq,n_post,Bx,By,Bz,dBx,dBy,dBz,SG)
+  use commondata3d
+  implicit none
+
+  integer(kind=4), intent(in) :: i, j, k
+  real(kind=8), intent(in) :: gIn(0:qt-1), SG
+  real(kind=8), intent(out) :: gOut(0:qt-1)
+  real(kind=8), intent(inout) :: n(0:qt-1), neq(0:qt-1), n_post(0:qt-1)
+  real(kind=8), intent(inout) :: Bx, By, Bz, dBx, dBy, dBz
+
+  Bx = u(i,j,k) * T(i,j,k)
+  By = v(i,j,k) * T(i,j,k)
+  Bz = w(i,j,k) * T(i,j,k)
+#ifdef EnableUseG
+  dBx = Bx - Bx_prev(i,j,k)
+  dBy = By - By_prev(i,j,k)
+  dBz = Bz - Bz_prev(i,j,k)
+  Bx_prev(i,j,k) = Bx
+  By_prev(i,j,k) = By
+  Bz_prev(i,j,k) = Bz
+#else
+  dBx = 0.0d0
+  dBy = 0.0d0
+  dBz = 0.0d0
+#endif
+
+  n(0) = gIn(0)+gIn(1)+gIn(2)+gIn(3)+gIn(4)+gIn(5)+gIn(6)
+  n(1) = gIn(1)-gIn(2)
+  n(2) = gIn(3)-gIn(4)
+  n(3) = gIn(5)-gIn(6)
+  n(4) = -6.0d0*gIn(0)+gIn(1)+gIn(2)+gIn(3)+gIn(4)+gIn(5)+gIn(6)
+  n(5) = 2.0d0*gIn(1)+2.0d0*gIn(2)-gIn(3)-gIn(4)-gIn(5)-gIn(6)
+  n(6) = gIn(3)+gIn(4)-gIn(5)-gIn(6)
+
+  neq(0) = T(i,j,k)
+  neq(1) = Bx
+  neq(2) = By
+  neq(3) = Bz
+#ifdef EnableLegacyThermalScheme
+  neq(4) = paraA*T(i,j,k)
+#else
+  neq(4) = -0.75d0*T(i,j,k)
+#endif
+  neq(5) = 0.0d0
+  neq(6) = 0.0d0
+
+  n_post(0) = n(0) - qThermal(0)*(n(0)-neq(0))
+  n_post(1) = n(1) - qThermal(1)*(n(1)-neq(1)) + SG*dBx
+  n_post(2) = n(2) - qThermal(2)*(n(2)-neq(2)) + SG*dBy
+  n_post(3) = n(3) - qThermal(3)*(n(3)-neq(3)) + SG*dBz
+  n_post(4) = n(4) - qThermal(4)*(n(4)-neq(4))
+  n_post(5) = n(5) - qThermal(5)*(n(5)-neq(5))
+  n_post(6) = n(6) - qThermal(6)*(n(6)-neq(6))
+
+  gOut(0) = n_post(0)/7.0d0 - n_post(4)/7.0d0
+  gOut(1) = n_post(0)/7.0d0 + n_post(1)/2.0d0 + n_post(4)/42.0d0 + n_post(5)/6.0d0
+  gOut(2) = n_post(0)/7.0d0 - n_post(1)/2.0d0 + n_post(4)/42.0d0 + n_post(5)/6.0d0
+  gOut(3) = n_post(0)/7.0d0 + n_post(2)/2.0d0 + n_post(4)/42.0d0 - n_post(5)/12.0d0 + n_post(6)/4.0d0
+  gOut(4) = n_post(0)/7.0d0 - n_post(2)/2.0d0 + n_post(4)/42.0d0 - n_post(5)/12.0d0 + n_post(6)/4.0d0
+  gOut(5) = n_post(0)/7.0d0 + n_post(3)/2.0d0 + n_post(4)/42.0d0 - n_post(5)/12.0d0 - n_post(6)/4.0d0
+  gOut(6) = n_post(0)/7.0d0 - n_post(3)/2.0d0 + n_post(4)/42.0d0 - n_post(5)/12.0d0 - n_post(6)/4.0d0
+end subroutine fused_thermal_node_3d_cpu
 !===========================================================================================================================
 
 
@@ -1851,6 +2425,8 @@ subroutine output_ReloadFile()
 
   integer(kind=4) :: i, j, k, alpha
   character(len=100) :: filename
+
+  call ensure_primary_distributions_openmp()
 
 #ifdef steadyFlow
   reloadFileNum = restartItcOffset+itc

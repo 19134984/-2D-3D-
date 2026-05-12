@@ -243,10 +243,14 @@
         
         
         !格子离散速度和权重
-        integer(kind=4) :: ex(0:8), ey(0:8)
+        integer(kind=4) :: ex(0:8), ey(0:8), opp(0:8)
         data ex/0, 1, 0, -1,  0, 1, -1, -1,  1/
         data ey/0, 0, 1,  0, -1, 1,  1, -1, -1/
+        data opp/0, 3, 4, 1, 2, 7, 8, 5, 6/
+        integer(kind=4) :: oppT(0:4)
+        data oppT/0, 3, 4, 1, 2/
         real(kind=8) :: omega(0:8), omegaT(0:4)
+        logical :: f_active_post=.false., g_active_post=.false.
         !===============================================================================================
 
     end module commondata
@@ -320,19 +324,11 @@
 
         itc = itc+1
         
-        call collision()
-
-        call streaming()
-
-        call bounceback()
+        call fused_flow_update()
 
         call macro()
 
-        call collisionT()
-
-        call streamingT()
-
-        call bouncebackT()
+        call fused_thermal_update()
         
         call macroT()
         !$acc wait(1)
@@ -632,10 +628,10 @@
     allocate (Tp(nx,ny))
 #endif
 
-    allocate (f(0:8,nx,ny))
-    allocate (f_post(0:8,0:nx+1,0:ny+1))
-    allocate (g(0:4,nx,ny))
-    allocate (g_post(0:4,0:nx+1,0:ny+1))
+    allocate (f(nx,ny,0:8))
+    allocate (f_post(nx,ny,0:8))
+    allocate (g(nx,ny,0:4))
+    allocate (g_post(nx,ny,0:4))
 
     allocate (Fx(nx,ny))
     allocate (Fy(nx,ny))
@@ -744,11 +740,11 @@
                 us2 = u(i,j)*u(i,j)+v(i,j)*v(i,j)
                 do alpha = 0, 8
                     un(alpha) = u(i,j)*ex(alpha)+v(i,j)*ey(alpha)
-                    f(alpha,i,j) = rho(i,j)*omega(alpha)*(1.0d0+3.0d0*un(alpha)+4.5d0*un(alpha)*un(alpha)-1.5d0*us2)  !D2Q9标准feq
+                    f(i,j,alpha) = rho(i,j)*omega(alpha)*(1.0d0+3.0d0*un(alpha)+4.5d0*un(alpha)*un(alpha)-1.5d0*us2)  !D2Q9标准feq
                 enddo
                 do alpha = 0, 4
                     un(alpha) = u(i,j)*ex(alpha)+v(i,j)*ey(alpha) 
-                    g(alpha,i,j) = omegaT(alpha)*T(i,j)*(1.0d0+thermalGeqCoeff*un(alpha))
+                    g(i,j,alpha) = omegaT(alpha)*T(i,j)*(1.0d0+thermalGeqCoeff*un(alpha))
                 enddo
             enddo
         enddo
@@ -784,8 +780,8 @@
         access="sequential",status='old')  !unformatted是二进制,sequential：按记录顺序读写
             ! Strict restart files store f and g; EnableUseG also stores the previous heat-flux history.
             write(00,*) "Reloading f, g and optional UseG history from file"
-            read(01) (((f(alpha,i,j), i=1,nx), j=1,ny), alpha=0,8)      !先 i，再 j，再 alpha
-            read(01) (((g(alpha,i,j), i=1,nx), j=1,ny), alpha=0,4)
+            read(01) (((f(i,j,alpha), i=1,nx), j=1,ny), alpha=0,8)      !先 i，再 j，再 alpha
+            read(01) (((g(i,j,alpha), i=1,nx), j=1,ny), alpha=0,4)
 #ifdef EnableUseG
             read(01) ((Bx_prev(i,j), i=1,nx), j=1,ny)
             read(01) ((By_prev(i,j), i=1,nx), j=1,ny)
@@ -847,7 +843,7 @@ close(00)
     use commondata
     implicit none
 
-    !$acc enter data copyin(xp,yp,ex,ey,omega,omegaT)
+    !$acc enter data copyin(xp,yp,ex,ey,opp,oppT,omega,omegaT)
     !$acc enter data copyin(u,v,T,rho,f,g,Fx,Fy,Bx_prev,By_prev)
     !$acc enter data create(f_post,g_post)
 #ifdef steadyFlow
@@ -888,11 +884,46 @@ close(00)
     use commondata
     implicit none
 
+    call ensure_primary_distributions_2d_openacc()
     !$acc update self(f,g)
 #ifdef EnableUseG
     !$acc update self(Bx_prev,By_prev)
 #endif
   end subroutine update_host_reload_2d_openacc
+!===================================================================================================
+
+!===================================================================================================
+! 子程序: ensure_primary_distributions_2d_openacc
+! 作用: 写重启文件前，把当前 active ping-pong 缓冲规范化回 f/g，保持原有重启文件格式。
+!===================================================================================================
+  subroutine ensure_primary_distributions_2d_openacc()
+    use commondata
+    implicit none
+    integer(kind=4) :: i, j, alpha
+
+    if(f_active_post) then
+      !$acc parallel loop collapse(3) default(none) present(f,f_post)
+      do alpha = 0, 8
+        do j = 1, ny
+          do i = 1, nx
+            f(i,j,alpha) = f_post(i,j,alpha)
+          enddo
+        enddo
+      enddo
+      f_active_post = .false.
+    endif
+    if(g_active_post) then
+      !$acc parallel loop collapse(3) default(none) present(g,g_post)
+      do alpha = 0, 4
+        do j = 1, ny
+          do i = 1, nx
+            g(i,j,alpha) = g_post(i,j,alpha)
+          enddo
+        enddo
+      enddo
+      g_active_post = .false.
+    endif
+  end subroutine ensure_primary_distributions_2d_openacc
 !===================================================================================================
 
 !===================================================================================================
@@ -907,7 +938,7 @@ close(00)
     !$acc exit data delete(up,vp,Tp)
 #endif
     !$acc exit data delete(f_post,g_post,u,v,T,rho,f,g,Fx,Fy,Bx_prev,By_prev)
-    !$acc exit data delete(xp,yp,ex,ey,omega,omegaT)
+    !$acc exit data delete(xp,yp,ex,ey,opp,oppT,omega,omegaT)
   end subroutine exit_data_2d_openacc
 !===================================================================================================
 
@@ -918,97 +949,169 @@ close(00)
 ! 作用: 完成流场分布函数 f 的碰撞更新，并处理体力项离散修正。
 ! 用途: 在主程序时间推进循环中调用，位于 streaming 之前。
 !===================================================================================================
-  subroutine collision()
+  subroutine fused_flow_update()
     use commondata
     implicit none
     integer(kind=4) :: i, j
-    integer(kind=4) :: alpha
+    integer(kind=4) :: alpha, ip, jp
+    logical :: hitWall
     real(kind=8) :: m(0:8), m_post(0:8), meq(0:8)
     real(kind=8) :: s(0:8)
     real(kind=8) :: fSource(0:8)
+    real(kind=8) :: fIn(0:8), fOut(0:8)
 
-    !$acc parallel loop gang vector collapse(2) default(none) present(f,f_post,rho,u,v,Fx,Fy,T) async(1) &
-    !$acc& private(alpha,s,m,m_post,meq,fSource)
-    do j = 1, ny
+    !$acc routine (fused_flow_node_2d) seq
+    if(f_active_post) then
+      !$acc parallel loop gang vector collapse(2) default(none) present(f,f_post,rho,u,v,Fx,Fy,T,ex,ey,opp) async(1) &
+      !$acc& private(alpha,ip,jp,hitWall,s,m,m_post,meq,fSource,fIn,fOut)
+      do j = 1, ny
         do i = 1, nx
+          do alpha = 0, 8
+            fIn(alpha) = f_post(i,j,alpha)
+          enddo
+          call fused_flow_node_2d(i,j,fIn,fOut,m,m_post,meq,s,fSource)
+          do alpha = 0, 8
+            ip = i + ex(alpha)
+            jp = j + ey(alpha)
+            hitWall = .false.
+#ifdef VerticalWallsNoslip
+            if( (ip.LT.1).OR.(ip.GT.nx) ) hitWall = .true.
+#endif
+#ifdef HorizontalWallsNoslip
+            if( (jp.LT.1).OR.(jp.GT.ny) ) hitWall = .true.
+#endif
+            if(hitWall) then
+              f(i,j,opp(alpha)) = fOut(alpha)
+            else
+#ifdef VerticalWallsPeriodicalU
+              if(ip.LT.1) ip = nx
+              if(ip.GT.nx) ip = 1
+#endif
+              f(ip,jp,alpha) = fOut(alpha)
+            endif
+          enddo
+        enddo
+      enddo
+      f_active_post = .false.
+    else
+      !$acc parallel loop gang vector collapse(2) default(none) present(f,f_post,rho,u,v,Fx,Fy,T,ex,ey,opp) async(1) &
+      !$acc& private(alpha,ip,jp,hitWall,s,m,m_post,meq,fSource,fIn,fOut)
+      do j = 1, ny
+        do i = 1, nx
+          do alpha = 0, 8
+            fIn(alpha) = f(i,j,alpha)
+          enddo
+          call fused_flow_node_2d(i,j,fIn,fOut,m,m_post,meq,s,fSource)
+          do alpha = 0, 8
+            ip = i + ex(alpha)
+            jp = j + ey(alpha)
+            hitWall = .false.
+#ifdef VerticalWallsNoslip
+            if( (ip.LT.1).OR.(ip.GT.nx) ) hitWall = .true.
+#endif
+#ifdef HorizontalWallsNoslip
+            if( (jp.LT.1).OR.(jp.GT.ny) ) hitWall = .true.
+#endif
+            if(hitWall) then
+              f_post(i,j,opp(alpha)) = fOut(alpha)
+            else
+#ifdef VerticalWallsPeriodicalU
+              if(ip.LT.1) ip = nx
+              if(ip.GT.nx) ip = 1
+#endif
+              f_post(ip,jp,alpha) = fOut(alpha)
+            endif
+          enddo
+        enddo
+      enddo
+      f_active_post = .true.
+    endif
+    return
+  end subroutine fused_flow_update
+!===================================================================================================
+! Subroutine: fused_flow_node_2d
+! Purpose: compute one-cell flow MRT collision into fOut for fused scatter.
+!===================================================================================================
+  !$acc routine (fused_flow_node_2d) seq
+  subroutine fused_flow_node_2d(i,j,fIn,fOut,m,m_post,meq,s,fSource)
+    use commondata
+    implicit none
+    integer(kind=4), intent(in) :: i, j
+    real(kind=8), intent(in) :: fIn(0:8)
+    real(kind=8), intent(out) :: fOut(0:8)
+    real(kind=8), intent(inout) :: m(0:8), m_post(0:8), meq(0:8), s(0:8), fSource(0:8)
+    integer(kind=4) :: alpha
 
-          m(0) = f(0,i,j)+f(1,i,j)+f(2,i,j)+f(3,i,j)+f(4,i,j)+f(5,i,j)+f(6,i,j)+f(7,i,j)+f(8,i,j)
-          m(1) = -4.0d0*f(0,i,j)-f(1,i,j)-f(2,i,j)-f(3,i,j)-f(4,i,j)+2.0d0*(f(5,i,j)+f(6,i,j)+f(7,i,j)+f(8,i,j))
-          m(2) = 4.0d0*f(0,i,j)-2.0d0*(f(1,i,j)+f(2,i,j)+f(3,i,j)+f(4,i,j))+f(5,i,j)+f(6,i,j)+f(7,i,j)+f(8,i,j)
-          m(3) = f(1,i,j)-f(3,i,j)+f(5,i,j)-f(6,i,j)-f(7,i,j)+f(8,i,j)
-          m(4) = -2.0d0*f(1,i,j)+2.0d0*f(3,i,j)+f(5,i,j)-f(6,i,j)-f(7,i,j)+f(8,i,j)
-          m(5) = f(2,i,j)-f(4,i,j)+f(5,i,j)+f(6,i,j)-f(7,i,j)-f(8,i,j)
-          m(6) = -2.0d0*f(2,i,j)+2.0d0*f(4,i,j)+f(5,i,j)+f(6,i,j)-f(7,i,j)-f(8,i,j)
-          m(7) = f(1,i,j)-f(2,i,j)+f(3,i,j)-f(4,i,j)
-          m(8) = f(5,i,j)-f(6,i,j)+f(7,i,j)-f(8,i,j)
+    m(0) = fIn(0)+fIn(1)+fIn(2)+fIn(3)+fIn(4)+fIn(5)+fIn(6)+fIn(7)+fIn(8)
+    m(1) = -4.0d0*fIn(0)-fIn(1)-fIn(2)-fIn(3)-fIn(4)+2.0d0*(fIn(5)+fIn(6)+fIn(7)+fIn(8))
+    m(2) = 4.0d0*fIn(0)-2.0d0*(fIn(1)+fIn(2)+fIn(3)+fIn(4))+fIn(5)+fIn(6)+fIn(7)+fIn(8)
+    m(3) = fIn(1)-fIn(3)+fIn(5)-fIn(6)-fIn(7)+fIn(8)
+    m(4) = -2.0d0*fIn(1)+2.0d0*fIn(3)+fIn(5)-fIn(6)-fIn(7)+fIn(8)
+    m(5) = fIn(2)-fIn(4)+fIn(5)+fIn(6)-fIn(7)-fIn(8)
+    m(6) = -2.0d0*fIn(2)+2.0d0*fIn(4)+fIn(5)+fIn(6)-fIn(7)-fIn(8)
+    m(7) = fIn(1)-fIn(2)+fIn(3)-fIn(4)
+    m(8) = fIn(5)-fIn(6)+fIn(7)-fIn(8)
 
-          meq(0) = rho(i,j)
-          meq(1) = rho(i,j)*( -2.0d0+3.0d0*(u(i,j)*u(i,j)+v(i,j)*v(i,j)) )
-          meq(2) = rho(i,j)*( 1.0d0-3.0d0*(u(i,j)*u(i,j)+v(i,j)*v(i,j)) )
-          meq(3) = rho(i,j)*u(i,j)
-          meq(4) = -rho(i,j)*u(i,j)
-          meq(5) = rho(i,j)*v(i,j)
-          meq(6) = -rho(i,j)*v(i,j)
-          meq(7) = rho(i,j)*( u(i,j)*u(i,j)-v(i,j)*v(i,j) )
-          meq(8) = rho(i,j)*( u(i,j)*v(i,j) ) 
+    meq(0) = rho(i,j)
+    meq(1) = rho(i,j)*( -2.0d0+3.0d0*(u(i,j)*u(i,j)+v(i,j)*v(i,j)) )
+    meq(2) = rho(i,j)*( 1.0d0-3.0d0*(u(i,j)*u(i,j)+v(i,j)*v(i,j)) )
+    meq(3) = rho(i,j)*u(i,j)
+    meq(4) = -rho(i,j)*u(i,j)
+    meq(5) = rho(i,j)*v(i,j)
+    meq(6) = -rho(i,j)*v(i,j)
+    meq(7) = rho(i,j)*( u(i,j)*u(i,j)-v(i,j)*v(i,j) )
+    meq(8) = rho(i,j)*( u(i,j)*v(i,j) )
 
-          s(0) = 0.0d0      !!s_{\rho}
-          s(1) = Snu !!s_{e}
-          s(2) = Snu !!s_{\epsilon}
-          s(3) = 0.0d0      !!s_{j} 
-          s(4) = Sq !!s_{q}
-          s(5) = 0.0d0      !!s_{j}
-          s(6) = Sq       !!s_{q}
-          s(7) = Snu !!s_{\nu}
-          s(8) = Snu       !!s_{\nu}
+    s(0) = 0.0d0
+    s(1) = Snu
+    s(2) = Snu
+    s(3) = 0.0d0
+    s(4) = Sq
+    s(5) = 0.0d0
+    s(6) = Sq
+    s(7) = Snu
+    s(8) = Snu
 
-          Fx(i,j) = 0.0d0
-          Fy(i,j) = rho(i,j)*gBeta*(T(i,j)-Tref)        !动量方程上的源项，即浮力项
-
-
+    Fx(i,j) = 0.0d0
+    Fy(i,j) = rho(i,j)*gBeta*(T(i,j)-Tref)
 #ifdef    SideHeatedHa
-          Fx(i,j) = 0.0d0+B2sigemarho*(v(i,j)*sin(phi)*cos(phi)-u(i,j)*sin(phi)*sin(phi))
-          Fy(i,j) = rho(i,j)*gBeta*(T(i,j)-Tref)+ rho(i,j)*B2sigemarho*(u(i,j)*sin(phi)*cos(phi)&
-          -v(i,j)*cos(phi)*cos(phi))                    !动量方程上的源项，即浮力项加磁场
+    Fx(i,j) = 0.0d0+B2sigemarho*(v(i,j)*sin(phi)*cos(phi)-u(i,j)*sin(phi)*sin(phi))
+    Fy(i,j) = rho(i,j)*gBeta*(T(i,j)-Tref)+ rho(i,j)*B2sigemarho*(u(i,j)*sin(phi)*cos(phi)&
+    -v(i,j)*cos(phi)*cos(phi))
 #endif
 
+    fSource(0) = 0.0d0
+    fSource(1) = (6.0d0-3.0d0*s(1))*(u(i,j)*Fx(i,j)+v(i,j)*Fy(i,j))
+    fSource(2) = -(6.0d0-3.0d0*s(2))*(u(i,j)*Fx(i,j)+v(i,j)*Fy(i,j))
+    fSource(3) = (1.0d0-0.5d0*s(3))*Fx(i,j)
+    fSource(4) = -(1.0d0-0.5d0*s(4))*Fx(i,j)
+    fSource(5) = (1.0d0-0.5d0*s(5))*Fy(i,j)
+    fSource(6) = -(1.0d0-0.5d0*s(6))*Fy(i,j)
+    fSource(7) = (2.0d0-s(7))*(u(i,j)*Fx(i,j)-v(i,j)*Fy(i,j))
+    fSource(8) = (1.0d0-0.5d0*s(8))*(u(i,j)*Fy(i,j)+v(i,j)*Fx(i,j))
 
-          fSource(0) = 0.0d0                                                       !将源项F对应的贡献投影到各个矩中，并做半步修正
-          fSource(1) = (6.0d0-3.0d0*s(1))*(u(i,j)*Fx(i,j)+v(i,j)*Fy(i,j))
-          fSource(2) = -(6.0d0-3.0d0*s(2))*(u(i,j)*Fx(i,j)+v(i,j)*Fy(i,j))
-          fSource(3) = (1.0d0-0.5d0*s(3))*Fx(i,j)
-          fSource(4) = -(1.0d0-0.5d0*s(4))*Fx(i,j)
-          fSource(5) = (1.0d0-0.5d0*s(5))*Fy(i,j)
-          fSource(6) = -(1.0d0-0.5d0*s(6))*Fy(i,j)
-          fSource(7) = (2.0d0-s(7))*(u(i,j)*Fx(i,j)-v(i,j)*Fy(i,j))
-          fSource(8) = (1.0d0-0.5d0*s(8))*(u(i,j)*Fy(i,j)+v(i,j)*Fx(i,j))     !这边是乘以M变到矩空间，然后再乘以1-1/2S修正
-
-          do alpha = 0, 8
-            m_post(alpha) = m(alpha)-s(alpha)*(m(alpha)-meq(alpha))+fSource(alpha)     !矩空间碰撞
-          enddo
-
-          f_post(0,i,j) = m_post(0)/9.0d0-m_post(1)/9.0d0+m_post(2)/9.0d0                                         !这边是乘以M逆
-          f_post(1,i,j) = m_post(0)/9.0d0-m_post(1)/36.0d0-m_post(2)/18.0d0+m_post(3)/6.0d0-m_post(4)/6.0d0 &
-                    +m_post(7)/4.0d0
-          f_post(2,i,j) = m_post(0)/9.0d0-m_post(1)/36.0d0-m_post(2)/18.0d0 &
-                    +m_post(5)/6.0d0-m_post(6)/6.0d0-m_post(7)/4.0d0
-          f_post(3,i,j) = m_post(0)/9.0d0-m_post(1)/36.0d0-m_post(2)/18.0d0-m_post(3)/6.0d0+m_post(4)/6.0d0 &
-                    +m_post(7)/4.0d0
-          f_post(4,i,j) = m_post(0)/9.0d0-m_post(1)/36.0d0-m_post(2)/18.0d0 &
-                    -m_post(5)/6.0d0+m_post(6)/6.0d0-m_post(7)/4.0d0
-          f_post(5,i,j) = m_post(0)/9.0d0+m_post(1)/18.0d0+m_post(2)/36.0d0+m_post(3)/6.0d0+m_post(4)/12.0d0 &
-                    +m_post(5)/6.0d0+m_post(6)/12.0d0+m_post(8)/4.0d0
-          f_post(6,i,j) = m_post(0)/9.0d0+m_post(1)/18.0d0+m_post(2)/36.0d0-m_post(3)/6.0d0-m_post(4)/12.0d0 &
-                    +m_post(5)/6.0d0+m_post(6)/12.0d0-m_post(8)/4.0d0
-          f_post(7,i,j) = m_post(0)/9.0d0+m_post(1)/18.0d0+m_post(2)/36.0d0-m_post(3)/6.0d0-m_post(4)/12.0d0 &
-                    -m_post(5)/6.0d0-m_post(6)/12.0d0+m_post(8)/4.0d0
-          f_post(8,i,j) = m_post(0)/9.0d0+m_post(1)/18.0d0+m_post(2)/36.0d0+m_post(3)/6.0d0+m_post(4)/12.0d0 &
-                    -m_post(5)/6.0d0-m_post(6)/12.0d0-m_post(8)/4.0d0
-
-        enddo
+    do alpha = 0, 8
+      m_post(alpha) = m(alpha)-s(alpha)*(m(alpha)-meq(alpha))+fSource(alpha)
     enddo
-    return
-  end subroutine collision
+
+    fOut(0) = m_post(0)/9.0d0-m_post(1)/9.0d0+m_post(2)/9.0d0
+    fOut(1) = m_post(0)/9.0d0-m_post(1)/36.0d0-m_post(2)/18.0d0+m_post(3)/6.0d0-m_post(4)/6.0d0 &
+              +m_post(7)/4.0d0
+    fOut(2) = m_post(0)/9.0d0-m_post(1)/36.0d0-m_post(2)/18.0d0 &
+              +m_post(5)/6.0d0-m_post(6)/6.0d0-m_post(7)/4.0d0
+    fOut(3) = m_post(0)/9.0d0-m_post(1)/36.0d0-m_post(2)/18.0d0-m_post(3)/6.0d0+m_post(4)/6.0d0 &
+              +m_post(7)/4.0d0
+    fOut(4) = m_post(0)/9.0d0-m_post(1)/36.0d0-m_post(2)/18.0d0 &
+              -m_post(5)/6.0d0+m_post(6)/6.0d0-m_post(7)/4.0d0
+    fOut(5) = m_post(0)/9.0d0+m_post(1)/18.0d0+m_post(2)/36.0d0+m_post(3)/6.0d0+m_post(4)/12.0d0 &
+              +m_post(5)/6.0d0+m_post(6)/12.0d0+m_post(8)/4.0d0
+    fOut(6) = m_post(0)/9.0d0+m_post(1)/18.0d0+m_post(2)/36.0d0-m_post(3)/6.0d0-m_post(4)/12.0d0 &
+              +m_post(5)/6.0d0+m_post(6)/12.0d0-m_post(8)/4.0d0
+    fOut(7) = m_post(0)/9.0d0+m_post(1)/18.0d0+m_post(2)/36.0d0-m_post(3)/6.0d0-m_post(4)/12.0d0 &
+              -m_post(5)/6.0d0-m_post(6)/12.0d0+m_post(8)/4.0d0
+    fOut(8) = m_post(0)/9.0d0+m_post(1)/18.0d0+m_post(2)/36.0d0+m_post(3)/6.0d0+m_post(4)/12.0d0 &
+              -m_post(5)/6.0d0-m_post(6)/12.0d0-m_post(8)/4.0d0
+  end subroutine fused_flow_node_2d
 !===================================================================================================
 ! collision 结束: 流场碰撞步骤完成。
 !===================================================================================================
@@ -1019,26 +1122,6 @@ close(00)
 ! 作用: 完成流场分布函数 f 的迁移，把碰撞后的信息传播到相邻格点。
 ! 用途: 在主程序时间推进循环中调用，位于 collision 之后、bounceback 之前。
 !===================================================================================================
-  subroutine streaming()                                    !先迁移，再边界处理
-    use commondata                                            !迁移步骤：pull streaming，把碰撞后的 f_post 拉取到当前格点
-    implicit none
-    integer(kind=4) :: i, j
-    integer(kind=4) :: ip, jp
-    integer(kind=4) :: alpha
-    
-    !$acc parallel loop gang vector collapse(2) default(none) present(f,f_post,ex,ey) async(1) private(alpha,ip,jp)
-    do j = 1, ny
-        do i = 1, nx
-            do alpha = 0, 8                        !上游格点索引：fα(i,j) <- f_postα(i-exα, j-eyα)
-                ip = i-ex(alpha)                   !边界附近 (ip/jp 可能为 0 或 nx+1/ny+1)，需在 bounceback/周期边界处理中覆盖修正边界分布
-                jp = j-ey(alpha)                   !ghost 层在初始化中为 0，保证不会出现未初始化垃圾值
-                
-                f(alpha,i,j) = f_post(alpha,ip,jp)
-            enddo
-        enddo
-    enddo
-    return
-  end subroutine streaming
 !===================================================================================================
 ! streaming 结束: 完成流场分布函数 f 的迁移，把碰撞后的信息传播到相邻格点。
 !===================================================================================================
@@ -1051,59 +1134,6 @@ close(00)
 ! 作用: 处理流场边界条件，包括无滑移壁面和相关反弹格式。
 ! 用途: 在主程序时间推进循环中调用，位于 streaming 之后、macro 之前。
 !===================================================================================================
-  subroutine bounceback()
-    use commondata
-    implicit none
-    integer(kind=4) :: i, j
-    ! integer(kind=4) :: alpha
-
-#ifdef VerticalWallsPeriodicalU      
-    !$acc parallel loop gang vector default(none) present(f,f_post) async(1)
-    do j = 1, ny                                                  !速度边界垂直边界周期，直接方向相同，跨边界的入射分布      
-        !Left side (i=1)
-        f(1,1,j) = f_post(1,nx,j)
-        f(5,1,j) = f_post(5,nx,j)
-        f(8,1,j) = f_post(8,nx,j)
-
-        !Right side (i=nx)
-        f(3,nx,j) = f_post(3,1,j)
-        f(6,nx,j) = f_post(6,1,j)
-        f(7,nx,j) = f_post(7,1,j)
-    enddo
-#endif
-
-#ifdef VerticalWallsNoslip
-    !$acc parallel loop gang vector default(none) present(f,f_post) async(1)
-    do j = 1, ny                                                 !速度边界垂直边界静止壁无滑移，直接反弹，方向相反
-        !Left side (i=1)
-        f(1,1,j) = f_post(3,1,j)
-        f(5,1,j) = f_post(7,1,j)
-        f(8,1,j) = f_post(6,1,j)
-
-        !Right side (i=nx)
-        f(3,nx,j) = f_post(1,nx,j)
-        f(6,nx,j) = f_post(8,nx,j)
-        f(7,nx,j) = f_post(5,nx,j)
-    enddo
-#endif
-
-#ifdef HorizontalWallsNoslip
-    !$acc parallel loop gang vector default(none) present(f,f_post) async(1)
-    do i = 1, nx                                                  !速度边界水平边界无滑移，直接反弹，方向相反
-        !Bottom side (j=1)
-        f(2,i,1) = f_post(4,i,1)
-        f(5,i,1) = f_post(7,i,1)
-        f(6,i,1) = f_post(8,i,1)
-
-        !Top side (j=ny)
-        f(4,i,ny) = f_post(2,i,ny)
-        f(7,i,ny) = f_post(5,i,ny)
-        f(8,i,ny) = f_post(6,i,ny)
-    enddo
-#endif
-
-    return
-  end subroutine bounceback
 !===================================================================================================
 ! bounceback 结束: 处理流场边界条件，包括无滑移壁面和相关反弹格式。
 !===================================================================================================
@@ -1121,14 +1151,28 @@ close(00)
     implicit none
     integer(kind=4) :: i, j
 
-    !$acc parallel loop gang vector collapse(2) default(none) present(f,rho,u,v,Fx,Fy) async(1)
-    do j = 1, ny
+    if(f_active_post) then
+      !$acc parallel loop gang vector collapse(2) default(none) present(f_post,rho,u,v,Fx,Fy) async(1)
+      do j = 1, ny
         do i = 1, nx
-            rho(i,j) = f(0,i,j)+f(1,i,j)+f(2,i,j)+f(3,i,j)+f(4,i,j)+f(5,i,j)+f(6,i,j)+f(7,i,j)+f(8,i,j)
-            u(i,j) = ( f(1,i,j)-f(3,i,j)+f(5,i,j)-f(6,i,j)-f(7,i,j)+f(8,i,j)+0.5d0*Fx(i,j) )/rho(i,j)     !含力LBM的半步动量修正：rho*u = Σ f e + 0.5*F，对应Guo forcing的二阶定义
-            v(i,j) = ( f(2,i,j)-f(4,i,j)+f(5,i,j)+f(6,i,j)-f(7,i,j)-f(8,i,j)+0.5d0*Fy(i,j) )/rho(i,j)
+          rho(i,j) = f_post(i,j,0)+f_post(i,j,1)+f_post(i,j,2)+f_post(i,j,3)+f_post(i,j,4)+ &
+                     f_post(i,j,5)+f_post(i,j,6)+f_post(i,j,7)+f_post(i,j,8)
+          u(i,j) = ( f_post(i,j,1)-f_post(i,j,3)+f_post(i,j,5)-f_post(i,j,6)-f_post(i,j,7)+ &
+                     f_post(i,j,8)+0.5d0*Fx(i,j) )/rho(i,j)
+          v(i,j) = ( f_post(i,j,2)-f_post(i,j,4)+f_post(i,j,5)+f_post(i,j,6)-f_post(i,j,7)- &
+                     f_post(i,j,8)+0.5d0*Fy(i,j) )/rho(i,j)
         enddo
-    enddo
+      enddo
+    else
+      !$acc parallel loop gang vector collapse(2) default(none) present(f,rho,u,v,Fx,Fy) async(1)
+      do j = 1, ny
+        do i = 1, nx
+          rho(i,j) = f(i,j,0)+f(i,j,1)+f(i,j,2)+f(i,j,3)+f(i,j,4)+f(i,j,5)+f(i,j,6)+f(i,j,7)+f(i,j,8)
+          u(i,j) = ( f(i,j,1)-f(i,j,3)+f(i,j,5)-f(i,j,6)-f(i,j,7)+f(i,j,8)+0.5d0*Fx(i,j) )/rho(i,j)
+          v(i,j) = ( f(i,j,2)-f(i,j,4)+f(i,j,5)+f(i,j,6)-f(i,j,7)-f(i,j,8)+0.5d0*Fy(i,j) )/rho(i,j)
+        enddo
+      enddo
+    endif
     return
   end subroutine macro
 !===================================================================================================
@@ -1142,80 +1186,194 @@ close(00)
 ! 作用: 完成温度分布函数 g 的碰撞更新，并加入热流修正项。
 ! 用途: 在主程序时间推进循环中调用，位于流场 macro 之后。
 !===================================================================================================
-    subroutine collisionT()
+    subroutine fused_thermal_update()
     use commondata
     implicit none
     integer(kind=4) :: i, j
-    integer(kind=4) :: alpha
+    integer(kind=4) :: alpha, ip, jp
+    logical :: hitBoundary, constWall
+    real(kind=8) :: wallT
     real(kind=8) :: n(0:4), n_post(0:4), neq(0:4)
     real(kind=8) :: q(0:4)
     real(kind=8) :: Bx, By
     real(kind=8) :: dBx, dBy
+    real(kind=8) :: gIn(0:4), gOut(0:4)
     real(kind=8), parameter :: SG = 1.0d0 - 0.5d0*Qk
 
-
-
-
-    !$acc parallel loop gang vector collapse(2) default(none) present(g,g_post,u,v,T,Bx_prev,By_prev) async(1) &
-    !$acc& private(alpha,n,neq,q,n_post,Bx,By,dBx,dBy)
-    do j = 1, ny
+    !$acc routine (fused_thermal_node_2d) seq
+    if(g_active_post) then
+      !$acc parallel loop gang vector collapse(2) default(none) present(g,g_post,u,v,T,Bx_prev,By_prev,ex,ey,oppT,omegaT) async(1) &
+      !$acc& private(alpha,ip,jp,hitBoundary,constWall,wallT,n,neq,q,n_post,Bx,By,dBx,dBy,gIn,gOut)
+      do j = 1, ny
         do i = 1, nx
-
-            Bx = u(i,j) * T(i,j)
-            By = v(i,j) * T(i,j)
-
-#ifdef EnableUseG
-            dBx = Bx - Bx_prev(i,j)
-            dBy = By - By_prev(i,j)
-#else
-            dBx = 0.0d0
-            dBy = 0.0d0
+          do alpha = 0, 4
+            gIn(alpha) = g_post(i,j,alpha)
+          enddo
+          call fused_thermal_node_2d(i,j,gIn,gOut,n,n_post,neq,q,Bx,By,dBx,dBy,SG)
+          do alpha = 0, 4
+            ip = i + ex(alpha)
+            jp = j + ey(alpha)
+            hitBoundary = .false.
+            constWall = .false.
+            wallT = 0.0d0
+#ifdef VerticalWallsConstT
+            if( (ip.LT.1).OR.(ip.GT.nx) ) then
+              hitBoundary = .true.
+              constWall = .true.
+              if(ip.LT.1) wallT = Thot
+              if(ip.GT.nx) wallT = Tcold
+            endif
 #endif
-
-#ifdef EnableUseG
-            Bx_prev(i,j) = Bx
-            By_prev(i,j) = By
+#ifdef VerticalWallsAdiabatic
+            if( (ip.LT.1).OR.(ip.GT.nx) ) hitBoundary = .true.
 #endif
-
-          n(0) = g(0,i,j)+g(1,i,j)+g(2,i,j)+g(3,i,j)+g(4,i,j)
-          n(1) = g(1,i,j)-g(3,i,j)
-          n(2) = g(2,i,j)-g(4,i,j)
-          n(3) = -4.0d0*g(0,i,j)+g(1,i,j)+g(2,i,j)+g(3,i,j)+g(4,i,j)
-          n(4) = g(1,i,j)-g(2,i,j)+g(3,i,j)-g(4,i,j)
-        
-          neq(0) = T(i,j)
-          neq(1) = T(i,j)*u(i,j)
-          neq(2) = T(i,j)*v(i,j)
-#ifdef EnableLegacyThermalScheme
-          neq(3) = T(i,j)*paraA
-#else
-          neq(3) = T(i,j)*(-2.0d0/3.0d0)
+#ifdef HorizontalWallsConstT
+            if( (jp.LT.1).OR.(jp.GT.ny) ) then
+              hitBoundary = .true.
+              constWall = .true.
+              if(jp.LT.1) wallT = Thot
+              if(jp.GT.ny) wallT = Tcold
+            endif
 #endif
-          neq(4) = 0.0d0
-        
-          q(0) = 0.0d0
-          q(1) = Qk
-          q(2) = Qk
-          q(3) = Qnu
-          q(4) = Qnu
-        
-          
-          n_post(0) = n(0)-q(0)*(n(0)-neq(0))
-          n_post(1) = n(1)-q(1)*(n(1)-neq(1))+ SG*dBx
-          n_post(2) = n(2)-q(2)*(n(2)-neq(2))+ SG*dBy
-          n_post(3) = n(3)-q(3)*(n(3)-neq(3))
-          n_post(4) = n(4)-q(4)*(n(4)-neq(4))
-          
-        
-          g_post(0,i,j) = 0.2d0*n_post(0)-0.2d0*n_post(3)
-          g_post(1,i,j) = 0.2d0*n_post(0)+0.5d0*n_post(1)+0.05d0*n_post(3)+0.25d0*n_post(4)
-          g_post(2,i,j) = 0.2d0*n_post(0)+0.5d0*n_post(2)+0.05d0*n_post(3)-0.25d0*n_post(4)
-          g_post(3,i,j) = 0.2d0*n_post(0)-0.5d0*n_post(1)+0.05d0*n_post(3)+0.25d0*n_post(4)
-          g_post(4,i,j) = 0.2d0*n_post(0)-0.5d0*n_post(2)+0.05d0*n_post(3)-0.25d0*n_post(4) 
+#ifdef HorizontalWallsAdiabatic
+            if( (jp.LT.1).OR.(jp.GT.ny) ) hitBoundary = .true.
+#endif
+            if(hitBoundary) then
+              if(constWall) then
+                g(i,j,oppT(alpha)) = -gOut(alpha) + 2.0d0*omegaT(alpha)*wallT
+              else
+                g(i,j,oppT(alpha)) = gOut(alpha)
+              endif
+            else
+#ifdef VerticalWallsPeriodicalT
+              if(ip.LT.1) ip = nx
+              if(ip.GT.nx) ip = 1
+#endif
+              g(ip,jp,alpha) = gOut(alpha)
+            endif
+          enddo
         enddo
-    enddo
+      enddo
+      g_active_post = .false.
+    else
+      !$acc parallel loop gang vector collapse(2) default(none) present(g,g_post,u,v,T,Bx_prev,By_prev,ex,ey,oppT,omegaT) async(1) &
+      !$acc& private(alpha,ip,jp,hitBoundary,constWall,wallT,n,neq,q,n_post,Bx,By,dBx,dBy,gIn,gOut)
+      do j = 1, ny
+        do i = 1, nx
+          do alpha = 0, 4
+            gIn(alpha) = g(i,j,alpha)
+          enddo
+          call fused_thermal_node_2d(i,j,gIn,gOut,n,n_post,neq,q,Bx,By,dBx,dBy,SG)
+          do alpha = 0, 4
+            ip = i + ex(alpha)
+            jp = j + ey(alpha)
+            hitBoundary = .false.
+            constWall = .false.
+            wallT = 0.0d0
+#ifdef VerticalWallsConstT
+            if( (ip.LT.1).OR.(ip.GT.nx) ) then
+              hitBoundary = .true.
+              constWall = .true.
+              if(ip.LT.1) wallT = Thot
+              if(ip.GT.nx) wallT = Tcold
+            endif
+#endif
+#ifdef VerticalWallsAdiabatic
+            if( (ip.LT.1).OR.(ip.GT.nx) ) hitBoundary = .true.
+#endif
+#ifdef HorizontalWallsConstT
+            if( (jp.LT.1).OR.(jp.GT.ny) ) then
+              hitBoundary = .true.
+              constWall = .true.
+              if(jp.LT.1) wallT = Thot
+              if(jp.GT.ny) wallT = Tcold
+            endif
+#endif
+#ifdef HorizontalWallsAdiabatic
+            if( (jp.LT.1).OR.(jp.GT.ny) ) hitBoundary = .true.
+#endif
+            if(hitBoundary) then
+              if(constWall) then
+                g_post(i,j,oppT(alpha)) = -gOut(alpha) + 2.0d0*omegaT(alpha)*wallT
+              else
+                g_post(i,j,oppT(alpha)) = gOut(alpha)
+              endif
+            else
+#ifdef VerticalWallsPeriodicalT
+              if(ip.LT.1) ip = nx
+              if(ip.GT.nx) ip = 1
+#endif
+              g_post(ip,jp,alpha) = gOut(alpha)
+            endif
+          enddo
+        enddo
+      enddo
+      g_active_post = .true.
+    endif
     return
-    end subroutine collisionT
+    end subroutine fused_thermal_update
+!===================================================================================================
+! Subroutine: fused_thermal_node_2d
+! Purpose: compute one-cell thermal MRT collision into gOut for fused scatter.
+!===================================================================================================
+  !$acc routine (fused_thermal_node_2d) seq
+    subroutine fused_thermal_node_2d(i,j,gIn,gOut,n,n_post,neq,q,Bx,By,dBx,dBy,SG)
+    use commondata
+    implicit none
+    integer(kind=4), intent(in) :: i, j
+    real(kind=8), intent(in) :: gIn(0:4), SG
+    real(kind=8), intent(out) :: gOut(0:4)
+    real(kind=8), intent(inout) :: n(0:4), n_post(0:4), neq(0:4), q(0:4)
+    real(kind=8), intent(inout) :: Bx, By, dBx, dBy
+
+    Bx = u(i,j) * T(i,j)
+    By = v(i,j) * T(i,j)
+#ifdef EnableUseG
+    dBx = Bx - Bx_prev(i,j)
+    dBy = By - By_prev(i,j)
+#else
+    dBx = 0.0d0
+    dBy = 0.0d0
+#endif
+#ifdef EnableUseG
+    Bx_prev(i,j) = Bx
+    By_prev(i,j) = By
+#endif
+
+    n(0) = gIn(0)+gIn(1)+gIn(2)+gIn(3)+gIn(4)
+    n(1) = gIn(1)-gIn(3)
+    n(2) = gIn(2)-gIn(4)
+    n(3) = -4.0d0*gIn(0)+gIn(1)+gIn(2)+gIn(3)+gIn(4)
+    n(4) = gIn(1)-gIn(2)+gIn(3)-gIn(4)
+
+    neq(0) = T(i,j)
+    neq(1) = T(i,j)*u(i,j)
+    neq(2) = T(i,j)*v(i,j)
+#ifdef EnableLegacyThermalScheme
+    neq(3) = T(i,j)*paraA
+#else
+    neq(3) = T(i,j)*(-2.0d0/3.0d0)
+#endif
+    neq(4) = 0.0d0
+
+    q(0) = 0.0d0
+    q(1) = Qk
+    q(2) = Qk
+    q(3) = Qnu
+    q(4) = Qnu
+
+    n_post(0) = n(0)-q(0)*(n(0)-neq(0))
+    n_post(1) = n(1)-q(1)*(n(1)-neq(1))+ SG*dBx
+    n_post(2) = n(2)-q(2)*(n(2)-neq(2))+ SG*dBy
+    n_post(3) = n(3)-q(3)*(n(3)-neq(3))
+    n_post(4) = n(4)-q(4)*(n(4)-neq(4))
+
+    gOut(0) = 0.2d0*n_post(0)-0.2d0*n_post(3)
+    gOut(1) = 0.2d0*n_post(0)+0.5d0*n_post(1)+0.05d0*n_post(3)+0.25d0*n_post(4)
+    gOut(2) = 0.2d0*n_post(0)+0.5d0*n_post(2)+0.05d0*n_post(3)-0.25d0*n_post(4)
+    gOut(3) = 0.2d0*n_post(0)-0.5d0*n_post(1)+0.05d0*n_post(3)+0.25d0*n_post(4)
+    gOut(4) = 0.2d0*n_post(0)-0.5d0*n_post(2)+0.05d0*n_post(3)-0.25d0*n_post(4)
+    end subroutine fused_thermal_node_2d
 !===================================================================================================
 ! collisionT 结束: 完成温度分布函数 g 的碰撞更新，并加入热流修正项。
 !===================================================================================================
@@ -1228,26 +1386,6 @@ close(00)
 ! 作用: 完成温度分布函数 g 的迁移，把碰撞后的温度信息传播到相邻格点。
 ! 用途: 在主程序时间推进循环中调用，位于 collisionT 之后、bouncebackT 之前。
 !===================================================================================================
-    subroutine streamingT()
-    use commondata
-    implicit none
-    integer(kind=4) :: i, j
-    integer(kind=4) :: ip, jp
-    integer(kind=4) :: alpha
-    
-    !$acc parallel loop gang vector collapse(2) default(none) present(g,g_post,ex,ey) async(1) private(alpha,ip,jp)
-    do j = 1, ny
-        do i = 1, nx
-            do alpha = 0, 4
-                ip = i-ex(alpha)
-                jp = j-ey(alpha)
-                
-                g(alpha,i,j) = g_post(alpha,ip,jp)
-            enddo
-        enddo
-    enddo
-    return
-    end subroutine streamingT
 !===================================================================================================
 ! streamingT 结束: 完成温度分布函数 g 的迁移，把碰撞后的温度信息传播到相邻格点。
 !===================================================================================================
@@ -1259,83 +1397,6 @@ close(00)
 ! 作用: 处理温度边界条件，包括恒温、绝热和周期边界。
 ! 用途: 在主程序时间推进循环中调用，位于 streamingT 之后、macroT 之前。
 !===================================================================================================
-    subroutine bouncebackT()
-    use commondata
-    implicit none
-    integer(kind=4) :: i, j
-    !integer(kind=4) :: alpha
-
-#ifdef VerticalWallsPeriodicalT 
-    !$acc parallel loop gang vector default(none) present(g,g_post) async(1)
-    do j = 1, ny
-        !Left boundary
-        g(1,1,j) = g_post(1,nx,j)
-
-        !Right boundary
-        g(3,nx,j) = g_post(3,1,j)
-    enddo
-#endif
-
-#ifdef VerticalWallsConstT
-    !$acc parallel loop gang vector default(none) present(g,g_post,omegaT) async(1)
-    do j = 1, ny
-        !Left boundary
-#ifdef EnableLegacyThermalScheme
-        g(1,1,j) = -g_post(3,1,j)+(4.0d0+paraA)/10.0d0*Thot
-#else
-        g(1,1,j) = -g_post(3,1,j)+2.0d0*omegaT(3)*Thot
-#endif
-        !Right boundary
-#ifdef EnableLegacyThermalScheme
-        g(3,nx,j) = -g_post(1,nx,j)+(4.0d0+paraA)/10.0d0*Tcold
-#else
-        g(3,nx,j) = -g_post(1,nx,j)+2.0d0*omegaT(1)*Tcold
-#endif
-    enddo
-#endif
-
-#ifdef VerticalWallsAdiabatic
-    !$acc parallel loop gang vector default(none) present(g,g_post) async(1)
-    do j = 1, ny
-        !Left boundary
-        g(1,1,j) = g_post(3,1,j)
-
-        !Right boundary
-        g(3,nx,j) = g_post(1,nx,j)
-    enddo
-#endif
-
-#ifdef HorizontalWallsAdiabatic
-    !$acc parallel loop gang vector default(none) present(g,g_post) async(1)
-    do i = 1, nx
-        !Bottom side
-        g(2,i,1) = g_post(4,i,1)
-
-        !Top side
-        g(4,i,ny) = g_post(2,i,ny)
-    enddo
-#endif
-
-#ifdef HorizontalWallsConstT
-    !$acc parallel loop gang vector default(none) present(g,g_post,omegaT) async(1)
-    do i = 1, nx
-        !Bottom side
-#ifdef EnableLegacyThermalScheme
-        g(2,i,1) = -g_post(4,i,1)+(4.0d0+paraA)/10.0d0*Thot
-#else
-        g(2,i,1) = -g_post(4,i,1)+2.0d0*omegaT(4)*Thot
-#endif
-        !Top side
-#ifdef EnableLegacyThermalScheme
-        g(4,i,ny) = -g_post(2,i,ny)+(4.0d0+paraA)/10.0d0*Tcold
-#else
-        g(4,i,ny) = -g_post(2,i,ny)+2.0d0*omegaT(2)*Tcold
-#endif
-    enddo
-#endif
-
-    return
-    end subroutine bouncebackT
 !===================================================================================================
 ! bouncebackT 结束: 处理温度边界条件，包括恒温、绝热和周期边界。
 !===================================================================================================
@@ -1353,12 +1414,21 @@ close(00)
     implicit none
     integer(kind=4) :: i, j
 
-    !$acc parallel loop gang vector collapse(2) default(none) present(g,T) async(1)
-    do j = 1, ny
+    if(g_active_post) then
+      !$acc parallel loop gang vector collapse(2) default(none) present(g_post,T) async(1)
+      do j = 1, ny
         do i = 1, nx
-            T(i,j) = g(0,i,j)+g(1,i,j)+g(2,i,j)+g(3,i,j)+g(4,i,j)
+          T(i,j) = g_post(i,j,0)+g_post(i,j,1)+g_post(i,j,2)+g_post(i,j,3)+g_post(i,j,4)
         enddo
-    enddo
+      enddo
+    else
+      !$acc parallel loop gang vector collapse(2) default(none) present(g,T) async(1)
+      do j = 1, ny
+        do i = 1, nx
+          T(i,j) = g(i,j,0)+g(i,j,1)+g(i,j,2)+g(i,j,3)+g(i,j,4)
+        enddo
+      enddo
+    endif
     return
     end subroutine macroT
 !===================================================================================================
@@ -1381,10 +1451,10 @@ close(00)
     rho_bad = .false.
     do j = 1, ny
         do i = 1, nx
-            T(i,j) = g(0,i,j)+g(1,i,j)+g(2,i,j)+g(3,i,j)+g(4,i,j)
-            rho(i,j) = f(0,i,j)+f(1,i,j)+f(2,i,j)+f(3,i,j)+f(4,i,j)+f(5,i,j)+f(6,i,j)+f(7,i,j)+f(8,i,j)
-            momx = f(1,i,j)-f(3,i,j)+f(5,i,j)-f(6,i,j)-f(7,i,j)+f(8,i,j)
-            momy = f(2,i,j)-f(4,i,j)+f(5,i,j)+f(6,i,j)-f(7,i,j)-f(8,i,j)
+            T(i,j) = g(i,j,0)+g(i,j,1)+g(i,j,2)+g(i,j,3)+g(i,j,4)
+            rho(i,j) = f(i,j,0)+f(i,j,1)+f(i,j,2)+f(i,j,3)+f(i,j,4)+f(i,j,5)+f(i,j,6)+f(i,j,7)+f(i,j,8)
+            momx = f(i,j,1)-f(i,j,3)+f(i,j,5)-f(i,j,6)-f(i,j,7)+f(i,j,8)
+            momy = f(i,j,2)-f(i,j,4)+f(i,j,5)+f(i,j,6)-f(i,j,7)-f(i,j,8)
 
             if (rho(i,j).GT.0.0d0) then
                 u(i,j) = momx/rho(i,j)
@@ -1661,8 +1731,8 @@ end subroutine append_convergence_master_tecplot
 
     open(unit=05,file=trim(reloadFilePrefix)//"-"//trim(filename)//'.bin',form="unformatted",access="sequential")   !二进制
     ! Strict restart snapshots store f and g; EnableUseG also stores the previous heat-flux history.
-    write(05) (((real(f(alpha,i,j),kind=8), i=1,nx), j=1,ny), alpha=0,8)
-    write(05) (((real(g(alpha,i,j),kind=8), i=1,nx), j=1,ny), alpha=0,4)
+    write(05) (((real(f(i,j,alpha),kind=8), i=1,nx), j=1,ny), alpha=0,8)
+    write(05) (((real(g(i,j,alpha),kind=8), i=1,nx), j=1,ny), alpha=0,4)
 #ifdef EnableUseG
     write(05) ((real(Bx_prev(i,j),kind=8), i=1,nx), j=1,ny)
     write(05) ((real(By_prev(i,j),kind=8), i=1,nx), j=1,ny)
@@ -3819,4 +3889,3 @@ end subroutine output_psi_center_abs
 !===================================================================================================
 ! output_psi_center_abs 结束: 输出腔体中心位置的 abs(psi) 诊断结果。
 !===================================================================================================
-
