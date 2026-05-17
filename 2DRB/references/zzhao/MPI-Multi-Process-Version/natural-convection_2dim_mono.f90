@@ -148,9 +148,19 @@ subroutine mesh()
     call MPI_BCAST(xGrid(1),nx,MPI_REAL8,0,MPI_COMM_WORLD,IERR)
 
     ! y 方向被一维切分：rank 0 按 count1d/displ1d 把全局 y 坐标分发到各 rank 的 yGrid(1:nyLocal)。
+    ! 参数含义：y(1)=root 端发送缓冲区起点，count1d=每个 rank 接收的 y 坐标个数，
+    !           displ1d=每个 rank 在 y(1:ny) 中的发送偏移量，MPI_REAL8=发送数据类型，
+    !           yGrid(1)=本 rank 接收缓冲区起点，count1d(MYID)=本 rank 实际接收个数，
+    !           MPI_REAL8=接收数据类型，0=root rank，MPI_COMM_WORLD=通信域，IERR=错误码。
     call MPI_SCATTERV(y(1),count1d,displ1d,MPI_REAL8,yGrid(1),count1d(MYID),MPI_REAL8,0,MPI_COMM_WORLD,IERR)
 
-    ! 交换 yGrid 的上侧 halo：把本 rank 的第一层 yGrid(1) 发给下方邻居，同时从上方邻居接收其边界到 yGrid(nyLocal+1)。
+    ! 这里只交换一维坐标数组 yGrid 的 halo，因此每次只发送 1 个坐标值，不是整条流场边界。
+    ! 把本 rank 的第一层 yGrid(1) 发给下方邻居，同时从上方邻居接收其边界到 yGrid(nyLocal+1)。
+    ! 真正的分布函数边界交换在后面的 update() 中完成，那里会发送 9*nx 或 5*nx 个数据。
+    ! 参数含义：yGrid(1)=发送缓冲区起点，1=发送 1 个坐标，MPI_REAL8=发送类型，
+    !           downid=发送目标 rank，0=发送标签，yGrid(nyLocal+1)=接收缓冲区起点，
+    !           1=接收 1 个坐标，MPI_REAL8=接收类型，upid=接收来源 rank，0=接收标签，
+    !           MPI_COMM_WORLD=通信域，ISTATUS=接收状态，IERR=错误码。
     call MPI_SENDRECV(yGrid(1),1,MPI_REAL8,downid,0,yGrid(nyLocal+1),1,MPI_REAL8,upid,0&
     ,MPI_COMM_WORLD,ISTATUS,IERR)
 
@@ -177,6 +187,11 @@ subroutine initial()
     errorT = 100.0d0
 
     ! Calculate viscosity based on LB unit
+    ! 这里的 Ma-L-Ra-Pr 关系可理解为 viscosity_LB = Ma * L * sqrt(Pr) / sqrt(3*Ra)。
+    ! 核心是特征长度 L 的换算：mesh() 中 length0 = xGrid(nx+1)-xGrid(1)。
+    ! 因为 xGrid(nx+1)=1，xGrid(1)=dx(1)，所以 length0 = 1-dx(1)。
+    ! 转到 LB 单位后：length0/dx(1) = (1-dx(1))/dx(1) = 1/dx(1)-1 = length_LB-1。
+    ! 因此这里用 length_LB-1.0d0 作为该参考代码的有效内部特征长度。
     viscosity_LB = (Ma*(length_LB-1.0d0)*dsqrt(Pr))/dsqrt(3.0d0*Ra)
     kappa = viscosity_LB/Pr
     gbeta = Ra*viscosity_LB*kappa/((length_LB-1.0d0)**3)
@@ -187,6 +202,10 @@ subroutine initial()
     ! Calculate MRT relaxation parameters
     Snu = 1.0d0/tauf
     Sq = 8.0d0*(2.0d0-Snu)/(8.0d0-Snu)
+    ! sig_k 是温度 D2Q5 MRT 模型中热扩散相关矩量的松弛率，可理解为 1/tau_g。
+    ! 由 Snu=1/tauf 且 tauf-0.5=3*viscosity_LB，可得
+    ! sig_k = 1/[0.5 + 4*viscosity_LB/Pr] = 1/[0.5 + 4*kappa]。
+    ! 即 D2Q5 温度模型采用 kappa=(tau_g-0.5)/4，因此 sig_k=1/tau_g。
     sig_k = 1.0d0/(0.5d0+4.0d0*(1.0d0/Snu-0.5d0)/(3.0d0*Pr))
 
     if(MYID == 0)then
@@ -196,6 +215,9 @@ subroutine initial()
         write(*,*) "deltaT = ", dt
         write(*,*) "characteristic length   =", real(length_LB), "l.u."
         write(*,*) "viscosity_LB =", real(viscosity_LB), "l.u.^2/t.s."
+        ! 这个比值约等于 dt_uniform/dt_nonuniform；非均匀网格近壁加密后 dx(1) 更小，
+        ! 因此用 dx(1) 定义的时间步更小。例如 length_LB/nx=1.6 时，
+        ! 当前非均匀网格时间步约为均匀网格时间步的 1/1.6。换句话说，非均匀网格为了稳定/尺度一致，需要更多时间步。
         write(*,*) "timeStep ratio for (uniform) / (non-uniform) : ", real(length_LB / dble(nx))
         write(*,*) "tauf =", real(tauf)
         write(*,*) "    "
@@ -212,7 +234,7 @@ subroutine initial()
     allocate (Fx(nx,nyLocal))
     allocate (Fy(nx,nyLocal))
 
-    if(MYID == 0)then
+    if(MYID == 0)then            !root保存全场数据
         allocate (u_all(nx,ny))
         allocate (v_all(nx,ny))
         allocate (rho_all(nx,ny))
@@ -267,14 +289,19 @@ subroutine initial()
         enddo
     enddo
 
+    ! 为 x 方向插值预先记录每个 i 对应的三个参考点下标。
+    ! 内部点使用中心模板 (i-1, i, i+1)；边界点改用单侧模板，避免访问 0 或 nx+1。
     do i = 1, nx
         if(i == 1)then
+            ! 左边界没有 i-1，因此使用右侧的合法点 (i+1, i, i+2)。
             inter_x(i,:) = (/i+1, i, i+2/)
 
         elseif(i == nx)then
+            ! 右边界没有 i+1，因此使用左侧的合法点 (i-1, i, i-2)。
             inter_x(i,:) = (/i-1, i, i-2/)
 
         else
+            ! 内部点使用左右各一个邻点的三点插值模板。
             inter_x(i,:) = (/i-1, i, i+1/)
         end if
     enddo
@@ -337,6 +364,7 @@ program main
     ! 记录 MPI 墙钟时间，后面用来统计总运行时间和 MLUPS。
     timestart = MPI_WTIME()
 
+    ! 生成非均匀网格坐标，并将完整 x 坐标、局部 y 坐标及 yGrid 坐标 halo 分发给各 rank。
     call mesh()
 
     call initial()
@@ -411,6 +439,7 @@ program main
     deallocate(count2d)
     deallocate(displ2d)
 
+    ! 所有 MPI 通信和并行计算完成后，关闭 MPI 运行环境；此后不再调用 MPI 通信例程。
     call MPI_FINALIZE(IERR)
 
     stop
@@ -628,15 +657,24 @@ subroutine update()
     use commondata
     implicit none
 
+    ! 交换 f_post 的上侧 halo：发送本 rank 的下边界 j=1 给 downid，
+    ! 同时从 upid 接收其边界层，填入本 rank 的上侧 halo j=nyLocal+1。
+    ! f_post 是 D2Q9，整条 y 边界包含 nx 个格点、每点 9 个分布函数，所以数量为 9*nx。
     call MPI_SENDRECV(f_post(0,1,1),9*nx,MPI_REAL8,downid,0,f_post(0,1,nyLocal+1),9*nx,MPI_REAL8,upid,0&
     ,MPI_COMM_WORLD,ISTATUS,IERR)
 
+    ! 交换 f_post 的下侧 halo：发送本 rank 的上边界 j=nyLocal 给 upid，
+    ! 同时从 downid 接收其边界层，填入本 rank 的下侧 halo j=0。
     call MPI_SENDRECV(f_post(0,1,nyLocal),9*nx,MPI_REAL8,upid,1,f_post(0,1,0),9*nx,MPI_REAL8,downid,1&
     ,MPI_COMM_WORLD,ISTATUS,IERR)
 
+    ! 对温度分布函数 g_post 做同样的上侧 halo 交换。
+    ! g_post 是 D2Q5，整条 y 边界包含 nx 个格点、每点 5 个分布函数，所以数量为 5*nx。
     call MPI_SENDRECV(g_post(0,1,1),5*nx,MPI_REAL8,downid,0,g_post(0,1,nyLocal+1),5*nx,MPI_REAL8,upid,0&
     ,MPI_COMM_WORLD,ISTATUS,IERR)
 
+    ! 对温度分布函数 g_post 做同样的下侧 halo 交换。
+    ! 这些 halo 会在后续 interpolate() 中被边界附近的三点插值访问。
     call MPI_SENDRECV(g_post(0,1,nyLocal),5*nx,MPI_REAL8,upid,1,g_post(0,1,0),5*nx,MPI_REAL8,downid,1&
     ,MPI_COMM_WORLD,ISTATUS,IERR)
 
@@ -650,12 +688,18 @@ subroutine interpolate()
     integer(kind=4) :: i, j, alpha
     real(kind=8) :: f0, f1, f2, g0, g1, g2
 
+        ! 在非均匀网格上完成分布函数迁移 streaming。
+        ! 因为 xGrid/yGrid 间距不均匀，沿 alpha 方向移动 dt 后通常不会正好落在网格点上，
+        ! 所以这里用二维三点 Lagrange 插值重构 f(alpha,i,j) 和 g(alpha,i,j)。
+        ! update() 已经提前补好了 f_post/g_post 的 y 向 halo，边界附近插值可访问 j=0 或 j=nyLocal+1。
         do j = 1, nyLocal
             do i = 1, nx
                 do alpha = 1, 8
+                    ! 当前离散速度方向在一个时间步内对应的位移。
                     delta_x=dble(ex(alpha))*dt
                     delta_y=dble(ey(alpha))*dt
 
+            ! 先固定三个 x 参考点，分别沿 y 方向做三点插值，得到 f0/f1/f2。
             f0 = interpolateF(yGrid(inter_y(j,1))+delta_y, yGrid(inter_y(j,2))+delta_y, yGrid(inter_y(j,3))+delta_y&
                 , yGrid(inter_y(j,2)), f_post(alpha,inter_x(i,1), inter_y(j,1)), f_post(alpha,inter_x(i,1), inter_y(j,2))&
                 , f_post(alpha,inter_x(i,1), inter_y(j,3)))
@@ -668,6 +712,7 @@ subroutine interpolate()
                 , yGrid(inter_y(j,2)), f_post(alpha,inter_x(i,3), inter_y(j,1)), f_post(alpha,inter_x(i,3), inter_y(j,2))&
                 , f_post(alpha,inter_x(i,3), inter_y(j,3)))
 
+            ! 再用 f0/f1/f2 沿 x 方向插值，得到当前格点处迁移后的 f(alpha,i,j)。
             f(alpha, i, j) = interpolateF(xGrid(inter_x(i,1))+delta_x, xGrid(inter_x(i,2))+delta_x, &
                             xGrid(inter_x(i,3))+delta_x, xGrid(inter_x(i,2)), f0, f1, f2)
 
@@ -675,12 +720,14 @@ subroutine interpolate()
             enddo
         enddo
 
+        ! 温度分布函数 g_post 使用同样的二维插值迁移；D2Q5 只需要处理 alpha=1:4。
         do j = 1, nyLocal
             do i = 1, nx
                 do alpha = 1, 4
                     delta_x=dble(ex(alpha))*dt
                     delta_y=dble(ey(alpha))*dt
 
+            ! 先沿 y 方向插值得到三个 x 参考位置上的 g0/g1/g2。
             g0 = interpolateF(yGrid(inter_y(j,1))+delta_y, yGrid(inter_y(j,2))+delta_y, yGrid(inter_y(j,3))+delta_y&
                 , yGrid(inter_y(j,2)), g_post(alpha,inter_x(i,1), inter_y(j,1)), g_post(alpha,inter_x(i,1), inter_y(j,2))&
                 , g_post(alpha,inter_x(i,1), inter_y(j,3)))
@@ -693,6 +740,7 @@ subroutine interpolate()
                 , yGrid(inter_y(j,2)), g_post(alpha,inter_x(i,3), inter_y(j,1)), g_post(alpha,inter_x(i,3), inter_y(j,2))&
                 , g_post(alpha,inter_x(i,3), inter_y(j,3)))
 
+            ! 再沿 x 方向插值，得到迁移后的 g(alpha,i,j)。
             g(alpha, i, j) = interpolateF(xGrid(inter_x(i,1))+delta_x, xGrid(inter_x(i,2))+delta_x, &
                             xGrid(inter_x(i,3))+delta_x, xGrid(inter_x(i,2)), g0, g1, g2)
                 enddo
@@ -706,7 +754,7 @@ pure function interpolateF(x0, x1, x2, x, f0, f1, f2) result(f_interp)
     real(kind=8), intent(in) :: x0, x1, x2, x, f0, f1, f2
     real(kind=8) :: f_interp
 
-    ! Interpolation formula
+    ! 三点 Lagrange 插值公式：用 (x0,f0)、(x1,f1)、(x2,f2) 重构目标位置 x 处的函数值。
     f_interp = ((x - x1) * (x - x2)) / ((x0 - x1) * (x0 - x2)) * f0 + &
                ((x - x0) * (x - x2)) / ((x1 - x0) * (x1 - x2)) * f1 + &
                ((x - x0) * (x - x1)) / ((x2 - x0) * (x2 - x1)) * f2

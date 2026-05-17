@@ -1,0 +1,4 @@
+interface:
+  display_name: "Image to PPT Lookalike"
+  short_description: "Rebuild images as visually matched editable PPT slides"
+  default_prompt: "Use $image-to-ppt-lookalike to rebuild this image as a visually matched editable PowerPoint slide."
