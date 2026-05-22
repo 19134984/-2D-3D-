@@ -1,4 +1,4 @@
-﻿!=============================================================
+!=============================================================
 !!!    注释区，代码描述
 !!!    三维浮力驱动自然对流
 !!!    D3Q19 流场 + D3Q7 温度场
@@ -323,7 +323,6 @@ program main3dOpenacc
     call streamingT3d()
     call bouncebackT3d()
     call macroT3d()
-    !$acc wait(1)   ! 等待 async(1) 队列上的 GPU kernel 全部完成，后面的检查/输出才能读取一致结果
 
 #ifdef steadyFlow
     ! 周期输出按累计格子步判断，续算时才能接回不断电运行应有的输出节奏。
@@ -367,6 +366,7 @@ program main3dOpenacc
 #endif
   enddo
 
+  !$acc wait(1)
   call CPU_TIME(timeEnd)
   call system_clock(wallClockEnd, wallClockRate)
   timeEnd2 = dble(wallClockEnd) / dble(max(wallClockRate,1_8))
@@ -601,8 +601,8 @@ subroutine initial3d()
 #ifdef steadyFlow
   allocate(up(nx,ny,nz), vp(nx,ny,nz), wp(nx,ny,nz), Tp(nx,ny,nz))
 #endif
-  allocate(f(0:qf-1,nx,ny,nz), f_post(0:qf-1,0:nx+1,0:ny+1,0:nz+1))
-  allocate(g(0:qt-1,nx,ny,nz), g_post(0:qt-1,0:nx+1,0:ny+1,0:nz+1))
+  allocate(f(nx,ny,nz,0:qf-1), f_post(0:nx+1,0:ny+1,0:nz+1,0:qf-1))
+  allocate(g(nx,ny,nz,0:qt-1), g_post(0:nx+1,0:ny+1,0:nz+1,0:qt-1))
   allocate(Bx_prev(nx,ny,nz), By_prev(nx,ny,nz), Bz_prev(nx,ny,nz))
 
   !-----------------------------------------------------------------------------------------------
@@ -717,11 +717,11 @@ subroutine initial3d()
           u2Loc = u(i,j,k) * u(i,j,k) + v(i,j,k) * v(i,j,k) + w(i,j,k) * w(i,j,k)
           do alpha = 0, qf-1
             eu = dble(ex(alpha)) * u(i,j,k) + dble(ey(alpha)) * v(i,j,k) + dble(ez(alpha)) * w(i,j,k)
-            f(alpha,i,j,k) = omega(alpha) * rho(i,j,k) * (1.0d0 + 3.0d0 * eu + 4.5d0 * eu * eu - 1.5d0 * u2Loc)
+            f(i,j,k,alpha) = omega(alpha) * rho(i,j,k) * (1.0d0 + 3.0d0 * eu + 4.5d0 * eu * eu - 1.5d0 * u2Loc)
           enddo
           do alpha = 0, qt-1
             eu = dble(exT(alpha)) * u(i,j,k) + dble(eyT(alpha)) * v(i,j,k) + dble(ezT(alpha)) * w(i,j,k)
-            g(alpha,i,j,k) = omegaT(alpha) * T(i,j,k) * (1.0d0 + thermalGeqCoeff * eu)
+            g(i,j,k,alpha) = omegaT(alpha) * T(i,j,k) * (1.0d0 + thermalGeqCoeff * eu)
           enddo
 #ifdef EnableUseG
             Bx_prev(i,j,k) = u(i,j,k) * T(i,j,k)
@@ -749,8 +749,8 @@ subroutine initial3d()
     open(unit=01, file=trim(reloadFilePrefix)//'-'//trim(reloadFileName)//'.bin', &
          form='unformatted', access='sequential', status='old')
     write(00,*) 'Reloading strict restart state from file'
-    read(01) ((((f(alpha,i,j,k), i=1,nx), j=1,ny), k=1,nz), alpha=0,qf-1)
-    read(01) ((((g(alpha,i,j,k), i=1,nx), j=1,ny), k=1,nz), alpha=0,qt-1)
+    read(01) ((((f(i,j,k,alpha), i=1,nx), j=1,ny), k=1,nz), alpha=0,qf-1)
+    read(01) ((((g(i,j,k,alpha), i=1,nx), j=1,ny), k=1,nz), alpha=0,qt-1)
 #ifdef EnableUseG
     read(01) (((Bx_prev(i,j,k), i=1,nx), j=1,ny), k=1,nz)
     read(01) (((By_prev(i,j,k), i=1,nx), j=1,ny), k=1,nz)
@@ -832,6 +832,7 @@ subroutine update_host_snapshot_3d_openacc()
   use commondata3dOpenacc
   implicit none
 
+  !$acc wait(1)
   !$acc update self(u,v,w,T,rho)
 end subroutine update_host_snapshot_3d_openacc
 
@@ -844,6 +845,7 @@ subroutine update_host_tecplot_3d_openacc()
   use commondata3dOpenacc
   implicit none
 
+  !$acc wait(1)
   !$acc update self(u,v,w,T)
 end subroutine update_host_tecplot_3d_openacc
 
@@ -856,6 +858,7 @@ subroutine update_host_reload_3d_openacc()
   use commondata3dOpenacc
   implicit none
 
+  !$acc wait(1)
   !$acc update self(f,g)
 #ifdef EnableUseG
   !$acc update self(Bx_prev,By_prev,Bz_prev)
@@ -953,68 +956,68 @@ subroutine collision3d()
         !-----------------------------------------------------------------------------------------
         ! D3Q19 正变换: m = M * f
         !-----------------------------------------------------------------------------------------
-        m(0) = f(0,i,j,k) + f(1,i,j,k) + f(2,i,j,k) + f(3,i,j,k) + f(4,i,j,k) + f(5,i,j,k) + &
-             f(6,i,j,k) + f(7,i,j,k) + f(8,i,j,k) + f(9,i,j,k) + f(10,i,j,k) + f(11,i,j,k) + &
-             f(12,i,j,k) + f(13,i,j,k) + f(14,i,j,k) + f(15,i,j,k) + f(16,i,j,k) + f(17,i,j,k) + f(18,i,j,k)
+        m(0) = f(i,j,k,0) + f(i,j,k,1) + f(i,j,k,2) + f(i,j,k,3) + f(i,j,k,4) + f(i,j,k,5) + &
+             f(i,j,k,6) + f(i,j,k,7) + f(i,j,k,8) + f(i,j,k,9) + f(i,j,k,10) + f(i,j,k,11) + &
+             f(i,j,k,12) + f(i,j,k,13) + f(i,j,k,14) + f(i,j,k,15) + f(i,j,k,16) + f(i,j,k,17) + f(i,j,k,18)
 
-        m(1) = -30.0d0 * f(0,i,j,k) - 11.0d0 * (f(1,i,j,k) + f(2,i,j,k) + f(3,i,j,k) + f(4,i,j,k) + &
-             f(5,i,j,k) + f(6,i,j,k)) + 8.0d0 * (f(7,i,j,k) + f(8,i,j,k) + f(9,i,j,k) + f(10,i,j,k) + &
-             f(11,i,j,k) + f(12,i,j,k) + f(13,i,j,k) + f(14,i,j,k) + f(15,i,j,k) + f(16,i,j,k) + &
-             f(17,i,j,k) + f(18,i,j,k))
+        m(1) = -30.0d0 * f(i,j,k,0) - 11.0d0 * (f(i,j,k,1) + f(i,j,k,2) + f(i,j,k,3) + f(i,j,k,4) + &
+             f(i,j,k,5) + f(i,j,k,6)) + 8.0d0 * (f(i,j,k,7) + f(i,j,k,8) + f(i,j,k,9) + f(i,j,k,10) + &
+             f(i,j,k,11) + f(i,j,k,12) + f(i,j,k,13) + f(i,j,k,14) + f(i,j,k,15) + f(i,j,k,16) + &
+             f(i,j,k,17) + f(i,j,k,18))
 
-        m(2) = 12.0d0 * f(0,i,j,k) - 4.0d0 * (f(1,i,j,k) + f(2,i,j,k) + f(3,i,j,k) + f(4,i,j,k) + &
-             f(5,i,j,k) + f(6,i,j,k)) + (f(7,i,j,k) + f(8,i,j,k) + f(9,i,j,k) + f(10,i,j,k) + &
-             f(11,i,j,k) + f(12,i,j,k) + f(13,i,j,k) + f(14,i,j,k) + f(15,i,j,k) + f(16,i,j,k) + &
-             f(17,i,j,k) + f(18,i,j,k))
+        m(2) = 12.0d0 * f(i,j,k,0) - 4.0d0 * (f(i,j,k,1) + f(i,j,k,2) + f(i,j,k,3) + f(i,j,k,4) + &
+             f(i,j,k,5) + f(i,j,k,6)) + (f(i,j,k,7) + f(i,j,k,8) + f(i,j,k,9) + f(i,j,k,10) + &
+             f(i,j,k,11) + f(i,j,k,12) + f(i,j,k,13) + f(i,j,k,14) + f(i,j,k,15) + f(i,j,k,16) + &
+             f(i,j,k,17) + f(i,j,k,18))
 
-        m(3) =  f(1,i,j,k) - f(2,i,j,k) + f(7,i,j,k) - f(8,i,j,k) + f(9,i,j,k) - f(10,i,j,k) + &
-             f(11,i,j,k) - f(12,i,j,k) + f(13,i,j,k) - f(14,i,j,k)
+        m(3) =  f(i,j,k,1) - f(i,j,k,2) + f(i,j,k,7) - f(i,j,k,8) + f(i,j,k,9) - f(i,j,k,10) + &
+             f(i,j,k,11) - f(i,j,k,12) + f(i,j,k,13) - f(i,j,k,14)
 
-        m(4) = -4.0d0 * f(1,i,j,k) + 4.0d0 * f(2,i,j,k) + f(7,i,j,k) - f(8,i,j,k) + f(9,i,j,k) - &
-             f(10,i,j,k) + f(11,i,j,k) - f(12,i,j,k) + f(13,i,j,k) - f(14,i,j,k)
+        m(4) = -4.0d0 * f(i,j,k,1) + 4.0d0 * f(i,j,k,2) + f(i,j,k,7) - f(i,j,k,8) + f(i,j,k,9) - &
+             f(i,j,k,10) + f(i,j,k,11) - f(i,j,k,12) + f(i,j,k,13) - f(i,j,k,14)
 
-        m(5) =  f(3,i,j,k) - f(4,i,j,k) + f(7,i,j,k) + f(8,i,j,k) - f(9,i,j,k) - f(10,i,j,k) + &
-             f(15,i,j,k) - f(16,i,j,k) + f(17,i,j,k) - f(18,i,j,k)
+        m(5) =  f(i,j,k,3) - f(i,j,k,4) + f(i,j,k,7) + f(i,j,k,8) - f(i,j,k,9) - f(i,j,k,10) + &
+             f(i,j,k,15) - f(i,j,k,16) + f(i,j,k,17) - f(i,j,k,18)
 
-        m(6) = -4.0d0 * f(3,i,j,k) + 4.0d0 * f(4,i,j,k) + f(7,i,j,k) + f(8,i,j,k) - f(9,i,j,k) - &
-             f(10,i,j,k) + f(15,i,j,k) - f(16,i,j,k) + f(17,i,j,k) - f(18,i,j,k)
+        m(6) = -4.0d0 * f(i,j,k,3) + 4.0d0 * f(i,j,k,4) + f(i,j,k,7) + f(i,j,k,8) - f(i,j,k,9) - &
+             f(i,j,k,10) + f(i,j,k,15) - f(i,j,k,16) + f(i,j,k,17) - f(i,j,k,18)
 
-        m(7) =  f(5,i,j,k) - f(6,i,j,k) + f(11,i,j,k) + f(12,i,j,k) - f(13,i,j,k) - f(14,i,j,k) + &
-             f(15,i,j,k) + f(16,i,j,k) - f(17,i,j,k) - f(18,i,j,k)
+        m(7) =  f(i,j,k,5) - f(i,j,k,6) + f(i,j,k,11) + f(i,j,k,12) - f(i,j,k,13) - f(i,j,k,14) + &
+             f(i,j,k,15) + f(i,j,k,16) - f(i,j,k,17) - f(i,j,k,18)
 
-        m(8) = -4.0d0 * f(5,i,j,k) + 4.0d0 * f(6,i,j,k) + f(11,i,j,k) + f(12,i,j,k) - f(13,i,j,k) - &
-             f(14,i,j,k) + f(15,i,j,k) + f(16,i,j,k) - f(17,i,j,k) - f(18,i,j,k)
+        m(8) = -4.0d0 * f(i,j,k,5) + 4.0d0 * f(i,j,k,6) + f(i,j,k,11) + f(i,j,k,12) - f(i,j,k,13) - &
+             f(i,j,k,14) + f(i,j,k,15) + f(i,j,k,16) - f(i,j,k,17) - f(i,j,k,18)
 
-        m(9) =  2.0d0 * (f(1,i,j,k) + f(2,i,j,k)) - (f(3,i,j,k) + f(4,i,j,k) + f(5,i,j,k) + f(6,i,j,k)) + &
-             (f(7,i,j,k) + f(8,i,j,k) + f(9,i,j,k) + f(10,i,j,k) + f(11,i,j,k) + f(12,i,j,k) + &
-             f(13,i,j,k) + f(14,i,j,k)) - 2.0d0 * (f(15,i,j,k) + f(16,i,j,k) + f(17,i,j,k) + f(18,i,j,k))
+        m(9) =  2.0d0 * (f(i,j,k,1) + f(i,j,k,2)) - (f(i,j,k,3) + f(i,j,k,4) + f(i,j,k,5) + f(i,j,k,6)) + &
+             (f(i,j,k,7) + f(i,j,k,8) + f(i,j,k,9) + f(i,j,k,10) + f(i,j,k,11) + f(i,j,k,12) + &
+             f(i,j,k,13) + f(i,j,k,14)) - 2.0d0 * (f(i,j,k,15) + f(i,j,k,16) + f(i,j,k,17) + f(i,j,k,18))
 
-        m(10) = -4.0d0 * (f(1,i,j,k) + f(2,i,j,k)) + 2.0d0 * (f(3,i,j,k) + f(4,i,j,k) + f(5,i,j,k) + f(6,i,j,k)) + &
-             (f(7,i,j,k) + f(8,i,j,k) + f(9,i,j,k) + f(10,i,j,k) + f(11,i,j,k) + f(12,i,j,k) + &
-             f(13,i,j,k) + f(14,i,j,k)) - 2.0d0 * (f(15,i,j,k) + f(16,i,j,k) + f(17,i,j,k) + f(18,i,j,k))
+        m(10) = -4.0d0 * (f(i,j,k,1) + f(i,j,k,2)) + 2.0d0 * (f(i,j,k,3) + f(i,j,k,4) + f(i,j,k,5) + f(i,j,k,6)) + &
+             (f(i,j,k,7) + f(i,j,k,8) + f(i,j,k,9) + f(i,j,k,10) + f(i,j,k,11) + f(i,j,k,12) + &
+             f(i,j,k,13) + f(i,j,k,14)) - 2.0d0 * (f(i,j,k,15) + f(i,j,k,16) + f(i,j,k,17) + f(i,j,k,18))
 
-        m(11) =  (f(3,i,j,k) + f(4,i,j,k)) - (f(5,i,j,k) + f(6,i,j,k)) + &
-             (f(7,i,j,k) + f(8,i,j,k) + f(9,i,j,k) + f(10,i,j,k)) - &
-             (f(11,i,j,k) + f(12,i,j,k) + f(13,i,j,k) + f(14,i,j,k))
+        m(11) =  (f(i,j,k,3) + f(i,j,k,4)) - (f(i,j,k,5) + f(i,j,k,6)) + &
+             (f(i,j,k,7) + f(i,j,k,8) + f(i,j,k,9) + f(i,j,k,10)) - &
+             (f(i,j,k,11) + f(i,j,k,12) + f(i,j,k,13) + f(i,j,k,14))
 
-        m(12) = -2.0d0 * (f(3,i,j,k) + f(4,i,j,k)) + 2.0d0 * (f(5,i,j,k) + f(6,i,j,k)) + &
-             (f(7,i,j,k) + f(8,i,j,k) + f(9,i,j,k) + f(10,i,j,k)) - &
-             (f(11,i,j,k) + f(12,i,j,k) + f(13,i,j,k) + f(14,i,j,k))
+        m(12) = -2.0d0 * (f(i,j,k,3) + f(i,j,k,4)) + 2.0d0 * (f(i,j,k,5) + f(i,j,k,6)) + &
+             (f(i,j,k,7) + f(i,j,k,8) + f(i,j,k,9) + f(i,j,k,10)) - &
+             (f(i,j,k,11) + f(i,j,k,12) + f(i,j,k,13) + f(i,j,k,14))
 
-        m(13) =  f(7,i,j,k) - f(8,i,j,k) - f(9,i,j,k) + f(10,i,j,k)
+        m(13) =  f(i,j,k,7) - f(i,j,k,8) - f(i,j,k,9) + f(i,j,k,10)
 
-        m(14) =  f(15,i,j,k) - f(16,i,j,k) - f(17,i,j,k) + f(18,i,j,k)
+        m(14) =  f(i,j,k,15) - f(i,j,k,16) - f(i,j,k,17) + f(i,j,k,18)
 
-        m(15) =  f(11,i,j,k) - f(12,i,j,k) - f(13,i,j,k) + f(14,i,j,k)
+        m(15) =  f(i,j,k,11) - f(i,j,k,12) - f(i,j,k,13) + f(i,j,k,14)
 
-        m(16) =  f(7,i,j,k) - f(8,i,j,k) + f(9,i,j,k) - f(10,i,j,k) - f(11,i,j,k) + f(12,i,j,k) - &
-             f(13,i,j,k) + f(14,i,j,k)
+        m(16) =  f(i,j,k,7) - f(i,j,k,8) + f(i,j,k,9) - f(i,j,k,10) - f(i,j,k,11) + f(i,j,k,12) - &
+             f(i,j,k,13) + f(i,j,k,14)
 
-        m(17) = -f(7,i,j,k) - f(8,i,j,k) + f(9,i,j,k) + f(10,i,j,k) + f(15,i,j,k) - f(16,i,j,k) + &
-             f(17,i,j,k) - f(18,i,j,k)
+        m(17) = -f(i,j,k,7) - f(i,j,k,8) + f(i,j,k,9) + f(i,j,k,10) + f(i,j,k,15) - f(i,j,k,16) + &
+             f(i,j,k,17) - f(i,j,k,18)
 
-        m(18) =  f(11,i,j,k) + f(12,i,j,k) - f(13,i,j,k) - f(14,i,j,k) - f(15,i,j,k) - f(16,i,j,k) + &
-             f(17,i,j,k) + f(18,i,j,k)
+        m(18) =  f(i,j,k,11) + f(i,j,k,12) - f(i,j,k,13) - f(i,j,k,14) - f(i,j,k,15) - f(i,j,k,16) + &
+             f(i,j,k,17) + f(i,j,k,18)
 
         !-----------------------------------------------------------------------------------------
         ! 平衡矩
@@ -1097,86 +1100,86 @@ subroutine collision3d()
         !-----------------------------------------------------------------------------------------
         ! D3Q19 逆变换: f_post = M^{-1} * m_post
         !-----------------------------------------------------------------------------------------
-        f_post(0,i,j,k) =  m_post(0) / 19.0d0 - 5.0d0 * m_post(1) / 399.0d0 + m_post(2) / 21.0d0
+        f_post(i,j,k,0) =  m_post(0) / 19.0d0 - 5.0d0 * m_post(1) / 399.0d0 + m_post(2) / 21.0d0
 
-        f_post(1,i,j,k) =  m_post(0) / 19.0d0 - 11.0d0 * m_post(1) / 2394.0d0 - m_post(2) / 63.0d0 + &
+        f_post(i,j,k,1) =  m_post(0) / 19.0d0 - 11.0d0 * m_post(1) / 2394.0d0 - m_post(2) / 63.0d0 + &
              m_post(3) / 10.0d0 - m_post(4) / 10.0d0 + m_post(9) / 18.0d0 - m_post(10) / 18.0d0
 
-        f_post(2,i,j,k) =  m_post(0) / 19.0d0 - 11.0d0 * m_post(1) / 2394.0d0 - m_post(2) / 63.0d0 - &
+        f_post(i,j,k,2) =  m_post(0) / 19.0d0 - 11.0d0 * m_post(1) / 2394.0d0 - m_post(2) / 63.0d0 - &
              m_post(3) / 10.0d0 + m_post(4) / 10.0d0 + m_post(9) / 18.0d0 - m_post(10) / 18.0d0
 
-        f_post(3,i,j,k) =  m_post(0) / 19.0d0 - 11.0d0 * m_post(1) / 2394.0d0 - m_post(2) / 63.0d0 + &
+        f_post(i,j,k,3) =  m_post(0) / 19.0d0 - 11.0d0 * m_post(1) / 2394.0d0 - m_post(2) / 63.0d0 + &
              m_post(5) / 10.0d0 - m_post(6) / 10.0d0 - m_post(9) / 36.0d0 + m_post(10) / 36.0d0 + &
              m_post(11) / 12.0d0 - m_post(12) / 12.0d0
 
-        f_post(4,i,j,k) =  m_post(0) / 19.0d0 - 11.0d0 * m_post(1) / 2394.0d0 - m_post(2) / 63.0d0 - &
+        f_post(i,j,k,4) =  m_post(0) / 19.0d0 - 11.0d0 * m_post(1) / 2394.0d0 - m_post(2) / 63.0d0 - &
              m_post(5) / 10.0d0 + m_post(6) / 10.0d0 - m_post(9) / 36.0d0 + m_post(10) / 36.0d0 + &
              m_post(11) / 12.0d0 - m_post(12) / 12.0d0
 
-        f_post(5,i,j,k) =  m_post(0) / 19.0d0 - 11.0d0 * m_post(1) / 2394.0d0 - m_post(2) / 63.0d0 + &
+        f_post(i,j,k,5) =  m_post(0) / 19.0d0 - 11.0d0 * m_post(1) / 2394.0d0 - m_post(2) / 63.0d0 + &
              m_post(7) / 10.0d0 - m_post(8) / 10.0d0 - m_post(9) / 36.0d0 + m_post(10) / 36.0d0 - &
              m_post(11) / 12.0d0 + m_post(12) / 12.0d0
 
-        f_post(6,i,j,k) =  m_post(0) / 19.0d0 - 11.0d0 * m_post(1) / 2394.0d0 - m_post(2) / 63.0d0 - &
+        f_post(i,j,k,6) =  m_post(0) / 19.0d0 - 11.0d0 * m_post(1) / 2394.0d0 - m_post(2) / 63.0d0 - &
              m_post(7) / 10.0d0 + m_post(8) / 10.0d0 - m_post(9) / 36.0d0 + m_post(10) / 36.0d0 - &
              m_post(11) / 12.0d0 + m_post(12) / 12.0d0
 
-        f_post(7,i,j,k) =  m_post(0) / 19.0d0 + 4.0d0 * m_post(1) / 1197.0d0 + m_post(2) / 252.0d0 + &
+        f_post(i,j,k,7) =  m_post(0) / 19.0d0 + 4.0d0 * m_post(1) / 1197.0d0 + m_post(2) / 252.0d0 + &
              m_post(3) / 10.0d0 + m_post(4) / 40.0d0 + m_post(5) / 10.0d0 + m_post(6) / 40.0d0 + &
              m_post(9) / 36.0d0 + m_post(10) / 72.0d0 + m_post(11) / 12.0d0 + m_post(12) / 24.0d0 + &
              m_post(13) / 4.0d0 + m_post(16) / 8.0d0 - m_post(17) / 8.0d0
 
-        f_post(8,i,j,k) =  m_post(0) / 19.0d0 + 4.0d0 * m_post(1) / 1197.0d0 + m_post(2) / 252.0d0 - &
+        f_post(i,j,k,8) =  m_post(0) / 19.0d0 + 4.0d0 * m_post(1) / 1197.0d0 + m_post(2) / 252.0d0 - &
              m_post(3) / 10.0d0 - m_post(4) / 40.0d0 + m_post(5) / 10.0d0 + m_post(6) / 40.0d0 + &
              m_post(9) / 36.0d0 + m_post(10) / 72.0d0 + m_post(11) / 12.0d0 + m_post(12) / 24.0d0 - &
              m_post(13) / 4.0d0 - m_post(16) / 8.0d0 - m_post(17) / 8.0d0
 
-        f_post(9,i,j,k) =  m_post(0) / 19.0d0 + 4.0d0 * m_post(1) / 1197.0d0 + m_post(2) / 252.0d0 + &
+        f_post(i,j,k,9) =  m_post(0) / 19.0d0 + 4.0d0 * m_post(1) / 1197.0d0 + m_post(2) / 252.0d0 + &
              m_post(3) / 10.0d0 + m_post(4) / 40.0d0 - m_post(5) / 10.0d0 - m_post(6) / 40.0d0 + &
              m_post(9) / 36.0d0 + m_post(10) / 72.0d0 + m_post(11) / 12.0d0 + m_post(12) / 24.0d0 - &
              m_post(13) / 4.0d0 + m_post(16) / 8.0d0 + m_post(17) / 8.0d0
 
-        f_post(10,i,j,k) = m_post(0) / 19.0d0 + 4.0d0 * m_post(1) / 1197.0d0 + m_post(2) / 252.0d0 - &
+        f_post(i,j,k,10) = m_post(0) / 19.0d0 + 4.0d0 * m_post(1) / 1197.0d0 + m_post(2) / 252.0d0 - &
              m_post(3) / 10.0d0 - m_post(4) / 40.0d0 - m_post(5) / 10.0d0 - m_post(6) / 40.0d0 + &
              m_post(9) / 36.0d0 + m_post(10) / 72.0d0 + m_post(11) / 12.0d0 + m_post(12) / 24.0d0 + &
              m_post(13) / 4.0d0 - m_post(16) / 8.0d0 + m_post(17) / 8.0d0
 
-        f_post(11,i,j,k) = m_post(0) / 19.0d0 + 4.0d0 * m_post(1) / 1197.0d0 + m_post(2) / 252.0d0 + &
+        f_post(i,j,k,11) = m_post(0) / 19.0d0 + 4.0d0 * m_post(1) / 1197.0d0 + m_post(2) / 252.0d0 + &
              m_post(3) / 10.0d0 + m_post(4) / 40.0d0 + m_post(7) / 10.0d0 + m_post(8) / 40.0d0 + &
              m_post(9) / 36.0d0 + m_post(10) / 72.0d0 - m_post(11) / 12.0d0 - m_post(12) / 24.0d0 + &
              m_post(15) / 4.0d0 - m_post(16) / 8.0d0 + m_post(18) / 8.0d0
 
-        f_post(12,i,j,k) = m_post(0) / 19.0d0 + 4.0d0 * m_post(1) / 1197.0d0 + m_post(2) / 252.0d0 - &
+        f_post(i,j,k,12) = m_post(0) / 19.0d0 + 4.0d0 * m_post(1) / 1197.0d0 + m_post(2) / 252.0d0 - &
              m_post(3) / 10.0d0 - m_post(4) / 40.0d0 + m_post(7) / 10.0d0 + m_post(8) / 40.0d0 + &
              m_post(9) / 36.0d0 + m_post(10) / 72.0d0 - m_post(11) / 12.0d0 - m_post(12) / 24.0d0 - &
              m_post(15) / 4.0d0 + m_post(16) / 8.0d0 + m_post(18) / 8.0d0
 
-        f_post(13,i,j,k) = m_post(0) / 19.0d0 + 4.0d0 * m_post(1) / 1197.0d0 + m_post(2) / 252.0d0 + &
+        f_post(i,j,k,13) = m_post(0) / 19.0d0 + 4.0d0 * m_post(1) / 1197.0d0 + m_post(2) / 252.0d0 + &
              m_post(3) / 10.0d0 + m_post(4) / 40.0d0 - m_post(7) / 10.0d0 - m_post(8) / 40.0d0 + &
              m_post(9) / 36.0d0 + m_post(10) / 72.0d0 - m_post(11) / 12.0d0 - m_post(12) / 24.0d0 - &
              m_post(15) / 4.0d0 - m_post(16) / 8.0d0 - m_post(18) / 8.0d0
 
-        f_post(14,i,j,k) = m_post(0) / 19.0d0 + 4.0d0 * m_post(1) / 1197.0d0 + m_post(2) / 252.0d0 - &
+        f_post(i,j,k,14) = m_post(0) / 19.0d0 + 4.0d0 * m_post(1) / 1197.0d0 + m_post(2) / 252.0d0 - &
              m_post(3) / 10.0d0 - m_post(4) / 40.0d0 - m_post(7) / 10.0d0 - m_post(8) / 40.0d0 + &
              m_post(9) / 36.0d0 + m_post(10) / 72.0d0 - m_post(11) / 12.0d0 - m_post(12) / 24.0d0 + &
              m_post(15) / 4.0d0 + m_post(16) / 8.0d0 - m_post(18) / 8.0d0
 
-        f_post(15,i,j,k) = m_post(0) / 19.0d0 + 4.0d0 * m_post(1) / 1197.0d0 + m_post(2) / 252.0d0 + &
+        f_post(i,j,k,15) = m_post(0) / 19.0d0 + 4.0d0 * m_post(1) / 1197.0d0 + m_post(2) / 252.0d0 + &
              m_post(5) / 10.0d0 + m_post(6) / 40.0d0 + m_post(7) / 10.0d0 + m_post(8) / 40.0d0 - &
              m_post(9) / 18.0d0 - m_post(10) / 36.0d0 + m_post(14) / 4.0d0 + m_post(17) / 8.0d0 - &
              m_post(18) / 8.0d0
 
-        f_post(16,i,j,k) = m_post(0) / 19.0d0 + 4.0d0 * m_post(1) / 1197.0d0 + m_post(2) / 252.0d0 - &
+        f_post(i,j,k,16) = m_post(0) / 19.0d0 + 4.0d0 * m_post(1) / 1197.0d0 + m_post(2) / 252.0d0 - &
              m_post(5) / 10.0d0 - m_post(6) / 40.0d0 + m_post(7) / 10.0d0 + m_post(8) / 40.0d0 - &
              m_post(9) / 18.0d0 - m_post(10) / 36.0d0 - m_post(14) / 4.0d0 - m_post(17) / 8.0d0 - &
              m_post(18) / 8.0d0
 
-        f_post(17,i,j,k) = m_post(0) / 19.0d0 + 4.0d0 * m_post(1) / 1197.0d0 + m_post(2) / 252.0d0 + &
+        f_post(i,j,k,17) = m_post(0) / 19.0d0 + 4.0d0 * m_post(1) / 1197.0d0 + m_post(2) / 252.0d0 + &
              m_post(5) / 10.0d0 + m_post(6) / 40.0d0 - m_post(7) / 10.0d0 - m_post(8) / 40.0d0 - &
              m_post(9) / 18.0d0 - m_post(10) / 36.0d0 - m_post(14) / 4.0d0 + m_post(17) / 8.0d0 + &
              m_post(18) / 8.0d0
 
-        f_post(18,i,j,k) = m_post(0) / 19.0d0 + 4.0d0 * m_post(1) / 1197.0d0 + m_post(2) / 252.0d0 - &
+        f_post(i,j,k,18) = m_post(0) / 19.0d0 + 4.0d0 * m_post(1) / 1197.0d0 + m_post(2) / 252.0d0 - &
              m_post(5) / 10.0d0 - m_post(6) / 40.0d0 - m_post(7) / 10.0d0 - m_post(8) / 40.0d0 - &
              m_post(9) / 18.0d0 - m_post(10) / 36.0d0 + m_post(14) / 4.0d0 - m_post(17) / 8.0d0 + &
              m_post(18) / 8.0d0
@@ -1206,7 +1209,7 @@ subroutine streaming3d()
           ip = i - ex(alpha)
           jp = j - ey(alpha)
           kp = k - ez(alpha)
-          f(alpha,i,j,k) = f_post(alpha,ip,jp,kp)
+          f(i,j,k,alpha) = f_post(ip,jp,kp,alpha)
         enddo
       enddo
     enddo
@@ -1230,18 +1233,18 @@ subroutine bounceback3d()
   do k = 1, nz
     do j = 1, ny
       ! Left boundary (i=1): incoming populations with ex=+1
-      f(1, 1,j,k) = f_post(1, nx,j,k)
-      f(7, 1,j,k) = f_post(7, nx,j,k)
-      f(9, 1,j,k) = f_post(9, nx,j,k)
-      f(11,1,j,k) = f_post(11,nx,j,k)
-      f(13,1,j,k) = f_post(13,nx,j,k)
+      f(1,j,k,1) = f_post(nx,j,k,1)
+      f(1,j,k,7) = f_post(nx,j,k,7)
+      f(1,j,k,9) = f_post(nx,j,k,9)
+      f(1,j,k,11) = f_post(nx,j,k,11)
+      f(1,j,k,13) = f_post(nx,j,k,13)
 
       ! Right boundary (i=nx): incoming populations with ex=-1
-      f(2, nx,j,k) = f_post(2, 1,j,k)
-      f(8, nx,j,k) = f_post(8, 1,j,k)
-      f(10,nx,j,k) = f_post(10,1,j,k)
-      f(12,nx,j,k) = f_post(12,1,j,k)
-      f(14,nx,j,k) = f_post(14,1,j,k)
+      f(nx,j,k,2) = f_post(1,j,k,2)
+      f(nx,j,k,8) = f_post(1,j,k,8)
+      f(nx,j,k,10) = f_post(1,j,k,10)
+      f(nx,j,k,12) = f_post(1,j,k,12)
+      f(nx,j,k,14) = f_post(1,j,k,14)
     enddo
   enddo
 #endif
@@ -1251,18 +1254,18 @@ subroutine bounceback3d()
   do k = 1, nz
     do j = 1, ny
       ! Left no-slip wall (i=1): incoming populations with ex=+1
-      f(1, 1,j,k) = f_post(2, 1,j,k)
-      f(7, 1,j,k) = f_post(10,1,j,k)
-      f(9, 1,j,k) = f_post(8, 1,j,k)
-      f(11,1,j,k) = f_post(14,1,j,k)
-      f(13,1,j,k) = f_post(12,1,j,k)
+      f(1,j,k,1) = f_post(1,j,k,2)
+      f(1,j,k,7) = f_post(1,j,k,10)
+      f(1,j,k,9) = f_post(1,j,k,8)
+      f(1,j,k,11) = f_post(1,j,k,14)
+      f(1,j,k,13) = f_post(1,j,k,12)
 
       ! Right no-slip wall (i=nx): incoming populations with ex=-1
-      f(2, nx,j,k) = f_post(1, nx,j,k)
-      f(8, nx,j,k) = f_post(9, nx,j,k)
-      f(10,nx,j,k) = f_post(7, nx,j,k)
-      f(12,nx,j,k) = f_post(13,nx,j,k)
-      f(14,nx,j,k) = f_post(11,nx,j,k)
+      f(nx,j,k,2) = f_post(nx,j,k,1)
+      f(nx,j,k,8) = f_post(nx,j,k,9)
+      f(nx,j,k,10) = f_post(nx,j,k,7)
+      f(nx,j,k,12) = f_post(nx,j,k,13)
+      f(nx,j,k,14) = f_post(nx,j,k,11)
     enddo
   enddo
 #endif
@@ -1272,18 +1275,18 @@ subroutine bounceback3d()
   do k = 1, nz
     do i = 1, nx
       ! Bottom no-slip wall (j=1): incoming populations with ey=+1
-      f(3, i,1,k) = f_post(4, i,1,k)
-      f(7, i,1,k) = f_post(10,i,1,k)
-      f(8, i,1,k) = f_post(9, i,1,k)
-      f(15,i,1,k) = f_post(18,i,1,k)
-      f(17,i,1,k) = f_post(16,i,1,k)
+      f(i,1,k,3) = f_post(i,1,k,4)
+      f(i,1,k,7) = f_post(i,1,k,10)
+      f(i,1,k,8) = f_post(i,1,k,9)
+      f(i,1,k,15) = f_post(i,1,k,18)
+      f(i,1,k,17) = f_post(i,1,k,16)
 
       ! Top no-slip wall (j=ny): incoming populations with ey=-1
-      f(4, i,ny,k) = f_post(3, i,ny,k)
-      f(9, i,ny,k) = f_post(8, i,ny,k)
-      f(10,i,ny,k) = f_post(7, i,ny,k)
-      f(16,i,ny,k) = f_post(15,i,ny,k)
-      f(18,i,ny,k) = f_post(17,i,ny,k)
+      f(i,ny,k,4) = f_post(i,ny,k,3)
+      f(i,ny,k,9) = f_post(i,ny,k,8)
+      f(i,ny,k,10) = f_post(i,ny,k,7)
+      f(i,ny,k,16) = f_post(i,ny,k,15)
+      f(i,ny,k,18) = f_post(i,ny,k,17)
     enddo
   enddo
 #endif
@@ -1293,18 +1296,18 @@ subroutine bounceback3d()
   do j = 1, ny
     do i = 1, nx
       ! Front/spanwise-low boundary (k=1): incoming populations with ez=+1
-      f(5, i,j,1) = f_post(5, i,j,nz)
-      f(11,i,j,1) = f_post(11,i,j,nz)
-      f(12,i,j,1) = f_post(12,i,j,nz)
-      f(15,i,j,1) = f_post(15,i,j,nz)
-      f(16,i,j,1) = f_post(16,i,j,nz)
+      f(i,j,1,5) = f_post(i,j,nz,5)
+      f(i,j,1,11) = f_post(i,j,nz,11)
+      f(i,j,1,12) = f_post(i,j,nz,12)
+      f(i,j,1,15) = f_post(i,j,nz,15)
+      f(i,j,1,16) = f_post(i,j,nz,16)
 
       ! Back/spanwise-high boundary (k=nz): incoming populations with ez=-1
-      f(6, i,j,nz) = f_post(6, i,j,1)
-      f(13,i,j,nz) = f_post(13,i,j,1)
-      f(14,i,j,nz) = f_post(14,i,j,1)
-      f(17,i,j,nz) = f_post(17,i,j,1)
-      f(18,i,j,nz) = f_post(18,i,j,1)
+      f(i,j,nz,6) = f_post(i,j,1,6)
+      f(i,j,nz,13) = f_post(i,j,1,13)
+      f(i,j,nz,14) = f_post(i,j,1,14)
+      f(i,j,nz,17) = f_post(i,j,1,17)
+      f(i,j,nz,18) = f_post(i,j,1,18)
     enddo
   enddo
 #endif
@@ -1314,18 +1317,18 @@ subroutine bounceback3d()
   do j = 1, ny
     do i = 1, nx
       ! Front/spanwise-low no-slip wall (k=1): incoming populations with ez=+1
-      f(5, i,j,1) = f_post(6, i,j,1)
-      f(11,i,j,1) = f_post(14,i,j,1)
-      f(12,i,j,1) = f_post(13,i,j,1)
-      f(15,i,j,1) = f_post(18,i,j,1)
-      f(16,i,j,1) = f_post(17,i,j,1)
+      f(i,j,1,5) = f_post(i,j,1,6)
+      f(i,j,1,11) = f_post(i,j,1,14)
+      f(i,j,1,12) = f_post(i,j,1,13)
+      f(i,j,1,15) = f_post(i,j,1,18)
+      f(i,j,1,16) = f_post(i,j,1,17)
 
       ! Back/spanwise-high no-slip wall (k=nz): incoming populations with ez=-1
-      f(6, i,j,nz) = f_post(5, i,j,nz)
-      f(13,i,j,nz) = f_post(12,i,j,nz)
-      f(14,i,j,nz) = f_post(11,i,j,nz)
-      f(17,i,j,nz) = f_post(16,i,j,nz)
-      f(18,i,j,nz) = f_post(15,i,j,nz)
+      f(i,j,nz,6) = f_post(i,j,nz,5)
+      f(i,j,nz,13) = f_post(i,j,nz,12)
+      f(i,j,nz,14) = f_post(i,j,nz,11)
+      f(i,j,nz,17) = f_post(i,j,nz,16)
+      f(i,j,nz,18) = f_post(i,j,nz,15)
     enddo
   enddo
 #endif
@@ -1350,22 +1353,22 @@ subroutine macro3d()
   do k = 1, nz
     do j = 1, ny
       do i = 1, nx
-        rho(i,j,k) = f(0,i,j,k) + f(1,i,j,k) + f(2,i,j,k) + f(3,i,j,k) + &
-             f(4,i,j,k) + f(5,i,j,k) + f(6,i,j,k) + f(7,i,j,k) + &
-             f(8,i,j,k) + f(9,i,j,k) + f(10,i,j,k) + f(11,i,j,k) + &
-             f(12,i,j,k) + f(13,i,j,k) + f(14,i,j,k) + f(15,i,j,k) + &
-             f(16,i,j,k) + f(17,i,j,k) + f(18,i,j,k)
+        rho(i,j,k) = f(i,j,k,0) + f(i,j,k,1) + f(i,j,k,2) + f(i,j,k,3) + &
+             f(i,j,k,4) + f(i,j,k,5) + f(i,j,k,6) + f(i,j,k,7) + &
+             f(i,j,k,8) + f(i,j,k,9) + f(i,j,k,10) + f(i,j,k,11) + &
+             f(i,j,k,12) + f(i,j,k,13) + f(i,j,k,14) + f(i,j,k,15) + &
+             f(i,j,k,16) + f(i,j,k,17) + f(i,j,k,18)
 
         FyLoc = rho(i,j,k) * gBeta * (T(i,j,k) - Tref)
 
-        u(i,j,k) = ( f(1,i,j,k) - f(2,i,j,k) + f(7,i,j,k) - f(8,i,j,k) + f(9,i,j,k) - f(10,i,j,k) + &
-             f(11,i,j,k) - f(12,i,j,k) + f(13,i,j,k) - f(14,i,j,k) ) / rho(i,j,k)
+        u(i,j,k) = ( f(i,j,k,1) - f(i,j,k,2) + f(i,j,k,7) - f(i,j,k,8) + f(i,j,k,9) - f(i,j,k,10) + &
+             f(i,j,k,11) - f(i,j,k,12) + f(i,j,k,13) - f(i,j,k,14) ) / rho(i,j,k)
 
-        v(i,j,k) = ( f(3,i,j,k) - f(4,i,j,k) + f(7,i,j,k) + f(8,i,j,k) - f(9,i,j,k) - f(10,i,j,k) + &
-             f(15,i,j,k) - f(16,i,j,k) + f(17,i,j,k) - f(18,i,j,k) + 0.5d0 * FyLoc ) / rho(i,j,k)
+        v(i,j,k) = ( f(i,j,k,3) - f(i,j,k,4) + f(i,j,k,7) + f(i,j,k,8) - f(i,j,k,9) - f(i,j,k,10) + &
+             f(i,j,k,15) - f(i,j,k,16) + f(i,j,k,17) - f(i,j,k,18) + 0.5d0 * FyLoc ) / rho(i,j,k)
 
-        w(i,j,k) = ( f(5,i,j,k) - f(6,i,j,k) + f(11,i,j,k) + f(12,i,j,k) - f(13,i,j,k) - f(14,i,j,k) + &
-             f(15,i,j,k) + f(16,i,j,k) - f(17,i,j,k) - f(18,i,j,k) ) / rho(i,j,k)
+        w(i,j,k) = ( f(i,j,k,5) - f(i,j,k,6) + f(i,j,k,11) + f(i,j,k,12) - f(i,j,k,13) - f(i,j,k,14) + &
+             f(i,j,k,15) + f(i,j,k,16) - f(i,j,k,17) - f(i,j,k,18) ) / rho(i,j,k)
       enddo
     enddo
   enddo
@@ -1413,13 +1416,13 @@ subroutine collisionT3d()
         !-----------------------------------------------------------------------------------------
         ! D3Q7 正变换: n = M * g
         !-----------------------------------------------------------------------------------------
-        n(0) = g(0,i,j,k) + g(1,i,j,k) + g(2,i,j,k) + g(3,i,j,k) + g(4,i,j,k) + g(5,i,j,k) + g(6,i,j,k)
-        n(1) = g(1,i,j,k) - g(2,i,j,k)
-        n(2) = g(3,i,j,k) - g(4,i,j,k)
-        n(3) = g(5,i,j,k) - g(6,i,j,k)
-        n(4) = -6.0d0 * g(0,i,j,k) + g(1,i,j,k) + g(2,i,j,k) + g(3,i,j,k) + g(4,i,j,k) + g(5,i,j,k) + g(6,i,j,k)
-        n(5) = 2.0d0 * g(1,i,j,k) + 2.0d0 * g(2,i,j,k) - g(3,i,j,k) - g(4,i,j,k) - g(5,i,j,k) - g(6,i,j,k)
-        n(6) = g(3,i,j,k) + g(4,i,j,k) - g(5,i,j,k) - g(6,i,j,k)
+        n(0) = g(i,j,k,0) + g(i,j,k,1) + g(i,j,k,2) + g(i,j,k,3) + g(i,j,k,4) + g(i,j,k,5) + g(i,j,k,6)
+        n(1) = g(i,j,k,1) - g(i,j,k,2)
+        n(2) = g(i,j,k,3) - g(i,j,k,4)
+        n(3) = g(i,j,k,5) - g(i,j,k,6)
+        n(4) = -6.0d0 * g(i,j,k,0) + g(i,j,k,1) + g(i,j,k,2) + g(i,j,k,3) + g(i,j,k,4) + g(i,j,k,5) + g(i,j,k,6)
+        n(5) = 2.0d0 * g(i,j,k,1) + 2.0d0 * g(i,j,k,2) - g(i,j,k,3) - g(i,j,k,4) - g(i,j,k,5) - g(i,j,k,6)
+        n(6) = g(i,j,k,3) + g(i,j,k,4) - g(i,j,k,5) - g(i,j,k,6)
 
         ! 平衡矩
         neq(0) = T(i,j,k)
@@ -1453,16 +1456,16 @@ subroutine collisionT3d()
         !-----------------------------------------------------------------------------------------
         ! D3Q7 逆变换: g_post = M^{-1} * n_post
         !-----------------------------------------------------------------------------------------
-        g_post(0,i,j,k) = n_post(0) / 7.0d0 - n_post(4) / 7.0d0
-        g_post(1,i,j,k) = n_post(0) / 7.0d0 + n_post(1) / 2.0d0 + n_post(4) / 42.0d0 + n_post(5) / 6.0d0
-        g_post(2,i,j,k) = n_post(0) / 7.0d0 - n_post(1) / 2.0d0 + n_post(4) / 42.0d0 + n_post(5) / 6.0d0
-        g_post(3,i,j,k) = n_post(0) / 7.0d0 + n_post(2) / 2.0d0 + n_post(4) / 42.0d0 - n_post(5) / 12.0d0 + &
+        g_post(i,j,k,0) = n_post(0) / 7.0d0 - n_post(4) / 7.0d0
+        g_post(i,j,k,1) = n_post(0) / 7.0d0 + n_post(1) / 2.0d0 + n_post(4) / 42.0d0 + n_post(5) / 6.0d0
+        g_post(i,j,k,2) = n_post(0) / 7.0d0 - n_post(1) / 2.0d0 + n_post(4) / 42.0d0 + n_post(5) / 6.0d0
+        g_post(i,j,k,3) = n_post(0) / 7.0d0 + n_post(2) / 2.0d0 + n_post(4) / 42.0d0 - n_post(5) / 12.0d0 + &
              n_post(6) / 4.0d0
-        g_post(4,i,j,k) = n_post(0) / 7.0d0 - n_post(2) / 2.0d0 + n_post(4) / 42.0d0 - n_post(5) / 12.0d0 + &
+        g_post(i,j,k,4) = n_post(0) / 7.0d0 - n_post(2) / 2.0d0 + n_post(4) / 42.0d0 - n_post(5) / 12.0d0 + &
              n_post(6) / 4.0d0
-        g_post(5,i,j,k) = n_post(0) / 7.0d0 + n_post(3) / 2.0d0 + n_post(4) / 42.0d0 - n_post(5) / 12.0d0 - &
+        g_post(i,j,k,5) = n_post(0) / 7.0d0 + n_post(3) / 2.0d0 + n_post(4) / 42.0d0 - n_post(5) / 12.0d0 - &
              n_post(6) / 4.0d0
-        g_post(6,i,j,k) = n_post(0) / 7.0d0 - n_post(3) / 2.0d0 + n_post(4) / 42.0d0 - n_post(5) / 12.0d0 - &
+        g_post(i,j,k,6) = n_post(0) / 7.0d0 - n_post(3) / 2.0d0 + n_post(4) / 42.0d0 - n_post(5) / 12.0d0 - &
              n_post(6) / 4.0d0
       enddo
     enddo
@@ -1490,7 +1493,7 @@ subroutine streamingT3d()
           ip = i - exT(alpha)
           jp = j - eyT(alpha)
           kp = k - ezT(alpha)
-          g(alpha,i,j,k) = g_post(alpha,ip,jp,kp)
+          g(i,j,k,alpha) = g_post(ip,jp,kp,alpha)
         enddo
       enddo
     enddo
@@ -1515,8 +1518,8 @@ subroutine bouncebackT3d()
   !$acc parallel loop gang vector collapse(2) default(none) present(g,g_post) async(1)
   do k = 1, nz
     do j = 1, ny
-      g(1,1,j,k)  = g_post(1,nx,j,k)
-      g(2,nx,j,k) = g_post(2,1,j,k)
+      g(1,j,k,1)  = g_post(nx,j,k,1)
+      g(nx,j,k,2) = g_post(1,j,k,2)
     enddo
   enddo
 #endif
@@ -1526,11 +1529,11 @@ subroutine bouncebackT3d()
   do k = 1, nz
     do j = 1, ny
 #ifdef EnableLegacyThermalScheme
-      g(1,1,j,k)  = -g_post(2,1,j,k)  + (6.0d0 + paraA) / 21.0d0 * Thot
-      g(2,nx,j,k) = -g_post(1,nx,j,k) + (6.0d0 + paraA) / 21.0d0 * Tcold
+      g(1,j,k,1)  = -g_post(1,j,k,2)  + (6.0d0 + paraA) / 21.0d0 * Thot
+      g(nx,j,k,2) = -g_post(nx,j,k,1) + (6.0d0 + paraA) / 21.0d0 * Tcold
 #else
-      g(1,1,j,k)  = -g_post(2,1,j,k)  + 2.0d0 * omegaT(1) * Thot
-      g(2,nx,j,k) = -g_post(1,nx,j,k) + 2.0d0 * omegaT(2) * Tcold
+      g(1,j,k,1)  = -g_post(1,j,k,2)  + 2.0d0 * omegaT(1) * Thot
+      g(nx,j,k,2) = -g_post(nx,j,k,1) + 2.0d0 * omegaT(2) * Tcold
 #endif
     enddo
   enddo
@@ -1540,8 +1543,8 @@ subroutine bouncebackT3d()
  !$acc parallel loop gang vector collapse(2) default(none) present(g,g_post) async(1)
   do k = 1, nz
     do j = 1, ny
-      g(1,1,j,k)  = g_post(2,1,j,k)
-      g(2,nx,j,k) = g_post(1,nx,j,k)
+      g(1,j,k,1)  = g_post(1,j,k,2)
+      g(nx,j,k,2) = g_post(nx,j,k,1)
     enddo
   enddo
 #endif
@@ -1550,8 +1553,8 @@ subroutine bouncebackT3d()
  !$acc parallel loop gang vector collapse(2) default(none) present(g,g_post) async(1)
   do k = 1, nz
     do i = 1, nx
-      g(3,i,1,k)  = g_post(4,i,1,k)
-      g(4,i,ny,k) = g_post(3,i,ny,k)
+      g(i,1,k,3)  = g_post(i,1,k,4)
+      g(i,ny,k,4) = g_post(i,ny,k,3)
     enddo
   enddo
 #endif
@@ -1561,11 +1564,11 @@ subroutine bouncebackT3d()
   do k = 1, nz
     do i = 1, nx
 #ifdef EnableLegacyThermalScheme
-      g(3,i,1,k)  = -g_post(4,i,1,k)  + (6.0d0 + paraA) / 21.0d0 * Thot
-      g(4,i,ny,k) = -g_post(3,i,ny,k) + (6.0d0 + paraA) / 21.0d0 * Tcold
+      g(i,1,k,3)  = -g_post(i,1,k,4)  + (6.0d0 + paraA) / 21.0d0 * Thot
+      g(i,ny,k,4) = -g_post(i,ny,k,3) + (6.0d0 + paraA) / 21.0d0 * Tcold
 #else
-      g(3,i,1,k)  = -g_post(4,i,1,k)  + 2.0d0 * omegaT(3) * Thot
-      g(4,i,ny,k) = -g_post(3,i,ny,k) + 2.0d0 * omegaT(4) * Tcold
+      g(i,1,k,3)  = -g_post(i,1,k,4)  + 2.0d0 * omegaT(3) * Thot
+      g(i,ny,k,4) = -g_post(i,ny,k,3) + 2.0d0 * omegaT(4) * Tcold
 #endif
     enddo
   enddo
@@ -1575,8 +1578,8 @@ subroutine bouncebackT3d()
  !$acc parallel loop gang vector collapse(2) default(none) present(g,g_post) async(1)
   do j = 1, ny
     do i = 1, nx
-      g(5,i,j,1)  = g_post(5,i,j,nz)
-      g(6,i,j,nz) = g_post(6,i,j,1)
+      g(i,j,1,5)  = g_post(i,j,nz,5)
+      g(i,j,nz,6) = g_post(i,j,1,6)
     enddo
   enddo
 #endif
@@ -1585,8 +1588,8 @@ subroutine bouncebackT3d()
  !$acc parallel loop gang vector collapse(2) default(none) present(g,g_post) async(1)
   do j = 1, ny
     do i = 1, nx
-      g(5,i,j,1)  = g_post(6,i,j,1)
-      g(6,i,j,nz) = g_post(5,i,j,nz)
+      g(i,j,1,5)  = g_post(i,j,1,6)
+      g(i,j,nz,6) = g_post(i,j,nz,5)
     enddo
   enddo
 #endif
@@ -1610,8 +1613,8 @@ subroutine macroT3d()
   do k = 1, nz
     do j = 1, ny
       do i = 1, nx
-        T(i,j,k) = g(0,i,j,k) + g(1,i,j,k) + g(2,i,j,k) + g(3,i,j,k) + &
-                   g(4,i,j,k) + g(5,i,j,k) + g(6,i,j,k)
+        T(i,j,k) = g(i,j,k,0) + g(i,j,k,1) + g(i,j,k,2) + g(i,j,k,3) + &
+                   g(i,j,k,4) + g(i,j,k,5) + g(i,j,k,6)
       enddo
     enddo
   enddo
@@ -1639,23 +1642,23 @@ subroutine reconstruct_macro_from_fg3d()
   do k = 1, nz
     do j = 1, ny
       do i = 1, nx
-        T(i,j,k) = g(0,i,j,k) + g(1,i,j,k) + g(2,i,j,k) + g(3,i,j,k) + &
-                   g(4,i,j,k) + g(5,i,j,k) + g(6,i,j,k)
+        T(i,j,k) = g(i,j,k,0) + g(i,j,k,1) + g(i,j,k,2) + g(i,j,k,3) + &
+                   g(i,j,k,4) + g(i,j,k,5) + g(i,j,k,6)
 
-        rho(i,j,k) = f(0,i,j,k) + f(1,i,j,k) + f(2,i,j,k) + f(3,i,j,k) + &
-             f(4,i,j,k) + f(5,i,j,k) + f(6,i,j,k) + f(7,i,j,k) + &
-             f(8,i,j,k) + f(9,i,j,k) + f(10,i,j,k) + f(11,i,j,k) + &
-             f(12,i,j,k) + f(13,i,j,k) + f(14,i,j,k) + f(15,i,j,k) + &
-             f(16,i,j,k) + f(17,i,j,k) + f(18,i,j,k)
+        rho(i,j,k) = f(i,j,k,0) + f(i,j,k,1) + f(i,j,k,2) + f(i,j,k,3) + &
+             f(i,j,k,4) + f(i,j,k,5) + f(i,j,k,6) + f(i,j,k,7) + &
+             f(i,j,k,8) + f(i,j,k,9) + f(i,j,k,10) + f(i,j,k,11) + &
+             f(i,j,k,12) + f(i,j,k,13) + f(i,j,k,14) + f(i,j,k,15) + &
+             f(i,j,k,16) + f(i,j,k,17) + f(i,j,k,18)
 
-        momx = f(1,i,j,k) - f(2,i,j,k) + f(7,i,j,k) - f(8,i,j,k) + f(9,i,j,k) - f(10,i,j,k) + &
-             f(11,i,j,k) - f(12,i,j,k) + f(13,i,j,k) - f(14,i,j,k)
+        momx = f(i,j,k,1) - f(i,j,k,2) + f(i,j,k,7) - f(i,j,k,8) + f(i,j,k,9) - f(i,j,k,10) + &
+             f(i,j,k,11) - f(i,j,k,12) + f(i,j,k,13) - f(i,j,k,14)
 
-        momy = f(3,i,j,k) - f(4,i,j,k) + f(7,i,j,k) + f(8,i,j,k) - f(9,i,j,k) - f(10,i,j,k) + &
-             f(15,i,j,k) - f(16,i,j,k) + f(17,i,j,k) - f(18,i,j,k)
+        momy = f(i,j,k,3) - f(i,j,k,4) + f(i,j,k,7) + f(i,j,k,8) - f(i,j,k,9) - f(i,j,k,10) + &
+             f(i,j,k,15) - f(i,j,k,16) + f(i,j,k,17) - f(i,j,k,18)
 
-        momz = f(5,i,j,k) - f(6,i,j,k) + f(11,i,j,k) + f(12,i,j,k) - f(13,i,j,k) - f(14,i,j,k) + &
-             f(15,i,j,k) + f(16,i,j,k) - f(17,i,j,k) - f(18,i,j,k)
+        momz = f(i,j,k,5) - f(i,j,k,6) + f(i,j,k,11) + f(i,j,k,12) - f(i,j,k,13) - f(i,j,k,14) + &
+             f(i,j,k,15) + f(i,j,k,16) - f(i,j,k,17) - f(i,j,k,18)
 
         if (rho(i,j,k) .GT. 0.0d0) then
           u(i,j,k) = momx / rho(i,j,k)
@@ -1703,6 +1706,7 @@ subroutine check3d()
 
   ! 误差定义：errorU 用速度场相对 L2 误差
   ! errorT 用温度场相对 L1 误差
+  !$acc wait(1)
   error1 = 0.0d0
   error2 = 0.0d0
   error5 = 0.0d0
@@ -1893,8 +1897,8 @@ subroutine output_ReloadFile3d()
 
   filename = adjustl(filename)
   open(unit=05, file=trim(reloadFilePrefix)//'-'//trim(filename)//'.bin', form='unformatted', access='sequential')
-  write(05) ((((real(f(alpha,i,j,k),kind=8), i=1,nx), j=1,ny), k=1,nz), alpha=0,qf-1)
-  write(05) ((((real(g(alpha,i,j,k),kind=8), i=1,nx), j=1,ny), k=1,nz), alpha=0,qt-1)
+  write(05) ((((real(f(i,j,k,alpha),kind=8), i=1,nx), j=1,ny), k=1,nz), alpha=0,qf-1)
+  write(05) ((((real(g(i,j,k,alpha),kind=8), i=1,nx), j=1,ny), k=1,nz), alpha=0,qt-1)
 #ifdef EnableUseG
   write(05) (((real(Bx_prev(i,j,k),kind=8), i=1,nx), j=1,ny), k=1,nz)
   write(05) (((real(By_prev(i,j,k),kind=8), i=1,nx), j=1,ny), k=1,nz)
@@ -1928,7 +1932,7 @@ subroutine write_reload_metadata3d(filename)
 
   open(newunit=metaUnit, file=trim(reloadFilePrefix)//'-latest.meta', &
        status='replace', action='write', form='formatted')
-  write(metaUnit,'(A,1X,I0)') 'reload_meta_version', 2
+  write(metaUnit,'(A,1X,I0)') 'reload_meta_version', 3
 #ifdef steadyFlow
   write(metaUnit,'(A,1X,A)') 'flowMode', 'steadyFlow'
 #endif
@@ -1985,7 +1989,7 @@ subroutine read_reload_metadata3d(reloadFileName)
   endif
 
   read(metaUnit,*,iostat=ios) label, metaVersion
-  if ((ios .NE. 0) .OR. (trim(label) .NE. 'reload_meta_version') .OR. (metaVersion .NE. 2)) then
+  if ((ios .NE. 0) .OR. (trim(label) .NE. 'reload_meta_version') .OR. (metaVersion .NE. 3)) then
     write(*,*) 'Error: invalid reload metadata version in ', trim(metaFile)
     stop
   endif
@@ -2157,6 +2161,7 @@ subroutine calNuRe3d()
   logical :: exNu, exRe
   logical, save :: first_nure_write = .true.
 
+  !$acc wait(1)
   ! 这里记录的是时间序列版本的体平均 Nu / Re：
   ! NuVolAvg : 体平均对流热通量对应的 Nu
   ! ReVolAvg : 全域 RMS 速度对应的 Reynolds 数

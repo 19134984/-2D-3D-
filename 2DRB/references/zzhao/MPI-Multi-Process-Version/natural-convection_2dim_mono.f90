@@ -111,6 +111,12 @@ subroutine mesh()
         write(*,*) "deltaX = ", dx0
         write(*,*) "deltaT = ", dt0
 
+        ! 这里的 xGrid(0) 和 xGrid(nx+1) 是归一化几何辅助端点 0 和 1。
+        ! 本参考代码没有把完整几何长度 1 直接作为后续 Ma/Ra 公式中的特征长度，
+        ! 而是采用 length0 = 1-dx0 的有效长度口径。
+        ! 这个口径通常和近壁半步/有效边界距离有关；若按物理边界位于
+        ! x=0.5*dx0 与 x=1-0.5*dx0 理解，则两侧半步合计正好扣掉一个 dx0。
+        ! 由于 xGrid(1)=dx0、xGrid(nx+1)=1，所以 length0 = xGrid(nx+1)-xGrid(1) = 1-dx0。
         length0 = xGrid(nx+1)-xGrid(1)
         write(*,*) "length0 = ", real(length0)
         write(*,*) "  "
@@ -119,8 +125,16 @@ subroutine mesh()
         length_LB = 1.0d0 / dx(1)
         dt = dt0 * length_LB
 
+        ! 下面这两行把内部坐标整体减去半个近壁参考步长 dx0/2，
+        ! 可以理解为把左/下物理边界作为距离坐标的零点。
+        ! 这样第一层内部点从 xGrid(1)=dx0 变为 dx0/2，换算到 LB 单位后约为 0.5，
+        ! 表示第一层计算点距离物理边界半个 lattice unit。
+        ! 该坐标会被后续 interpolate() 和输出使用，既是存储/输出坐标，也是插值迁移的几何坐标。
+        ! 注意这里统一使用近壁参考步长 dx0/2 做整体偏移，而不是每一段非均匀局部间距的半值。
+        ! y 方向使用同样的非均匀映射和参考步长，因此做相同的半步平移。
         xGrid(1:nx) = xGrid(1:nx)-dx0/2.0d0
         y(1:ny) = y(1:ny)-dx0/2.0d0
+        ! 最后把 0-system 坐标放大到 LB 单位；此时 dx0 对应 1 个 lattice unit。
         xGrid=xGrid*length_LB
         y=y*length_LB
     endif
@@ -189,6 +203,7 @@ subroutine initial()
     ! Calculate viscosity based on LB unit
     ! 这里的 Ma-L-Ra-Pr 关系可理解为 viscosity_LB = Ma * L * sqrt(Pr) / sqrt(3*Ra)。
     ! 核心是特征长度 L 的换算：mesh() 中 length0 = xGrid(nx+1)-xGrid(1)。
+    ! 这是半步边界处理下的有效长度：两侧各扣半个近壁步长，总共扣掉 dx(1)。
     ! 因为 xGrid(nx+1)=1，xGrid(1)=dx(1)，所以 length0 = 1-dx(1)。
     ! 转到 LB 单位后：length0/dx(1) = (1-dx(1))/dx(1) = 1/dx(1)-1 = length_LB-1。
     ! 因此这里用 length_LB-1.0d0 作为该参考代码的有效内部特征长度。
@@ -689,17 +704,33 @@ subroutine interpolate()
     real(kind=8) :: f0, f1, f2, g0, g1, g2
 
         ! 在非均匀网格上完成分布函数迁移 streaming。
-        ! 因为 xGrid/yGrid 间距不均匀，沿 alpha 方向移动 dt 后通常不会正好落在网格点上，
-        ! 所以这里用二维三点 Lagrange 插值重构 f(alpha,i,j) 和 g(alpha,i,j)。
+        ! f_post/g_post 是碰撞后、仍存放在非均匀网格节点上的分布函数。
+        ! 迁移时并不是另建一个均匀网格，而是仍按标准 LBM 离散速度 e_alpha*dt, 就是按照最小的dt来移动的。
+        ! 预测这些 f_post/g_post 从原节点出发后的新位置。
+        ! 由于 xGrid/yGrid 间距不均匀，迁移后的新位置通常不会正好落在非均匀网格节点上；
+        ! 因此若想得到当前非均匀节点 (i,j) 在下一时刻的 f/g 值，就要用附近 3x3 个
+        ! 已按 e_alpha*dt 迁移后的点做二维三点 Lagrange 插值。
+        ! 这里选择最小网格间距作为 LB 格子步长，使一个时间步内的迁移距离受限；
+        ! 对内部点而言，出发/到达位置会落在所选三点模板覆盖范围内，主要做内插而不是外插。
         ! update() 已经提前补好了 f_post/g_post 的 y 向 halo，边界附近插值可访问 j=0 或 j=nyLocal+1。
         do j = 1, nyLocal
             do i = 1, nx
                 do alpha = 1, 8
                     ! 当前离散速度方向在一个时间步内对应的位移。
+                    ! 可把周围 f_post(alpha,*,*) 看成先从原非均匀节点按 e_alpha*dt 迁移，
+                    ! 即原位置 (xGrid(k),yGrid(l)) 变成 (xGrid(k)+delta_x,yGrid(l)+delta_y)。
+                    ! 这些迁移后的点携带下一时刻的数据，但一般不在非均匀网格节点上，
+                    ! 所以下面要把它们插值回目标节点 (xGrid(i),yGrid(j))。
                     delta_x=dble(ex(alpha))*dt
                     delta_y=dble(ey(alpha))*dt
 
             ! 先固定三个 x 参考点，分别沿 y 方向做三点插值，得到 f0/f1/f2。
+            ! f0/f1/f2 不是 alpha=0/1/2 的方向分量，而是二维插值的中间值：
+            !   f0：固定在第 1 个 x 参考列 inter_x(i,1)，用三个 y 参考点插值得到；
+            !   f1：固定在第 2 个 x 参考列 inter_x(i,2)，用三个 y 参考点插值得到；
+            !   f2：固定在第 3 个 x 参考列 inter_x(i,3)，用三个 y 参考点插值得到。
+            ! 每个 y 插值点的坐标都加 delta_y，表示这些 f_post 已经沿 alpha 方向迁移过；
+            ! 插值目标 yGrid(inter_y(j,2)) 通常就是当前目标节点的 yGrid(j)。
             f0 = interpolateF(yGrid(inter_y(j,1))+delta_y, yGrid(inter_y(j,2))+delta_y, yGrid(inter_y(j,3))+delta_y&
                 , yGrid(inter_y(j,2)), f_post(alpha,inter_x(i,1), inter_y(j,1)), f_post(alpha,inter_x(i,1), inter_y(j,2))&
                 , f_post(alpha,inter_x(i,1), inter_y(j,3)))
@@ -713,6 +744,9 @@ subroutine interpolate()
                 , f_post(alpha,inter_x(i,3), inter_y(j,3)))
 
             ! 再用 f0/f1/f2 沿 x 方向插值，得到当前格点处迁移后的 f(alpha,i,j)。
+            ! 这里的 xGrid(inter_x(i,*))+delta_x 同样表示三个 x 参考列迁移后的坐标；
+            ! 目标 xGrid(inter_x(i,2)) 通常就是当前目标节点的 xGrid(i)。
+            ! 因此最终得到的是“迁移并投影回非均匀网格后”的下一时刻 f(alpha,i,j)。
             f(alpha, i, j) = interpolateF(xGrid(inter_x(i,1))+delta_x, xGrid(inter_x(i,2))+delta_x, &
                             xGrid(inter_x(i,3))+delta_x, xGrid(inter_x(i,2)), f0, f1, f2)
 
@@ -724,10 +758,12 @@ subroutine interpolate()
         do j = 1, nyLocal
             do i = 1, nx
                 do alpha = 1, 4
+                    ! 温度分布函数同样按 e_alpha*dt 预测迁移后的位置，再插值回非均匀网格格点。
                     delta_x=dble(ex(alpha))*dt
                     delta_y=dble(ey(alpha))*dt
 
             ! 先沿 y 方向插值得到三个 x 参考位置上的 g0/g1/g2。
+            ! g0/g1/g2 与 f0/f1/f2 的含义相同，只是这里处理的是 D2Q5 温度分布函数 g_post。
             g0 = interpolateF(yGrid(inter_y(j,1))+delta_y, yGrid(inter_y(j,2))+delta_y, yGrid(inter_y(j,3))+delta_y&
                 , yGrid(inter_y(j,2)), g_post(alpha,inter_x(i,1), inter_y(j,1)), g_post(alpha,inter_x(i,1), inter_y(j,2))&
                 , g_post(alpha,inter_x(i,1), inter_y(j,3)))
@@ -740,7 +776,7 @@ subroutine interpolate()
                 , yGrid(inter_y(j,2)), g_post(alpha,inter_x(i,3), inter_y(j,1)), g_post(alpha,inter_x(i,3), inter_y(j,2))&
                 , g_post(alpha,inter_x(i,3), inter_y(j,3)))
 
-            ! 再沿 x 方向插值，得到迁移后的 g(alpha,i,j)。
+            ! 再沿 x 方向插值，得到迁移并投影回非均匀网格后的 g(alpha,i,j)。
             g(alpha, i, j) = interpolateF(xGrid(inter_x(i,1))+delta_x, xGrid(inter_x(i,2))+delta_x, &
                             xGrid(inter_x(i,3))+delta_x, xGrid(inter_x(i,2)), g0, g1, g2)
                 enddo
@@ -881,6 +917,10 @@ subroutine check()
         enddo
     enddo
 
+    ! 将各 rank 上的局部速度误差平方和 error1 做全局求和，并把结果返回给所有 rank。
+    ! 参数含义：error1=本 rank 发送的局部值，error1_all=接收全局归约结果，
+    !           1=归约 1 个标量，MPI_REAL8=数据类型，MPI_SUM=求和操作，
+    !           MPI_COMM_WORLD=参与归约的通信域，IERR=错误码。
     call MPI_ALLREDUCE(error1,error1_all,1,MPI_REAL8,MPI_SUM,MPI_COMM_WORLD,IERR)
     call MPI_ALLREDUCE(error2,error2_all,1,MPI_REAL8,MPI_SUM,MPI_COMM_WORLD,IERR)
 
@@ -911,6 +951,11 @@ subroutine gather_data()
     use commondata
     implicit none
 
+    ! 将每个 rank 的局部二维速度场 u(nx,nyLocal) 收集到 root rank 的全局数组 u_all(nx,ny)。
+    ! 参数含义：u=本 rank 发送缓冲区起点，count2d(MYID)=本 rank 发送元素数，
+    !           MPI_REAL8=发送数据类型，u_all=root 端接收全局数组，
+    !           count2d=每个 rank 接收元素数数组，displ2d=每个 rank 数据在 u_all 中的接收偏移量，
+    !           MPI_REAL8=接收数据类型，0=root rank，MPI_COMM_WORLD=通信域，IERR=错误码。
     call MPI_GATHERV(u,count2d(MYID),MPI_REAL8,u_all,count2d,displ2d,MPI_REAL8,0,MPI_COMM_WORLD,IERR)
     call MPI_GATHERV(v,count2d(MYID),MPI_REAL8,v_all,count2d,displ2d,MPI_REAL8,0,MPI_COMM_WORLD,IERR)
     call MPI_GATHERV(rho,count2d(MYID),MPI_REAL8,rho_all,count2d,displ2d,MPI_REAL8,0,MPI_COMM_WORLD,IERR)

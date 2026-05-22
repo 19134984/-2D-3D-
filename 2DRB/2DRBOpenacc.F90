@@ -335,7 +335,6 @@
         call bouncebackT()
         
         call macroT()
-        !$acc wait(1)
 
 #ifdef steadyFlow
         ! 周期输出按累计格子步判断；否则从 1050tf 续算会在 1150tf 才输出，
@@ -380,6 +379,7 @@
 #endif
      enddo
 
+    !$acc wait(1)
     call CPU_TIME(timeEnd)         !当前进程累计消耗的 CPU 时间,包括并行
     ! 取墙钟结束计数器，用于后面输出 OpenACC 实际耗时。
     call system_clock(wallClockEnd, wallClockRate)
@@ -632,10 +632,10 @@
     allocate (Tp(nx,ny))
 #endif
 
-    allocate (f(0:8,nx,ny))
-    allocate (f_post(0:8,0:nx+1,0:ny+1))
-    allocate (g(0:4,nx,ny))
-    allocate (g_post(0:4,0:nx+1,0:ny+1))
+    allocate (f(nx,ny,0:8))
+    allocate (f_post(0:nx+1,0:ny+1,0:8))
+    allocate (g(nx,ny,0:4))
+    allocate (g_post(0:nx+1,0:ny+1,0:4))
 
     allocate (Fx(nx,ny))
     allocate (Fy(nx,ny))
@@ -744,11 +744,11 @@
                 us2 = u(i,j)*u(i,j)+v(i,j)*v(i,j)
                 do alpha = 0, 8
                     un(alpha) = u(i,j)*ex(alpha)+v(i,j)*ey(alpha)
-                    f(alpha,i,j) = rho(i,j)*omega(alpha)*(1.0d0+3.0d0*un(alpha)+4.5d0*un(alpha)*un(alpha)-1.5d0*us2)  !D2Q9标准feq
+                    f(i,j,alpha) = rho(i,j)*omega(alpha)*(1.0d0+3.0d0*un(alpha)+4.5d0*un(alpha)*un(alpha)-1.5d0*us2)  !D2Q9标准feq
                 enddo
                 do alpha = 0, 4
                     un(alpha) = u(i,j)*ex(alpha)+v(i,j)*ey(alpha) 
-                    g(alpha,i,j) = omegaT(alpha)*T(i,j)*(1.0d0+thermalGeqCoeff*un(alpha))
+                    g(i,j,alpha) = omegaT(alpha)*T(i,j)*(1.0d0+thermalGeqCoeff*un(alpha))
                 enddo
             enddo
         enddo
@@ -784,8 +784,8 @@
         access="sequential",status='old')  !unformatted是二进制,sequential：按记录顺序读写
             ! Strict restart files store f and g; EnableUseG also stores the previous heat-flux history.
             write(00,*) "Reloading f, g and optional UseG history from file"
-            read(01) (((f(alpha,i,j), i=1,nx), j=1,ny), alpha=0,8)      !先 i，再 j，再 alpha
-            read(01) (((g(alpha,i,j), i=1,nx), j=1,ny), alpha=0,4)
+            read(01) (((f(i,j,alpha), i=1,nx), j=1,ny), alpha=0,8)      !先 i，再 j，再 alpha
+            read(01) (((g(i,j,alpha), i=1,nx), j=1,ny), alpha=0,4)
 #ifdef EnableUseG
             read(01) ((Bx_prev(i,j), i=1,nx), j=1,ny)
             read(01) ((By_prev(i,j), i=1,nx), j=1,ny)
@@ -864,6 +864,7 @@ close(00)
     use commondata
     implicit none
 
+    !$acc wait(1)
     !$acc update self(u,v,T,rho)
   end subroutine update_host_snapshot_2d_openacc
 !===================================================================================================
@@ -876,6 +877,7 @@ close(00)
     use commondata
     implicit none
 
+    !$acc wait(1)
     !$acc update self(u,v,T)
   end subroutine update_host_tecplot_2d_openacc
 !===================================================================================================
@@ -888,6 +890,7 @@ close(00)
     use commondata
     implicit none
 
+    !$acc wait(1)
     !$acc update self(f,g)
 #ifdef EnableUseG
     !$acc update self(Bx_prev,By_prev)
@@ -932,15 +935,15 @@ close(00)
     do j = 1, ny
         do i = 1, nx
 
-          m(0) = f(0,i,j)+f(1,i,j)+f(2,i,j)+f(3,i,j)+f(4,i,j)+f(5,i,j)+f(6,i,j)+f(7,i,j)+f(8,i,j)
-          m(1) = -4.0d0*f(0,i,j)-f(1,i,j)-f(2,i,j)-f(3,i,j)-f(4,i,j)+2.0d0*(f(5,i,j)+f(6,i,j)+f(7,i,j)+f(8,i,j))
-          m(2) = 4.0d0*f(0,i,j)-2.0d0*(f(1,i,j)+f(2,i,j)+f(3,i,j)+f(4,i,j))+f(5,i,j)+f(6,i,j)+f(7,i,j)+f(8,i,j)
-          m(3) = f(1,i,j)-f(3,i,j)+f(5,i,j)-f(6,i,j)-f(7,i,j)+f(8,i,j)
-          m(4) = -2.0d0*f(1,i,j)+2.0d0*f(3,i,j)+f(5,i,j)-f(6,i,j)-f(7,i,j)+f(8,i,j)
-          m(5) = f(2,i,j)-f(4,i,j)+f(5,i,j)+f(6,i,j)-f(7,i,j)-f(8,i,j)
-          m(6) = -2.0d0*f(2,i,j)+2.0d0*f(4,i,j)+f(5,i,j)+f(6,i,j)-f(7,i,j)-f(8,i,j)
-          m(7) = f(1,i,j)-f(2,i,j)+f(3,i,j)-f(4,i,j)
-          m(8) = f(5,i,j)-f(6,i,j)+f(7,i,j)-f(8,i,j)
+          m(0) = f(i,j,0)+f(i,j,1)+f(i,j,2)+f(i,j,3)+f(i,j,4)+f(i,j,5)+f(i,j,6)+f(i,j,7)+f(i,j,8)
+          m(1) = -4.0d0*f(i,j,0)-f(i,j,1)-f(i,j,2)-f(i,j,3)-f(i,j,4)+2.0d0*(f(i,j,5)+f(i,j,6)+f(i,j,7)+f(i,j,8))
+          m(2) = 4.0d0*f(i,j,0)-2.0d0*(f(i,j,1)+f(i,j,2)+f(i,j,3)+f(i,j,4))+f(i,j,5)+f(i,j,6)+f(i,j,7)+f(i,j,8)
+          m(3) = f(i,j,1)-f(i,j,3)+f(i,j,5)-f(i,j,6)-f(i,j,7)+f(i,j,8)
+          m(4) = -2.0d0*f(i,j,1)+2.0d0*f(i,j,3)+f(i,j,5)-f(i,j,6)-f(i,j,7)+f(i,j,8)
+          m(5) = f(i,j,2)-f(i,j,4)+f(i,j,5)+f(i,j,6)-f(i,j,7)-f(i,j,8)
+          m(6) = -2.0d0*f(i,j,2)+2.0d0*f(i,j,4)+f(i,j,5)+f(i,j,6)-f(i,j,7)-f(i,j,8)
+          m(7) = f(i,j,1)-f(i,j,2)+f(i,j,3)-f(i,j,4)
+          m(8) = f(i,j,5)-f(i,j,6)+f(i,j,7)-f(i,j,8)
 
           meq(0) = rho(i,j)
           meq(1) = rho(i,j)*( -2.0d0+3.0d0*(u(i,j)*u(i,j)+v(i,j)*v(i,j)) )
@@ -987,22 +990,22 @@ close(00)
             m_post(alpha) = m(alpha)-s(alpha)*(m(alpha)-meq(alpha))+fSource(alpha)     !矩空间碰撞
           enddo
 
-          f_post(0,i,j) = m_post(0)/9.0d0-m_post(1)/9.0d0+m_post(2)/9.0d0                                         !这边是乘以M逆
-          f_post(1,i,j) = m_post(0)/9.0d0-m_post(1)/36.0d0-m_post(2)/18.0d0+m_post(3)/6.0d0-m_post(4)/6.0d0 &
+          f_post(i,j,0) = m_post(0)/9.0d0-m_post(1)/9.0d0+m_post(2)/9.0d0                                         !这边是乘以M逆
+          f_post(i,j,1) = m_post(0)/9.0d0-m_post(1)/36.0d0-m_post(2)/18.0d0+m_post(3)/6.0d0-m_post(4)/6.0d0 &
                     +m_post(7)/4.0d0
-          f_post(2,i,j) = m_post(0)/9.0d0-m_post(1)/36.0d0-m_post(2)/18.0d0 &
+          f_post(i,j,2) = m_post(0)/9.0d0-m_post(1)/36.0d0-m_post(2)/18.0d0 &
                     +m_post(5)/6.0d0-m_post(6)/6.0d0-m_post(7)/4.0d0
-          f_post(3,i,j) = m_post(0)/9.0d0-m_post(1)/36.0d0-m_post(2)/18.0d0-m_post(3)/6.0d0+m_post(4)/6.0d0 &
+          f_post(i,j,3) = m_post(0)/9.0d0-m_post(1)/36.0d0-m_post(2)/18.0d0-m_post(3)/6.0d0+m_post(4)/6.0d0 &
                     +m_post(7)/4.0d0
-          f_post(4,i,j) = m_post(0)/9.0d0-m_post(1)/36.0d0-m_post(2)/18.0d0 &
+          f_post(i,j,4) = m_post(0)/9.0d0-m_post(1)/36.0d0-m_post(2)/18.0d0 &
                     -m_post(5)/6.0d0+m_post(6)/6.0d0-m_post(7)/4.0d0
-          f_post(5,i,j) = m_post(0)/9.0d0+m_post(1)/18.0d0+m_post(2)/36.0d0+m_post(3)/6.0d0+m_post(4)/12.0d0 &
+          f_post(i,j,5) = m_post(0)/9.0d0+m_post(1)/18.0d0+m_post(2)/36.0d0+m_post(3)/6.0d0+m_post(4)/12.0d0 &
                     +m_post(5)/6.0d0+m_post(6)/12.0d0+m_post(8)/4.0d0
-          f_post(6,i,j) = m_post(0)/9.0d0+m_post(1)/18.0d0+m_post(2)/36.0d0-m_post(3)/6.0d0-m_post(4)/12.0d0 &
+          f_post(i,j,6) = m_post(0)/9.0d0+m_post(1)/18.0d0+m_post(2)/36.0d0-m_post(3)/6.0d0-m_post(4)/12.0d0 &
                     +m_post(5)/6.0d0+m_post(6)/12.0d0-m_post(8)/4.0d0
-          f_post(7,i,j) = m_post(0)/9.0d0+m_post(1)/18.0d0+m_post(2)/36.0d0-m_post(3)/6.0d0-m_post(4)/12.0d0 &
+          f_post(i,j,7) = m_post(0)/9.0d0+m_post(1)/18.0d0+m_post(2)/36.0d0-m_post(3)/6.0d0-m_post(4)/12.0d0 &
                     -m_post(5)/6.0d0-m_post(6)/12.0d0+m_post(8)/4.0d0
-          f_post(8,i,j) = m_post(0)/9.0d0+m_post(1)/18.0d0+m_post(2)/36.0d0+m_post(3)/6.0d0+m_post(4)/12.0d0 &
+          f_post(i,j,8) = m_post(0)/9.0d0+m_post(1)/18.0d0+m_post(2)/36.0d0+m_post(3)/6.0d0+m_post(4)/12.0d0 &
                     -m_post(5)/6.0d0-m_post(6)/12.0d0-m_post(8)/4.0d0
 
         enddo
@@ -1033,7 +1036,7 @@ close(00)
                 ip = i-ex(alpha)                   !边界附近 (ip/jp 可能为 0 或 nx+1/ny+1)，需在 bounceback/周期边界处理中覆盖修正边界分布
                 jp = j-ey(alpha)                   !ghost 层在初始化中为 0，保证不会出现未初始化垃圾值
                 
-                f(alpha,i,j) = f_post(alpha,ip,jp)
+                f(i,j,alpha) = f_post(ip,jp,alpha)
             enddo
         enddo
     enddo
@@ -1061,14 +1064,14 @@ close(00)
     !$acc parallel loop gang vector default(none) present(f,f_post) async(1)
     do j = 1, ny                                                  !速度边界垂直边界周期，直接方向相同，跨边界的入射分布      
         !Left side (i=1)
-        f(1,1,j) = f_post(1,nx,j)
-        f(5,1,j) = f_post(5,nx,j)
-        f(8,1,j) = f_post(8,nx,j)
+        f(1,j,1) = f_post(nx,j,1)
+        f(1,j,5) = f_post(nx,j,5)
+        f(1,j,8) = f_post(nx,j,8)
 
         !Right side (i=nx)
-        f(3,nx,j) = f_post(3,1,j)
-        f(6,nx,j) = f_post(6,1,j)
-        f(7,nx,j) = f_post(7,1,j)
+        f(nx,j,3) = f_post(1,j,3)
+        f(nx,j,6) = f_post(1,j,6)
+        f(nx,j,7) = f_post(1,j,7)
     enddo
 #endif
 
@@ -1076,14 +1079,14 @@ close(00)
     !$acc parallel loop gang vector default(none) present(f,f_post) async(1)
     do j = 1, ny                                                 !速度边界垂直边界静止壁无滑移，直接反弹，方向相反
         !Left side (i=1)
-        f(1,1,j) = f_post(3,1,j)
-        f(5,1,j) = f_post(7,1,j)
-        f(8,1,j) = f_post(6,1,j)
+        f(1,j,1) = f_post(1,j,3)
+        f(1,j,5) = f_post(1,j,7)
+        f(1,j,8) = f_post(1,j,6)
 
         !Right side (i=nx)
-        f(3,nx,j) = f_post(1,nx,j)
-        f(6,nx,j) = f_post(8,nx,j)
-        f(7,nx,j) = f_post(5,nx,j)
+        f(nx,j,3) = f_post(nx,j,1)
+        f(nx,j,6) = f_post(nx,j,8)
+        f(nx,j,7) = f_post(nx,j,5)
     enddo
 #endif
 
@@ -1091,14 +1094,14 @@ close(00)
     !$acc parallel loop gang vector default(none) present(f,f_post) async(1)
     do i = 1, nx                                                  !速度边界水平边界无滑移，直接反弹，方向相反
         !Bottom side (j=1)
-        f(2,i,1) = f_post(4,i,1)
-        f(5,i,1) = f_post(7,i,1)
-        f(6,i,1) = f_post(8,i,1)
+        f(i,1,2) = f_post(i,1,4)
+        f(i,1,5) = f_post(i,1,7)
+        f(i,1,6) = f_post(i,1,8)
 
         !Top side (j=ny)
-        f(4,i,ny) = f_post(2,i,ny)
-        f(7,i,ny) = f_post(5,i,ny)
-        f(8,i,ny) = f_post(6,i,ny)
+        f(i,ny,4) = f_post(i,ny,2)
+        f(i,ny,7) = f_post(i,ny,5)
+        f(i,ny,8) = f_post(i,ny,6)
     enddo
 #endif
 
@@ -1124,9 +1127,9 @@ close(00)
     !$acc parallel loop gang vector collapse(2) default(none) present(f,rho,u,v,Fx,Fy) async(1)
     do j = 1, ny
         do i = 1, nx
-            rho(i,j) = f(0,i,j)+f(1,i,j)+f(2,i,j)+f(3,i,j)+f(4,i,j)+f(5,i,j)+f(6,i,j)+f(7,i,j)+f(8,i,j)
-            u(i,j) = ( f(1,i,j)-f(3,i,j)+f(5,i,j)-f(6,i,j)-f(7,i,j)+f(8,i,j)+0.5d0*Fx(i,j) )/rho(i,j)     !含力LBM的半步动量修正：rho*u = Σ f e + 0.5*F，对应Guo forcing的二阶定义
-            v(i,j) = ( f(2,i,j)-f(4,i,j)+f(5,i,j)+f(6,i,j)-f(7,i,j)-f(8,i,j)+0.5d0*Fy(i,j) )/rho(i,j)
+            rho(i,j) = f(i,j,0)+f(i,j,1)+f(i,j,2)+f(i,j,3)+f(i,j,4)+f(i,j,5)+f(i,j,6)+f(i,j,7)+f(i,j,8)
+            u(i,j) = ( f(i,j,1)-f(i,j,3)+f(i,j,5)-f(i,j,6)-f(i,j,7)+f(i,j,8)+0.5d0*Fx(i,j) )/rho(i,j)     !含力LBM的半步动量修正：rho*u = Σ f e + 0.5*F，对应Guo forcing的二阶定义
+            v(i,j) = ( f(i,j,2)-f(i,j,4)+f(i,j,5)+f(i,j,6)-f(i,j,7)-f(i,j,8)+0.5d0*Fy(i,j) )/rho(i,j)
         enddo
     enddo
     return
@@ -1177,11 +1180,11 @@ close(00)
             By_prev(i,j) = By
 #endif
 
-          n(0) = g(0,i,j)+g(1,i,j)+g(2,i,j)+g(3,i,j)+g(4,i,j)
-          n(1) = g(1,i,j)-g(3,i,j)
-          n(2) = g(2,i,j)-g(4,i,j)
-          n(3) = -4.0d0*g(0,i,j)+g(1,i,j)+g(2,i,j)+g(3,i,j)+g(4,i,j)
-          n(4) = g(1,i,j)-g(2,i,j)+g(3,i,j)-g(4,i,j)
+          n(0) = g(i,j,0)+g(i,j,1)+g(i,j,2)+g(i,j,3)+g(i,j,4)
+          n(1) = g(i,j,1)-g(i,j,3)
+          n(2) = g(i,j,2)-g(i,j,4)
+          n(3) = -4.0d0*g(i,j,0)+g(i,j,1)+g(i,j,2)+g(i,j,3)+g(i,j,4)
+          n(4) = g(i,j,1)-g(i,j,2)+g(i,j,3)-g(i,j,4)
         
           neq(0) = T(i,j)
           neq(1) = T(i,j)*u(i,j)
@@ -1207,11 +1210,11 @@ close(00)
           n_post(4) = n(4)-q(4)*(n(4)-neq(4))
           
         
-          g_post(0,i,j) = 0.2d0*n_post(0)-0.2d0*n_post(3)
-          g_post(1,i,j) = 0.2d0*n_post(0)+0.5d0*n_post(1)+0.05d0*n_post(3)+0.25d0*n_post(4)
-          g_post(2,i,j) = 0.2d0*n_post(0)+0.5d0*n_post(2)+0.05d0*n_post(3)-0.25d0*n_post(4)
-          g_post(3,i,j) = 0.2d0*n_post(0)-0.5d0*n_post(1)+0.05d0*n_post(3)+0.25d0*n_post(4)
-          g_post(4,i,j) = 0.2d0*n_post(0)-0.5d0*n_post(2)+0.05d0*n_post(3)-0.25d0*n_post(4) 
+          g_post(i,j,0) = 0.2d0*n_post(0)-0.2d0*n_post(3)
+          g_post(i,j,1) = 0.2d0*n_post(0)+0.5d0*n_post(1)+0.05d0*n_post(3)+0.25d0*n_post(4)
+          g_post(i,j,2) = 0.2d0*n_post(0)+0.5d0*n_post(2)+0.05d0*n_post(3)-0.25d0*n_post(4)
+          g_post(i,j,3) = 0.2d0*n_post(0)-0.5d0*n_post(1)+0.05d0*n_post(3)+0.25d0*n_post(4)
+          g_post(i,j,4) = 0.2d0*n_post(0)-0.5d0*n_post(2)+0.05d0*n_post(3)-0.25d0*n_post(4)
         enddo
     enddo
     return
@@ -1242,7 +1245,7 @@ close(00)
                 ip = i-ex(alpha)
                 jp = j-ey(alpha)
                 
-                g(alpha,i,j) = g_post(alpha,ip,jp)
+                g(i,j,alpha) = g_post(ip,jp,alpha)
             enddo
         enddo
     enddo
@@ -1269,10 +1272,10 @@ close(00)
     !$acc parallel loop gang vector default(none) present(g,g_post) async(1)
     do j = 1, ny
         !Left boundary
-        g(1,1,j) = g_post(1,nx,j)
+        g(1,j,1) = g_post(nx,j,1)
 
         !Right boundary
-        g(3,nx,j) = g_post(3,1,j)
+        g(nx,j,3) = g_post(1,j,3)
     enddo
 #endif
 
@@ -1281,15 +1284,15 @@ close(00)
     do j = 1, ny
         !Left boundary
 #ifdef EnableLegacyThermalScheme
-        g(1,1,j) = -g_post(3,1,j)+(4.0d0+paraA)/10.0d0*Thot
+        g(1,j,1) = -g_post(1,j,3)+(4.0d0+paraA)/10.0d0*Thot
 #else
-        g(1,1,j) = -g_post(3,1,j)+2.0d0*omegaT(3)*Thot
+        g(1,j,1) = -g_post(1,j,3)+2.0d0*omegaT(3)*Thot
 #endif
         !Right boundary
 #ifdef EnableLegacyThermalScheme
-        g(3,nx,j) = -g_post(1,nx,j)+(4.0d0+paraA)/10.0d0*Tcold
+        g(nx,j,3) = -g_post(nx,j,1)+(4.0d0+paraA)/10.0d0*Tcold
 #else
-        g(3,nx,j) = -g_post(1,nx,j)+2.0d0*omegaT(1)*Tcold
+        g(nx,j,3) = -g_post(nx,j,1)+2.0d0*omegaT(1)*Tcold
 #endif
     enddo
 #endif
@@ -1298,10 +1301,10 @@ close(00)
     !$acc parallel loop gang vector default(none) present(g,g_post) async(1)
     do j = 1, ny
         !Left boundary
-        g(1,1,j) = g_post(3,1,j)
+        g(1,j,1) = g_post(1,j,3)
 
         !Right boundary
-        g(3,nx,j) = g_post(1,nx,j)
+        g(nx,j,3) = g_post(nx,j,1)
     enddo
 #endif
 
@@ -1309,10 +1312,10 @@ close(00)
     !$acc parallel loop gang vector default(none) present(g,g_post) async(1)
     do i = 1, nx
         !Bottom side
-        g(2,i,1) = g_post(4,i,1)
+        g(i,1,2) = g_post(i,1,4)
 
         !Top side
-        g(4,i,ny) = g_post(2,i,ny)
+        g(i,ny,4) = g_post(i,ny,2)
     enddo
 #endif
 
@@ -1321,15 +1324,15 @@ close(00)
     do i = 1, nx
         !Bottom side
 #ifdef EnableLegacyThermalScheme
-        g(2,i,1) = -g_post(4,i,1)+(4.0d0+paraA)/10.0d0*Thot
+        g(i,1,2) = -g_post(i,1,4)+(4.0d0+paraA)/10.0d0*Thot
 #else
-        g(2,i,1) = -g_post(4,i,1)+2.0d0*omegaT(4)*Thot
+        g(i,1,2) = -g_post(i,1,4)+2.0d0*omegaT(4)*Thot
 #endif
         !Top side
 #ifdef EnableLegacyThermalScheme
-        g(4,i,ny) = -g_post(2,i,ny)+(4.0d0+paraA)/10.0d0*Tcold
+        g(i,ny,4) = -g_post(i,ny,2)+(4.0d0+paraA)/10.0d0*Tcold
 #else
-        g(4,i,ny) = -g_post(2,i,ny)+2.0d0*omegaT(2)*Tcold
+        g(i,ny,4) = -g_post(i,ny,2)+2.0d0*omegaT(2)*Tcold
 #endif
     enddo
 #endif
@@ -1356,7 +1359,7 @@ close(00)
     !$acc parallel loop gang vector collapse(2) default(none) present(g,T) async(1)
     do j = 1, ny
         do i = 1, nx
-            T(i,j) = g(0,i,j)+g(1,i,j)+g(2,i,j)+g(3,i,j)+g(4,i,j)
+            T(i,j) = g(i,j,0)+g(i,j,1)+g(i,j,2)+g(i,j,3)+g(i,j,4)
         enddo
     enddo
     return
@@ -1381,10 +1384,10 @@ close(00)
     rho_bad = .false.
     do j = 1, ny
         do i = 1, nx
-            T(i,j) = g(0,i,j)+g(1,i,j)+g(2,i,j)+g(3,i,j)+g(4,i,j)
-            rho(i,j) = f(0,i,j)+f(1,i,j)+f(2,i,j)+f(3,i,j)+f(4,i,j)+f(5,i,j)+f(6,i,j)+f(7,i,j)+f(8,i,j)
-            momx = f(1,i,j)-f(3,i,j)+f(5,i,j)-f(6,i,j)-f(7,i,j)+f(8,i,j)
-            momy = f(2,i,j)-f(4,i,j)+f(5,i,j)+f(6,i,j)-f(7,i,j)-f(8,i,j)
+            T(i,j) = g(i,j,0)+g(i,j,1)+g(i,j,2)+g(i,j,3)+g(i,j,4)
+            rho(i,j) = f(i,j,0)+f(i,j,1)+f(i,j,2)+f(i,j,3)+f(i,j,4)+f(i,j,5)+f(i,j,6)+f(i,j,7)+f(i,j,8)
+            momx = f(i,j,1)-f(i,j,3)+f(i,j,5)-f(i,j,6)-f(i,j,7)+f(i,j,8)
+            momy = f(i,j,2)-f(i,j,4)+f(i,j,5)+f(i,j,6)-f(i,j,7)-f(i,j,8)
 
             if (rho(i,j).GT.0.0d0) then
                 u(i,j) = momx/rho(i,j)
@@ -1441,6 +1444,7 @@ close(00)
 
 
 
+    !$acc wait(1)
     error1 = 0.0d0
     error2 = 0.0d0
 
@@ -1661,8 +1665,8 @@ end subroutine append_convergence_master_tecplot
 
     open(unit=05,file=trim(reloadFilePrefix)//"-"//trim(filename)//'.bin',form="unformatted",access="sequential")   !二进制
     ! Strict restart snapshots store f and g; EnableUseG also stores the previous heat-flux history.
-    write(05) (((real(f(alpha,i,j),kind=8), i=1,nx), j=1,ny), alpha=0,8)
-    write(05) (((real(g(alpha,i,j),kind=8), i=1,nx), j=1,ny), alpha=0,4)
+    write(05) (((real(f(i,j,alpha),kind=8), i=1,nx), j=1,ny), alpha=0,8)
+    write(05) (((real(g(i,j,alpha),kind=8), i=1,nx), j=1,ny), alpha=0,4)
 #ifdef EnableUseG
     write(05) ((real(Bx_prev(i,j),kind=8), i=1,nx), j=1,ny)
     write(05) ((real(By_prev(i,j),kind=8), i=1,nx), j=1,ny)
@@ -1698,7 +1702,7 @@ end subroutine append_convergence_master_tecplot
 
     open(newunit=metaUnit, file=trim(reloadFilePrefix)//'-latest.meta', &
          status='replace', action='write', form='formatted')
-    write(metaUnit,'(A,1X,I0)') 'reload_meta_version', 2
+    write(metaUnit,'(A,1X,I0)') 'reload_meta_version', 3
 #ifdef steadyFlow
     write(metaUnit,'(A,1X,A)') 'flowMode', 'steadyFlow'
 #endif
@@ -1755,9 +1759,9 @@ end subroutine append_convergence_master_tecplot
     endif
 
     read(metaUnit,*,iostat=ios) label, metaVersion
-    if((ios.NE.0).OR.(trim(label).NE.'reload_meta_version').OR.(metaVersion.NE.2)) then
+    if((ios.NE.0).OR.(trim(label).NE.'reload_meta_version').OR.(metaVersion.NE.3)) then
         write(*,*) 'Error: invalid reload metadata version in ', trim(metaFile)
-        stop    !如果读取失败，或者标签不是 reload_meta_version，或者版本号不是 2，就说明文件格式不对，停止。
+        stop    !如果读取失败，或者标签不是 reload_meta_version，或者版本号不是 3，就说明文件格式不对，停止。
     endif
 
     read(metaUnit,*,iostat=ios) label, metaFlowMode
@@ -2059,6 +2063,7 @@ end subroutine append_convergence_master_tecplot
     logical, save :: first_nure_write = .true.
     
 
+    !$acc wait(1)
     if (dimensionlessTime.GE.dimensionlessTimeMax) then
         write(*,*) "Error: dimensionlessTime exceeds dimensionlessTimeMax, please enlarge dimensionlessTimeMax"
         open(unit=00,file=trim(settingsFile),status="unknown",position="append")

@@ -70,6 +70,8 @@ module commondata
         integer(kind=4) :: top, down, left, right
         integer(kind=4) :: dims(2)
         logical :: periods(2)
+        ! MPI Cartesian 拓扑的周期性设置；2*.FALSE. 表示两个方向都不首尾相接。
+        ! 因此边界 rank 在外侧没有邻居，MPI_CART_SHIFT 会返回 MPI_PROC_NULL。
         data periods/2*.FALSE./
         integer(kind=4) :: nxLocal, nyLocal
         integer(kind=4), allocatable :: displX(:), displY(:)
@@ -96,10 +98,14 @@ subroutine mesh()
             y(j) = 0.5d0 * (erf(constA  * (dble(j) / dble(ny+1) - 0.5d0)) / erf(0.5d0 * constA ) + 1.0d0)
         end do
 
-        ! Compute grid spacing using array slicing
+        ! 由相邻坐标点相减得到非均匀网格的局部间距。
+        ! dx(k)=x(k)-x(k-1)，dy(k)=y(k)-y(k-1)。
         dx(1:nx+1) = x(1:nx+1) - x(0:nx)
         dy(1:ny+1) = y(1:ny+1) - y(0:ny)
+        ! 本参考算例是方腔且 x/y 网格映射相同，因此 dx(1)=dy(1)，
+        ! 这里用近壁最小参考步长 dx(1) 定义 0-system 的空间步长。
         dx0 = dx(1)
+        ! 0-system 中的参考时间步长取为同一个近壁参考步长。
         dt0 = dx0
         write(*,*) "nx =", nx, ", ny =", ny
         write(*,*) "Ra =", real(Ra)
@@ -109,29 +115,49 @@ subroutine mesh()
         write(*,*) "deltaX = ", dx0
         write(*,*) "deltaT = ", dt0
 
+        ! x(0) 和 x(nx+1) 是归一化几何辅助端点 0 和 1。
+        ! 本参考代码进入 Ma/Ra 公式时使用有效长度口径 length0=1-dx0，
+        ! 可理解为近壁半步边界距离两侧合计扣掉一个 dx0。
+        ! 因为 x(1)=dx0、x(nx+1)=1，所以 length0 = x(nx+1)-x(1) = 1-dx0。
         length0 = x(nx+1)-x(1)
         write(*,*) "length0 = ", real(length0)
         write(*,*) "  "
 
         ! Calculate viscosity based on LB unit
+        ! length_LB 是 0-system 到 LB-system 的长度缩放因子；
+        ! 由于 dx0=dx(1)，乘以 length_LB 后近壁参考步长 dx0 对应 1 个 lattice unit。
         length_LB = 1.0d0 / dx(1)
+        ! dt0 同样按 dx0 选取，因此转换到 LB-system 后 dt 通常为 1。
         dt = dt0 * length_LB
 
+        ! 将内部坐标整体减去半个近壁参考步长，可以理解为把左/下物理边界作为距离坐标零点。
+        ! 第一层计算点从 dx0 变为 dx0/2，换算到 LB 单位后约为 0.5。
+        ! 当前算例 x/y 对称，因此 y 方向也使用 dx0/2；非方腔或 x/y 不同网格时应分别考虑 dx0、dy0。
         x(1:nx) = x(1:nx)-dx0/2.0d0
         y(1:ny) = y(1:ny)-dx0/2.0d0
+        ! 将平移后的 0-system 坐标统一放大到 LB 单位，后续插值和输出都使用这些坐标。
         x=x*length_LB
         y=y*length_LB
     endif
 
+    ! block 版本同时切分 x/y 两个方向，因此每个 rank 只接收自己的局部 xGrid(1:nxLocal)。
+    ! 参数含义与 mono 版本的 ScatterV 相同：countX/displX 给出每个 rank 的 x 段长度和偏移。
     call MPI_SCATTERV(x(1),countX,displX,MPI_REAL8,xGrid(1),countX(MYID),MPI_REAL8,0,COMM2D,IERR)
+    ! 分发局部 yGrid(1:nyLocal)；countY/displY 给出每个 rank 的 y 段长度和偏移。
     call MPI_SCATTERV(y(1),countY,displY,MPI_REAL8,yGrid(1),countY(MYID),MPI_REAL8,0,COMM2D,IERR)
 
+    ! 交换 xGrid 的左侧 halo：把本 rank 右边界坐标发给 right，同时从 left 接收其边界到 xGrid(0)。
+    ! 这里只交换一维坐标 halo，所以每次只发送 1 个坐标值。
     call MPI_SENDRECV(xGrid(nxLocal),1,MPI_REAL8,right,0,xGrid(0),1,MPI_REAL8,left,0,COMM2D,ISTATUS,IERR)
+    ! 交换 xGrid 的右侧 halo：把本 rank 左边界坐标发给 left，同时从 right 接收其边界到 xGrid(nxLocal+1)。
     call MPI_SENDRECV(xGrid(1),1,MPI_REAL8,left,1,xGrid(nxLocal+1),1,MPI_REAL8,right,1,COMM2D,ISTATUS,IERR)
 
+    ! 交换 yGrid 的下侧 halo：把本 rank 上边界坐标发给 top，同时从 down 接收其边界到 yGrid(0)。
     call MPI_SENDRECV(yGrid(nyLocal),1,MPI_REAL8,top,0,yGrid(0),1,MPI_REAL8,down,0,COMM2D,ISTATUS,IERR)
+    ! 交换 yGrid 的上侧 halo：把本 rank 下边界坐标发给 down，同时从 top 接收其边界到 yGrid(nyLocal+1)。
     call MPI_SENDRECV(yGrid(1),1,MPI_REAL8,down,1,yGrid(nyLocal+1),1,MPI_REAL8,top,1,COMM2D,ISTATUS,IERR)
 
+    ! 广播 LB 时间步和长度缩放因子；所有 rank 后续计算必须使用同一套尺度。
     call MPI_BCAST(dt,1,MPI_REAL8,0,COMM2D,IERR)
     call MPI_BCAST(length_LB,1,MPI_REAL8,0,COMM2D,IERR)
 
@@ -172,6 +198,12 @@ subroutine initial()
         write(*,*) "deltaT = ", dt
         write(*,*) "characteristic length   =", real(length_LB), "l.u."
         write(*,*) "viscosity_LB =", real(viscosity_LB), "l.u.^2/t.s."
+        ! 该输出只是诊断非均匀网格带来的时间步代价，不参与后续计算。
+        ! 均匀网格若用 nx 个点覆盖单位长度，其参考步长大约是 1/nx；
+        ! 当前非均匀网格近壁加密，使用最小近壁步长 dx(1) 定义 dt0，因此 dt_nonuniform≈dx(1)。
+        ! length_LB=1/dx(1)，所以 length_LB/nx≈(1/nx)/dx(1)=dt_uniform/dt_nonuniform。
+        ! 例如该比值为 1.6 时，表示当前非均匀网格时间步约为均匀网格时间步的 1/1.6，
+        ! 也就是为了解析近壁加密区域，需要更多时间步才能推进同样的 0-system 时间长度。
         write(*,*) "timeStep ratio for (uniform) / (non-uniform) : ", real(length_LB / dble(nx))
         write(*,*) "tauf =", real(tauf)
         write(*,*) "    "
@@ -313,11 +345,28 @@ program main
     allocate(displY(0:NPROC-1))
 
     dims = 0
+    ! 自动把 NPROC 个进程分解成 2 维进程网格。
+    ! 参数含义：NPROC=总进程数，2=拓扑维度数，dims=返回每个方向的进程数，IERR=错误码。
     call MPI_DIMS_CREATE(NPROC, 2, dims, IERR)
+    ! 创建 2 维 Cartesian 通信器 COMM2D。
+    ! 参数含义：MPI_COMM_WORLD=原通信域，2=二维拓扑，dims=各方向进程数，
+    !           periods=各方向是否周期，.TRUE.=允许 MPI 重排 rank 以优化拓扑，
+    !           COMM2D=新通信域，IERR=错误码。
     call MPI_CART_CREATE(MPI_COMM_WORLD,2,dims,periods, .TRUE.,COMM2D,IERR)
+    ! 因为上面允许 reorder，COMM2D 中的 rank 可能不同于 MPI_COMM_WORLD 中的 rank，需要重新获取。
+    ! 参数含义：COMM2D=Cartesian 通信域，MYID=当前进程在 COMM2D 中的 rank，IERR=错误码。
     call MPI_COMM_RANK(COMM2D,MYID,IERR)
+    ! 获取当前 rank 在二维进程网格中的坐标。
+    ! 参数含义：COMM2D=Cartesian 通信域，MYID=当前 rank，2=坐标维度，
+    !           MY_COORD=返回的二维坐标；MY_COORD(1) 对应 x 方向，MY_COORD(2) 对应 y 方向。
     call MPI_CART_COORDS(COMM2D,MYID,2,MY_COORD,IERR)
+    ! 在第 0 个拓扑维度寻找相邻 rank；本代码把该维度当作 x 方向。
+    ! 参数含义：COMM2D=Cartesian 通信域，0=x 方向维度，1=偏移一个进程，
+    !           left=负方向邻居，right=正方向邻居，IERR=错误码。
     call MPI_CART_SHIFT(COMM2D,0,1,left,right,IERR)
+    ! 在第 1 个拓扑维度寻找相邻 rank；本代码把该维度当作 y 方向。
+    ! 参数含义：COMM2D=Cartesian 通信域，1=y 方向维度，1=偏移一个进程，
+    !           down=负方向邻居，top=正方向邻居，IERR=错误码。
     call MPI_CART_SHIFT(COMM2D,1,1,down,top,IERR)
 
     call StartEnd(1,nx,1,ny,MY_COORD)
@@ -444,11 +493,22 @@ subroutine StartEnd(iSx1, iSx2, iSy1, iSy2, coords)
         startY = startPoint(2)+coords(2)*iBlock(2)+ir(2)
     endif
 
-
+    ! 每个 rank 这里只先算出了自己的局部网格数 localCountX/localCountY。
+    ! MPI_ALLGATHER 会把所有 rank 的局部网格数收集到每个 rank 上，
+    ! 这样所有进程都拥有完整的 countX/countY 分区表，后面 mesh() 的 ScatterV 和 gather_data() 都会用到。
+    ! MPI_ALLGATHER 按 rank 编号顺序 放入接收数组。
+    ! 参数含义：localCountX=本 rank 发送的一个整数，1=发送个数，MPI_INTEGER=发送类型，
+    !           countX=接收数组，1=从每个 rank 接收 1 个整数，MPI_INTEGER=接收类型，
+    !           COMM2D=二维笛卡尔通信域，IERR=错误码。
     call MPI_ALLGATHER(localCountX, 1, MPI_INTEGER, countX, 1, MPI_INTEGER, COMM2D, IERR)
+    ! y 方向同理：把每个 rank 的 localCountY 汇总成所有 rank 都可见的 countY。
     call MPI_ALLGATHER(localCountY, 1, MPI_INTEGER, countY, 1, MPI_INTEGER, COMM2D, IERR)
 
+    ! 同样地，每个 rank 只先知道自己的全局起始下标 startX/startY。
+    ! 通过 ALLGATHER 后，所有 rank 都能得到 i_start/j_start，
+    ! 也就是每个 rank 的局部块在全局 x/y 网格中的起点。
     call MPI_ALLGATHER(startX, 1, MPI_INTEGER, i_start, 1, MPI_INTEGER, COMM2D, IERR)
+    ! y 方向起始下标汇总；j_start 后面用于全局位置判断和结果重组。
     call MPI_ALLGATHER(startY, 1, MPI_INTEGER, j_start, 1, MPI_INTEGER, COMM2D, IERR)
 
     do i=0,NPROC-1
@@ -608,29 +668,47 @@ subroutine update()
     real(kind=8) :: sendr_data_g(4*(nyLocal+2)), sendl_data_g(4*(nyLocal+2))
     real(kind=8) :: recvr_data_g(4*(nyLocal+2)), recvl_data_g(4*(nyLocal+2))
 
-    !Update (top/down)
-    !speed distribution function
+    ! Update (top/down)
+    ! 先交换 y 方向的 halo 行。f_post 的数组布局是 f_post(alpha,i,j)，
+    ! 对固定的 j 来说，alpha=0:8 和 i=0:nxLocal+1 在 Fortran 内存中是连续的一整段，
+    ! 所以可以从 f_post(0,0,1) 开始一次发送 9*(nxLocal+2) 个数。
+    ! 这里的 nxLocal+2 包含本地拥有的 1:nxLocal，以及左右两侧 halo 列 i=0 和 i=nxLocal+1。
+    ! speed distribution function: D2Q9，每个格点有 9 个 f 分布函数。
+    ! 把本 rank 的下边界行 j=1 发给 down，同时从 top 接收其边界行到上侧 halo j=nyLocal+1。
     call MPI_SENDRECV(f_post(0,0,1),9*(nxLocal+2),MPI_REAL8,down,0,f_post(0,0,nyLocal+1),9*(nxLocal+2),MPI_REAL8,top,0&
     ,COMM2D,ISTATUS,IERR)
 
+    ! 把本 rank 的上边界行 j=nyLocal 发给 top，同时从 down 接收其边界行到下侧 halo j=0。
+    ! tag=1 与上一组 tag=0 区分，避免上下两次通信互相匹配错。
     call MPI_SENDRECV(f_post(0,0,nyLocal),9*(nxLocal+2),MPI_REAL8,top,1,f_post(0,0,0),9*(nxLocal+2),MPI_REAL8,down,1&
     ,COMM2D,ISTATUS,IERR)
 
-    !temperature distribution function
+    ! temperature distribution function: D2Q5，每个格点有 5 个 g 分布函数。
+    ! 对 g_post 做同样的 y 方向 halo 交换，发送长度为 5*(nxLocal+2)。
+    ! 把下边界行 j=1 发给 down，同时从 top 接收到上侧 halo j=nyLocal+1。
     call MPI_SENDRECV(g_post(0,0,1),5*(nxLocal+2),MPI_REAL8,down,0,g_post(0,0,nyLocal+1),5*(nxLocal+2),MPI_REAL8,top,0&
     ,COMM2D,ISTATUS,IERR)
 
+    ! 把上边界行 j=nyLocal 发给 top，同时从 down 接收到下侧 halo j=0。
+    ! 这些 y 方向 halo 会在后面的 interpolate() 三点插值中被边界附近格点访问。
     call MPI_SENDRECV(g_post(0,0,nyLocal),5*(nxLocal+2),MPI_REAL8,top,1,g_post(0,0,0),5*(nxLocal+2),MPI_REAL8,down,1&
     ,COMM2D,ISTATUS,IERR)
 
-    !Update (left/right)
+    ! Update (left/right)
+    ! 左右边界列在 f_post(alpha,i,j) / g_post(alpha,i,j) 中不是连续内存，
+    ! 所以先把 i=nxLocal 和 i=1 两列按 j、alpha 打包到连续的一维发送缓冲区。
     do j=0,nyLocal+1
-        !speed distribution function
+        ! speed distribution function: D2Q9 去掉静止方向 alpha=0 后，需要打包 alpha=1:8。
+        ! 8*j+alpha 是把二维索引 (j,alpha) 压成一维下标：
+        ! j=0 对应 1:8，j=1 对应 9:16，依次类推。
         do alpha=1,8
+            ! 右边界内部列 i=nxLocal 打包后发给 right。
             sendr_data_f(8*j+alpha)=f_post(alpha,nxLocal,j)
+            ! 左边界内部列 i=1 打包后发给 left。
             sendl_data_f(8*j+alpha)=f_post(alpha,1,j)
         end do
-        !temperature distribution function
+        ! temperature distribution function: D2Q5 去掉静止方向 alpha=0 后，需要打包 alpha=1:4。
+        ! 4*j+alpha 的含义同上，只是每个 j 层只有 4 个非静止温度方向。
         do alpha=1,4
             sendr_data_g(4*j+alpha)=g_post(alpha,nxLocal,j)
             sendl_data_g(4*j+alpha)=g_post(alpha,1,j)
@@ -643,6 +721,7 @@ subroutine update()
     call MPI_SENDRECV(sendr_data_g,4*(nyLocal+2),MPI_REAL8,right,2,recvl_data_g,4*(nyLocal+2),MPI_REAL8,left,2,COMM2D,ISTATUS,IERR)
     call MPI_SENDRECV(sendl_data_g,4*(nyLocal+2),MPI_REAL8,left,3,recvr_data_g,4*(nyLocal+2),MPI_REAL8,right,3,COMM2D,ISTATUS,IERR)
 
+    !把收到的数据解包到左右 ghost 边界
     do j=0,nyLocal+1
         do alpha=1,8
             f_post(alpha,0,j)=recvl_data_f(8*j+alpha)
@@ -906,9 +985,17 @@ subroutine gather_data()
             allocate(rho_temp(countX(iSrc),countY(iSrc)))
             allocate(T_temp(countX(iSrc),countY(iSrc)))
 
+            ! rank 0 逐个接收其他 rank 的局部场数据。
+            ! MPI_RECV 参数含义：
+            !   u_temp = 接收缓冲区；countX(iSrc)*countY(iSrc) = 从 iSrc 接收的元素个数；
+            !   MPI_REAL8 = 数据类型；iSrc = 发送方 rank；10 = 消息标签，用来区分 u 场；
+            !   COMM2D = 二维笛卡尔通信域；ISTATUS = 接收状态；IERR = 错误码。
             call MPI_RECV(u_temp, countX(iSrc)*countY(iSrc), MPI_REAL8, iSrc, 10, COMM2D, ISTATUS, IERR)
+            ! tag=11 表示接收 v 场，其他参数含义同上。
             call MPI_RECV(v_temp, countX(iSrc)*countY(iSrc), MPI_REAL8, iSrc, 11, COMM2D, ISTATUS, IERR)
+            ! tag=12 表示接收 rho 场。
             call MPI_RECV(rho_temp, countX(iSrc)*countY(iSrc), MPI_REAL8, iSrc, 12, COMM2D, ISTATUS, IERR)
+            ! tag=13 表示接收温度场 temp。
             call MPI_RECV(T_temp, countX(iSrc)*countY(iSrc), MPI_REAL8, iSrc, 13, COMM2D, ISTATUS, IERR)
 
             do j = 1, countY(iSrc)
@@ -927,9 +1014,17 @@ subroutine gather_data()
         enddo
 
     else
+        ! 非 root rank 把自己的局部场发送给 rank 0。
+        ! MPI_SEND 参数含义：
+        !   u = 发送缓冲区；countX(MYID)*countY(MYID) = 本 rank 内部网格元素个数，不含 halo；
+        !   MPI_REAL8 = 数据类型；0 = 接收方 root rank；10 = 消息标签，表示 u 场；
+        !   COMM2D = 二维笛卡尔通信域；IERR = 错误码。
         call MPI_SEND(u,countX(MYID)*countY(MYID), MPI_REAL8, 0, 10, COMM2D, IERR)
+        ! tag=11 表示发送 v 场，接收端用相同 tag 匹配。
         call MPI_SEND(v,countX(MYID)*countY(MYID), MPI_REAL8, 0, 11, COMM2D, IERR)
+        ! tag=12 表示发送 rho 场。
         call MPI_SEND(rho,countX(MYID)*countY(MYID), MPI_REAL8, 0, 12, COMM2D, IERR)
+        ! tag=13 表示发送温度场 temp。
         call MPI_SEND(temp,countX(MYID)*countY(MYID), MPI_REAL8, 0, 13, COMM2D, IERR)
     endif
 
