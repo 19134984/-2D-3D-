@@ -1,9 +1,8 @@
 !=============================================================
-! Coordinate convention: z/k/w is buoyancy/vertical; y/j/v is the lateral direction.
+! 坐标约定：z/k/w 是浮力和竖直方向；y/j/v 是侧向方向。
 !!!    注释区，代码描述
 !!!    三维浮力驱动自然对流
 !!!    D3Q19 流场 + D3Q7 温度场
-!!!    参考 3DRBOpenmp.F90 的主流程与后处理结构
 !=============================================================
 
 !=============================================================
@@ -19,8 +18,8 @@
 #error "Define one flow mode: steadyFlow or unsteadyFlow"
 #endif
 
-! Velocity BCs: top/bottom walls are z-normal, left/right walls are y-normal, front/back walls are x-normal.
-! HorizontalWalls*: z/k top/bottom; VerticalWalls*: y/j left/right; SpanwiseWalls*: x/i front/back.
+! 速度边界：上下壁为 z-normal，左右壁为 y-normal，前后壁为 x-normal。
+! HorizontalWalls*: z/k 上下壁；VerticalWalls*: y/j 左右壁；SpanwiseWalls*: x/i 前后壁。
 #define HorizontalWallsNoslip
 #define VerticalWallsNoslip
 #define SpanwiseWallsNoslip
@@ -28,7 +27,7 @@
 !#define VerticalWallsPeriodicalU
 !#define SpanwiseWallsPeriodicalU
 
-! Velocity BC macro selection: choose one no-slip or periodic option per direction.
+! 速度边界宏的选择：每个方向在无滑移和周期之间二选一。
 #if defined(HorizontalWallsNoslip) && defined(HorizontalWallsPeriodicalU)
 #error "Choose only one horizontal velocity BC: HorizontalWallsNoslip or HorizontalWallsPeriodicalU"
 #endif
@@ -50,7 +49,7 @@
 
 
 
-! Rayleigh-Benard temperature BC: horizontal z/k walls are hot/cold; vertical y/j and spanwise x/i walls are adiabatic or periodic.
+! Rayleigh-Benard 温度边界：上下 z/k 壁恒温，左右 y/j 和前后 x/i 壁绝热或周期。
 !#define RayleighBenardCell
 !#define HorizontalWallsConstT
 !#define VerticalWallsAdiabatic
@@ -61,12 +60,12 @@
 
 
 
-! Side-heated temperature BC: vertical y/j walls are hot/cold; horizontal z/k and spanwise x/i walls are adiabatic.
+! Side Heated Cell温度边界：左右 y/j 壁恒温，上下 z/k 和前后 x/i 壁绝热。
 #define SideHeatedCell
 #define VerticalWallsConstT
 #define HorizontalWallsAdiabatic
 #define SpanwiseWallsAdiabatic
-!~~temperature B.C.~~
+!~~温度边界条件~~
 
 !   物理算例宏的选择
 #if defined(RayleighBenardCell) && defined(SideHeatedCell)
@@ -138,9 +137,9 @@ module commondata3dOpenacc
   ! 无量纲参数
   integer(kind=4), parameter :: nx=120, ny=120, nz=120
 #ifdef SideHeatedCell
-  real(kind=8), parameter :: lengthUnit=dble(ny)     ! Side-heated: hot/cold wall distance is y.
+  real(kind=8), parameter :: lengthUnit=dble(ny)     ! 侧壁差温：冷热壁距离沿 y 方向。
 #else
-  real(kind=8), parameter :: lengthUnit=dble(nz)     ! RB: hot/cold wall distance is z.
+  real(kind=8), parameter :: lengthUnit=dble(nz)     ! RB：冷热壁距离沿 z 方向。
 #endif
   real(kind=8), parameter :: pi=acos(-1.0d0)
 
@@ -158,12 +157,12 @@ module commondata3dOpenacc
   ! 高阶矩参数修正 aT
   real(kind=8), parameter :: paraA=42.0d0*dsqrt(3.0d0)*diffusivity-6.0d0
 
-  ! velocityScaleCompare converts lattice velocity to the thermal-diffusion scale U*L/alpha.
-  ! It is used by velocity output and by the convective heat-flux part of Nu diagnostics.
+  ! velocityScaleCompare 把格子速度换算到热扩散标度 U*L/alpha。
+  ! 它用于速度输出，也用于 Nu 诊断中的对流热通量部分。
   real(kind=8), parameter :: velocityScaleCompare=lengthUnit/diffusivity
 
   ! 浮力项参数
-  ! Buoyancy acts in the z direction; W_nd is the vertical velocity in output files.
+  ! 浮力沿 z 方向施加；输出文件中的 W_nd 是竖直速度。
   real(kind=8), parameter :: gBeta1=Rayleigh*viscosity*diffusivity/lengthUnit
   real(kind=8), parameter :: gBeta=gBeta1/lengthUnit/lengthUnit
   real(kind=8), parameter :: timeUnit=dsqrt(lengthUnit/gBeta)
@@ -1264,14 +1263,14 @@ subroutine bounceback3d()
   !$acc parallel loop gang vector collapse(2) default(none) present(f,f_post) async(1)
   do k = 1, nz
     do j = 1, ny
-      ! Front boundary (i=1): incoming populations with ex=+1
+      ! 前边界 (i=1)：处理 ex=+1 的入射分布函数
       f(1,j,k,1) = f_post(nx,j,k,1)
       f(1,j,k,7) = f_post(nx,j,k,7)
       f(1,j,k,9) = f_post(nx,j,k,9)
       f(1,j,k,11) = f_post(nx,j,k,11)
       f(1,j,k,13) = f_post(nx,j,k,13)
 
-      ! Back boundary (i=nx): incoming populations with ex=-1
+      ! 后边界 (i=nx)：处理 ex=-1 的入射分布函数
       f(nx,j,k,2) = f_post(1,j,k,2)
       f(nx,j,k,8) = f_post(1,j,k,8)
       f(nx,j,k,10) = f_post(1,j,k,10)
@@ -1285,14 +1284,14 @@ subroutine bounceback3d()
  !$acc parallel loop gang vector collapse(2) default(none) present(f,f_post) async(1)
   do k = 1, nz
     do j = 1, ny
-      ! Front no-slip wall (i=1): incoming populations with ex=+1
+      ! 前侧无滑移壁面 (i=1)：处理 ex=+1 的入射分布函数
       f(1,j,k,1) = f_post(1,j,k,2)
       f(1,j,k,7) = f_post(1,j,k,10)
       f(1,j,k,9) = f_post(1,j,k,8)
       f(1,j,k,11) = f_post(1,j,k,14)
       f(1,j,k,13) = f_post(1,j,k,12)
 
-      ! Back no-slip wall (i=nx): incoming populations with ex=-1
+      ! 后侧无滑移壁面 (i=nx)：处理 ex=-1 的入射分布函数
       f(nx,j,k,2) = f_post(nx,j,k,1)
       f(nx,j,k,8) = f_post(nx,j,k,9)
       f(nx,j,k,10) = f_post(nx,j,k,7)
@@ -1306,14 +1305,14 @@ subroutine bounceback3d()
  !$acc parallel loop gang vector collapse(2) default(none) present(f,f_post) async(1)
   do k = 1, nz
     do i = 1, nx
-      ! Left boundary (j=1): incoming populations with ey=+1
+      ! 左边界 (j=1)：处理 ey=+1 的入射分布函数
       f(i,1,k,3) = f_post(i,ny,k,3)
       f(i,1,k,7) = f_post(i,ny,k,7)
       f(i,1,k,8) = f_post(i,ny,k,8)
       f(i,1,k,15) = f_post(i,ny,k,15)
       f(i,1,k,17) = f_post(i,ny,k,17)
 
-      ! Right boundary (j=ny): incoming populations with ey=-1
+      ! 右边界 (j=ny)：处理 ey=-1 的入射分布函数
       f(i,ny,k,4) = f_post(i,1,k,4)
       f(i,ny,k,9) = f_post(i,1,k,9)
       f(i,ny,k,10) = f_post(i,1,k,10)
@@ -1327,14 +1326,14 @@ subroutine bounceback3d()
  !$acc parallel loop gang vector collapse(2) default(none) present(f,f_post) async(1)
   do k = 1, nz
     do i = 1, nx
-      ! Left no-slip wall (j=1): incoming populations with ey=+1
+      ! 左侧无滑移壁面 (j=1)：处理 ey=+1 的入射分布函数
       f(i,1,k,3) = f_post(i,1,k,4)
       f(i,1,k,7) = f_post(i,1,k,10)
       f(i,1,k,8) = f_post(i,1,k,9)
       f(i,1,k,15) = f_post(i,1,k,18)
       f(i,1,k,17) = f_post(i,1,k,16)
 
-      ! Right no-slip wall (j=ny): incoming populations with ey=-1
+      ! 右侧无滑移壁面 (j=ny)：处理 ey=-1 的入射分布函数
       f(i,ny,k,4) = f_post(i,ny,k,3)
       f(i,ny,k,9) = f_post(i,ny,k,8)
       f(i,ny,k,10) = f_post(i,ny,k,7)
@@ -1348,14 +1347,14 @@ subroutine bounceback3d()
  !$acc parallel loop gang vector collapse(2) default(none) present(f,f_post) async(1)
   do j = 1, ny
     do i = 1, nx
-      ! Bottom boundary (k=1): incoming populations with ez=+1
+      ! 下边界 (k=1)：处理 ez=+1 的入射分布函数
       f(i,j,1,5) = f_post(i,j,nz,5)
       f(i,j,1,11) = f_post(i,j,nz,11)
       f(i,j,1,12) = f_post(i,j,nz,12)
       f(i,j,1,15) = f_post(i,j,nz,15)
       f(i,j,1,16) = f_post(i,j,nz,16)
 
-      ! Top boundary (k=nz): incoming populations with ez=-1
+      ! 上边界 (k=nz)：处理 ez=-1 的入射分布函数
       f(i,j,nz,6) = f_post(i,j,1,6)
       f(i,j,nz,13) = f_post(i,j,1,13)
       f(i,j,nz,14) = f_post(i,j,1,14)
@@ -1369,14 +1368,14 @@ subroutine bounceback3d()
  !$acc parallel loop gang vector collapse(2) default(none) present(f,f_post) async(1)
   do j = 1, ny
     do i = 1, nx
-      ! Bottom no-slip wall (k=1): incoming populations with ez=+1
+      ! 下侧无滑移壁面 (k=1)：处理 ez=+1 的入射分布函数
       f(i,j,1,5) = f_post(i,j,1,6)
       f(i,j,1,11) = f_post(i,j,1,14)
       f(i,j,1,12) = f_post(i,j,1,13)
       f(i,j,1,15) = f_post(i,j,1,18)
       f(i,j,1,16) = f_post(i,j,1,17)
 
-      ! Top no-slip wall (k=nz): incoming populations with ez=-1
+      ! 上侧无滑移壁面 (k=nz)：处理 ez=-1 的入射分布函数
       f(i,j,nz,6) = f_post(i,j,nz,5)
       f(i,j,nz,13) = f_post(i,j,nz,12)
       f(i,j,nz,14) = f_post(i,j,nz,11)
@@ -1400,8 +1399,7 @@ subroutine macro3d()
   integer(kind=4) :: i, j, k
   real(kind=8) :: FzLoc
 
-  ! 这里仍沿用上面的并行模板；因为放在同一个 async(1) 队列中，所以 collision -> streaming -> bounceback -> macro
-  ! 的先后顺序由队列保证，不需要每一步都显式 wait。
+
  !$acc parallel loop gang vector collapse(3) default(none) present(f,rho,u,v,w,T) async(1) private(FzLoc)
   do k = 1, nz
     do j = 1, ny
@@ -1443,7 +1441,6 @@ subroutine collisionT3d()
   real(kind=8), parameter :: SG = 1.0d0 - 0.5d0 * Qk
 
   ! 温度场采用 D3Q7 MRT
-  ! 下面这条指令的 clause 含义与 collision3d 相同，只是处理对象改成温度分布函数 g / g_post。
   !$acc parallel loop gang vector collapse(3) default(none) present(g,g_post,u,v,w,T,Bx_prev,By_prev,Bz_prev) async(1) &
   !$acc& private(n,neq,q,n_post,Bx,By,Bz,dBx,dBy,dBz)
   do k = 1, nz
@@ -1567,7 +1564,6 @@ subroutine bouncebackT3d()
   integer(kind=4) :: i, j, k
 
 #ifdef SpanwiseWallsPeriodicalT
-  ! 温度边界 kernel 和流场边界 kernel 一样：用 collapse(2) 铺开边界面，并继续放到 async(1) 队列中。
   !$acc parallel loop gang vector collapse(2) default(none) present(g,g_post) async(1)
   do k = 1, nz
     do j = 1, ny
@@ -1700,7 +1696,6 @@ subroutine reconstruct_macro_from_fg3d()
   logical :: rho_bad
 
   ! 严格重启文件会保存 EnableUseG 的历史热流；这里只从 f/g 恢复当前宏观场。
-  ! 这一步发生在 enter_data_3d_openacc() 之前，因此保持主机端重构更稳妥。
   rho_bad = .false.
   do k = 1, nz
     do j = 1, ny
@@ -1776,7 +1771,6 @@ subroutine check3d()
   error6 = 0.0d0
 
   ! reduction(+:...) : 每个线程先做局部累加，kernel 结束后再安全归并成 error1/error2/error5/error6。
-  ! 如果不写 reduction，这几个误差标量会被并发写坏。
  !$acc parallel loop collapse(3) default(none) &
  !$acc& present(u,up,v,vp,w,wp,T,Tp) &
  !$acc& reduction(+:error1,error2,error5,error6)
@@ -1913,8 +1907,7 @@ subroutine output_SnapshotFile3d()
   integer(kind=4) :: i, j, k
   character(len=100) :: filename
 
-  ! 这是给后处理看的快照文件
-  ! 输出的是已经乘上 velocityScaleCompare 的无量纲速度场
+
 #ifdef steadyFlow
   write(filename,'(i12.12)') restartItcOffset+itc
 #endif
@@ -1947,8 +1940,7 @@ subroutine output_ReloadFile3d()
   integer(kind=4) :: i, j, k, alpha
   character(len=100) :: filename
 
-  ! 这是严格重启文件
-  ! f/g 恢复宏观量；EnableUseG 的历史热流必须原样保存，不能由当前 u*T 近似替代。
+
 #ifdef steadyFlow
   reloadFileNum = restartItcOffset+itc
   write(filename,'(i12.12)') reloadFileNum
@@ -2225,7 +2217,7 @@ subroutine calNuRe3d()
   logical, save :: first_nure_write = .true.
 
   !$acc wait(1)
-  ! 这里记录的是时间序列版本的体平均 Nu / Re：
+  ! 时间序列的体平均 Nu / Re：
   ! NuVolAvg : 体平均对流热通量对应的 Nu
   ! ReVolAvg : 全域 RMS 速度对应的 Reynolds 数
   if (dimensionlessTime .GE. dimensionlessTimeMax) then
@@ -2259,7 +2251,6 @@ subroutine calNuRe3d()
 
   NuVolAvg_temp = 0.0d0
 #ifdef SideHeatedCell
-  ! 全域求和型后处理和误差计算一样，需要 reduction 来避免竞争写。
  !$acc parallel loop collapse(3) default(none) present(v,T) reduction(+:NuVolAvg_temp)
   do k = 1, nz
     do j = 1, ny
@@ -2320,8 +2311,8 @@ end subroutine calNuRe3d
 
 #ifdef unsteadyFlow
 !===========================================================================================================================
-! Subroutine: output_unsteady_NuRe_postprocess3d
-! Purpose: rebuild unsteady Nu/Re series, running means, and window averages from full .dat history.
+! 子程序: output_unsteady_NuRe_postprocess3d
+! 作用: 从完整 .dat 历史重建非稳态 Nu/Re 序列、运行平均和窗口平均。
 !===========================================================================================================================
 subroutine output_unsteady_NuRe_postprocess3d()
   use commondata3dOpenacc
@@ -2351,7 +2342,7 @@ subroutine output_unsteady_NuRe_postprocess3d()
   open(newunit=nuUnit, file='Nu_VolAvg_3D.dat', status='old', action='read', form='formatted')
   open(newunit=reUnit, file='Re_VolAvg_3D.dat', status='old', action='read', form='formatted')
 
-  ! These files are derived views of the full .dat history, so rebuild one continuous ZONE.
+  ! 这些文件是完整 .dat 历史的派生视图，因此重建为一个连续的 ZONE。
   open(newunit=seriesUnit, file='NuRe_VolAvg_3DOpenacc.plt', status='replace', action='write', form='formatted')
   write(seriesUnit,'(A)') 'TITLE = "3D OpenACC Nu/Re volume averages"'
   write(seriesUnit,'(A)') 'VARIABLES = "time" "NuVolAvg" "ReVolAvg"'
@@ -2576,7 +2567,6 @@ subroutine RBcalc_Nu_wall_avg3d()
   deltaT = Thot - Tcold
   coef = velocityScaleCompare
 
-  ! copyout(T_bot_avg): T_bot_avg 只在这个 GPU 循环里临时生成，但后面 CPU 端还要继续拟合/插值，所以循环结束后自动拷回主机。
  !$acc parallel loop default(none) present(T) copyout(T_bot_avg)
   do i = 1, nx
     T_bot_avg(i) = 0.0d0
@@ -2587,7 +2577,6 @@ subroutine RBcalc_Nu_wall_avg3d()
   enddo
 
   sum_hot = 0.0d0
-  ! Nu_bot 同样需要回到主机继续做极值搜索；sum_hot 则是标量求和，因此同时使用 copyout + reduction。
  !$acc parallel loop default(none) present(T) copyout(Nu_bot) reduction(+:sum_hot) private(qz_wall)
   do i = 1, nx
     Nu_bot(i) = 0.0d0
@@ -2821,7 +2810,7 @@ subroutine write_midplane_x(filename)
   real(kind=8) :: targetX, weight, valU, valV, valW, valT
   real(kind=8) :: uSlice(ny,nz), vSlice(ny,nz), wSlice(ny,nz), tSlice(ny,nz)
 
-  ! midX is the y-z section; W_nd is vertical because buoyancy acts along z.
+  ! midX 是 y-z 截面；浮力沿 z 方向作用，所以 W_nd 是竖直速度。
   targetX = 0.5d0 * xp(nx+1)
   call find_bracketing_index(xp, nx, targetX, iL, iR, weight)
   do k = 1, nz
@@ -2855,7 +2844,7 @@ subroutine write_midplane_y(filename)
   real(kind=8) :: targetY, weight, valU, valV, valW, valT
   real(kind=8) :: uSlice(nx,nz), vSlice(nx,nz), wSlice(nx,nz), tSlice(nx,nz)
 
-  ! midY is the x-z section; W_nd is vertical because buoyancy acts along z.
+  ! midY 是 x-z 截面；浮力沿 z 方向作用，所以 W_nd 是竖直速度。
   targetY = 0.5d0 * yp(ny+1)
   call find_bracketing_index(yp, ny, targetY, jL, jR, weight)
   do k = 1, nz
@@ -2889,7 +2878,7 @@ subroutine write_midplane_z(filename)
   real(kind=8) :: targetZ, weight, valU, valV, valW, valT
   real(kind=8) :: uSlice(nx,ny), vSlice(nx,ny), wSlice(nx,ny), tSlice(nx,ny)
 
-  ! midZ is the x-y horizontal mid-height section.
+  ! midZ 是 x-y 水平中截面。
   targetZ = 0.5d0 * zp(nz+1)
   call find_bracketing_index(zp, nz, targetZ, kL, kR, weight)
   do j = 1, ny
@@ -3236,7 +3225,7 @@ end subroutine fit_parabola_ls5_3d
 
 !===========================================================================================================================
 ! 子程序: SideHeatedcalc_umid_max3d
-! 作用: 侧壁差温工况的 u 中面最大值诊断入口，复用公共搜索与输出逻辑。
+! 作用: 侧壁差温工况的 u 中面最大值诊断入口。
 !===========================================================================================================================
 subroutine SideHeatedcalc_umid_max3d()
   call calc_umid_max_common3d('SideHeatedcalc_umid_max')
@@ -3244,7 +3233,7 @@ end subroutine SideHeatedcalc_umid_max3d
 
 !===========================================================================================================================
 ! 子程序: SideHeatedcalc_vmid_max3d
-! 作用: 侧壁差温工况的 v 中面最大值诊断入口，复用公共搜索与输出逻辑。
+! 作用: 侧壁差温工况的 v 中面最大值诊断入口。
 !===========================================================================================================================
 subroutine SideHeatedcalc_vmid_max3d()
   call calc_vmid_max_common3d('SideHeatedcalc_vmid_max')
@@ -3252,7 +3241,7 @@ end subroutine SideHeatedcalc_vmid_max3d
 
 !===========================================================================================================================
 ! 子程序: SideHeatedcalc_wmid_max3d
-! 作用: 侧壁差温工况的 w 中面最大值诊断入口，复用公共搜索与输出逻辑。
+! 作用: 侧壁差温工况的 w 中面最大值诊断入口。
 !===========================================================================================================================
 subroutine SideHeatedcalc_wmid_max3d()
   call calc_wmid_max_common3d('SideHeatedcalc_wmid_max')
@@ -3260,7 +3249,7 @@ end subroutine SideHeatedcalc_wmid_max3d
 
 !===========================================================================================================================
 ! 子程序: RBcalc_umid_max3d
-! 作用: Rayleigh-Benard 工况的 u 中面最大值诊断入口，复用公共搜索与输出逻辑。
+! 作用: Rayleigh-Benard 工况的 u 中面最大值诊断入口。
 !===========================================================================================================================
 subroutine RBcalc_umid_max3d()
   call calc_umid_max_common3d('RBcalc_umid_max')
@@ -3268,7 +3257,7 @@ end subroutine RBcalc_umid_max3d
 
 !===========================================================================================================================
 ! 子程序: RBcalc_vmid_max3d
-! 作用: Rayleigh-Benard 工况的 v 中面最大值诊断入口，复用公共搜索与输出逻辑。
+! 作用: Rayleigh-Benard 工况的 v 中面最大值诊断入口。
 !===========================================================================================================================
 subroutine RBcalc_vmid_max3d()
   call calc_vmid_max_common3d('RBcalc_vmid_max')
@@ -3276,7 +3265,7 @@ end subroutine RBcalc_vmid_max3d
 
 !===========================================================================================================================
 ! 子程序: RBcalc_wmid_max3d
-! 作用: Rayleigh-Benard 工况的 w 中面最大值诊断入口，复用公共搜索与输出逻辑。
+! 作用: Rayleigh-Benard 工况的 w 中面最大值诊断入口。
 !===========================================================================================================================
 subroutine RBcalc_wmid_max3d()
   call calc_wmid_max_common3d('RBcalc_wmid_max')
@@ -3380,7 +3369,7 @@ subroutine calc_wmid_max_common3d(logTag)
   integer(kind=4) :: i, j, kL, kR, iBest, jBest
   real(kind=8) :: targetZ, weight, val, wmax, xAtW, yAtW
 
-  ! W is the buoyancy/vertical component after the z-direction convention change.
+  ! 按当前 z 方向约定，W 是浮力方向/竖直方向速度分量。
   targetZ = 0.5d0 * zp(nz+1)
   call find_bracketing_index(zp, nz, targetZ, kL, kR, weight)
 

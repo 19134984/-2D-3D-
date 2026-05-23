@@ -388,7 +388,7 @@
     
 #ifdef steadyFlow
 ! 稳态最终标量诊断：
-! 1) 只在 steadyFlow 收敛后调用；非稳态统计不要直接套用这一组最终诊断。
+! 1) 只在 steadyFlow 收敛后调用
 ! 2) SideHeatedCell 的主热流方向为 x，用 u 和 dT/dx；RayleighBenardCell 的主热流方向为 y，用 v 和 dT/dy。
 ! 3) 壁面 Nu 和角点扩展默认采用半步长边界：流体节点距离物理边界 dx/2 或 dy/2。
 ! 4) Nu 极值、中心线速度极值使用五点最小二乘抛物线插值；中心线在偶数网格时用两侧流体节点线性插值。
@@ -783,7 +783,7 @@
         write(00,*) "Restart offset time_tf =", real(reloadDimensionlessTime,kind=8)
         write(00,*) "Continue output counters: snapshot/plt/reload =", snapshotFileNum, pltFileNum, reloadFileNum
     else
-        write(00,*) "Error: initial field is not properly set"                                                  !如果 loadInitField 不是 0/1 或逻辑不一致，直接停止
+        write(00,*) "Error: initial field is not properly set"  !如果 loadInitField 不是 0/1 或逻辑不一致，直接停止
         stop
     endif
     
@@ -1550,7 +1550,6 @@ end subroutine append_convergence_master_tecplot
 
     open(unit=03,file=trim(snapshotFilePrefix)//"-"//trim(filename)//'.bin',form="unformatted",access="sequential")    !二进制
     ! Post-processing snapshot only: write nondimensionalized u/v together with T and rho.
-    ! Do not use this file for strict restart; output_ReloadFile() keeps lattice velocities for that purpose.
     write(03) ((real(velocityScaleCompare*u(i,j),kind=8),i=1,nx),j=1,ny)
     write(03) ((real(velocityScaleCompare*v(i,j),kind=8),i=1,nx),j=1,ny)
     write(03) ((real(T(i,j),kind=8),i=1,nx),j=1,ny)
@@ -2523,9 +2522,7 @@ end subroutine append_convergence_master_tecplot
     write(*,'(a,1x,es16.8,2x,a,1x,es16.8)') "Nu_hot_max =", Nu_hot_max, "y_max =", Nu_hot_max_position
     write(*,'(a,1x,es16.8,2x,a,1x,es16.8)') "Nu_hot_min =", Nu_hot_min, "y_min =", Nu_hot_min_position
 
-    !open(unit=12,file="Nu_wall_avg.txt",status="unknown",position="append")
-    !write(12,'(i12,1x,8(1x,es16.8))') itc, Nu_hot, Nu_cold, Nu_middle, Nu_hot_max, Nu_hot_max_position, Nu_hot_min, Nu_hot_min_position
-    !close(12)
+
 
     open(unit=00,file=trim(settingsFile),status="unknown",position="append")
     write(00,'(a,1x,es16.8)') "Nu_hot    =", Nu_hot

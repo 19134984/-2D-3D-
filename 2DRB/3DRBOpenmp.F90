@@ -146,7 +146,7 @@ module commondata3d
   real(kind=8), parameter :: Prandtl=0.71d0
   real(kind=8), parameter :: Mach=0.1d0
   real(kind=8), parameter :: Thot=0.5d0, Tcold=-0.5d0
-  real(kind=8), parameter :: Tref=0.5d0*(Thot+Tcold)       ! 浮力项使用 T-Tref；Nu 尺度仍使用 Thot-Tcold
+  real(kind=8), parameter :: Tref=0.5d0*(Thot+Tcold)       ! 参考温度，计算热膨胀系数和无量纲温度用
   real(kind=8), parameter :: tauf=0.5d0+Mach*lengthUnit*dsqrt(3.0d0*Prandtl/Rayleigh)
   real(kind=8), parameter :: viscosity=(tauf-0.5d0)/3.0d0  ! 动量扩散率 nu
   real(kind=8), parameter :: diffusivity=viscosity/Prandtl ! 热扩散率 kappa
@@ -242,7 +242,7 @@ module commondata3d
   real(kind=8) :: errorU, errorT
 
   real(kind=8) :: xp(0:nx+1), yp(0:ny+1), zp(0:nz+1)   ! 无量纲坐标数组，包括边界壁面位置
-  real(kind=8), allocatable :: u(:,:,:), v(:,:,:), w(:,:,:), T(:,:,:), rho(:,:,:) ! 主宏观场
+  real(kind=8), allocatable :: u(:,:,:), v(:,:,:), w(:,:,:), T(:,:,:), rho(:,:,:) ! 宏观变量
 
 #ifdef steadyFlow
   real(kind=8), allocatable :: up(:,:,:), vp(:,:,:), wp(:,:,:), Tp(:,:,:) ! 上一次 check 的场，用于稳态残差
@@ -896,7 +896,7 @@ subroutine collision()
   real(kind=8) :: rhoLoc, uLoc, vLoc, wLoc, u2, uDotF
   real(kind=8) :: FxLoc, FyLoc, FzLoc
 
-  ! 流场采用 D3Q19 MRT。这里把正变换和逆变换都显式展开
+  ! 流场采用 D3Q19 MRT。
   !$omp parallel do collapse(3) default(none) shared(f,f_post,rho,u,v,w,T) &
   !$omp private(i,j,k,alpha,m,meq,m_post,s,fSource,rhoLoc,uLoc,vLoc,wLoc,u2,uDotF,FxLoc,FyLoc,FzLoc)
   do k = 1, nz
