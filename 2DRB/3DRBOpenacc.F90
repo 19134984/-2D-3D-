@@ -1,4 +1,5 @@
 !=============================================================
+! Coordinate convention: z/k/w is buoyancy/vertical; y/j/v is the lateral direction.
 !!!    注释区，代码描述
 !!!    三维浮力驱动自然对流
 !!!    D3Q19 流场 + D3Q7 温度场
@@ -18,17 +19,21 @@
 #error "Define one flow mode: steadyFlow or unsteadyFlow"
 #endif
 
-!速度边界，包括水平垂直展向边界无滑移，还有垂直展向边界速度周期
-!spanwise 表示 z 方向前后展向壁面
+! Velocity BCs: top/bottom walls are z-normal, left/right walls are y-normal, front/back walls are x-normal.
+! HorizontalWalls*: z/k top/bottom; VerticalWalls*: y/j left/right; SpanwiseWalls*: x/i front/back.
 #define HorizontalWallsNoslip
 #define VerticalWallsNoslip
 #define SpanwiseWallsNoslip
+!#define HorizontalWallsPeriodicalU
 !#define VerticalWallsPeriodicalU
 !#define SpanwiseWallsPeriodicalU
 
-!   速度边界宏的选择
-#if !defined(HorizontalWallsNoslip)
-#error "Define horizontal velocity BC: HorizontalWallsNoslip"
+! Velocity BC macro selection: choose one no-slip or periodic option per direction.
+#if defined(HorizontalWallsNoslip) && defined(HorizontalWallsPeriodicalU)
+#error "Choose only one horizontal velocity BC: HorizontalWallsNoslip or HorizontalWallsPeriodicalU"
+#endif
+#if !defined(HorizontalWallsNoslip) && !defined(HorizontalWallsPeriodicalU)
+#error "Define one horizontal velocity BC: HorizontalWallsNoslip or HorizontalWallsPeriodicalU"
 #endif
 #if defined(VerticalWallsNoslip) && defined(VerticalWallsPeriodicalU)
 #error "Choose only one vertical velocity BC: VerticalWallsNoslip or VerticalWallsPeriodicalU"
@@ -45,7 +50,7 @@
 
 
 
-!温度边界(for Rayleigh Benard Cell)，包括水平边界恒温，垂直/展向边界温度不可穿透以及周期
+! Rayleigh-Benard temperature BC: horizontal z/k walls are hot/cold; vertical y/j and spanwise x/i walls are adiabatic or periodic.
 !#define RayleighBenardCell
 !#define HorizontalWallsConstT
 !#define VerticalWallsAdiabatic
@@ -56,7 +61,7 @@
 
 
 
-!温度边界(for Side Heated Cell)，包括水平/展向边界温度不可穿透，垂直边界恒温
+! Side-heated temperature BC: vertical y/j walls are hot/cold; horizontal z/k and spanwise x/i walls are adiabatic.
 #define SideHeatedCell
 #define VerticalWallsConstT
 #define HorizontalWallsAdiabatic
@@ -69,6 +74,18 @@
 #endif
 #if !defined(RayleighBenardCell) && !defined(SideHeatedCell)
 #error "Define one thermal case: RayleighBenardCell or SideHeatedCell"
+#endif
+#if defined(RayleighBenardCell) && !defined(HorizontalWallsConstT)
+#error "RayleighBenardCell uses z-direction hot/cold walls: define HorizontalWallsConstT"
+#endif
+#if defined(HorizontalWallsConstT) && (defined(HorizontalWallsAdiabatic) || defined(HorizontalWallsPeriodicalT))
+#error "Choose only one horizontal temperature BC"
+#endif
+#if defined(VerticalWallsConstT) && (defined(VerticalWallsAdiabatic) || defined(VerticalWallsPeriodicalT))
+#error "Choose only one vertical temperature BC"
+#endif
+#if defined(SpanwiseWallsAdiabatic) && defined(SpanwiseWallsPeriodicalT)
+#error "Choose only one x-normal/front-back temperature BC: SpanwiseWallsAdiabatic or SpanwiseWallsPeriodicalT"
 #endif
 
 
@@ -121,9 +138,9 @@ module commondata3dOpenacc
   ! 无量纲参数
   integer(kind=4), parameter :: nx=120, ny=120, nz=120
 #ifdef SideHeatedCell
-  real(kind=8), parameter :: lengthUnit=dble(nx)
+  real(kind=8), parameter :: lengthUnit=dble(ny)     ! Side-heated: hot/cold wall distance is y.
 #else
-  real(kind=8), parameter :: lengthUnit=dble(ny)
+  real(kind=8), parameter :: lengthUnit=dble(nz)     ! RB: hot/cold wall distance is z.
 #endif
   real(kind=8), parameter :: pi=acos(-1.0d0)
 
@@ -146,6 +163,7 @@ module commondata3dOpenacc
   real(kind=8), parameter :: velocityScaleCompare=lengthUnit/diffusivity
 
   ! 浮力项参数
+  ! Buoyancy acts in the z direction; W_nd is the vertical velocity in output files.
   real(kind=8), parameter :: gBeta1=Rayleigh*viscosity*diffusivity/lengthUnit
   real(kind=8), parameter :: gBeta=gBeta1/lengthUnit/lengthUnit
   real(kind=8), parameter :: timeUnit=dsqrt(lengthUnit/gBeta)
@@ -457,7 +475,7 @@ subroutine initial3d()
 
   integer(kind=4) :: i, j, k, alpha
   real(kind=8) :: eu, u2Loc
-  real(kind=8) :: xLen, yLen, rbInitPerturbAmp
+  real(kind=8) :: xLen, zLen, rbInitPerturbAmp
   character(len=100) :: reloadFileName
 
   itc = 0
@@ -516,6 +534,13 @@ subroutine initial3d()
   write(00,*) 'Mesh:', nx, ny, nz
   write(00,*) 'Rayleigh=', real(Rayleigh,kind=8), '; Prandtl =', real(Prandtl,kind=8), '; Mach =', real(Mach,kind=8)
   write(00,*) 'Length unit: L0 =', real(lengthUnit,kind=8)
+  write(00,*) 'gravityDirection = z ; vertical velocity component = W_nd'
+#ifdef SideHeatedCell
+  write(00,*) 'thermalWallDistanceDirection = y'
+#endif
+#ifdef RayleighBenardCell
+  write(00,*) 'thermalWallDistanceDirection = z'
+#endif
   write(00,*) 'Time unit: Sqrt(L0/(gBeta*DeltaT)) =', real(timeUnit,kind=8)
   write(00,*) 'Velocity unit: Sqrt(gBeta*L0*DeltaT) =', real(velocityUnit,kind=8)
   write(00,*) '   '
@@ -632,19 +657,22 @@ subroutine initial3d()
     endif
 
 #ifdef VerticalWallsNoslip
-    write(00,*) 'Velocity B.C. for vertical walls are: ===No-slip wall==='
+    write(00,*) 'Velocity B.C. for vertical y/j left-right walls are: ===No-slip wall==='
 #endif
 #ifdef VerticalWallsPeriodicalU
-    write(00,*) 'Velocity B.C. for vertical walls are: ===Periodical==='
+    write(00,*) 'Velocity B.C. for vertical y/j left-right walls are: ===Periodical==='
 #endif
 #ifdef HorizontalWallsNoslip
-    write(00,*) 'Velocity B.C. for horizontal walls are: ===No-slip wall==='
+    write(00,*) 'Velocity B.C. for horizontal z/k top-bottom walls are: ===No-slip wall==='
+#endif
+#ifdef HorizontalWallsPeriodicalU
+    write(00,*) 'Velocity B.C. for horizontal z/k top-bottom walls are: ===Periodical==='
 #endif
 #ifdef SpanwiseWallsNoslip
-    write(00,*) 'Velocity B.C. for spanwise walls are: ===No-slip wall==='
+    write(00,*) 'Velocity B.C. for spanwise x/i front-back walls are: ===No-slip wall==='
 #endif
 #ifdef SpanwiseWallsPeriodicalU
-    write(00,*) 'Velocity B.C. for spanwise walls are: ===Periodical==='
+    write(00,*) 'Velocity B.C. for spanwise x/i front-back walls are: ===Periodical==='
 #endif
 
     u = 0.0d0
@@ -656,31 +684,47 @@ subroutine initial3d()
     do k = 1, nz
       do j = 1, ny
         do i = 1, nx
-          T(i,j,k) = Thot + (xp(i) - xp(0)) / (xp(nx+1) - xp(0)) * (Tcold - Thot)
+          T(i,j,k) = Thot + (yp(j) - yp(0)) / (yp(ny+1) - yp(0)) * (Tcold - Thot)
         enddo
       enddo
     enddo
-    write(00,*) 'Temperature B.C. for vertical walls are: ===Hot/cold wall==='
+    write(00,*) 'Temperature B.C. for vertical y/j left-right walls are: ===Hot/cold wall==='
+#endif
+
+#ifdef VerticalWallsAdiabatic
+    write(00,*) 'Temperature B.C. for vertical y/j left-right walls are: ===Adiabatic wall==='
+#endif
+
+#ifdef VerticalWallsPeriodicalT
+    write(00,*) 'Temperature B.C. for vertical y/j left-right walls are: ===Periodical==='
+#endif
+
+#ifdef HorizontalWallsAdiabatic
+    write(00,*) 'Temperature B.C. for horizontal z/k top-bottom walls are: ===Adiabatic wall==='
+#endif
+
+#ifdef HorizontalWallsPeriodicalT
+    write(00,*) 'Temperature B.C. for horizontal z/k top-bottom walls are: ===Periodical==='
 #endif
 
 #ifdef HorizontalWallsConstT
     do k = 1, nz
       do j = 1, ny
         do i = 1, nx
-          T(i,j,k) = Thot + (yp(j) - yp(0)) / (yp(ny+1) - yp(0)) * (Tcold - Thot)
+          T(i,j,k) = Thot + (zp(k) - zp(0)) / (zp(nz+1) - zp(0)) * (Tcold - Thot)
         enddo
       enddo
     enddo
-    write(00,*) 'Temperature B.C. for horizontal walls are: ===Hot/cold wall==='
+    write(00,*) 'Temperature B.C. for horizontal z/k top-bottom walls are: ===Hot/cold wall==='
 #ifdef RayleighBenardCell
     if (Rayleigh .LT. 1.0d4) then
       xLen = xp(nx+1)
-      yLen = yp(ny+1)
+      zLen = zp(nz+1)
       rbInitPerturbAmp = 1.0d-3 * (Thot - Tcold)
       do k = 1, nz
         do j = 1, ny
           do i = 1, nx
-            T(i,j,k) = T(i,j,k) + rbInitPerturbAmp * dcos(2.0d0 * pi * xp(i) / xLen) * dsin(pi * yp(j) / yLen)
+            T(i,j,k) = T(i,j,k) + rbInitPerturbAmp * dcos(2.0d0 * pi * xp(i) / xLen) * dsin(pi * zp(k) / zLen)
           enddo
         enddo
       enddo
@@ -691,24 +735,12 @@ subroutine initial3d()
 #endif
 #endif
 
-#ifdef VerticalWallsAdiabatic
-    write(00,*) 'Temperature B.C. for vertical walls are: ===Adiabatic wall==='
-#endif
-
-#ifdef VerticalWallsPeriodicalT
-    write(00,*) 'Temperature B.C. for vertical walls are: ===Periodical==='
-#endif
-
-#ifdef HorizontalWallsAdiabatic
-    write(00,*) 'Temperature B.C. for horizontal walls are: ===Adiabatic wall==='
-#endif
-
 #ifdef SpanwiseWallsAdiabatic
-    write(00,*) 'Temperature B.C. for spanwise walls are: ===Adiabatic wall==='
+    write(00,*) 'Temperature B.C. for spanwise x/i front-back walls are: ===Adiabatic wall==='
 #endif
 
 #ifdef SpanwiseWallsPeriodicalT
-    write(00,*) 'Temperature B.C. for spanwise walls are: ===Periodical==='
+    write(00,*) 'Temperature B.C. for spanwise x/i front-back walls are: ===Periodical==='
 #endif
 
     do k = 1, nz
@@ -1066,8 +1098,8 @@ subroutine collision3d()
         s(18) = Sm
 
         FxLoc = 0.0d0
-        FyLoc = rhoLoc * gBeta * (T(i,j,k) - Tref)
-        FzLoc = 0.0d0
+        FyLoc = 0.0d0
+        FzLoc = rhoLoc * gBeta * (T(i,j,k) - Tref)
         uDotF = uLoc * FxLoc + vLoc * FyLoc + wLoc * FzLoc
 
         fSource(0)  = 0.0d0
@@ -1228,18 +1260,18 @@ subroutine bounceback3d()
 
   integer(kind=4) :: i, j, k
 
-#ifdef VerticalWallsPeriodicalU
+#ifdef SpanwiseWallsPeriodicalU
   !$acc parallel loop gang vector collapse(2) default(none) present(f,f_post) async(1)
   do k = 1, nz
     do j = 1, ny
-      ! Left boundary (i=1): incoming populations with ex=+1
+      ! Front boundary (i=1): incoming populations with ex=+1
       f(1,j,k,1) = f_post(nx,j,k,1)
       f(1,j,k,7) = f_post(nx,j,k,7)
       f(1,j,k,9) = f_post(nx,j,k,9)
       f(1,j,k,11) = f_post(nx,j,k,11)
       f(1,j,k,13) = f_post(nx,j,k,13)
 
-      ! Right boundary (i=nx): incoming populations with ex=-1
+      ! Back boundary (i=nx): incoming populations with ex=-1
       f(nx,j,k,2) = f_post(1,j,k,2)
       f(nx,j,k,8) = f_post(1,j,k,8)
       f(nx,j,k,10) = f_post(1,j,k,10)
@@ -1249,18 +1281,18 @@ subroutine bounceback3d()
   enddo
 #endif
 
-#ifdef VerticalWallsNoslip
+#ifdef SpanwiseWallsNoslip
  !$acc parallel loop gang vector collapse(2) default(none) present(f,f_post) async(1)
   do k = 1, nz
     do j = 1, ny
-      ! Left no-slip wall (i=1): incoming populations with ex=+1
+      ! Front no-slip wall (i=1): incoming populations with ex=+1
       f(1,j,k,1) = f_post(1,j,k,2)
       f(1,j,k,7) = f_post(1,j,k,10)
       f(1,j,k,9) = f_post(1,j,k,8)
       f(1,j,k,11) = f_post(1,j,k,14)
       f(1,j,k,13) = f_post(1,j,k,12)
 
-      ! Right no-slip wall (i=nx): incoming populations with ex=-1
+      ! Back no-slip wall (i=nx): incoming populations with ex=-1
       f(nx,j,k,2) = f_post(nx,j,k,1)
       f(nx,j,k,8) = f_post(nx,j,k,9)
       f(nx,j,k,10) = f_post(nx,j,k,7)
@@ -1270,18 +1302,39 @@ subroutine bounceback3d()
   enddo
 #endif
 
-#ifdef HorizontalWallsNoslip
+#ifdef VerticalWallsPeriodicalU
  !$acc parallel loop gang vector collapse(2) default(none) present(f,f_post) async(1)
   do k = 1, nz
     do i = 1, nx
-      ! Bottom no-slip wall (j=1): incoming populations with ey=+1
+      ! Left boundary (j=1): incoming populations with ey=+1
+      f(i,1,k,3) = f_post(i,ny,k,3)
+      f(i,1,k,7) = f_post(i,ny,k,7)
+      f(i,1,k,8) = f_post(i,ny,k,8)
+      f(i,1,k,15) = f_post(i,ny,k,15)
+      f(i,1,k,17) = f_post(i,ny,k,17)
+
+      ! Right boundary (j=ny): incoming populations with ey=-1
+      f(i,ny,k,4) = f_post(i,1,k,4)
+      f(i,ny,k,9) = f_post(i,1,k,9)
+      f(i,ny,k,10) = f_post(i,1,k,10)
+      f(i,ny,k,16) = f_post(i,1,k,16)
+      f(i,ny,k,18) = f_post(i,1,k,18)
+    enddo
+  enddo
+#endif
+
+#ifdef VerticalWallsNoslip
+ !$acc parallel loop gang vector collapse(2) default(none) present(f,f_post) async(1)
+  do k = 1, nz
+    do i = 1, nx
+      ! Left no-slip wall (j=1): incoming populations with ey=+1
       f(i,1,k,3) = f_post(i,1,k,4)
       f(i,1,k,7) = f_post(i,1,k,10)
       f(i,1,k,8) = f_post(i,1,k,9)
       f(i,1,k,15) = f_post(i,1,k,18)
       f(i,1,k,17) = f_post(i,1,k,16)
 
-      ! Top no-slip wall (j=ny): incoming populations with ey=-1
+      ! Right no-slip wall (j=ny): incoming populations with ey=-1
       f(i,ny,k,4) = f_post(i,ny,k,3)
       f(i,ny,k,9) = f_post(i,ny,k,8)
       f(i,ny,k,10) = f_post(i,ny,k,7)
@@ -1291,18 +1344,18 @@ subroutine bounceback3d()
   enddo
 #endif
 
-#ifdef SpanwiseWallsPeriodicalU
+#ifdef HorizontalWallsPeriodicalU
  !$acc parallel loop gang vector collapse(2) default(none) present(f,f_post) async(1)
   do j = 1, ny
     do i = 1, nx
-      ! Front/spanwise-low boundary (k=1): incoming populations with ez=+1
+      ! Bottom boundary (k=1): incoming populations with ez=+1
       f(i,j,1,5) = f_post(i,j,nz,5)
       f(i,j,1,11) = f_post(i,j,nz,11)
       f(i,j,1,12) = f_post(i,j,nz,12)
       f(i,j,1,15) = f_post(i,j,nz,15)
       f(i,j,1,16) = f_post(i,j,nz,16)
 
-      ! Back/spanwise-high boundary (k=nz): incoming populations with ez=-1
+      ! Top boundary (k=nz): incoming populations with ez=-1
       f(i,j,nz,6) = f_post(i,j,1,6)
       f(i,j,nz,13) = f_post(i,j,1,13)
       f(i,j,nz,14) = f_post(i,j,1,14)
@@ -1312,18 +1365,18 @@ subroutine bounceback3d()
   enddo
 #endif
 
-#ifdef SpanwiseWallsNoslip
+#ifdef HorizontalWallsNoslip
  !$acc parallel loop gang vector collapse(2) default(none) present(f,f_post) async(1)
   do j = 1, ny
     do i = 1, nx
-      ! Front/spanwise-low no-slip wall (k=1): incoming populations with ez=+1
+      ! Bottom no-slip wall (k=1): incoming populations with ez=+1
       f(i,j,1,5) = f_post(i,j,1,6)
       f(i,j,1,11) = f_post(i,j,1,14)
       f(i,j,1,12) = f_post(i,j,1,13)
       f(i,j,1,15) = f_post(i,j,1,18)
       f(i,j,1,16) = f_post(i,j,1,17)
 
-      ! Back/spanwise-high no-slip wall (k=nz): incoming populations with ez=-1
+      ! Top no-slip wall (k=nz): incoming populations with ez=-1
       f(i,j,nz,6) = f_post(i,j,nz,5)
       f(i,j,nz,13) = f_post(i,j,nz,12)
       f(i,j,nz,14) = f_post(i,j,nz,11)
@@ -1345,11 +1398,11 @@ subroutine macro3d()
   implicit none
 
   integer(kind=4) :: i, j, k
-  real(kind=8) :: FyLoc
+  real(kind=8) :: FzLoc
 
   ! 这里仍沿用上面的并行模板；因为放在同一个 async(1) 队列中，所以 collision -> streaming -> bounceback -> macro
   ! 的先后顺序由队列保证，不需要每一步都显式 wait。
- !$acc parallel loop gang vector collapse(3) default(none) present(f,rho,u,v,w,T) async(1) private(FyLoc)
+ !$acc parallel loop gang vector collapse(3) default(none) present(f,rho,u,v,w,T) async(1) private(FzLoc)
   do k = 1, nz
     do j = 1, ny
       do i = 1, nx
@@ -1359,16 +1412,16 @@ subroutine macro3d()
              f(i,j,k,12) + f(i,j,k,13) + f(i,j,k,14) + f(i,j,k,15) + &
              f(i,j,k,16) + f(i,j,k,17) + f(i,j,k,18)
 
-        FyLoc = rho(i,j,k) * gBeta * (T(i,j,k) - Tref)
+        FzLoc = rho(i,j,k) * gBeta * (T(i,j,k) - Tref)
 
         u(i,j,k) = ( f(i,j,k,1) - f(i,j,k,2) + f(i,j,k,7) - f(i,j,k,8) + f(i,j,k,9) - f(i,j,k,10) + &
              f(i,j,k,11) - f(i,j,k,12) + f(i,j,k,13) - f(i,j,k,14) ) / rho(i,j,k)
 
         v(i,j,k) = ( f(i,j,k,3) - f(i,j,k,4) + f(i,j,k,7) + f(i,j,k,8) - f(i,j,k,9) - f(i,j,k,10) + &
-             f(i,j,k,15) - f(i,j,k,16) + f(i,j,k,17) - f(i,j,k,18) + 0.5d0 * FyLoc ) / rho(i,j,k)
+             f(i,j,k,15) - f(i,j,k,16) + f(i,j,k,17) - f(i,j,k,18) ) / rho(i,j,k)
 
         w(i,j,k) = ( f(i,j,k,5) - f(i,j,k,6) + f(i,j,k,11) + f(i,j,k,12) - f(i,j,k,13) - f(i,j,k,14) + &
-             f(i,j,k,15) + f(i,j,k,16) - f(i,j,k,17) - f(i,j,k,18) ) / rho(i,j,k)
+             f(i,j,k,15) + f(i,j,k,16) - f(i,j,k,17) - f(i,j,k,18) + 0.5d0 * FzLoc ) / rho(i,j,k)
       enddo
     enddo
   enddo
@@ -1513,7 +1566,7 @@ subroutine bouncebackT3d()
 
   integer(kind=4) :: i, j, k
 
-#ifdef VerticalWallsPeriodicalT
+#ifdef SpanwiseWallsPeriodicalT
   ! 温度边界 kernel 和流场边界 kernel 一样：用 collapse(2) 铺开边界面，并继续放到 async(1) 队列中。
   !$acc parallel loop gang vector collapse(2) default(none) present(g,g_post) async(1)
   do k = 1, nz
@@ -1524,42 +1577,17 @@ subroutine bouncebackT3d()
   enddo
 #endif
 
-#ifdef VerticalWallsConstT
-  !$acc parallel loop gang vector collapse(2) default(none) present(g,g_post,omegaT) async(1)
-  do k = 1, nz
-    do j = 1, ny
-#ifdef EnableLegacyThermalScheme
-      g(1,j,k,1)  = -g_post(1,j,k,2)  + (6.0d0 + paraA) / 21.0d0 * Thot
-      g(nx,j,k,2) = -g_post(nx,j,k,1) + (6.0d0 + paraA) / 21.0d0 * Tcold
-#else
-      g(1,j,k,1)  = -g_post(1,j,k,2)  + 2.0d0 * omegaT(1) * Thot
-      g(nx,j,k,2) = -g_post(nx,j,k,1) + 2.0d0 * omegaT(2) * Tcold
-#endif
-    enddo
-  enddo
-#endif
-
-#ifdef VerticalWallsAdiabatic
- !$acc parallel loop gang vector collapse(2) default(none) present(g,g_post) async(1)
-  do k = 1, nz
-    do j = 1, ny
-      g(1,j,k,1)  = g_post(1,j,k,2)
-      g(nx,j,k,2) = g_post(nx,j,k,1)
-    enddo
-  enddo
-#endif
-
-#ifdef HorizontalWallsAdiabatic
+#ifdef VerticalWallsPeriodicalT
  !$acc parallel loop gang vector collapse(2) default(none) present(g,g_post) async(1)
   do k = 1, nz
     do i = 1, nx
-      g(i,1,k,3)  = g_post(i,1,k,4)
-      g(i,ny,k,4) = g_post(i,ny,k,3)
+      g(i,1,k,3)  = g_post(i,ny,k,3)
+      g(i,ny,k,4) = g_post(i,1,k,4)
     enddo
   enddo
 #endif
 
-#ifdef HorizontalWallsConstT
+#ifdef VerticalWallsConstT
   !$acc parallel loop gang vector collapse(2) default(none) present(g,g_post,omegaT) async(1)
   do k = 1, nz
     do i = 1, nx
@@ -1574,7 +1602,42 @@ subroutine bouncebackT3d()
   enddo
 #endif
 
-#ifdef SpanwiseWallsPeriodicalT
+#ifdef SpanwiseWallsAdiabatic
+ !$acc parallel loop gang vector collapse(2) default(none) present(g,g_post) async(1)
+  do k = 1, nz
+    do j = 1, ny
+      g(1,j,k,1)  = g_post(1,j,k,2)
+      g(nx,j,k,2) = g_post(nx,j,k,1)
+    enddo
+  enddo
+#endif
+
+#ifdef VerticalWallsAdiabatic
+ !$acc parallel loop gang vector collapse(2) default(none) present(g,g_post) async(1)
+  do k = 1, nz
+    do i = 1, nx
+      g(i,1,k,3)  = g_post(i,1,k,4)
+      g(i,ny,k,4) = g_post(i,ny,k,3)
+    enddo
+  enddo
+#endif
+
+#ifdef HorizontalWallsConstT
+ !$acc parallel loop gang vector collapse(2) default(none) present(g,g_post,omegaT) async(1)
+  do j = 1, ny
+    do i = 1, nx
+#ifdef EnableLegacyThermalScheme
+      g(i,j,1,5)  = -g_post(i,j,1,6)  + (6.0d0 + paraA) / 21.0d0 * Thot
+      g(i,j,nz,6) = -g_post(i,j,nz,5) + (6.0d0 + paraA) / 21.0d0 * Tcold
+#else
+      g(i,j,1,5)  = -g_post(i,j,1,6)  + 2.0d0 * omegaT(5) * Thot
+      g(i,j,nz,6) = -g_post(i,j,nz,5) + 2.0d0 * omegaT(6) * Tcold
+#endif
+    enddo
+  enddo
+#endif
+
+#ifdef HorizontalWallsPeriodicalT
  !$acc parallel loop gang vector collapse(2) default(none) present(g,g_post) async(1)
   do j = 1, ny
     do i = 1, nx
@@ -1584,7 +1647,7 @@ subroutine bouncebackT3d()
   enddo
 #endif
 
-#ifdef SpanwiseWallsAdiabatic
+#ifdef HorizontalWallsAdiabatic
  !$acc parallel loop gang vector collapse(2) default(none) present(g,g_post) async(1)
   do j = 1, ny
     do i = 1, nx
@@ -1667,8 +1730,8 @@ subroutine reconstruct_macro_from_fg3d()
           ! 力项里含有 rho 和 T，因此这里做几次简单迭代来恢复带半步修正的速度
           do iter = 1, 3
             FxLoc = 0.0d0
-            FyLoc = rho(i,j,k) * gBeta * (T(i,j,k) - Tref)
-            FzLoc = 0.0d0
+            FyLoc = 0.0d0
+            FzLoc = rho(i,j,k) * gBeta * (T(i,j,k) - Tref)
             u(i,j,k) = (momx + 0.5d0 * FxLoc) / rho(i,j,k)
             v(i,j,k) = (momy + 0.5d0 * FyLoc) / rho(i,j,k)
             w(i,j,k) = (momz + 0.5d0 * FzLoc) / rho(i,j,k)
@@ -1932,7 +1995,7 @@ subroutine write_reload_metadata3d(filename)
 
   open(newunit=metaUnit, file=trim(reloadFilePrefix)//'-latest.meta', &
        status='replace', action='write', form='formatted')
-  write(metaUnit,'(A,1X,I0)') 'reload_meta_version', 3
+  write(metaUnit,'(A,1X,I0)') 'reload_meta_version', 4
 #ifdef steadyFlow
   write(metaUnit,'(A,1X,A)') 'flowMode', 'steadyFlow'
 #endif
@@ -1989,7 +2052,7 @@ subroutine read_reload_metadata3d(reloadFileName)
   endif
 
   read(metaUnit,*,iostat=ios) label, metaVersion
-  if ((ios .NE. 0) .OR. (trim(label) .NE. 'reload_meta_version') .OR. (metaVersion .NE. 3)) then
+  if ((ios .NE. 0) .OR. (trim(label) .NE. 'reload_meta_version') .OR. (metaVersion .NE. 4)) then
     write(*,*) 'Error: invalid reload metadata version in ', trim(metaFile)
     stop
   endif
@@ -2197,20 +2260,20 @@ subroutine calNuRe3d()
   NuVolAvg_temp = 0.0d0
 #ifdef SideHeatedCell
   ! 全域求和型后处理和误差计算一样，需要 reduction 来避免竞争写。
- !$acc parallel loop collapse(3) default(none) present(u,T) reduction(+:NuVolAvg_temp)
-  do k = 1, nz
-    do j = 1, ny
-      do i = 1, nx
-        NuVolAvg_temp = NuVolAvg_temp + u(i,j,k) * T(i,j,k)
-      enddo
-    enddo
-  enddo
-#else
  !$acc parallel loop collapse(3) default(none) present(v,T) reduction(+:NuVolAvg_temp)
   do k = 1, nz
     do j = 1, ny
       do i = 1, nx
         NuVolAvg_temp = NuVolAvg_temp + v(i,j,k) * T(i,j,k)
+      enddo
+    enddo
+  enddo
+#else
+ !$acc parallel loop collapse(3) default(none) present(w,T) reduction(+:NuVolAvg_temp)
+  do k = 1, nz
+    do j = 1, ny
+      do i = 1, nx
+        NuVolAvg_temp = NuVolAvg_temp + w(i,j,k) * T(i,j,k)
       enddo
     enddo
   enddo
@@ -2455,33 +2518,33 @@ subroutine RBcalc_Nu_global3d()
   use commondata3dOpenacc
   implicit none
   integer(kind=4) :: i, j, k
-  real(kind=8) :: dy, dTdy, qy, sum_qy
+  real(kind=8) :: dz, dTdz, qz, sum_qz
   real(kind=8) :: deltaT, coef
 
-  dy = 1.0d0 / lengthUnit
+  dz = 1.0d0 / lengthUnit
   deltaT = Thot - Tcold
   coef = velocityScaleCompare
-  sum_qy = 0.0d0
+  sum_qz = 0.0d0
 
- !$acc parallel loop collapse(3) default(none) present(v,T) reduction(+:sum_qy) private(dTdy,qy)
+ !$acc parallel loop collapse(3) default(none) present(w,T) reduction(+:sum_qz) private(dTdz,qz)
   do k = 1, nz
     do j = 1, ny
       do i = 1, nx
-        if (j .EQ. 1) then
-          dTdy = (3.0d0*T(i,1,k) + T(i,2,k) - 4.0d0*Thot) / (3.0d0*dy)
-        elseif (j .EQ. ny) then
-          dTdy = (4.0d0*Tcold - 3.0d0*T(i,ny,k) - T(i,ny-1,k)) / (3.0d0*dy)
+        if (k .EQ. 1) then
+          dTdz = (3.0d0*T(i,j,1) + T(i,j,2) - 4.0d0*Thot) / (3.0d0*dz)
+        elseif (k .EQ. nz) then
+          dTdz = (4.0d0*Tcold - 3.0d0*T(i,j,nz) - T(i,j,nz-1)) / (3.0d0*dz)
         else
-          dTdy = (T(i,j+1,k) - T(i,j-1,k)) / (2.0d0*dy)
+          dTdz = (T(i,j,k+1) - T(i,j,k-1)) / (2.0d0*dz)
         endif
 
-        qy = coef * v(i,j,k) * (T(i,j,k) - Tref) - dTdy
-        sum_qy = sum_qy + qy
+        qz = coef * w(i,j,k) * (T(i,j,k) - Tref) - dTdz
+        sum_qz = sum_qz + qz
       enddo
     enddo
   enddo
 
-  Nu_global = (sum_qy / dble(nx * ny * nz)) / deltaT
+  Nu_global = (sum_qz / dble(nx * ny * nz)) / deltaT
 
   write(*,'(a,1x,ES24.16E3)') 'Nu_global =', real(Nu_global,kind=8)
   open(unit=00, file=trim(settingsFile), status='unknown', position='append')
@@ -2499,17 +2562,17 @@ end subroutine RBcalc_Nu_global3d
 subroutine RBcalc_Nu_wall_avg3d()
   use commondata3dOpenacc
   implicit none
-  integer(kind=4) :: i, imax, imin, jB, jT, jMid, k, m
+  integer(kind=4) :: i, imax, imin, j, kB, kT, kMid, m
   integer(kind=4) :: ii(5)
-  real(kind=8) :: dx, dy, deltaT, coef
-  real(kind=8) :: qy_wall, sum_hot, sum_cold, sum_mid
+  real(kind=8) :: dx, dz, deltaT, coef
+  real(kind=8) :: qz_wall, sum_hot, sum_cold, sum_mid
   real(kind=8) :: T_wl, T_wr
   real(kind=8) :: xfit(4), Tfit(4)
   real(kind=8) :: xk(5), fk(5), fstar, xstar
   real(kind=8) :: Nu_bot(1:nx), Nu_bot_ext(0:nx+1), T_bot_avg(1:nx)
 
   dx = 1.0d0 / lengthUnit
-  dy = 1.0d0 / lengthUnit
+  dz = 1.0d0 / lengthUnit
   deltaT = Thot - Tcold
   coef = velocityScaleCompare
 
@@ -2517,22 +2580,22 @@ subroutine RBcalc_Nu_wall_avg3d()
  !$acc parallel loop default(none) present(T) copyout(T_bot_avg)
   do i = 1, nx
     T_bot_avg(i) = 0.0d0
-    do k = 1, nz
-      T_bot_avg(i) = T_bot_avg(i) + T(i,1,k)
+    do j = 1, ny
+      T_bot_avg(i) = T_bot_avg(i) + T(i,j,1)
     enddo
-    T_bot_avg(i) = T_bot_avg(i) / dble(nz)
+    T_bot_avg(i) = T_bot_avg(i) / dble(ny)
   enddo
 
   sum_hot = 0.0d0
   ! Nu_bot 同样需要回到主机继续做极值搜索；sum_hot 则是标量求和，因此同时使用 copyout + reduction。
- !$acc parallel loop default(none) present(T) copyout(Nu_bot) reduction(+:sum_hot) private(qy_wall)
+ !$acc parallel loop default(none) present(T) copyout(Nu_bot) reduction(+:sum_hot) private(qz_wall)
   do i = 1, nx
     Nu_bot(i) = 0.0d0
-    do k = 1, nz
-      qy_wall = (8.0d0*Thot - 9.0d0*T(i,1,k) + T(i,2,k)) / (3.0d0*dy)
-      Nu_bot(i) = Nu_bot(i) + qy_wall / deltaT
+    do j = 1, ny
+      qz_wall = (8.0d0*Thot - 9.0d0*T(i,j,1) + T(i,j,2)) / (3.0d0*dz)
+      Nu_bot(i) = Nu_bot(i) + qz_wall / deltaT
     enddo
-    Nu_bot(i) = Nu_bot(i) / dble(nz)
+    Nu_bot(i) = Nu_bot(i) / dble(ny)
     sum_hot = sum_hot + Nu_bot(i)
   enddo
   Nu_hot = sum_hot / dble(nx)
@@ -2543,14 +2606,14 @@ subroutine RBcalc_Nu_wall_avg3d()
   xfit(3) = xp(3);  Tfit(3) = T_bot_avg(3)
   xfit(4) = xp(4);  Tfit(4) = T_bot_avg(4)
   call fit_adiabatic_wall_T4_3d(0.0d0, xfit, Tfit, T_wl)
-  Nu_bot_ext(0) = (2.0d0 * (Thot - T_wl) / dy) / deltaT
+  Nu_bot_ext(0) = (2.0d0 * (Thot - T_wl) / dz) / deltaT
 
   xfit(1) = xp(nx-3);  Tfit(1) = T_bot_avg(nx-3)
   xfit(2) = xp(nx-2);  Tfit(2) = T_bot_avg(nx-2)
   xfit(3) = xp(nx-1);  Tfit(3) = T_bot_avg(nx-1)
   xfit(4) = xp(nx  );  Tfit(4) = T_bot_avg(nx  )
   call fit_adiabatic_wall_T4_3d(xp(nx+1), xfit, Tfit, T_wr)
-  Nu_bot_ext(nx+1) = (2.0d0 * (Thot - T_wr) / dy) / deltaT
+  Nu_bot_ext(nx+1) = (2.0d0 * (Thot - T_wr) / dz) / deltaT
 
   imax = 0
   imin = 0
@@ -2598,37 +2661,37 @@ subroutine RBcalc_Nu_wall_avg3d()
   Nu_hot_min_position = xstar
 
   sum_cold = 0.0d0
- !$acc parallel loop collapse(2) default(none) present(T) reduction(+:sum_cold) private(qy_wall)
-  do k = 1, nz
+ !$acc parallel loop collapse(2) default(none) present(T) reduction(+:sum_cold) private(qz_wall)
+  do j = 1, ny
     do i = 1, nx
-      qy_wall = (-8.0d0*Tcold + 9.0d0*T(i,ny,k) - T(i,ny-1,k)) / (3.0d0*dy)
-      sum_cold = sum_cold + qy_wall / deltaT
+      qz_wall = (-8.0d0*Tcold + 9.0d0*T(i,j,nz) - T(i,j,nz-1)) / (3.0d0*dz)
+      sum_cold = sum_cold + qz_wall / deltaT
     enddo
   enddo
-  Nu_cold = sum_cold / dble(nx * nz)
+  Nu_cold = sum_cold / dble(nx * ny)
 
   sum_mid = 0.0d0
-  if (mod(ny,2) .EQ. 1) then
-    jMid = (ny + 1) / 2
- !$acc parallel loop collapse(2) default(none) present(v,T) reduction(+:sum_mid)
-    do k = 1, nz
+  if (mod(nz,2) .EQ. 1) then
+    kMid = (nz + 1) / 2
+ !$acc parallel loop collapse(2) default(none) present(w,T) reduction(+:sum_mid)
+    do j = 1, ny
       do i = 1, nx
-        sum_mid = sum_mid + (coef * v(i,jMid,k) * (T(i,jMid,k) - Tref) - &
-             (T(i,jMid+1,k) - T(i,jMid-1,k)) / (2.0d0 * dy)) / deltaT
+        sum_mid = sum_mid + (coef * w(i,j,kMid) * (T(i,j,kMid) - Tref) - &
+             (T(i,j,kMid+1) - T(i,j,kMid-1)) / (2.0d0 * dz)) / deltaT
       enddo
     enddo
   else
-    jB = ny / 2
-    jT = jB + 1
- !$acc parallel loop collapse(2) default(none) present(v,T) reduction(+:sum_mid)
-    do k = 1, nz
+    kB = nz / 2
+    kT = kB + 1
+ !$acc parallel loop collapse(2) default(none) present(w,T) reduction(+:sum_mid)
+    do j = 1, ny
       do i = 1, nx
-        sum_mid = sum_mid + (coef * 0.5d0 * (v(i,jB,k) * (T(i,jB,k) - Tref) + &
-             v(i,jT,k) * (T(i,jT,k) - Tref)) + (T(i,jB,k) - T(i,jT,k)) / dy) / deltaT
+        sum_mid = sum_mid + (coef * 0.5d0 * (w(i,j,kB) * (T(i,j,kB) - Tref) + &
+             w(i,j,kT) * (T(i,j,kT) - Tref)) + (T(i,j,kB) - T(i,j,kT)) / dz) / deltaT
       enddo
     enddo
   endif
-  Nu_middle = sum_mid / dble(nx * nz)
+  Nu_middle = sum_mid / dble(nx * ny)
 
   write(*,'(a,1x,ES24.16E3)') 'Nu_hot(bottom) =', real(Nu_hot,kind=8)
   write(*,'(a,1x,ES24.16E3)') 'Nu_cold(top)   =', real(Nu_cold,kind=8)
@@ -2758,6 +2821,7 @@ subroutine write_midplane_x(filename)
   real(kind=8) :: targetX, weight, valU, valV, valW, valT
   real(kind=8) :: uSlice(ny,nz), vSlice(ny,nz), wSlice(ny,nz), tSlice(ny,nz)
 
+  ! midX is the y-z section; W_nd is vertical because buoyancy acts along z.
   targetX = 0.5d0 * xp(nx+1)
   call find_bracketing_index(xp, nx, targetX, iL, iR, weight)
   do k = 1, nz
@@ -2791,6 +2855,7 @@ subroutine write_midplane_y(filename)
   real(kind=8) :: targetY, weight, valU, valV, valW, valT
   real(kind=8) :: uSlice(nx,nz), vSlice(nx,nz), wSlice(nx,nz), tSlice(nx,nz)
 
+  ! midY is the x-z section; W_nd is vertical because buoyancy acts along z.
   targetY = 0.5d0 * yp(ny+1)
   call find_bracketing_index(yp, ny, targetY, jL, jR, weight)
   do k = 1, nz
@@ -2824,6 +2889,7 @@ subroutine write_midplane_z(filename)
   real(kind=8) :: targetZ, weight, valU, valV, valW, valT
   real(kind=8) :: uSlice(nx,ny), vSlice(nx,ny), wSlice(nx,ny), tSlice(nx,ny)
 
+  ! midZ is the x-y horizontal mid-height section.
   targetZ = 0.5d0 * zp(nz+1)
   call find_bracketing_index(zp, nz, targetZ, kL, kR, weight)
   do j = 1, ny
@@ -2854,32 +2920,32 @@ subroutine SideHeatedcalc_Nu_global3d()
   use commondata3dOpenacc
   implicit none
   integer(kind=4) :: i, j, k
-  real(kind=8) :: dx, dTdx, qx, sum_qx
+  real(kind=8) :: dy, dTdy, qy, sum_qy
   real(kind=8) :: deltaT, coef
 
-  dx = 1.0d0 / lengthUnit
+  dy = 1.0d0 / lengthUnit
   deltaT = Thot - Tcold
   coef = velocityScaleCompare
-  sum_qx = 0.0d0
+  sum_qy = 0.0d0
 
   do k = 1, nz
     do j = 1, ny
       do i = 1, nx
-        if (i .EQ. 1) then
-          dTdx = (-3.0d0*T(1,j,k) - T(2,j,k) + 4.0d0*Thot) / (3.0d0*dx)
-        elseif (i .EQ. nx) then
-          dTdx = (-4.0d0*Tcold + 3.0d0*T(nx,j,k) + T(nx-1,j,k)) / (3.0d0*dx)
+        if (j .EQ. 1) then
+          dTdy = (-3.0d0*T(i,1,k) - T(i,2,k) + 4.0d0*Thot) / (3.0d0*dy)
+        elseif (j .EQ. ny) then
+          dTdy = (-4.0d0*Tcold + 3.0d0*T(i,ny,k) + T(i,ny-1,k)) / (3.0d0*dy)
         else
-          dTdx = (T(i-1,j,k) - T(i+1,j,k)) / (2.0d0*dx)
+          dTdy = (T(i,j-1,k) - T(i,j+1,k)) / (2.0d0*dy)
         endif
 
-        qx = coef * u(i,j,k) * (T(i,j,k) - Tref) + dTdx
-        sum_qx = sum_qx + qx
+        qy = coef * v(i,j,k) * (T(i,j,k) - Tref) + dTdy
+        sum_qy = sum_qy + qy
       enddo
     enddo
   enddo
 
-  Nu_global = (sum_qx / dble(nx * ny * nz)) / deltaT
+  Nu_global = (sum_qy / dble(nx * ny * nz)) / deltaT
 
   write(*,'(a,1x,ES24.16E3)') 'Nu_global =', real(Nu_global,kind=8)
   open(unit=00, file=trim(settingsFile), status='unknown', position='append')
@@ -2897,143 +2963,145 @@ end subroutine SideHeatedcalc_Nu_global3d
 subroutine SideHeatedcalc_Nu_wall_avg3d()
   use commondata3dOpenacc
   implicit none
-  integer(kind=4) :: iL, iR, iMid, j, jmax, jmin, k, m
-  integer(kind=4) :: jj(5)
-  real(kind=8) :: dx, deltaT, coef
-  real(kind=8) :: qx_wall, sum_hot, sum_cold, sum_mid
-  real(kind=8) :: T_wb, T_wt
-  real(kind=8) :: yfit(4), Tfit(4)
-  real(kind=8) :: yk(5), fk(5), fstar, ystar
-  real(kind=8) :: Nu_left(1:ny), Nu_left_ext(0:ny+1), T_left_avg(1:ny)
+  integer(kind=4) :: i, imax, imin, jL, jR, jMid, k, m
+  integer(kind=4) :: ii(5)
+  real(kind=8) :: dy, deltaT, coef
+  real(kind=8) :: qy_wall, sum_hot, sum_cold, sum_mid
+  real(kind=8) :: T_wf, T_wb
+  real(kind=8) :: xfit(4), Tfit(4)
+  real(kind=8) :: xk(5), fk(5), fstar, xstar
+  real(kind=8) :: Nu_hot_line(1:nx), Nu_hot_ext(0:nx+1), T_hot_avg(1:nx)
 
-  dx = 1.0d0 / lengthUnit
+  dy = 1.0d0 / lengthUnit
   deltaT = Thot - Tcold
   coef = velocityScaleCompare
 
-  do j = 1, ny
-    T_left_avg(j) = 0.0d0
+  do i = 1, nx
+    T_hot_avg(i) = 0.0d0
     do k = 1, nz
-      T_left_avg(j) = T_left_avg(j) + T(1,j,k)
+      T_hot_avg(i) = T_hot_avg(i) + T(i,1,k)
     enddo
-    T_left_avg(j) = T_left_avg(j) / dble(nz)
+    T_hot_avg(i) = T_hot_avg(i) / dble(nz)
   enddo
 
   sum_hot = 0.0d0
-  do j = 1, ny
-    Nu_left(j) = 0.0d0
+  do i = 1, nx
+    Nu_hot_line(i) = 0.0d0
     do k = 1, nz
-      qx_wall = (8.0d0*Thot - 9.0d0*T(1,j,k) + T(2,j,k)) / (3.0d0*dx)
-      Nu_left(j) = Nu_left(j) + qx_wall / deltaT
+      qy_wall = (8.0d0*Thot - 9.0d0*T(i,1,k) + T(i,2,k)) / (3.0d0*dy)
+      Nu_hot_line(i) = Nu_hot_line(i) + qy_wall / deltaT
     enddo
-    Nu_left(j) = Nu_left(j) / dble(nz)
-    sum_hot = sum_hot + Nu_left(j)
+    Nu_hot_line(i) = Nu_hot_line(i) / dble(nz)
+    sum_hot = sum_hot + Nu_hot_line(i)
   enddo
-  Nu_hot = sum_hot / dble(ny)
+  Nu_hot = sum_hot / dble(nx)
 
-  Nu_left_ext(1:ny) = Nu_left(1:ny)
-  yfit(1) = yp(1);  Tfit(1) = T_left_avg(1)
-  yfit(2) = yp(2);  Tfit(2) = T_left_avg(2)
-  yfit(3) = yp(3);  Tfit(3) = T_left_avg(3)
-  yfit(4) = yp(4);  Tfit(4) = T_left_avg(4)
-  call fit_adiabatic_wall_T4_3d(0.0d0, yfit, Tfit, T_wb)
-  Nu_left_ext(0) = (2.0d0 * (Thot - T_wb) / dx) / deltaT
+  Nu_hot_ext(1:nx) = Nu_hot_line(1:nx)
+  xfit(1) = xp(1);  Tfit(1) = T_hot_avg(1)
+  xfit(2) = xp(2);  Tfit(2) = T_hot_avg(2)
+  xfit(3) = xp(3);  Tfit(3) = T_hot_avg(3)
+  xfit(4) = xp(4);  Tfit(4) = T_hot_avg(4)
+  call fit_adiabatic_wall_T4_3d(0.0d0, xfit, Tfit, T_wf)
+  Nu_hot_ext(0) = (2.0d0 * (Thot - T_wf) / dy) / deltaT
 
-  yfit(1) = yp(ny-3);  Tfit(1) = T_left_avg(ny-3)
-  yfit(2) = yp(ny-2);  Tfit(2) = T_left_avg(ny-2)
-  yfit(3) = yp(ny-1);  Tfit(3) = T_left_avg(ny-1)
-  yfit(4) = yp(ny  );  Tfit(4) = T_left_avg(ny  )
-  call fit_adiabatic_wall_T4_3d(yp(ny+1), yfit, Tfit, T_wt)
-  Nu_left_ext(ny+1) = (2.0d0 * (Thot - T_wt) / dx) / deltaT
+  xfit(1) = xp(nx-3);  Tfit(1) = T_hot_avg(nx-3)
+  xfit(2) = xp(nx-2);  Tfit(2) = T_hot_avg(nx-2)
+  xfit(3) = xp(nx-1);  Tfit(3) = T_hot_avg(nx-1)
+  xfit(4) = xp(nx  );  Tfit(4) = T_hot_avg(nx  )
+  call fit_adiabatic_wall_T4_3d(xp(nx+1), xfit, Tfit, T_wb)
+  Nu_hot_ext(nx+1) = (2.0d0 * (Thot - T_wb) / dy) / deltaT
 
-  jmax = 0
-  jmin = 0
-  Nu_hot_max = Nu_left_ext(0)
-  Nu_hot_min = Nu_left_ext(0)
-  do j = 1, ny+1
-    if (Nu_left_ext(j) .GT. Nu_hot_max) then
-      Nu_hot_max = Nu_left_ext(j)
-      jmax = j
+  imax = 0
+  imin = 0
+  Nu_hot_max = Nu_hot_ext(0)
+  Nu_hot_min = Nu_hot_ext(0)
+  do i = 1, nx+1
+    if (Nu_hot_ext(i) .GT. Nu_hot_max) then
+      Nu_hot_max = Nu_hot_ext(i)
+      imax = i
     endif
-    if (Nu_left_ext(j) .LT. Nu_hot_min) then
-      Nu_hot_min = Nu_left_ext(j)
-      jmin = j
+    if (Nu_hot_ext(i) .LT. Nu_hot_min) then
+      Nu_hot_min = Nu_hot_ext(i)
+      imin = i
     endif
   enddo
 
-  if (jmax .LE. 2) then
-    jj = (/ 0, 1, 2, 3, 4 /)
-  elseif (jmax .GE. ny-1) then
-    jj = (/ ny-3, ny-2, ny-1, ny, ny+1 /)
+  if (imax .LE. 2) then
+    ii = (/ 0, 1, 2, 3, 4 /)
+  elseif (imax .GE. nx-1) then
+    ii = (/ nx-3, nx-2, nx-1, nx, nx+1 /)
   else
-    jj = (/ jmax-2, jmax-1, jmax, jmax+1, jmax+2 /)
+    ii = (/ imax-2, imax-1, imax, imax+1, imax+2 /)
   endif
   do m = 1, 5
-    yk(m) = yp(jj(m))
-    fk(m) = Nu_left_ext(jj(m))
+    xk(m) = xp(ii(m))
+    fk(m) = Nu_hot_ext(ii(m))
   enddo
-  call fit_parabola_ls5_3d(yk, fk, +1, fstar, ystar)
+  call fit_parabola_ls5_3d(xk, fk, +1, fstar, xstar)
   Nu_hot_max = fstar
-  Nu_hot_max_position = ystar
+  Nu_hot_max_position = xstar
 
-  if (jmin .GE. 4) then
-    jj = (/ jmin-4, jmin-3, jmin-2, jmin-1, jmin /)
+  if (imin .LE. 2) then
+    ii = (/ 0, 1, 2, 3, 4 /)
+  elseif (imin .GE. nx-1) then
+    ii = (/ nx-3, nx-2, nx-1, nx, nx+1 /)
   else
-    jj = (/ 0, 1, 2, 3, 4 /)
+    ii = (/ imin-2, imin-1, imin, imin+1, imin+2 /)
   endif
   do m = 1, 5
-    yk(m) = yp(jj(m))
-    fk(m) = Nu_left_ext(jj(m))
+    xk(m) = xp(ii(m))
+    fk(m) = Nu_hot_ext(ii(m))
   enddo
-  call fit_parabola_ls5_3d(yk, fk, -1, fstar, ystar)
+  call fit_parabola_ls5_3d(xk, fk, -1, fstar, xstar)
   Nu_hot_min = fstar
-  Nu_hot_min_position = ystar
+  Nu_hot_min_position = xstar
 
   sum_cold = 0.0d0
-  do j = 1, ny
-    do k = 1, nz
-      qx_wall = (-8.0d0*Tcold + 9.0d0*T(nx,j,k) - T(nx-1,j,k)) / (3.0d0*dx)
-      sum_cold = sum_cold + qx_wall / deltaT
+  do k = 1, nz
+    do i = 1, nx
+      qy_wall = (-8.0d0*Tcold + 9.0d0*T(i,ny,k) - T(i,ny-1,k)) / (3.0d0*dy)
+      sum_cold = sum_cold + qy_wall / deltaT
     enddo
   enddo
-  Nu_cold = sum_cold / dble(ny * nz)
+  Nu_cold = sum_cold / dble(nx * nz)
 
   sum_mid = 0.0d0
-  if (mod(nx,2) .EQ. 1) then
-    iMid = (nx + 1) / 2
+  if (mod(ny,2) .EQ. 1) then
+    jMid = (ny + 1) / 2
     do k = 1, nz
-      do j = 1, ny
-        sum_mid = sum_mid + (coef * u(iMid,j,k) * (T(iMid,j,k) - Tref) + &
-             (T(iMid-1,j,k) - T(iMid+1,j,k)) / (2.0d0*dx)) / deltaT
+      do i = 1, nx
+        sum_mid = sum_mid + (coef * v(i,jMid,k) * (T(i,jMid,k) - Tref) + &
+             (T(i,jMid-1,k) - T(i,jMid+1,k)) / (2.0d0*dy)) / deltaT
       enddo
     enddo
   else
-    iL = nx / 2
-    iR = iL + 1
+    jL = ny / 2
+    jR = jL + 1
     do k = 1, nz
-      do j = 1, ny
-        sum_mid = sum_mid + (coef * 0.5d0 * (u(iL,j,k) * (T(iL,j,k) - Tref) + &
-             u(iR,j,k) * (T(iR,j,k) - Tref)) + (T(iL,j,k) - T(iR,j,k)) / dx) / deltaT
+      do i = 1, nx
+        sum_mid = sum_mid + (coef * 0.5d0 * (v(i,jL,k) * (T(i,jL,k) - Tref) + &
+             v(i,jR,k) * (T(i,jR,k) - Tref)) + (T(i,jL,k) - T(i,jR,k)) / dy) / deltaT
       enddo
     enddo
   endif
-  Nu_middle = sum_mid / dble(ny * nz)
+  Nu_middle = sum_mid / dble(nx * nz)
 
   write(*,'(a,1x,ES24.16E3)') 'Nu_hot(left)  =', real(Nu_hot,kind=8)
   write(*,'(a,1x,ES24.16E3)') 'Nu_cold(right)=', real(Nu_cold,kind=8)
   write(*,'(a,1x,ES24.16E3)') 'Nu_middle     =', real(Nu_middle,kind=8)
   write(*,'(a,1x,ES24.16E3,2x,a,1x,ES24.16E3)') &
-       'Nu_hot_max =', real(Nu_hot_max,kind=8), 'y_max =', real(Nu_hot_max_position,kind=8)
+       'Nu_hot_max =', real(Nu_hot_max,kind=8), 'x_max =', real(Nu_hot_max_position,kind=8)
   write(*,'(a,1x,ES24.16E3,2x,a,1x,ES24.16E3)') &
-       'Nu_hot_min =', real(Nu_hot_min,kind=8), 'y_min =', real(Nu_hot_min_position,kind=8)
+       'Nu_hot_min =', real(Nu_hot_min,kind=8), 'x_min =', real(Nu_hot_min_position,kind=8)
 
   open(unit=00, file=trim(settingsFile), status='unknown', position='append')
   write(00,'(a,1x,ES24.16E3)') 'Nu_hot(left)  =', real(Nu_hot,kind=8)
   write(00,'(a,1x,ES24.16E3)') 'Nu_cold(right)=', real(Nu_cold,kind=8)
   write(00,'(a,1x,ES24.16E3)') 'Nu_middle     =', real(Nu_middle,kind=8)
   write(00,'(a,1x,ES24.16E3,2x,a,1x,ES24.16E3)') &
-       'Nu_hot_max =', real(Nu_hot_max,kind=8), 'y_max =', real(Nu_hot_max_position,kind=8)
+       'Nu_hot_max =', real(Nu_hot_max,kind=8), 'x_max =', real(Nu_hot_max_position,kind=8)
   write(00,'(a,1x,ES24.16E3,2x,a,1x,ES24.16E3)') &
-       'Nu_hot_min =', real(Nu_hot_min,kind=8), 'y_min =', real(Nu_hot_min_position,kind=8)
+       'Nu_hot_min =', real(Nu_hot_min,kind=8), 'x_min =', real(Nu_hot_min_position,kind=8)
   close(00)
 
   return
@@ -3312,6 +3380,7 @@ subroutine calc_wmid_max_common3d(logTag)
   integer(kind=4) :: i, j, kL, kR, iBest, jBest
   real(kind=8) :: targetZ, weight, val, wmax, xAtW, yAtW
 
+  ! W is the buoyancy/vertical component after the z-direction convention change.
   targetZ = 0.5d0 * zp(nz+1)
   call find_bracketing_index(zp, nz, targetZ, kL, kR, weight)
 
