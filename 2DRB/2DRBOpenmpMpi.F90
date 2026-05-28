@@ -81,8 +81,8 @@
 #endif
 
 !   OpenMP 线程分配宏：单节点测试按全局 NPROC 分线程；多节点集群按 NodeCount 推出节点内进程数
-#define OmpThreadSingleNode
-!#define OmpThreadMultiNode
+!#define OmpThreadSingleNode
+#define OmpThreadMultiNode
 
 #if defined(OmpThreadSingleNode) && defined(OmpThreadMultiNode)
 #error "Choose only one OpenMP thread mode: OmpThreadSingleNode or OmpThreadMultiNode"
@@ -127,8 +127,8 @@
 
         !===============================================================================================
         ! MPI+OpenMP 并行配置
-        integer(kind=4), parameter :: OMP_THREADS_PER_NODE=24      ! 每个节点分配给本程序的总线程数
-        integer(kind=4), parameter :: NodeCount=1                  ! 参与当前算例的节点数；多节点模式要求 NPROC 能被 NodeCount 整除
+        integer(kind=4), parameter :: OMP_THREADS_PER_NODE=8       ! 每个节点分配给本程序的总线程数
+        integer(kind=4), parameter :: NodeCount=2                  ! 参与当前算例的节点数；多节点模式要求 NPROC 能被 NodeCount 整除
         integer(kind=4) :: OMP_THREADS_PER_RANK                    ! 每个 MPI 进程的线程数，由线程分配宏自动计算
 
         integer(kind=4) :: MYID, NPROC
@@ -164,7 +164,7 @@
 #endif
         real(kind=8), parameter :: pi = acos(-1.0d0)
 
-        real(kind=8), parameter :: Rayleigh=1.0d8        
+        real(kind=8), parameter :: Rayleigh=1.0d6        
         real(kind=8), parameter :: Prandtl=0.71d0       
         real(kind=8), parameter :: Mach=0.1d0
         real(kind=8), parameter :: Thot=0.5d0, Tcold=-0.5d0
@@ -860,6 +860,7 @@
     write(00,*) "itc_max =",itc_max
     write(00,*) "default epsU =", real(epsU,kind=8),"; epsT =", real(epsT,kind=8)
     write(00,*) "useG =", useG
+    write(00,*) 'useLegacyThermalScheme =', useLegacyThermalScheme
     write(00,*) "    "
 
 #ifdef RayleighBenardCell
@@ -1501,7 +1502,9 @@ close(00)
     real(kind=8) :: s(0:8)
     real(kind=8) :: fSource(0:8)
 
-    !$omp parallel do default(none) shared(f,f_post,rho,u,v,Fx,Fy,T,xLocalCount,yLocalCount) private(i,j,alpha,s,m,m_post,meq,fSource) 
+    !$omp parallel do default(none) &
+    !$omp& shared(f,f_post,rho,u,v,Fx,Fy,T,xLocalCount,yLocalCount) &
+    !$omp& private(i,j,alpha,s,m,m_post,meq,fSource)
     do j = 1, yLocalCount
         do i = 1, xLocalCount
 
@@ -1639,7 +1642,9 @@ close(00)
 #endif
 
 #ifdef VerticalWallsNoslip
-    !$omp parallel do default(none) shared(f, f_post, hasLeftBoundary, hasRightBoundary, xLocalCount, yLocalCount) private(j)
+    !$omp parallel do default(none) &
+    !$omp& shared(f, f_post, hasLeftBoundary, hasRightBoundary, xLocalCount, yLocalCount) &
+    !$omp& private(j)
     do j = 1, yLocalCount                                             !只在真正拥有物理侧壁的 rank 上做无滑移反弹
         if(hasLeftBoundary) then
             f(1,1,j) = f_post(3,1,j)
@@ -1656,7 +1661,9 @@ close(00)
 #endif
 
 #ifdef HorizontalWallsNoslip
-    !$omp parallel do default(none) shared(f, f_post, hasBottomBoundary, hasTopBoundary, xLocalCount, yLocalCount) private(i)
+    !$omp parallel do default(none) &
+    !$omp& shared(f, f_post, hasBottomBoundary, hasTopBoundary, xLocalCount, yLocalCount) &
+    !$omp& private(i)
     do i = 1, xLocalCount                                             !只在真正拥有物理上下壁的 rank 上做无滑移反弹
         if(hasBottomBoundary) then
             f(2,i,1) = f_post(4,i,1)
@@ -1727,7 +1734,9 @@ close(00)
 
 
 
-    !$omp parallel do default(none) shared(g,g_post,u,v,T,Bx_prev,By_prev,xLocalCount,yLocalCount) private(i,j,alpha,n,neq,q,n_post,Bx,By,dBx,dBy) 
+    !$omp parallel do default(none) &
+    !$omp& shared(g,g_post,u,v,T,Bx_prev,By_prev,xLocalCount,yLocalCount) &
+    !$omp& private(i,j,alpha,n,neq,q,n_post,Bx,By,dBx,dBy)
     do j = 1, yLocalCount
         do i = 1, xLocalCount
 
@@ -1844,7 +1853,9 @@ close(00)
 #endif
 
 #ifdef VerticalWallsConstT
-    !$omp parallel do default(none) shared(g,g_post,omegaT,hasLeftBoundary,hasRightBoundary,xLocalCount,yLocalCount) private(j)
+    !$omp parallel do default(none) &
+    !$omp& shared(g,g_post,omegaT,hasLeftBoundary,hasRightBoundary,xLocalCount,yLocalCount) &
+    !$omp& private(j)
     do j = 1, yLocalCount
         if(hasLeftBoundary) then
 #ifdef EnableLegacyThermalScheme
@@ -1883,7 +1894,9 @@ close(00)
 #endif
 
 #ifdef HorizontalWallsConstT
-    !$omp parallel do default(none) shared(g,g_post,omegaT,hasBottomBoundary,hasTopBoundary,xLocalCount,yLocalCount) private(i)
+    !$omp parallel do default(none) &
+    !$omp& shared(g,g_post,omegaT,hasBottomBoundary,hasTopBoundary,xLocalCount,yLocalCount) &
+    !$omp& private(i)
     do i = 1, xLocalCount
         if(hasBottomBoundary) then
 #ifdef EnableLegacyThermalScheme
@@ -2023,7 +2036,9 @@ close(00)
     error5 = 0.0d0
     error6 = 0.0d0
     
-    !$omp parallel do default(none) shared(u,up,v,vp,T,Tp,xLocalCount,yLocalCount) private(i,j) reduction(+:error1,error2,error5,error6)
+    !$omp parallel do default(none) &
+    !$omp& shared(u,up,v,vp,T,Tp,xLocalCount,yLocalCount) &
+    !$omp& private(i,j) reduction(+:error1,error2,error5,error6)
     do j = 1, yLocalCount
         do i = 1, xLocalCount
             error1 = error1+(u(i,j)-up(i,j))*(u(i,j)-up(i,j))+(v(i,j)-vp(i,j))*(v(i,j)-vp(i,j))
