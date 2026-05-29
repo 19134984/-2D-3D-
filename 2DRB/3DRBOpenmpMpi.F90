@@ -105,10 +105,12 @@
 
 !   三维 MPI 笛卡尔分解宏：一维 z-slab、二维 y/z pencil、三维 x/y/z block 三选一
 !#define MpiDecomp1D
-#define MpiDecomp2D
-!#define MpiDecomp3D
+!#define MpiDecomp2D
+#define MpiDecomp3D
 
-#if (defined(MpiDecomp1D) && defined(MpiDecomp2D)) || (defined(MpiDecomp1D) && defined(MpiDecomp3D)) || (defined(MpiDecomp2D) && defined(MpiDecomp3D))
+#if (defined(MpiDecomp1D) && defined(MpiDecomp2D)) || \
+    (defined(MpiDecomp1D) && defined(MpiDecomp3D)) || \
+    (defined(MpiDecomp2D) && defined(MpiDecomp3D))
 #error "Choose only one MPI decomposition mode: MpiDecomp1D, MpiDecomp2D or MpiDecomp3D"
 #endif
 #if !defined(MpiDecomp1D) && !defined(MpiDecomp2D) && !defined(MpiDecomp3D)
@@ -215,7 +217,7 @@ module commondata3dOpenmpMpi
 
   !===============================================================================================
   ! 无量纲参数
-  integer(kind=4), parameter :: nx=120, ny=120, nz=120     ! 三个方向的流体节点数；物理壁面在 0 和 N 处
+  integer(kind=4), parameter :: nx=120, ny=120, nz=120     ! 三个方向的流体节点数；不包括边界节点
 #ifdef SideHeatedCell
   real(kind=8), parameter :: lengthUnit=dble(ny)     ! 侧壁差温：特征长度取 y 方向左右冷热壁距离
 #else
@@ -223,7 +225,7 @@ module commondata3dOpenmpMpi
 #endif
   real(kind=8), parameter :: pi=acos(-1.0d0)
 
-  real(kind=8), parameter :: Rayleigh=1.0d5
+  real(kind=8), parameter :: Rayleigh=1.0d6
   real(kind=8), parameter :: Prandtl=0.71d0
   real(kind=8), parameter :: Mach=0.1d0
   real(kind=8), parameter :: Thot=0.5d0, Tcold=-0.5d0
@@ -388,15 +390,11 @@ program main3dOpenmpMpi
   call MPI_INIT(IERR)         ! MPI 初始化
   call init_mpi_cartesian()   ! 建立笛卡尔通信器，确定当前 rank 的局部网格范围、物理边界标记和邻居 rank
 
-  if(isRoot) then
-    if (loadInitField .EQ. 1) then
-      open(unit=00, file=trim(settingsFile), status='unknown', position='append')
-      write(00,*) '================ Restart continuation begins ================'
-    else
-      open(unit=00, file=trim(settingsFile), status='replace')
-    endif
+  if (loadInitField .EQ. 1) then
+    open(unit=00, file=trim(settingsFile), status='unknown', position='append')
+    write(00,*) '================ Restart continuation begins ================'
   else
-    open(unit=00, file='NUL', status='unknown')
+    open(unit=00, file=trim(settingsFile), status='replace')
   endif
   string = ctime(time())
   write(00,*) 'Start: ', string
@@ -517,7 +515,7 @@ program main3dOpenmpMpi
   call calNuRe()
   call gather_output_fields_mpi()   ! 汇总各 rank 的局部 u/v/w/T/rho 到 root 的全局数组 u_all/v_all/w_all/T_all/rho_all，供稳态最终诊断使用
   if(isRoot) then
-  call copy_global_fields_to_root_local_arrays()   ! root 将 *_all 全局数组临时拷回 u/v/w/T/rho，复用原全局后处理诊断
+  ! root 直接用 *_all 做最终后处理，避免把本 rank 的局部 u/v/w/T/rho 临时改成全场数组。
 !侧壁加热和RB对流的计算Nu不一样；这些最终标量诊断只用于稳态收敛后评估
 #ifdef SideHeatedCell
   call SideHeatedcalc_Nu_global()
@@ -541,11 +539,7 @@ program main3dOpenmpMpi
   endif
 #endif
 
-  if(isRoot) then
-    open(unit=00, file=trim(settingsFile), status='unknown', position='append')
-  else
-    open(unit=00, file='NUL', status='unknown')
-  endif
+  open(unit=00, file=trim(settingsFile), status='unknown', position='append')
   write(00,*) '======================================================================'
   write(00,*) 'Time (CPU) = ', real(timeEnd - timeStart, kind=8), 's'
   write(00,*) 'MLUPS = ', &
@@ -604,18 +598,19 @@ subroutine init_mpi_cartesian()
   use commondata3dOpenmpMpi
   implicit none
 
-  integer(kind=4) :: dimsCandidate2(2), dimsCandidate3(3), dimsSwap(3)
-  integer(kind=4) :: dimsTry(3), dimsBest(3), dimsPerm(3,6)
-  integer(kind=4) :: n, bestIndex
-  real(kind=8) :: aspectTry, aspectBest
+  integer(kind=4) :: px, py, pz
+  integer(kind=4) :: xBase, yBase, zBase
+  integer(kind=4) :: xRemainder, yRemainder, zRemainder
+  integer(kind=4) :: xLocalMin, xLocalMax, yLocalMin, yLocalMax, zLocalMin, zLocalMax
+  real(kind=8) :: aspectScore, bestAspectScore, commScore, bestCommScore
+  real(kind=8), parameter :: scoreTolerance = 1.0d-12
+  logical :: takeCandidate
 
-  !   MPI_COMM_WORLD : mpiexec -n 启动后的全局通信器。
+
   !   NPROC          : 当前算例实际启动的 MPI rank 总数。
-  !   IERR           : MPI 调用返回的错误码。
   call MPI_COMM_SIZE(MPI_COMM_WORLD, NPROC, IERR)
-  !   MPI_COMM_WORLD : mpiexec -n 启动后的全局通信器。
+
   !   MYID           : 当前进程在 MPI_COMM_WORLD 中的 rank 编号。
-  !   IERR           : MPI 调用返回的错误码。
   call MPI_COMM_RANK(MPI_COMM_WORLD, MYID, IERR)
 
 #ifdef OmpThreadSingleNode
@@ -637,6 +632,31 @@ subroutine init_mpi_cartesian()
   OMP_THREADS_PER_RANK = max(1, OMP_THREADS_PER_NODE/NPROC_NODE)
 #endif
 
+  ! MPI 派生状态统一在初始化子程序里给默认值；真正的拓扑、边界和局部范围在下面覆盖。
+  MY_COORD = 0
+  back = MPI_PROC_NULL
+  front = MPI_PROC_NULL
+  left = MPI_PROC_NULL
+  right = MPI_PROC_NULL
+  down = MPI_PROC_NULL
+  top = MPI_PROC_NULL
+  isRoot = .false.
+  hasBackBoundary = .false.
+  hasFrontBoundary = .false.
+  hasLeftBoundary = .false.
+  hasRightBoundary = .false.
+  hasBottomBoundary = .false.
+  hasTopBoundary = .false.
+  xLocalCount = 0
+  yLocalCount = 0
+  zLocalCount = 0
+  xStartGlobal = 0
+  xEndGlobal = 0
+  yStartGlobal = 0
+  yEndGlobal = 0
+  zStartGlobal = 0
+  zEndGlobal = 0
+
   dims = 0
 #ifdef MpiDecomp1D
   ! 一维分解固定为 z-slab：x/y 方向不切分，只在 z/k 方向分配 NPROC 个 rank。
@@ -646,53 +666,133 @@ subroutine init_mpi_cartesian()
 #endif
 
 #ifdef MpiDecomp2D
-  ! 二维分解固定 x/i 方向完整，只让 MPI_DIMS_CREATE 在 y/z 两个方向自动分配。
-  !   NPROC          : 需要分解的 MPI rank 总数。
-  !   2              : 只分解 y/z 两个方向。
-  !   dimsCandidate2 : 输入为 0 表示两个方向都交给 MPI 自动选择；输出为候选 y/z 进程数。
-  !   IERR           : MPI 调用返回的错误码。
-  dimsCandidate2 = 0
-  call MPI_DIMS_CREATE(NPROC, 2, dimsCandidate2, IERR)
-  dims(1) = 1
-  dims(2) = dimsCandidate2(1)
-  dims(3) = dimsCandidate2(2)
-  dimsSwap(1) = 1
-  dimsSwap(2) = dimsCandidate2(2)
-  dimsSwap(3) = dimsCandidate2(1)
-  aspectBest = abs(log((dble(ny)/dble(dims(2))) / (dble(nz)/dble(dims(3)))))
-  aspectTry = abs(log((dble(ny)/dble(dimsSwap(2))) / (dble(nz)/dble(dimsSwap(3)))))
-  if(aspectTry.LT.aspectBest) dims = dimsSwap
+  ! 二维分解固定 x/i 方向完整，只在 y/z 两个方向枚举 py*pz=NPROC。
+  ! MPI_DIMS_CREATE 只关心进程网格本身是否均衡；这里要按实际计算域 ny/nz 和余数前置切分后的局部块尺寸评分。
+  px = 1
+  bestAspectScore = huge(1.0d0)
+  bestCommScore = huge(1.0d0)
+  do py = 1, NPROC
+    ! py 不能整除 NPROC 时，pz=NPROC/py 不是合法整数分解；cycle 直接跳到下一个 py 候选。
+    if(mod(NPROC, py).NE.0) cycle
+    pz = NPROC / py
+    if((py.GT.ny).OR.(pz.GT.nz)) cycle
+
+    yBase = ny / py
+    yRemainder = ny - yBase*py
+    yLocalMin = yBase
+    yLocalMax = yBase
+    if(yRemainder.GT.0) yLocalMax = yBase + 1
+
+    zBase = nz / pz
+    zRemainder = nz - zBase*pz
+    zLocalMin = zBase
+    zLocalMax = zBase
+    if(zRemainder.GT.0) zLocalMax = zBase + 1
+
+    ! aspectScore 取最坏局部长宽比偏离 1 的程度；log 比值让长/宽互换时惩罚对称。
+    aspectScore = max(abs(log(dble(yLocalMin)/dble(zLocalMax))), &
+         abs(log(dble(yLocalMax)/dble(zLocalMin))))
+    ! commScore 近似内部通信面总面积：y 向内部面面积 nx*nz，z 向内部面面积 nx*ny。
+    commScore = dble(py-1)*dble(nx)*dble(nz) + dble(pz-1)*dble(nx)*dble(ny)
+
+    takeCandidate = .false.
+    if(aspectScore.LT.bestAspectScore-scoreTolerance) then
+      takeCandidate = .true.
+    elseif(abs(aspectScore-bestAspectScore).LE.scoreTolerance) then
+      if(commScore.LT.bestCommScore-scoreTolerance) then
+        takeCandidate = .true.
+      elseif((abs(commScore-bestCommScore).LE.scoreTolerance).AND.(py.LT.dims(2))) then
+        takeCandidate = .true.
+      endif
+    endif
+
+    if(takeCandidate) then
+      dims(1) = px
+      dims(2) = py
+      dims(3) = pz
+      bestAspectScore = aspectScore
+      bestCommScore = commScore
+    endif
+  enddo
 #endif
 
 #ifdef MpiDecomp3D
-  ! 三维分解让 MPI_DIMS_CREATE 先给出 x/y/z 进程数候选，再按局部块长宽比选最均衡的排列。
-  !   NPROC          : 需要分解的 MPI rank 总数。
-  !   3              : x/y/z 三个方向都参与分解。
-  !   dimsCandidate3 : 输入为 0 表示三个方向都交给 MPI 自动选择；输出为候选 x/y/z 进程数。
-  !   IERR           : MPI 调用返回的错误码。
-  dimsCandidate3 = 0
-  call MPI_DIMS_CREATE(NPROC, 3, dimsCandidate3, IERR)
-  dimsPerm(:,1) = (/dimsCandidate3(1), dimsCandidate3(2), dimsCandidate3(3)/)
-  dimsPerm(:,2) = (/dimsCandidate3(1), dimsCandidate3(3), dimsCandidate3(2)/)
-  dimsPerm(:,3) = (/dimsCandidate3(2), dimsCandidate3(1), dimsCandidate3(3)/)
-  dimsPerm(:,4) = (/dimsCandidate3(2), dimsCandidate3(3), dimsCandidate3(1)/)
-  dimsPerm(:,5) = (/dimsCandidate3(3), dimsCandidate3(1), dimsCandidate3(2)/)
-  dimsPerm(:,6) = (/dimsCandidate3(3), dimsCandidate3(2), dimsCandidate3(1)/)
-  aspectBest = huge(1.0d0)
-  bestIndex = 1
-  do n = 1, 6
-    dimsTry = dimsPerm(:,n)
-    aspectTry = abs(log((dble(nx)/dble(dimsTry(1))) / (dble(ny)/dble(dimsTry(2))))) + &
-                abs(log((dble(nx)/dble(dimsTry(1))) / (dble(nz)/dble(dimsTry(3))))) + &
-                abs(log((dble(ny)/dble(dimsTry(2))) / (dble(nz)/dble(dimsTry(3)))))
-    if(aspectTry.LT.aspectBest) then
-      aspectBest = aspectTry
-      bestIndex = n
-    endif
+  ! 三维分解遍历所有 px*py*pz=NPROC 的可能分解。
+  ! 对每个候选都按 mesh_StartGlobal_LocalCount 的“余数前置”规则估算局部块最小/最大尺寸。
+  bestAspectScore = huge(1.0d0)
+  bestCommScore = huge(1.0d0)
+  do px = 1, NPROC
+    if(mod(NPROC, px).NE.0) cycle
+    do py = 1, NPROC/px
+      if(mod(NPROC/px, py).NE.0) cycle
+      pz = NPROC / (px*py)
+      if((px.GT.nx).OR.(py.GT.ny).OR.(pz.GT.nz)) cycle
+
+      xBase = nx / px
+      xRemainder = nx - xBase*px
+      xLocalMin = xBase
+      xLocalMax = xBase
+      if(xRemainder.GT.0) xLocalMax = xBase + 1
+
+      yBase = ny / py
+      yRemainder = ny - yBase*py
+      yLocalMin = yBase
+      yLocalMax = yBase
+      if(yRemainder.GT.0) yLocalMax = yBase + 1
+
+      zBase = nz / pz
+      zRemainder = nz - zBase*pz
+      zLocalMin = zBase
+      zLocalMax = zBase
+      if(zRemainder.GT.0) zLocalMax = zBase + 1
+
+      ! aspectScore 估计当前 px/py/pz 候选下最差的局部块长宽比。
+      ! 余数前置切分后，每个方向的局部长度可能是 LocalMin 或 LocalMax；
+      ! 下面分别检查 x/y、x/z、y/z 三组方向的最极端组合，并取其中最大偏离。
+      ! abs(log(a/b)) 让 a:b 和 b:a 得到同样惩罚，值越接近 0 表示局部块越接近立方体。
+      aspectScore = 0.0d0
+      aspectScore = max(aspectScore, abs(log(dble(xLocalMin)/dble(yLocalMax))))
+      aspectScore = max(aspectScore, abs(log(dble(xLocalMax)/dble(yLocalMin))))
+      aspectScore = max(aspectScore, abs(log(dble(xLocalMin)/dble(zLocalMax))))
+      aspectScore = max(aspectScore, abs(log(dble(xLocalMax)/dble(zLocalMin))))
+      aspectScore = max(aspectScore, abs(log(dble(yLocalMin)/dble(zLocalMax))))
+      aspectScore = max(aspectScore, abs(log(dble(yLocalMax)/dble(zLocalMin))))
+      ! commScore 近似内部通信面总面积；只做并列裁决，不覆盖局部块长宽比这个主目标。
+      commScore = dble(px-1)*dble(ny)*dble(nz) + dble(py-1)*dble(nx)*dble(nz) + &
+           dble(pz-1)*dble(nx)*dble(ny)
+
+      takeCandidate = .false.
+      if(aspectScore.LT.bestAspectScore-scoreTolerance) then
+        takeCandidate = .true.
+      elseif(abs(aspectScore-bestAspectScore).LE.scoreTolerance) then
+        if(commScore.LT.bestCommScore-scoreTolerance) then
+          takeCandidate = .true.
+        elseif(abs(commScore-bestCommScore).LE.scoreTolerance) then
+          ! 如果 aspectScore 和 commScore 都并列，就用固定的字典序 (px,py,pz) 做最终裁决：
+          ! 先选 px 更小的；若 px 相同，再选 py 更小的；若 px/py 都相同，再选 pz 更小的。
+          if((px.LT.dims(1)).OR.((px.EQ.dims(1)).AND. &
+               ((py.LT.dims(2)).OR.((py.EQ.dims(2)).AND.(pz.LT.dims(3)))))) takeCandidate = .true.
+        endif
+      endif
+
+      if(takeCandidate) then
+        dims(1) = px
+        dims(2) = py
+        dims(3) = pz
+        bestAspectScore = aspectScore
+        bestCommScore = commScore
+      endif
+    enddo
   enddo
-  dimsBest = dimsPerm(:,bestIndex)
-  dims = dimsBest
 #endif
+
+  if((dims(1).LE.0).OR.(dims(2).LE.0).OR.(dims(3).LE.0)) then
+    if(MYID.EQ.0) then
+      write(*,*) 'Error: no valid MPI decomposition candidate for the 3D grid.'
+      write(*,*) 'NPROC =', NPROC, '; mesh =', nx, ny, nz
+    endif
+    call MPI_ABORT(MPI_COMM_WORLD, 1002, IERR)
+  endif
 
   if((dims(1).GT.nx).OR.(dims(2).GT.ny).OR.(dims(3).GT.nz)) then
     if(MYID.EQ.0) then
@@ -713,13 +813,11 @@ subroutine init_mpi_cartesian()
   periods(3) = .true.     ! z/k 方向周期，对应 bottom/top 物理面
 #endif
 
-  !   MPI_COMM_WORLD : 输入的全局通信器。
   !   3              : 三维笛卡尔网格。
   !   dims           : x/y/z 三个方向的 MPI 进程数。
   !   periods        : x/y/z 是否周期通信。
   !   .true.         : 允许 MPI 为拓扑通信重排 rank 编号。
   !   COMM3D         : 输出的新三维笛卡尔通信器。
-  !   IERR           : MPI 调用返回的错误码。
   call MPI_CART_CREATE(MPI_COMM_WORLD, 3, dims, periods, .true., COMM3D, IERR)
   ! 进入 COMM3D 后重新读取本进程编号；若发生 rank 重排，MYID 会以 COMM3D 为准。
   call MPI_COMM_RANK(COMM3D, MYID, IERR)
@@ -728,7 +826,6 @@ subroutine init_mpi_cartesian()
   !   MYID     : 当前进程在 COMM3D 中的 rank 编号。
   !   3        : 笛卡尔坐标维度。
   !   MY_COORD : 输出当前 rank 的 x/y/z 方向坐标。
-  !   IERR     : MPI 调用返回的错误码。
   call MPI_CART_COORDS(COMM3D, MYID, 3, MY_COORD, IERR)
 
   !   COMM3D : 三维笛卡尔通信器。
@@ -769,6 +866,12 @@ subroutine init_mpi_cartesian()
   call MPI_ALLGATHER(yStartGlobal, 1, MPI_INTEGER, YStartGlobalAll, 1, MPI_INTEGER, COMM3D, IERR)
   call MPI_ALLGATHER(zStartGlobal, 1, MPI_INTEGER, ZStartGlobalAll, 1, MPI_INTEGER, COMM3D, IERR)
 
+  ! root rank 继续用默认的 settingsFile；
+  ! 非 root rank 改用带 rank 编号的日志文件，避免多个 rank 同时写同一个日志文件。
+  if(.not.isRoot) then
+    write(settingsFile,'("SimulationSettings3DOpenmpMpi-rank",I6.6,".txt")') MYID
+  endif
+
 end subroutine init_mpi_cartesian
 
 
@@ -783,7 +886,7 @@ subroutine mesh_StartGlobal_LocalCount(TotalMeshCount, MpiCount, MpiCoord, Start
   integer(kind=4) :: baseCount, remainderCount
 
   baseCount = TotalMeshCount/MpiCount
-  remainderCount = mod(TotalMeshCount,MpiCount)
+  remainderCount = TotalMeshCount - baseCount*MpiCount
 
   ! 余数前置：前 remainderCount 个 rank 多拿 1 个网格，保证同一方向局部数量最多只差 1。
   if(MpiCoord.LT.remainderCount) then
@@ -829,11 +932,7 @@ subroutine initial()
   !-----------------------------------------------------------------------------------------------
   ! 记录各种信息在日志文件中
   !-----------------------------------------------------------------------------------------------
-  if(isRoot) then
-    open(unit=00, file=trim(settingsFile), status='unknown', position='append')
-  else
-    open(unit=00, file='NUL', status='unknown')
-  endif
+  open(unit=00, file=trim(settingsFile), status='unknown', position='append')
 
   if ((outputSnapshotFile .EQ. 1).AND.isRoot) then
     open(unit=01, file=trim(snapshotFilePrefix)//'-'//'readme', status='unknown')
@@ -895,6 +994,7 @@ subroutine initial()
 #endif
   write(00,*) 'thermalGeqCoeff =', real(thermalGeqCoeff,kind=8)
   write(00,*) 'viscosity =', real(viscosity,kind=8), '; diffusivity =', real(diffusivity,kind=8)
+  write(00,*) "outputSnapshotFile =", outputSnapshotFile
   write(00,*) 'outputSnapshotInterval =', real(outputSnapshotInterval,kind=8), ' free-fall time units'
   write(00,*) 'outputSnapshotIntervalItc =', outputSnapshotIntervalItc, ' in itc units'
   write(00,*) 'outputPltFile =', outputPltFile
@@ -980,18 +1080,21 @@ subroutine initial()
     allocate(f_all(0:qf-1,nx,ny,nz), g_all(0:qt-1,nx,ny,nz))
     allocate(Bx_prev_all(nx,ny,nz), By_prev_all(nx,ny,nz), Bz_prev_all(nx,ny,nz))
   endif
-  allocate(fSendXLower(qf*(yLocalCount+2)*(zLocalCount+2)), fSendXUpper(qf*(yLocalCount+2)*(zLocalCount+2)))
-  allocate(fRecvXLower(qf*(yLocalCount+2)*(zLocalCount+2)), fRecvXUpper(qf*(yLocalCount+2)*(zLocalCount+2)))
-  allocate(fSendYLower(qf*(xLocalCount+2)*(zLocalCount+2)), fSendYUpper(qf*(xLocalCount+2)*(zLocalCount+2)))
-  allocate(fRecvYLower(qf*(xLocalCount+2)*(zLocalCount+2)), fRecvYUpper(qf*(xLocalCount+2)*(zLocalCount+2)))
-  allocate(fSendZLower(qf*(xLocalCount+2)*(yLocalCount+2)), fSendZUpper(qf*(xLocalCount+2)*(yLocalCount+2)))
-  allocate(fRecvZLower(qf*(xLocalCount+2)*(yLocalCount+2)), fRecvZUpper(qf*(xLocalCount+2)*(yLocalCount+2)))
-  allocate(gSendXLower(qt*(yLocalCount+2)*(zLocalCount+2)), gSendXUpper(qt*(yLocalCount+2)*(zLocalCount+2)))
-  allocate(gRecvXLower(qt*(yLocalCount+2)*(zLocalCount+2)), gRecvXUpper(qt*(yLocalCount+2)*(zLocalCount+2)))
-  allocate(gSendYLower(qt*(xLocalCount+2)*(zLocalCount+2)), gSendYUpper(qt*(xLocalCount+2)*(zLocalCount+2)))
-  allocate(gRecvYLower(qt*(xLocalCount+2)*(zLocalCount+2)), gRecvYUpper(qt*(xLocalCount+2)*(zLocalCount+2)))
-  allocate(gSendZLower(qt*(xLocalCount+2)*(yLocalCount+2)), gSendZUpper(qt*(xLocalCount+2)*(yLocalCount+2)))
-  allocate(gRecvZLower(qt*(xLocalCount+2)*(yLocalCount+2)), gRecvZUpper(qt*(xLocalCount+2)*(yLocalCount+2)))
+  ! D3Q19 每个面只需要 5 个会跨过该面的速度方向。
+  ! x 先交换 owned 面；y 交换时包含 x halo；z 交换时再包含 x/y halo，用来补齐 D3Q19 的边线 ghost。
+  allocate(fSendXLower(5*yLocalCount*zLocalCount), fSendXUpper(5*yLocalCount*zLocalCount))
+  allocate(fRecvXLower(5*yLocalCount*zLocalCount), fRecvXUpper(5*yLocalCount*zLocalCount))
+  allocate(fSendYLower(5*(xLocalCount+2)*zLocalCount), fSendYUpper(5*(xLocalCount+2)*zLocalCount))
+  allocate(fRecvYLower(5*(xLocalCount+2)*zLocalCount), fRecvYUpper(5*(xLocalCount+2)*zLocalCount))
+  allocate(fSendZLower(5*(xLocalCount+2)*(yLocalCount+2)), fSendZUpper(5*(xLocalCount+2)*(yLocalCount+2)))
+  allocate(fRecvZLower(5*(xLocalCount+2)*(yLocalCount+2)), fRecvZUpper(5*(xLocalCount+2)*(yLocalCount+2)))
+  ! D3Q7 温度格子只有坐标轴方向，不存在斜向速度，所以不需要传播边线或角点 halo。
+  allocate(gSendXLower(yLocalCount*zLocalCount), gSendXUpper(yLocalCount*zLocalCount))
+  allocate(gRecvXLower(yLocalCount*zLocalCount), gRecvXUpper(yLocalCount*zLocalCount))
+  allocate(gSendYLower(xLocalCount*zLocalCount), gSendYUpper(xLocalCount*zLocalCount))
+  allocate(gRecvYLower(xLocalCount*zLocalCount), gRecvYUpper(xLocalCount*zLocalCount))
+  allocate(gSendZLower(xLocalCount*yLocalCount), gSendZUpper(xLocalCount*yLocalCount))
+  allocate(gRecvZLower(xLocalCount*yLocalCount), gRecvZUpper(xLocalCount*yLocalCount))
 
   !-----------------------------------------------------------------------------------------------
   
@@ -1508,62 +1611,67 @@ subroutine exchange_f_post_halo_mpi()
   use mpi
   use commondata3dOpenmpMpi
   implicit none
-  integer(kind=4) :: i, j, k, alpha, idx, nBuf
+  ! 下面六组方向是“会跨过对应边界迁移”的 D3Q19 分量。
+  ! pull streaming 中 f(alpha,i,j,k) 从 f_post(alpha,i-ex,j-ey,k-ez) 读取；
+  ! 因此 ghost 层只需要从相邻分区流入 owned 区域的向内分量，不需要整张 qf=19 的面。
+  integer(kind=4), parameter :: sendBackDirs(5)  = (/2, 8, 10, 12, 14/)
+  integer(kind=4), parameter :: sendFrontDirs(5) = (/1, 7,  9, 11, 13/)
+  integer(kind=4), parameter :: sendLeftDirs(5)  = (/4, 9, 10, 16, 18/)
+  integer(kind=4), parameter :: sendRightDirs(5) = (/3, 7,  8, 15, 17/)
+  integer(kind=4), parameter :: sendDownDirs(5)  = (/6, 13, 14, 17, 18/)
+  integer(kind=4), parameter :: sendTopDirs(5)   = (/5, 11, 12, 15, 16/)
+  integer(kind=4) :: i, j, k, dir, idx, nBuf
   integer :: status(MPI_STATUS_SIZE)
 
-  ! x/i 方向：send lower/back face 到 back，send upper/front face 到 front。
-  nBuf = qf*(yLocalCount+2)*(zLocalCount+2)
+  ! 第一步：x/i 方向先交换 owned 面。此时还没有 y/z halo 可传播，所以只遍历 j=1:nyloc, k=1:nzloc。
+  nBuf = size(fSendXLower)
   idx = 0
-  do k = 0, zLocalCount+1
-    do j = 0, yLocalCount+1
-      do alpha = 0, qf-1
+  do k = 1, zLocalCount
+    do j = 1, yLocalCount
+      do dir = 1, 5
         idx = idx + 1
-        fSendXLower(idx) = f_post(alpha,1,j,k)
-        fSendXUpper(idx) = f_post(alpha,xLocalCount,j,k)
+        fSendXLower(idx) = f_post(sendBackDirs(dir),1,j,k)
+        fSendXUpper(idx) = f_post(sendFrontDirs(dir),xLocalCount,j,k)
       enddo
     enddo
   enddo
-  !   fSendXLower/nBuf/MPI_DOUBLE_PRECISION : 当前 rank 的 x 负方向边界面和发送长度。
-  !   back/101                              : 发送目标 rank 和消息 tag。
-  !   fRecvXUpper/nBuf/MPI_DOUBLE_PRECISION : 从 x 正方向邻居收到的数据，最后放进 i=xLocalCount+1 halo。
-  !   front/101                             : 接收来源 rank 和消息 tag。
-  !   COMM3D/status/IERR                    : 笛卡尔通信器、通信状态数组、MPI 错误码。
   call MPI_SENDRECV(fSendXLower, nBuf, MPI_DOUBLE_PRECISION, back, 101, &
        fRecvXUpper, nBuf, MPI_DOUBLE_PRECISION, front, 101, COMM3D, status, IERR)
   call MPI_SENDRECV(fSendXUpper, nBuf, MPI_DOUBLE_PRECISION, front, 102, &
        fRecvXLower, nBuf, MPI_DOUBLE_PRECISION, back, 102, COMM3D, status, IERR)
   if(back.NE.MPI_PROC_NULL) then
     idx = 0
-    do k = 0, zLocalCount+1
-      do j = 0, yLocalCount+1
-        do alpha = 0, qf-1
+    do k = 1, zLocalCount
+      do j = 1, yLocalCount
+        do dir = 1, 5
           idx = idx + 1
-          f_post(alpha,0,j,k) = fRecvXLower(idx)
+          f_post(sendFrontDirs(dir),0,j,k) = fRecvXLower(idx)
         enddo
       enddo
     enddo
   endif
   if(front.NE.MPI_PROC_NULL) then
     idx = 0
-    do k = 0, zLocalCount+1
-      do j = 0, yLocalCount+1
-        do alpha = 0, qf-1
+    do k = 1, zLocalCount
+      do j = 1, yLocalCount
+        do dir = 1, 5
           idx = idx + 1
-          f_post(alpha,xLocalCount+1,j,k) = fRecvXUpper(idx)
+          f_post(sendBackDirs(dir),xLocalCount+1,j,k) = fRecvXUpper(idx)
         enddo
       enddo
     enddo
   endif
 
-  ! y/j 方向：打包 i=0:xLocalCount+1，使 x halo 随 y 面一起传播，用于 D3Q19 斜向速度。
-  nBuf = qf*(xLocalCount+2)*(zLocalCount+2)
+  ! 第二步：y/j 方向包含 i=0:xLocalCount+1，把第一步收到的 x halo 继续传给 y 邻居。
+  ! 这样 x-y 边线 ghost 能得到真正会被 streaming 用到的斜向分量。
+  nBuf = size(fSendYLower)
   idx = 0
-  do k = 0, zLocalCount+1
+  do k = 1, zLocalCount
     do i = 0, xLocalCount+1
-      do alpha = 0, qf-1
+      do dir = 1, 5
         idx = idx + 1
-        fSendYLower(idx) = f_post(alpha,i,1,k)
-        fSendYUpper(idx) = f_post(alpha,i,yLocalCount,k)
+        fSendYLower(idx) = f_post(sendLeftDirs(dir),i,1,k)
+        fSendYUpper(idx) = f_post(sendRightDirs(dir),i,yLocalCount,k)
       enddo
     enddo
   enddo
@@ -1573,36 +1681,37 @@ subroutine exchange_f_post_halo_mpi()
        fRecvYLower, nBuf, MPI_DOUBLE_PRECISION, left, 112, COMM3D, status, IERR)
   if(left.NE.MPI_PROC_NULL) then
     idx = 0
-    do k = 0, zLocalCount+1
+    do k = 1, zLocalCount
       do i = 0, xLocalCount+1
-        do alpha = 0, qf-1
+        do dir = 1, 5
           idx = idx + 1
-          f_post(alpha,i,0,k) = fRecvYLower(idx)
+          f_post(sendRightDirs(dir),i,0,k) = fRecvYLower(idx)
         enddo
       enddo
     enddo
   endif
   if(right.NE.MPI_PROC_NULL) then
     idx = 0
-    do k = 0, zLocalCount+1
+    do k = 1, zLocalCount
       do i = 0, xLocalCount+1
-        do alpha = 0, qf-1
+        do dir = 1, 5
           idx = idx + 1
-          f_post(alpha,i,yLocalCount+1,k) = fRecvYUpper(idx)
+          f_post(sendLeftDirs(dir),i,yLocalCount+1,k) = fRecvYUpper(idx)
         enddo
       enddo
     enddo
   endif
 
-  ! z/k 方向：最后打包 i/y halo，补齐 D3Q19 的 x-z 与 y-z 斜向 halo。
-  nBuf = qf*(xLocalCount+2)*(yLocalCount+2)
+  ! 第三步：z/k 方向包含 i/y halo。D3Q19 没有三方向同时非零的速度，
+  ! 所以这里已经足以补齐 x-z 与 y-z 边线需要的 ghost 分量；角点不需要 19 个方向全有效。
+  nBuf = size(fSendZLower)
   idx = 0
   do j = 0, yLocalCount+1
     do i = 0, xLocalCount+1
-      do alpha = 0, qf-1
+      do dir = 1, 5
         idx = idx + 1
-        fSendZLower(idx) = f_post(alpha,i,j,1)
-        fSendZUpper(idx) = f_post(alpha,i,j,zLocalCount)
+        fSendZLower(idx) = f_post(sendDownDirs(dir),i,j,1)
+        fSendZUpper(idx) = f_post(sendTopDirs(dir),i,j,zLocalCount)
       enddo
     enddo
   enddo
@@ -1614,9 +1723,9 @@ subroutine exchange_f_post_halo_mpi()
     idx = 0
     do j = 0, yLocalCount+1
       do i = 0, xLocalCount+1
-        do alpha = 0, qf-1
+        do dir = 1, 5
           idx = idx + 1
-          f_post(alpha,i,j,0) = fRecvZLower(idx)
+          f_post(sendTopDirs(dir),i,j,0) = fRecvZLower(idx)
         enddo
       enddo
     enddo
@@ -1625,9 +1734,9 @@ subroutine exchange_f_post_halo_mpi()
     idx = 0
     do j = 0, yLocalCount+1
       do i = 0, xLocalCount+1
-        do alpha = 0, qf-1
+        do dir = 1, 5
           idx = idx + 1
-          f_post(alpha,i,j,zLocalCount+1) = fRecvZUpper(idx)
+          f_post(sendDownDirs(dir),i,j,zLocalCount+1) = fRecvZUpper(idx)
         enddo
       enddo
     enddo
@@ -1644,18 +1753,18 @@ subroutine exchange_g_post_halo_mpi()
   use mpi
   use commondata3dOpenmpMpi
   implicit none
-  integer(kind=4) :: i, j, k, alpha, idx, nBuf
+  integer(kind=4) :: i, j, k, idx, nBuf
   integer :: status(MPI_STATUS_SIZE)
 
-  nBuf = qt*(yLocalCount+2)*(zLocalCount+2)
+  ! D3Q7 温度场只有 6 个坐标轴方向；跨 x/y/z 面时各自只需要一个向内分量。
+  ! 不存在斜向速度，因此不需要像 D3Q19 那样通过后续方向传播边线 ghost。
+  nBuf = size(gSendXLower)
   idx = 0
-  do k = 0, zLocalCount+1
-    do j = 0, yLocalCount+1
-      do alpha = 0, qt-1
-        idx = idx + 1
-        gSendXLower(idx) = g_post(alpha,1,j,k)
-        gSendXUpper(idx) = g_post(alpha,xLocalCount,j,k)
-      enddo
+  do k = 1, zLocalCount
+    do j = 1, yLocalCount
+      idx = idx + 1
+      gSendXLower(idx) = g_post(2,1,j,k)
+      gSendXUpper(idx) = g_post(1,xLocalCount,j,k)
     enddo
   enddo
   call MPI_SENDRECV(gSendXLower, nBuf, MPI_DOUBLE_PRECISION, back, 201, &
@@ -1664,36 +1773,30 @@ subroutine exchange_g_post_halo_mpi()
        gRecvXLower, nBuf, MPI_DOUBLE_PRECISION, back, 202, COMM3D, status, IERR)
   if(back.NE.MPI_PROC_NULL) then
     idx = 0
-    do k = 0, zLocalCount+1
-      do j = 0, yLocalCount+1
-        do alpha = 0, qt-1
-          idx = idx + 1
-          g_post(alpha,0,j,k) = gRecvXLower(idx)
-        enddo
+    do k = 1, zLocalCount
+      do j = 1, yLocalCount
+        idx = idx + 1
+        g_post(1,0,j,k) = gRecvXLower(idx)
       enddo
     enddo
   endif
   if(front.NE.MPI_PROC_NULL) then
     idx = 0
-    do k = 0, zLocalCount+1
-      do j = 0, yLocalCount+1
-        do alpha = 0, qt-1
-          idx = idx + 1
-          g_post(alpha,xLocalCount+1,j,k) = gRecvXUpper(idx)
-        enddo
+    do k = 1, zLocalCount
+      do j = 1, yLocalCount
+        idx = idx + 1
+        g_post(2,xLocalCount+1,j,k) = gRecvXUpper(idx)
       enddo
     enddo
   endif
 
-  nBuf = qt*(xLocalCount+2)*(zLocalCount+2)
+  nBuf = size(gSendYLower)
   idx = 0
-  do k = 0, zLocalCount+1
-    do i = 0, xLocalCount+1
-      do alpha = 0, qt-1
-        idx = idx + 1
-        gSendYLower(idx) = g_post(alpha,i,1,k)
-        gSendYUpper(idx) = g_post(alpha,i,yLocalCount,k)
-      enddo
+  do k = 1, zLocalCount
+    do i = 1, xLocalCount
+      idx = idx + 1
+      gSendYLower(idx) = g_post(4,i,1,k)
+      gSendYUpper(idx) = g_post(3,i,yLocalCount,k)
     enddo
   enddo
   call MPI_SENDRECV(gSendYLower, nBuf, MPI_DOUBLE_PRECISION, left, 211, &
@@ -1702,36 +1805,30 @@ subroutine exchange_g_post_halo_mpi()
        gRecvYLower, nBuf, MPI_DOUBLE_PRECISION, left, 212, COMM3D, status, IERR)
   if(left.NE.MPI_PROC_NULL) then
     idx = 0
-    do k = 0, zLocalCount+1
-      do i = 0, xLocalCount+1
-        do alpha = 0, qt-1
-          idx = idx + 1
-          g_post(alpha,i,0,k) = gRecvYLower(idx)
-        enddo
+    do k = 1, zLocalCount
+      do i = 1, xLocalCount
+        idx = idx + 1
+        g_post(3,i,0,k) = gRecvYLower(idx)
       enddo
     enddo
   endif
   if(right.NE.MPI_PROC_NULL) then
     idx = 0
-    do k = 0, zLocalCount+1
-      do i = 0, xLocalCount+1
-        do alpha = 0, qt-1
-          idx = idx + 1
-          g_post(alpha,i,yLocalCount+1,k) = gRecvYUpper(idx)
-        enddo
+    do k = 1, zLocalCount
+      do i = 1, xLocalCount
+        idx = idx + 1
+        g_post(4,i,yLocalCount+1,k) = gRecvYUpper(idx)
       enddo
     enddo
   endif
 
-  nBuf = qt*(xLocalCount+2)*(yLocalCount+2)
+  nBuf = size(gSendZLower)
   idx = 0
-  do j = 0, yLocalCount+1
-    do i = 0, xLocalCount+1
-      do alpha = 0, qt-1
-        idx = idx + 1
-        gSendZLower(idx) = g_post(alpha,i,j,1)
-        gSendZUpper(idx) = g_post(alpha,i,j,zLocalCount)
-      enddo
+  do j = 1, yLocalCount
+    do i = 1, xLocalCount
+      idx = idx + 1
+      gSendZLower(idx) = g_post(6,i,j,1)
+      gSendZUpper(idx) = g_post(5,i,j,zLocalCount)
     enddo
   enddo
   call MPI_SENDRECV(gSendZLower, nBuf, MPI_DOUBLE_PRECISION, down, 221, &
@@ -1740,23 +1837,19 @@ subroutine exchange_g_post_halo_mpi()
        gRecvZLower, nBuf, MPI_DOUBLE_PRECISION, down, 222, COMM3D, status, IERR)
   if(down.NE.MPI_PROC_NULL) then
     idx = 0
-    do j = 0, yLocalCount+1
-      do i = 0, xLocalCount+1
-        do alpha = 0, qt-1
-          idx = idx + 1
-          g_post(alpha,i,j,0) = gRecvZLower(idx)
-        enddo
+    do j = 1, yLocalCount
+      do i = 1, xLocalCount
+        idx = idx + 1
+        g_post(5,i,j,0) = gRecvZLower(idx)
       enddo
     enddo
   endif
   if(top.NE.MPI_PROC_NULL) then
     idx = 0
-    do j = 0, yLocalCount+1
-      do i = 0, xLocalCount+1
-        do alpha = 0, qt-1
-          idx = idx + 1
-          g_post(alpha,i,j,zLocalCount+1) = gRecvZUpper(idx)
-        enddo
+    do j = 1, yLocalCount
+      do i = 1, xLocalCount
+        idx = idx + 1
+        g_post(6,i,j,zLocalCount+1) = gRecvZUpper(idx)
       enddo
     enddo
   endif
@@ -1776,7 +1869,9 @@ subroutine streaming()
   integer(kind=4) :: i, j, k, ip, jp, kp, alpha
 
   ! pull streaming：当前格点 (i,j,k) 从 (i-ex, j-ey, k-ez) 拉取分布函数
-  !$omp parallel do collapse(3) default(none) shared(f,f_post,ex,ey,ez,xLocalCount,yLocalCount,zLocalCount) private(i,j,k,ip,jp,kp,alpha)
+  !$omp parallel do collapse(3) default(none) &
+  !$omp& shared(f,f_post,ex,ey,ez,xLocalCount,yLocalCount,zLocalCount) &
+  !$omp& private(i,j,k,ip,jp,kp,alpha)
   do k = 1, zLocalCount
     do j = 1, yLocalCount
       do i = 1, xLocalCount
@@ -1803,17 +1898,31 @@ subroutine bounceback()
   use commondata3dOpenmpMpi
   implicit none
 
-  integer(kind=4) :: i, j, k, alpha
+  integer(kind=4) :: i, j, k
 
 #ifdef SpanwiseWallsNoslip
   if(hasBackBoundary .OR. hasFrontBoundary) then
-    !$omp parallel do collapse(2) default(none) shared(f,f_post,ex,opp,hasBackBoundary,hasFrontBoundary,xLocalCount,yLocalCount,zLocalCount) private(j,k,alpha)
+    !$omp parallel do collapse(2) default(none) &
+    !$omp& shared(f,f_post,hasBackBoundary,hasFrontBoundary,xLocalCount,yLocalCount,zLocalCount) &
+    !$omp& private(j,k)
     do k = 1, zLocalCount
       do j = 1, yLocalCount
-        do alpha = 0, qf-1
-          if(hasBackBoundary .AND. (ex(alpha).EQ.1)) f(alpha,1,j,k) = f_post(opp(alpha),1,j,k)
-          if(hasFrontBoundary .AND. (ex(alpha).EQ.-1)) f(alpha,xLocalCount,j,k) = f_post(opp(alpha),xLocalCount,j,k)
-        enddo
+        if(hasBackBoundary) then
+          ! x 负方向真实壁面 i=1：反弹所有 ex=+1 的入射分布函数。
+          f(1, 1,j,k) = f_post(2, 1,j,k)
+          f(7, 1,j,k) = f_post(10,1,j,k)
+          f(9, 1,j,k) = f_post(8, 1,j,k)
+          f(11,1,j,k) = f_post(14,1,j,k)
+          f(13,1,j,k) = f_post(12,1,j,k)
+        endif
+        if(hasFrontBoundary) then
+          ! x 正方向真实壁面 i=xLocalCount：反弹所有 ex=-1 的入射分布函数。
+          f(2, xLocalCount,j,k) = f_post(1, xLocalCount,j,k)
+          f(8, xLocalCount,j,k) = f_post(9, xLocalCount,j,k)
+          f(10,xLocalCount,j,k) = f_post(7, xLocalCount,j,k)
+          f(12,xLocalCount,j,k) = f_post(13,xLocalCount,j,k)
+          f(14,xLocalCount,j,k) = f_post(11,xLocalCount,j,k)
+        endif
       enddo
     enddo
     !$omp end parallel do
@@ -1822,13 +1931,27 @@ subroutine bounceback()
 
 #ifdef VerticalWallsNoslip
   if(hasLeftBoundary .OR. hasRightBoundary) then
-    !$omp parallel do collapse(2) default(none) shared(f,f_post,ey,opp,hasLeftBoundary,hasRightBoundary,xLocalCount,yLocalCount,zLocalCount) private(i,k,alpha)
+    !$omp parallel do collapse(2) default(none) &
+    !$omp& shared(f,f_post,hasLeftBoundary,hasRightBoundary,xLocalCount,yLocalCount,zLocalCount) &
+    !$omp& private(i,k)
     do k = 1, zLocalCount
       do i = 1, xLocalCount
-        do alpha = 0, qf-1
-          if(hasLeftBoundary .AND. (ey(alpha).EQ.1)) f(alpha,i,1,k) = f_post(opp(alpha),i,1,k)
-          if(hasRightBoundary .AND. (ey(alpha).EQ.-1)) f(alpha,i,yLocalCount,k) = f_post(opp(alpha),i,yLocalCount,k)
-        enddo
+        if(hasLeftBoundary) then
+          ! y 负方向真实壁面 j=1：反弹所有 ey=+1 的入射分布函数。
+          f(3, i,1,k) = f_post(4, i,1,k)
+          f(7, i,1,k) = f_post(10,i,1,k)
+          f(8, i,1,k) = f_post(9, i,1,k)
+          f(15,i,1,k) = f_post(18,i,1,k)
+          f(17,i,1,k) = f_post(16,i,1,k)
+        endif
+        if(hasRightBoundary) then
+          ! y 正方向真实壁面 j=yLocalCount：反弹所有 ey=-1 的入射分布函数。
+          f(4, i,yLocalCount,k) = f_post(3, i,yLocalCount,k)
+          f(9, i,yLocalCount,k) = f_post(8, i,yLocalCount,k)
+          f(10,i,yLocalCount,k) = f_post(7, i,yLocalCount,k)
+          f(16,i,yLocalCount,k) = f_post(15,i,yLocalCount,k)
+          f(18,i,yLocalCount,k) = f_post(17,i,yLocalCount,k)
+        endif
       enddo
     enddo
     !$omp end parallel do
@@ -1837,13 +1960,27 @@ subroutine bounceback()
 
 #ifdef HorizontalWallsNoslip
   if(hasBottomBoundary .OR. hasTopBoundary) then
-    !$omp parallel do collapse(2) default(none) shared(f,f_post,ez,opp,hasBottomBoundary,hasTopBoundary,xLocalCount,yLocalCount,zLocalCount) private(i,j,alpha)
+    !$omp parallel do collapse(2) default(none) &
+    !$omp& shared(f,f_post,hasBottomBoundary,hasTopBoundary,xLocalCount,yLocalCount,zLocalCount) &
+    !$omp& private(i,j)
     do j = 1, yLocalCount
       do i = 1, xLocalCount
-        do alpha = 0, qf-1
-          if(hasBottomBoundary .AND. (ez(alpha).EQ.1)) f(alpha,i,j,1) = f_post(opp(alpha),i,j,1)
-          if(hasTopBoundary .AND. (ez(alpha).EQ.-1)) f(alpha,i,j,zLocalCount) = f_post(opp(alpha),i,j,zLocalCount)
-        enddo
+        if(hasBottomBoundary) then
+          ! z 负方向真实壁面 k=1：反弹所有 ez=+1 的入射分布函数。
+          f(5, i,j,1) = f_post(6, i,j,1)
+          f(11,i,j,1) = f_post(14,i,j,1)
+          f(12,i,j,1) = f_post(13,i,j,1)
+          f(15,i,j,1) = f_post(18,i,j,1)
+          f(16,i,j,1) = f_post(17,i,j,1)
+        endif
+        if(hasTopBoundary) then
+          ! z 正方向真实壁面 k=zLocalCount：反弹所有 ez=-1 的入射分布函数。
+          f(6, i,j,zLocalCount) = f_post(5, i,j,zLocalCount)
+          f(13,i,j,zLocalCount) = f_post(12,i,j,zLocalCount)
+          f(14,i,j,zLocalCount) = f_post(11,i,j,zLocalCount)
+          f(17,i,j,zLocalCount) = f_post(16,i,j,zLocalCount)
+          f(18,i,j,zLocalCount) = f_post(15,i,j,zLocalCount)
+        endif
       enddo
     enddo
     !$omp end parallel do
@@ -1908,8 +2045,9 @@ subroutine collisionT()
   real(kind=8), parameter :: SG = 1.0d0 - 0.5d0 * Qk
 
   ! 温度场采用 D3Q7 MRT
-  !$omp parallel do collapse(3) default(none) shared(g,g_post,u,v,w,T,Bx_prev,By_prev,Bz_prev,xLocalCount,yLocalCount,zLocalCount) &
-  !$omp private(i,j,k,n,neq,q,n_post,Bx,By,Bz,dBx,dBy,dBz)
+  !$omp parallel do collapse(3) default(none) &
+  !$omp& shared(g,g_post,u,v,w,T,Bx_prev,By_prev,Bz_prev,xLocalCount,yLocalCount,zLocalCount) &
+  !$omp& private(i,j,k,n,neq,q,n_post,Bx,By,Bz,dBx,dBy,dBz)
   do k = 1, zLocalCount
     do j = 1, yLocalCount
       do i = 1, xLocalCount
@@ -2008,7 +2146,9 @@ subroutine streamingT()
   integer(kind=4) :: i, j, k, ip, jp, kp, alpha
 
   ! 温度场同样采用 pull streaming
-  !$omp parallel do collapse(3) default(none) shared(g,g_post,exT,eyT,ezT,xLocalCount,yLocalCount,zLocalCount) private(i,j,k,ip,jp,kp,alpha)
+  !$omp parallel do collapse(3) default(none) &
+  !$omp& shared(g,g_post,exT,eyT,ezT,xLocalCount,yLocalCount,zLocalCount) &
+  !$omp& private(i,j,k,ip,jp,kp,alpha)
   do k = 1, zLocalCount
     do j = 1, yLocalCount
       do i = 1, xLocalCount
@@ -2039,17 +2179,23 @@ subroutine bouncebackT()
   use commondata3dOpenmpMpi
   implicit none
 
-  integer(kind=4) :: i, j, k, alpha
+  integer(kind=4) :: i, j, k
 
 #ifdef SpanwiseWallsAdiabatic
   if(hasBackBoundary .OR. hasFrontBoundary) then
-    !$omp parallel do collapse(2) default(none) shared(g,g_post,exT,oppT,hasBackBoundary,hasFrontBoundary,xLocalCount,yLocalCount,zLocalCount) private(j,k,alpha)
+    !$omp parallel do collapse(2) default(none) &
+    !$omp& shared(g,g_post,hasBackBoundary,hasFrontBoundary,xLocalCount,yLocalCount,zLocalCount) &
+    !$omp& private(j,k)
     do k = 1, zLocalCount
       do j = 1, yLocalCount
-        do alpha = 0, qt-1
-          if(hasBackBoundary .AND. (exT(alpha).EQ.1)) g(alpha,1,j,k) = g_post(oppT(alpha),1,j,k)
-          if(hasFrontBoundary .AND. (exT(alpha).EQ.-1)) g(alpha,xLocalCount,j,k) = g_post(oppT(alpha),xLocalCount,j,k)
-        enddo
+        if(hasBackBoundary) then
+          ! x 负方向绝热真实壁面 i=1：D3Q7 中只有 alpha=1 需要从反方向 alpha=2 反弹。
+          g(1,1,j,k) = g_post(2,1,j,k)
+        endif
+        if(hasFrontBoundary) then
+          ! x 正方向绝热真实壁面 i=xLocalCount：D3Q7 中只有 alpha=2 需要从反方向 alpha=1 反弹。
+          g(2,xLocalCount,j,k) = g_post(1,xLocalCount,j,k)
+        endif
       enddo
     enddo
     !$omp end parallel do
@@ -2058,15 +2204,27 @@ subroutine bouncebackT()
 
 #ifdef VerticalWallsConstT
   if(hasLeftBoundary .OR. hasRightBoundary) then
-    !$omp parallel do collapse(2) default(none) shared(g,g_post,eyT,oppT,omegaT,hasLeftBoundary,hasRightBoundary,xLocalCount,yLocalCount,zLocalCount) private(i,k,alpha)
+    !$omp parallel do collapse(2) default(none) &
+    !$omp& shared(g,g_post,omegaT,hasLeftBoundary,hasRightBoundary,xLocalCount,yLocalCount,zLocalCount) &
+    !$omp& private(i,k)
     do k = 1, zLocalCount
       do i = 1, xLocalCount
-        do alpha = 0, qt-1
-          if(hasLeftBoundary .AND. (eyT(alpha).EQ.1)) &
-            g(alpha,i,1,k) = -g_post(oppT(alpha),i,1,k) + 2.0d0*omegaT(alpha)*Thot
-          if(hasRightBoundary .AND. (eyT(alpha).EQ.-1)) &
-            g(alpha,i,yLocalCount,k) = -g_post(oppT(alpha),i,yLocalCount,k) + 2.0d0*omegaT(alpha)*Tcold
-        enddo
+        if(hasLeftBoundary) then
+          ! y 负方向恒温真实壁面 j=1：alpha=3 由反方向 alpha=4 给出，并按热算法分支加入热壁温度项。
+#ifdef EnableLegacyThermalScheme
+          g(3,i,1,k) = -g_post(4,i,1,k) + (6.0d0 + paraA) / 21.0d0 * Thot
+#else
+          g(3,i,1,k) = -g_post(4,i,1,k) + 2.0d0*omegaT(3)*Thot
+#endif
+        endif
+        if(hasRightBoundary) then
+          ! y 正方向恒温真实壁面 j=yLocalCount：alpha=4 由反方向 alpha=3 给出，并按热算法分支加入冷壁温度项。
+#ifdef EnableLegacyThermalScheme
+          g(4,i,yLocalCount,k) = -g_post(3,i,yLocalCount,k) + (6.0d0 + paraA) / 21.0d0 * Tcold
+#else
+          g(4,i,yLocalCount,k) = -g_post(3,i,yLocalCount,k) + 2.0d0*omegaT(4)*Tcold
+#endif
+        endif
       enddo
     enddo
     !$omp end parallel do
@@ -2075,13 +2233,19 @@ subroutine bouncebackT()
 
 #ifdef VerticalWallsAdiabatic
   if(hasLeftBoundary .OR. hasRightBoundary) then
-    !$omp parallel do collapse(2) default(none) shared(g,g_post,eyT,oppT,hasLeftBoundary,hasRightBoundary,xLocalCount,yLocalCount,zLocalCount) private(i,k,alpha)
+    !$omp parallel do collapse(2) default(none) &
+    !$omp& shared(g,g_post,hasLeftBoundary,hasRightBoundary,xLocalCount,yLocalCount,zLocalCount) &
+    !$omp& private(i,k)
     do k = 1, zLocalCount
       do i = 1, xLocalCount
-        do alpha = 0, qt-1
-          if(hasLeftBoundary .AND. (eyT(alpha).EQ.1)) g(alpha,i,1,k) = g_post(oppT(alpha),i,1,k)
-          if(hasRightBoundary .AND. (eyT(alpha).EQ.-1)) g(alpha,i,yLocalCount,k) = g_post(oppT(alpha),i,yLocalCount,k)
-        enddo
+        if(hasLeftBoundary) then
+          ! y 负方向绝热真实壁面 j=1：alpha=3 从反方向 alpha=4 反弹。
+          g(3,i,1,k) = g_post(4,i,1,k)
+        endif
+        if(hasRightBoundary) then
+          ! y 正方向绝热真实壁面 j=yLocalCount：alpha=4 从反方向 alpha=3 反弹。
+          g(4,i,yLocalCount,k) = g_post(3,i,yLocalCount,k)
+        endif
       enddo
     enddo
     !$omp end parallel do
@@ -2090,15 +2254,27 @@ subroutine bouncebackT()
 
 #ifdef HorizontalWallsConstT
   if(hasBottomBoundary .OR. hasTopBoundary) then
-    !$omp parallel do collapse(2) default(none) shared(g,g_post,ezT,oppT,omegaT,hasBottomBoundary,hasTopBoundary,xLocalCount,yLocalCount,zLocalCount) private(i,j,alpha)
+    !$omp parallel do collapse(2) default(none) &
+    !$omp& shared(g,g_post,omegaT,hasBottomBoundary,hasTopBoundary,xLocalCount,yLocalCount,zLocalCount) &
+    !$omp& private(i,j)
     do j = 1, yLocalCount
       do i = 1, xLocalCount
-        do alpha = 0, qt-1
-          if(hasBottomBoundary .AND. (ezT(alpha).EQ.1)) &
-            g(alpha,i,j,1) = -g_post(oppT(alpha),i,j,1) + 2.0d0*omegaT(alpha)*Thot
-          if(hasTopBoundary .AND. (ezT(alpha).EQ.-1)) &
-            g(alpha,i,j,zLocalCount) = -g_post(oppT(alpha),i,j,zLocalCount) + 2.0d0*omegaT(alpha)*Tcold
-        enddo
+        if(hasBottomBoundary) then
+          ! z 负方向恒温真实壁面 k=1：alpha=5 由反方向 alpha=6 给出，并按热算法分支加入热壁温度项。
+#ifdef EnableLegacyThermalScheme
+          g(5,i,j,1) = -g_post(6,i,j,1) + (6.0d0 + paraA) / 21.0d0 * Thot
+#else
+          g(5,i,j,1) = -g_post(6,i,j,1) + 2.0d0*omegaT(5)*Thot
+#endif
+        endif
+        if(hasTopBoundary) then
+          ! z 正方向恒温真实壁面 k=zLocalCount：alpha=6 由反方向 alpha=5 给出，并按热算法分支加入冷壁温度项。
+#ifdef EnableLegacyThermalScheme
+          g(6,i,j,zLocalCount) = -g_post(5,i,j,zLocalCount) + (6.0d0 + paraA) / 21.0d0 * Tcold
+#else
+          g(6,i,j,zLocalCount) = -g_post(5,i,j,zLocalCount) + 2.0d0*omegaT(6)*Tcold
+#endif
+        endif
       enddo
     enddo
     !$omp end parallel do
@@ -2107,13 +2283,19 @@ subroutine bouncebackT()
 
 #ifdef HorizontalWallsAdiabatic
   if(hasBottomBoundary .OR. hasTopBoundary) then
-    !$omp parallel do collapse(2) default(none) shared(g,g_post,ezT,oppT,hasBottomBoundary,hasTopBoundary,xLocalCount,yLocalCount,zLocalCount) private(i,j,alpha)
+    !$omp parallel do collapse(2) default(none) &
+    !$omp& shared(g,g_post,hasBottomBoundary,hasTopBoundary,xLocalCount,yLocalCount,zLocalCount) &
+    !$omp& private(i,j)
     do j = 1, yLocalCount
       do i = 1, xLocalCount
-        do alpha = 0, qt-1
-          if(hasBottomBoundary .AND. (ezT(alpha).EQ.1)) g(alpha,i,j,1) = g_post(oppT(alpha),i,j,1)
-          if(hasTopBoundary .AND. (ezT(alpha).EQ.-1)) g(alpha,i,j,zLocalCount) = g_post(oppT(alpha),i,j,zLocalCount)
-        enddo
+        if(hasBottomBoundary) then
+          ! z 负方向绝热真实壁面 k=1：alpha=5 从反方向 alpha=6 反弹。
+          g(5,i,j,1) = g_post(6,i,j,1)
+        endif
+        if(hasTopBoundary) then
+          ! z 正方向绝热真实壁面 k=zLocalCount：alpha=6 从反方向 alpha=5 反弹。
+          g(6,i,j,zLocalCount) = g_post(5,i,j,zLocalCount)
+        endif
       enddo
     enddo
     !$omp end parallel do
@@ -2241,7 +2423,7 @@ subroutine check()
 
   integer(kind=4) :: i, j, k
   real(kind=8) :: error1, error2, error5, error6
-  real(kind=8) :: error1Global, error2Global, error5Global, error6Global
+  real(kind=8) :: errorLocal(4), errorGlobal(4)
   character(len=80) :: caseTag
 
   ! 误差定义：errorU 用速度场相对 L2 误差
@@ -2272,24 +2454,20 @@ subroutine check()
   enddo
   !$omp end parallel do
 
-  !   error1        : 当前 rank 的局部误差分子。
-  !   error1Global  : 所有 rank 误差分子的全局和。
-  !   1/MPI_DOUBLE_PRECISION/MPI_SUM : 归约 1 个双精度数，并对所有 rank 求和。
-  !   COMM3D/IERR   : 笛卡尔通信器和 MPI 错误码。
-  call MPI_ALLREDUCE(error1, error1Global, 1, MPI_DOUBLE_PRECISION, MPI_SUM, COMM3D, IERR)
-  call MPI_ALLREDUCE(error2, error2Global, 1, MPI_DOUBLE_PRECISION, MPI_SUM, COMM3D, IERR)
-  call MPI_ALLREDUCE(error5, error5Global, 1, MPI_DOUBLE_PRECISION, MPI_SUM, COMM3D, IERR)
-  call MPI_ALLREDUCE(error6, error6Global, 1, MPI_DOUBLE_PRECISION, MPI_SUM, COMM3D, IERR)
+  ! 四个误差量都是全局求和，打包成一个长度为 4 的数组后只做一次 MPI_ALLREDUCE。
+  ! errorLocal/Global(1:4) 分别对应 error1、error2、error5、error6。
+  errorLocal = (/ error1, error2, error5, error6 /)
+  call MPI_ALLREDUCE(errorLocal, errorGlobal, 4, MPI_DOUBLE_PRECISION, MPI_SUM, COMM3D, IERR)
 
-  if (error2Global .GT. 1.0d-30) then
-    errorU = dsqrt(error1Global) / dsqrt(error2Global)
+  if (errorGlobal(2) .GT. 1.0d-30) then
+    errorU = dsqrt(errorGlobal(1)) / dsqrt(errorGlobal(2))
   else
-    errorU = dsqrt(error1Global)
+    errorU = dsqrt(errorGlobal(1))
   endif
-  if (error6Global .GT. 1.0d-30) then
-    errorT = error5Global / error6Global
+  if (errorGlobal(4) .GT. 1.0d-30) then
+    errorT = errorGlobal(3) / errorGlobal(4)
   else
-    errorT = error5Global
+    errorT = errorGlobal(3)
   endif
 
   if(isRoot) then
@@ -2387,11 +2565,6 @@ subroutine append_convergence_master_tecplot(filename, zoneName, itcLoc, errorUL
 end subroutine append_convergence_master_tecplot
 
 
-!===========================================================================================================================
-! 子程序: output_SnapshotFile
-! 作用: 输出三维快照二进制文件，供后处理或继续分析使用。
-! 用途: 在运行过程中按需调用，也在程序结束时调用。
-
 !===================================================================================================
 ! 子程序: gather_output_fields_mpi
 ! 作用: 汇总各 rank 的局部 u/v/w/T/rho 到 root 的全局数组 u_all/v_all/w_all/T_all/rho_all。
@@ -2400,11 +2573,21 @@ subroutine gather_output_fields_mpi()
   use commondata3dOpenmpMpi
   implicit none
 
-  call gather_scalar_field_mpi(1, 301)   ! u -> u_all
-  call gather_scalar_field_mpi(2, 311)   ! v -> v_all
-  call gather_scalar_field_mpi(3, 321)   ! w -> w_all
-  call gather_scalar_field_mpi(4, 331)   ! T -> T_all
-  call gather_scalar_field_mpi(5, 341)   ! rho -> rho_all
+  if(isRoot) then
+    ! root 按场变量逐个汇总：左边是当前 rank 的局部块，右边是 root 上的全场数组。
+    call gather_scalar_field_root_mpi(u, u_all, 301)
+    call gather_scalar_field_root_mpi(v, v_all, 311)
+    call gather_scalar_field_root_mpi(w, w_all, 321)
+    call gather_scalar_field_root_mpi(T, T_all, 331)
+    call gather_scalar_field_root_mpi(rho, rho_all, 341)
+  else
+    ! 非 root 不分配全场数组，只把自己的局部块打包发送给 root。
+    call send_scalar_field_mpi(u, 301)
+    call send_scalar_field_mpi(v, 311)
+    call send_scalar_field_mpi(w, 321)
+    call send_scalar_field_mpi(T, 331)
+    call send_scalar_field_mpi(rho, 341)
+  endif
 
 end subroutine gather_output_fields_mpi
 
@@ -2417,262 +2600,211 @@ subroutine gather_reload_fields_mpi()
   use commondata3dOpenmpMpi
   implicit none
 
-  call gather_distribution_field_mpi(1, qf-1, 401)   ! f -> f_all
-  call gather_distribution_field_mpi(2, qt-1, 501)   ! g -> g_all
+  if(isRoot) then
+    call gather_distribution_field_root_mpi(f, f_all, qf-1, 401)
+    call gather_distribution_field_root_mpi(g, g_all, qt-1, 501)
 #ifdef EnableUseG
-  call gather_scalar_field_mpi(6, 601)               ! Bx_prev -> Bx_prev_all
-  call gather_scalar_field_mpi(7, 611)               ! By_prev -> By_prev_all
-  call gather_scalar_field_mpi(8, 621)               ! Bz_prev -> Bz_prev_all
+    call gather_scalar_field_root_mpi(Bx_prev, Bx_prev_all, 601)
+    call gather_scalar_field_root_mpi(By_prev, By_prev_all, 611)
+    call gather_scalar_field_root_mpi(Bz_prev, Bz_prev_all, 621)
 #endif
+  else
+    call send_distribution_field_mpi(f, qf-1, 401)
+    call send_distribution_field_mpi(g, qt-1, 501)
+#ifdef EnableUseG
+    call send_scalar_field_mpi(Bx_prev, 601)
+    call send_scalar_field_mpi(By_prev, 611)
+    call send_scalar_field_mpi(Bz_prev, 621)
+#endif
+  endif
 
 end subroutine gather_reload_fields_mpi
 
 
 !===================================================================================================
-! 子程序: gather_scalar_field_mpi
-! 作用: root 收集一个三维标量场；非 root 只负责发送当前 rank 的局部 buffer。
+! 子程序: gather_scalar_field_root_mpi
+! 作用: root 将各 rank 的局部三维标量场按全局坐标拼到 globalField。
 !===================================================================================================
-subroutine gather_scalar_field_mpi(fieldId, tagBase)
+subroutine gather_scalar_field_root_mpi(localField, globalField, tagBase)
   use mpi
   use commondata3dOpenmpMpi
   implicit none
-  integer(kind=4), intent(in) :: fieldId, tagBase
+  real(kind=8), intent(in) :: localField(xLocalCount,yLocalCount,zLocalCount)
+  real(kind=8), intent(inout) :: globalField(nx,ny,nz)
+  integer(kind=4), intent(in) :: tagBase
   integer(kind=4) :: sourceRank, count
-  real(kind=8), allocatable :: buffer(:)
-  integer :: status(MPI_STATUS_SIZE)
-
-  count = xLocalCount*yLocalCount*zLocalCount
-  allocate(buffer(count))
-  call pack_scalar_local_buffer_mpi(fieldId, buffer)
-
-  if(isRoot) then
-    call unpack_scalar_buffer_mpi(buffer, xLocalCount, yLocalCount, zLocalCount, &
-         xStartGlobal, yStartGlobal, zStartGlobal, fieldId)
-    deallocate(buffer)
-    do sourceRank = 1, NPROC-1
-      count = XLocalCountAll(sourceRank)*YLocalCountAll(sourceRank)*ZLocalCountAll(sourceRank)
-      allocate(buffer(count))
-      !   buffer/count/MPI_DOUBLE_PRECISION : 接收某个 rank 打包后的局部三维标量场。
-      !   sourceRank/tagBase+sourceRank     : 接收来源 rank 和对应 tag，避免不同字段串线。
-      !   COMM3D/status/IERR                : 笛卡尔通信器、通信状态数组、MPI 错误码。
-      call MPI_RECV(buffer, count, MPI_DOUBLE_PRECISION, sourceRank, tagBase+sourceRank, COMM3D, status, IERR)
-      call unpack_scalar_buffer_mpi(buffer, XLocalCountAll(sourceRank), YLocalCountAll(sourceRank), &
-           ZLocalCountAll(sourceRank), XStartGlobalAll(sourceRank), YStartGlobalAll(sourceRank), &
-           ZStartGlobalAll(sourceRank), fieldId)
-      deallocate(buffer)
-    enddo
-  else
-    call MPI_SEND(buffer, count, MPI_DOUBLE_PRECISION, 0, tagBase+MYID, COMM3D, IERR)
-    deallocate(buffer)
-  endif
-
-end subroutine gather_scalar_field_mpi
-
-
-!===================================================================================================
-! 子程序: gather_distribution_field_mpi
-! 作用: root 收集一个带速度方向维度的分布函数场，例如 f 或 g。
-!===================================================================================================
-subroutine gather_distribution_field_mpi(fieldId, qMax, tagBase)
-  use mpi
-  use commondata3dOpenmpMpi
-  implicit none
-  integer(kind=4), intent(in) :: fieldId, qMax, tagBase
-  integer(kind=4) :: sourceRank, count
-  real(kind=8), allocatable :: buffer(:)
-  integer :: status(MPI_STATUS_SIZE)
-
-  count = (qMax+1)*xLocalCount*yLocalCount*zLocalCount
-  allocate(buffer(count))
-  call pack_distribution_local_buffer_mpi(fieldId, qMax, buffer)
-
-  if(isRoot) then
-    call unpack_distribution_buffer_mpi(buffer, qMax, xLocalCount, yLocalCount, zLocalCount, &
-         xStartGlobal, yStartGlobal, zStartGlobal, fieldId)
-    deallocate(buffer)
-    do sourceRank = 1, NPROC-1
-      count = (qMax+1)*XLocalCountAll(sourceRank)*YLocalCountAll(sourceRank)*ZLocalCountAll(sourceRank)
-      allocate(buffer(count))
-      call MPI_RECV(buffer, count, MPI_DOUBLE_PRECISION, sourceRank, tagBase+sourceRank, COMM3D, status, IERR)
-      call unpack_distribution_buffer_mpi(buffer, qMax, XLocalCountAll(sourceRank), YLocalCountAll(sourceRank), &
-           ZLocalCountAll(sourceRank), XStartGlobalAll(sourceRank), YStartGlobalAll(sourceRank), &
-           ZStartGlobalAll(sourceRank), fieldId)
-      deallocate(buffer)
-    enddo
-  else
-    call MPI_SEND(buffer, count, MPI_DOUBLE_PRECISION, 0, tagBase+MYID, COMM3D, IERR)
-    deallocate(buffer)
-  endif
-
-end subroutine gather_distribution_field_mpi
-
-
-subroutine pack_scalar_local_buffer_mpi(fieldId, buffer)
-  use commondata3dOpenmpMpi
-  implicit none
-  integer(kind=4), intent(in) :: fieldId
-  real(kind=8), intent(out) :: buffer(*)
-  integer(kind=4) :: i, j, k, idx
-
-  idx = 0
-  do k = 1, zLocalCount
-    do j = 1, yLocalCount
-      do i = 1, xLocalCount
-        idx = idx + 1
-        select case(fieldId)
-        case(1)
-          buffer(idx) = u(i,j,k)
-        case(2)
-          buffer(idx) = v(i,j,k)
-        case(3)
-          buffer(idx) = w(i,j,k)
-        case(4)
-          buffer(idx) = T(i,j,k)
-        case(5)
-          buffer(idx) = rho(i,j,k)
-        case(6)
-          buffer(idx) = Bx_prev(i,j,k)
-        case(7)
-          buffer(idx) = By_prev(i,j,k)
-        case(8)
-          buffer(idx) = Bz_prev(i,j,k)
-        end select
-      enddo
-    enddo
-  enddo
-end subroutine pack_scalar_local_buffer_mpi
-
-
-subroutine unpack_scalar_buffer_mpi(buffer, xCount, yCount, zCount, xStart, yStart, zStart, fieldId)
-  use commondata3dOpenmpMpi
-  implicit none
-  integer(kind=4), intent(in) :: xCount, yCount, zCount, xStart, yStart, zStart, fieldId
-  real(kind=8), intent(in) :: buffer(*)
   integer(kind=4) :: i, j, k, idx, globalI, globalJ, globalK
+  real(kind=8), allocatable :: buffer(:)
+  integer :: status(MPI_STATUS_SIZE)
 
-  if(.not.isRoot) return
-  idx = 0
-  do k = 1, zCount
-    globalK = zStart + k - 1
-    do j = 1, yCount
-      globalJ = yStart + j - 1
-      do i = 1, xCount
-        globalI = xStart + i - 1
-        idx = idx + 1
-        select case(fieldId)
-        case(1)
-          u_all(globalI,globalJ,globalK) = buffer(idx)
-        case(2)
-          v_all(globalI,globalJ,globalK) = buffer(idx)
-        case(3)
-          w_all(globalI,globalJ,globalK) = buffer(idx)
-        case(4)
-          T_all(globalI,globalJ,globalK) = buffer(idx)
-        case(5)
-          rho_all(globalI,globalJ,globalK) = buffer(idx)
-        case(6)
-          Bx_prev_all(globalI,globalJ,globalK) = buffer(idx)
-        case(7)
-          By_prev_all(globalI,globalJ,globalK) = buffer(idx)
-        case(8)
-          Bz_prev_all(globalI,globalJ,globalK) = buffer(idx)
-        end select
-      enddo
-    enddo
-  enddo
-end subroutine unpack_scalar_buffer_mpi
+  globalField = 0.0d0
 
-
-subroutine pack_distribution_local_buffer_mpi(fieldId, qMax, buffer)
-  use commondata3dOpenmpMpi
-  implicit none
-  integer(kind=4), intent(in) :: fieldId, qMax
-  real(kind=8), intent(out) :: buffer(*)
-  integer(kind=4) :: i, j, k, alpha, idx
-
-  idx = 0
-  do alpha = 0, qMax
-    do k = 1, zLocalCount
-      do j = 1, yLocalCount
-        do i = 1, xLocalCount
-          idx = idx + 1
-          if(fieldId.EQ.1) buffer(idx) = f(alpha,i,j,k)
-          if(fieldId.EQ.2) buffer(idx) = g(alpha,i,j,k)
-        enddo
-      enddo
-    enddo
-  enddo
-end subroutine pack_distribution_local_buffer_mpi
-
-
-subroutine unpack_distribution_buffer_mpi(buffer, qMax, xCount, yCount, zCount, xStart, yStart, zStart, fieldId)
-  use commondata3dOpenmpMpi
-  implicit none
-  integer(kind=4), intent(in) :: qMax, xCount, yCount, zCount, xStart, yStart, zStart, fieldId
-  real(kind=8), intent(in) :: buffer(*)
-  integer(kind=4) :: i, j, k, alpha, idx, globalI, globalJ, globalK
-
-  if(.not.isRoot) return
-  idx = 0
-  do alpha = 0, qMax
-    do k = 1, zCount
-      globalK = zStart + k - 1
-      do j = 1, yCount
-        globalJ = yStart + j - 1
-        do i = 1, xCount
-          globalI = xStart + i - 1
-          idx = idx + 1
-          if(fieldId.EQ.1) f_all(alpha,globalI,globalJ,globalK) = buffer(idx)
-          if(fieldId.EQ.2) g_all(alpha,globalI,globalJ,globalK) = buffer(idx)
-        enddo
-      enddo
-    enddo
-  enddo
-end subroutine unpack_distribution_buffer_mpi
-
-
-subroutine copy_global_fields_to_root_local_arrays()
-  use commondata3dOpenmpMpi
-  implicit none
-
-  if(.not.isRoot) return
-  if(allocated(u)) deallocate(u, v, w, T, rho)
-  allocate(u(nx,ny,nz), v(nx,ny,nz), w(nx,ny,nz), T(nx,ny,nz), rho(nx,ny,nz))
-  u = u_all
-  v = v_all
-  w = w_all
-  T = T_all
-  rho = rho_all
-end subroutine copy_global_fields_to_root_local_arrays
-
-
-subroutine copy_global_fields_to_root_owned_arrays()
-  use commondata3dOpenmpMpi
-  implicit none
-  integer(kind=4) :: i, j, k, globalI, globalJ, globalK
-
-  if(.not.isRoot) return
-  if(allocated(u)) deallocate(u, v, w, T, rho)
-  allocate(u(xLocalCount,yLocalCount,zLocalCount), v(xLocalCount,yLocalCount,zLocalCount), &
-       w(xLocalCount,yLocalCount,zLocalCount), T(xLocalCount,yLocalCount,zLocalCount), &
-       rho(xLocalCount,yLocalCount,zLocalCount))
+  ! root 自己的局部块不经过 MPI，直接按全局起点写入全场数组。
   do k = 1, zLocalCount
     globalK = zStartGlobal + k - 1
     do j = 1, yLocalCount
       globalJ = yStartGlobal + j - 1
       do i = 1, xLocalCount
         globalI = xStartGlobal + i - 1
-        u(i,j,k) = u_all(globalI,globalJ,globalK)
-        v(i,j,k) = v_all(globalI,globalJ,globalK)
-        w(i,j,k) = w_all(globalI,globalJ,globalK)
-        T(i,j,k) = T_all(globalI,globalJ,globalK)
-        rho(i,j,k) = rho_all(globalI,globalJ,globalK)
+        globalField(globalI,globalJ,globalK) = localField(i,j,k)
       enddo
     enddo
   enddo
-end subroutine copy_global_fields_to_root_owned_arrays
+
+  allocate(buffer(1))
+  do sourceRank = 1, NPROC-1
+    count = XLocalCountAll(sourceRank)*YLocalCountAll(sourceRank)*ZLocalCountAll(sourceRank)
+    if(size(buffer).NE.count) then
+      deallocate(buffer)
+      allocate(buffer(count))
+    endif
+    !   buffer/count/MPI_DOUBLE_PRECISION : 接收某个 rank 打包后的局部三维标量场。
+    !   sourceRank/tagBase+sourceRank     : 接收来源 rank 和对应 tag，避免不同字段串线。
+    !   COMM3D/status/IERR                : 笛卡尔通信器、通信状态数组、MPI 错误码。
+    call MPI_RECV(buffer, count, MPI_DOUBLE_PRECISION, sourceRank, tagBase+sourceRank, COMM3D, status, IERR)
+    idx = 0
+    do k = 1, ZLocalCountAll(sourceRank)
+      globalK = ZStartGlobalAll(sourceRank) + k - 1
+      do j = 1, YLocalCountAll(sourceRank)
+        globalJ = YStartGlobalAll(sourceRank) + j - 1
+        do i = 1, XLocalCountAll(sourceRank)
+          globalI = XStartGlobalAll(sourceRank) + i - 1
+          idx = idx + 1
+          globalField(globalI,globalJ,globalK) = buffer(idx)
+        enddo
+      enddo
+    enddo
+  enddo
+  deallocate(buffer)
+
+end subroutine gather_scalar_field_root_mpi
 
 
+!===================================================================================================
+! 子程序: send_scalar_field_mpi
+! 作用: 非 root 将当前 rank 的局部三维标量场打包成连续 buffer 后发送给 root。
+!===================================================================================================
+subroutine send_scalar_field_mpi(localField, tagBase)
+  use mpi
+  use commondata3dOpenmpMpi
+  implicit none
+  real(kind=8), intent(in) :: localField(xLocalCount,yLocalCount,zLocalCount)
+  integer(kind=4), intent(in) :: tagBase
+  integer(kind=4) :: i, j, k, idx, count
+  real(kind=8), allocatable :: buffer(:)
+
+  count = xLocalCount*yLocalCount*zLocalCount
+  allocate(buffer(count))
+  idx = 0
+  do k = 1, zLocalCount
+    do j = 1, yLocalCount
+      do i = 1, xLocalCount
+        idx = idx + 1
+        buffer(idx) = localField(i,j,k)
+      enddo
+    enddo
+  enddo
+  call MPI_SEND(buffer, count, MPI_DOUBLE_PRECISION, 0, tagBase+MYID, COMM3D, IERR)
+  deallocate(buffer)
+
+end subroutine send_scalar_field_mpi
+
+
+!===================================================================================================
+! 子程序: gather_distribution_field_root_mpi
+! 作用: root 收集一个带速度方向维度的分布函数场，例如 f -> f_all 或 g -> g_all。
+!===================================================================================================
+subroutine gather_distribution_field_root_mpi(localField, globalField, qMax, tagBase)
+  use mpi
+  use commondata3dOpenmpMpi
+  implicit none
+  integer(kind=4), intent(in) :: qMax, tagBase
+  real(kind=8), intent(in) :: localField(0:qMax,xLocalCount,yLocalCount,zLocalCount)
+  real(kind=8), intent(inout) :: globalField(0:qMax,nx,ny,nz)
+  integer(kind=4) :: sourceRank, count
+  integer(kind=4) :: i, j, k, alpha, idx, globalI, globalJ, globalK
+  real(kind=8), allocatable :: buffer(:)
+  integer :: status(MPI_STATUS_SIZE)
+
+  ! 分布函数按 k -> j -> i -> alpha 打包，alpha 是最内层。
+  globalField = 0.0d0
+  do k = 1, zLocalCount
+    globalK = zStartGlobal + k - 1
+    do j = 1, yLocalCount
+      globalJ = yStartGlobal + j - 1
+      do i = 1, xLocalCount
+        globalI = xStartGlobal + i - 1
+        do alpha = 0, qMax
+          globalField(alpha,globalI,globalJ,globalK) = localField(alpha,i,j,k)
+        enddo
+      enddo
+    enddo
+  enddo
+
+  allocate(buffer(1))
+  do sourceRank = 1, NPROC-1
+    count = (qMax+1)*XLocalCountAll(sourceRank)*YLocalCountAll(sourceRank)*ZLocalCountAll(sourceRank)
+    if(size(buffer).NE.count) then
+      deallocate(buffer)
+      allocate(buffer(count))
+    endif
+    call MPI_RECV(buffer, count, MPI_DOUBLE_PRECISION, sourceRank, tagBase+sourceRank, COMM3D, status, IERR)
+    idx = 0
+    do k = 1, ZLocalCountAll(sourceRank)
+      globalK = ZStartGlobalAll(sourceRank) + k - 1
+      do j = 1, YLocalCountAll(sourceRank)
+        globalJ = YStartGlobalAll(sourceRank) + j - 1
+        do i = 1, XLocalCountAll(sourceRank)
+          globalI = XStartGlobalAll(sourceRank) + i - 1
+          do alpha = 0, qMax
+            idx = idx + 1
+            globalField(alpha,globalI,globalJ,globalK) = buffer(idx)
+          enddo
+        enddo
+      enddo
+    enddo
+  enddo
+  deallocate(buffer)
+
+end subroutine gather_distribution_field_root_mpi
+
+
+!===================================================================================================
+! 子程序: send_distribution_field_mpi
+! 作用: 非 root 将当前 rank 的局部分布函数场打包成连续 buffer 后发送给 root。
+!===================================================================================================
+subroutine send_distribution_field_mpi(localField, qMax, tagBase)
+  use mpi
+  use commondata3dOpenmpMpi
+  implicit none
+  integer(kind=4), intent(in) :: qMax, tagBase
+  real(kind=8), intent(in) :: localField(0:qMax,xLocalCount,yLocalCount,zLocalCount)
+  integer(kind=4) :: i, j, k, alpha, idx, count
+  real(kind=8), allocatable :: buffer(:)
+
+  count = (qMax+1)*xLocalCount*yLocalCount*zLocalCount
+  allocate(buffer(count))
+  idx = 0
+  do k = 1, zLocalCount
+    do j = 1, yLocalCount
+      do i = 1, xLocalCount
+        do alpha = 0, qMax
+          idx = idx + 1
+          buffer(idx) = localField(alpha,i,j,k)
+        enddo
+      enddo
+    enddo
+  enddo
+  call MPI_SEND(buffer, count, MPI_DOUBLE_PRECISION, 0, tagBase+MYID, COMM3D, IERR)
+  deallocate(buffer)
+
+end subroutine send_distribution_field_mpi
+
+
+!===========================================================================================================================
+! 子程序: output_SnapshotFile
+! 作用: 输出三维快照二进制文件，供后处理或继续分析使用。
+! 用途: 在运行过程中按需调用，也在程序结束时调用。
 !===========================================================================================================================
 subroutine output_SnapshotFile()
   use commondata3dOpenmpMpi
@@ -2737,8 +2869,10 @@ subroutine output_ReloadFile()
   open(unit=05, file=trim(reloadFilePrefix)//'-'//trim(filename)//'.bin', form='unformatted', access='sequential')
   ! Strict restart files store f/g. With EnableUseG, Bx_prev/By_prev/Bz_prev must also be saved;
   ! otherwise the first post-reload M1G correction would lose its previous-step history.
-  write(05) ((((real(f_all(alpha,i,j,k), kind=8), i=1,nx), j=1,ny), k=1,nz), alpha=0,qf-1)
-  write(05) ((((real(g_all(alpha,i,j,k), kind=8), i=1,nx), j=1,ny), k=1,nz), alpha=0,qt-1)
+  ! f_all/g_all 的第一个下标 alpha 在 Fortran 中是连续方向；
+  ! 新 restart 格式按 k -> j -> i -> alpha 写入，alpha 最内层，和内存访问顺序一致。
+  write(05) ((((real(f_all(alpha,i,j,k), kind=8), alpha=0,qf-1), i=1,nx), j=1,ny), k=1,nz)
+  write(05) ((((real(g_all(alpha,i,j,k), kind=8), alpha=0,qt-1), i=1,nx), j=1,ny), k=1,nz)
 #ifdef EnableUseG
   write(05) (((real(Bx_prev_all(i,j,k), kind=8), i=1,nx), j=1,ny), k=1,nz)
   write(05) (((real(By_prev_all(i,j,k), kind=8), i=1,nx), j=1,ny), k=1,nz)
@@ -2962,11 +3096,6 @@ end subroutine infer_reload_offsets_without_metadata
 !===========================================================================================================================
 
 
-!===========================================================================================================================
-! 子程序: output_Tecplot
-! 作用: 输出全场体数据以及 x/y/z 三个中面切片，便于快速查看三维流场结构。
-! 用途: 在运行过程中按需调用，也在程序结束时调用。
-
 !===================================================================================================
 ! 子程序: read_reload_fields_mpi
 ! 作用: root 读取全局 reload 文件，再按当前 MPI 分解把局部数据发送给各 rank。
@@ -2977,7 +3106,7 @@ subroutine read_reload_fields_mpi(reloadFileName)
   implicit none
   character(len=*), intent(in) :: reloadFileName
   integer(kind=4) :: targetRank, count
-  integer(kind=4) :: i, j, k, alpha
+  integer(kind=4) :: i, j, k, alpha, idx, globalI, globalJ, globalK
   real(kind=8), allocatable :: buffer(:)
   integer :: status(MPI_STATUS_SIZE)
 
@@ -2985,8 +3114,10 @@ subroutine read_reload_fields_mpi(reloadFileName)
     open(unit=01, file=trim(reloadFilePrefix)//'-'//trim(reloadFileName)//'.bin', &
          form='unformatted', access='sequential', status='old')
     write(00,*) 'Reloading global f and g on root, then scattering local blocks'
-    read(01) ((((f_all(alpha,i,j,k), i=1,nx), j=1,ny), k=1,nz), alpha=0,qf-1)
-    read(01) ((((g_all(alpha,i,j,k), i=1,nx), j=1,ny), k=1,nz), alpha=0,qt-1)
+    ! 本轮采用新的 restart 二进制顺序：k -> j -> i -> alpha，alpha 最内层。
+    ! 这和当前 write_ReloadFile() 完全一致，但不兼容旧的 alpha 外层 restart 文件。
+    read(01) ((((f_all(alpha,i,j,k), alpha=0,qf-1), i=1,nx), j=1,ny), k=1,nz)
+    read(01) ((((g_all(alpha,i,j,k), alpha=0,qt-1), i=1,nx), j=1,ny), k=1,nz)
 #ifdef EnableUseG
     write(00,*) 'Reloading global Bx_prev, By_prev and Bz_prev on root'
     read(01) (((Bx_prev_all(i,j,k), i=1,nx), j=1,ny), k=1,nz)
@@ -2995,51 +3126,148 @@ subroutine read_reload_fields_mpi(reloadFileName)
 #endif
     close(01)
 
+    allocate(buffer(1))
     do targetRank = 0, NPROC-1
-      count = qf*XLocalCountAll(targetRank)*YLocalCountAll(targetRank)*ZLocalCountAll(targetRank)
-      allocate(buffer(count))
-      call pack_distribution_global_buffer_mpi(1, qf-1, targetRank, buffer)
       if(targetRank.EQ.0) then
-        call unpack_distribution_local_buffer_mpi(1, qf-1, buffer)
+        do k = 1, zLocalCount
+          globalK = zStartGlobal + k - 1
+          do j = 1, yLocalCount
+            globalJ = yStartGlobal + j - 1
+            do i = 1, xLocalCount
+              globalI = xStartGlobal + i - 1
+              do alpha = 0, qf-1
+                f(alpha,i,j,k) = f_all(alpha,globalI,globalJ,globalK)
+              enddo
+            enddo
+          enddo
+        enddo
       else
+        count = qf*XLocalCountAll(targetRank)*YLocalCountAll(targetRank)*ZLocalCountAll(targetRank)
+        if(size(buffer).NE.count) then
+          deallocate(buffer)
+          allocate(buffer(count))
+        endif
+        idx = 0
+        do k = 1, ZLocalCountAll(targetRank)
+          globalK = ZStartGlobalAll(targetRank) + k - 1
+          do j = 1, YLocalCountAll(targetRank)
+            globalJ = YStartGlobalAll(targetRank) + j - 1
+            do i = 1, XLocalCountAll(targetRank)
+              globalI = XStartGlobalAll(targetRank) + i - 1
+              do alpha = 0, qf-1
+                idx = idx + 1
+                buffer(idx) = f_all(alpha,globalI,globalJ,globalK)
+              enddo
+            enddo
+          enddo
+        enddo
+        ! MPI_SEND 参数含义：
+        !   buffer/count/MPI_DOUBLE_PRECISION : 发送 buffer 中 count 个双精度数，即 targetRank 的 f 局部块。
+        !   targetRank                       : 接收方 rank 编号。
+        !   701                              : f reload 分发消息标签，和 g(702)、B 历史项(703-705) 区分。
+        !   COMM3D/IERR                      : 三维笛卡尔通信器和 MPI 错误码。
         call MPI_SEND(buffer, count, MPI_DOUBLE_PRECISION, targetRank, 701, COMM3D, IERR)
       endif
-      deallocate(buffer)
 
-      count = qt*XLocalCountAll(targetRank)*YLocalCountAll(targetRank)*ZLocalCountAll(targetRank)
-      allocate(buffer(count))
-      call pack_distribution_global_buffer_mpi(2, qt-1, targetRank, buffer)
       if(targetRank.EQ.0) then
-        call unpack_distribution_local_buffer_mpi(2, qt-1, buffer)
+        do k = 1, zLocalCount
+          globalK = zStartGlobal + k - 1
+          do j = 1, yLocalCount
+            globalJ = yStartGlobal + j - 1
+            do i = 1, xLocalCount
+              globalI = xStartGlobal + i - 1
+              do alpha = 0, qt-1
+                g(alpha,i,j,k) = g_all(alpha,globalI,globalJ,globalK)
+              enddo
+            enddo
+          enddo
+        enddo
       else
+        count = qt*XLocalCountAll(targetRank)*YLocalCountAll(targetRank)*ZLocalCountAll(targetRank)
+        if(size(buffer).NE.count) then
+          deallocate(buffer)
+          allocate(buffer(count))
+        endif
+        idx = 0
+        do k = 1, ZLocalCountAll(targetRank)
+          globalK = ZStartGlobalAll(targetRank) + k - 1
+          do j = 1, YLocalCountAll(targetRank)
+            globalJ = YStartGlobalAll(targetRank) + j - 1
+            do i = 1, XLocalCountAll(targetRank)
+              globalI = XStartGlobalAll(targetRank) + i - 1
+              do alpha = 0, qt-1
+                idx = idx + 1
+                buffer(idx) = g_all(alpha,globalI,globalJ,globalK)
+              enddo
+            enddo
+          enddo
+        enddo
         call MPI_SEND(buffer, count, MPI_DOUBLE_PRECISION, targetRank, 702, COMM3D, IERR)
       endif
-      deallocate(buffer)
 
 #ifdef EnableUseG
-      count = XLocalCountAll(targetRank)*YLocalCountAll(targetRank)*ZLocalCountAll(targetRank)
-      allocate(buffer(count))
-      call pack_scalar_global_buffer_mpi(6, targetRank, buffer)
       if(targetRank.EQ.0) then
-        call unpack_scalar_local_buffer_mpi(6, buffer)
+        do k = 1, zLocalCount
+          globalK = zStartGlobal + k - 1
+          do j = 1, yLocalCount
+            globalJ = yStartGlobal + j - 1
+            do i = 1, xLocalCount
+              globalI = xStartGlobal + i - 1
+              Bx_prev(i,j,k) = Bx_prev_all(globalI,globalJ,globalK)
+              By_prev(i,j,k) = By_prev_all(globalI,globalJ,globalK)
+              Bz_prev(i,j,k) = Bz_prev_all(globalI,globalJ,globalK)
+            enddo
+          enddo
+        enddo
       else
+        count = XLocalCountAll(targetRank)*YLocalCountAll(targetRank)*ZLocalCountAll(targetRank)
+        if(size(buffer).NE.count) then
+          deallocate(buffer)
+          allocate(buffer(count))
+        endif
+        idx = 0
+        do k = 1, ZLocalCountAll(targetRank)
+          globalK = ZStartGlobalAll(targetRank) + k - 1
+          do j = 1, YLocalCountAll(targetRank)
+            globalJ = YStartGlobalAll(targetRank) + j - 1
+            do i = 1, XLocalCountAll(targetRank)
+              globalI = XStartGlobalAll(targetRank) + i - 1
+              idx = idx + 1
+              buffer(idx) = Bx_prev_all(globalI,globalJ,globalK)
+            enddo
+          enddo
+        enddo
         call MPI_SEND(buffer, count, MPI_DOUBLE_PRECISION, targetRank, 703, COMM3D, IERR)
-      endif
-      call pack_scalar_global_buffer_mpi(7, targetRank, buffer)
-      if(targetRank.EQ.0) then
-        call unpack_scalar_local_buffer_mpi(7, buffer)
-      else
+        idx = 0
+        do k = 1, ZLocalCountAll(targetRank)
+          globalK = ZStartGlobalAll(targetRank) + k - 1
+          do j = 1, YLocalCountAll(targetRank)
+            globalJ = YStartGlobalAll(targetRank) + j - 1
+            do i = 1, XLocalCountAll(targetRank)
+              globalI = XStartGlobalAll(targetRank) + i - 1
+              idx = idx + 1
+              buffer(idx) = By_prev_all(globalI,globalJ,globalK)
+            enddo
+          enddo
+        enddo
         call MPI_SEND(buffer, count, MPI_DOUBLE_PRECISION, targetRank, 704, COMM3D, IERR)
-      endif
-      call pack_scalar_global_buffer_mpi(8, targetRank, buffer)
-      if(targetRank.EQ.0) then
-        call unpack_scalar_local_buffer_mpi(8, buffer)
-      else
+        idx = 0
+        do k = 1, ZLocalCountAll(targetRank)
+          globalK = ZStartGlobalAll(targetRank) + k - 1
+          do j = 1, YLocalCountAll(targetRank)
+            globalJ = YStartGlobalAll(targetRank) + j - 1
+            do i = 1, XLocalCountAll(targetRank)
+              globalI = XStartGlobalAll(targetRank) + i - 1
+              idx = idx + 1
+              buffer(idx) = Bz_prev_all(globalI,globalJ,globalK)
+            enddo
+          enddo
+        enddo
         call MPI_SEND(buffer, count, MPI_DOUBLE_PRECISION, targetRank, 705, COMM3D, IERR)
       endif
-      deallocate(buffer)
 #endif
     enddo
+    deallocate(buffer)
   else
     count = qf*xLocalCount*yLocalCount*zLocalCount
     allocate(buffer(count))
@@ -3047,24 +3275,68 @@ subroutine read_reload_fields_mpi(reloadFileName)
     !   0/701                             : 来源为 root，tag=701 表示 f。
     !   COMM3D/status/IERR                : 笛卡尔通信器、通信状态数组、MPI 错误码。
     call MPI_RECV(buffer, count, MPI_DOUBLE_PRECISION, 0, 701, COMM3D, status, IERR)
-    call unpack_distribution_local_buffer_mpi(1, qf-1, buffer)
+    idx = 0
+    do k = 1, zLocalCount
+      do j = 1, yLocalCount
+        do i = 1, xLocalCount
+          do alpha = 0, qf-1
+            idx = idx + 1
+            f(alpha,i,j,k) = buffer(idx)
+          enddo
+        enddo
+      enddo
+    enddo
     deallocate(buffer)
 
     count = qt*xLocalCount*yLocalCount*zLocalCount
     allocate(buffer(count))
     call MPI_RECV(buffer, count, MPI_DOUBLE_PRECISION, 0, 702, COMM3D, status, IERR)
-    call unpack_distribution_local_buffer_mpi(2, qt-1, buffer)
+    idx = 0
+    do k = 1, zLocalCount
+      do j = 1, yLocalCount
+        do i = 1, xLocalCount
+          do alpha = 0, qt-1
+            idx = idx + 1
+            g(alpha,i,j,k) = buffer(idx)
+          enddo
+        enddo
+      enddo
+    enddo
     deallocate(buffer)
 
 #ifdef EnableUseG
     count = xLocalCount*yLocalCount*zLocalCount
     allocate(buffer(count))
     call MPI_RECV(buffer, count, MPI_DOUBLE_PRECISION, 0, 703, COMM3D, status, IERR)
-    call unpack_scalar_local_buffer_mpi(6, buffer)
+    idx = 0
+    do k = 1, zLocalCount
+      do j = 1, yLocalCount
+        do i = 1, xLocalCount
+          idx = idx + 1
+          Bx_prev(i,j,k) = buffer(idx)
+        enddo
+      enddo
+    enddo
     call MPI_RECV(buffer, count, MPI_DOUBLE_PRECISION, 0, 704, COMM3D, status, IERR)
-    call unpack_scalar_local_buffer_mpi(7, buffer)
+    idx = 0
+    do k = 1, zLocalCount
+      do j = 1, yLocalCount
+        do i = 1, xLocalCount
+          idx = idx + 1
+          By_prev(i,j,k) = buffer(idx)
+        enddo
+      enddo
+    enddo
     call MPI_RECV(buffer, count, MPI_DOUBLE_PRECISION, 0, 705, COMM3D, status, IERR)
-    call unpack_scalar_local_buffer_mpi(8, buffer)
+    idx = 0
+    do k = 1, zLocalCount
+      do j = 1, yLocalCount
+        do i = 1, xLocalCount
+          idx = idx + 1
+          Bz_prev(i,j,k) = buffer(idx)
+        enddo
+      enddo
+    enddo
     deallocate(buffer)
 #endif
   endif
@@ -3072,98 +3344,10 @@ subroutine read_reload_fields_mpi(reloadFileName)
 end subroutine read_reload_fields_mpi
 
 
-subroutine pack_distribution_global_buffer_mpi(fieldId, qMax, targetRank, buffer)
-  use commondata3dOpenmpMpi
-  implicit none
-  integer(kind=4), intent(in) :: fieldId, qMax, targetRank
-  real(kind=8), intent(out) :: buffer(*)
-  integer(kind=4) :: i, j, k, alpha, idx, globalI, globalJ, globalK
-
-  idx = 0
-  do alpha = 0, qMax
-    do k = 1, ZLocalCountAll(targetRank)
-      globalK = ZStartGlobalAll(targetRank) + k - 1
-      do j = 1, YLocalCountAll(targetRank)
-        globalJ = YStartGlobalAll(targetRank) + j - 1
-        do i = 1, XLocalCountAll(targetRank)
-          globalI = XStartGlobalAll(targetRank) + i - 1
-          idx = idx + 1
-          if(fieldId.EQ.1) buffer(idx) = f_all(alpha,globalI,globalJ,globalK)
-          if(fieldId.EQ.2) buffer(idx) = g_all(alpha,globalI,globalJ,globalK)
-        enddo
-      enddo
-    enddo
-  enddo
-end subroutine pack_distribution_global_buffer_mpi
-
-
-subroutine unpack_distribution_local_buffer_mpi(fieldId, qMax, buffer)
-  use commondata3dOpenmpMpi
-  implicit none
-  integer(kind=4), intent(in) :: fieldId, qMax
-  real(kind=8), intent(in) :: buffer(*)
-  integer(kind=4) :: i, j, k, alpha, idx
-
-  idx = 0
-  do alpha = 0, qMax
-    do k = 1, zLocalCount
-      do j = 1, yLocalCount
-        do i = 1, xLocalCount
-          idx = idx + 1
-          if(fieldId.EQ.1) f(alpha,i,j,k) = buffer(idx)
-          if(fieldId.EQ.2) g(alpha,i,j,k) = buffer(idx)
-        enddo
-      enddo
-    enddo
-  enddo
-end subroutine unpack_distribution_local_buffer_mpi
-
-
-subroutine pack_scalar_global_buffer_mpi(fieldId, targetRank, buffer)
-  use commondata3dOpenmpMpi
-  implicit none
-  integer(kind=4), intent(in) :: fieldId, targetRank
-  real(kind=8), intent(out) :: buffer(*)
-  integer(kind=4) :: i, j, k, idx, globalI, globalJ, globalK
-
-  idx = 0
-  do k = 1, ZLocalCountAll(targetRank)
-    globalK = ZStartGlobalAll(targetRank) + k - 1
-    do j = 1, YLocalCountAll(targetRank)
-      globalJ = YStartGlobalAll(targetRank) + j - 1
-      do i = 1, XLocalCountAll(targetRank)
-        globalI = XStartGlobalAll(targetRank) + i - 1
-        idx = idx + 1
-        if(fieldId.EQ.6) buffer(idx) = Bx_prev_all(globalI,globalJ,globalK)
-        if(fieldId.EQ.7) buffer(idx) = By_prev_all(globalI,globalJ,globalK)
-        if(fieldId.EQ.8) buffer(idx) = Bz_prev_all(globalI,globalJ,globalK)
-      enddo
-    enddo
-  enddo
-end subroutine pack_scalar_global_buffer_mpi
-
-
-subroutine unpack_scalar_local_buffer_mpi(fieldId, buffer)
-  use commondata3dOpenmpMpi
-  implicit none
-  integer(kind=4), intent(in) :: fieldId
-  real(kind=8), intent(in) :: buffer(*)
-  integer(kind=4) :: i, j, k, idx
-
-  idx = 0
-  do k = 1, zLocalCount
-    do j = 1, yLocalCount
-      do i = 1, xLocalCount
-        idx = idx + 1
-        if(fieldId.EQ.6) Bx_prev(i,j,k) = buffer(idx)
-        if(fieldId.EQ.7) By_prev(i,j,k) = buffer(idx)
-        if(fieldId.EQ.8) Bz_prev(i,j,k) = buffer(idx)
-      enddo
-    enddo
-  enddo
-end subroutine unpack_scalar_local_buffer_mpi
-
-
+!===========================================================================================================================
+! 子程序: output_Tecplot
+! 作用: 输出全场体数据以及 x/y/z 三个中面切片，便于快速查看三维流场结构。
+! 用途: 在运行过程中按需调用，也在程序结束时调用。
 !===========================================================================================================================
 subroutine output_Tecplot()
   use commondata3dOpenmpMpi
@@ -3173,7 +3357,6 @@ subroutine output_Tecplot()
 
   call gather_output_fields_mpi()   ! 输出 Tecplot 前，先把局部场拼成 root 上的全局数组
   if(.not.isRoot) return
-  call copy_global_fields_to_root_local_arrays()   ! Tecplot 后处理例程沿用原 3D 全局数组写法
 
   ! 3D 这里同时输出整体 Tecplot 体数据和三个中面切片；
 #ifdef steadyFlow
@@ -3192,7 +3375,6 @@ subroutine output_Tecplot()
   call write_midplane_stream_x(trim(pltFolderPrefix)//'-midXpsiVort-'//trim(filename)//'.plt')
   call write_midplane_stream_y(trim(pltFolderPrefix)//'-midYpsiVort-'//trim(filename)//'.plt')
   call write_midplane_stream_z(trim(pltFolderPrefix)//'-midZpsiVort-'//trim(filename)//'.plt')
-  call copy_global_fields_to_root_owned_arrays()   ! 周期输出后恢复 root 的局部数组，继续后续时间推进
 
   return
 end subroutine output_Tecplot
@@ -3213,7 +3395,7 @@ subroutine calNuRe()
 
   integer(kind=4) :: i, j, k
   real(kind=8) :: NuVolAvg_temp, ReVolAvg_temp
-  real(kind=8) :: NuVolAvg_global_temp, ReVolAvg_global_temp
+  real(kind=8) :: NuReLocal(2), NuReGlobal(2)
   real(kind=8) :: sampleTime
   logical :: exNu, exRe
   logical, save :: first_nure_write = .true.
@@ -3252,7 +3434,9 @@ subroutine calNuRe()
 
   NuVolAvg_temp = 0.0d0
 #ifdef SideHeatedCell
-  !$omp parallel do collapse(3) default(none) shared(v,T,xLocalCount,yLocalCount,zLocalCount) private(i,j,k) reduction(+:NuVolAvg_temp)
+  !$omp parallel do collapse(3) default(none) &
+  !$omp& shared(v,T,xLocalCount,yLocalCount,zLocalCount) &
+  !$omp& private(i,j,k) reduction(+:NuVolAvg_temp)
   do k = 1, zLocalCount
     do j = 1, yLocalCount
       do i = 1, xLocalCount
@@ -3262,7 +3446,9 @@ subroutine calNuRe()
   enddo
   !$omp end parallel do
 #else
-  !$omp parallel do collapse(3) default(none) shared(w,T,xLocalCount,yLocalCount,zLocalCount) private(i,j,k) reduction(+:NuVolAvg_temp)
+  !$omp parallel do collapse(3) default(none) &
+  !$omp& shared(w,T,xLocalCount,yLocalCount,zLocalCount) &
+  !$omp& private(i,j,k) reduction(+:NuVolAvg_temp)
   do k = 1, zLocalCount
     do j = 1, yLocalCount
       do i = 1, xLocalCount
@@ -3273,8 +3459,25 @@ subroutine calNuRe()
   !$omp end parallel do
 #endif
 
-  call MPI_ALLREDUCE(NuVolAvg_temp, NuVolAvg_global_temp, 1, MPI_DOUBLE_PRECISION, MPI_SUM, COMM3D, IERR)
-  NuVolAvg(dimensionlessTime) = NuVolAvg_global_temp / dble(nx * ny * nz) * lengthUnit / diffusivity + 1.0d0
+  ReVolAvg_temp = 0.0d0
+  !$omp parallel do collapse(3) default(none) &
+  !$omp& shared(u,v,w,xLocalCount,yLocalCount,zLocalCount) &
+  !$omp& private(i,j,k) reduction(+:ReVolAvg_temp)
+  do k = 1, zLocalCount
+    do j = 1, yLocalCount
+      do i = 1, xLocalCount
+        ReVolAvg_temp = ReVolAvg_temp + u(i,j,k)*u(i,j,k) + v(i,j,k)*v(i,j,k) + w(i,j,k)*w(i,j,k)
+      enddo
+    enddo
+  enddo
+  !$omp end parallel do
+
+  ! NuVolAvg_temp 和 ReVolAvg_temp 都是全局求和量，合并成一个长度为 2 的数组做一次 collective。
+  NuReLocal = (/ NuVolAvg_temp, ReVolAvg_temp /)
+  call MPI_ALLREDUCE(NuReLocal, NuReGlobal, 2, MPI_DOUBLE_PRECISION, MPI_SUM, COMM3D, IERR)
+  NuVolAvg(dimensionlessTime) = NuReGlobal(1) / dble(nx * ny * nz) * lengthUnit / diffusivity + 1.0d0
+  ReVolAvg(dimensionlessTime) = dsqrt(NuReGlobal(2) / dble(nx * ny * nz)) * lengthUnit / viscosity
+
   if(isRoot) then
     if ((first_nure_write) .AND. (loadInitField .EQ. 0)) then
       open(unit=01, file='Nu_VolAvg_3DOpenmpMpi.dat', status='replace', action='write')
@@ -3286,18 +3489,6 @@ subroutine calNuRe()
     close(01)
   endif
 
-  ReVolAvg_temp = 0.0d0
-  !$omp parallel do collapse(3) default(none) shared(u,v,w,xLocalCount,yLocalCount,zLocalCount) private(i,j,k) reduction(+:ReVolAvg_temp)
-  do k = 1, zLocalCount
-    do j = 1, yLocalCount
-      do i = 1, xLocalCount
-        ReVolAvg_temp = ReVolAvg_temp + u(i,j,k)*u(i,j,k) + v(i,j,k)*v(i,j,k) + w(i,j,k)*w(i,j,k)
-      enddo
-    enddo
-  enddo
-  !$omp end parallel do
-  call MPI_ALLREDUCE(ReVolAvg_temp, ReVolAvg_global_temp, 1, MPI_DOUBLE_PRECISION, MPI_SUM, COMM3D, IERR)
-  ReVolAvg(dimensionlessTime) = dsqrt(ReVolAvg_global_temp / dble(nx * ny * nz)) * lengthUnit / viscosity
   if(isRoot) then
     if ((first_nure_write) .AND. (loadInitField .EQ. 0)) then
       open(unit=02, file='Re_VolAvg_3DOpenmpMpi.dat', status='replace', action='write')
@@ -3324,8 +3515,8 @@ end subroutine calNuRe
 
 #ifdef unsteadyFlow
 !===========================================================================================================================
-! Subroutine: output_unsteady_NuRe_postprocess
-! Purpose: rebuild unsteady Nu/Re series, running means, and window averages from full .dat history.
+! 子程序: output_unsteady_NuRe_postprocess
+! 作用: 从完整 Nu/Re 历史文件重建非稳态时间序列、运行平均值和分段窗口平均值。
 !===========================================================================================================================
 subroutine output_unsteady_NuRe_postprocess()
   use commondata3dOpenmpMpi
@@ -3531,19 +3722,19 @@ subroutine SideHeatedcalc_Nu_global()
   coef = velocityScaleCompare
   sum_qy = 0.0d0
 
-  !$omp parallel do collapse(3) default(none) shared(v,T,dy,coef) private(i,j,k,dTdy,qy) reduction(+:sum_qy)
+  !$omp parallel do collapse(3) default(none) shared(v_all,T_all,dy,coef) private(i,j,k,dTdy,qy) reduction(+:sum_qy)
   do k = 1, nz
     do j = 1, ny
       do i = 1, nx
         if (j .EQ. 1) then
-          dTdy = (-3.0d0*T(i,1,k) - T(i,2,k) + 4.0d0*Thot) / (3.0d0*dy)
+          dTdy = (-3.0d0*T_all(i,1,k) - T_all(i,2,k) + 4.0d0*Thot) / (3.0d0*dy)
         elseif (j .EQ. ny) then
-          dTdy = (-4.0d0*Tcold + 3.0d0*T(i,ny,k) + T(i,ny-1,k)) / (3.0d0*dy)
+          dTdy = (-4.0d0*Tcold + 3.0d0*T_all(i,ny,k) + T_all(i,ny-1,k)) / (3.0d0*dy)
         else
-          dTdy = (T(i,j-1,k) - T(i,j+1,k)) / (2.0d0*dy)
+          dTdy = (T_all(i,j-1,k) - T_all(i,j+1,k)) / (2.0d0*dy)
         endif
 
-        qy = coef * v(i,j,k) * (T(i,j,k) - Tref) + dTdy
+        qy = coef * v_all(i,j,k) * (T_all(i,j,k) - Tref) + dTdy
         sum_qy = sum_qy + qy
       enddo
     enddo
@@ -3583,19 +3774,19 @@ subroutine RBcalc_Nu_global()
   coef = velocityScaleCompare
   sum_qz = 0.0d0
 
-  !$omp parallel do collapse(3) default(none) shared(w,T,dz,coef) private(i,j,k,dTdz,qz) reduction(+:sum_qz)
+  !$omp parallel do collapse(3) default(none) shared(w_all,T_all,dz,coef) private(i,j,k,dTdz,qz) reduction(+:sum_qz)
   do k = 1, nz
     do j = 1, ny
       do i = 1, nx
         if (k .EQ. 1) then
-          dTdz = (3.0d0*T(i,j,1) + T(i,j,2) - 4.0d0*Thot) / (3.0d0*dz)
+          dTdz = (3.0d0*T_all(i,j,1) + T_all(i,j,2) - 4.0d0*Thot) / (3.0d0*dz)
         elseif (k .EQ. nz) then
-          dTdz = (4.0d0*Tcold - 3.0d0*T(i,j,nz) - T(i,j,nz-1)) / (3.0d0*dz)
+          dTdz = (4.0d0*Tcold - 3.0d0*T_all(i,j,nz) - T_all(i,j,nz-1)) / (3.0d0*dz)
         else
-          dTdz = (T(i,j,k+1) - T(i,j,k-1)) / (2.0d0*dz)
+          dTdz = (T_all(i,j,k+1) - T_all(i,j,k-1)) / (2.0d0*dz)
         endif
 
-        qz = coef * w(i,j,k) * (T(i,j,k) - Tref) - dTdz
+        qz = coef * w_all(i,j,k) * (T_all(i,j,k) - Tref) - dTdz
         sum_qz = sum_qz + qz
       enddo
     enddo
@@ -3639,22 +3830,22 @@ subroutine SideHeatedcalc_Nu_wall_avg()
   deltaT = Thot - Tcold
   coef = velocityScaleCompare
 
-  !$omp parallel do default(none) shared(T,T_hot_avg) private(i,k)
+  !$omp parallel do default(none) shared(T_all,T_hot_avg) private(i,k)
   do i = 1, nx
     T_hot_avg(i) = 0.0d0
     do k = 1, nz
-      T_hot_avg(i) = T_hot_avg(i) + T(i,1,k)
+      T_hot_avg(i) = T_hot_avg(i) + T_all(i,1,k)
     enddo
     T_hot_avg(i) = T_hot_avg(i) / dble(nz)
   enddo
   !$omp end parallel do
 
   sum_hot = 0.0d0
-  !$omp parallel do default(none) shared(T,Nu_hot_line,dy,deltaT) private(i,k,qy_wall) reduction(+:sum_hot)
+  !$omp parallel do default(none) shared(T_all,Nu_hot_line,dy,deltaT) private(i,k,qy_wall) reduction(+:sum_hot)
   do i = 1, nx
     Nu_hot_line(i) = 0.0d0
     do k = 1, nz
-      qy_wall = (8.0d0*Thot - 9.0d0*T(i,1,k) + T(i,2,k)) / (3.0d0*dy)
+      qy_wall = (8.0d0*Thot - 9.0d0*T_all(i,1,k) + T_all(i,2,k)) / (3.0d0*dy)
       Nu_hot_line(i) = Nu_hot_line(i) + qy_wall / deltaT
     enddo
     Nu_hot_line(i) = Nu_hot_line(i) / dble(nz)
@@ -3724,10 +3915,10 @@ subroutine SideHeatedcalc_Nu_wall_avg()
   Nu_hot_min_position = xstar
 
   sum_cold = 0.0d0
-  !$omp parallel do collapse(2) default(none) shared(T,dy,deltaT) private(i,k,qy_wall) reduction(+:sum_cold)
+  !$omp parallel do collapse(2) default(none) shared(T_all,dy,deltaT) private(i,k,qy_wall) reduction(+:sum_cold)
   do k = 1, nz
     do i = 1, nx
-      qy_wall = (-8.0d0*Tcold + 9.0d0*T(i,ny,k) - T(i,ny-1,k)) / (3.0d0*dy)
+      qy_wall = (-8.0d0*Tcold + 9.0d0*T_all(i,ny,k) - T_all(i,ny-1,k)) / (3.0d0*dy)
       sum_cold = sum_cold + qy_wall / deltaT
     enddo
   enddo
@@ -3737,22 +3928,24 @@ subroutine SideHeatedcalc_Nu_wall_avg()
   sum_mid = 0.0d0
   if (mod(ny,2) .EQ. 1) then
     jMid = (ny + 1) / 2
-    !$omp parallel do collapse(2) default(none) shared(v,T,jMid,dy,deltaT,coef) private(i,k) reduction(+:sum_mid)
+    !$omp parallel do collapse(2) default(none) &
+    !$omp& shared(v_all,T_all,jMid,dy,deltaT,coef) private(i,k) reduction(+:sum_mid)
     do k = 1, nz
       do i = 1, nx
-        sum_mid = sum_mid + (coef * v(i,jMid,k) * (T(i,jMid,k) - Tref) + &
-             (T(i,jMid-1,k) - T(i,jMid+1,k)) / (2.0d0*dy)) / deltaT
+        sum_mid = sum_mid + (coef * v_all(i,jMid,k) * (T_all(i,jMid,k) - Tref) + &
+             (T_all(i,jMid-1,k) - T_all(i,jMid+1,k)) / (2.0d0*dy)) / deltaT
       enddo
     enddo
     !$omp end parallel do
   else
     jL = ny / 2
     jR = jL + 1
-    !$omp parallel do collapse(2) default(none) shared(v,T,jL,jR,dy,deltaT,coef) private(i,k) reduction(+:sum_mid)
+    !$omp parallel do collapse(2) default(none) &
+    !$omp& shared(v_all,T_all,jL,jR,dy,deltaT,coef) private(i,k) reduction(+:sum_mid)
     do k = 1, nz
       do i = 1, nx
-        sum_mid = sum_mid + (coef * 0.5d0 * (v(i,jL,k) * (T(i,jL,k) - Tref) + &
-             v(i,jR,k) * (T(i,jR,k) - Tref)) + (T(i,jL,k) - T(i,jR,k)) / dy) / deltaT
+        sum_mid = sum_mid + (coef * 0.5d0 * (v_all(i,jL,k) * (T_all(i,jL,k) - Tref) + &
+             v_all(i,jR,k) * (T_all(i,jR,k) - Tref)) + (T_all(i,jL,k) - T_all(i,jR,k)) / dy) / deltaT
       enddo
     enddo
     !$omp end parallel do
@@ -3803,13 +3996,15 @@ subroutine SideHeatedcalc_Nu_zmid_wall_mean()
   Nu_left_mean = 0.0d0
   Nu_right_mean = 0.0d0
 
-  !$omp parallel do default(none) shared(T,kL,kR,weight,dy,deltaT) private(i,Tleft1,Tleft2,Tright1,Tright2,qy_hot,qy_cold) &
-  !$omp reduction(+:Nu_left_mean,Nu_right_mean)
+  !$omp parallel do default(none) &
+  !$omp& shared(T_all,kL,kR,weight,dy,deltaT) &
+  !$omp& private(i,Tleft1,Tleft2,Tright1,Tright2,qy_hot,qy_cold) &
+  !$omp& reduction(+:Nu_left_mean,Nu_right_mean)
   do i = 1, nx
-    call interp_scalar_z(kL, kR, weight, i, 1,    T, Tleft1)
-    call interp_scalar_z(kL, kR, weight, i, 2,    T, Tleft2)
-    call interp_scalar_z(kL, kR, weight, i, ny,   T, Tright1)
-    call interp_scalar_z(kL, kR, weight, i, ny-1, T, Tright2)
+    call interp_scalar_z(kL, kR, weight, i, 1,    T_all, Tleft1)
+    call interp_scalar_z(kL, kR, weight, i, 2,    T_all, Tleft2)
+    call interp_scalar_z(kL, kR, weight, i, ny,   T_all, Tright1)
+    call interp_scalar_z(kL, kR, weight, i, ny-1, T_all, Tright2)
 
     qy_hot  = ( 8.0d0 * Thot  - 9.0d0 * Tleft1  + Tleft2 ) / (3.0d0 * dy)
     qy_cold = (-8.0d0 * Tcold + 9.0d0 * Tright1 - Tright2) / (3.0d0 * dy)
@@ -3861,22 +4056,22 @@ subroutine RBcalc_Nu_wall_avg()
   deltaT = Thot - Tcold
   coef = velocityScaleCompare
 
-  !$omp parallel do default(none) shared(T,T_bot_avg) private(i,j)
+  !$omp parallel do default(none) shared(T_all,T_bot_avg) private(i,j)
   do i = 1, nx
     T_bot_avg(i) = 0.0d0
     do j = 1, ny
-      T_bot_avg(i) = T_bot_avg(i) + T(i,j,1)
+      T_bot_avg(i) = T_bot_avg(i) + T_all(i,j,1)
     enddo
     T_bot_avg(i) = T_bot_avg(i) / dble(ny)
   enddo
   !$omp end parallel do
 
   sum_hot = 0.0d0
-  !$omp parallel do default(none) shared(T,Nu_bot,dz,deltaT) private(i,j,qz_wall) reduction(+:sum_hot)
+  !$omp parallel do default(none) shared(T_all,Nu_bot,dz,deltaT) private(i,j,qz_wall) reduction(+:sum_hot)
   do i = 1, nx
     Nu_bot(i) = 0.0d0
     do j = 1, ny
-      qz_wall = (8.0d0*Thot - 9.0d0*T(i,j,1) + T(i,j,2)) / (3.0d0*dz)
+      qz_wall = (8.0d0*Thot - 9.0d0*T_all(i,j,1) + T_all(i,j,2)) / (3.0d0*dz)
       Nu_bot(i) = Nu_bot(i) + qz_wall / deltaT
     enddo
     Nu_bot(i) = Nu_bot(i) / dble(ny)
@@ -3946,10 +4141,10 @@ subroutine RBcalc_Nu_wall_avg()
   Nu_hot_min_position = xstar
 
   sum_cold = 0.0d0
-  !$omp parallel do collapse(2) default(none) shared(T,dz,deltaT) private(i,j,qz_wall) reduction(+:sum_cold)
+  !$omp parallel do collapse(2) default(none) shared(T_all,dz,deltaT) private(i,j,qz_wall) reduction(+:sum_cold)
   do j = 1, ny
     do i = 1, nx
-      qz_wall = (-8.0d0*Tcold + 9.0d0*T(i,j,nz) - T(i,j,nz-1)) / (3.0d0*dz)
+      qz_wall = (-8.0d0*Tcold + 9.0d0*T_all(i,j,nz) - T_all(i,j,nz-1)) / (3.0d0*dz)
       sum_cold = sum_cold + qz_wall / deltaT
     enddo
   enddo
@@ -3959,22 +4154,24 @@ subroutine RBcalc_Nu_wall_avg()
   sum_mid = 0.0d0
   if (mod(nz,2) .EQ. 1) then
     kMid = (nz + 1) / 2
-    !$omp parallel do collapse(2) default(none) shared(w,T,kMid,dz,deltaT,coef) private(i,j) reduction(+:sum_mid)
+    !$omp parallel do collapse(2) default(none) &
+    !$omp& shared(w_all,T_all,kMid,dz,deltaT,coef) private(i,j) reduction(+:sum_mid)
     do j = 1, ny
       do i = 1, nx
-        sum_mid = sum_mid + (coef * w(i,j,kMid) * (T(i,j,kMid) - Tref) - &
-             (T(i,j,kMid+1) - T(i,j,kMid-1)) / (2.0d0*dz)) / deltaT
+        sum_mid = sum_mid + (coef * w_all(i,j,kMid) * (T_all(i,j,kMid) - Tref) - &
+             (T_all(i,j,kMid+1) - T_all(i,j,kMid-1)) / (2.0d0*dz)) / deltaT
       enddo
     enddo
     !$omp end parallel do
   else
     kB = nz / 2
     kT = kB + 1
-    !$omp parallel do collapse(2) default(none) shared(w,T,kB,kT,dz,deltaT,coef) private(i,j) reduction(+:sum_mid)
+    !$omp parallel do collapse(2) default(none) &
+    !$omp& shared(w_all,T_all,kB,kT,dz,deltaT,coef) private(i,j) reduction(+:sum_mid)
     do j = 1, ny
       do i = 1, nx
-        sum_mid = sum_mid + (coef * 0.5d0 * (w(i,j,kB) * (T(i,j,kB) - Tref) + &
-             w(i,j,kT) * (T(i,j,kT) - Tref)) + (T(i,j,kB) - T(i,j,kT)) / dz) / deltaT
+        sum_mid = sum_mid + (coef * 0.5d0 * (w_all(i,j,kB) * (T_all(i,j,kB) - Tref) + &
+             w_all(i,j,kT) * (T_all(i,j,kT) - Tref)) + (T_all(i,j,kB) - T_all(i,j,kT)) / dz) / deltaT
       enddo
     enddo
     !$omp end parallel do
@@ -4190,11 +4387,11 @@ subroutine SideHeatedcalc_centerline_uv_max()
   do j = 1, ny
     ! 在 z=Lz/2 上先做 z 向插值，再在 x=Lx/2 上做 x 向插值，得到中心竖线上的 u。
     if (kL .EQ. kR) then
-      valL = u(iL,j,kL)
-      valR = u(iR,j,kL)
+      valL = u_all(iL,j,kL)
+      valR = u_all(iR,j,kL)
     else
-      valL = (1.0d0 - wz) * u(iL,j,kL) + wz * u(iL,j,kR)
-      valR = (1.0d0 - wz) * u(iR,j,kL) + wz * u(iR,j,kR)
+      valL = (1.0d0 - wz) * u_all(iL,j,kL) + wz * u_all(iL,j,kR)
+      valR = (1.0d0 - wz) * u_all(iR,j,kL) + wz * u_all(iR,j,kR)
     endif
 
     if (iL .EQ. iR) then
@@ -4215,11 +4412,11 @@ subroutine SideHeatedcalc_centerline_uv_max()
   do i = 1, nx
     ! 在 z=Lz/2 上先做 z 向插值，再在 y=Ly/2 上做 y 向插值，得到中心横线上的 v。
     if (kL .EQ. kR) then
-      valB = v(i,jL,kL)
-      valT = v(i,jR,kL)
+      valB = v_all(i,jL,kL)
+      valT = v_all(i,jR,kL)
     else
-      valB = (1.0d0 - wz) * v(i,jL,kL) + wz * v(i,jL,kR)
-      valT = (1.0d0 - wz) * v(i,jR,kL) + wz * v(i,jR,kR)
+      valB = (1.0d0 - wz) * v_all(i,jL,kL) + wz * v_all(i,jL,kR)
+      valT = (1.0d0 - wz) * v_all(i,jR,kL) + wz * v_all(i,jR,kR)
     endif
 
     if (jL .EQ. jR) then
@@ -4266,11 +4463,11 @@ subroutine SideHeatedcalc_kinetic_energy_avg()
   coef = velocityScaleCompare
   energyAvg = 0.0d0
 
-  !$omp parallel do collapse(3) default(none) shared(u,v,w,coef) private(i,j,k) reduction(+:energyAvg)
+  !$omp parallel do collapse(3) default(none) shared(u_all,v_all,w_all,coef) private(i,j,k) reduction(+:energyAvg)
   do k = 1, nz
     do j = 1, ny
       do i = 1, nx
-        energyAvg = energyAvg + (coef * u(i,j,k))**2 + (coef * v(i,j,k))**2 + (coef * w(i,j,k))**2
+        energyAvg = energyAvg + (coef * u_all(i,j,k))**2 + (coef * v_all(i,j,k))**2 + (coef * w_all(i,j,k))**2
       enddo
     enddo
   enddo
@@ -4334,7 +4531,7 @@ subroutine calc_umid_max_common(logTag)
   kBest = 1
   do k = 1, nz
     do j = 1, ny
-      call interp_scalar_x(iL, iR, weight, j, k, u, val)
+      call interp_scalar_x(iL, iR, weight, j, k, u_all, val)
       if (val .GT. umax) then
         umax = val
         jBest = j
@@ -4377,7 +4574,7 @@ subroutine calc_vmid_max_common(logTag)
   kBest = 1
   do k = 1, nz
     do i = 1, nx
-      call interp_scalar_y(jL, jR, weight, i, k, v, val)
+      call interp_scalar_y(jL, jR, weight, i, k, v_all, val)
       if (val .GT. vmax) then
         vmax = val
         iBest = i
@@ -4421,7 +4618,7 @@ subroutine calc_wmid_max_common(logTag)
   jBest = 1
   do j = 1, ny
     do i = 1, nx
-      call interp_scalar_z(kL, kR, weight, i, j, w, val)
+      call interp_scalar_z(kL, kR, weight, i, j, w_all, val)
       if (val .GT. wmax) then
         wmax = val
         iBest = i
@@ -4556,10 +4753,10 @@ subroutine write_midplane_x(filename)
   call find_bracketing_index(xp, nx, targetX, iL, iR, weight)
   do k = 1, nz
     do j = 1, ny
-      call interp_scalar_x(iL, iR, weight, j, k, u, valU)
-      call interp_scalar_x(iL, iR, weight, j, k, v, valV)
-      call interp_scalar_x(iL, iR, weight, j, k, w, valW)
-      call interp_scalar_x(iL, iR, weight, j, k, T, valT)
+      call interp_scalar_x(iL, iR, weight, j, k, u_all, valU)
+      call interp_scalar_x(iL, iR, weight, j, k, v_all, valV)
+      call interp_scalar_x(iL, iR, weight, j, k, w_all, valW)
+      call interp_scalar_x(iL, iR, weight, j, k, T_all, valT)
       uSlice(j,k) = velocityScaleCompare * valU
       vSlice(j,k) = velocityScaleCompare * valV
       wSlice(j,k) = velocityScaleCompare * valW
@@ -4590,10 +4787,10 @@ subroutine write_midplane_y(filename)
   call find_bracketing_index(yp, ny, targetY, jL, jR, weight)
   do k = 1, nz
     do i = 1, nx
-      call interp_scalar_y(jL, jR, weight, i, k, u, valU)
-      call interp_scalar_y(jL, jR, weight, i, k, v, valV)
-      call interp_scalar_y(jL, jR, weight, i, k, w, valW)
-      call interp_scalar_y(jL, jR, weight, i, k, T, valT)
+      call interp_scalar_y(jL, jR, weight, i, k, u_all, valU)
+      call interp_scalar_y(jL, jR, weight, i, k, v_all, valV)
+      call interp_scalar_y(jL, jR, weight, i, k, w_all, valW)
+      call interp_scalar_y(jL, jR, weight, i, k, T_all, valT)
       uSlice(i,k) = velocityScaleCompare * valU
       vSlice(i,k) = velocityScaleCompare * valV
       wSlice(i,k) = velocityScaleCompare * valW
@@ -4625,10 +4822,10 @@ subroutine write_midplane_z(filename)
   call find_bracketing_index(zp, nz, targetZ, kL, kR, weight)
   do j = 1, ny
     do i = 1, nx
-      call interp_scalar_z(kL, kR, weight, i, j, u, valU)
-      call interp_scalar_z(kL, kR, weight, i, j, v, valV)
-      call interp_scalar_z(kL, kR, weight, i, j, w, valW)
-      call interp_scalar_z(kL, kR, weight, i, j, T, valT)
+      call interp_scalar_z(kL, kR, weight, i, j, u_all, valU)
+      call interp_scalar_z(kL, kR, weight, i, j, v_all, valV)
+      call interp_scalar_z(kL, kR, weight, i, j, w_all, valW)
+      call interp_scalar_z(kL, kR, weight, i, j, T_all, valT)
       uSlice(i,j) = velocityScaleCompare * valU
       vSlice(i,j) = velocityScaleCompare * valV
       wSlice(i,j) = velocityScaleCompare * valW
@@ -4666,8 +4863,8 @@ subroutine write_midplane_stream_x(filename)
 
   do k = 1, nz
     do j = 1, ny
-      call interp_scalar_x(iL, iR, weight, j, k, v, vSlice(j,k))
-      call interp_scalar_x(iL, iR, weight, j, k, w, wSlice(j,k))
+      call interp_scalar_x(iL, iR, weight, j, k, v_all, vSlice(j,k))
+      call interp_scalar_x(iL, iR, weight, j, k, w_all, wSlice(j,k))
     enddo
   enddo
 
@@ -4765,8 +4962,8 @@ subroutine write_midplane_stream_y(filename)
 
   do k = 1, nz
     do i = 1, nx
-      call interp_scalar_y(jL, jR, weight, i, k, u, uSlice(i,k))
-      call interp_scalar_y(jL, jR, weight, i, k, w, wSlice(i,k))
+      call interp_scalar_y(jL, jR, weight, i, k, u_all, uSlice(i,k))
+      call interp_scalar_y(jL, jR, weight, i, k, w_all, wSlice(i,k))
     enddo
   enddo
 
@@ -4864,8 +5061,8 @@ subroutine write_midplane_stream_z(filename)
 
   do j = 1, ny
     do i = 1, nx
-      call interp_scalar_z(kL, kR, weight, i, j, u, uSlice(i,j))
-      call interp_scalar_z(kL, kR, weight, i, j, v, vSlice(i,j))
+      call interp_scalar_z(kL, kR, weight, i, j, u_all, uSlice(i,j))
+      call interp_scalar_z(kL, kR, weight, i, j, v_all, vSlice(i,j))
     enddo
   enddo
 
@@ -4948,9 +5145,10 @@ subroutine write_full_fields_plt(filename)
   implicit none
 
   character(len=*), intent(in) :: filename
-  integer(kind=4) :: i, j, k, uout
+  integer(kind=4) :: i, j, k, uout, bufferIndex
   real(kind=4) :: zoneMarker, eohMarker ! Tecplot binary markers are single-precision control records.
   character(len=40) :: zoneName
+  real(kind=8), allocatable :: tecBuffer(:)
 
   !用“流式访问”打开,意思是不按“记录/行”来组织，而是像字节流一样连续写，适合写 .plt 这种二进制格式文件。
   open(newunit=uout, file=trim(filename), access='stream', form='unformatted', status='replace')
@@ -5003,19 +5201,32 @@ subroutine write_full_fields_plt(filename)
   write(uout) 0
   write(uout) -1
 
+  ! 数据区仍然保持 Tecplot point packing 顺序，但先打包成连续数组再一次性写出，
+  ! 避免对每个网格点做 7 次小 write 调用。
+  allocate(tecBuffer(7*nx*ny*nz))
+  bufferIndex = 0
   do k = 1, nz
     do j = 1, ny
       do i = 1, nx
-        write(uout) xp(i)
-        write(uout) yp(j)
-        write(uout) zp(k)
-        write(uout) u(i,j,k)
-        write(uout) v(i,j,k)
-        write(uout) w(i,j,k)
-        write(uout) T(i,j,k)
+        bufferIndex = bufferIndex + 1
+        tecBuffer(bufferIndex) = xp(i)
+        bufferIndex = bufferIndex + 1
+        tecBuffer(bufferIndex) = yp(j)
+        bufferIndex = bufferIndex + 1
+        tecBuffer(bufferIndex) = zp(k)
+        bufferIndex = bufferIndex + 1
+        tecBuffer(bufferIndex) = u_all(i,j,k)
+        bufferIndex = bufferIndex + 1
+        tecBuffer(bufferIndex) = v_all(i,j,k)
+        bufferIndex = bufferIndex + 1
+        tecBuffer(bufferIndex) = w_all(i,j,k)
+        bufferIndex = bufferIndex + 1
+        tecBuffer(bufferIndex) = T_all(i,j,k)
       enddo
     enddo
   enddo
+  write(uout) tecBuffer
+  deallocate(tecBuffer)
 
   close(uout)
   return
