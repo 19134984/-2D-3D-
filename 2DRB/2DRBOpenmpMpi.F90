@@ -348,7 +348,7 @@
         write(00,*) " "
         write(00,*) "================ Restart continuation begins ================"
     else
-        open(unit=00,file=trim(settingsFile),status='replace')   !新算例清掉旧日志，续算则追加
+        open(unit=00,file=trim(settingsFile),status='unknown',position='append')   !新算例清旧日志已在 init_mpi_cartesian 完成
     endif
     string = ctime( time() )                      !ctime把 time() 返回的时间戳转换成可读的字符串
     write(00,*) 'Start: ', string                 !什么时候开始计算
@@ -773,6 +773,14 @@
     if(.not.isRoot) then
         write(settingsFile,'("SimulationSettings2DOpenmpMpi-rank",I6.6,".txt")') MYID
     endif
+
+    if(loadInitField.EQ.1) then
+        open(unit=00,file=trim(settingsFile),status='unknown',position='append')
+    else
+        open(unit=00,file=trim(settingsFile),status='replace')
+    endif
+    write(00,*) "MPI Cartesian dims from init_mpi_cartesian (x,y):", dims(1), dims(2)
+    close(00)
 
     return
   end subroutine init_mpi_cartesian

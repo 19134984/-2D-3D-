@@ -95,6 +95,8 @@ end module commondata
 module mpi_data
     implicit none
     integer :: rc, rank, num_process
+    ! MPI二维笛卡尔拓扑用的一维数组：
+    ! dims表示x/y方向的进程数，coords表示当前rank在x/y方向的坐标。
     integer :: dims(0:1) = (/0, 0/), coords(0:1)
     logical :: periods(0:1)
     data periods/2*.false./

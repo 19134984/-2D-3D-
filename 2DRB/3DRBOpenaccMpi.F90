@@ -299,7 +299,7 @@ program main3dOpenaccMpi
   call compose_ranked_file_prefixes_3d()
 
   ! 每个 MPI rank 独立记录自己的日志和输出前缀，避免并发写同一个文件。
-  open(unit=00, file=trim(settingsFile), status='replace')
+  open(unit=00, file=trim(settingsFile), status='unknown', position='append')
   string = ctime(time())
   write(00,*) 'Start: ', string
   write(00,*) 'Starting OpenACC+MPI >>>>>>', ' rank =', mpiRank, '; size =', mpiSize
@@ -575,6 +575,10 @@ subroutine compose_ranked_file_prefixes_3d()
   pltFilePrefix = 'buoyancyCavity3DTecplot-' // trim(rankTag)
   reloadFilePrefix = 'backupFile3D-' // trim(rankTag)
   settingsFile = 'SimulationSettings3D-' // trim(rankTag) // '.txt'
+
+  open(unit=00, file=trim(settingsFile), status='replace')
+  write(00,*) 'MPI Cartesian dims from setup_mpi_decomposition_3d (x,y,z):', dims(1), dims(2), dims(3)
+  close(00)
 end subroutine compose_ranked_file_prefixes_3d
 
 

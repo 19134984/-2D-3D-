@@ -1,0 +1,8 @@
+{
+  "source_dirs": [
+    "fortls_stubs"
+  ],
+  "include_dirs": [
+    "C:/msys64/ucrt64/include"
+  ]
+}

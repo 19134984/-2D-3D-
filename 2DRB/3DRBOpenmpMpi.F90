@@ -394,7 +394,7 @@ program main3dOpenmpMpi
     open(unit=00, file=trim(settingsFile), status='unknown', position='append')
     write(00,*) '================ Restart continuation begins ================'
   else
-    open(unit=00, file=trim(settingsFile), status='replace')
+    open(unit=00, file=trim(settingsFile), status='unknown', position='append')
   endif
   string = ctime(time())
   write(00,*) 'Start: ', string
@@ -871,6 +871,14 @@ subroutine init_mpi_cartesian()
   if(.not.isRoot) then
     write(settingsFile,'("SimulationSettings3DOpenmpMpi-rank",I6.6,".txt")') MYID
   endif
+
+  if(loadInitField.EQ.1) then
+    open(unit=00, file=trim(settingsFile), status='unknown', position='append')
+  else
+    open(unit=00, file=trim(settingsFile), status='replace')
+  endif
+  write(00,*) 'MPI Cartesian dims from init_mpi_cartesian (x,y,z):', dims(1), dims(2), dims(3)
+  close(00)
 
 end subroutine init_mpi_cartesian
 
