@@ -134,7 +134,7 @@ module commondata3d
 
   !===============================================================================================
   ! 无量纲参数
-  integer(kind=4), parameter :: nx=120, ny=120, nz=120     ! 三个方向的流体节点数；物理壁面在 0 和 N 处
+  integer(kind=4), parameter :: nx=80, ny=80, nz=80     ! 三个方向的流体节点数；物理壁面在 0 和 N 处
 #ifdef SideHeatedCell
   real(kind=8), parameter :: lengthUnit=dble(ny)     ! 侧壁差温：特征长度取 y 方向左右冷热壁距离
 #else
@@ -1271,8 +1271,8 @@ subroutine bounceback()
       f(4, i,ny,k) = f_post(3, i,ny,k)
       f(9, i,ny,k) = f_post(8, i,ny,k)
       f(10,i,ny,k) = f_post(7, i,ny,k)
-      f(16,i,ny,k) = f_post(15,i,ny,k)
-      f(18,i,ny,k) = f_post(17,i,ny,k)
+      f(16,i,ny,k) = f_post(17,i,ny,k)
+      f(18,i,ny,k) = f_post(15,i,ny,k)
     enddo
   enddo
   !$omp end parallel do
