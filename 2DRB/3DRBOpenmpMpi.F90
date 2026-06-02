@@ -91,9 +91,9 @@
 
 !算法切换
 !启用 M1G 修正；注释掉则不使用 useG 相关修正
-#define EnableUseG
+!#define EnableUseG
 !启用旧算法
-!#define EnableLegacyThermalScheme
+#define EnableLegacyThermalScheme
 
 ! 温度算法宏的选择：legacy D3Q7 和 EnableUseG 历史通量修正属于两套温度模型，不能混用。
 #if defined(EnableUseG) && defined(EnableLegacyThermalScheme)
@@ -217,7 +217,7 @@ module commondata3dOpenmpMpi
 
   !===============================================================================================
   ! 无量纲参数
-  integer(kind=4), parameter :: nx=80, ny=80, nz=80     ! 三个方向的流体节点数；不包括边界节点
+  integer(kind=4), parameter :: nx=120, ny=120, nz=120     ! 三个方向的流体节点数；不包括边界节点
 #ifdef SideHeatedCell
   real(kind=8), parameter :: lengthUnit=dble(ny)     ! 侧壁差温：特征长度取 y 方向左右冷热壁距离
 #else
@@ -225,7 +225,7 @@ module commondata3dOpenmpMpi
 #endif
   real(kind=8), parameter :: pi=acos(-1.0d0)
 
-  real(kind=8), parameter :: Rayleigh=1.0d5
+  real(kind=8), parameter :: Rayleigh=1.0d7
   real(kind=8), parameter :: Prandtl=0.71d0
   real(kind=8), parameter :: Mach=0.1d0
   real(kind=8), parameter :: Thot=0.5d0, Tcold=-0.5d0
@@ -399,6 +399,11 @@ program main3dOpenmpMpi
   string = ctime(time())
   write(00,*) 'Start: ', string
   write(00,*) 'Starting MPI + OpenMP >>>>>>'
+
+  ! OMP_set_num_threads只设置“当前MPI rank内部”后续OpenMP并行区要开的线程数。
+  ! 它不负责把这些线程绑定到具体CPU核心；核心绑定由运行脚本中的参数控制。
+  ! 因此这里的OMP_THREADS_PER_RANK必须和mpirun.sh里算出的OMP_NUM_THREADS一致，
+  ! 否则代码日志里写的每rank线程数和实际运行/绑定策略会对不上。
   call OMP_set_num_threads(OMP_THREADS_PER_RANK)    ! 每个 MPI rank 内部使用的 OpenMP 线程数
   write(00,*) 'MPI ranks from mpiexec:', NPROC
   write(00,*) 'MPI dims:', dims(1), dims(2), dims(3)
@@ -615,12 +620,18 @@ subroutine init_mpi_cartesian()
 
 #ifdef OmpThreadSingleNode
   ! 单节点测试：NPROC 就是本节点内的 MPI 进程数，直接用节点总线程数除以 NPROC。
+  ! 例：OMP_THREADS_PER_NODE=24，mpirun -np 3，则NPROC_NODE=3，
+  !     OMP_THREADS_PER_RANK=24/3=8，每个MPI rank内部开8个OpenMP线程。
   NPROC_NODE = NPROC
   OMP_THREADS_PER_RANK = max(1, OMP_THREADS_PER_NODE/NPROC_NODE)
 #endif
 #ifdef OmpThreadMultiNode
   ! 多节点集群：NodeCount 是本算例使用的节点数，NPROC 是 mpiexec -n 给出的总 MPI 进程数。
   ! 这里只检查 NPROC 是否能被 NodeCount 整除；每个节点实际放多少 rank 由提交脚本保证。
+  ! 例：NodeCount=2，mpirun -np 8，则每节点NPROC_NODE=8/2=4个MPI rank；
+  !     若OMP_THREADS_PER_NODE=24，则每个rank内部开24/4=6个OpenMP线程。
+  ! 注意：这里仍然只是在代码里计算线程数，不做CPU核心绑定；
+  !       真正的rank到节点、rank到core的放置规则必须由脚本保证。
   if(mod(NPROC,NodeCount).NE.0) then
     if(MYID.EQ.0) then
       write(*,*) 'Error: NPROC must be divisible by NodeCount in OmpThreadMultiNode mode.'

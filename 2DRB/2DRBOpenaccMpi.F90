@@ -33,17 +33,17 @@
 #endif
 
 !   温度边界(for Rayleigh Benard Cell)，包括水平边界恒温，垂直边界温度不可穿透以及周期
-#define RayleighBenardCell
-#define HorizontalWallsConstT
-#define VerticalWallsAdiabatic
+!#define RayleighBenardCell
+!#define HorizontalWallsConstT
+!#define VerticalWallsAdiabatic
 !#define VerticalWallsPeriodicalT
 
 
 
 !   温度边界(for Side Heated Cell)，包括水平边界温度不可穿透，垂直边界恒温,侧壁加热加磁场
-!#define SideHeatedCell
-!#define HorizontalWallsAdiabatic
-!#define VerticalWallsConstT
+#define SideHeatedCell
+#define HorizontalWallsAdiabatic
+#define VerticalWallsConstT
 !#define SideHeatedHa  
 !~~temperature B.C.~~
 

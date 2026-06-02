@@ -88,6 +88,8 @@ module commondata
     integer(kind=4), parameter :: itc_max=dimensionlessTimeMax*int(outputFrequency*timeUnit)
 
 
+    ! 在GPU端为这些模块变量建立设备副本，后续OpenACC核函数可直接访问。
+    ! declare create只负责让OpenACC运行时维护对应的设备端存储/映射关系。
     !$acc declare create(u, v, T, rho, up, vp, Tp, f, f_post, g, g_post, Fx, Fy) &
     !$acc create(nx, ny)
 end module commondata
@@ -109,6 +111,9 @@ module mpi_data
     integer, parameter :: f_tag_y_pos(0:2) = (/ 2, 5, 6 /)
     integer, parameter :: f_tag_y_neg(0:2) = (/ 4, 7, 8 /)
 
+    ! 在GPU端为MPI通信相关变量建立设备副本：
+    ! send/recv数组用于边界数据交换，dims/coords用于GPU端识别当前MPI子区域位置。
+    ! 这里只建立OpenACC设备端映射；通信缓冲区本身仍在allocate_all中分配。
     !$acc declare create(send_pos(:), recv_pos(:), send_neg(:), recv_neg(:)) &
     !$acc create(g_send_pos_x(:), g_recv_pos_x(:), g_send_neg_x(:), g_recv_neg_x(:)) &
     !$acc create(dims, coords)
@@ -126,6 +131,8 @@ program main
 
     call mpi_starts()
 
+    ! mpi_starts在CPU端确定了当前rank的局部网格尺寸nx/ny和拓扑信息dims/coords。
+    ! 由于这些变量前面用declare create建立了GPU端副本，这里需要显式同步到设备端。
     !$acc update device(nx, ny, dims, coords)
     
     call allocate_all()
@@ -186,30 +193,46 @@ subroutine mpi_starts()
     integer :: num_gpus, gpu_id
     integer :: local_comm, local_rank
     integer :: name_len, tmp
+    ! MPI_MAX_PROCESSOR_NAME是MPI规定的处理器/节点名最大长度。
+    ! processor_name用于保存当前rank所在节点名，name_len保存实际名称长度。
     character(len=MPI_MAX_PROCESSOR_NAME) :: processor_name
 
     call MPI_Init(rc)
 
     call MPI_Comm_size(MPI_COMM_WORLD, num_process, rc)
     call MPI_Comm_rank(MPI_COMM_WORLD, rank, rc)
+    ! 获取当前MPI进程所在节点名：processor_name为输出名称，name_len为名称长度，rc为返回状态码。
     call MPI_Get_processor_name(processor_name, name_len, rc)
 
     !!! decomposition the domain 
     ! call MPI_Dims_create(num_process, 2, dims, rc)
     dims(0) = 1
+    ! 根据总MPI进程数、全局网格尺寸和周期性设置，选择二维进程拓扑dims(0:1)。
+    ! 这里dims(0)=1已提前固定，所以该函数主要确定y方向需要分成多少个MPI子块。
     call MPI_Dims_create_2d(num_process, dims, total_nx, total_ny, periods, rc)
     
+    ! 创建二维MPI笛卡尔通信器：
+    ! MPI_COMM_WORLD为原始全局通信器；2表示二维拓扑；
+    ! dims给出x/y方向进程数；periods给出x/y方向是否周期；
+    ! .true.允许MPI重新排列rank以优化拓扑；comm2d为输出的新通信器；rc为返回状态码。
     call MPI_Cart_create(MPI_COMM_WORLD, 2, dims, periods, .true., comm2d, rc)
     if(rank == 0) then
         write(*,*) "dimens is x*y = ", dims(0), "x", dims(1)
     endif
 
-    ! get my new rank in decomposition
+    ! get my new rank in decomposition，得到新的rank
     call MPI_Comm_rank(comm2d, rank2d, rc)
     ! write(*,*) "process ", rank2d, " of total ", num_process, "is alive."
 
     ! determain sub-domain size
+    ! 从二维笛卡尔通信器中取回拓扑信息：
+    ! dims/periods分别返回各方向进程数和周期性，coords返回当前rank的二维坐标。
+    ! 这里主要使用coords(0:1)来计算当前rank负责的全局子区域起点和局部尺寸。
     call MPI_Cart_get(comm2d, 2, dims, periods, coords, rc)
+    
+    ! 分别沿x/y方向做一维网格切分（余数前置）：
+    ! 输入全局网格数total_nx/total_ny、当前rank拓扑坐标coords和方向进程数dims；
+    ! 输出当前rank的局部网格尺寸nx/ny，以及在全局网格中的起点i_start_global/j_start_global。
     call decompose_1d(total_nx, nx, coords(0), dims(0), i_start_global)
     call decompose_1d(total_ny, ny, coords(1), dims(1), j_start_global)
     if(rank == 0) then
@@ -219,28 +242,45 @@ subroutine mpi_starts()
     ! write(*,*) "coords = ", coords(1), coords(2)
     ! write(*,*) "nx*ny = ", nx, ny
 
-    ! get the neighbors
+    ! 查询当前rank在二维笛卡尔拓扑中的相邻rank，用于后续MPI边界/halo交换。
+    ! 参数含义：comm2d为二维通信器；第二个参数0/1分别表示x/y方向；
+    ! 第三个参数1表示沿该方向偏移一个子块；后两个输出分别是负方向和正方向邻居。
+    ! x方向得到左/右邻居，y方向得到下/上邻居；若边界无邻居且非周期，邻居为MPI_PROC_NULL。
     call MPI_Cart_shift(comm2d, 0, 1, nbr_left, nbr_right, rc)
     call MPI_Cart_shift(comm2d, 1, 1, nbr_bottom, nbr_top, rc)
 
+
     local_rank = -1
+    ! MPI_Comm_split_type参数含义：
+    ! comm2d为输入通信器；MPI_COMM_TYPE_SHARED表示按共享内存节点分组；
+    ! rank2d作为key，用于决定新通信器local_comm中的rank排序；
+    ! MPI_INFO_NULL表示不提供额外分组提示；local_comm为输出的节点内通信器；rc为返回状态码。
     call MPI_Comm_split_type(comm2d, MPI_COMM_TYPE_SHARED, rank2d, MPI_INFO_NULL, local_comm, rc)
+    ! 获取当前rank在节点内的编号local_rank
     call MPI_Comm_rank(local_comm, local_rank, rc)
+    ! 释放临时通信器local_comm
     call MPI_Comm_free(local_comm, rc)
     
+    ! 查询当前节点上OpenACC可见的NVIDIA GPU数量。
     num_gpus = 0
     num_gpus = acc_get_num_devices(acc_device_nvidia)
+    ! 每个节点只让local_rank=0的进程打印一次GPU数量，避免同节点重复输出。
     if (local_rank .eq. 0) then
         write(*,*) "I from rank", rank2d, "we have", num_gpus, "gpus"
     endif
+    ! 如果没有可用GPU，则终止MPI作业。
     if (num_gpus .le. 0) then
         if (rank2d .eq. 0) then
             write(*,*) 'No NVIDIA GPUs available'
             call MPI_Abort(MPI_COMM_WORLD, 1, rc)
         endif
-        else
+    else
+            ! 用节点内local_rank对GPU数量取模，为当前MPI rank选择GPU。
+            ! 例如4张GPU时，local_rank=0/1/2/3分别绑定GPU 0/1/2/3；
+            ! 若本节点rank数多于GPU数，则多个rank会循环共享GPU。
             gpu_id = mod(local_rank, num_gpus)
             write(*,*) "i'm local rank", local_rank, "rank", rank2d, "using gpu ", gpu_id
+            ! 设置当前MPI rank后续OpenACC计算使用的NVIDIA GPU编号。
             call acc_set_device_num(gpu_id, acc_device_nvidia)
     endif
 
@@ -277,15 +317,21 @@ contains
         ! determine the dimensions of cartesian topologies to minimize the message exchange
         ! under user provided restrictions if dims(0:2) != 0
 
+        ! 保存调用者预先给出的dims限制：
+        ! restrict(k)=0表示第k个方向可自由搜索，非0表示该方向的进程数被固定。
         restrict = dims
 
+        ! diff保存当前找到的最小通信量估计值。
+        ! 先给一个足够大的初值，保证第一组合法划分可以更新它。
         diff = dble(total_nx) * dble(total_ny) * 10.0d0
 
+        ! 默认两个方向都从1搜索到num_process。
         is = 1
         ie = num_process
-        ! if user set restrictions
+        ! 如果某个方向已被restrict固定，就把该方向的搜索起点和终点都设为固定值。
         do i = 0, 1
             if (restrict(i) .NE. 0) then
+                ! 例如restrict(0)=1时，x方向只允许i=1，不再枚举其他x方向分块数。
                 is(i) = restrict(i)
                 ie(i) = restrict(i)
             endif
@@ -296,28 +342,33 @@ contains
             do j = is(1), ie(1)
                 if (i * j == num_process) then
                     message = 0.0d0
-                    ! local nx, local ny, local nz
+                    ! 当前候选划分为 i*j 个MPI子块：
+                    ! lx/ly是单个rank负责的局部子区域在x/y方向上的近似长度。
                     lx = dble(total_nx) / dble(i)
                     ly = dble(total_ny) / dble(j)
 
-                    ! maximum message need to exchange for a process
+                    ! 估计“单个rank最多”需要交换的边界长度，而不是全局所有切分线总长度。
                     if (i > 1) then
-                        ! if divide at this dimision
+                        ! x方向被切分时，每个rank至少可能和一侧邻居交换一条竖直边界，长度约为ly。
                         message = message + ly
                         if (i > 2 .OR. periods(0)) then
-                            ! if dims() > 2 or is periodic
+                            ! i>2时中间rank有左右两个邻居；若x方向周期，即使i=2也有两侧通信。
+                            ! 因此这里最多只再加一条ly，不是按全局(i-1)条切分线累加。
                             message = message + ly 
                         endif
                     endif
                     if (j > 1) then
+                        ! y方向被切分时，每个rank至少可能和一侧邻居交换一条水平边界，长度约为lx。
                         message = message + lx
                         if (j > 2 .OR. periods(1)) then
+                            ! j>2时中间rank有上下两个邻居；若y方向周期，即使j=2也有两侧通信。
                             message = message + lx 
                         endif
                     endif
 
 
                     if (message < diff) then
+                        ! 保存当前找到的最小“单rank最大通信边界长度”对应的二维进程划分。
                         diff = message
                         dims(0) = i
                         dims(1) = j
@@ -358,6 +409,8 @@ subroutine allocate_all()
     allocate (Fy(nx,ny))
 
     ! allocate buffer layer
+    ! max_length取x/y两个方向通信边界长度的较大值，即max(nx,ny)+2。
+    ! +2包含两侧halo/ghost索引0和nx+1或ny+1，保证x/y方向MPI通信缓冲区都够用。
     max_length = nx+2
     if (ny > nx) then
         max_length = ny+2
@@ -425,7 +478,7 @@ subroutine initial()
     itc = 0
     errorU = 100.0d0
     errorT = 100.0d0
-
+    !格子长度
     xp(0) = 0.0d0
     xp(total_nx+1) = dble(total_nx)
     do i=1,total_nx
@@ -437,7 +490,10 @@ subroutine initial()
         yp(j) = dble(j)-0.5d0
     enddo
     
-    
+
+    ! OpenACC并行循环指令：
+    ! parallel表示在GPU上开启并行计算区域；loop表示紧跟的循环要并行执行；
+    ! collapse(2)表示把后面j/i两层嵌套循环合并成一个二维格点任务集合并行。
     !$acc parallel loop collapse(2)
     do j = 1, ny
         do i = 1, nx
@@ -452,8 +508,12 @@ subroutine initial()
         enddo
     enddo
 
+    ! 开启OpenACC kernels区域，由编译器分析下面的循环并生成GPU kernel执行。
+    ! 这里用于在GPU端初始化温度场T；具体循环并行性由后面的!$acc loop说明。
     !$acc kernels
 #ifdef VerticalWallsConstT
+    ! 这里不用写parallel，因为外层!$acc kernels已经开启了OpenACC计算区域。
+    ! loop只负责修饰下面的循环；collapse(2)把j/i两层循环合并后交给该kernels区域并行执行。
     !$acc loop collapse(2)
     do j=1,ny
         do i=1,nx
@@ -466,6 +526,9 @@ subroutine initial()
     ! f = 0.0d0
     ! g = 0.0d0
     
+    ! 并行初始化f/g分布函数；collapse(2)并行展开j/i格点循环。
+    ! private表示每个并行格点任务都有自己的alpha、us2和un临时变量副本，
+    ! 避免不同GPU线程同时写同一临时变量造成数据竞争。
     !$acc parallel loop collapse(2) private(alpha, us2, un)
     do j=1,ny
         do i=1,nx
@@ -489,6 +552,9 @@ end subroutine initial
 
     
 subroutine collision(i_start, i_end, j_start, j_end)
+    ! routine表示为该子程序生成OpenACC设备端例程，使其可在GPU端执行/调用。
+    ! gang表示该例程内部包含gang级并行工作，下面的i/j循环会作为较粗粒度GPU并行循环。
+    ! nohost表示只生成设备端版本，不额外生成OpenACC主机端例程版本。
     !$acc routine gang nohost
     use commondata
     implicit none
@@ -499,6 +565,9 @@ subroutine collision(i_start, i_end, j_start, j_end)
     real(kind=8) :: s(0:8)
     real(kind=8) :: fSource(0:8)
 
+    ! loop independent表示程序员声明各个(i,j)格点迭代彼此无数据依赖，可安全并行。
+    ! collapse(2)把j/i两层循环合并成一个二维格点任务集合。
+    ! private为每个并行格点任务提供独立的m/meq/m_post/s/fSource临时数组副本。
     !$acc loop independent collapse(2) &
     !$acc private(m, meq, m_post, s, fSource)
     do j = j_start, j_end
@@ -546,6 +615,8 @@ subroutine collision(i_start, i_end, j_start, j_end)
             fSource(7) = (2.0d0-s(7))*(u(i,j)*Fx(i,j)-v(i,j)*Fy(i,j))
             fSource(8) = (1.0d0-0.5d0*s(8))*(u(i,j)*Fy(i,j)+v(i,j)*Fx(i,j))
 
+            ! 当前外层(i,j)格点循环已经并行；这里alpha=0..8只是单个格点内部的小循环。
+            ! loop seq表示该内层循环在当前并行任务内顺序执行，不再拆成额外GPU并行循环。
             !$acc loop seq
             do alpha=0,8
                 m_post(alpha) = m(alpha)-s(alpha)*(m(alpha)-meq(alpha))+fSource(alpha)
@@ -907,12 +978,17 @@ subroutine message_passing_f()
         !$acc parallel loop independent collapse(2) private(tmp)
         do idx = 0, 2
             do j = 0, ny+1
+                ! f_post(nx,j,dir)/f_post(1,j,dir)是竖直边界数据，在Fortran内存中随j变化为跨步访问。
+                ! tmp把这些非连续边界点按idx分段打包成连续的一维send_pos/send_neg缓冲区，供MPI_Sendrecv使用。
                 tmp = (ny+2)*idx + j + 1
                 send_pos(tmp) = f_post(nx, j, f_tag_x_pos(idx))
                 send_neg(tmp) = f_post(1, j, f_tag_x_neg(idx))
             enddo
         enddo
 
+        ! host_data表示下面的MPI调用仍在CPU端执行；use_device表示传入这些数组的GPU设备端地址。
+        ! send_pos/recv_pos/send_neg/recv_neg分别是正/负方向的发送和接收缓冲区。
+        ! 若MPI支持GPU-aware通信，MPI_Sendrecv可直接使用GPU缓冲区，避免GPU-CPU来回拷贝。
         !$acc host_data use_device(send_pos, recv_pos, send_neg, recv_neg)
         ! message passing to right(i++)
         call MPI_Sendrecv(send_pos, 3*(ny+2), MPI_DOUBLE_PRECISION, nbr_right, 158, &
@@ -1042,6 +1118,8 @@ end subroutine message_passing_g
         real(8), allocatable :: total_u(:, :), total_v(:, :), total_rho(:, :), total_T(:, :)
         real(8), allocatable :: tmp_u(:, :), tmp_v(:, :), tmp_rho(:, :), tmp_T(:, :)
 
+        ! update self表示把设备端(GPU)的u/v/rho/T同步回主机端(CPU)，供后续MPI发送和文件输出使用。
+        ! if_present表示只有这些变量已存在于OpenACC设备端时才更新，避免变量不在设备端时报错。
         !$acc update if_present self(u,v,rho,T)
 
         if (rank2d > 0) then
@@ -1051,6 +1129,10 @@ end subroutine message_passing_g
             num(2) = i_start_global
             num(3) = j_start_global
             ! send to rank 0
+            ! MPI_Send参数含义：num为发送缓冲区；4表示发送4个整数；
+            ! MPI_INTEGER为数据类型；第一个0为目标rank 0；第二个0为消息tag；
+            ! comm2d为二维笛卡尔通信器；rc为返回状态码。
+            ! num(0:3)依次保存局部块尺寸nx/ny和全局起点i_start_global/j_start_global。
             call MPI_Send(num, 4, MPI_INTEGER, 0, 0, comm2d, rc)    ! block size and origion
             call MPI_Send(u, nx*ny, MPI_REAL8, 0, 1, comm2d, rc)
             call MPI_Send(v, nx*ny, MPI_REAL8, 0, 2, comm2d, rc)
