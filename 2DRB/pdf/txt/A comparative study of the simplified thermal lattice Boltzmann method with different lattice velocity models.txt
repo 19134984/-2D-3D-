@@ -1,0 +1,1861 @@
+RESEARCH ARTICLE | NOVEMBER 03 2025
+
+A comparative study of the simplified thermal lattice
+Boltzmann method with different lattice velocity models 
+Zheng-Wei He        ; Chang Shu       ; Zhen Chen 
+
+
+
+Physics of Fluids 37, 113601 (2025)
+https://doi.org/10.1063/5.0300977
+
+
+
+
+                                                                                       
+                                                                                       View         Export
+                                                                                       Online       Citation
+
+
+  Articles You May Be Interested In
+
+   Immersed boundary–simplified thermal lattice Boltzmann method for incompressible thermal flows
+   Physics of Fluids (January 2020)
+
+   Mixed convection between rotating sphere and concentric cubical enclosure
+   Physics of Fluids (January 2021)
+
+   Cubic‐Interpolated‐Pseudo‐Particle Lattice Boltzmann Method for Simulation of Natural Convection Heat
+   Transfer in an Enclosure
+
+
+
+
+                                                                                                               02 June 2026 01:27:12
+   AIP Conf. Proc. (June 2010)
+   Physics of Fluids                                                                                ARTICLE                  pubs.aip.org/aip/pof
+
+
+
+
+    A comparative study of the simplified thermal
+    lattice Boltzmann method with different lattice
+    velocity models
+    Cite as: Phys. Fluids 37, 113601 (2025); doi: 10.1063/5.0300977
+    Submitted: 5 September 2025 . Accepted: 16 October 2025 .
+    Published Online: 3 November 2025
+
+    Zheng-Wei He,1,2              Chang Shu,3            and Zhen Chen1,2,a)
+
+    AFFILIATIONS
+    1
+     Marine Numerical Experiment Center, State Key Laboratory of Ocean Engineering, Shanghai 200240, China
+    2
+        School of Ocean and Civil Engineering, Shanghai Jiao Tong University, Shanghai 200240, China
+    3
+        Department of Mechanical Engineering, National University of Singapore, 10 Kent Ridge Crescent, Singapore 119260
+
+    a)
+        Author to whom correspondence should be addressed: zhen.chen@sjtu.edu.cn
+
+
+    ABSTRACT
+    The simplified thermal lattice Boltzmann method (STLBM), as an emerging approach within the lattice Boltzmann framework, demonstrates
+
+
+
+
+                                                                                                                                                                     02 June 2026 01:27:12
+    exceptional potential for simulating challenging thermal flows at high Reynolds/Rayleigh numbers. While its superior numerical stability in extreme
+    flow conditions has been documented, the influence of lattice velocity models on STLBM's performance remains underexplored in the literature.
+    This study aims to fill this gap through comprehensive investigations into the convergence, accuracy, stability, and computational efficiency of
+    STLBM with different lattice velocity models. Quantitative analyses reveal that while the model's accuracy is only marginally affected, its numerical
+    stability exhibits a significant model dependency. The von Neumann stability analysis is conducted to provide theoretical explanations for
+    the varied performance of numerical stability at low relaxation parameters with different lattice velocity models, in which multi-directional distur-
+    bances are considered and more abundant information is provided. It is also found that, although the reduced number of lattice velocities can
+    expect 14%–16% reduction of computational time in each iteration, the total simulation time could be additionally influenced by the varied conver-
+    gence rates exhibited by different lattice velocity models. Finally, based on multi-criteria evaluation of stability-efficiency tradeoffs, guidelines for the
+    choice of the thermal lattice velocity model in STLBM simulations of different thermal flows are provided.
+    Published under an exclusive license by AIP Publishing. https://doi.org/10.1063/5.0300977
+
+
+
+    I. INTRODUCTION                                                                  later extended to thermal flow problems18–20 (the simplified thermal
+          Incompressible thermal flows are commonly encountered in engi-             lattice Boltzmann method, STLBM). The distinct characteristic of the
+    neering applications.1–3 With the development of modern computer tech-           SLBM/STLBM is the direct evolution of macroscopic variables within
+    nology, numerical simulation has become an effective tool for such               the lattice Boltzmann framework. This fundamental shift in the solu-
+    problems. Among various simulation methods, the lattice Boltzmann                tion algorithm directly addresses the key challenges of the conventional
+    method (LBM) presents appealing characteristics, such as the kinetic             LBM. First, it circumvents the necessity to store a large set of distribu-
+    nature, simplicity, and explicitness.4–8 Based on the initial lattice            tion functions, thereby reducing the memory consumption. Second, it
+    Boltzmann schemes proposed for isothermal flow conditions, many strat-           allows the direct implementation of physical boundary conditions,
+    egies have been proposed to incorporate the thermal effects, among which         thereby simplifying the modeling process. Third, the predictor–correc-
+    the double-distribution-function approach is a widely used one.9–13              tor scheme of SLBM/STLBM remains explicit, thereby preserving the
+    Despite its manifest advantages, the conventional LBM with the                   simplicity and explicitness of the conventional LBM. Furthermore,
+    Bhatnagar–Gross–Krook (BGK)14 model is subject to a number of disad-             the SLBM/STLBM demonstrates much better numerical stability in
+    vantages. These include, but are not limited to, high memory require-            extreme flow conditions at high Reynolds/Rayleigh numbers.
+    ments, lack of numerical stability at high Reynolds/Rayleigh numbers,                  Due to these merits, the STLBM has been applied to various ther-
+    and a cumbersome implementation of physical boundary conditions.                 mal flow problems. Dai et al. constructed an enthalpy-based simplified
+          To overcome these limitations, the simplified lattice Boltzmann            lattice Boltzmann model21 and later applied it to analyze phase change
+    method (SLBM) was originally developed by Chen et al.15–17 and was               processes22 inside the horizontal shell and tube energy storage unit
+
+
+
+
+Phys. Fluids 37, 113601 (2025); doi: 10.1063/5.0300977                                                                                                37, 113601-1
+Published under an exclusive license by AIP Publishing
+   Physics of Fluids                                                                          ARTICLE                    pubs.aip.org/aip/pof
+
+
+
+    with different T-shaped fins, achieving 97.72% enhancement of melt-          Corrector:
+    ing efficiency while maintaining excellent numerical stability at                                       q ¼ q ;                                        (4)
+                                                                                                                X
+    Ra ¼ 106. In scenarios of high-intensity convection, Ma et al.23 imple-
+    mented the STLBM to simulate hybrid nanofluid flow and heat trans-                    qu ¼ ðquÞ þ ðsv  1Þ      ea  faeq ðr þ ea dt; t Þ
+                                                                                                                        a
+    fer over a wide range of high Rayleigh numbers from 106 to 109, which                                                    
+    revealed the transition of flow pattern from symmetric steady state to                        qðr; t  dt Þuðr; t  dt Þ þ F E dt;                     (5)
+    asymmetric unsteady state. The accurate and stable simulation in these
+    challenging cases confirms the potential of STLBM in high-fidelity                                 X                                              
+    simulation of turbulent heat transfer problems. To further extend             T ¼ T  þ ðsc  1Þ         ea  gaeq ðr þ ea dt; t Þ  T ðr; t  dt Þ ;   (6)
+    STLBM's applicability to complex geometries,24 the immersed                                          a
+
+    boundary-simplified thermal lattice Boltzmann method (IB-STLBM)
+                                                                                where f and g are the density distribution function and the ther-
+    was later proposed to simulate the flow pattern and energy transfer
+                                                                                mal distribution function, respectively; a is the index of the lattice
+    around a starfish-inspired cylinder. The results are then analyzed to
+                                                                                velocity; r and t denote the space location and time level, respec-
+    obtain the optimal geometric shape for cooling devices.
+                                                                                tively; q, u, and T represent the density, the velocity vector, and
+          Although the above studies demonstrate the capability of
+                                                                                the temperature, respectively; the superscript “eq” denotes
+    STLBM in a broad range of thermal flow problems, one should
+                                                                                the equilibrium distribution function; dt is the streaming time
+    admit that the selection of lattice velocity model may potentially alter
+                                                                                step; and F E represents the buoyancy force. According to the
+    its performance. Despite the fact that the effects of different lattice
+                                                                                Boussinesq approximation, the buoyancy force term is evaluated
+    velocity models on the conventional LBM have been investigated.25–
+    28                                                                          as follows:
+        only the D2Q9 and the D3Q15 models have been applied in all                                        "                  #
+    kinds of simulations carried out by the STLBM.18–20 This preference                                             0
+                                                                                                     FE ¼                      ;                   (7)
+    is likely attributable to two primary factors: first, the well-                                          qgbðT  T0 Þ
+    documented concerns regarding the numerical stability of the
+    reduced lattice velocity sets (e.g., D2Q4, D2Q5) in the conventional        where g is the gravitational acceleration; b is the thermal expansion
+    LBM; and second, the fact that the theoretical stability foundation of      coefficient; and T0 denotes the average temperature. sv and sc denote
+    STLBM, as established in prior work, was specifically derived for the       the single relaxation parameters, which are related to the kinematic vis-
+
+
+
+
+                                                                                                                                                                   02 June 2026 01:27:12
+    D2Q9 model, leaving the analysis for alternative models unsup-              cosity  and the thermal diffusivity v, respectively, by
+    ported. This paper will address this concern and provide a thorough
+    investigation into the performance of the STLBM with different lat-                                                       dx2
+                                                                                                         ¼ c2s ðsv  0:5Þ        ;                         (8)
+    tice velocity models. Numerical tests of benchmark examples will be                                                        dt
+    carried out. Together with the theoretical analysis, comprehensive
+                                                                                                                              dx2
+    discussions of the convergency, accuracy, stability and efficiency will                              v ¼ c2s ðsc  0:5Þ       ;                         (9)
+    be conveyed. Based on these discussions, guidelines for the choice of                                                      dt
+    lattice velocity model will be provided.                                    where dx and dt are, respectively, the streaming distance and the
+          The rest part of this paper is organized as follows: Sec. II briefs   time step. Note that, in this paper, the passive scalar transport
+    the basics of STLBM and introduces various lattice velocity models.         model10,31 is considered, which means that the compression work
+    Section III details the results of the von Neumann stability analysis.      and the viscous heating are neglected. Such neglection is acceptable
+    Benchmark tests are presented in Sec. IV to thoroughly investigate the      in the present consideration of incompressible flows at low Mach
+    performance of STLBM with different lattice velocity models. Final          number.
+    conclusions are drawn in Sec. V.                                                  In terms of the selection of lattice velocity models, the D2Q9
+                                                                                model [see Fig. 1(c)] is employed to ensure mass and momentum con-
+    II. SIMPLIFIED THERMAL LATTICE BOLTZMANN                                                           P eq P                      P     eq   P
+    METHOD                                                                      servation (i.e., q ¼ a fa ¼ a fa and qu ¼ a ea fa ¼ a ea fa )
+                                                                                during the simulation of hydrodynamic field. By using the unit stream-
+         The essential idea of the simplified thermal lattice Boltzmann
+                                                                                ing distance dx ¼ 1 and the unit streaming time step dt ¼ 1, the
+    method is to reconstruct solutions to the macroscopic governing equa-
+                                                                                D2Q9 model gives the following form of equilibrium distribution func-
+    tions recovered from the thermal lattice Boltzmann equation with dou-
+                                                                                tion and lattice velocity vectors:
+    ble distribution functions.29 The formulations of the STLBM reflect
+    direct evolution of the macroscopic variables in a predictor–corrector                                                               !
+                                                                                                                   ea  u ðea  uÞ2 u2
+    manner, which gives19,30                                                                fa ðr; t Þ ¼ wa q 1 þ 2 þ
+                                                                                             eq
+                                                                                                                                     2 ;          (10)
+                                                                                                                     cs       2c4s   2cs
+      Predictor:                                                                          8
+                                  X
+                                                                                          >                        a ¼ 0;
+                           q ¼         faeq ðr  ea dt; t  dt Þ;        (1)             < ð0; 0Þ;
+                                                                                          >
+                                  X
+                                    a                                               ea ¼ ð61; 0Þ; ð0; 61Þ; a ¼ 1; 2; 3; 4; for D2Q9; (11)
+                                                                                         >
+                                                                                          >
+                       ðquÞ ¼           ea  faeq ðr  ea dt; t  dt Þ;   (2)             : ð61; 61Þ;              a ¼ 5; 6; 7; 8;
+                                   a
+                                  X
+                           T ¼         gaeq ðr  ea dt; t  dt Þ:        (3)   where wa and cs denote the weighting coefficient and the sound speed,
+                                    a                                           respectively,
+
+
+
+
+Phys. Fluids 37, 113601 (2025); doi: 10.1063/5.0300977                                                                                              37, 113601-2
+Published under an exclusive license by AIP Publishing
+   Physics of Fluids                                                                          ARTICLE                      pubs.aip.org/aip/pof
+
+
+
+
+                                                                                                                       FIG. 1. Illustration of various D2Qq mod-
+                                                                                                                       els. (a) D2Q4 model; (b) D2Q5 model; (c)
+                                                                                                                       D2Q9 model.
+
+
+
+
+                        8
+                        >
+                        >
+                          1
+                            ;         a ¼ 0;                                          The STLBM is notable for its direct evolution of macroscopic var-
+                        >
+                        >
+                        >
+                        > 9                                                     iables, as well as its excellent stability at low relaxation parameters.
+                        <
+                          4                                                     Although preliminary work has been carried out by Chen et al.29 with
+                   wa ¼     ;         a ¼ 1; 2; 3; 4;    for D2Q9;      (12a)
+                        >
+                        > 9                                                     regard to the D2Q9 model, the versatility of the STLBM with different
+                        >
+                        >
+                        >
+                        > 1                                                     thermal lattice velocity models remain unexplained. Thorough discus-
+                        : ;           a ¼ 5; 6; 7; 8;
+                          36                                                    sions will be made in Sec. III to answer this question.
+                                              1
+                                        cs ¼ pﬃﬃ :                      (12b)
+                                               3                                III. COMPREHENSIVE STABILITY ANALYSIS OF STLBM
+                                                                                A. Isothermal flow condition
+          As for the evolution of the temperature field, multiple lattice
+    velocity models are available for the STLBM in the double-distribu-               The von Neumann stability analysis is a useful strategy to reveal
+    tion-function (DDF) framework.29 Apart from the D2Q9 models, the            the stability performance of the numerical scheme, which was intro-
+
+
+
+
+                                                                                                                                                                    02 June 2026 01:27:12
+    D2Q4 model [Fig. 1(a)] and the D2Q5 model [Fig. 1(b)] are two possi-        duced to the analysis of LBM by Sterling et al.33 It has been demon-
+    ble options in two-dimensional simulations. The lattice velocity vectors    strated that the standard LBM could be highly unstable when the
+    of these models are given as                                                relaxation parameter s is closed to 0.5. Before moving on to the investi-
+                                                                                gation of the thermal models, let us first revisit the isothermal case
+          ea ¼ ð61; 0Þ; ð0; 61Þ; a ¼ 1; 2; 3; 4 for D2Q4;               (13a)   based on the D2Q9 model. To begin with, let us denote
+                                                                                                   y1 ¼ q;       y2 ¼ qu;      y3 ¼ qv;                  (16a)
+                ð0; 0Þ;           a ¼ 0;
+         ea ¼                                    for D2Q5:              (13b)
+                ð61; 0Þ; ð0; 61Þ; a ¼ 1; 2; 3; 4                                                y1 ¼ q ;     y2 ¼ ðquÞ ;     y3 ¼ ðqvÞ ;            (16b)
+                              eq
+    The equilibrium function gi can either be in a similar form as Eq. (10)     and the vector of variables can be written as
+                                                                    !
+                                            e a  u ðe a  u Þ
+                                                           2
+                                                                u
+                                                                2
+                                                                                                             Y ¼ ðy1 ; y2 ; y3 ÞT ;                       (17a)
+                 gaeq ðr; t Þ ¼ wa T 1 þ           þ            2 ;    (14a)
+                                               c2s      2c4s    2cs                                               
+                                                                                                             Y  ¼ y1 ; y2 ; y3 :
+                                                                                                                                  T
+                                                                                                                                                          (17b)
+    or as the following linear form:32
+                                                                                   With the derivations presented in Ref. 16, one can obtain the fol-
+                                                   ea  u
+                            gaeq ðr; t Þ ¼ wa T 1 þ 2 :                 (14b)   lowing differential equations:
+                                                     cs
+                                                                                                             dY nþ1 ¼ G  dY n ;                           (18)
+    In the above formulations, wa and cs denote the weighting coefficient
+    and the sound speed, respectively,                                          where n and n þ 1 denote the current and the next time step, respec-
+                                                                                tively; G33 is the characteristic matrix whose maximum eigenvalue
+                     wa ¼ 1=4; a ¼ 1; 2; 3; 4 for D2Q4 ;                (15a)
+                                                                                quantifies the response of the numerical scheme to the numerical dis-
+                         8
+                         > 1                                                    turbances and thus sheds light on its numerical stability. Generally, the
+                         >
+                         < ; a ¼ 0;
+                           3                                                    maximum eigenvalue jkmax j of the characteristic matrix is preferably
+                    wa ¼                        for D2Q5;               (15b)   to be smaller than 1. Physically, jkmax j represents the worst-case ampli-
+                         >
+                         > 1
+                         : ; a ¼ 1; 2; 3; 4;                                    fication factor of a numerical disturbance over one time step. The con-
+                           6
+                                                                                dition jkmax j  1 is thus the criterion of the linear stability analysis,
+                                              1                                 ensuring that such errors do not grow unboundedly. Here, kmax can be
+                                        cs ¼ pﬃﬃ :                      (15c)
+                                               3                                considered as a function of q, u, v, hx , hy and sv , i.e.,
+    In this paper, Eq. (14b) is used for the consideration of simplicity and                                 
+    efficiency.                                                                                      kmax ¼ f q; u; v; hx ; hy ; sv ;                      (19)
+
+
+
+
+Phys. Fluids 37, 113601 (2025); doi: 10.1063/5.0300977                                                                                               37, 113601-3
+Published under an exclusive license by AIP Publishing
+   Physics of Fluids                                                                                         ARTICLE                    pubs.aip.org/aip/pof
+
+
+
+    where hx ¼ kx dt and hy ¼ ky dt. kx and ky are the wavenumbers in the                    the spatial anisotropy of the distribution of the eigenvalues,34 it is logi-
+    x and the y directions, respectively.                                                    cal to consider the mean flow velocity and wavenumber vector in dif-
+           Given the extreme difficulty in analytical resolution of the maxi-                ferent directions to obtain more abundant information about the
+    mum eigenvalue kmax , some rational simplifications can be made to                       eigenvalues. Following this idea, we release more freedom to the wave-
+    facilitate analysis. Following the suggestion of Sterling et al.,33 the most             number vector by allowing both x and y components to vary between
+    unstable condition is assumed as that both the velocity vector and the                   p and þ p. Meanwhile, the direction of the mean flow velocity is
+    wavenumber vector are in alignment with the horizontal direction.                        still aligned with the wavenumber vector, which can maximize
+    Furthermore, the relaxation parameter is set to the value of 0.5, which                  the propagation of the numerical disturbances. With these settings,
+    corresponds to the extreme condition of an infinite Reynolds number.                     the maximum eigenvalue magnitude at a given mean flow velocity
+    Subsequently, the maximum eigenvalue can be calculated at varied                         can now be viewed as a function of the two components of the wave-
+    mean flow velocities juj, while the wavenumber is varied from p to                      number vector, i.e., kmax ¼ f ðkx ; ky Þ, which is presented in Fig. 3 as
+    þ p. Figure 2 illustrates the maximum eigenvalues of the SLBM with                       two-dimensional gray-scale images, similar to Ref. 35, with darker col-
+    D2Q9 lattice velocity model at different wavenumbers. It can be seen                     ors corresponding to smaller values. Here, to facilitate visualization,
+    that all eigenvalues are smaller or equal to 1, which indicates the good                 the maxima and minima of the gray-scale image are set as 0.4 and 1.0,
+    numerical stability of SLBM under extreme isothermal flow condition.                     respectively. In Fig. 3, all eigenvalues are smaller than one within
+           It should be admitted that the unidirectional simplification made                 the incompressible limit (Ma ¼ juj=cs < 0:3). The minimum
+    in the previous analysis can only provide limited information. Given                     values are concentrated in the corner areas, which suggests that the
+
+
+
+
+                                                                                                                                                                                 02 June 2026 01:27:12
+                                                                                                                                     FIG. 2. Maximum eigenvalue magnitudes
+                                                                                                                                     of the isothermal SLBM as a function of
+                                                                                                                                     wavenumber k at sv ¼ 0:5.
+
+
+
+
+                     FIG. 3. Maximum eigenvalue magnitude of the SLBM as a function of wavenumber vector under a different mean flow velocity juj for sv ¼ 0:5.
+
+
+
+
+Phys. Fluids 37, 113601 (2025); doi: 10.1063/5.0300977                                                                                                            37, 113601-4
+Published under an exclusive license by AIP Publishing
+   Physics of Fluids                                                                                          ARTICLE                       pubs.aip.org/aip/pof
+
+
+                                                                                                                                       2              
+                                                                                                                                                                     3
+    SLBM is capable to suppress the high-frequency disturbances,                                                                           @11   @12   @13       0
+                                                                                                                                !n    6                             7
+    i.e., jkx j; ky ! ðp; pÞ, and thus sheds light on the underlying                                                     @yj         6 @21       
+                                                                                                                                                 @22    
+                                                                                                                                                       @23        0 7
+                                                                                                           ðEjl Þ44 ¼               ¼6
+                                                                                                                                      6 @
+                                                                                                                                                                     7        (26)
+    mechanisms of its good numerical stability in isothermal condition.                                                   @yl         4 31
+                                                                                                                                                  
+                                                                                                                                                 @32    
+                                                                                                                                                       @33        0 75
+                                                                                                                                                               
+                                                                                                                                        @41      @42   @43       @44
+    B. Thermal flow condition
+         In the case of thermal flows, Chen et al.29 carried out the von                       is the matrix of partial derivatives; dyj and dyln are the magnitudes of
+    Neumann stability analysis of the STLBM with D2Q9 model employed                           dyj and dyln , respectively. Similar procedures can be applied to the for-
+    for both the density distribution function and the thermal distribution                    mulations in the corrector step, resulting in the following formulation:
+    function and with the unidirectional assumption. In this subsection,
+    more comprehensive analysis will be made to shed light on the stability                                                dY nþ1 ¼ G  dY n ;                               (27a)
+    performance of STLBM with different thermal lattice velocity models.                       or in an index notation form as
+    To begin with, let us denote
+                  y1 ¼ q; y2 ¼ qu; y3 ¼ qv;                          y4 ¼ T;           (20a)                     dyjnþ1 ¼ Gjl  dyln ;      j; l ¼ 1; 2; 3; 4;               (27b)
+             
+            y1 ¼ q ; y2 ¼ ðquÞ ; y3 ¼ ðqvÞ ;                    y4 ¼ T  ;       (20b)   where G44 is the characteristic matrix for the stability analysis. The
+                                                                                               detailed derivation and the full formulations of the matrices E and G
+    and the vector of variables can be written as
+                                                                                               can be found in the Appendix.
+                                    Y ¼ ðy1 ; y2 ; y3 ; y4 ÞT ;                        (21a)         Similar to the above analysis for isothermal condition, the maxi-
+                                                                                               mum eigenvalue kmax of the characteristic matrix derived in the
+                                                                                              thermal flow condition is essentially a function of q, u, v, T, hx , hy , sv ,
+                                   Y  ¼ y1 ; y2 ; y3 ; y4 :
+                                                              T
+                                                                                       (21b)
+                                                                                               and sc , i.e.,
+        For the sake of simplicity, the following notations will be                                                        
+    employed:                                                                                                     kmax ¼ f q; u; v; T; hx ; hy ; sv ; sc ;            (28)
+                  8 eq                                                                         where hx ¼ kx dt and hy ¼ ky dt. kx and ky are the wavenumber in the
+                  >
+                  >
+                           eq
+                    fa ¼ fa ðr  ea dt; t  dt Þ;
+                  >
+                  <
+
+
+
+
+                                                                                                                                                                                        02 June 2026 01:27:12
+                                                                                               x and the y directions, respectively.
+                      eq    eq
+                    gb ¼ gb ðr  ea dt; t  dt Þ;              (22)                                  Preliminary analysis is first carried out by setting the directions of
+                  >
+                  >              
+                  >
+                  : yja=b ¼ yja=b r  ea=b dt; t  dt ;
+                                                                                               the velocity and the wavenumber vectors horizontal. The relaxation
+                                                                                               parameters are set to the extreme value of 0.5 corresponding to infinite
+                                                                                               Reynolds/Rayleigh numbers. Subsequently, the maximum eigenvalue
+    where a ¼ 0; …; 8 is the index of the D2Q9 lattice velocity and b is
+                                                                                               is calculated at varied mean flow velocities juj, while the wavenumber
+    the index of the thermal lattice velocity model.
+                                                                                               is swept over from p to þ p.
+          Substituting Eqs. (20a) and (22) into Eqs. (10) and (14b) yields
+                                                                                                     Figure 4 illustrates the results of the preliminary stability analysis
+                            wva                            wva ðexa y2a þ eya y3a Þ2           of the STLBM with different thermal lattice velocity models, which
+       faeq ¼ wva y1a þ         ð exa y 2a þ e ya y 3a Þ þ                                     provides some interesting insights. The maximum eigenvalues of all
+                            c2s                            2c4s         y1a
+                                                                                               three thermal lattice velocity models are smaller than or equal to 1
+                  wva y2a
+                       2
+                          þ y3a
+                              2
+                                                                                               under the incompressible limit. Such feature suggests that all three
+                   2
+                                ;                                                      (23a)
+                  2cs     y1a                                                                  models would exhibit good stability in extreme thermal flow condi-
+                                                                                               tions. In the meantime, the three thermal lattice velocity models share
+                       eq                  wcb          ðexb y2b þ eyb y3b Þ                   the common characteristic that the instability is most likely to occur at
+                      gb ¼ wcb y1b þ              y4b                        :         (23b)
+                                            c2s                 y1b                            k ¼ 6p, i.e., high-frequency components. Finally, all three thermal lat-
+                                                                                               tice velocity models reveal nearly identical maximum eigenvalues at
+    Equations 23(a) and 23(b) can be substituted into Eqs. (1)–(3) to                          the same mean flow velocity, indicating that numerical stability is
+    obtain a set of nonlinear algebraic equations, which are denoted as                        almost irrelevant to the thermal lattice velocity model employed. This
+                                                                                              finding is somewhat perplexing, given the fact that the expression of
+                       Y  ¼ F y1n ; y2n ; y3n ; y4n ¼ F ðY n Þ;        (24)
+                                                                                               the characteristic matrix G is primarily determined by the thermal lat-
+    where n represents the time level. In order to apply the von Neumann                       tice velocity model (see the Appendix). Fortunately, by considering
+    stability analysis, it is necessary to linearize the above equations. By dif-              varied directions of the wavenumber vector, we are able to resolve this
+    ferentiating Eq. (24) with respect to the variable yi, we can gain a set of                puzzle and explain the varied stability exhibited by different thermal
+    linear equations as follows:                                                               lattice velocity models.
+                                                                                                     In Fig. 5, the distributions of the maximum eigenvalues with dif-
+                                       dY  ¼ E  dY n ;                               (25a)   ferent thermal lattice velocity models are presented in gray-scale images
+                                                                                               with darker colors corresponding to smaller values. Compared to the
+    which can also be written as the following index notation form:
+                                                                                               unidirectional wavenumber assumption-based results in Fig. 4, more
+                              dyj ¼ Ejl  dyln ; j; l ¼ 1; 2; 3; 4;                   (25b)   information about the numerical stability of STLBM is conveyed. The
+                                                                                               new finding is that, although the eigenvalues remain smaller than 1
+    where                                                                                      (thereby offering further evidence for its numerical stability), different
+
+
+
+
+Phys. Fluids 37, 113601 (2025); doi: 10.1063/5.0300977                                                                                                                   37, 113601-5
+Published under an exclusive license by AIP Publishing
+   Physics of Fluids                                                                                    ARTICLE                  pubs.aip.org/aip/pof
+
+
+
+
+                                                                                                                              FIG. 4. Maximum eigenvalue magnitudes
+                                                                                                                              of the STLBM with different thermal lattice
+                                                                                                                              velocity models as a function of wavenum-
+                                                                                                                              ber k at sv ¼ sc ¼ 0:5.
+
+
+
+
+    lattice velocity models can exhibit distinct eigenvalue distribution                  A. The porous plate problem
+    patterns. For low-frequency components corresponding to the central                         The porous plate problem is a typical benchmark with ana-
+    region (k ! 0), all three models exhibit similar characteristic:                      lytical solution. In this subsection, we use this example to validate
+    the eigenvalues are close to the value of 1. However, for high-frequency
+                                                                h                         the accuracy of all models. The configuration is a fully developed
+    components corresponding to the corner regions               jkx j; ky                channel flow where the upper cold plate moves at a constant hor-
+
+
+
+
+                                                                                                                                                                             02 June 2026 01:27:12
+            i                                                                             izontal velocity u0 and a constant flow at a vertical velocity v0 is
+    ! ðp; pÞ , the three thermal lattice velocity models present diversified              injected through the lower hot plate and withdrawn from the
+    features. For the D2Q4 model, the numerical instability can be a poten-               upper plate at the same rate. The size of the computational
+    tial concern, as the high-frequency components of disturbance can lead                domain is L  H, where L ¼ 2H and H are the length and the
+    to eigenvalues approaching to the unity. With regard to the D2Q5 and                  height of the channel, respectively. The left and the right bound-
+    the D2Q9 models, they both demonstrate analogous eigenvalue distri-                   aries are periodic, while the velocity and the temperature bound-
+    bution patterns to those observed in the isothermal case, i.e., the high-             ary conditions are applied to the upper and the bottom plates
+    frequency components of disturbances are well suppressed. In addition,                accordingly (see Fig. 6).
+    the numerical stability performance in a wider range of relaxation                          The analytical solutions of the horizontal velocity and the temper-
+    parameters (s > 1) will be presented in Sec. IV B 2.                                  ature distribution are given as follows:
+                                                                                                                                   y
+                                                                                                                              eReH  1
+    IV. NUMERICAL TESTS                                                                                            u ¼ u0 þ             ;                          (30a)
+                                                                                                                               eRe  1
+         This section thoroughly examinates the convergence, accu-
+    racy, numerical stability, and efficiency of the STLBM with differ-                                                        ePrRey=H  1
+                                                                                                              T ¼ Th  DT                    ;                   (30b)
+    ent thermal lattice velocity models through two numerical                                                                    ePrRe  1
+    benchmarks, namely, the porous plate problem and the 2D natural                       where Re ¼ v0 H= is the Reynolds number based on the injected
+    convection in a square cavity. The convergence criteria used in all                   velocity v0 and the channel height H; Pr ¼ =v is the Prandtl number;
+    simulations are                                                                       DT ¼ Th  Tc is the temperature difference between the hot and the
+                  8                                                                       cold plates. Another key dimensionless parameter is the Rayleigh num-
+                  >
+                  > maxðVerr ; Terr Þ < 108 ;
+                  >
+                  >                                                                       ber, which is defined as Ra ¼ gbDTH 3 =ðvÞ. In our simulations, the
+                  >
+                  >          qﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃ
+                                X 
+                  >
+                  >                                                                       following parameters are used:
+                  >
+                  >                       utþdt ðxi Þ  ut ðxi Þ
+                                                                             2
+                  >
+                  >                  i
+                  > V
+                  < err   ¼       q    ﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃ
+                                       X                                       ;                     Th ¼ 1:0; Tc ¼ 0:0;  ¼ 0:1; u0 ¼ 0:1;
+                                                                     2
+                                                  u  tþdt x
+                                                           ð    i Þ                (29)
+                  >                           i                                                           L ¼ 2:0; H ¼ 1:0; Ra ¼ 100:0:
+                  >
+                  >         qﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃ
+                  >
+                  >            X       
+                  >
+                  >                      T tþdt ðxi Þ  T t ðxi Þ
+                                                                              2                 To validate the convergence and the practical order of accuracy,
+                  >
+                  >
+                  >
+                  > T     ¼       q  i
+                                       ﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃ
+                                       X                                        ;        five sets of mesh size (½41  21, ½81  41, ½121  61, ½161  81, and
+                  >
+                  >
+                      err
+                                                                      2
+                  :                               T tþdt ðx Þ
+                                                         i                                ½201  101) are chosen to carry out numerical experiments. The
+                                              i
+                                                                                          Reynolds number and the Prandtl number are, respectively, set as
+    where Verr and Terr are the relative errors of the velocity and the tem-              Re ¼ 5 and Pr ¼ 0:71, and the injected velocity v0 is determined by
+    perature fields, respectively.                                                        the Reynolds number accordingly. Here, the L2 norms of the relative
+
+
+
+
+Phys. Fluids 37, 113601 (2025); doi: 10.1063/5.0300977                                                                                                        37, 113601-6
+Published under an exclusive license by AIP Publishing
+   Physics of Fluids                                                                                                         ARTICLE                               pubs.aip.org/aip/pof
+
+
+
+
+                                                                                                                                                                                                                     02 June 2026 01:27:12
+     FIG. 5. Maximum eigenvalue magnitude of the STLBM with different thermal lattice velocity models as a function of wavenumber vector under different mean flow velocity juj
+     for sv ¼ sc ¼ 0:5.
+
+                                                                                                                           qﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃ
+                                                                                                                            X 
+    errors of the horizontal velocity u and the temperature T are, respec-                                                                                                                     2
+                                                                                                                                   i
+                                                                                                                                       T numerical ðxi Þ  T analytical ðxi Þ
+    tively, defined as                                                                                             Err T ¼            qﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃ
+                                                                                                                                           X                                                     ;       (31b)
+                                                                                                                                                         analytical x           2
+                                                                                                                                                      T                ð   i Þ
+                         qﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃ
+                          X                                                                                                                      i
+                                                                                            2
+                                 i
+                                     unumerical ðxi Þ  uanalytical ðxi Þ                                  where the superscripts “numerical” and “analytical” denote the solu-
+                 Err V ¼            qﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃ
+                                         X                                                    ;   (31a)   tions of STLBM and the analytical solutions, respectively. Figure 7
+                                                      analytical x           2
+                                                i
+                                                    u               ð   i Þ                                presents the L2 norms of the relative errors for different thermal lattice
+
+
+
+
+Phys. Fluids 37, 113601 (2025); doi: 10.1063/5.0300977                                                                                                                                                37, 113601-7
+Published under an exclusive license by AIP Publishing
+   Physics of Fluids                                                                                       ARTICLE                    pubs.aip.org/aip/pof
+
+
+
+                                                                                          lattice velocity models are very close, which indicates comparable
+                                                                                          accuracy.
+                                                                                                 To further validate the present method, more simulations
+                                                                                          under various Re and Pr are carried out with the finest mesh in Fig. 7.
+                                                                                          Figures 8–11 illustrate the normalized velocity and temperature pro-
+                                                                                          files for Pr ¼ 0.71 with Re ¼ [5, 10, 20] and for Re ¼ 10 with Pr ¼ [0.2,
+                                                                                          0.8, 1.5], respectively. It can be seen that the results are in good agree-
+                                                                                          ment with the analytical solutions.
+
+                                                                                          B. Natural convection in a square cavity
+                                                                                                The natural convection in a square cavity is simulated in this sub-
+                                                                                          section to provide more thorough evaluation of the models in two-
+                                                                                          dimensional conditions. The physical configuration is shown in
+                     FIG. 6. Configuration of the porous plate problem.                   Fig. 12. The square cavity ðL  LÞ is bounded by the left hot wall with
+                                                                                          the temperature of Th and the right cold wall with the temperature of
+    velocity models. It can be seen that the slopes of the fitted lines range             Tc. The top and the bottom walls are assumed to be adiabatic.
+    from 1.9 to 2.0, which indicates that the STLBM with different thermal                      Two important dimensionless parameters, namely, the Rayleigh
+    lattice velocity models are all approximately second-order accurate. It               number Ra and the Prandtl number Pr, determine the flow features,
+    is also noteworthy that the values of the relative errors for all thermal             which are, respectively, defined as
+
+
+
+
+                                                                                                                                                                                   02 June 2026 01:27:12
+                                                                                                                                  FIG. 7. Relative errors of the velocity(left)
+                                                                                                                                  and the temperature(right) at Re ¼ 5. Slopes
+                                                                                                                                  of the fitting lines for [D2Q4, D2Q5, D2Q9]
+                                                                                                                                  are [1.93, 1.93, 1.93] (left) and [1.99, 2.00,
+                                                                                                                                  2.00] (right).
+
+
+
+
+     FIG. 8. Distributions of the normalized velocity u=u0 along the vertical centerline with the D2Q4 model (left), the D2Q5 model (middle), and the D2Q9 model (right) at
+     Pr ¼ 0:71; Re ¼ ½5; 10; 20. The black solid lines represent the analytical solution.
+
+
+
+
+Phys. Fluids 37, 113601 (2025); doi: 10.1063/5.0300977                                                                                                              37, 113601-8
+Published under an exclusive license by AIP Publishing
+   Physics of Fluids                                                                                       ARTICLE                    pubs.aip.org/aip/pof
+
+
+
+
+     FIG. 9. Distributions of the normalized temperature ðT  Tc Þ=DT along the vertical centerline with the D2Q4 model (left), the D2Q5 model (middle), and the D2Q9 model
+     (right) at Pr ¼ 0:71; Re ¼ ½5; 10; 20. The black solid lines “-” represent the analytical solution.
+
+
+
+
+                                                                                                                                                                               02 June 2026 01:27:12
+     FIG. 10. Distributions of the normalized velocity u=u0 along the vertical centerline with the D2Q4 model (left), the D2Q5 model (middle) and the D2Q9 model (right) at
+     Re ¼ 10; Pr ¼ ½0:2; 0:8; 1:5. The black solid lines “-” represent the analytical solution.
+
+
+
+
+     FIG. 11. Distributions of the normalized temperature ðT  Tc Þ=DT along the vertical centerline with the D2Q4 model (left), the D2Q5 model (middle) and the D2Q9 model
+     (right) at Re ¼ 10; Pr ¼ ½0:2; 0:8; 1:5. The black solid lines “-” represent the analytical solution.
+
+
+
+
+Phys. Fluids 37, 113601 (2025); doi: 10.1063/5.0300977                                                                                                          37, 113601-9
+Published under an exclusive license by AIP Publishing
+   Physics of Fluids                                                                                        ARTICLE                     pubs.aip.org/aip/pof
+
+
+
+                                                                                            simulations, Pr and Vc are, respectively, set to be 0.71 and 0.1, while a
+                                                                                            wide range of Ra is considered. To facilitate quantitative comparisons,
+                                                                                            the volume average Nusselt number Nu, the mean Nusselt number Nu0
+                                                                                            on the hot wall, and the local Nusselt number Nu are defined as follows:
+                                                                                                                              ðð               
+                                                                                                                     L     1                 @T
+                                                                                                            Nu ¼          2        uT  v       dX;            (34)
+                                                                                                                   vDT L                     @x
+                                                                                                                                ð
+                                                                                                                             1 @T
+                                                                                                                    Nu0 ¼                  dy;                   (35)
+                                                                                                                            DT @x x¼x0
+                                                                                                                                     L @T
+                                                                                                                             Nu ¼         :                               (36)
+                                                                                                                                    DT @x
+
+
+                                                                                            1. Convergence and accuracy
+                                                                                                  In our simulations, three typical Rayleigh numbers, namely,
+                                                                                            Ra ¼ 104, 105, and 106, are considered. Numerical simulations with dif-
+                                                                                            ferent mesh sizes are carried out to evaluate the performance of the
+                                                                                            STLBM with different thermal lattice velocity models. Tables I–III pre-
+                FIG. 12. Configuration of the 2D natural convection problem.                sent the computational results of hydrodynamic field at different
+                                                                                            Rayleigh numbers, in which umax and vmax are the maximum horizon-
+                                   gb  DT  L3 Vc2  L2                                    tal and the maximum vertical components of the dimensionless veloc-
+                            Ra ¼                ¼        ;                       (32)       ity u0 along the vertical and the horizontal centerlines, respectively; y
+                                       v        v
+                                                                                           and x are the dimensionless locations of these maximum velocity com-
+                                        Pr ¼ ;                                   (33)       ponents. The dimensionless velocity u0 is defined as
+                                              v
+
+
+
+
+                                                                                                                                                                                  02 June 2026 01:27:12
+    where DT ¼ Th  Tc is                                                                                                              uL
+                        pthe    temperature difference between the hot and
+                          ﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃ                                                                                         u0 ¼      :                               (37)
+    the cold walls; Vc ¼ gbDTL is the characteristic velocity. In our                                                                   v
+
+    TABLE I. The STLBM results of the hydrodynamic properties in 2D natural convection problem with various thermal lattice velocity models at Ra ¼ 104 ; Pr ¼ 0:71. The symbol
+    “-” denotes the numerical divergence.
+
+    Mesh size                            Lattice model                          umax                           y                              vmax                        x
+
+                                              D2Q4                             13.996                        0.800                        14.389                        0.200
+    11  11                                   D2Q5                             13.431                        0.800                        13.833                        0.200
+                                              D2Q9                             13.597                        0.800                        13.960                        0.200
+                                              D2Q4                             16.120                        0.820                        19.515                        0.120
+    51  51                                   D2Q5                             16.116                        0.820                        19.509                        0.120
+                                              D2Q9                             16.129                        0.820                        19.526                        0.120
+                                              D2Q4                             16.166                        0.820                        19.614                        0.120
+    101  101                                 D2Q5                             16.163                        0.820                        19.613                        0.120
+                                              D2Q9                             16.170                        0.820                        19.618                        0.120
+                                              D2Q4                             16.181                        0.825                        19.634                        0.120
+    201  201                                 D2Q5                             16.181                        0.825                        19.633                        0.120
+                                              D2Q9                             16.182                        0.825                        19.635                        0.120
+                                              D2Q4                                                                                                              
+    301  301                                 D2Q5                             16.186                        0.823                        19.639                        0.120
+                                              D2Q9                             16.187                        0.823                        19.640                        0.120
+    Reference                                 DQ36                             16.190                        0.825                        19.638                       0.120
+                                              D2Q4                                                                                                              
+    Relative error                            D2Q5                             0.02%                      0.24%                        0.01%                        0.00%
+                                              D2Q9                             0.02%                      0.24%                        0.01%                         0.00%
+
+
+
+
+Phys. Fluids 37, 113601 (2025); doi: 10.1063/5.0300977                                                                                                            37, 113601-10
+Published under an exclusive license by AIP Publishing
+   Physics of Fluids                                                                                        ARTICLE                     pubs.aip.org/aip/pof
+
+
+
+    TABLE II. The STLBM results of the hydrodynamic properties in 2D natural convection problem with various thermal lattice velocity models at Ra ¼ 105 ; Pr ¼ 0:71. The sym-
+    bol “-” denotes the numerical divergence.
+
+    Mesh size                             Lattice model                        umax                            y                           vmax                           x
+
+                                              D2Q4                            41.451                        0.800                         43.898                        0.200
+    11  11                                   D2Q5                            36.939                        0.800                         39.342                        0.200
+                                              D2Q9                            37.407                        0.800                         39.729                        0.200
+                                              D2Q4                            33.957                        0.860                         65.550                        0.080
+    51  51                                   D2Q5                            33.830                        0.860                         65.241                        0.080
+                                              D2Q9                            34.165                        0.860                         65.507                        0.080
+                                              D2Q4                            34.570                        0.850                         68.127                        0.070
+    101  101                                 D2Q5                            34.561                        0.850                         68.094                        0.070
+                                              D2Q9                            34.651                        0.850                         68.177                        0.070
+                                              D2Q4                            34.733                        0.855                         68.558                        0.065
+    201  201                                 D2Q5                            34.725                        0.855                         68.553                        0.065
+                                              D2Q9                            34.749                        0.855                         68.573                        0.065
+                                              D2Q4                            34.754                        0.853                         68.614                        0.067
+    301  301                                 D2Q5                            34.746                        0.853                         68.611                        0.067
+                                              D2Q9                            34.757                        0.853                         68.620                        0.067
+    Reference                                 DQ36                            34.736                        0.855                         68.640                       0.065
+                                              D2Q4                            0.05%                        0.23%                        0.04%                        3.07%
+                                              D2Q5                            0.03%                        0.23%                        0.04%                        3.07%
+
+
+
+
+                                                                                                                                                                                  02 June 2026 01:27:12
+    Relative error
+                                              D2Q9                            0.06%                        0.23%                        0.03%                        3.07%
+
+
+    TABLE III. The STLBM results of the hydrodynamic properties in 2D natural convection problem with various thermal lattice velocity models at Ra ¼ 106 ; Pr ¼ 0:71. The sym-
+    bol “-” denotes the numerical divergence.
+
+    Mesh size                             Lattice model                         umax                           y                           vmax                           x
+
+                                              D2Q4                             118.41                        0.800                        127.93                        0.200
+    11  11                                   D2Q5                             98.002                        0.800                        107.39                        0.200
+                                              D2Q9                             98.858                        0.800                        108.12                        0.200
+                                              D2Q4                             57.106                        0.840                        184.74                        0.060
+    51  51                                   D2Q5                             56.561                        0.840                        178.83                        0.060
+                                              D2Q9                             57.801                        0.840                        179.84                        0.060
+                                              D2Q4                             61.806                        0.850                        209.27                        0.040
+    101  101                                 D2Q5                             61.583                        0.850                        207.83                        0.040
+                                              D2Q9                             62.445                        0.850                        208.31                        0.040
+                                              D2Q4                             64.164                        0.850                        218.85                        0.040
+    201  201                                 D2Q5                             64.130                        0.850                        218.65                        0.040
+                                              D2Q9                             64.390                        0.850                        218.83                        0.040
+                                              D2Q4                             64.618                        0.850                        219.83                        0.037
+    301  301                                 D2Q5                             64.584                        0.850                        219.77                        0.037
+                                              D2Q9                             64.704                        0.850                        219.85                        0.037
+    Reference                                  DQ36                            64.775                        0.850                       220.64                        0.035
+                                              D2Q4                            0.24%                         0.00%                       0.37%                        5.71%
+    Relative error                            D2Q5                            0.29%                         0.00%                       0.39%                        5.71%
+                                              D2Q9                            0.11%                         0.00%                       0.36%                        5.71%
+
+
+
+
+Phys. Fluids 37, 113601 (2025); doi: 10.1063/5.0300977                                                                                                            37, 113601-11
+Published under an exclusive license by AIP Publishing
+   Physics of Fluids                                                                                        ARTICLE                     pubs.aip.org/aip/pof
+
+
+
+    In addition, to evaluate the simulation accuracy of thermal behaviors,                  2. Numerical stability
+    the volume average Nusselt number Nu, the mean Nusselt number
+                                                                                                  Although the numerical stability of the STLBM with different ther-
+    Nu0 on the hot wall, and the maximum and the minimum local                              mal lattice velocity models has been demonstrated in Sec. III, the practi-
+    Nusselt numbers on the hot wall (Numax and Numin ) with their vertical                  cal performance should be verified in numerical tests. Here, we consider
+    coordinates are summarized in Tables IV–VI.                                             the Rayleigh numbers of Ra ¼ 107 ; 108 ; 109 and carry out simulations
+          We can see that, if the numerical stability is assured, the                       on the very coarse mesh size of 11  11. In this circumstance, the values
+    STLBM with different thermal lattice velocity models is able to                         of the relaxation parameters are very close to 0.5, which is likely to trig-
+    converge to accurate solutions by refining the mesh. As demon-                          ger numerical instability. Within the lattice Boltzmann framework, such
+    strated in Tables I–III, the relative errors of the converged veloc-                    extreme parametric condition is analogous to the extreme flow condi-
+    ity (or the results obtained on the finest mesh) to the reference                       tion of very high Reynolds/Rayleigh numbers. As shown in Table VII,
+    data are within 0.4% for all models. In Tables IV–VI, all Nusselt                       our simulations with different models can all ensure convergence, which
+    numbers are within the range of solutions obtained by the differ-                       numerically demonstrate the good numerical stability of STLBM. In the
+    ential quadrature method36 (DQ), the thermal lattice Boltzmann                          meantime, the comparable performance in numerical stability of differ-
+    method13 (TLBM), the finite difference method37 (FDM), and the                          ent thermal lattice velocity models not only showcases the robustness of
+    coupled simplified lattice Boltzmann method30 (CSLBM). These                            the STLBM, but also makes it meaningful to further compare the com-
+    results demonstrate the marginal effect of the thermal lattice                          putational efficiency in Subsection IV B 3.
+    velocity model on the convergence and the accuracy of STLBM                                   Apart from the low relaxation parameter scenario, cases with
+    simulation of thermal flows.                                                            high relaxation parameters could also encounter stability issues.38 As
+          More evidence of the comparable accuracy of different thermal                     showcased in Tables I and IV, the STLBM with the D2Q4 model could
+    lattice velocity models is illustrated in Figs. 13 and 14, where the                    diverge in the case of Ra ¼ 104 with the fine mesh size of 301  301,
+    streamlines and the temperature contours obtained by the finest mesh                    suggesting that different thermal lattice velocity models may exhibit
+    are plotted. As can be seen, most lines are overlapped, which indicates                 different numerical stability at high relaxation parameters. A series of
+    the velocity and the temperature fields given by all models are very                    numerical tests are then designed to answer this question. The acquisi-
+    similar. The only noticeable discrepancy appears in the upper region                    tion of the high relaxation parameter is realized by using very fine
+    near the top wall at Ra ¼ 106 , where the results given by the D2Q4                     meshes. As demonstrated in Table VIII, the D2Q4, the D2Q5, and the
+    model and the D2Q5 model slightly deviate from that given by the                        D2Q9 models diverge in sequential order as the relaxation parameters
+
+
+
+
+                                                                                                                                                                                  02 June 2026 01:27:12
+    D2Q9 model.                                                                             increase.
+
+    TABLE IV. The STLBM results of the thermal parameters in 2D natural convection problem with various thermal lattice velocity models at Ra ¼ 104 ; Pr ¼ 0:71. The symbol “-”
+    is used to denote numerical results that are either divergent or absent from the reference.
+
+    Mesh                       Lattice model                  Nu                   Nu0                 Numax                    y                 Numin                   y
+
+                                    D2Q4                     1.912                1.679                 2.722                0.000                 0.550                1.000
+    11  11                         D2Q5                     1.871                1.729                 2.782                0.000                 0.572                1.000
+                                    D2Q9                     1.881                1.690                 2.633                0.000                 0.552                1.000
+                                    D2Q4                     2.236                2.242                 3.575                0.140                 0.606                1.000
+    51  51                         D2Q5                     2.235                2.242                 3.575                0.140                 0.607                0.960
+                                    D2Q9                     2.236                2.238                 3.502                0.140                 0.596                1.000
+                                    D2Q4                     2.244                2.245                 3.549                0.140                 0.588                0.980
+    101  101                       D2Q5                     2.244                2.245                 3.549                0.140                 0.588                0.980
+                                    D2Q9                     2.244                2.244                 3.527                0.140                 0.585                0.980
+                                    D2Q4                     2.244                2.245                 3.536                0.145                 0.571                1.000
+    201  201                       D2Q5                     2.244                2.245                 3.536                0.145                 0.571                1.000
+                                    D2Q9                     2.244                2.245                 3.531                0.145                 0.571                1.000
+                                    D2Q4                                                                                                                  
+    301  301                       D2Q5                     2.244                2.245                 3.533                0.140                 0.563                1.000
+                                    D2Q9                     2.244                2.245                 3.530                0.143                 0.564                1.000
+                                 TLBM13                                        2.235                 3.507                0.148                0.584                 0.984
+                                  FDM37                      2.234                2.242                 3.545                0.149                0.592                 1.000
+    Reference                      DQ36                      2.245                2.248                 3.543                0.145                0.586                 1.000
+                                 CSLBM30                                       2.251                 3.542                0.145                                    
+
+
+
+
+Phys. Fluids 37, 113601 (2025); doi: 10.1063/5.0300977                                                                                                            37, 113601-12
+Published under an exclusive license by AIP Publishing
+   Physics of Fluids                                                                                        ARTICLE                     pubs.aip.org/aip/pof
+
+
+
+    TABLE V. The STLBM results of the thermal parameters in 2D natural convection problem with various thermal lattice velocity models at Ra ¼ 105 ; Pr ¼ 0:71. The symbol “-”
+    is used to denote numerical results that are either divergent or absent from the reference.
+
+    Mesh                       Lattice model                  Nu                   Nu0                 Numax                    y                 Numin                   y
+
+                                    D2Q4                     4.238                2.245                 3.663                0.000                 0.675                1.000
+    11  11                         D2Q5                     3.797                2.347                 3.787                0.000                 0.714                1.000
+                                    D2Q9                     3.871                2.293                 3.568                0.000                 0.705                1.000
+                                    D2Q4                     4.395                4.331                 7.401                0.100                 0.758                1.000
+    51  51                         D2Q5                     4.369                4.345                 7.445                0.100                 0.770                1.000
+                                    D2Q9                     4.375                4.332                 7.148                0.100                 0.745                1.000
+                                    D2Q4                     4.498                4.499                 7.767                0.080                 0.764                0.980
+    101  101                       D2Q5                     4.495                4.499                 7.768                0.080                 0.767                0.980
+                                    D2Q9                     4.496                4.495                 7.614                0.090                 0.753                0.980
+                                    D2Q4                     4.519                4.519                 7.755                0.080                 0.741                0.985
+    201  201                       D2Q5                     4.518                4.519                 7.754                0.080                 0.742                0.985
+                                    D2Q9                     4.518                4.518                 7.705                0.085                 0.736                0.990
+                                    D2Q4                     4.520                4.520                 7.738                0.080                 0.730                0.990
+    301  301                       D2Q5                     4.520                4.520                 7.738                0.080                 0.730                0.993
+                                    D2Q9                     4.520                4.520                 7.715                0.083                 0.727                0.993
+                                 TLBM13                                        4.504                 7.658                0.088                0.728                 0.990
+                                  FDM37                      4.510                4.532                 7.761                0.085                0.736                 1.000
+    Reference                      DQ36                      4.523                4.527                 7.788                0.080                0.725                 1.000
+
+
+
+
+                                                                                                                                                                                  02 June 2026 01:27:12
+                                 CSLBM30                                       4.564                 7.787                0.080                                    
+
+
+    TABLE VI. The STLBM results of the thermal parameters in 2D natural convection problem with various thermal lattice velocity models at Ra ¼ 106 ; Pr ¼ 0:71. The symbol “-”
+    is used to denote numerical results that are either divergent or absent from the reference.
+
+    Mesh                       Lattice model                  Nu                  Nu0                 Numax                     y                 Numin                   y
+
+                                   D2Q4                     10.80                2.482                 4.050                 0.000                 0.760                1.000
+    11  11                        D2Q5                     8.931                2.616                 4.241                 0.000                 0.811                1.000
+                                   D2Q9                     9.180                2.558                 4.003                 0.000                 0.814                1.000
+                                   D2Q4                     8.335                6.874                12.530                 0.060                 0.885                1.000
+    51  51                        D2Q5                     8.007                7.018                12.761                 0.080                 0.900                1.000
+                                   D2Q9                     8.019                6.991                12.289                 0.080                 0.921                1.000
+                                   D2Q4                     8.565                8.299                15.990                 0.050                 1.029                1.000
+    101  101                      D2Q5                     8.494                8.346                16.138                 0.050                 1.051                1.000
+                                   D2Q9                     8.496                8.330                15.602                 0.050                 0.991                1.000
+                                   D2Q4                     8.766                8.750                17.444                 0.040                 1.047                0.990
+    201  201                      D2Q5                     8.757                8.751                17.459                 0.040                 1.053                0.990
+                                   D2Q9                     8.757                8.746                17.126                 0.045                 1.018                0.990
+                                   D2Q4                     8.807                8.802                17.590                 0.040                 1.026                0.990
+    301  301                      D2Q5                     8.801                8.802                17.588                 0.040                 1.027                0.990
+                                   D2Q9                     8.801                8.799                17.397                 0.040                 1.008                0.990
+                                 TLBM13                                       8.767                17.288                0.0441                 0.998                0.990
+                                  FDM37                     8.798                8.928                18.076                0.0456                 1.005                1.000
+    Reference                      DQ36                     8.762                8.721                16.070                 0.040                 1.019                1.000
+                                 CSLBM30                                      8.995                17.851                 0.038                                    
+
+
+
+
+Phys. Fluids 37, 113601 (2025); doi: 10.1063/5.0300977                                                                                                            37, 113601-13
+Published under an exclusive license by AIP Publishing
+   Physics of Fluids                                                                                        ARTICLE                       pubs.aip.org/aip/pof
+
+
+
+
+                                                                                                                                       FIG. 13. Streamlines of the 2D natural
+                                                                                                                                       convection in a square cavity at Ra ¼ 104
+                                                                                                                                       (left), Ra ¼ 105 (middle), and Ra ¼ 106
+                                                                                                                                       (right). Green lines represent the D2Q4
+                                                                                                                                       model, red lines represent the D2Q5
+                                                                                                                                       model, and black lines represent the
+                                                                                                                                       D2Q9 model. Here, most lines are
+                                                                                                                                       overlapped.
+
+
+
+
+                                                                                                                                       FIG. 14. Temperature contours of the 2D
+                                                                                                                                       natural convection in a square cavity at
+                                                                                                                                       Ra ¼ 104 (left), Ra ¼ 105 (middle), and
+                                                                                                                                       Ra ¼ 106 (right). Green lines represent
+                                                                                                                                       the D2Q4 model, red lines represent the
+                                                                                                                                       D2Q5 model, and black lines represent
+                                                                                                                                       the D2Q9 model. Here, most lines are
+                                                                                                                                       overlapped.
+
+
+
+
+          Next, we tentatively use the von Neumann stability analysis to                    the “unstable regions.” A common tendency shared by all thermal lat-
+
+
+
+
+                                                                                                                                                                                    02 June 2026 01:27:12
+    explain the varied stability performance of the STLBM with different                    tice velocity models is that the numerical instability, which is repre-
+    thermal lattice velocity models at high relaxation parameters. The                      sented by the area of the unstable regions and the magnitude of the
+    characteristic matrix derived in Sec. III is still the basis of our analysis,           eigenvalues, would grow with the increasing relaxation parameters.
+    while the relaxation parameters in the elements are set to the values                   However, the distributions of the unstable regions and the maximum
+    listed in Table VIII. The results with the unidirectional assumption for                eigenvalue exhibit strong dependency on the thermal lattice velocity
+    the wavenumber are presented in Fig. 15, which reveals no significant                   model employed. As shown in Fig. 16(a), for cases simulated on the
+    difference and thus contradict to our numerical tests.                                  mesh size of 301  301, the D2Q4 model presents the largest unstable
+          To resolve this puzzle, we remove the unidirectional assumption                   region at the corner area and a maximum eigenvalue of 1.456. In con-
+    for the wavenumber and consider both two components of the wave-                        trast, the D2Q5 and the D2Q9 models remain stable, which explains
+    number vector as variables. The distributions of the maximum eigen-                     the convergence of both models in the numerical test. As the mesh size
+    values are then plotted in the 2D gray-scale images in Fig. 16, in which                is refined to 361  361, the relaxation parameter increases, the D2Q5
+    the darker color corresponds to the smaller value. Furthermore,                         model generates a new unstable region in the corner areas and the
+    regions where the maximum eigenvalues exceeding 1 are denoted as                        middle area near the edges [see Fig. 16(b)]. The distribution of the
+
+
+    TABLE VII. Stability performance of the STLBM with different thermal lattice velocity   TABLE VIII. Stability performance of the STLBM at Ra ¼ 104 ; Pr ¼ 0:71 with differ-
+    models at low relaxation parameters.                                                    ent thermal lattice velocity models at high relaxation parameters.
+
+    Ra              sv                sc             D2Qq model                Status       Mesh                 sv               sc           D2Qq Model              Status
+
+                                                         D2Q4                Converge                                                               D2Q4              Diverge
+    107         0.500799          0.501126               D2Q5                Converge       301  301        1.258353        1.568103               D2Q5             Converge
+                                                         D2Q9                Converge                                                               D2Q9             Converge
+                                                         D2Q4                Converge                                                               D2Q4              Diverge
+    108         0.500253          0.500356               D2Q5                Converge       361  361        1.410024        1.781724               D2Q5              Diverge
+                                                         D2Q9                Converge                                                               D2Q9             Converge
+                                                         D2Q4                Converge                                                               D2Q4              Diverge
+    109         0.500080          0.500113               D2Q5                Converge       401  401        1.511138        1.924138               D2Q5              Diverge
+                                                         D2Q9                Converge                                                               D2Q9              Diverge
+
+
+
+
+Phys. Fluids 37, 113601 (2025); doi: 10.1063/5.0300977                                                                                                              37, 113601-14
+Published under an exclusive license by AIP Publishing
+   Physics of Fluids                                                                             ARTICLE                  pubs.aip.org/aip/pof
+
+
+
+
+                                                                                                                       FIG. 15. Maximum eigenvalue magnitude
+                                                                                                                       as a function of wavenumber k at certain
+                                                                                                                       relaxation parameter correspond to 301
+                                                                                                                        301 mesh and Ra ¼ 104 .
+
+
+
+
+    unstable regions exhibited by the D2Q9 model, however, is only                 performance in this typical example of thermal flows, which strength-
+    located in the middle area near the edges, and its maximum value is            ens its advantage in computational efficiency. It is worth noting that
+    lower than that of the D2Q5 model. This observation suggests that the          the computational efficiency usually depends on the programing strat-
+    D2Q9 model would be more stable than the D2Q5 model in extreme                 egies, particularly in the context of parallel computation. In this paper,
+    conditions with high relaxation parameters, which explained the varied         these uncertain factors are excluded, and all simulations are executed
+
+
+
+
+                                                                                                                                                                   02 June 2026 01:27:12
+    stability performance shown in Table VIII. Furthermore, the results            in sequential codes.
+    from the numerical experiments (Table VIII) and the theoretical anal-                Based on the comprehensive evaluations of the numerical stabil-
+    ysis (Fig. 16) collectively substantiate the conclusion in Sec. III that the   ity and computational efficiency of the STLBM with different thermal
+    suppression of the high-frequency component plays a pivotal role in            lattice velocity models, we tentatively give the guidelines for the selec-
+    enhancing numerical stability, which can be accomplished by increas-           tion of thermal lattice velocity models in different situations, as illus-
+    ing the number of lattice velocities.                                          trated in Fig. 17. For thermal flow problems at high Reynolds/Rayleigh
+                                                                                   numbers and expecting steady flow state, D2Q4 is the optimal choice
+    3. Computational efficiency                                                    due to its superior convergency performance. For thermal flows at low
+                                                                                   Reynolds/Rayleigh numbers or in unsteady state, if the relaxation
+          This subsection will address the remaining question upon the             parameters are not excessively large, the D2Q5 model could be a
+    computational efficiency of the STLBM. By adopting the D2Q4 or the             preferred choice. This is attributed to the comparable computational
+    D2Q5 model instead of the D2Q9 model, the number of lattice velocity           time per iteration in comparison to the D2Q4 model, as well as
+    directions is reduced and less computational time for each iteration           the enhanced numerical stability in a broader range of relaxation
+    can be anticipated.                                                            parameters.
+          To showcase the effect of thermal lattice velocity model on the
+    computational efficiency, the natural convection in a square cavity at         V. CONCLUSIONS
+    Ra ¼ 106 is simulated by the STLBM on the mesh size of 301  301.                    This paper presents a thorough investigation into the perfor-
+    As anticipated, the computational time required by the D2Q4 model              mance of the STLBM with different thermal lattice velocity models,
+    and the D2Q5 model is notably reduced in comparison to that of                 with attention paid on the accuracy, numerical stability and computa-
+    D2Q9. As shown in Table IX, if the total time consumed by the                  tional efficiency.
+    STLBM simulation with the D2Q9 model is specified as 1.00, simula-                   A more comprehensive von Neumann stability analysis is con-
+    tions with the D2Q4 and the D2Q5 models can approximately reduce               ducted in both isothermal and thermal conditions, which removes the
+    35% and 15% of computational time, respectively. In order to facilitate        unidirectional assumption made in the previous work and thus pro-
+    more comprehensive analysis, the total iteration steps and the compu-          vides more abundant information. For the isothermal case, the high-
+    tational time consumed by 1000 iteration steps are also provided.              frequency components of disturbance are found to be suppressed by
+    The reduction percentage for the D2Q4 model and the D2Q5 model                 the STLBM, which sheds light on the mechanism contributing to its
+    compared to the D2Q9 model in each iteration are 16% and 15%,                  superior stability. For thermal cases, three thermal lattice velocity mod-
+    respectively. It is evident that, apart from the expected reduced compu-       els, namely, the D2Q4, the D2Q5, and the D2Q9 models, are consid-
+    tational time in each iteration due to the reduced number of lattice           ered. With the present stability analysis, the dependency of the
+    velocity directions, the varied convergence speed exhibited by different       numerical stability of STLBM on the thermal lattice velocity models is
+    thermal lattice velocity models contribute to the computational effi-          well revealed. It is found that, in extreme conditions of low or high
+    ciency. The D2Q4 model presents the most appealing convergence                 relaxation parameters, the D2Q9 and the D2Q5 models perform better
+
+
+
+
+Phys. Fluids 37, 113601 (2025); doi: 10.1063/5.0300977                                                                                             37, 113601-15
+Published under an exclusive license by AIP Publishing
+   Physics of Fluids                                                                                         ARTICLE                     pubs.aip.org/aip/pof
+
+
+
+
+                                                                                                                                                                                  02 June 2026 01:27:12
+     FIG. 16. Maximum eigenvalue magnitude as a function of wavenumber vector k ¼ kx ; ky with different mesh size. The black solid lines “-” mark the “unstable regions” where
+     the maximum eigenvalue magnitude exceeds 1.
+
+
+    than the D2Q4 model in suppressing high-frequency components of                          exhibits marginal influence on the numerical accuracy. As for the
+    disturbance, which favors the numerical stability of STLBM.                              example of two-dimensional natural convection in a square cavity, test
+         Validations and verifications of the accuracy, stability, and effi-                 cases of the STLBM with different thermal lattice velocity models dem-
+    ciency of the STLBM with different thermal lattice velocity models are                   onstrate satisfying and comparable numerical accuracy. In addition, the
+    then carried out by two well-recognized benchmark examples. The sec-                     theoretical findings in the stability analysis are well supported by the
+    ond order of accuracy is validated through the simulations of the                        series of tests of this example, i.e., the usage of either the D2Q5 or
+    porous plate problem, and the change of thermal lattice velocity models                  the D2Q9 model would improve the numerical stability of STLBM in a
+
+
+
+
+Phys. Fluids 37, 113601 (2025); doi: 10.1063/5.0300977                                                                                                             37, 113601-16
+Published under an exclusive license by AIP Publishing
+   Physics of Fluids                                                                                       ARTICLE                  pubs.aip.org/aip/pof
+
+
+
+    TABLE IX. Computational time of the 2D natural convection problem for different          would necessitate the application of nonlinear stability theories and
+    D2Qq model at Ra ¼ 106 with 301  301 mesh.                                              high-fidelity simulations of flows in complex geometries.
+                                                                                                   In conclusion, as a general guideline for the choice of thermal lat-
+    Lattice model          Total time          Iterative step        Time per 1000dt         tice velocity model in applications of the STLBM, the D2Q4 model is
+    D2Q4                       0.65               285 000                    0.84            more suitable for steady flow problems at high Reynolds/Rayleigh
+                                                                                             number, while the D2Q5 is a preferred option for problems at low
+    D2Q5                       0.85               366 000                    0.85
+                                                                                             Reynolds/Rayleigh numbers or expecting unsteady flow state.
+    D2Q9                       1.00               366 000                    1.00
+                                                                                             ACKNOWLEDGMENTS
+                                                                                                  This work was supported by the National Natural Science
+                                                                                             Foundation of China (Grant Numbers: 52471333 and 52201329)
+                                                                                             and the Fundamental Research Funds for the Central Universities.
+
+                                                                                             AUTHOR DECLARATIONS
+                                                                                             Conflict of Interest
+                                                                                                  The authors have no conflicts to disclose.
+
+                                                                                             Author Contributions
+                                                                                             Zheng-Wei He: Data curation (lead); Investigation (lead);
+                                                                                             Methodology (equal); Validation (lead); Writing – original draft (lead).
+                                                                                             Chang Shu: Conceptualization (supporting); Investigation (equal);
+                                                                                             Methodology (equal); Supervision (equal); Writing – review & editing
+                                                                                             (supporting). Zhen Chen: Conceptualization (lead); Funding acquisi-
+                                                                                             tion (lead); Methodology (equal); Project administration (lead);
+
+
+
+
+                                                                                                                                                                            02 June 2026 01:27:12
+                                                                                             Supervision (equal); Writing – review & editing (lead).
+
+                                                                                             DATA AVAILABILITY
+                                                                                                  The data that support the findings of this study are available from
+                                                                                             the corresponding author upon reasonable request.
+
+                                                                                             APPENDIX: VON NEUMANN STABILITY ANALYSIS
+                                                                                             OF THE STLBM WITH VARIOUS THERMAL LATTICE
+     FIG. 17. Recommendations for the selection of various D2Qq models in different situa-   VELOCITY MODELS
+     tions. Red fonts represent primary choice; black fonts represent secondary choice.
+                                                                                                   In this section, we will present the detailed derivation of the
+    wider range of relaxation parameters. Finally, apart from the expected                   von Neumann stability analysis for the STLBM with various thermal
+    feature that the D2Q4 and the D2Q5 models can reduce the computa-                        lattice velocity models. Same notations in Eqs. (16) and (18) are
+    tional time per iteration due to the reduced number of thermal lattice                   adopted. The specific formulations for the intermediate density y1 ,
+                                                                                                         
+    velocity vectors, the D2Q4 model exhibits the best convergence rate in                   moments y2;3    , and temperature y4 in Eq. (20) can be expressed as
+    the present tests and 35% reduction in total computational time.                                                  X                 wv 
+          Despite the evident consistency between the findings of the linear                                   y1 ¼         wva y1a
+                                                                                                                                  n
+                                                                                                                                      þ 2a exa y2a   n
+                                                                                                                                                       þ eya y3a
+                                                                                                                                                              n
+
+    stability analysis and numerical experimentation, which lend support to                                            a
+                                                                                                                                          c s
+                                                                                                                                                 n 2
+    the conclusions and guidelines drawn in this study, certain limitations                                              wva exa y2a n
+                                                                                                                                        þ eya y3a
+    should be acknowledged. The theoretical framework employed here is a                                              þ 4                 n
+                                                                                                                        2cs             y1a
+    linear von Neumann analysis, which, while powerful, inherently oper-                                                                           
+    ates under the assumptions of the homogeneous and periodic flow                                                      w ðy Þ þ ðy n Þ2
+                                                                                                                           v    n 2
+                                                                                                                       a2 2a n 3a                   ;             (A1)
+    domain. Therefore, several complex scenarios lie beyond its immediate                                               2cs           y1a
+    scope. These include: (1) the analysis of the transient growth due to                                          X                    wv exa 
+    non-normal effects in the buoyancy-coupled operator, even when the                                    y2 ¼          wva exa y1a
+                                                                                                                                  n
+                                                                                                                                      þ a 2 exa y2a    n
+                                                                                                                                                         þ eya y3a
+                                                                                                                                                                 n
+                                                                                                                                             cs
+    spectral radius indicates stability; (2) the complex interactions between                                       a
+                                                                                                                                                 n 2
+    specific wall boundary conditions and the reduced lattice models (e.g.,                                          wv exa exa y2a n
+                                                                                                                                        þ eya y3a
+    D2Q4), which may alter the stability dynamics in confined flows; and                                          þ a4                   n
+                                                                                                                      2cs               y1a
+                                                                                                                                              n 2
+    (3) the fully nonlinear development of instabilities in strongly aniso-
+    tropic or sheared thermal flows. A comprehensive exploration of these                                            wv exa ðy2an
+                                                                                                                                  Þ þ ðy3a
+                                                                                                                                    2
+                                                                                                                                                Þ
+                                                                                                                   a2                 n            ;              (A2)
+    phenomena, which constitutes a valuable direction for future research,                                            2cs             y1a
+
+
+
+
+Phys. Fluids 37, 113601 (2025); doi: 10.1063/5.0300977                                                                                                      37, 113601-17
+Published under an exclusive license by AIP Publishing
+   Physics of Fluids                                                                                       ARTICLE                        pubs.aip.org/aip/pof
+
+
+
+                      X                     wv eya                                      For D2Q9 (temperature field),
+                    y3 ¼             n
+                             wva eya y1a  þ a 2 exa y2a    n
+                                                              þ ea y3a
+                                                                    n
+                                                                                          8
+                                                cs
+                        a
+                                                                                         >
+                                                                                          > X8
+                                                                                                                             4 2                   2 
+                                                     n 2                                  >
+                                                                                          >     wcb expðik  eb dt Þ ¼ þ cosðhx Þ þ cos hy
+                         wv eya exa y2a n
+                                            þ eya y3a                                     >
+                                                                                          >
+                      þ a4                                                                >
+                                                                                          >                                  9   9                 9
+                                             n                                            >
+                                                                                          >
+                                                                                            b¼0
+                           2cs              y1a                                           >
+                                                                                          >
+                                                 n 2
+                                                                                          >
+                                                                                          >                                    1                
+                         wa eya ðy2a Þ þ ðy3a
+                           v        n   2
+                                                   Þ                                      >
+                                                                                          >                                  þ cosðhx Þcos hy ;
+                                                      ;                           (A3)   >
+                                                                                          <                                    9
+                                           n
+                           2c2s           y1a                                                                                                                            
+                          "                                          !#                   > X8
+                                                                                                                                     2               1               
+                                                                                          >
+                                                                                          >       c
+                                                                                                            ð ik  e      Þ ¼  i         ð     Þ þ      ð     Þcos       ;
+                      X                 wcb n exb y2b   n
+                                                           þ eyb y3b
+                                                                  n                       >
+                                                                                          >
+                                                                                                w b exb exp           b dt             sin   hx        sin  h x        hy
+                  
+                 y4 ¼       wb y4b þ 2 y4b
+                              c n
+                                                                       ;           (A4)   >
+                                                                                          >                                          9               9
+                                                           n                              >
+                                                                                          >
+                                                                                            b¼0
+                                        cs                y1b                             >
+                                                                                          >                                                                              
+                      b                                                                   >
+                                                                                          > X8
+                                                                                                                                    2                               
+                                                                                          >
+                                                                                          >                                                          1
+                                                                                          >
+                                                                                          >     w c
+                                                                                                    e   expð ik   e   dt Þ ¼  i     sin   h     þ   cos ð h   Þsin  h y :
+    where a ¼ 0; …; 8 is the index of the D2Q9 lattice velocity model                     :       b yb                b
+                                                                                                                                    9
+                                                                                                                                               y
+                                                                                                                                                     9
+                                                                                                                                                               x
+                                                                                            b¼0
+    and b is the index of the thermal lattice velocity vector.
+        Consider a random component of the variables                                                                                                                         (A10)
+                       8                                                                   For D2Q9 (flow field),
+                       >
+                       < dyj ¼ dyj expðik  r Þ;
+                                  
+                       >
+                                                                                           8
+                          dyj ¼ dyjn expðik  r Þ;
+                             n                                   (A5)                      >
+                                                                                           > X8
+                                                                                                                                4 2                    2 
+                       >
+                       >                                                                  >
+                                                                                           >     wva expðik  ea dt Þ ¼ þ cosðhx Þ þ cos hy
+                       : yja=b
+                           n
+                               ¼ yjn exp ik  ea=b dt ;                                   >
+                                                                                           >                                    9    9                 9
+                                                                                           >
+                                                                                           > a¼0
+                                                                                           >
+                                                                                           >
+                                                                                           >
+                                                                                           >
+    where j ¼ 1; 2; 3; 4; i is the imaginary unit; and k denotes the vector                >
+                                                                                           >                                      1                 
+                                                                                           >
+                                                                                           >                                    þ cosðhx Þcos hy
+    of wavenumbers. As discussed in Sec. III, a set of linear equations                    >
+                                                                                           >
+                                                                                           >
+                                                                                           >                                      9
+    can be obtained after differentiating Eqs. (A1)–(A4)                                   >
+                                                                                           >
+                                                                                           >
+                                                                                           >                                                                                  
+                                                                                           >
+                                                                                           > X8
+                                                                                                                                         2               1               
+                                                                                           >
+                                                                                           >     w v
+                                                                                                     e    exp  ð ik  e   dt Þ ¼  i      sin ð h   Þ þ   sinð h   Þcos   h
+                            dyj ¼ Ejl  dyln ;       j; l ¼ 1; 2; 3; 4;           (A6)    >
+                                                                                           >       a xa                  a                        x               x         y
+                                                                                           >
+                                                                                           >
+                                                                                                                                         9               9
+                                                                                           >
+                                                                                           >
+                                                                                             a¼0
+                                                                                           >
+                                                                                           >
+
+
+
+
+                                                                                                                                                                                       02 June 2026 01:27:12
+    where                                                                                  >
+                                                                                           >                                                                                  
+                                                                                           > X8
+                                                                                                                                         2              1                
+                                                  2                            3           >
+                                                                                           >                   ð ik  e      Þ ¼  i                  þ       ð     Þsin    y ;
+                                                                                                   v
+                                          !n       
+                                                  @11        
+                                                            @12     
+                                                                   @13      0              >
+                                                                                           >     w   e
+                                                                                                   a ya   exp            a dt              sin   h y       cos   h x       h
+                                                                                           >
+                                                                                           >                                             9               9
+                                   @yj         6 @21
+                                                            
+                                                            @22     
+                                                                   @23      0 7            >
+                                                                                           >
+                                                                                             a¼0
+                 ðEjl Þ44 ¼                   ¼6                              7   (A7)    >
+                                                                                           >
+                                   @yl          4 @         
+                                                            @32     
+                                                                   @33      0 5            >
+                                                                                           >
+                                                   31                                      >
+                                                                                           > X8
+                                                                                                                                   2                 1               
+                                                   
+                                                  @41        
+                                                            @42     
+                                                                   @43      
+                                                                           @44             >
+                                                                                           >     wva e2xa expðik  ea dt Þ ¼ cosðhx Þ þ cosðhx Þcos hy ;
+                                                                                           >
+                                                                                           >
+                                                                                           >
+                                                                                           >                                       9                 9
+                                                                                           >
+                                                                                           >
+                                                                                             a¼0
+    is the partial derivative matrix. Before we derive the specific partial                >
+                                                                                           >
+                                                                                           >
+                                                                                           >
+    derivatives, certain simplification can be applied to Eq. (A1)–(A4).                   <X 8
+                                                                                                                                   2                1                
+    Note that, for three thermal lattice velocity models considered in                           wva e2ya expðik  ea dt Þ ¼ cos hy þ cosðhx Þcos hy ;
+                                                                                           >                                       9                 9
+    this paper, we can obtain the following relationships:                                 >
+                                                                                           >
+                                                                                             a¼0
+                                                                                           >
+                                                                                           >
+                                                                                           >
+                                                                                           > X
+      For D2Q4,                                                                            >
+                                                                                           >
+                                                                                              8
+                                                                                                                                           1               
+                                                                                           >
+                                                                                           >     wva exa eya expðik  ea dt Þ ¼  sinðhx Þsin hy ;
+           8                                                                               >
+                                                                                           >
+                                                                                           >
+                                                                                           >
+                                                                                                                                           9
+           >
+           > X4
+                                           1         1                                    >
+                                                                                           >
+                                                                                             a¼0
+           >
+           >     wcb expðik  eb dt Þ ¼ cosðhx Þ þ cos hy ;                               >
+                                                                                           >
+           >
+           >                                                                               >
+                                                                                           > X
+           >
+           >                               2         2                                     >
+                                                                                           >
+                                                                                              8
+                                                                                                                                           1                  
+           >
+           >
+             b¼1                                                                           >
+                                                                                           >     wva e2xa eya expðik  ea dt Þ ¼  i cosðhx Þsin hy ;
+           >
+           <X                                                                              >
+                                                                                           >                                               9
+              4
+                                              1                                            >
+                                                                                           > a¼0
+                 wcb exb expðik  eb dt Þ ¼  isinðhx Þ;                          (A8)    >
+                                                                                           >
+           >                                                                               >
+                                                                                           >
+           >
+           >
+                                              2                                            >
+                                                                                           > X8
+                                                                                                                                                              
+           >
+           >
+             b¼1
+                                                                                           >
+                                                                                           >                                               1
+           >
+           > X                                                                             >
+                                                                                           >     wva exa e2ya expðik  ea dt Þ ¼  i sinðhx Þcos hy ;
+           >
+           >
+              4
+                                              1                                           >
+                                                                                           >                                               9
+           >
+           >     wcb eyb expðik  eb dt Þ ¼  isin hy :                                   >
+                                                                                           > a¼0
+           :                                  2                                            >
+                                                                                           >
+             b¼1                                                                           >
+                                                                                           >                                                                                  
+                                                                                           >
+                                                                                           > X8
+                                                                                                                                                                         
+                                                                                           >
+                                                                                           >                   ð ik  e      Þ ¼  i
+                                                                                                                                         2
+                                                                                                                                               ð     Þ þ
+                                                                                                                                                         1
+                                                                                                                                                              ð     Þcos    y ;
+                                                                                                   v 3
+      For D2Q5,                                                                            >
+                                                                                           >     w   e    exp            a dt              sin   hx        sin  h x        h
+                                                                                           >
+                                                                                           >
+                                                                                                   a xa
+                                                                                                                                         9               9
+          8                                                                                >
+                                                                                           >
+                                                                                             a¼0
+                                                                                           >
+                                                                                           >
+          >
+          > X4                                                                             >
+                                                                                           >                                                                                  
+          >
+          >
+                                          1 1            1
+                wcb expðik  eb dt Þ ¼ þ cosðhx Þ þ cosðh Þ;                              >
+                                                                                           > X8
+                                                                                                                                         2              1                
+          >
+          >                                                                                >
+                                                                                           >     w v 3
+                                                                                                     e    exp  ð ik  e   dt Þ ¼  i      sin   h     þ   cos ð h   Þsin  h     ;
+          >
+          >
+                                          3  3           3                                 :       a ya                  a
+                                                                                                                                         9
+                                                                                                                                                   y
+                                                                                                                                                         9
+                                                                                                                                                                   x         y
+          >
+          >
+            b¼0
+                                                                                             a¼0
+          <X 4
+                                              1
+                wcb exb expðik  eb dt Þ ¼  isinðhx Þ;                           A9)                                                                                        A11)
+          >
+          >                                   3
+          >
+          > b¼0
+          >
+          > X4
+                                                                                         where hx ¼ kx dt and hy ¼ ky dt. By substituting Eq. (A11) into Eqs.
+          >
+          >                                   1
+          >
+          >     wcb eyb expðik  eb dt Þ ¼  isin hy :                                   (A1)–(A3), we can have the simplified formulations for the intermedi-
+          :                                   3
+              b¼0                                                                         ate density and moments as follows:
+
+
+
+
+Phys. Fluids 37, 113601 (2025); doi: 10.1063/5.0300977                                                                                                                 37, 113601-18
+Published under an exclusive license by AIP Publishing
+   Physics of Fluids                                                                            ARTICLE              pubs.aip.org/aip/pof
+
+
+                                                                 
+                 4 2                 2           1                            For D2Q9 model,
+       y1 ¼ y1n   þ cosðhx Þ þ cos hy þ cosðhx Þcos hy
+                 9 9                 9            9                                                                               
+                                                                                         4 2              2         1       
+                  n 2             1                                              y4 ¼ y4n   þ cosðhx Þ þ cos hy þ cosðhx Þcos hy
+                           ð   Þ
+              iy2 sin hx þ sin hx     ð  Þcos  hy                                         9 9              9          9
+                      3           3                                                                                        
+                                                                                         n n
+                                                                                         y y 2               1          
+                      2           1                    yn yn                          2 n 4 i sinðhx Þ þ sinðhx Þcos hy
+              iy3n sin hy þ cosðhx Þsin hy  2 n 3 sinðhx Þsin hy                        y1      3          3
+                      3            3                      y1                                                               
+                                                                                       y3n y4n 2           1         
+               ðy2n Þ2      2 1             1            1                             n i sin hy þ cosðhx Þsin hy :                          (A17)
+             þ n  þ cosðhx Þ  cos hy þ cosðhx Þcos hy                                   y1      3           3
+                 y1         3 3             3             3
+                                                                                  With the above simplified expressions [Eqs. (A12)–(A17)] of
+                  n 2
+               ðy3 Þ        2 1             1            1         
+             þ n   cosðhx Þ þ cos hy þ cosðhx Þcos hy ;                      the intermediate variables, we can obtain the formulations of all
+                 y1         3 3             3             3
+                                                                               terms in matrix E. Only the terms related to the intermediate tem-
+                                                                       (A12)   perature are illustrated below, expressions of other terms can be
+                                                                             found in Ref. 16.
+                       2            1           
+        y2 ¼ iy1n sinðhx Þ þ sinðhx Þcos hy
+                       9            9                                           For D2Q4,
+                                                                        
+                      2            1                         1                         n                                       
+              þ y2n cosðhx Þ þ cosðhx Þcos hy  y3n sinðhx Þsin hy                      @y4        y2n y4n 3              y3n y4n 3 
+                      3            3                          3                  E41 ¼         ¼ i n 2 sinðhx Þ þ i n 2 sin hy ;                 (A18)
+                                                                                      @y1        ðy1 Þ 2                ðy1 Þ 2
+                  ðy2n Þ2 2            1            
+              i n           sinðhx Þ þ sinðhx Þcos hy                                                n                        
+                    y1 3               3                                                                @y4        yn 3
+                                                                                            E42 ¼           ¼ i 4n sinðhx Þ ;                 (A19)
+                  ðy Þn 2
+                              1          1                                                             @y2        y1 2
+               i 3n  sinðhx Þ þ sinðhx Þcos hy                                                      n                        
+                    y1        3          3                                                             @y4        y4n 3 
+                    n n                                                                    E43 ¼            ¼ i n sin hy ;                    (A20)
+                  y y
+               i 2 n 3 cosðhx Þsin hy ;                               (A13)                           @y3        y1 2
+
+
+
+
+                                                                                                                                                             02 June 2026 01:27:12
+                    y1                                                                             n
+                                                                                                @y4        1            1 
+                       2                                                                E44 ¼             ¼ cosðhx Þ þ cos hy
+                                    1
+        y3 ¼ iy1n sin hy þ cosðhx Þsin hy                                                        @y4       2            2
+                       9            9                                                                                             
+                                                                                                y2n 3              y3n 3 
+                                              2                                                i n sinðhx Þ  i n sin hy :                   (A21)
+                  n 1                                         1                                     y1 2               y1 2
+               y2 sinðhx Þsin hy þ y3n cos hy þ cosðhx Þcos hy
+                      3                        3              3
+                                                                              For D2Q5,
+                  ðy2n Þ2     1         1             
+               i n  sin hy þ cosðhx Þsin hy                                                n
+                    y1        3          3                                                   @y4          yn yn             yn yn    
+                                                                                   E41 ¼           ¼ i 2n 42 sinðhx Þ þ i 3n 42 sin hy ;       (A22)
+                  ðy Þ 2 
+                     n 2
+                                       1                                                    @y1          ðy1 Þ             ðy1 Þ
+               i 3n         sin hy þ cosðhx Þsin hy
+                    y1 3               3                                                                  n
+                                                                                                           @y4           yn
+                  y2n y3n                                                                      E42 ¼            ¼ i 4n sinðhx Þ;              (A23)
+               i n sinðhx Þcos hy :                                   (A14)                               @y2           y1
+                    y1
+                                                                                                          n
+                                                                                                           @y4           yn 
+          The formulations for the intermediate temperature vary with                            E43 ¼            ¼ i 4n sin hy ;               (A24)
+    different thermal lattice velocity models. Substitution of Eqs. (A8)–                                  @y3           y1
+    (A11) into Eq. (A4) results in the following formulations:                                     n
+                                                                                                   @y4          1 1               1 
+                                                                                           E44 ¼            ¼ þ cosðhx Þ þ cos hy
+      For D2Q4 model,                                                                              @y4          3 3               3
+                                                                                                                                                 (A25)
+                                                                                                    y2n             y3n 
+                       1         1                                                                 i n sinðhx Þ  i n sin hy :
+            y4 ¼ y4n cosðhx Þ þ cos hy                                                               y1              y1
+                       2         2
+                                                                            For D2Q9,
+                     y2n y4n 3         y3n y4n 3 
+                               ð   Þ
+                   n i sin hx  n i sin hy :                        (A15)
+                      y1     2          y1      2                                                   n                                
+                                                                                              @y4     yn yn 2          1           
+                                                                                  E41 ¼             ¼ i 2n 42 sinðhx Þ þ sinðhx Þcos hy
+      For D2Q5 model,                                                                         @y1      ðy 1 Þ 3         3
+                                                                                                                              
+                                                                                           y3n y4n 2         1         
+                                 1 1              1                                      þ i n 2 sin hy þ cosðhx Þsin hy ;                      (A26)
+                       y4 ¼ y4n    þ cosðhx Þ þ cos hy                                      ðy1 Þ 3            3
+                                 3 3              3
+                                                                                            n                                 
+                               y2n y4n         y3n y4n                                    @y4       yn 2          1           
+                               n isinðhx Þ  n isin hy :            (A16)        E42 ¼          ¼ i 4n sinðhx Þ þ sinðhx Þcos hy ;             (A27)
+                                y1              y1                                         @y2       y1 3          3
+
+
+
+
+Phys. Fluids 37, 113601 (2025); doi: 10.1063/5.0300977                                                                                       37, 113601-19
+Published under an exclusive license by AIP Publishing
+   Physics of Fluids                                                                                 ARTICLE                            pubs.aip.org/aip/pof
+
+
+                                                  
+                @y4 n      y4n 2         1                                                                            S1 ¼ y1n ;
+        E43 ¼          ¼ i n sin hy þ cosðhx Þsin hy ; (A28)                                                             X
+                @y3         y1 3           3                                                                         S2 ¼    exa faeq; ;
+               n                                                                                                         X
+                                                                                                                              a
+              @y4       4 2            2       1                                                                                                               (A36)
+       E44 ¼          ¼ þ cosðhx Þ þ cos hy þ cosðhx Þcos hy                                                         S3 ¼             eya faeq; ;
+              @y4       9 9            9        9
+                                                                                                                            a
+                                                                                                                              X eq;
+                yn 2            1         
+              i 2n sinðhx Þ þ sinðhx Þcos hy                                                                          S4 ¼    gb :
+                y1 3            3                                                                                                 b
+                                             
+                y3n 2          1         
+              i n sin hy þ cosðhx Þsin hy :              (A29)                          For matrix S, only the terms including the intermediate
+                y1 3            3                                                   temperature are illustrated here, and other terms can be found in
+         Similar procedure is considered in the corrector step. To avoid            Ref. 16.
+    notational confusion, c will be used later to denote the product of              For D2Q4,
+    the gravitational acceleration g and the thermal expansion coeffi-
+    cient b, i.e., c ¼ gb. First, let us rewrite Eqs. (4)–(6) into the follow-                                                                         
+                                                                                             @S4            y2 y4 3                      y3 y4 3 
+    ing forms:                                                                       S41 ¼               ¼ i           sin ð h x Þ     i            sin hy ;   (A37)
+                                                                                             @y1           ðy1 Þ2 2                      ðy1 Þ2 2
+                      y1nþ1 ¼ y1 þ ðsv  1Þðy1n  y1n Þ;                                                                                      
+                                           X                                                                       @S4           y4 3
+               y2 ¼ y2 þ ðsv  1Þ
+                 nþ1
+                                                 exa faeq;  y2n ;                                    S42 ¼               ¼   i        sin ð h   Þ
+                                                                                                                                                 x ;             (A38)
+                                                                                                                   @y2          y1 2
+                               X            a
+                                                       
+       y3nþ1 ¼ y3 þ ðsv  1Þ        eya faeq;  y3n  cy1n ðy4n  T0 Þ;   (A30)                                                                
+                                                                                                                  @S4            y4 3 
+                                  a
+                                          X eq;                                                     S43 ¼               ¼  i         sin    h y ;             (A39)
+                  y4nþ1 ¼ y4 þ ðsc  1Þ          gb  yn4 ;                                                      @y3           y1 2
+                                                                                                         
+                                               b
+                                                                                                           @S4          1                1 
+              eq;        eq;                                                                    S44 ¼            ¼ cosðhx Þ þ cos hy
+    where fa and gb are evaluated from the intermediate variables                                          @y4          2                2
+                                                                                                                                                     
+    yj , and similar simplified notations as Eq. (17) are used                                              y2 3                     y3 3 
+
+
+
+
+                                                                                                                                                                           02 June 2026 01:27:12
+                         8                                                                                               ð    Þ
+                                                                                                        þ i  sin hx þ i  sin hy :                              (A40)
+                         >   eq;    eq;                                                                    y1 2                      y1 2
+                         >
+                         >  fa ¼ fa ðr þ ea dt; t Þ;
+                         < eq;      eq;
+                            gb ¼ gb ðr þ ea dt; t Þ;            (A31)                For D2Q5,
+                         >
+                         >                
+                         >
+                         : yja=b
+                                     
+                                  ¼ yja=b   r þ eja=b dt; t :                                              
+                                                                                                     @S4        y2 y4               y3 y4    
+                                                                                         S41 ¼                  ¼ i    sinð hx Þ  i         sin hy ;           (A41)
+                                                                                                     @y1        y 
+                                                                                                                ð 1Þ  2                   2
+                                                                                                                                      ð 1Þ
+                                                                                                                                       y
+         Following similar linearization procedure, i.e., differentiating
+    Eq. (A30), we have the following relationships for corrector step:                                                          
+                                                                                                                   @S4          y
+                                                                                                         S42 ¼             ¼ i 4 sinðhx Þ;                      (A42)
+                     dY nþ1 ¼ dY  þ M  S  dY  þ H  dY n ;              (A32)                                  @y2         y1
+                                                                                                                 
+    where Y denotes the variable vector and M, S, and H are certain                                                @S4          y 
+                                                                                                        S43 ¼              ¼ i 4 sin hy ;                       (A43)
+    matrices. Matrices M and H are explicitly written here                                                        @y3          y1
+                          2                              3                                               
+                             1   0         0         0                                                    @S4         1 1                  1 
+                                                                                                  S44 ¼          ¼ þ cosðhx Þ þ cos hy
+                          6                              7                                                @y4        3 3                  3
+                          6 0 sv  1       0         0 7
+                 M 44 ¼ 66                              7;       (A33)                                     y2               y3 
+                          40     0      sv  1       0 7 5                                              þ i  sinðhx Þ þ i  sin hy :                            (A44)
+                                                                                                            y1                y1
+                             0   0         0      sc  1
+              2                                                     3                For D2Q9,
+                       0           0             0            0
+              6                                                     7                                                                            
+              6        0       ðsv  1Þ         0            0     7                            @S4      y2 y4 2             1               
+     H 44 ¼ 6                                                      7:                S41 ¼          ¼ i  2 sinðhx Þ þ sinðhx Þcos hy
+              6 cðyn  T Þ                 ðsv  1Þ       cy1 7
+                                                                n                                @y1     ðy1 Þ 3               3
+              4       4    0       0                                5                                                                   
+                       0           0             0        ðsc  1Þ                            y y 2 
+                                                                                                  
+                                                                                                                    1              
+                                                                                             i 3 42 sin hy þ cosðhx Þsin hy ;                                  (A45)
+                                                                  (A34)                        ðy1 Þ 3              3
+                                                                                                                                               
+          Matrix S is defined as follows:                                                       @S4       y4 2              1              
+                                                              !                         S42 ¼         ¼ i        sinð hx Þ þ   sin ð hx Þcos  hy ;               (A46)
+                                                                                                @y2      y1 3              3
+                                                         @Sj
+                                 S44 ¼ ðSjl Þ44 ¼            ;            (A35)                                                           
+                                                         @yl                                      @S4             y 2       1           
+                                                                                        S43 ¼                   ¼ i 4 sin hy þ cosðhx Þsin hy ;                 (A47)
+    where                                                                                          @y3            y1 3        3
+
+
+
+
+Phys. Fluids 37, 113601 (2025); doi: 10.1063/5.0300977                                                                                                     37, 113601-20
+Published under an exclusive license by AIP Publishing
+   Physics of Fluids                                                                                        ARTICLE                      pubs.aip.org/aip/pof
+
+
+                        
+                   @S4      4 2            2        1                                     17
+                                                                                              Z. Chen, C. Shu, and D. Tan, “Highly accurate simplified lattice Boltzmann
+          S44 ¼            ¼ þ cosðhx Þ þ cos hy þ cosðhx Þcos hy
+                   @y4     9 9            9         9                                        method,” Phys. Fluids 30, 103605 (2018).
+                                                                                          18
+                                                                                               Z. Chen, C. Shu, and D. Tan, “A simplified thermal lattice Boltzmann method
+                     y 2          1                                                          without evolution of distribution functions,” Int. J. Heat Mass Transfer 105,
+                   i 2 sinðhx Þ þ sinðhx Þcos hy                                             741–757 (2017).
+                     y1 3          3
+                       
+                                                                                          19
+                                                                                               Z. Chen, C. Shu, and D. Tan, “A truly second-order and unconditionally stable
+                     y 2          1                                                          thermal lattice Boltzmann method,” Appl. Sci. 7(3), 277 (2017).
+                   i 3 sin hy þ cosðhx Þsin hy :            (A48)
+                     y1 3          3                                                        20
+                                                                                                Z. Chen, C. Shu, and D. Tan, “Three-dimensional simplified and uncondition-
+                                                                                                ally stable lattice Boltzmann method for incompressible isothermal and ther-
+          Together with the matrix E in Eq. (A6) and the formulations                           mal flows,” Phys. Fluids 29(5), 053601 (2017).
+    of yj in Eqs. (A12)–(A17), we can derive                                               21
+                                                                                               R. Dai, W. Li, J. Mostaghimi, Q. Wang, and M. Zeng, “On the optimal heat
+                                                                                               source location of partially heated energy storage process using the newly devel-
+            dY nþ1 ¼ ½ðI þ M  SÞ  E þ H   dY n ¼ G  dY n ;                  (A49)         oped simplified enthalpy based lattice Boltzmann method,” Appl. Energy 275,
+                                                                                               115387 (2020).
+    where G is the overall characteristic matrix for the stability analysis                    R. Dai, X. Lu, X. Tong, and J. Deng, “Thermal performance analysis of different
+                                                                                            22
+
+
+    of the STLBM. Note that the expressions of the elements of G vary                          T-shaped fin configurations on thermal energy storage through simplified
+                                                                                               enthalpy based lattice Boltzmann method,” Case Stud. Therm. Eng. 53, 103861
+    with the thermal lattice velocity model employed.                                          (2024).
+                                                                                            23
+                                                                                               Y. Ma and Z. Yang, “Simplified and highly stable thermal Lattice Boltzmann
+    REFERENCES                                                                                 method simulation of hybrid nanofluid thermal convection at high Rayleigh
+                                                                                               numbers,” Phys. Fluids 32(1), 012009 (2020).
+      1
+       J. Lindstr€ om and J. Nordstr€om, “A stable and high-order accurate conjugate        24
+                                                                                               Y. Ma, R. Mohebbi, and M. Sheremet, “Heat transfer and fluid flow around
+       heat transfer problem,” J. Comput. Phys. 229(14), 5440–5456 (2010).
+                                                                                               starfish-inspired cylinder by immersed boundary-simplified thermal lattice
+      2
+        B. John, P. Senthilkumar, and S. Sadasivan, “Applied and theoretical aspects of
+                                                                                               Boltzmann method,” Eng. Anal. Boundary Elem. 146, 656–667 (2023).
+        conjugate heat transfer analysis: A review,” Arch. Comput. Methods Eng.             25
+                                                                                               L. Li, C. Chen, R. Mei, and J. F. Klausner, “Conjugate heat and mass transfer in
+        26(2), 475–489 (2019).
+                                                                                               the lattice Boltzmann equation method,” Phys. Rev. E 89(4), 043308 (2014).
+      3
+        V. P. Kalbande, M. S. Choudhari, and Y. N. Nandanwar, “Hybrid nano-fluid            26
+                                                                                                H.-B. Huang, X.-Y. Lu, and M. C. Sukop, “Numerical study of lattice
+        for solar collector based thermal energy storage and heat transmission systems:
+                                                                                                Boltzmann methods for a convection–diffusion equation coupled with Navier–
+        A review,” J. Energy Storage 86, 111243 (2024).
+                                                                                                Stokes equations,” J. Phys. A: Math. Theor. 44(5), 055001 (2011).
+      4
+        X. He and L.-S. Luo, “Theory of the lattice Boltzmann method: From the              27
+                                                                                               I. Ginzburg, D. d'Humieres, and A. Kuzmin, “Optimal stability of advection-
+        Boltzmann equation to the lattice Boltzmann equation,” Phys. Rev. E 56(6),
+
+
+
+
+                                                                                                                                                                                    02 June 2026 01:27:12
+                                                                                               diffusion lattice Boltzmann models with two relaxation times for positive/nega-
+        6811–6817 (1997).                                                                      tive equilibrium,” J. Stat. Phys. 139(6), 1090–1143 (2010).
+      5
+        X. Shan, X.-F. Yuan, and H. Chen, “Kinetic theory representation of hydrodynam-     28
+                                                                                                L. Li, R. Mei, and J. F. Klausner, “Lattice Boltzmann models for the convection-
+        ics: A way beyond the Navier–Stokes equation,” J. Fluid Mech. 550(1), 413 (2006).       diffusion equation: D2Q5 vs D2Q9,” Int. J. Heat Mass Transfer 108, 41–62
+      6
+        R. Zhang, X. Shan, and H. Chen, “Efficient kinetic method for fluid simulation          (2017).
+        beyond the Navier–Stokes equation,” Phys. Rev. E 74(4), 046703 (2006).              29
+                                                                                                Z. Chen and C. Shu, Simplified and Highly Stable Lattice Boltzmann Method:
+      7
+        P. R. Rinaldi, E. A. Dari, M. J. Venere, and A. Clausse, “A lattice-Boltzmann          Theory and Applications (World Scientific, 2020).
+        solver for 3D fluid simulation on GPU,” Simul. Modell. Pract. Theory 25, 163–       30
+                                                                                                Y. Gao, Y. Yu, L. Yang, S. Qin, and G. Hou, “Development of a coupled simpli-
+        171 (2012).                                                                             fied lattice Boltzmann method for thermal flows,” Comput. Fluids 229, 105042
+      8
+        S. Zabelok, R. Arslanbekov, and V. Kolobov, “Adaptive kinetic-fluid solvers for         (2021).
+        heterogeneous computing architectures,” J. Comput. Phys. 303, 455–469 (2015).       31
+                                                                                               T. Kr€ uger, H. Kusumaatmaja, A. Kuzmin, O. Shardt, G. Silva, and E. M. Viggen,
+      9
+        X. He, S. Chen, and G. D. Doolen, “A novel thermal model for the lattice               The Lattice Boltzmann Method: Principles and Practice (Springer International
+        Boltzmann method in incompressible limit,” J. Comput. Phys. 146(1), 282–300            Publishing, Cham, 2017).
+        (1998).                                                                             32
+                                                                                               B. Servan-Camas and F. T.-C. Tsai, “Lattice Boltzmann method with two relax-
+    10
+       X. Shan, “Simulation of Rayleigh-Be0 nard convection using a lattice Boltzmann          ation times for advection–diffusion equation: Third order analysis and stability
+       method,” Phys. Rev. E 55(3), 2780–2788 (1997).                                          analysis,” Adv. Water Resour. 31(8), 1113–1126 (2008).
+    11
+      Z. Guo, B. Shi, and C. Zheng, “A coupled lattice BGK model for the Boussinesq         33
+                                                                                               J. D. Sterling and S. Chen, “Stability analysis of lattice Boltzmann methods,”
+      equations,” Numer. Methods Fluids 39(4), 325–342 (2002).                                 J. Comput. Phys. 123(1), 196–206 (1996).
+    12
+       Y. Peng, C. Shu, and Y. T. Chew, “A 3D incompressible thermal lattice                34
+                                                                                               P. Lallemand and L.-S. Luo, “Theory of the lattice Boltzmann method:
+       Boltzmann model and its application to simulate natural convection in a cubic           Dispersion, dissipation, isotropy, Galilean invariance, and stability,” Phys. Rev.
+       cavity,” J. Comput. Phys. 193(1), 260–274 (2004).                                       E 61(6), 6546–6562 (2000).
+    13
+       A. D'Orazio, M. Corcione, and G. P. Celata, “Application to natural convection       35
+                                                                                               O. Malaspinas, “Increasing stability and accuracy of the lattice Boltzmann
+       enclosed flows of a lattice Boltzmann BGK model coupled with a general pur-             scheme: Recursivity and regularization,” arXiv:1505.06900 (2015).
+       pose thermal boundary condition,” Int. J. Therm. Sci. 43(6), 575–586 (2004).         36
+                                                                                                C. Shu and H. Xue, “Comparison of two approaches for implementing stream
+    14
+       Y. H. Qian, D. D'Humieres, and P. Lallemand, “Lattice BGK models for                    function boundary conditions in DQ simulation of natural convection in a
+       Navier–Stokes equation,” Europhys. Lett. 17(6), 479–484 (1992).                          square cavity,” Int. J. Heat Fluid Flow 19(1), 59–68 (1998).
+    15
+       Z. Chen, C. Shu, Y. Wang, L. M. Yang, and D. Tan, “A simplified lattice              37
+                                                                                               G. De Vahl Davis, “Natural convection of air in a square cavity: A bench mark
+       Boltzmann method without evolution of distribution function,” Adv. Appl.                numerical solution,” Numer. Methods Fluids 3(3), 249–264 (1983).
+       Math. Mech. 9(1), 1–22 (2017).                                                       38
+                                                                                                J. Madhavan, M. K. Das, and A. De, “A multiscale approach for stable relaxa-
+    16
+       Z. Chen, C. Shu, D. Tan, and C. Wu, “On improvements of simplified and                   tion parameter values in lattice Boltzmann simulations of heat and mass
+       highly stable lattice Boltzmann method: Formulations, boundary treatment,                transport in porous media,” Numer. Heat Transfer, Part B 82(1–2), 41–59
+       and stability analysis,” Int. J. Numer. Methods Fluids 87, 161–179 (2018).               (2022).
+
+
+
+
+Phys. Fluids 37, 113601 (2025); doi: 10.1063/5.0300977                                                                                                              37, 113601-21
+Published under an exclusive license by AIP Publishing
+
