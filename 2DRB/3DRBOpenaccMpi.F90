@@ -1,4 +1,4 @@
-!=============================================================
+﻿!=============================================================
 !!!    注释区，代码描述
 !!!    三维浮力驱动自然对流
 !!!    D3Q19 流场 + D3Q7 温度场
@@ -223,7 +223,7 @@ module commondata3dOpenaccMpi
 
   !===============================================================================================
   ! 无量纲参数
-  integer(kind=4), parameter :: nx=120, ny=120, nz=120     ! 三个方向的流体节点数；不包括边界节点
+  integer(kind=4), parameter :: nx=80, ny=80, nz=80     ! 三个方向的流体节点数；不包括边界节点
 #ifdef SideHeatedCell
   real(kind=8), parameter :: lengthUnit=dble(ny)     ! 侧壁差温：特征长度取 y 方向左右冷热壁距离
 #else
@@ -231,7 +231,7 @@ module commondata3dOpenaccMpi
 #endif
   real(kind=8), parameter :: pi=acos(-1.0d0)
 
-  real(kind=8), parameter :: Rayleigh=1.0d7
+  real(kind=8), parameter :: Rayleigh=1.0d6
   real(kind=8), parameter :: Prandtl=0.71d0
   real(kind=8), parameter :: Mach=0.1d0
   real(kind=8), parameter :: Thot=0.5d0, Tcold=-0.5d0
@@ -376,7 +376,7 @@ end module commondata3dOpenaccMpi
 
 
 program main3dOpenaccMpi
-    use mpi
+  use mpi
   use commondata3dOpenaccMpi
   implicit none
 
@@ -2518,6 +2518,7 @@ subroutine reconstruct_macro_from_fg()
   logical :: rho_bad
 
   ! 重启时从 f/g 重构 T、rho、u、v、w；EnableUseG 的 B 历史项由严格重启文件单独读回。
+  ! 此时 initial() 还没有调用 enter_data_3d_openacc_mpi()；accDataResident=.false.，macroT() 会在 host 上用 g 重构 T。
   call macroT()
   rho_bad = .false.
 
@@ -3282,8 +3283,8 @@ subroutine read_reload_fields_mpi(reloadFileName)
     open(unit=01, file=trim(reloadFilePrefix)//'-'//trim(reloadFileName)//'.bin', &
          form='unformatted', access='sequential', status='old')
     write(00,*) 'Reloading global f and g on root, then scattering local blocks'
-    ! 本轮采用新的 restart 二进制顺序：alpha -> k -> j -> i，i 最内层。
-    ! 这和当前 output_ReloadFile() 完全一致，但不兼容旧的方向第一维 restart 文件。
+    ! 采用二进制顺序：alpha -> k -> j -> i，i 最内层。
+    ! 这和当前 output_ReloadFile() 完全一致。
     read(01) ((((f_all(i,j,k,alpha), i=1,nx), j=1,ny), k=1,nz), alpha=0,qf-1)
     read(01) ((((g_all(i,j,k,alpha), i=1,nx), j=1,ny), k=1,nz), alpha=0,qt-1)
 #ifdef EnableUseG

@@ -1,5 +1,5 @@
 #!/bin/bash
-#PBS -N P100_2D_MPI_ACC
+#PBS -N P100_3D_MPI_ACC
 #PBS -q batch
 #PBS -l nodes=node05:ppn=1+node07:ppn=1
 #PBS -l walltime=240:00:00
