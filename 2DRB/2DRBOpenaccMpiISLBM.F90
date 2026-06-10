@@ -155,11 +155,16 @@
 
         !===============================================================================================
         ! 无量纲参数
-        integer(kind=4), parameter :: nx=2048, ny=2048     !格子网格
+        integer(kind=4), parameter :: nx=256, ny=256     !格子网格
+        integer(kind=4), parameter :: meshModeUniform=0, meshModeErf=1
+        integer(kind=4), parameter :: meshMode=meshModeErf
+        real(kind=8), parameter :: islbmStretchA=1.5d0
+        real(kind=8), parameter :: islbmDxMinRaw=0.5d0*(1.0d0+erf(islbmStretchA*(1.0d0/dble(nx+1)-0.5d0))/erf(0.5d0*islbmStretchA))
+        real(kind=8), parameter :: islbmDyMinRaw=0.5d0*(1.0d0+erf(islbmStretchA*(1.0d0/dble(ny+1)-0.5d0))/erf(0.5d0*islbmStretchA))
 #ifdef SideHeatedCell
-        real(kind=8), parameter :: lengthUnit=dble(nx)     !侧壁差温：特征长度取 x 方向长度
+        real(kind=8), parameter :: lengthUnit=(1.0d0-islbmDxMinRaw)/islbmDxMinRaw     !ISLBM有效特征长度：物理壁面采用 half-way 位置
 #else
-        real(kind=8), parameter :: lengthUnit=dble(ny)     !上下差温：特征长度取 y 方向长度
+        real(kind=8), parameter :: lengthUnit=(1.0d0-islbmDyMinRaw)/islbmDyMinRaw     !ISLBM有效特征长度：物理壁面采用 half-way 位置
 #endif
         real(kind=8), parameter :: pi = acos(-1.0d0)
 
@@ -218,10 +223,10 @@
         real(kind=8), parameter :: reloadFileInterval=100.0d0  ! f/g 重启文件输出间隔（单位：t_ff）
         real(kind=8), parameter :: outputPltFileInterval=100.0d0  ! Tecplot 文件输出间隔（单位：t_ff）
         integer(kind=4), parameter :: dimensionlessTimeMax=int(12000.0d0/outputSnapshotInterval)
-        integer(kind=4), parameter :: outputSnapshotFile=0   ! 是否输出后处理快照文件：0=不输出，1=输出
-        integer(kind=4), parameter :: outputPltFile=0   ! 是否输出 plt 文件：0=不输出，1=输出
-        integer(kind=4), parameter :: outputReloadFile=0 ! 是否周期输出 f/g 重启文件：0=不输出，1=输出
-        integer(kind=4), parameter :: itc_max=20000  ! 稳态：最大格子步，实际仍由 errorU/errorT 提前停止
+        integer(kind=4), parameter :: outputSnapshotFile=1   ! 是否输出后处理快照文件：0=不输出，1=输出
+        integer(kind=4), parameter :: outputPltFile=1   ! 是否输出 plt 文件：0=不输出，1=输出
+        integer(kind=4), parameter :: outputReloadFile=1 ! 是否周期输出 f/g 重启文件：0=不输出，1=输出
+        integer(kind=4), parameter :: itc_max=20000000  ! 稳态：最大格子步，实际仍由 errorU/errorT 提前停止
 #endif
 
 #ifdef unsteadyFlow
@@ -271,7 +276,10 @@
         !计算中需要的相关参数
         real(kind=8) :: errorU, errorT
         
-        real(kind=8) :: xp(0:nx+1), yp(0:ny+1)      !无量纲的坐标数组，包括边界
+        real(kind=8) :: xp(0:nx+1), yp(0:ny+1)      !无量纲的全局坐标数组，包括物理边界
+        real(kind=8) :: wx(1:nx), wy(1:ny)          !非均匀网格 midpoint-rule 积分权重
+        real(kind=8) :: quadSumX, quadSumY, quadSumArea
+        real(kind=8), parameter :: islbmShift=1.0d0/lengthUnit
         real(kind=8), allocatable :: u(:,:), v(:,:), T(:,:), rho(:,:)
 
 #ifdef steadyFlow
@@ -302,6 +310,10 @@
         real(kind=8), pointer :: gHaloRecvDown(:)=>null(), gHaloRecvUp(:)=>null()
         real(kind=8), pointer :: gHaloSendLeft(:)=>null(), gHaloSendRight(:)=>null()
         real(kind=8), pointer :: gHaloRecvLeft(:)=>null(), gHaloRecvRight(:)=>null()
+        integer(kind=4), allocatable :: stream_ix(:,:,:), stream_iy(:,:,:)
+        real(kind=8), allocatable :: stream_wx(:,:,:), stream_wy(:,:,:)
+        logical, allocatable :: stream_x_valid(:,:), stream_y_valid(:,:)
+        integer(kind=4) :: streamStencilFallbackLocal, streamStencilFallbackGlobal
         ! OpenACC halo buffer 说明：
         !   这些数组不是用全局 nx/ny 静态开大数组，而是在每个 rank 得到局部网格后按局部尺寸分配。
         !   后续 GPU kernel 可以用 present(fHaloSendDown,...) 直接访问这些设备端缓冲区。
@@ -347,11 +359,9 @@
     use commondata
     implicit none
     real(kind=8) :: timeStart, timeEnd
-    real(kind=8) :: cpuElapsedLocal, cpuElapsedTotal
     character(len=24) :: ctime, string
     INTEGER(kind=4) :: time
     real(kind=8) :: timeStart2, timeEnd2
-    real(kind=8) :: wallElapsedLocal, wallElapsedMax
     integer(kind=4) :: numAccDevices, accDeviceId
     integer(kind=4) :: nodeComm, nodeLocalRank, nodeLocalSize
 #ifdef unsteadyFlow
@@ -538,32 +548,6 @@
     call MPI_BARRIER(COMM2D, IERR)
     call CPU_TIME(timeEnd)         !当前进程累计消耗的 CPU 时间,包括并行
     timeEnd2 = MPI_WTIME()         !MPI 墙钟时间
-    cpuElapsedLocal = timeEnd-timeStart
-    wallElapsedLocal = timeEnd2-timeStart2
-    ! CPU_TIME 是单个 MPI rank 的 host 进程 CPU 时间；这里汇总所有 rank，作为 GPU 版的 CPU 侧诊断。
-    call MPI_REDUCE(cpuElapsedLocal, cpuElapsedTotal, 1, MPI_DOUBLE_PRECISION, MPI_SUM, 0, COMM2D, IERR)
-    ! 墙钟性能由最慢 rank/GPU 决定，取所有 rank 的最大耗时作为 MPI 总吞吐的计时分母。
-    call MPI_REDUCE(wallElapsedLocal, wallElapsedMax, 1, MPI_DOUBLE_PRECISION, MPI_MAX, 0, COMM2D, IERR)
-
-    ! 性能测试结果必须在最终串行后处理和 OpenACC exit data 之前写出，避免诊断/I/O 拖慢或中断时看不到 MLUPS。
-    open(unit=00,file=trim(settingsFile),status='unknown',position='append')
-    write(00,*) "======================================================================"
-    ! 当前 rank 的 host CPU 时间，不代表 GPU kernel 时间。
-    write(00,*) "Time (CPU, local rank host diagnostic) = ", &
-        real(cpuElapsedLocal,kind=8), "s"
-    write(00,*) "MLUPS (CPU, local rank host diagnostic) = ", &
-        real( dble(nx)*dble(ny)*dble(itc)/max(cpuElapsedLocal,1.0d-12)/1.0d6,kind=8 )
-    write(00,*) "Time (MPI wall, local rank) = ", real(wallElapsedLocal,kind=8), "s"            !当前 rank 看到的墙钟时间
-    if(isRoot) then
-        write(00,*) "Time (CPU, all ranks host sum) = ", real(cpuElapsedTotal,kind=8), "s"         !所有 MPI rank 的 host CPU 时间总和
-        write(00,*) "Effective host CPU cores from timers = ", real(cpuElapsedTotal/max(wallElapsedMax,1.0d-12),kind=8)
-        write(00,*) "MLUPS (CPU, all ranks host sum) = ", &
-            real( dble(nx)*dble(ny)*dble(itc)/max(cpuElapsedTotal,1.0d-12)/1.0d6,kind=8 )
-        write(00,*) "Time (MPI wall, max rank) = ", real(wallElapsedMax,kind=8), "s"             !MPI 总运行时间按最慢 rank/GPU 计
-        write(00,*) "MLUPS (MPI wall, all GPUs) = ", &
-            real( dble(nx)*dble(ny)*dble(itc)/max(wallElapsedMax,1.0d-12)/1.0d6,kind=8 )
-    endif
-    close(00)
 
 #ifdef steadyFlow
     call output_Tecplot()          !输出最后一步的plt结果
@@ -623,6 +607,11 @@
      
 
     open(unit=00,file=trim(settingsFile),status='unknown',position='append')        !在这个txt文件后面继续写（追加模式）
+    write(00,*) "======================================================================"
+    write(00,*) "Time (CPU) = ", real(timeEnd-timeStart,kind=8), "s"                             !当前进程累计消耗的 CPU 时间,包括并行
+    write(00,*) "MLUPS = ", real( dble(nx)*dble(ny)*dble(itc)/(timeEnd-timeStart)/1.0d6,kind=8 )   !百万格点更新/秒
+    write(00,*) "Time (MPI wall) = ", real(timeEnd2-timeStart2,kind=8), "s"                      !墙钟时间
+    write(00,*) "MLUPS (MPI wall) = ", real( dble(nx)*dble(ny)*dble(itc)/(timeEnd2-timeStart2)/1.0d6,kind=8 )   !百万格点更新/秒
 #ifdef steadyFlow
     write(00,'(a,1x,ES24.16E3)') "Nu_global =", real(Nu_global,kind=8)
     write(00,*) "Nu_hot    =", Nu_hot
@@ -635,6 +624,9 @@
     write(00,*) "Dellocate Array......"
     call exit_data_2d_openacc()
     call deallocate_halo_buffers_2d_openacc_mpi()
+    if(allocated(stream_ix)) then
+        deallocate(stream_ix, stream_iy, stream_wx, stream_wy, stream_x_valid, stream_y_valid)
+    endif
     deallocate(f)
     deallocate(g)
     deallocate(f_post)
@@ -1047,21 +1039,21 @@
 
 
     !-----------------------------------------------------------------------------------------------
-    !节点坐标数组
-    ! MPI 版本中 xp/yp 仍然保留为全局一维坐标表，每个 rank 都有完整副本。
-    xp(0) = 0.0d0
-    xp(nx+1) = dble(nx)
-    do i=1,nx
-        xp(i) = dble(i)-0.5d0
-    enddo
-    xp = xp / lengthUnit
-
-    yp(0) = 0.0d0
-    yp(ny+1) = dble(ny)
-    do j=1,ny
-        yp(j) = dble(j)-0.5d0
-    enddo
-    yp = yp / lengthUnit
+    ! ISLBM 节点坐标与积分权重。MPI 版本中 xp/yp/wx/wy 仍然保留为全局一维表，
+    ! 每个 rank 都有完整副本；后续局部 streaming 模板再用 xStartGlobal/yStartGlobal 映射。
+    call build_islbm_mesh()
+    call build_islbm_quadrature()
+    call allocate_islbm_streaming_stencils_mpi()
+    call prepare_islbm_streaming_stencils_mpi()
+    if(isRoot) then
+        write(00,*) "ISLBM mesh mode/stretch:", meshMode, real(islbmStretchA,kind=8)
+        write(00,*) "ISLBM effective lengthUnit L0 =", real(lengthUnit,kind=8)
+        write(00,*) "ISLBM streaming shift =", real(islbmShift,kind=8)
+        write(00,*) "ISLBM quadrature sums:", real(quadSumX,kind=8), real(quadSumY,kind=8), real(quadSumArea,kind=8)
+        write(00,*) "ISLBM MPI streaming fallback stencil entries:", streamStencilFallbackGlobal
+        write(00,*) "ISLBM MPI restriction: Lagrange streaming is used only when the full 3-point stencil is rank-local."
+        write(00,*) "Rank-interface cells falling outside this rule use the existing one-layer halo pull streaming."
+    endif
 
     allocate (u(xLocalCount,yLocalCount))
     allocate (v(xLocalCount,yLocalCount))
@@ -1291,7 +1283,8 @@ close(00)
     use commondata
     implicit none
 
-    !$acc enter data copyin(xp,yp,ex,ey,omega,omegaT)
+    !$acc enter data copyin(xp,yp,wx,wy,quadSumX,quadSumY,quadSumArea,ex,ey,omega,omegaT)
+    !$acc enter data copyin(stream_ix,stream_iy,stream_wx,stream_wy,stream_x_valid,stream_y_valid)
     !$acc enter data copyin(u,v,T,rho,f,g,Fx,Fy,Bx_prev,By_prev)
     !$acc enter data create(f_post,g_post)
 #ifdef steadyFlow
@@ -1415,6 +1408,226 @@ close(00)
   end subroutine deallocate_halo_buffers_2d_openacc_mpi
 
 !===================================================================================================
+! 子程序: build_islbm_mesh
+! 作用: 构造论文 ISLBM 使用的 half-way erf 非均匀全局坐标。
+!===================================================================================================
+  subroutine build_islbm_mesh()
+    use commondata
+    implicit none
+    integer(kind=4) :: i, j
+    real(kind=8) :: rawX(0:nx+1), rawY(0:ny+1)
+    real(kind=8) :: erfNorm, leftWall, rightWall, bottomWall, topWall, lengthX, lengthY
+
+    if(meshMode.EQ.meshModeErf) then
+        erfNorm = erf(0.5d0*islbmStretchA)
+        do i = 0, nx+1
+            rawX(i) = 0.5d0*(1.0d0 + erf(islbmStretchA*(dble(i)/dble(nx+1)-0.5d0))/erfNorm)
+        enddo
+        do j = 0, ny+1
+            rawY(j) = 0.5d0*(1.0d0 + erf(islbmStretchA*(dble(j)/dble(ny+1)-0.5d0))/erfNorm)
+        enddo
+    else
+        rawX(0) = 0.0d0
+        rawX(nx+1) = 1.0d0
+        do i = 1, nx
+            rawX(i) = (dble(i)-0.5d0)/dble(nx)
+        enddo
+        rawY(0) = 0.0d0
+        rawY(ny+1) = 1.0d0
+        do j = 1, ny
+            rawY(j) = (dble(j)-0.5d0)/dble(ny)
+        enddo
+    endif
+
+    if(meshMode.EQ.meshModeErf) then
+        leftWall = 0.5d0*rawX(1)
+        rightWall = 1.0d0 - 0.5d0*rawX(1)
+        bottomWall = 0.5d0*rawY(1)
+        topWall = 1.0d0 - 0.5d0*rawY(1)
+    else
+        leftWall = 0.0d0
+        rightWall = 1.0d0
+        bottomWall = 0.0d0
+        topWall = 1.0d0
+    endif
+
+    lengthX = rightWall - leftWall
+    lengthY = topWall - bottomWall
+    xp(0) = 0.0d0
+    xp(nx+1) = 1.0d0
+    do i = 1, nx
+        xp(i) = (rawX(i)-leftWall)/lengthX
+    enddo
+    yp(0) = 0.0d0
+    yp(ny+1) = 1.0d0
+    do j = 1, ny
+        yp(j) = (rawY(j)-bottomWall)/lengthY
+    enddo
+
+    return
+  end subroutine build_islbm_mesh
+
+!===================================================================================================
+! 子程序: build_islbm_quadrature
+! 作用: 基于全局非均匀坐标构造 midpoint-rule 积分权重。
+!===================================================================================================
+  subroutine build_islbm_quadrature()
+    use commondata
+    implicit none
+    integer(kind=4) :: i, j
+
+    do i = 1, nx
+        wx(i) = 0.5d0*(xp(i+1)-xp(i-1))
+    enddo
+    do j = 1, ny
+        wy(j) = 0.5d0*(yp(j+1)-yp(j-1))
+    enddo
+    quadSumX = 0.0d0
+    do i = 1, nx
+        quadSumX = quadSumX + wx(i)
+    enddo
+    quadSumY = 0.0d0
+    do j = 1, ny
+        quadSumY = quadSumY + wy(j)
+    enddo
+    quadSumArea = quadSumX*quadSumY
+
+    return
+  end subroutine build_islbm_quadrature
+
+!===================================================================================================
+! 子程序: allocate_islbm_streaming_stencils_mpi
+! 作用: 按当前 rank 的局部块尺寸分配二次 Lagrange streaming 模板。
+!===================================================================================================
+  subroutine allocate_islbm_streaming_stencils_mpi()
+    use commondata
+    implicit none
+
+    if(allocated(stream_ix)) then
+        deallocate(stream_ix, stream_iy, stream_wx, stream_wy, stream_x_valid, stream_y_valid)
+    endif
+    allocate(stream_ix(0:8,xLocalCount,3), stream_iy(0:8,yLocalCount,3))
+    allocate(stream_wx(0:8,xLocalCount,3), stream_wy(0:8,yLocalCount,3))
+    allocate(stream_x_valid(0:8,xLocalCount), stream_y_valid(0:8,yLocalCount))
+
+    return
+  end subroutine allocate_islbm_streaming_stencils_mpi
+
+!===================================================================================================
+! 子程序: prepare_islbm_streaming_stencils_mpi
+! 作用: 将全局三点模板映射到 rank-local 索引；跨 rank 模板标记为 fallback。
+!===================================================================================================
+  subroutine prepare_islbm_streaming_stencils_mpi()
+    use commondata
+    implicit none
+    integer(kind=4) :: alpha, i, j, globalI, globalJ
+    integer(kind=4) :: idxGlobal(3), idxLocal(3)
+    real(kind=8) :: w(3), target
+    logical :: ok
+
+    stream_ix = 1
+    stream_iy = 1
+    stream_wx = 0.0d0
+    stream_wy = 0.0d0
+    stream_x_valid = .false.
+    stream_y_valid = .false.
+    streamStencilFallbackLocal = 0
+    streamStencilFallbackGlobal = 0
+
+    do alpha = 0, 8
+        do i = 1, xLocalCount
+            globalI = xStartGlobal + i - 1
+            target = xp(globalI) - dble(ex(alpha))*islbmShift
+            call build_lagrange_stencil_1d(nx, xp(1:nx), target, idxGlobal, w, ok)
+            idxLocal = idxGlobal - xStartGlobal + 1
+            if(ok.AND.all(idxLocal.GE.1).AND.all(idxLocal.LE.xLocalCount)) then
+                stream_x_valid(alpha,i) = .true.
+                stream_ix(alpha,i,:) = idxLocal
+                stream_wx(alpha,i,:) = w
+            elseif(ok) then
+                streamStencilFallbackLocal = streamStencilFallbackLocal + 1
+            endif
+        enddo
+        do j = 1, yLocalCount
+            globalJ = yStartGlobal + j - 1
+            target = yp(globalJ) - dble(ey(alpha))*islbmShift
+            call build_lagrange_stencil_1d(ny, yp(1:ny), target, idxGlobal, w, ok)
+            idxLocal = idxGlobal - yStartGlobal + 1
+            if(ok.AND.all(idxLocal.GE.1).AND.all(idxLocal.LE.yLocalCount)) then
+                stream_y_valid(alpha,j) = .true.
+                stream_iy(alpha,j,:) = idxLocal
+                stream_wy(alpha,j,:) = w
+            elseif(ok) then
+                streamStencilFallbackLocal = streamStencilFallbackLocal + 1
+            endif
+        enddo
+    enddo
+
+    call MPI_ALLREDUCE(streamStencilFallbackLocal, streamStencilFallbackGlobal, 1, &
+        MPI_INTEGER, MPI_SUM, COMM2D, IERR)
+
+    return
+  end subroutine prepare_islbm_streaming_stencils_mpi
+
+!===================================================================================================
+! 子程序: build_lagrange_stencil_1d
+! 作用: 对一个目标点选择三点二次 Lagrange 插值模板。
+!===================================================================================================
+  subroutine build_lagrange_stencil_1d(n, xnodes, target, idx, w, ok)
+    implicit none
+    integer(kind=4), intent(in) :: n
+    real(kind=8), intent(in) :: xnodes(n), target
+    integer(kind=4), intent(out) :: idx(3)
+    real(kind=8), intent(out) :: w(3)
+    logical, intent(out) :: ok
+    integer(kind=4) :: mid
+    real(kind=8) :: xloc(3)
+    real(kind=8), parameter :: tol = 1.0d-12
+
+    idx = (/1, 1, 1/)
+    w = 0.0d0
+    ok = .false.
+    if(n.LT.3) return
+    if((target.LT.xnodes(1)-tol).OR.(target.GT.xnodes(n)+tol)) return
+
+    if(target.LE.xnodes(2)) then
+        idx = (/1, 2, 3/)
+    elseif(target.GE.xnodes(n-1)) then
+        idx = (/n-2, n-1, n/)
+    else
+        mid = 2
+        do while((mid.LT.n-1).AND.(xnodes(mid+1).LT.target))
+            mid = mid + 1
+        enddo
+        idx = (/mid-1, mid, mid+1/)
+    endif
+
+    xloc(1) = xnodes(idx(1))
+    xloc(2) = xnodes(idx(2))
+    xloc(3) = xnodes(idx(3))
+    call lagrange_weights_3(xloc, target, w)
+    ok = .true.
+
+    return
+  end subroutine build_lagrange_stencil_1d
+
+!===================================================================================================
+! 子程序: lagrange_weights_3
+! 作用: 计算三点二次 Lagrange 插值权重。
+!===================================================================================================
+  subroutine lagrange_weights_3(xnode, x0, w)
+    implicit none
+    real(kind=8), intent(in) :: xnode(3), x0
+    real(kind=8), intent(out) :: w(3)
+
+    w(1) = ((x0-xnode(2))*(x0-xnode(3)))/((xnode(1)-xnode(2))*(xnode(1)-xnode(3)))
+    w(2) = ((x0-xnode(1))*(x0-xnode(3)))/((xnode(2)-xnode(1))*(xnode(2)-xnode(3)))
+    w(3) = ((x0-xnode(1))*(x0-xnode(2)))/((xnode(3)-xnode(1))*(xnode(3)-xnode(2)))
+
+    return
+  end subroutine lagrange_weights_3
+
+!===================================================================================================
 ! 子程序: exit_data_2d_openacc
 ! 作用: 计算结束后释放 OpenACC 设备端驻留数据。
 !===================================================================================================
@@ -1428,7 +1641,8 @@ close(00)
     !$acc exit data delete(up,vp,Tp)
 #endif
     !$acc exit data delete(f_post,g_post,u,v,T,rho,f,g,Fx,Fy,Bx_prev,By_prev)
-    !$acc exit data delete(xp,yp,ex,ey,omega,omegaT)
+    !$acc exit data delete(stream_ix,stream_iy,stream_wx,stream_wy,stream_x_valid,stream_y_valid)
+    !$acc exit data delete(xp,yp,wx,wy,quadSumX,quadSumY,quadSumArea,ex,ey,omega,omegaT)
     accDataResident = .false.
     return
   end subroutine exit_data_2d_openacc
@@ -2086,20 +2300,59 @@ close(00)
 ! 用途: 在主程序时间推进循环中调用，位于 collision 之后、bounceback 之前。
 !===================================================================================================
   subroutine streaming()                                    !先迁移，再边界处理
-    use commondata                                            !迁移步骤：pull streaming，把碰撞后的 f_post 拉取到当前格点
+    use commondata                                            !ISLBM迁移：rank-local 模板用二次插值，跨 rank 模板保守退回一格 pull
     implicit none
     integer(kind=4) :: i, j
     integer(kind=4) :: ip, jp
-    integer(kind=4) :: alpha
+    integer(kind=4) :: alpha, ii, jj
+    real(kind=8) :: value
+    logical :: useInterp
     
-    !$acc parallel loop gang vector collapse(2) present(f,f_post,ex,ey) async(1) private(ip,jp,alpha)
+    !$acc parallel loop gang vector collapse(2) &
+    !$acc& present(f,f_post,ex,ey,stream_x_valid,stream_y_valid,stream_ix,stream_iy,stream_wx,stream_wy) &
+    !$acc& async(1) private(ip,jp,alpha,ii,jj,value,useInterp)
     do j = 1, yLocalCount
         do i = 1, xLocalCount
-            do alpha = 0, 8                        !上游格点索引：fα(i,j) <- f_postα(i-exα, j-eyα)
-                ip = i-ex(alpha)                   !边界附近 (ip/jp 可能为 0 或 nx+1/ny+1)，需在 bounceback/周期边界处理中覆盖修正边界分布
-                jp = j-ey(alpha)                   !ghost 层在初始化中为 0，保证不会出现未初始化垃圾值
-                
-                f(i,j,alpha) = f_post(ip,jp,alpha)
+            do alpha = 0, 8
+                useInterp = .false.
+                if(alpha.EQ.0) then
+                    f(i,j,alpha) = f_post(i,j,alpha)
+                elseif(ey(alpha).EQ.0) then
+                    useInterp = stream_x_valid(alpha,i)
+                    if(useInterp) then
+                        value = 0.0d0
+                        do ii = 1, 3
+                            value = value + stream_wx(alpha,i,ii)*f_post(stream_ix(alpha,i,ii),j,alpha)
+                        enddo
+                        f(i,j,alpha) = value
+                    endif
+                elseif(ex(alpha).EQ.0) then
+                    useInterp = stream_y_valid(alpha,j)
+                    if(useInterp) then
+                        value = 0.0d0
+                        do jj = 1, 3
+                            value = value + stream_wy(alpha,j,jj)*f_post(i,stream_iy(alpha,j,jj),alpha)
+                        enddo
+                        f(i,j,alpha) = value
+                    endif
+                else
+                    useInterp = stream_x_valid(alpha,i).AND.stream_y_valid(alpha,j)
+                    if(useInterp) then
+                        value = 0.0d0
+                        do jj = 1, 3
+                            do ii = 1, 3
+                                value = value + stream_wx(alpha,i,ii)*stream_wy(alpha,j,jj)* &
+                                    f_post(stream_ix(alpha,i,ii),stream_iy(alpha,j,jj),alpha)
+                            enddo
+                        enddo
+                        f(i,j,alpha) = value
+                    endif
+                endif
+                if((.not.useInterp).AND.(alpha.NE.0)) then
+                    ip = i-ex(alpha)
+                    jp = j-ey(alpha)
+                    f(i,j,alpha) = f_post(ip,jp,alpha)
+                endif
             enddo
         enddo
     enddo
@@ -2298,16 +2551,55 @@ close(00)
     implicit none
     integer(kind=4) :: i, j
     integer(kind=4) :: ip, jp
-    integer(kind=4) :: alpha
+    integer(kind=4) :: alpha, ii, jj
+    real(kind=8) :: value
+    logical :: useInterp
     
-    !$acc parallel loop gang vector collapse(2) present(g,g_post,ex,ey) async(1) private(ip,jp,alpha)
+    !$acc parallel loop gang vector collapse(2) &
+    !$acc& present(g,g_post,ex,ey,stream_x_valid,stream_y_valid,stream_ix,stream_iy,stream_wx,stream_wy) &
+    !$acc& async(1) private(ip,jp,alpha,ii,jj,value,useInterp)
     do j = 1, yLocalCount
         do i = 1, xLocalCount
             do alpha = 0, 4
-                ip = i-ex(alpha)
-                jp = j-ey(alpha)
-                
-                g(i,j,alpha) = g_post(ip,jp,alpha)
+                useInterp = .false.
+                if(alpha.EQ.0) then
+                    g(i,j,alpha) = g_post(i,j,alpha)
+                elseif(ey(alpha).EQ.0) then
+                    useInterp = stream_x_valid(alpha,i)
+                    if(useInterp) then
+                        value = 0.0d0
+                        do ii = 1, 3
+                            value = value + stream_wx(alpha,i,ii)*g_post(stream_ix(alpha,i,ii),j,alpha)
+                        enddo
+                        g(i,j,alpha) = value
+                    endif
+                elseif(ex(alpha).EQ.0) then
+                    useInterp = stream_y_valid(alpha,j)
+                    if(useInterp) then
+                        value = 0.0d0
+                        do jj = 1, 3
+                            value = value + stream_wy(alpha,j,jj)*g_post(i,stream_iy(alpha,j,jj),alpha)
+                        enddo
+                        g(i,j,alpha) = value
+                    endif
+                else
+                    useInterp = stream_x_valid(alpha,i).AND.stream_y_valid(alpha,j)
+                    if(useInterp) then
+                        value = 0.0d0
+                        do jj = 1, 3
+                            do ii = 1, 3
+                                value = value + stream_wx(alpha,i,ii)*stream_wy(alpha,j,jj)* &
+                                    g_post(stream_ix(alpha,i,ii),stream_iy(alpha,j,jj),alpha)
+                            enddo
+                        enddo
+                        g(i,j,alpha) = value
+                    endif
+                endif
+                if((.not.useInterp).AND.(alpha.NE.0)) then
+                    ip = i-ex(alpha)
+                    jp = j-ey(alpha)
+                    g(i,j,alpha) = g_post(ip,jp,alpha)
+                endif
             enddo
         enddo
     enddo
@@ -3156,9 +3448,9 @@ end subroutine append_convergence_master_tecplot
   subroutine calNuRe()
     use commondata
     implicit none
-    integer(kind=4) :: i, j
-    real(kind=8) :: NuVolAvg_temp, NuVolAvg_global_temp    !体平均 Nu
-    real(kind=8) :: ReVolAvg_temp, ReVolAvg_global_temp    !体平均 Re
+    integer(kind=4) :: i, j, globalI, globalJ
+    real(kind=8) :: NuVolAvg_temp, ReVolAvg_temp, areaWeight
+    real(kind=8) :: NuReLocal(2), NuReGlobal(2)
     real(kind=8) :: sampleTime
     logical :: exNu, exRe
     logical, save :: first_nure_write = .true.
@@ -3199,27 +3491,46 @@ end subroutine append_convergence_master_tecplot
     NuVolAvg_temp = 0.0d0    
 #ifdef SideHeatedCell  
     !$acc wait(1)
-    !$acc parallel loop collapse(2) present(u,T) reduction(+:NuVolAvg_temp)
+    !$acc parallel loop collapse(2) present(u,T,wx,wy) private(globalI,globalJ,areaWeight) reduction(+:NuVolAvg_temp)
     do j = 1, yLocalCount
         do i = 1, xLocalCount
-            NuVolAvg_temp = NuVolAvg_temp+u(i,j)*(T(i,j)-Tref)     !对流热通量
+            globalI = xStartGlobal + i - 1
+            globalJ = yStartGlobal + j - 1
+            areaWeight = wx(globalI)*wy(globalJ)
+            NuVolAvg_temp = NuVolAvg_temp+areaWeight*u(i,j)*(T(i,j)-Tref)     !非均匀网格 midpoint-rule 加权对流热通量
         enddo
     enddo
 #endif
 
 #ifdef RayleighBenardCell  
     !$acc wait(1)
-    !$acc parallel loop collapse(2) present(v,T) reduction(+:NuVolAvg_temp)
+    !$acc parallel loop collapse(2) present(v,T,wx,wy) private(globalI,globalJ,areaWeight) reduction(+:NuVolAvg_temp)
     do j = 1, yLocalCount
         do i = 1, xLocalCount
-            NuVolAvg_temp = NuVolAvg_temp+v(i,j)*(T(i,j)-Tref)     !对流热通量
+            globalI = xStartGlobal + i - 1
+            globalJ = yStartGlobal + j - 1
+            areaWeight = wx(globalI)*wy(globalJ)
+            NuVolAvg_temp = NuVolAvg_temp+areaWeight*v(i,j)*(T(i,j)-Tref)     !非均匀网格 midpoint-rule 加权对流热通量
         enddo
     enddo
 #endif
 
+    ReVolAvg_temp = 0.0d0
+    !$acc wait(1)
+    !$acc parallel loop collapse(2) present(u,v,wx,wy) private(globalI,globalJ,areaWeight) reduction(+:ReVolAvg_temp)
+    do j = 1, yLocalCount
+        do i = 1, xLocalCount 
+            globalI = xStartGlobal + i - 1
+            globalJ = yStartGlobal + j - 1
+            areaWeight = wx(globalI)*wy(globalJ)
+            ReVolAvg_temp = ReVolAvg_temp+areaWeight*dsqrt(u(i,j)*u(i,j)+v(i,j)*v(i,j))
+        enddo
+    enddo
 
-    call MPI_ALLREDUCE(NuVolAvg_temp, NuVolAvg_global_temp, 1, MPI_DOUBLE_PRECISION, MPI_SUM, COMM2D, IERR)
-    NuVolAvg(dimensionlessTime) = NuVolAvg_global_temp/dble(nx*ny)*lengthUnit/diffusivity+1.0d0    !!体平均 Nusselt 数 = 1 + (常数系数) × 体平均对流热通量
+    NuReLocal = (/ NuVolAvg_temp, ReVolAvg_temp /)
+    call MPI_ALLREDUCE(NuReLocal, NuReGlobal, 2, MPI_DOUBLE_PRECISION, MPI_SUM, COMM2D, IERR)
+    NuVolAvg(dimensionlessTime) = NuReGlobal(1)/quadSumArea*lengthUnit/diffusivity+1.0d0    !!ISLBM体平均 Nusselt 数：非均匀网格体积分加权
+    ReVolAvg(dimensionlessTime) = NuReGlobal(2)/quadSumArea*lengthUnit/viscosity
 
     if(isRoot) then
         if((first_nure_write).AND.(loadInitField.EQ.0)) then
@@ -3232,18 +3543,6 @@ end subroutine append_convergence_master_tecplot
             real(NuVolAvg(dimensionlessTime),kind=8)   !以格子步数或者自由落体时间来写入
         close(01)
     endif
-
-    ReVolAvg_temp = 0.0d0
-    !$acc wait(1)
-    !$acc parallel loop collapse(2) present(u,v) reduction(+:ReVolAvg_temp)
-    do j = 1, yLocalCount
-        do i = 1, xLocalCount 
-            ReVolAvg_temp = ReVolAvg_temp+(u(i,j)*u(i,j)+v(i,j)*v(i,j))
-        enddo
-    enddo
-    call MPI_ALLREDUCE(ReVolAvg_temp, ReVolAvg_global_temp, 1, MPI_DOUBLE_PRECISION, MPI_SUM, COMM2D, IERR)
-    ReVolAvg(dimensionlessTime) = dsqrt(ReVolAvg_global_temp/dble(nx*ny))*lengthUnit/viscosity    !全域体平均 RMS-Reynolds 数
-
 
     if(isRoot) then
         if((first_nure_write).AND.(loadInitField.EQ.0)) then

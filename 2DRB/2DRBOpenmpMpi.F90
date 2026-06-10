@@ -127,7 +127,7 @@
 
         !===============================================================================================
         ! MPI+OpenMP 并行配置
-        integer(kind=4), parameter :: OMP_THREADS_PER_NODE=24      ! 每个节点分配给本程序的总线程数
+        integer(kind=4), parameter :: OMP_THREADS_PER_NODE=16       ! 每个节点分配给本程序的总线程数
         integer(kind=4), parameter :: NodeCount=1                  ! 参与当前算例的节点数；多节点模式要求 NPROC 能被 NodeCount 整除
         integer(kind=4) :: OMP_THREADS_PER_RANK                    ! 每个 MPI 进程的线程数，由线程分配宏自动计算
 
@@ -160,7 +160,7 @@
 
         !===============================================================================================
         ! 无量纲参数
-        integer(kind=4), parameter :: nx=256, ny=256     !格子网格
+        integer(kind=4), parameter :: nx=512, ny=512     !格子网格
 #ifdef SideHeatedCell
         real(kind=8), parameter :: lengthUnit=dble(nx)     !侧壁差温：特征长度取 x 方向长度
 #else
@@ -223,10 +223,10 @@
         real(kind=8), parameter :: reloadFileInterval=100.0d0  ! f/g 重启文件输出间隔（单位：t_ff）
         real(kind=8), parameter :: outputPltFileInterval=100.0d0  ! Tecplot 文件输出间隔（单位：t_ff）
         integer(kind=4), parameter :: dimensionlessTimeMax=int(12000.0d0/outputSnapshotInterval)
-        integer(kind=4), parameter :: outputSnapshotFile=1   ! 是否输出后处理快照文件：0=不输出，1=输出
-        integer(kind=4), parameter :: outputPltFile=1   ! 是否输出 plt 文件：0=不输出，1=输出
-        integer(kind=4), parameter :: outputReloadFile=1 ! 是否周期输出 f/g 重启文件：0=不输出，1=输出
-        integer(kind=4), parameter :: itc_max=20000000  ! 稳态：最大格子步，实际仍由 errorU/errorT 提前停止
+        integer(kind=4), parameter :: outputSnapshotFile=0   ! 是否输出后处理快照文件：0=不输出，1=输出
+        integer(kind=4), parameter :: outputPltFile=0   ! 是否输出 plt 文件：0=不输出，1=输出
+        integer(kind=4), parameter :: outputReloadFile=0 ! 是否周期输出 f/g 重启文件：0=不输出，1=输出
+        integer(kind=4), parameter :: itc_max=20000  ! 稳态：最大格子步，实际仍由 errorU/errorT 提前停止
 #endif
 
 #ifdef unsteadyFlow
@@ -329,9 +329,11 @@
     use commondata
     implicit none
     real(kind=8) :: timeStart, timeEnd
+    real(kind=8) :: cpuElapsedLocal, cpuElapsedTotal
     character(len=24) :: ctime, string
     INTEGER(kind=4) :: time
     real(kind=8) :: timeStart2, timeEnd2
+    real(kind=8) :: wallElapsedLocal, wallElapsedMax
 #ifdef unsteadyFlow
     integer(kind=4) :: nextSampleItc
     integer(kind=4) :: nextSampleAbsItc
@@ -384,7 +386,7 @@
     !-----------------------------------------------------------------------------------------------
 
     call MPI_BARRIER(COMM2D, IERR)   !MPI 屏障同步
-    call CPU_TIME(timeStart)         !当前进程累计消耗的 CPU 时间,包括并行
+    call CPU_TIME(timeStart)         !当前进程累计消耗的 CPU 时间,把多个线程的 CPU 消耗累加
     timeStart2 = MPI_WTIME()         !MPI 墙钟时间
 #ifdef steadyFlow
     do while( ((errorU.GT.epsU).OR.(errorT.GT.epsT)).AND.(itc.LE.itc_max) )   !只要 (errorU > epsU 或 errorT > epsT) 且 itc ≤ itc_max，就继续循环
@@ -455,6 +457,30 @@
     call MPI_BARRIER(COMM2D, IERR)
     call CPU_TIME(timeEnd)         !当前进程累计消耗的 CPU 时间,包括并行
     timeEnd2 = MPI_WTIME()         !MPI 墙钟时间
+    cpuElapsedLocal = timeEnd-timeStart
+    wallElapsedLocal = timeEnd2-timeStart2
+    ! CPU_TIME 是单个 MPI rank 的进程 CPU 时间；这里汇总所有 rank，才能看到整节点 24 核总 CPU 时间口径。
+    call MPI_REDUCE(cpuElapsedLocal, cpuElapsedTotal, 1, MPI_DOUBLE_PRECISION, MPI_SUM, 0, COMM2D, IERR)
+    ! 墙钟性能由最慢 rank 决定，取所有 rank 的最大耗时作为 MPI 总吞吐的计时分母。
+    call MPI_REDUCE(wallElapsedLocal, wallElapsedMax, 1, MPI_DOUBLE_PRECISION, MPI_MAX, 0, COMM2D, IERR)
+
+    ! 性能测试结果必须在最终串行后处理之前写出，避免 psi/vort 等诊断拖慢或中断时看不到 MLUPS。
+    open(unit=00,file=trim(settingsFile),status='unknown',position='append')
+    write(00,*) "======================================================================"
+    write(00,*) "Time (CPU, local rank) = ", real(cpuElapsedLocal,kind=8), "s"                  !当前 rank 的 CPU 时间；约等于本 rank 线程数乘墙钟时间
+    write(00,*) "MLUPS (CPU, local rank diagnostic) = ", &
+        real( dble(nx)*dble(ny)*dble(itc)/max(cpuElapsedLocal,1.0d-12)/1.0d6,kind=8 )
+    write(00,*) "Time (MPI wall, local rank) = ", real(wallElapsedLocal,kind=8), "s"            !当前 rank 看到的墙钟时间
+    if(isRoot) then
+        write(00,*) "Time (CPU, all ranks sum) = ", real(cpuElapsedTotal,kind=8), "s"            !所有 MPI rank 的 CPU 时间总和；24 核满载时约为墙钟时间的 24 倍
+        write(00,*) "Effective CPU cores from timers = ", real(cpuElapsedTotal/max(wallElapsedMax,1.0d-12),kind=8)
+        write(00,*) "MLUPS (CPU, all ranks sum) = ", &
+            real( dble(nx)*dble(ny)*dble(itc)/max(cpuElapsedTotal,1.0d-12)/1.0d6,kind=8 )
+        write(00,*) "Time (MPI wall, max rank) = ", real(wallElapsedMax,kind=8), "s"             !MPI 总运行时间按最慢 rank 计
+        write(00,*) "MLUPS (MPI wall, all CPU cores) = ", &
+            real( dble(nx)*dble(ny)*dble(itc)/max(wallElapsedMax,1.0d-12)/1.0d6,kind=8 )
+    endif
+    close(00)
 
 #ifdef steadyFlow
     call output_Tecplot()          !输出最后一步的plt结果
@@ -502,7 +528,8 @@
 #ifdef VerticalWallsNoslip
         ! psi/vort 后处理默认封闭腔体：四周无滑移，psi 在物理边界取同一常数。
         ! 若垂直边界改为周期速度边界，流函数边界补点和涡量单边差分需要另写周期版本。
-        call calc_psi_vort_and_output()  ! 输出中心abs(psi), max(abs(psi))及位置；max位置用细网格样条插值
+        ! 性能测试关闭 Tecplot 输出时，也跳过耗时的 psi-vort 文件和 10001x10001 细网格搜索。
+        if(outputPltFile.EQ.1) call calc_psi_vort_and_output()
 #endif
     endif
 #endif
@@ -515,10 +542,6 @@
 
     open(unit=00,file=trim(settingsFile),status='unknown',position='append')        !在这个txt文件后面继续写（追加模式）
     write(00,*) "======================================================================"
-    write(00,*) "Time (CPU) = ", real(timeEnd-timeStart,kind=8), "s"                             !当前进程累计消耗的 CPU 时间,包括并行
-    write(00,*) "MLUPS = ", real( dble(nx)*dble(ny)*dble(itc)/(timeEnd-timeStart)/1.0d6,kind=8 )   !百万格点更新/秒
-    write(00,*) "Time (MPI wall) = ", real(timeEnd2-timeStart2,kind=8), "s"                      !墙钟时间
-    write(00,*) "MLUPS (MPI wall) = ", real( dble(nx)*dble(ny)*dble(itc)/(timeEnd2-timeStart2)/1.0d6,kind=8 )   !百万格点更新/秒
 #ifdef steadyFlow
     write(00,'(a,1x,ES24.16E3)') "Nu_global =", real(Nu_global,kind=8)
     write(00,*) "Nu_hot    =", Nu_hot

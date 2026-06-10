@@ -91,9 +91,9 @@
 
 !算法切换
 !启用 M1G 修正；注释掉则不使用 useG 相关修正
-!#define EnableUseG
+#define EnableUseG
 !启用旧算法
-#define EnableLegacyThermalScheme
+!#define EnableLegacyThermalScheme
 
 ! 温度算法宏的选择：legacy D3Q7 和 EnableUseG 历史通量修正属于两套温度模型，不能混用。
 #if defined(EnableUseG) && defined(EnableLegacyThermalScheme)
@@ -180,7 +180,7 @@ module commondata3dOpenmpMpi
 
   !===============================================================================================
   ! MPI+OpenMP 并行配置
-  integer(kind=4), parameter :: OMP_THREADS_PER_NODE=24      ! 每个节点分配给本程序的总线程数
+  integer(kind=4), parameter :: OMP_THREADS_PER_NODE=16       ! 每个节点分配给本程序的总线程数
   integer(kind=4), parameter :: NodeCount=1                  ! 参与当前算例的节点数；多节点模式要求 NPROC 能被 NodeCount 整除
   integer(kind=4) :: OMP_THREADS_PER_RANK                    ! 每个 MPI 进程的线程数，由线程分配宏自动计算
 
@@ -217,7 +217,7 @@ module commondata3dOpenmpMpi
 
   !===============================================================================================
   ! 无量纲参数
-  integer(kind=4), parameter :: nx=120, ny=120, nz=120     ! 三个方向的流体节点数；不包括边界节点
+  integer(kind=4), parameter :: nx=128, ny=128, nz=128     ! 三个方向的流体节点数；不包括边界节点
 #ifdef SideHeatedCell
   real(kind=8), parameter :: lengthUnit=dble(ny)     ! 侧壁差温：特征长度取 y 方向左右冷热壁距离
 #else
@@ -225,7 +225,7 @@ module commondata3dOpenmpMpi
 #endif
   real(kind=8), parameter :: pi=acos(-1.0d0)
 
-  real(kind=8), parameter :: Rayleigh=1.0d7
+  real(kind=8), parameter :: Rayleigh=1.0d6
   real(kind=8), parameter :: Prandtl=0.71d0
   real(kind=8), parameter :: Mach=0.1d0
   real(kind=8), parameter :: Thot=0.5d0, Tcold=-0.5d0
@@ -276,10 +276,10 @@ module commondata3dOpenmpMpi
   real(kind=8), parameter :: reloadFileInterval=100.0d0  ! f/g 重启文件输出间隔（单位：t_ff）
   real(kind=8), parameter :: outputPltFileInterval=100.0d0  ! Tecplot 文件输出间隔（单位：t_ff）
   integer(kind=4), parameter :: dimensionlessTimeMax=int(12000.0d0/outputSnapshotInterval)
-  integer(kind=4), parameter :: outputSnapshotFile=1  ! 是否输出后处理快照文件：0=不输出，1=输出
-  integer(kind=4), parameter :: outputPltFile=1       ! 是否输出 Tecplot 文件：0=不输出，1=输出
-  integer(kind=4), parameter :: outputReloadFile=1    ! 是否周期输出 f/g 重启文件：0=不输出，1=输出
-  integer(kind=4), parameter :: itc_max=20000000      ! 稳态最大格子步，实际可由 errorU/errorT 提前停止
+  integer(kind=4), parameter :: outputSnapshotFile=0  ! 是否输出后处理快照文件：0=不输出，1=输出
+  integer(kind=4), parameter :: outputPltFile=0       ! 是否输出 Tecplot 文件：0=不输出，1=输出
+  integer(kind=4), parameter :: outputReloadFile=0    ! 是否周期输出 f/g 重启文件：0=不输出，1=输出
+  integer(kind=4), parameter :: itc_max=10000      ! 稳态最大格子步，实际可由 errorU/errorT 提前停止
 #endif
 
 #ifdef unsteadyFlow
@@ -377,6 +377,8 @@ program main3dOpenmpMpi
 
   real(kind=8) :: timeStart, timeEnd
   real(kind=8) :: timeStart2, timeEnd2
+  real(kind=8) :: cpuElapsedLocal, cpuElapsedTotal
+  real(kind=8) :: wallElapsedLocal, wallElapsedMax
   character(len=24) :: ctime
   character(len=24) :: string
   integer(kind=4) :: time
@@ -499,6 +501,33 @@ program main3dOpenmpMpi
   call MPI_BARRIER(COMM3D, IERR)
   call CPU_TIME(timeEnd)
   timeEnd2 = MPI_WTIME()
+  cpuElapsedLocal = timeEnd - timeStart
+  wallElapsedLocal = timeEnd2 - timeStart2
+  ! CPU_TIME 是单个 MPI rank 的进程 CPU 时间；这里汇总所有 rank，才能看到整节点总 CPU 时间口径。
+  call MPI_REDUCE(cpuElapsedLocal, cpuElapsedTotal, 1, MPI_DOUBLE_PRECISION, MPI_SUM, 0, COMM3D, IERR)
+  ! 墙钟性能由最慢 rank 决定，取所有 rank 的最大耗时作为 MPI 总吞吐的计时分母。
+  call MPI_REDUCE(wallElapsedLocal, wallElapsedMax, 1, MPI_DOUBLE_PRECISION, MPI_MAX, 0, COMM3D, IERR)
+
+  ! 性能测试结果必须在最终串行后处理之前写出，避免 Tecplot/Nu/Re 诊断拖慢或中断时看不到 MLUPS。
+  open(unit=00, file=trim(settingsFile), status='unknown', position='append')
+  write(00,*) '======================================================================'
+  write(00,*) 'Time (CPU, local rank) = ', real(cpuElapsedLocal, kind=8), 's'                 ! 当前 rank 的 CPU 时间；约等于本 rank 线程数乘墙钟时间
+  write(00,*) 'MLUPS (CPU, local rank diagnostic) = ', &
+       real(dble(nx) * dble(ny) * dble(nz) * dble(itc) / &
+       & max(cpuElapsedLocal, 1.0d-12) / 1.0d6, kind=8)
+  write(00,*) 'Time (MPI wall, local rank) = ', real(wallElapsedLocal, kind=8), 's'           ! 当前 rank 看到的墙钟时间
+  if(isRoot) then
+    write(00,*) 'Time (CPU, all ranks sum) = ', real(cpuElapsedTotal, kind=8), 's'             ! 所有 MPI rank 的 CPU 时间总和
+    write(00,*) 'Effective CPU cores from timers = ', real(cpuElapsedTotal / max(wallElapsedMax, 1.0d-12), kind=8)
+    write(00,*) 'MLUPS (CPU, all ranks sum) = ', &
+         real(dble(nx) * dble(ny) * dble(nz) * dble(itc) / &
+         & max(cpuElapsedTotal, 1.0d-12) / 1.0d6, kind=8)
+    write(00,*) 'Time (MPI wall, max rank) = ', real(wallElapsedMax, kind=8), 's'              ! MPI 总运行时间按最慢 rank 计
+    write(00,*) 'MLUPS (MPI wall, all CPU cores) = ', &
+         real(dble(nx) * dble(ny) * dble(nz) * dble(itc) / &
+         & max(wallElapsedMax, 1.0d-12) / 1.0d6, kind=8)
+  endif
+  close(00)
 
 #ifdef steadyFlow
   call output_Tecplot()
@@ -545,15 +574,6 @@ program main3dOpenmpMpi
 #endif
 
   open(unit=00, file=trim(settingsFile), status='unknown', position='append')
-  write(00,*) '======================================================================'
-  write(00,*) 'Time (CPU) = ', real(timeEnd - timeStart, kind=8), 's'
-  write(00,*) 'MLUPS = ', &
-       real(dble(nx) * dble(ny) * dble(nz) * dble(itc) / &
-       & max(timeEnd - timeStart, 1.0d-12) / 1.0d6, kind=8)
-  write(00,*) 'Time (MPI wall) = ', real(timeEnd2 - timeStart2, kind=8), 's'
-  write(00,*) 'MLUPS (MPI wall) = ', &
-       real(dble(nx) * dble(ny) * dble(nz) * dble(itc) / &
-       & max(timeEnd2 - timeStart2, 1.0d-12) / 1.0d6, kind=8)
 #ifdef steadyFlow
   write(00,*) 'Nu_global =', Nu_global
   write(00,*) 'Nu_hot    =', Nu_hot
