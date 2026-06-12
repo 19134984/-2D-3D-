@@ -1,6 +1,6 @@
 ﻿!=============================================================
 !!!    注释区，代码描述
-!!!    浮力驱动自然对流（上下加热）
+!!!    二维浮力驱动自然对流 OpenACC 并行版本
 !!!    LBM方法
 !!!    MRT-LBE
 !=============================================================
@@ -8,8 +8,8 @@
 
 !=============================================================
 !   自定义宏，一些选项的开关
-#define steadyFlow    
-!#define unsteadyFlow
+!#define steadyFlow    
+#define unsteadyFlow
 
 !   流动模式宏的选择，两个都开、两个都关都会报错；只有二选一才通过。
 #if defined(steadyFlow) && defined(unsteadyFlow)
@@ -56,20 +56,26 @@
 #endif
 
 !算法切换
+!启用 STLBM 宏观变量直接推进；f/g 只作为平衡态和非平衡项的临时缓存，不作为演化状态量。
+#define EnableSTLBM
 !启用 M1G 修正；注释掉则不使用 useG 相关修正
-#define EnableUseG
+!#define EnableUseG
 !启用旧温度算法
 !#define EnableLegacyThermalScheme
 
-!   温度算法宏的选择
+!   温度算法宏的选择：STLBM、UseG、旧温度算法三选一
+#if defined(EnableSTLBM) && defined(EnableUseG)
+#error "Choose only one thermal scheme: EnableSTLBM or EnableUseG"
+#endif
+#if defined(EnableSTLBM) && defined(EnableLegacyThermalScheme)
+#error "Choose only one thermal scheme: EnableSTLBM or EnableLegacyThermalScheme"
+#endif
 #if defined(EnableUseG) && defined(EnableLegacyThermalScheme)
 #error "Choose only one thermal scheme: EnableUseG or EnableLegacyThermalScheme"
 #endif
-#if !defined(EnableUseG) && !defined(EnableLegacyThermalScheme)
-#error "Define one thermal scheme: EnableUseG or EnableLegacyThermalScheme"
+#if !defined(EnableSTLBM) && !defined(EnableUseG) && !defined(EnableLegacyThermalScheme)
+#error "Define one thermal scheme: EnableSTLBM, EnableUseG, or EnableLegacyThermalScheme"
 #endif
-
-
 
 !   自定义宏结束
 !=============================================================
@@ -86,7 +92,7 @@
         ! 正常断电续算只需要设置 loadInitField=1；
         ! 代码只读取 <reloadFilePrefix>-latest.meta，并从里面找到最新的 .bin。
         ! 正常续算不用改 reloadFileNum；只有 latest .meta 缺失时，
-        ! 才手动设置 reloadFileNum 作为保守推断编号。
+        ! 才手动设置 reloadFileNum 作为保守推断编号。重启文件的编号
         integer(kind=4) :: reloadFileNum=0              ! latest .meta 存在时会被覆盖；meta 缺失时作为手工兜底编号
         !===============================================================================================
         real(kind=8) :: reloadDimensionlessTime=0.0d0   ! 续算前已累计的 t_ff；优先从 latest .meta 读取，meta 缺失时由代码推断
@@ -96,25 +102,16 @@
 
         !===============================================================================================
         ! 无量纲参数
-        integer(kind=4), parameter :: nx=256, ny=256     !格子网格
-        ! 本文件采用erf非均匀网格; 均匀网格由其他基准文件负责。
-        ! erf网格拉伸强度。数值越大, 节点越向两侧物理壁面聚集。
-        real(kind=8), parameter :: ISLBM_StretchA=1.5d0
-        ! raw坐标中第一个内部流体节点的位置rawX(1)/rawY(1), 也就是近壁的1个lu。
-        ! half-way壁面放在0.5*rawX(1)或0.5*rawY(1), 因此有效长度为1-ISLBM_Dx/DyMinRaw。
-        real(kind=8), parameter :: ISLBM_DxMinRaw=0.5d0*(1.0d0+erf(ISLBM_StretchA*(1.0d0/dble(nx+1)-0.5d0))/erf(0.5d0*ISLBM_StretchA))
-        real(kind=8), parameter :: ISLBM_DyMinRaw=0.5d0*(1.0d0+erf(ISLBM_StretchA*(1.0d0/dble(ny+1)-0.5d0))/erf(0.5d0*ISLBM_StretchA))
+        integer(kind=4), parameter :: nx=1024, ny=1024     !格子网格
 #ifdef SideHeatedCell
-        ! ISLBM有效长度含多少个近壁lu: lengthUnit=(rightWall-leftWall)/ISLBM_DxMinRaw。
-        real(kind=8), parameter :: lengthUnit=(1.0d0-ISLBM_DxMinRaw)/ISLBM_DxMinRaw
+        real(kind=8), parameter :: lengthUnit=dble(nx)     !侧壁差温：特征长度取 x 方向长度
 #else
-        ! ISLBM有效长度含多少个近壁lu: lengthUnit=(topWall-bottomWall)/ISLBM_DyMinRaw。
-        real(kind=8), parameter :: lengthUnit=(1.0d0-ISLBM_DyMinRaw)/ISLBM_DyMinRaw
+        real(kind=8), parameter :: lengthUnit=dble(ny)     !上下差温：特征长度取 y 方向长度
 #endif
         real(kind=8), parameter :: pi = acos(-1.0d0)
 
-        real(kind=8), parameter :: Rayleigh=1.0d8        
-        real(kind=8), parameter :: Prandtl=0.71d0       
+        real(kind=8), parameter :: Rayleigh=1.0d7        
+        real(kind=8), parameter :: Prandtl=0.7d0       
         real(kind=8), parameter :: Mach=0.1d0
         real(kind=8), parameter :: Thot=0.5d0, Tcold=-0.5d0
         real(kind=8), parameter :: Tref=0.5d0*(Thot+Tcold)
@@ -161,34 +158,35 @@
         !===============================================================================================          
         
         !===============================================================================================
+        ! 输出/备份相关设置（以自由落体时间 t_ff 为单位）
         real(kind=8), parameter :: epsU=1.0d-7, epsT=1.0d-7    ! 稳态收敛阈值   
 
 #ifdef steadyFlow
         real(kind=8), parameter :: outputSnapshotInterval=10.0d0   ! 快照和 Nu/Re 时间序列采样间隔（单位：t_ff）
-        real(kind=8), parameter :: reloadFileInterval=100.0d0  ! f/g 重启文件输出间隔（单位：t_ff）
+        real(kind=8), parameter :: reloadFileInterval=100.0d0  ! rho/u/v/T 重启文件输出间隔（单位：t_ff）
         real(kind=8), parameter :: outputPltFileInterval=100.0d0  ! Tecplot 文件输出间隔（单位：t_ff）
         integer(kind=4), parameter :: dimensionlessTimeMax=int(12000.0d0/outputSnapshotInterval)
         integer(kind=4), parameter :: outputSnapshotFile=1   ! 是否输出后处理快照文件：0=不输出，1=输出
         integer(kind=4), parameter :: outputPltFile=1   ! 是否输出 plt 文件：0=不输出，1=输出
-        integer(kind=4), parameter :: outputReloadFile=1 ! 是否周期输出 f/g 重启文件：0=不输出，1=输出
+        integer(kind=4), parameter :: outputReloadFile=1 ! 是否周期输出 rho/u/v/T 重启文件：0=不输出，1=输出
         integer(kind=4), parameter :: itc_max=20000000  ! 稳态：最大格子步，实际仍由 errorU/errorT 提前停止
 #endif
 
 #ifdef unsteadyFlow
         real(kind=8), parameter :: outputSnapshotInterval=0.5d0   ! uvTrho 快照和 Nu/Re 时间序列采样间隔（单位：t_ff）
-        real(kind=8), parameter :: reloadFileInterval=100.0d0  ! f/g 重启文件输出间隔（单位：t_ff）
+        real(kind=8), parameter :: reloadFileInterval=100.0d0  ! rho/u/v/T 重启文件输出间隔（单位：t_ff）
         real(kind=8), parameter :: outputPltFileInterval=100.0d0  ! Tecplot 文件周期输出间隔（单位：t_ff）
-        real(kind=8), parameter :: unsteadyRunDuration=1000.0d0  ! 非稳态阶段固定运行到 1000 个 t_ff
+        real(kind=8), parameter :: unsteadyRunDuration=1000.0d0  ! 非稳态总目标时长，续算时只补足到该 t_ff
         ! 以下三个参数只控制非稳态结束后的 Nu/Re 统计平均窗口，不改变推进时长或采样频率。
-        ! 时间以整个算例的 t_ff 计；续算时 reloadDimensionlessTime 用来跳过旧样本并接上新样本。
+        ! 时间以整个非稳态算例的绝对 t_ff 计，续算统计会包含旧文件中已有的历史数据。
         real(kind=8), parameter :: unsteadyAverageStartTf=0.5d0*unsteadyRunDuration  ! 平均窗口起点
         real(kind=8), parameter :: unsteadyAverageEndTf=unsteadyRunDuration          ! 平均窗口终点
         real(kind=8), parameter :: unsteadyAverageMidTf=0.5d0*(unsteadyAverageStartTf+unsteadyAverageEndTf) ! 前/后半分界
-        integer(kind=4), parameter :: unsteadySampleCount=max(1, int(unsteadyRunDuration/outputSnapshotInterval+0.5d0)) !输出次数计数器
+        integer(kind=4), parameter :: unsteadySampleCount=max(1, int(unsteadyRunDuration/outputSnapshotInterval+0.5d0))   !计数器，输出多少次快照
         integer(kind=4), parameter :: dimensionlessTimeMax=unsteadySampleCount
         integer(kind=4), parameter :: outputSnapshotFile=1   ! 是否输出后处理快照文件：0=不输出，1=输出
         integer(kind=4), parameter :: outputPltFile=1   ! 是否输出 plt 文件：0=不输出，1=输出
-        integer(kind=4), parameter :: outputReloadFile=1 ! 是否周期输出 f/g 重启文件：0=不输出，1=输出
+        integer(kind=4), parameter :: outputReloadFile=1 ! 是否周期输出 rho/u/v/T 重启文件：0=不输出，1=输出
         integer(kind=4), parameter :: itc_max=max(1, int(unsteadyRunDuration*timeUnit+0.5d0)) ! 非稳态：由总 t_ff 自动换算格子步
 #endif
 
@@ -206,15 +204,16 @@
         ! 体平均 Nu 和 Re 的时间序列缓存
         ! 只有在启用并调用 calNuRe() 的情况下这些数组才会被真正填充
   
-        character(len=100) :: snapshotFilePrefix="buoyancyCavity2DOpenmpISLBMSnapshot"
+        character(len=100) :: snapshotFilePrefix="buoyancyCavity2DOpenaccSTLBMSnapshot"
         ! 快照输出文件前缀（实际文件名形如：<snapshotFilePrefix>-<编号>.bin）
 
-        character(len=100) :: pltFolderPrefix="buoyancyCavity2DOpenmpISLBMTecplot"
+        character(len=100) :: pltFolderPrefix="buoyancyCavity2DOpenaccSTLBMTecplot"
         ! plt 输出文件前缀（实际文件名形如：<pltFolderPrefix>-<编号>.plt）
 
-        character(len=100) :: reloadFilePrefix="reloadFile2DOpenmpISLBM"
+        character(len=100) :: reloadFilePrefix="reloadFile2DOpenaccSTLBM"
         ! 重启读取文件的前缀；latest meta 模式实际读取 meta 中记录的 <reloadFilePrefix>-<编号>.bin
-        character(len=100) :: settingsFile="SimulationSettings2DOpenmpISLBM.txt"
+        
+        character(len=100) :: settingsFile="SimulationSettings2DOpenaccSTLBM.txt"
         !===============================================================================================
 
         !===============================================================================================
@@ -222,18 +221,6 @@
         real(kind=8) :: errorU, errorT
         
         real(kind=8) :: xp(0:nx+1), yp(0:ny+1)      !无量纲的坐标数组，包括边界
-        ! 非均匀网格积分宽度: quadWidthX/quadWidthY是每个流体节点代表的x/y方向控制宽度,
-        ! quadSumX/quadSumY/quadSumArea用于Nu、Re和体平均量的面积加权归一化。
-        real(kind=8) :: quadWidthX(1:nx), quadWidthY(1:ny), quadSumX, quadSumY, quadSumArea
-        ! 归一化坐标中的1个lattice unit; 迁移时用xp(i)-ex(alpha)*ISLBM_Shift找上游点。
-        real(kind=8), parameter :: ISLBM_Shift=1.0d0/lengthUnit
-        ! ISLBM off-lattice迁移的三点Lagrange插值模板:
-        ! streamInterpIndexX/Y保存每个方向alpha、每个节点对应的3个插值节点编号。
-        integer(kind=4) :: streamInterpIndexX(0:8,1:nx,3), streamInterpIndexY(0:8,1:ny,3)
-        ! streamInterpWeightX/Y保存上述3个插值节点的权重, 用于从f_post/g_post插值得到迁移后分布。
-        real(kind=8) :: streamInterpWeightX(0:8,1:nx,3), streamInterpWeightY(0:8,1:ny,3)
-        ! valid标志说明上游插值点是否仍在内部流体节点范围内; 越界时交给边界处理而不插值。
-        logical :: streamInterpValidX(0:8,1:nx), streamInterpValidY(0:8,1:ny)
         real(kind=8), allocatable :: u(:,:), v(:,:), T(:,:), rho(:,:)
 
 #ifdef steadyFlow
@@ -241,11 +228,19 @@
 #endif
         real(kind=8), allocatable :: f(:,:,:), f_post(:,:,:)
         real(kind=8), allocatable :: g(:,:,:), g_post(:,:,:)
+        real(kind=8), allocatable :: T_pred(:,:), T_new(:,:)
+        real(kind=8), allocatable :: T_ext(:,:), u_ext(:,:), v_ext(:,:)
+        real(kind=8), allocatable :: f_neq(:,:,:), g_neq(:,:,:)
         real(kind=8), allocatable :: Fx(:,:), Fy(:,:)
 
         real(kind=8), allocatable :: Bx_prev(:,:), By_prev(:,:)
 
         integer(kind=4) :: itc
+#ifdef EnableSTLBM
+        logical, parameter :: useSTLBM = .true.          !STLBM 宏观变量直接推进
+#else
+        logical, parameter :: useSTLBM = .false.
+#endif
 #ifdef EnableUseG
         logical, parameter :: useG = .true.            !M1G 开关
 #else
@@ -257,8 +252,10 @@
 #else
         logical, parameter :: useLegacyThermalScheme = .false.           
 #endif
+#ifdef steadyFlow
         real(kind=8) :: Nu_global, Nu_hot, Nu_cold, Nu_middle    !平均Nu，全场，侧壁以及中线
         real(kind=8) :: Nu_hot_max, Nu_hot_min, Nu_hot_max_position, Nu_hot_min_position    !左侧壁面的最大最小Nu，以及对应的位置
+#endif
         
         
         !格子离散速度和权重
@@ -278,36 +275,37 @@
 
     program main
 
-    use omp_lib
+    use openacc
     use commondata
     implicit none
     real(kind=8) :: timeStart, timeEnd
+    real(kind=8) :: timeStart2, timeEnd2
     character(len=24) :: ctime, string
     INTEGER(kind=4) :: time
-    real(kind=8) :: timeStart2, timeEnd2
-    integer(kind=4) :: myMaxThreads
+    integer(kind=4) :: numAccDevices
 #ifdef unsteadyFlow
     integer(kind=4) :: nextSampleItc
     integer(kind=4) :: nextSampleAbsItc
     integer(kind=4) :: unsteadyItcRemaining
 #endif
+    integer(kind=8) :: wallClockStart, wallClockEnd, wallClockRate
     
 
     !===============================================================================================
-    !设置并行核数
+    ! 初始化 OpenACC 设备
     if(loadInitField.EQ.1) then
         open(unit=00,file=trim(settingsFile),status='unknown',position='append')
         write(00,*) " "
         write(00,*) "================ Restart continuation begins ================"
     else
-        open(unit=00,file=trim(settingsFile),status='replace')   !新算例清掉旧日志，续算则追加
+        open(unit=00,file=trim(settingsFile),status='replace')
     endif
     string = ctime( time() )                      !ctime把 time() 返回的时间戳转换成可读的字符串
     write(00,*) 'Start: ', string                 !什么时候开始计算
-    write(00,*) "Starting OpenMP >>>>>>"
-    call OMP_set_num_threads(24)                   !使用 24 个线程
-    myMaxThreads = OMP_get_max_threads()           !查询最大可用线程数
-    write(00,*) "Max Running threads:",myMaxThreads
+    write(00,*) "Starting OpenACC >>>>>>"
+    call acc_init(acc_device_default)
+    numAccDevices = acc_get_num_devices(acc_device_default)
+    write(00,*) "Visible OpenACC devices:", numAccDevices
     close(00)
     !===============================================================================================
 
@@ -315,6 +313,7 @@
     !===============================================================================================
     ! Initialization
     call initial()
+    call enter_data_2d_openacc()
 #ifdef unsteadyFlow
     ! 非稳态的 itc_max 是整个算例的总目标步数；
     ! 续算时 restartItcOffset 是旧算例已经完成的步数，本次只推进剩余步数。
@@ -322,20 +321,24 @@
 #endif
 
     !===============================================================================================
-    !-----------------------------------------------------------------------------------------------
 
     call CPU_TIME(timeStart)         !当前进程累计消耗的 CPU 时间,包括并行
-    timeStart2 = OMP_get_wtime()     !墙钟时间(实际耗时，不包括并行)
+    ! system_clock 返回墙钟计数器和每秒计数率；
+    ! 下面用 counter/rate 把它换算成实际经过的秒数。
+    call system_clock(wallClockStart, wallClockRate)
+    timeStart2 = dble(wallClockStart) / dble(max(wallClockRate,1_8))
 #ifdef steadyFlow
-    do while( ((errorU.GT.epsU).OR.(errorT.GT.epsT)).AND.(itc.LE.itc_max) )   !只要 (errorU > epsU 或 errorT > epsT) 且 itc ≤ itc_max，就继续循环
-                                                                              !换成if，就是 errorU > epsU .and. errorT > epsT
+    do while( ((errorU.GT.epsU).OR.(errorT.GT.epsT)).AND.(itc.LE.itc_max) )
 #endif
 #ifdef unsteadyFlow
-    do while( itc.LT.unsteadyItcRemaining )       !非稳态：续算时只推进到 unsteadyRunDuration 对应的总格子步
+    do while( itc.LT.unsteadyItcRemaining )   !非稳态：续算时只推进到 unsteadyRunDuration 对应的总格子步
 #endif
 
         itc = itc+1
         
+#ifdef EnableSTLBM
+        call stlbm_step()
+#else
         call collision()
 
         call streaming()
@@ -351,18 +354,23 @@
         call bouncebackT()
         
         call macroT()
+#endif
 
 #ifdef steadyFlow
-        ! 周期输出按累计格子步判断，续算时才能接回不断电运行应有的输出节奏。
+        ! 周期输出按累计格子步判断；否则从 1050tf 续算会在 1150tf 才输出，
+        ! 而不是接回不断电运行应有的 1100tf、1200tf、...
         if(MOD(restartItcOffset+itc,2000).EQ.0) call check()
         if( (outputPltFile.EQ.1).AND.(MOD(restartItcOffset+itc, outputPltFileIntervalItc).EQ.0) ) then
+            call update_host_tecplot_2d_openacc()
             call output_Tecplot()  !稳态模式下的可选周期 Tecplot 输出
         endif
         if( (outputSnapshotFile.EQ.1).AND.(MOD(restartItcOffset+itc, outputSnapshotIntervalItc).EQ.0) ) then
+            call update_host_snapshot_2d_openacc()
             call output_SnapshotFile()  !稳态模式下的可选周期 uvTrho 快照输出
         endif
         if( (outputReloadFile.EQ.1).AND.(MOD(restartItcOffset+itc, reloadFileIntervalItc).EQ.0) ) then
-            call output_ReloadFile()      !稳态模式下的可选周期 f/g 重启文件输出
+            call update_host_reload_2d_openacc()
+            call output_ReloadFile()      !稳态模式下的可选周期 rho/u/v/T 重启文件输出
         endif
 #endif
 
@@ -376,20 +384,30 @@
             if(itc.LT.nextSampleItc) exit !如果本次运行还没走到这个采样步，就先退出采样循环，继续推进 LBM；走到了就调用 calNuRe()
             call calNuRe()
             if(outputSnapshotFile.EQ.1) then
+                call update_host_snapshot_2d_openacc()
                 call output_SnapshotFile()          !每 0.5 t_ff 输出一次后处理 uvTrho 快照
             endif
         enddo
         if( (outputPltFile.EQ.1).AND.(MOD(restartItcOffset+itc, outputPltFileIntervalItc).EQ.0) ) then
+            call update_host_tecplot_2d_openacc()
             call output_Tecplot()  !非稳态模式下的可选周期 Tecplot 输出
         endif
         if( (outputReloadFile.EQ.1).AND.(MOD(restartItcOffset+itc, reloadFileIntervalItc).EQ.0) ) then
-            call output_ReloadFile()      !非稳态模式下的可选周期 f/g 重启文件输出
+            call update_host_reload_2d_openacc()
+            call output_ReloadFile()      !非稳态模式下的可选周期 rho/u/v/T 重启文件输出
         endif
 #endif
      enddo
 
+    !$acc wait(1)
     call CPU_TIME(timeEnd)         !当前进程累计消耗的 CPU 时间,包括并行
-    timeEnd2 = OMP_get_wtime()     !墙钟时间(实际耗时，不包括并行)
+    ! 取墙钟结束计数器，用于后面输出 OpenACC 实际耗时。
+    call system_clock(wallClockEnd, wallClockRate)
+    timeEnd2 = dble(wallClockEnd) / dble(max(wallClockRate,1_8))
+    call update_host_snapshot_2d_openacc()
+    if( (outputReloadFile.EQ.1).AND.(MOD(restartItcOffset+itc, reloadFileIntervalItc).NE.0) ) then
+        call output_ReloadFile()      !结束步不是周期输出点时，额外保存最终 rho/u/v/T 重启状态
+    endif
 
 #ifdef steadyFlow
     call output_Tecplot()          !输出最后一步的plt结果
@@ -415,21 +433,22 @@
 ! 4) Nu 极值、中心线速度极值使用五点最小二乘抛物线插值；中心线在偶数网格时用两侧流体节点线性插值。
 ! 5) 如果后续改成周期速度/温度边界，或改变半步长边界布置，这里和各后处理子程序都需要重新检查。
 #ifdef SideHeatedCell                        
-    call SideHeatedcalc_Nu_global()    ! x方向全场平均Nu
-    call SideHeatedcalc_Nu_wall_avg()  ! 左/右壁, x中线平均Nu, 热壁Numax/Numin及位置
+    call SideHeatedcalc_Nu_global()          ! 全场平均Nu
+    call SideHeatedcalc_Nu_wall_avg()  ! 热/冷壁, 中线平均Nu,以及热壁最大Numax和Numin以及位置，都采用五点最小二乘法插值出来
     
-    call SideHeatedcalc_umid_max()     ! x中线上的u最大值及位置
-    call SideHeatedcalc_vmid_max()     ! y中线上的v最大值及位置
+    call SideHeatedcalc_umid_max()     !中心线上的最大速度及其位置，也是用五点最小二乘法插值出来
+    call SideHeatedcalc_vmid_max()
 #endif
 
 #ifdef RayleighBenardCell
-    call RBcalc_Nu_global()            ! y方向全场平均Nu
-    call RBcalc_Nu_wall_avg()          ! 下/上壁, y中线平均Nu, 热壁Numax/Numin及位置
+    call RBcalc_Nu_global()          ! 全场平均Nu
+    call RBcalc_Nu_wall_avg()  ! 热/冷壁, 中线平均Nu,以及热壁最大Numax和Numin以及位置，都采用五点最小二乘法插值出来
     
-    call RBcalc_umid_max()             ! x中线上的u最大值及位置
-    call RBcalc_vmid_max()             ! y中线上的v最大值及位置
+    call RBcalc_umid_max()     !中心线上的最大速度及其位置，也是用五点最小二乘法插值出来
+    call RBcalc_vmid_max()
 #endif
 #endif
+
 
 #ifdef VerticalWallsNoslip
     ! psi/vort 后处理默认封闭腔体：四周无滑移，psi 在物理边界取同一常数。
@@ -444,29 +463,36 @@
 
 
 
-
      
 
     open(unit=00,file=trim(settingsFile),status='unknown',position='append')        !在这个txt文件后面继续写（追加模式）
     write(00,*) "======================================================================"
     write(00,*) "Time (CPU) = ", real(timeEnd-timeStart,kind=8), "s"                             !当前进程累计消耗的 CPU 时间,包括并行
     write(00,*) "MLUPS = ", real( dble(nx)*dble(ny)*dble(itc)/(timeEnd-timeStart)/1.0d6,kind=8 )   !百万格点更新/秒
-    write(00,*) "Time (OMP) = ", real(timeEnd2-timeStart2,kind=8), "s"                           !墙钟时间
-    write(00,*) "MLUPS (OMP) = ", real( dble(nx)*dble(ny)*dble(itc)/(timeEnd2-timeStart2)/1.0d6,kind=8 )   !百万格点更新/秒
+    write(00,*) "Time (ACC) = ", real(timeEnd2-timeStart2,kind=8), "s"                           !墙钟时间
+    write(00,*) "MLUPS (ACC) = ", real( dble(nx)*dble(ny)*dble(itc)/(timeEnd2-timeStart2)/1.0d6,kind=8 )   !百万格点更新/秒
 #ifdef steadyFlow
     write(00,'(a,1x,ES24.16E3)') "Nu_global =", real(Nu_global,kind=8)
-    write(00,*) "Nu_hot    =", Nu_hot
-    write(00,*) "Nu_cold   =", Nu_cold
+    write(00,'(a,1x,ES24.16E3)') "Nu_hot    =", real(Nu_hot,kind=8)
+    write(00,'(a,1x,ES24.16E3)') "Nu_cold   =", real(Nu_cold,kind=8)
 #endif
     write(00,*) "useG =", useG
 
 
 
     write(00,*) "Dellocate Array......"
+    call exit_data_2d_openacc()
     deallocate(f)
     deallocate(g)
     deallocate(f_post)
     deallocate(g_post)
+    deallocate(f_neq)
+    deallocate(g_neq)
+    deallocate(T_pred)
+    deallocate(T_new)
+    deallocate(T_ext)
+    deallocate(u_ext)
+    deallocate(v_ext)
     deallocate(u)
     deallocate(v)
     deallocate(T)
@@ -487,13 +513,15 @@
     close(00)
 
     
-end program main
+    end program main
+
+!===========================================================================================================================
+
 
 !===================================================================================================
 ! 子程序: initial
 ! 作用: 初始化网格坐标、场变量、分布函数、输出文件和重启信息。
-! 用途: 在主程序开始时调用，为新算例或续算准备初始状态和输出计数。
-!===================================================================================================
+!===========================================================================================================================
   subroutine initial()
     use commondata
     implicit none
@@ -560,7 +588,10 @@ end program main
     write(00,*) "Velocity unit: Sqrt(gBeta*L0*DeltaT) =", real(velocityUnit,kind=8)
     write(00,*) "   "
     write(00,*) 'tauf=',real(tauf,kind=8)
-#ifdef EnableLegacyThermalScheme
+#ifdef EnableSTLBM
+    write(00,*) "thermalScheme = STLBM predictor-corrector without distribution-function evolution"
+    write(00,*) 'taug(STLBM)=',real(0.5d0+1.5d0*diffusivity,kind=8)
+#elif defined(EnableLegacyThermalScheme)
     write(00,*) "thermalScheme = legacy D2Q5 (Qk/Qnu)"
     write(00,*) 'Qk=',real(Qk,kind=8), '; Qnu=',real(Qnu,kind=8), '; paraA=',real(paraA,kind=8)
 #else
@@ -586,6 +617,7 @@ end program main
     endif
     write(00,*) "itc_max =",itc_max
     write(00,*) "default epsU =", real(epsU,kind=8),"; epsT =", real(epsT,kind=8)
+    write(00,*) "useSTLBM =", useSTLBM
     write(00,*) "useG =", useG
     write(00,*) "    "
 
@@ -602,20 +634,26 @@ end program main
 #ifdef unsteadyFlow
     write(00,*) "I am unsteadyFlow"
 #endif
+    write(00,*) "OpenACC GPU version; final wall-fit and psi/vorticity diagnostics stay on host"
     !-----------------------------------------------------------------------------------------------
 
 
 
     !-----------------------------------------------------------------------------------------------
-    ! ISLBM节点坐标与迁移模板。坐标按 half-way 物理壁面归一化到 [0,1]，
-    ! 第一个流体节点位于 0.5/L0，最后一个流体节点位于 1-0.5/L0。
-    call build_islbm_mesh()
-    call build_islbm_quadrature()
-    call prepare_islbm_streaming_stencils()
-    write(00,*) "ISLBM mesh = erf; stretchA =", real(ISLBM_StretchA,kind=8)
-    write(00,*) "ISLBM effective lengthUnit L0 =", real(lengthUnit,kind=8)
-    write(00,*) "ISLBM streaming shift =", real(ISLBM_Shift,kind=8)
-    write(00,*) "ISLBM quadrature sums =", real(quadSumX,kind=8), real(quadSumY,kind=8), real(quadSumArea,kind=8)
+    !节点坐标数组
+    xp(0) = 0.0d0
+    xp(nx+1) = dble(nx)
+    do i=1,nx
+        xp(i) = dble(i)-0.5d0
+    enddo
+    xp = xp / lengthUnit
+
+    yp(0) = 0.0d0
+    yp(ny+1) = dble(ny)
+    do j=1,ny
+        yp(j) = dble(j)-0.5d0
+    enddo
+    yp = yp / lengthUnit
 
     allocate (u(nx,ny))
     allocate (v(nx,ny))
@@ -628,10 +666,17 @@ end program main
     allocate (Tp(nx,ny))
 #endif
 
-    allocate (f(0:8,nx,ny))
-    allocate (f_post(0:8,0:nx+1,0:ny+1))
-    allocate (g(0:4,nx,ny))
-    allocate (g_post(0:4,0:nx+1,0:ny+1))
+    allocate (f(nx,ny,0:8))
+    allocate (f_post(0:nx+1,0:ny+1,0:8))
+    allocate (g(nx,ny,0:8))
+    allocate (g_post(0:nx+1,0:ny+1,0:8))
+    allocate (f_neq(nx,ny,0:8))
+    allocate (g_neq(nx,ny,0:8))
+    allocate (T_pred(nx,ny))
+    allocate (T_new(nx,ny))
+    allocate (T_ext(0:nx+1,0:ny+1))
+    allocate (u_ext(0:nx+1,0:ny+1))
+    allocate (v_ext(0:nx+1,0:ny+1))
 
     allocate (Fx(nx,ny))
     allocate (Fy(nx,ny))
@@ -735,19 +780,7 @@ end program main
 
         f = 0.0d0
         g = 0.0d0
-        do j = 1,ny
-            do i = 1,nx
-                us2 = u(i,j)*u(i,j)+v(i,j)*v(i,j)
-                do alpha = 0, 8
-                    un(alpha) = u(i,j)*ex(alpha)+v(i,j)*ey(alpha)
-                    f(alpha,i,j) = rho(i,j)*omega(alpha)*(1.0d0+3.0d0*un(alpha)+4.5d0*un(alpha)*un(alpha)-1.5d0*us2)  !D2Q9标准feq
-                enddo
-                do alpha = 0, 4
-                    un(alpha) = u(i,j)*ex(alpha)+v(i,j)*ey(alpha) 
-                    g(alpha,i,j) = omegaT(alpha)*T(i,j)*(1.0d0+thermalGeqCoeff*un(alpha))
-                enddo
-            enddo
-        enddo
+        call update_stlbm_equilibrium_arrays_host()
 #ifdef EnableUseG
         do j = 1,ny
             do i = 1,nx
@@ -761,7 +794,7 @@ end program main
 
 
 
-    elseif(loadInitField.EQ.1) then                               !续算分支：从旧的严格重启文件恢复 f/g 和输出计数
+    elseif(loadInitField.EQ.1) then                               !续算分支：从 STLBM 严格重启文件恢复 rho/u/v/T 和输出计数
     ! 正常断电续算时，先读取 <reloadFilePrefix>-latest.meta；
     ! meta 会告诉代码实际要读哪个 <reloadFilePrefix>-*.bin，以及旧算例已经累计到哪里。
     !这里可以让 reloadDimensionlessTime 等于0，反正最后都可以通过meta文件读取到新的 reloadDimensionlessTime
@@ -778,14 +811,12 @@ end program main
         endif
         open(unit=01,file=trim(reloadFilePrefix)//"-"//trim(reloadFileName)//".bin",form="unformatted", &
         access="sequential",status='old')  !unformatted是二进制,sequential：按记录顺序读写
-            ! Strict restart files store f and g; EnableUseG also stores the previous heat-flux history.
-            write(00,*) "Reloading f, g and optional UseG history from file"
-            read(01) (((f(alpha,i,j), i=1,nx), j=1,ny), alpha=0,8)      !先 i，再 j，再 alpha
-            read(01) (((g(alpha,i,j), i=1,nx), j=1,ny), alpha=0,4)
-#ifdef EnableUseG
-            read(01) ((Bx_prev(i,j), i=1,nx), j=1,ny)
-            read(01) ((By_prev(i,j), i=1,nx), j=1,ny)
-#endif
+            ! STLBM restart files store macroscopic rho/u/v/T directly.
+            write(00,*) "Reloading STLBM rho/u/v/T state from file"
+            read(01) ((rho(i,j), i=1,nx), j=1,ny)
+            read(01) ((u(i,j), i=1,nx), j=1,ny)
+            read(01) ((v(i,j), i=1,nx), j=1,ny)
+            read(01) ((T(i,j), i=1,nx), j=1,ny)
         close(01)
         call reconstruct_macro_from_fg()
         write(00,*) "Raw data is loaded from the file: ", trim(reloadFilePrefix), "-", trim(reloadFileName), ".bin"
@@ -802,6 +833,13 @@ close(00)
     
     f_post = 0.0d0
     g_post = 0.0d0
+    f_neq = 0.0d0
+    g_neq = 0.0d0
+    T_pred = T
+    T_new = T
+    T_ext = 0.0d0
+    u_ext = 0.0d0
+    v_ext = 0.0d0
         
     if(loadInitField.EQ.0) then
         snapshotFileNum = 0
@@ -824,344 +862,458 @@ close(00)
 #endif
     endif
     dimensionlessTime = 0
-    ! 新算例：清零，开始记录新历史。
-    ! 续算：也清零，但不是丢旧历史；旧历史在 .dat 文件里，新数组只记录本次续算段。
-    ! 写出时间轴时会叠加 reloadDimensionlessTime，所以不会从 0 t_ff 重新编号。
+    !新算例：清零，开始记录新历史。
+    !续算：也清零，但不是丢旧历史；旧历史在 .dat 文件里，新数组只记录本次续算段。
     NuVolAvg = 0.0d0
     ReVolAvg = 0.0d0
     
     return
   end subroutine initial
 !===================================================================================================
-! initial 结束: 初始化网格坐标、场变量、分布函数、输出文件和重启信息。
-!===================================================================================================
-
 
 
 !===================================================================================================
-! 子程序: build_islbm_mesh
-! 作用: 生成 ISLBM 使用的 erf 非均匀坐标，并按 half-way 壁面归一化到 [0,1]。
-! 用途: 在 initial 中调用，为积分权重、迁移插值和后处理提供 xp/yp 坐标。
+! 子程序: enter_data_2d_openacc
+! 作用: 在主时间推进前把主要数组和常量映射到 OpenACC 设备端。
 !===================================================================================================
-  subroutine build_islbm_mesh()
+  subroutine enter_data_2d_openacc()
+    use openacc
     use commondata
     implicit none
-    integer(kind=4) :: i, j
-    real(kind=8) :: rawX(0:nx+1), rawY(0:ny+1)
-    real(kind=8) :: erfNorm, leftWall, rightWall, bottomWall, topWall, lengthX, lengthY
 
-    ! 第一步: 生成原始erf拉伸坐标rawX/rawY。此时坐标还没有按half-way物理壁面修正;
-    ! ISLBM_StretchA控制拉伸强度, 数值越大, 流体节点越向两侧壁面聚集。
-    erfNorm = erf(0.5d0*ISLBM_StretchA)
-    do i = 0, nx+1
-        rawX(i) = 0.5d0*(1.0d0 + erf(ISLBM_StretchA*(dble(i)/dble(nx+1)-0.5d0))/erfNorm)
-    enddo
-    do j = 0, ny+1
-        rawY(j) = 0.5d0*(1.0d0 + erf(ISLBM_StretchA*(dble(j)/dble(ny+1)-0.5d0))/erfNorm)
-    enddo
-
-    ! 第二步: 采用half-way壁面。物理壁面位于边界外点与第一个内部流体节点之间,
-    ! 因此有效物理区间为[leftWall,rightWall]和[bottomWall,topWall]。
-    leftWall = 0.5d0*rawX(1)
-    rightWall = 1.0d0 - 0.5d0*rawX(1)
-    bottomWall = 0.5d0*rawY(1)
-    topWall = 1.0d0 - 0.5d0*rawY(1)
-
-    ! 第三步: 把内部流体节点从raw坐标映射到有效物理区间的归一化坐标[0,1]。
-    ! 归一化后第一个流体节点约为0.5/lengthUnit, 最后一个约为1-0.5/lengthUnit。
-    lengthX = rightWall - leftWall
-    lengthY = topWall - bottomWall
-    xp(0) = 0.0d0
-    xp(nx+1) = 1.0d0
-    do i = 1, nx
-        xp(i) = (rawX(i)-leftWall)/lengthX
-    enddo
-    yp(0) = 0.0d0
-    yp(ny+1) = 1.0d0
-    do j = 1, ny
-        yp(j) = (rawY(j)-bottomWall)/lengthY
-    enddo
-
-    return
-  end subroutine build_islbm_mesh
-!===================================================================================================
-! build_islbm_mesh 结束: 已生成按 half-way 物理壁面归一化的 ISLBM 坐标 xp/yp。
+    !$acc enter data copyin(xp,yp,ex,ey,omega,omegaT)
+    !$acc enter data copyin(u,v,T,rho,f,g,Fx,Fy,Bx_prev,By_prev)
+    !$acc enter data create(f_post,g_post,f_neq,g_neq,T_pred,T_new,T_ext,u_ext,v_ext)
+#ifdef steadyFlow
+    !$acc enter data copyin(up,vp,Tp)
+#endif
+  end subroutine enter_data_2d_openacc
 !===================================================================================================
 
-
-
 !===================================================================================================
-! 子程序: build_islbm_quadrature
-! 作用: 根据非均匀坐标 xp/yp 计算节点积分权重和总面积权重。
-! 用途: 在 initial 中调用，为 Nu、Re、体平均量和全局积分提供 quadWidthX/Y 和 quadSum*。
+! 子程序: update_host_snapshot_2d_openacc
+! 作用: 在主机端输出 uvTrho 快照或做 CPU 后处理前，同步宏观场。
 !===================================================================================================
-
-  subroutine build_islbm_quadrature()
+  subroutine update_host_snapshot_2d_openacc()
     use commondata
     implicit none
-    integer(kind=4) :: i, j
 
-    ! 非均匀网格不能用简单的sum/(nx*ny)做全场平均。
-    ! quadWidthX(i)/quadWidthY(j)是第i/j个流体节点代表的控制宽度, 采用左右相邻节点中点的midpoint权重。
-    ! 注意: 这里是面积积分宽度, 与off-lattice迁移插值权重streamInterpWeightX/Y不是同一类量。
-    do i = 1, nx
-        quadWidthX(i) = 0.5d0*(xp(i+1)-xp(i-1))
-    enddo
-    do j = 1, ny
-        quadWidthY(j) = 0.5d0*(yp(j+1)-yp(j-1))
-    enddo
-
-    ! quadSumX/quadSumY/quadSumArea是整个计算域的总积分权重。
-    ! 后处理里用areaWeight=quadWidthX(i)*quadWidthY(j)累加, 再除以quadSumArea或quadSumX/Y做归一化。
-    quadSumX = 0.0d0
-    do i = 1, nx
-        quadSumX = quadSumX + quadWidthX(i)
-    enddo
-    quadSumY = 0.0d0
-    do j = 1, ny
-        quadSumY = quadSumY + quadWidthY(j)
-    enddo
-    quadSumArea = quadSumX*quadSumY
-
-    return
-  end subroutine build_islbm_quadrature
-!===================================================================================================
-! build_islbm_quadrature 结束: 已生成非均匀网格积分宽度 quadWidthX/Y 和总权重 quadSum*。
+    !$acc wait(1)
+    !$acc update self(u,v,T,rho)
+  end subroutine update_host_snapshot_2d_openacc
 !===================================================================================================
 
-
-
 !===================================================================================================
-! 子程序: prepare_islbm_streaming_stencils
-! 作用: 为每个速度方向和每个节点预生成 off-lattice 迁移所需的三点插值模板。
-! 用途: 在 initial 中调用，供 streaming 和 streamingT 快速插值读取 f_post/g_post。
+! 子程序: update_host_tecplot_2d_openacc
+! 作用: Tecplot 主场输出只需要 u、v、T。
 !===================================================================================================
-
-  subroutine prepare_islbm_streaming_stencils()
+  subroutine update_host_tecplot_2d_openacc()
     use commondata
     implicit none
-    integer(kind=4) :: alpha, i, j
-    integer(kind=4) :: stencilIndex(3)
-    real(kind=8) :: stencilWeight(3), target
-    logical :: stencilValid
 
-    ! 这些模板只依赖非均匀坐标xp/yp、离散速度ex/ey和ISLBM_Shift, 不随时间变化。
-    ! 因此在初始化时预先生成一次, 后续streaming/streamingT可直接查表, 避免每步重复找插值节点。
-    streamInterpIndexX = 1
-    streamInterpIndexY = 1
-    streamInterpWeightX = 0.0d0
-    streamInterpWeightY = 0.0d0
-    streamInterpValidX = .false.
-    streamInterpValidY = .false.
+    !$acc wait(1)
+    !$acc update self(u,v,T)
+  end subroutine update_host_tecplot_2d_openacc
+!===================================================================================================
+
+!===================================================================================================
+! 子程序: update_host_reload_2d_openacc
+! 作用: STLBM 严格重启文件需要宏观 rho/u/v/T。
+!===================================================================================================
+  subroutine update_host_reload_2d_openacc()
+    use commondata
+    implicit none
+
+    !$acc wait(1)
+    !$acc update self(rho,u,v,T)
+  end subroutine update_host_reload_2d_openacc
+!===================================================================================================
+
+!===================================================================================================
+! 子程序: exit_data_2d_openacc
+! 作用: 在计算结束后释放设备端常驻数据。
+!===================================================================================================
+  subroutine exit_data_2d_openacc()
+    use commondata
+    implicit none
+
+#ifdef steadyFlow
+    !$acc exit data delete(up,vp,Tp)
+#endif
+    !$acc exit data delete(f_post,g_post,f_neq,g_neq,T_pred,T_new,T_ext,u_ext,v_ext)
+    !$acc exit data delete(u,v,T,rho,f,g,Fx,Fy,Bx_prev,By_prev)
+    !$acc exit data delete(xp,yp,ex,ey,omega,omegaT)
+  end subroutine exit_data_2d_openacc
+!===================================================================================================
+
+
+!===================================================================================================
+! 子程序: stlbm_feq_geq
+! 作用: 根据宏观量直接构造 STLBM 使用的 D2Q9 动量平衡态和内能平衡态。
+!===================================================================================================
+  subroutine stlbm_feq_geq(rho0, u0, v0, temp0, feq, geq)
+    use commondata
+    implicit none
+    !$acc routine seq
+    real(kind=8), intent(in) :: rho0, u0, v0, temp0
+    real(kind=8), intent(out) :: feq(0:8), geq(0:8)
+    integer(kind=4) :: alpha
+    real(kind=8) :: eu, u2, rhoE
+
+    u2 = u0*u0 + v0*v0
+    rhoE = rho0*temp0
 
     do alpha = 0, 8
+        eu = dble(ex(alpha))*u0 + dble(ey(alpha))*v0
+        feq(alpha) = rho0*omega(alpha)*(1.0d0 + 3.0d0*eu + 4.5d0*eu*eu - 1.5d0*u2)
+    enddo
+
+    geq(0) = -2.0d0/3.0d0*rhoE*u2
+    do alpha = 1, 4
+        eu = dble(ex(alpha))*u0 + dble(ey(alpha))*v0
+        geq(alpha) = rhoE*(1.0d0/6.0d0 + eu/6.0d0 + 0.5d0*eu*eu - u2/6.0d0)
+    enddo
+    do alpha = 5, 8
+        eu = dble(ex(alpha))*u0 + dble(ey(alpha))*v0
+        geq(alpha) = rhoE*(1.0d0/12.0d0 + eu/6.0d0 + 0.125d0*eu*eu - u2/24.0d0)
+    enddo
+
+    return
+  end subroutine stlbm_feq_geq
+!===================================================================================================
+
+
+!===================================================================================================
+! 子程序: update_stlbm_equilibrium_arrays_host
+! 作用: 初始化/重启阶段在主机端同步 f/g 平衡态缓存。
+!===================================================================================================
+  subroutine update_stlbm_equilibrium_arrays_host()
+    use commondata
+    implicit none
+    integer(kind=4) :: i, j
+    real(kind=8) :: feq(0:8), geq(0:8)
+
+    do j = 1, ny
         do i = 1, nx
-            ! 从当前节点xp(i)沿速度方向alpha反向回溯1个lattice unit, 得到off-lattice上游点。
-            ! 非均匀网格上target通常不落在节点上, 所以需要三点Lagrange插值。
-            target = xp(i) - dble(ex(alpha))*ISLBM_Shift
-            call build_lagrange_stencil_1d(nx, xp(1:nx), target, stencilIndex, stencilWeight, stencilValid)
-            ! 保存x方向插值模板: stencilValid说明target是否在内部节点范围内;
-            ! stencilIndex是3个插值节点编号, stencilWeight是对应权重。
-            streamInterpValidX(alpha,i) = stencilValid
-            streamInterpIndexX(alpha,i,:) = stencilIndex
-            streamInterpWeightX(alpha,i,:) = stencilWeight
-        enddo
-        do j = 1, ny
-            ! y方向同理, 为streaming中的竖直和对角迁移提前准备插值模板。
-            target = yp(j) - dble(ey(alpha))*ISLBM_Shift
-            call build_lagrange_stencil_1d(ny, yp(1:ny), target, stencilIndex, stencilWeight, stencilValid)
-            streamInterpValidY(alpha,j) = stencilValid
-            streamInterpIndexY(alpha,j,:) = stencilIndex
-            streamInterpWeightY(alpha,j,:) = stencilWeight
+            call stlbm_feq_geq(rho(i,j), u(i,j), v(i,j), T(i,j), feq, geq)
+            f(i,j,:) = feq(:)
+            g(i,j,:) = geq(:)
         enddo
     enddo
 
     return
-  end subroutine prepare_islbm_streaming_stencils
-!===================================================================================================
-! prepare_islbm_streaming_stencils 结束: 已生成 ISLBM 迁移插值节点、权重和有效性标志。
+  end subroutine update_stlbm_equilibrium_arrays_host
 !===================================================================================================
 
 
-
 !===================================================================================================
-! 子程序: build_lagrange_stencil_1d
-! 作用: 为一维目标坐标选择三点 Lagrange 插值节点并计算对应权重。
-! 用途: 被 prepare_islbm_streaming_stencils 调用，用于构造 x/y 方向迁移插值模板。
+! 子程序: update_stlbm_equilibrium_arrays_acc
+! 作用: 设备端由当前宏观量生成 f/g 平衡态缓存；f/g 不作为演化状态量。
 !===================================================================================================
-
-  subroutine build_lagrange_stencil_1d(n, xnodes, target, stencilIndex, stencilWeight, stencilValid)
+  subroutine update_stlbm_equilibrium_arrays_acc()
+    use commondata
     implicit none
-    integer(kind=4), intent(in) :: n
-    real(kind=8), intent(in) :: xnodes(n), target
-    integer(kind=4), intent(out) :: stencilIndex(3)
-    real(kind=8), intent(out) :: stencilWeight(3)
-    logical, intent(out) :: stencilValid
-    integer(kind=4) :: mid
-    real(kind=8) :: xloc(3)
-    real(kind=8), parameter :: tol = 1.0d-12
+    integer(kind=4) :: i, j
+    real(kind=8) :: feq(0:8), geq(0:8)
 
-    ! 默认设置为无效模板。若节点数不足或target越过内部节点范围, 直接返回stencilValid=.false.;
-    ! 后续streaming/streamingT看到valid为false时不执行插值, 交由边界处理补齐。
-    stencilIndex = (/1, 1, 1/)
-    stencilWeight = 0.0d0
-    stencilValid = .false.
-    if(n.LT.3) return
-    if((target.LT.xnodes(1)-tol).OR.(target.GT.xnodes(n)+tol)) return
-
-    ! 选择三点插值模板:
-    ! 靠近左端时用最左3点, 靠近右端时用最右3点;
-    ! 中间区域则找target附近的mid, 使用(mid-1, mid, mid+1)。
-    if(target.LE.xnodes(2)) then
-        stencilIndex = (/1, 2, 3/)
-    elseif(target.GE.xnodes(n-1)) then
-        stencilIndex = (/n-2, n-1, n/)
-    else
-        mid = 2
-        ! 只要xnodes(mid+1)还在target左侧, 就把mid继续右移。
-        ! 循环退出后通常满足 xnodes(mid) < target <= xnodes(mid+1),
-        ! 因而(mid-1, mid, mid+1)这三个节点覆盖target附近区域。
-        do while((mid.LT.n-1).AND.(xnodes(mid+1).LT.target))
-            mid = mid + 1
+    !$acc parallel loop gang vector collapse(2) default(none) present(f,g,rho,u,v,T,ex,ey,omega) async(1) private(feq,geq)
+    do j = 1, ny
+        do i = 1, nx
+            call stlbm_feq_geq(rho(i,j), u(i,j), v(i,j), T(i,j), feq, geq)
+            f(i,j,:) = feq(:)
+            g(i,j,:) = geq(:)
         enddo
-        ! target不一定在三点几何正中心, 但位于该三点模板覆盖的局部范围内。
-        stencilIndex = (/mid-1, mid, mid+1/)
-    endif
-
-    xloc(1) = xnodes(stencilIndex(1))
-    xloc(2) = xnodes(stencilIndex(2))
-    xloc(3) = xnodes(stencilIndex(3))
-    ! 根据选出的3个节点位置计算target处的二次Lagrange基函数权重。
-    ! 插值时 f(target) ~= stencilWeight(1)*f(stencilIndex(1)) + ...
-    call lagrange_weights_3(xloc, target, stencilWeight)
-    stencilValid = .true.
+    enddo
 
     return
-  end subroutine build_lagrange_stencil_1d
-!===================================================================================================
-! build_lagrange_stencil_1d 结束: 已返回三点插值节点、权重和目标点有效性标志。
+  end subroutine update_stlbm_equilibrium_arrays_acc
 !===================================================================================================
 
 
-
 !===================================================================================================
-! 子程序: lagrange_weights_3
-! 作用: 计算三点 Lagrange 插值在目标点 x0 处的三个基函数权重。
-! 用途: 被 build_lagrange_stencil_1d 和三点插值函数调用。
+! 子程序: build_stlbm_equilibrium_ext_acc
+! 作用: 按宏观边界条件构造带一层 ghost 的上一步平衡态，供 predictor 上游取值。
 !===================================================================================================
-
-  subroutine lagrange_weights_3(xnode, x0, lagrangeWeight)
-    implicit none
-    real(kind=8), intent(in) :: xnode(3), x0
-    real(kind=8), intent(out) :: lagrangeWeight(3)
-
-    ! 标准三点二次Lagrange基函数权重。
-    ! lagrangeWeight(k)表示第k个节点值对目标点x0的贡献; 若x0正好等于xnode(k), 则对应权重为1且其他权重为0。
-    ! 后续插值形式为 f(x0) ~= lagrangeWeight(1)*f(xnode(1)) + lagrangeWeight(2)*f(xnode(2)) + lagrangeWeight(3)*f(xnode(3))。
-    lagrangeWeight(1) = ((x0-xnode(2))*(x0-xnode(3)))/((xnode(1)-xnode(2))*(xnode(1)-xnode(3)))
-    lagrangeWeight(2) = ((x0-xnode(1))*(x0-xnode(3)))/((xnode(2)-xnode(1))*(xnode(2)-xnode(3)))
-    lagrangeWeight(3) = ((x0-xnode(1))*(x0-xnode(2)))/((xnode(3)-xnode(1))*(xnode(3)-xnode(2)))
-
-    return
-  end subroutine lagrange_weights_3
-!===================================================================================================
-! lagrange_weights_3 结束: 已计算三点 Lagrange 插值权重。
-!===================================================================================================
-
-  real(kind=8) function lagrange_interp_3(xnode, fnode, x0)
-    implicit none
-    real(kind=8), intent(in) :: xnode(3), fnode(3), x0
-    real(kind=8) :: lagrangeWeight(3)
-
-    call lagrange_weights_3(xnode, x0, lagrangeWeight)
-    lagrange_interp_3 = lagrangeWeight(1)*fnode(1) + lagrangeWeight(2)*fnode(2) + lagrangeWeight(3)*fnode(3)
-
-    return
-  end function lagrange_interp_3
-
-  real(kind=8) function lagrange_derivative_3(xnode, fnode, x0)
-    implicit none
-    real(kind=8), intent(in) :: xnode(3), fnode(3), x0
-
-    lagrange_derivative_3 = &
-        fnode(1)*(2.0d0*x0-xnode(2)-xnode(3))/((xnode(1)-xnode(2))*(xnode(1)-xnode(3))) + &
-        fnode(2)*(2.0d0*x0-xnode(1)-xnode(3))/((xnode(2)-xnode(1))*(xnode(2)-xnode(3))) + &
-        fnode(3)*(2.0d0*x0-xnode(1)-xnode(2))/((xnode(3)-xnode(1))*(xnode(3)-xnode(2)))
-
-    return
-  end function lagrange_derivative_3
-
-  real(kind=8) function interpolate_line_x(fieldLine, targetX)
+  subroutine build_stlbm_equilibrium_ext_acc()
     use commondata
     implicit none
-    real(kind=8), intent(in) :: fieldLine(1:nx), targetX
-    integer(kind=4) :: stencilIndex(3)
-    real(kind=8) :: stencilWeight(3), xnode(3), fnode(3)
-    logical :: stencilValid
-    real(kind=8) :: lagrange_interp_3
+    integer(kind=4) :: i, j, ic, jc
+    real(kind=8) :: rho0, u0, v0, temp0
+    real(kind=8) :: feq(0:8), geq(0:8)
 
-    call build_lagrange_stencil_1d(nx, xp(1:nx), targetX, stencilIndex, stencilWeight, stencilValid)
-    if(.not.stencilValid) then
-        interpolate_line_x = 0.0d0
-        return
-    endif
-    xnode = (/ xp(stencilIndex(1)), xp(stencilIndex(2)), xp(stencilIndex(3)) /)
-    fnode = (/ fieldLine(stencilIndex(1)), fieldLine(stencilIndex(2)), fieldLine(stencilIndex(3)) /)
-    interpolate_line_x = lagrange_interp_3(xnode, fnode, targetX)
+    !$acc parallel loop gang vector collapse(2) default(none) present(f_post,g_post,rho,u,v,T,ex,ey,omega) &
+    !$acc& async(1) private(ic,jc,rho0,u0,v0,temp0,feq,geq)
+    do j = 0, ny+1
+        do i = 0, nx+1
+            ic = min(max(i,1),nx)
+            jc = min(max(j,1),ny)
+#ifdef VerticalWallsPeriodicalU
+            if(i.EQ.0) ic = nx
+            if(i.EQ.nx+1) ic = 1
+#endif
+#ifdef VerticalWallsPeriodicalT
+            if(i.EQ.0) ic = nx
+            if(i.EQ.nx+1) ic = 1
+#endif
+
+            rho0 = rho(ic,jc)
+            u0 = u(ic,jc)
+            v0 = v(ic,jc)
+            temp0 = T(ic,jc)
+
+#ifdef VerticalWallsNoslip
+            if((i.EQ.0).OR.(i.EQ.nx+1)) then
+                u0 = 0.0d0
+                v0 = 0.0d0
+            endif
+#endif
+#ifdef HorizontalWallsNoslip
+            if((j.EQ.0).OR.(j.EQ.ny+1)) then
+                u0 = 0.0d0
+                v0 = 0.0d0
+            endif
+#endif
+
+#ifdef VerticalWallsAdiabatic
+            if(i.EQ.0) temp0 = T(1,jc)
+            if(i.EQ.nx+1) temp0 = T(nx,jc)
+#endif
+#ifdef HorizontalWallsAdiabatic
+            if(j.EQ.0) temp0 = T(ic,1)
+            if(j.EQ.ny+1) temp0 = T(ic,ny)
+#endif
+#ifdef HorizontalWallsConstT
+            if(j.EQ.0) temp0 = Thot
+            if(j.EQ.ny+1) temp0 = Tcold
+#endif
+#ifdef VerticalWallsConstT
+            if(i.EQ.0) temp0 = Thot
+            if(i.EQ.nx+1) temp0 = Tcold
+#endif
+
+            call stlbm_feq_geq(rho0, u0, v0, temp0, feq, geq)
+            f_post(i,j,:) = feq(:)
+            g_post(i,j,:) = geq(:)
+        enddo
+    enddo
 
     return
-  end function interpolate_line_x
+  end subroutine build_stlbm_equilibrium_ext_acc
+!===================================================================================================
 
-  real(kind=8) function derivative_line_x(fieldLine, targetX)
+
+!===================================================================================================
+! 子程序: build_stlbm_neq_ext_acc
+! 作用: 对 fneq/gneq 做非平衡外推边界，并填充 ghost 层供 corrector 上游取值。
+!===================================================================================================
+  subroutine build_stlbm_neq_ext_acc()
     use commondata
     implicit none
-    real(kind=8), intent(in) :: fieldLine(1:nx), targetX
-    integer(kind=4) :: stencilIndex(3)
-    real(kind=8) :: stencilWeight(3), xnode(3), fnode(3)
-    logical :: stencilValid
-    real(kind=8) :: lagrange_derivative_3
+    integer(kind=4) :: i, j, alpha, ic, jc
 
-    call build_lagrange_stencil_1d(nx, xp(1:nx), targetX, stencilIndex, stencilWeight, stencilValid)
-    if(.not.stencilValid) then
-        derivative_line_x = 0.0d0
-        return
-    endif
-    xnode = (/ xp(stencilIndex(1)), xp(stencilIndex(2)), xp(stencilIndex(3)) /)
-    fnode = (/ fieldLine(stencilIndex(1)), fieldLine(stencilIndex(2)), fieldLine(stencilIndex(3)) /)
-    derivative_line_x = lagrange_derivative_3(xnode, fnode, targetX)
+#if defined(VerticalWallsNoslip) || defined(VerticalWallsAdiabatic) || defined(VerticalWallsConstT)
+    !$acc parallel loop gang vector collapse(2) default(none) present(f_neq,g_neq) async(1)
+    do j = 1, ny
+        do alpha = 0, 8
+            f_neq(1,j,alpha) = f_neq(2,j,alpha)
+            g_neq(1,j,alpha) = g_neq(2,j,alpha)
+            f_neq(nx,j,alpha) = f_neq(nx-1,j,alpha)
+            g_neq(nx,j,alpha) = g_neq(nx-1,j,alpha)
+        enddo
+    enddo
+#endif
+#if defined(HorizontalWallsNoslip) || defined(HorizontalWallsAdiabatic) || defined(HorizontalWallsConstT)
+    !$acc parallel loop gang vector collapse(2) default(none) present(f_neq,g_neq) async(1)
+    do i = 1, nx
+        do alpha = 0, 8
+            f_neq(i,1,alpha) = f_neq(i,2,alpha)
+            g_neq(i,1,alpha) = g_neq(i,2,alpha)
+            f_neq(i,ny,alpha) = f_neq(i,ny-1,alpha)
+            g_neq(i,ny,alpha) = g_neq(i,ny-1,alpha)
+        enddo
+    enddo
+#endif
+
+    !$acc parallel loop gang vector collapse(2) default(none) present(f_post,g_post,f_neq,g_neq) async(1) private(ic,jc,alpha)
+    do j = 0, ny+1
+        do i = 0, nx+1
+            ic = min(max(i,1),nx)
+            jc = min(max(j,1),ny)
+            do alpha = 0, 8
+                f_post(i,j,alpha) = f_neq(ic,jc,alpha)
+                g_post(i,j,alpha) = g_neq(ic,jc,alpha)
+            enddo
+        enddo
+    enddo
 
     return
-  end function derivative_line_x
+  end subroutine build_stlbm_neq_ext_acc
+!===================================================================================================
 
-  real(kind=8) function wall_derivative_x_left(twall, t1, t2)
+
+!===================================================================================================
+! 子程序: apply_stlbm_macro_bc_acc
+! 作用: STLBM 直接施加宏观速度/温度边界条件。
+!===================================================================================================
+  subroutine apply_stlbm_macro_bc_acc()
     use commondata
     implicit none
-    real(kind=8), intent(in) :: twall, t1, t2
-    real(kind=8) :: dx1, dx2, q
+    integer(kind=4) :: i, j
 
-    dx1 = xp(1)
-    dx2 = xp(2) - xp(1)
-    q = dx2/dx1
-    wall_derivative_x_left = (-4.0d0*q*(q+1.0d0)*twall + (2.0d0*q+1.0d0)**2*t1 - t2) / &
-        (q*(2.0d0*q+1.0d0)*dx1)
+#ifdef VerticalWallsPeriodicalU
+    !$acc parallel loop gang vector default(none) present(u,v) async(1)
+    do j = 1, ny
+        u(1,j) = u(nx-1,j)
+        v(1,j) = v(nx-1,j)
+        u(nx,j) = u(2,j)
+        v(nx,j) = v(2,j)
+    enddo
+#endif
+#ifdef VerticalWallsNoslip
+    !$acc parallel loop gang vector default(none) present(u,v) async(1)
+    do j = 1, ny
+        u(1,j) = 0.0d0
+        v(1,j) = 0.0d0
+        u(nx,j) = 0.0d0
+        v(nx,j) = 0.0d0
+    enddo
+#endif
+#ifdef HorizontalWallsNoslip
+    !$acc parallel loop gang vector default(none) present(u,v) async(1)
+    do i = 1, nx
+        u(i,1) = 0.0d0
+        v(i,1) = 0.0d0
+        u(i,ny) = 0.0d0
+        v(i,ny) = 0.0d0
+    enddo
+#endif
+
+    ! STLBM 温度边界由 ghost 层平衡态/非平衡态外推施加；
+    ! 不直接覆盖第一层流体节点，避免破坏本代码半格壁面 Nu 后处理约定。
 
     return
-  end function wall_derivative_x_left
+  end subroutine apply_stlbm_macro_bc_acc
+!===================================================================================================
 
-  real(kind=8) function wall_derivative_x_right(tnm1, tn, twall)
+
+!===================================================================================================
+! 子程序: stlbm_step
+! 作用: 按 Chen-Shu-Tan STLBM 的 predictor-corrector 直接更新 rho/u/v/T。
+!===================================================================================================
+  subroutine stlbm_step()
     use commondata
     implicit none
-    real(kind=8), intent(in) :: tnm1, tn, twall
-    real(kind=8) :: dx1, dx2, q
+    integer(kind=4) :: i, j, alpha, ip, jp
+    real(kind=8) :: rhoStar, momxStar, momyStar, rhoEStar
+    real(kind=8) :: momxCorr, momyCorr, rhoECorr
+    real(kind=8) :: feqStar(0:8), geqStar(0:8)
+    real(kind=8) :: tauT, corrF, corrT
 
-    dx1 = 1.0d0 - xp(nx)
-    dx2 = xp(nx) - xp(nx-1)
-    q = dx2/dx1
-    wall_derivative_x_right = (4.0d0*q*(q+1.0d0)*twall - (2.0d0*q+1.0d0)**2*tn + tnm1) / &
-        (q*(2.0d0*q+1.0d0)*dx1)
+    tauT = 0.5d0 + 1.5d0*diffusivity
+    corrF = 1.0d0 - 1.0d0/tauf
+    corrT = 1.0d0 - 1.0d0/tauT
+
+    call apply_stlbm_macro_bc_acc()
+    call update_stlbm_equilibrium_arrays_acc()
+    call build_stlbm_equilibrium_ext_acc()
+
+    !$acc parallel loop gang vector collapse(2) default(none) present(f_post,g_post,T_ext,u_ext,v_ext,T_pred,T,ex,ey) &
+    !$acc& async(1) private(alpha,ip,jp,rhoStar,momxStar,momyStar,rhoEStar)
+    do j = 1, ny
+        do i = 1, nx
+            rhoStar = 0.0d0
+            momxStar = 0.0d0
+            momyStar = 0.0d0
+            rhoEStar = 0.0d0
+            do alpha = 0, 8
+                ip = i - ex(alpha)
+                jp = j - ey(alpha)
+                rhoStar = rhoStar + f_post(ip,jp,alpha)
+                momxStar = momxStar + dble(ex(alpha))*f_post(ip,jp,alpha)
+                momyStar = momyStar + dble(ey(alpha))*f_post(ip,jp,alpha)
+                rhoEStar = rhoEStar + g_post(ip,jp,alpha)
+            enddo
+            T_ext(i,j) = rhoStar
+            if(rhoStar.GT.0.0d0) then
+                u_ext(i,j) = momxStar/rhoStar
+                v_ext(i,j) = momyStar/rhoStar
+                T_pred(i,j) = rhoEStar/rhoStar
+            else
+                u_ext(i,j) = 0.0d0
+                v_ext(i,j) = 0.0d0
+                T_pred(i,j) = T(i,j)
+            endif
+        enddo
+    enddo
+
+    !$acc parallel loop gang vector collapse(2) default(none) &
+    !$acc& present(f_post,g_post,f_neq,g_neq,T_ext,u_ext,v_ext,T_pred,ex,ey,omega) &
+    !$acc& async(1) firstprivate(tauT) private(alpha,ip,jp,feqStar,geqStar)
+    do j = 1, ny
+        do i = 1, nx
+            call stlbm_feq_geq(T_ext(i,j), u_ext(i,j), v_ext(i,j), T_pred(i,j), feqStar, geqStar)
+            do alpha = 0, 8
+                ip = i - ex(alpha)
+                jp = j - ey(alpha)
+                f_neq(i,j,alpha) = -tauf*(feqStar(alpha) - f_post(ip,jp,alpha))
+                g_neq(i,j,alpha) = -tauT*(geqStar(alpha) - g_post(ip,jp,alpha))
+            enddo
+        enddo
+    enddo
+
+    call build_stlbm_neq_ext_acc()
+
+    !$acc parallel loop gang vector collapse(2) default(none) &
+    !$acc& present(f_post,g_post,rho,u,v,T,T_ext,u_ext,v_ext,T_pred,T_new,Fx,Fy,ex,ey) &
+    !$acc& async(1) firstprivate(corrF,corrT) private(alpha,ip,jp,momxCorr,momyCorr,rhoECorr)
+    do j = 1, ny
+        do i = 1, nx
+            momxCorr = 0.0d0
+            momyCorr = 0.0d0
+            rhoECorr = 0.0d0
+            do alpha = 0, 8
+                ip = i - ex(alpha)
+                jp = j - ey(alpha)
+                momxCorr = momxCorr + dble(ex(alpha))*f_post(ip,jp,alpha)
+                momyCorr = momyCorr + dble(ey(alpha))*f_post(ip,jp,alpha)
+                rhoECorr = rhoECorr + g_post(ip,jp,alpha)
+            enddo
+
+            rho(i,j) = T_ext(i,j)
+            Fx(i,j) = 0.0d0
+            Fy(i,j) = rho(i,j)*gBeta*(T_pred(i,j)-Tref)
+#ifdef    SideHeatedHa
+            Fx(i,j) = B2sigemarho*(v_ext(i,j)*sin(phi)*cos(phi)-u_ext(i,j)*sin(phi)*sin(phi))
+            Fy(i,j) = rho(i,j)*gBeta*(T_pred(i,j)-Tref)+rho(i,j)*B2sigemarho*(u_ext(i,j)*sin(phi)*cos(phi)&
+            -v_ext(i,j)*cos(phi)*cos(phi))
+#endif
+            if(rho(i,j).GT.0.0d0) then
+                u(i,j) = u_ext(i,j) + (corrF*momxCorr + Fx(i,j))/rho(i,j)
+                v(i,j) = v_ext(i,j) + (corrF*momyCorr + Fy(i,j))/rho(i,j)
+                T_new(i,j) = T_pred(i,j) + corrT*rhoECorr/rho(i,j)
+            else
+                u(i,j) = 0.0d0
+                v(i,j) = 0.0d0
+                T_new(i,j) = T(i,j)
+            endif
+        enddo
+    enddo
+
+    !$acc parallel loop gang vector collapse(2) default(none) present(T,T_new) async(1)
+    do j = 1, ny
+        do i = 1, nx
+            T(i,j) = T_new(i,j)
+        enddo
+    enddo
+
+    call apply_stlbm_macro_bc_acc()
+    call update_stlbm_equilibrium_arrays_acc()
 
     return
-  end function wall_derivative_x_right
+  end subroutine stlbm_step
+!===================================================================================================
+
+
 
 !===================================================================================================
 ! 子程序: collision
@@ -1177,19 +1329,20 @@ close(00)
     real(kind=8) :: s(0:8)
     real(kind=8) :: fSource(0:8)
 
-    !$omp parallel do default(none) shared(f,f_post,rho,u,v,Fx,Fy,T) private(i,j,alpha,s,m,m_post,meq,fSource) 
+    !$acc parallel loop gang vector collapse(2) default(none) present(f,f_post,rho,u,v,Fx,Fy,T) async(1) &
+    !$acc& private(alpha,s,m,m_post,meq,fSource)
     do j = 1, ny
         do i = 1, nx
 
-          m(0) = f(0,i,j)+f(1,i,j)+f(2,i,j)+f(3,i,j)+f(4,i,j)+f(5,i,j)+f(6,i,j)+f(7,i,j)+f(8,i,j)
-          m(1) = -4.0d0*f(0,i,j)-f(1,i,j)-f(2,i,j)-f(3,i,j)-f(4,i,j)+2.0d0*(f(5,i,j)+f(6,i,j)+f(7,i,j)+f(8,i,j))
-          m(2) = 4.0d0*f(0,i,j)-2.0d0*(f(1,i,j)+f(2,i,j)+f(3,i,j)+f(4,i,j))+f(5,i,j)+f(6,i,j)+f(7,i,j)+f(8,i,j)
-          m(3) = f(1,i,j)-f(3,i,j)+f(5,i,j)-f(6,i,j)-f(7,i,j)+f(8,i,j)
-          m(4) = -2.0d0*f(1,i,j)+2.0d0*f(3,i,j)+f(5,i,j)-f(6,i,j)-f(7,i,j)+f(8,i,j)
-          m(5) = f(2,i,j)-f(4,i,j)+f(5,i,j)+f(6,i,j)-f(7,i,j)-f(8,i,j)
-          m(6) = -2.0d0*f(2,i,j)+2.0d0*f(4,i,j)+f(5,i,j)+f(6,i,j)-f(7,i,j)-f(8,i,j)
-          m(7) = f(1,i,j)-f(2,i,j)+f(3,i,j)-f(4,i,j)
-          m(8) = f(5,i,j)-f(6,i,j)+f(7,i,j)-f(8,i,j)
+          m(0) = f(i,j,0)+f(i,j,1)+f(i,j,2)+f(i,j,3)+f(i,j,4)+f(i,j,5)+f(i,j,6)+f(i,j,7)+f(i,j,8)
+          m(1) = -4.0d0*f(i,j,0)-f(i,j,1)-f(i,j,2)-f(i,j,3)-f(i,j,4)+2.0d0*(f(i,j,5)+f(i,j,6)+f(i,j,7)+f(i,j,8))
+          m(2) = 4.0d0*f(i,j,0)-2.0d0*(f(i,j,1)+f(i,j,2)+f(i,j,3)+f(i,j,4))+f(i,j,5)+f(i,j,6)+f(i,j,7)+f(i,j,8)
+          m(3) = f(i,j,1)-f(i,j,3)+f(i,j,5)-f(i,j,6)-f(i,j,7)+f(i,j,8)
+          m(4) = -2.0d0*f(i,j,1)+2.0d0*f(i,j,3)+f(i,j,5)-f(i,j,6)-f(i,j,7)+f(i,j,8)
+          m(5) = f(i,j,2)-f(i,j,4)+f(i,j,5)+f(i,j,6)-f(i,j,7)-f(i,j,8)
+          m(6) = -2.0d0*f(i,j,2)+2.0d0*f(i,j,4)+f(i,j,5)+f(i,j,6)-f(i,j,7)-f(i,j,8)
+          m(7) = f(i,j,1)-f(i,j,2)+f(i,j,3)-f(i,j,4)
+          m(8) = f(i,j,5)-f(i,j,6)+f(i,j,7)-f(i,j,8)
 
           meq(0) = rho(i,j)
           meq(1) = rho(i,j)*( -2.0d0+3.0d0*(u(i,j)*u(i,j)+v(i,j)*v(i,j)) )
@@ -1236,32 +1389,30 @@ close(00)
             m_post(alpha) = m(alpha)-s(alpha)*(m(alpha)-meq(alpha))+fSource(alpha)     !矩空间碰撞
           enddo
 
-          f_post(0,i,j) = m_post(0)/9.0d0-m_post(1)/9.0d0+m_post(2)/9.0d0                                         !这边是乘以M逆
-          f_post(1,i,j) = m_post(0)/9.0d0-m_post(1)/36.0d0-m_post(2)/18.0d0+m_post(3)/6.0d0-m_post(4)/6.0d0 &
+          f_post(i,j,0) = m_post(0)/9.0d0-m_post(1)/9.0d0+m_post(2)/9.0d0                                         !这边是乘以M逆
+          f_post(i,j,1) = m_post(0)/9.0d0-m_post(1)/36.0d0-m_post(2)/18.0d0+m_post(3)/6.0d0-m_post(4)/6.0d0 &
                     +m_post(7)/4.0d0
-          f_post(2,i,j) = m_post(0)/9.0d0-m_post(1)/36.0d0-m_post(2)/18.0d0 &
+          f_post(i,j,2) = m_post(0)/9.0d0-m_post(1)/36.0d0-m_post(2)/18.0d0 &
                     +m_post(5)/6.0d0-m_post(6)/6.0d0-m_post(7)/4.0d0
-          f_post(3,i,j) = m_post(0)/9.0d0-m_post(1)/36.0d0-m_post(2)/18.0d0-m_post(3)/6.0d0+m_post(4)/6.0d0 &
+          f_post(i,j,3) = m_post(0)/9.0d0-m_post(1)/36.0d0-m_post(2)/18.0d0-m_post(3)/6.0d0+m_post(4)/6.0d0 &
                     +m_post(7)/4.0d0
-          f_post(4,i,j) = m_post(0)/9.0d0-m_post(1)/36.0d0-m_post(2)/18.0d0 &
+          f_post(i,j,4) = m_post(0)/9.0d0-m_post(1)/36.0d0-m_post(2)/18.0d0 &
                     -m_post(5)/6.0d0+m_post(6)/6.0d0-m_post(7)/4.0d0
-          f_post(5,i,j) = m_post(0)/9.0d0+m_post(1)/18.0d0+m_post(2)/36.0d0+m_post(3)/6.0d0+m_post(4)/12.0d0 &
+          f_post(i,j,5) = m_post(0)/9.0d0+m_post(1)/18.0d0+m_post(2)/36.0d0+m_post(3)/6.0d0+m_post(4)/12.0d0 &
                     +m_post(5)/6.0d0+m_post(6)/12.0d0+m_post(8)/4.0d0
-          f_post(6,i,j) = m_post(0)/9.0d0+m_post(1)/18.0d0+m_post(2)/36.0d0-m_post(3)/6.0d0-m_post(4)/12.0d0 &
+          f_post(i,j,6) = m_post(0)/9.0d0+m_post(1)/18.0d0+m_post(2)/36.0d0-m_post(3)/6.0d0-m_post(4)/12.0d0 &
                     +m_post(5)/6.0d0+m_post(6)/12.0d0-m_post(8)/4.0d0
-          f_post(7,i,j) = m_post(0)/9.0d0+m_post(1)/18.0d0+m_post(2)/36.0d0-m_post(3)/6.0d0-m_post(4)/12.0d0 &
+          f_post(i,j,7) = m_post(0)/9.0d0+m_post(1)/18.0d0+m_post(2)/36.0d0-m_post(3)/6.0d0-m_post(4)/12.0d0 &
                     -m_post(5)/6.0d0-m_post(6)/12.0d0+m_post(8)/4.0d0
-          f_post(8,i,j) = m_post(0)/9.0d0+m_post(1)/18.0d0+m_post(2)/36.0d0+m_post(3)/6.0d0+m_post(4)/12.0d0 &
+          f_post(i,j,8) = m_post(0)/9.0d0+m_post(1)/18.0d0+m_post(2)/36.0d0+m_post(3)/6.0d0+m_post(4)/12.0d0 &
                     -m_post(5)/6.0d0-m_post(6)/12.0d0-m_post(8)/4.0d0
 
         enddo
     enddo
-    !$omp end parallel do
-    
     return
   end subroutine collision
 !===================================================================================================
-! collision 结束: 完成流场分布函数 f 的碰撞更新，并处理体力项离散修正。
+! collision 结束: 流场碰撞步骤完成。
 !===================================================================================================
 
 
@@ -1271,57 +1422,29 @@ close(00)
 ! 用途: 在主程序时间推进循环中调用，位于 collision 之后、bounceback 之前。
 !===================================================================================================
   subroutine streaming()                                    !先迁移，再边界处理
-    use commondata                                            !ISLBM迁移：从 off-lattice 上游位置二次插值读取 f_post
+    use commondata                                            !迁移步骤：pull streaming，把碰撞后的 f_post 拉取到当前格点
     implicit none
     integer(kind=4) :: i, j
-    integer(kind=4) :: alpha, ii, jj
-    real(kind=8) :: value
+    integer(kind=4) :: ip, jp
+    integer(kind=4) :: alpha
     
-    f = 0.0d0
-    !$omp parallel do default(none) shared(f,f_post,ex,ey,streamInterpValidX,streamInterpValidY,streamInterpIndexX,streamInterpIndexY,streamInterpWeightX,streamInterpWeightY) private(i,j,alpha,ii,jj,value)
+    !$acc parallel loop gang vector collapse(2) default(none) present(f,f_post,ex,ey) async(1) private(alpha,ip,jp)
     do j = 1, ny
         do i = 1, nx
-            do alpha = 0, 8
-                if(alpha.EQ.0) then
-                    f(alpha,i,j) = f_post(alpha,i,j)
-                elseif(ey(alpha).EQ.0) then
-                    if(streamInterpValidX(alpha,i)) then
-                        value = 0.0d0
-                        do ii = 1, 3
-                            value = value + streamInterpWeightX(alpha,i,ii)*f_post(alpha,streamInterpIndexX(alpha,i,ii),j)
-                        enddo
-                        f(alpha,i,j) = value
-                    endif
-                elseif(ex(alpha).EQ.0) then
-                    if(streamInterpValidY(alpha,j)) then
-                        value = 0.0d0
-                        do jj = 1, 3
-                            value = value + streamInterpWeightY(alpha,j,jj)*f_post(alpha,i,streamInterpIndexY(alpha,j,jj))
-                        enddo
-                        f(alpha,i,j) = value
-                    endif
-                else
-                    if(streamInterpValidX(alpha,i).AND.streamInterpValidY(alpha,j)) then
-                        value = 0.0d0
-                        do jj = 1, 3
-                            do ii = 1, 3
-                                value = value + streamInterpWeightX(alpha,i,ii)*streamInterpWeightY(alpha,j,jj)* &
-                                    f_post(alpha,streamInterpIndexX(alpha,i,ii),streamInterpIndexY(alpha,j,jj))
-                            enddo
-                        enddo
-                        f(alpha,i,j) = value
-                    endif
-                endif
+            do alpha = 0, 8                        !上游格点索引：fα(i,j) <- f_postα(i-exα, j-eyα)
+                ip = i-ex(alpha)                   !边界附近 (ip/jp 可能为 0 或 nx+1/ny+1)，需在 bounceback/周期边界处理中覆盖修正边界分布
+                jp = j-ey(alpha)                   !ghost 层在初始化中为 0，保证不会出现未初始化垃圾值
+                
+                f(i,j,alpha) = f_post(ip,jp,alpha)
             enddo
         enddo
     enddo
-    !$omp end parallel do
-
     return
   end subroutine streaming
 !===================================================================================================
 ! streaming 结束: 完成流场分布函数 f 的迁移，把碰撞后的信息传播到相邻格点。
 !===================================================================================================
+
 
 
 
@@ -1337,51 +1460,48 @@ close(00)
     ! integer(kind=4) :: alpha
 
 #ifdef VerticalWallsPeriodicalU      
-    !$omp parallel do default(none) shared(f, f_post) private(j)
+    !$acc parallel loop gang vector default(none) present(f,f_post) async(1)
     do j = 1, ny                                                  !速度边界垂直边界周期，直接方向相同，跨边界的入射分布      
         !Left side (i=1)
-        f(1,1,j) = f_post(1,nx,j)
-        f(5,1,j) = f_post(5,nx,j)
-        f(8,1,j) = f_post(8,nx,j)
+        f(1,j,1) = f_post(nx,j,1)
+        f(1,j,5) = f_post(nx,j,5)
+        f(1,j,8) = f_post(nx,j,8)
 
         !Right side (i=nx)
-        f(3,nx,j) = f_post(3,1,j)
-        f(6,nx,j) = f_post(6,1,j)
-        f(7,nx,j) = f_post(7,1,j)
+        f(nx,j,3) = f_post(1,j,3)
+        f(nx,j,6) = f_post(1,j,6)
+        f(nx,j,7) = f_post(1,j,7)
     enddo
-    !$omp end parallel do
 #endif
 
 #ifdef VerticalWallsNoslip
-    !$omp parallel do default(none) shared(f, f_post) private(j)
+    !$acc parallel loop gang vector default(none) present(f,f_post) async(1)
     do j = 1, ny                                                 !速度边界垂直边界静止壁无滑移，直接反弹，方向相反
         !Left side (i=1)
-        f(1,1,j) = f_post(3,1,j)
-        f(5,1,j) = f_post(7,1,j)
-        f(8,1,j) = f_post(6,1,j)
+        f(1,j,1) = f_post(1,j,3)
+        f(1,j,5) = f_post(1,j,7)
+        f(1,j,8) = f_post(1,j,6)
 
         !Right side (i=nx)
-        f(3,nx,j) = f_post(1,nx,j)
-        f(6,nx,j) = f_post(8,nx,j)
-        f(7,nx,j) = f_post(5,nx,j)
+        f(nx,j,3) = f_post(nx,j,1)
+        f(nx,j,6) = f_post(nx,j,8)
+        f(nx,j,7) = f_post(nx,j,5)
     enddo
-    !$omp end parallel do
 #endif
 
 #ifdef HorizontalWallsNoslip
-    !$omp parallel do default(none) shared(f, f_post) private(i)
+    !$acc parallel loop gang vector default(none) present(f,f_post) async(1)
     do i = 1, nx                                                  !速度边界水平边界无滑移，直接反弹，方向相反
         !Bottom side (j=1)
-        f(2,i,1) = f_post(4,i,1)
-        f(5,i,1) = f_post(7,i,1)
-        f(6,i,1) = f_post(8,i,1)
+        f(i,1,2) = f_post(i,1,4)
+        f(i,1,5) = f_post(i,1,7)
+        f(i,1,6) = f_post(i,1,8)
 
         !Top side (j=ny)
-        f(4,i,ny) = f_post(2,i,ny)
-        f(7,i,ny) = f_post(5,i,ny)
-        f(8,i,ny) = f_post(6,i,ny)
+        f(i,ny,4) = f_post(i,ny,2)
+        f(i,ny,7) = f_post(i,ny,5)
+        f(i,ny,8) = f_post(i,ny,6)
     enddo
-    !$omp end parallel do
 #endif
 
     return
@@ -1393,29 +1513,28 @@ close(00)
 
 
 !===================================================================================================
+
+!===================================================================================================
 ! 子程序: macro
 ! 作用: 由流场分布函数恢复 rho、u、v，并加入半步力项速度修正。
-! 用途: 在主程序时间推进循环中调用，位于 bounceback 之后、collisionT 之前。
 !===================================================================================================
   subroutine macro()
     use commondata
     implicit none
     integer(kind=4) :: i, j
 
-    !$omp parallel do default(none) shared(f,rho,u,v,Fx,Fy) private(i,j)
+    !$acc parallel loop gang vector collapse(2) default(none) present(f,rho,u,v,Fx,Fy) async(1)
     do j = 1, ny
         do i = 1, nx
-            rho(i,j) = f(0,i,j)+f(1,i,j)+f(2,i,j)+f(3,i,j)+f(4,i,j)+f(5,i,j)+f(6,i,j)+f(7,i,j)+f(8,i,j)
-            u(i,j) = ( f(1,i,j)-f(3,i,j)+f(5,i,j)-f(6,i,j)-f(7,i,j)+f(8,i,j)+0.5d0*Fx(i,j) )/rho(i,j)     !含力LBM的半步动量修正：rho*u = Σ f e + 0.5*F，对应Guo forcing的二阶定义
-            v(i,j) = ( f(2,i,j)-f(4,i,j)+f(5,i,j)+f(6,i,j)-f(7,i,j)-f(8,i,j)+0.5d0*Fy(i,j) )/rho(i,j)
+            rho(i,j) = f(i,j,0)+f(i,j,1)+f(i,j,2)+f(i,j,3)+f(i,j,4)+f(i,j,5)+f(i,j,6)+f(i,j,7)+f(i,j,8)
+            u(i,j) = ( f(i,j,1)-f(i,j,3)+f(i,j,5)-f(i,j,6)-f(i,j,7)+f(i,j,8)+0.5d0*Fx(i,j) )/rho(i,j)     !含力LBM的半步动量修正：rho*u = Σ f e + 0.5*F，对应Guo forcing的二阶定义
+            v(i,j) = ( f(i,j,2)-f(i,j,4)+f(i,j,5)+f(i,j,6)-f(i,j,7)-f(i,j,8)+0.5d0*Fy(i,j) )/rho(i,j)
         enddo
     enddo
-    !$omp end parallel do
-    
     return
   end subroutine macro
 !===================================================================================================
-! macro 结束: 由流场分布函数恢复 rho、u、v，并加入半步力项速度修正。
+
 !===================================================================================================
 
 
@@ -1439,7 +1558,8 @@ close(00)
 
 
 
-    !$omp parallel do default(none) shared(g,g_post,u,v,T,Bx_prev,By_prev) private(i,j,alpha,n,neq,q,n_post,Bx,By,dBx,dBy) 
+    !$acc parallel loop gang vector collapse(2) default(none) present(g,g_post,u,v,T,Bx_prev,By_prev) async(1) &
+    !$acc& private(alpha,n,neq,q,n_post,Bx,By,dBx,dBy)
     do j = 1, ny
         do i = 1, nx
 
@@ -1459,11 +1579,11 @@ close(00)
             By_prev(i,j) = By
 #endif
 
-          n(0) = g(0,i,j)+g(1,i,j)+g(2,i,j)+g(3,i,j)+g(4,i,j)
-          n(1) = g(1,i,j)-g(3,i,j)
-          n(2) = g(2,i,j)-g(4,i,j)
-          n(3) = -4.0d0*g(0,i,j)+g(1,i,j)+g(2,i,j)+g(3,i,j)+g(4,i,j)
-          n(4) = g(1,i,j)-g(2,i,j)+g(3,i,j)-g(4,i,j)
+          n(0) = g(i,j,0)+g(i,j,1)+g(i,j,2)+g(i,j,3)+g(i,j,4)
+          n(1) = g(i,j,1)-g(i,j,3)
+          n(2) = g(i,j,2)-g(i,j,4)
+          n(3) = -4.0d0*g(i,j,0)+g(i,j,1)+g(i,j,2)+g(i,j,3)+g(i,j,4)
+          n(4) = g(i,j,1)-g(i,j,2)+g(i,j,3)-g(i,j,4)
         
           neq(0) = T(i,j)
           neq(1) = T(i,j)*u(i,j)
@@ -1489,20 +1609,19 @@ close(00)
           n_post(4) = n(4)-q(4)*(n(4)-neq(4))
           
         
-          g_post(0,i,j) = 0.2d0*n_post(0)-0.2d0*n_post(3)
-          g_post(1,i,j) = 0.2d0*n_post(0)+0.5d0*n_post(1)+0.05d0*n_post(3)+0.25d0*n_post(4)
-          g_post(2,i,j) = 0.2d0*n_post(0)+0.5d0*n_post(2)+0.05d0*n_post(3)-0.25d0*n_post(4)
-          g_post(3,i,j) = 0.2d0*n_post(0)-0.5d0*n_post(1)+0.05d0*n_post(3)+0.25d0*n_post(4)
-          g_post(4,i,j) = 0.2d0*n_post(0)-0.5d0*n_post(2)+0.05d0*n_post(3)-0.25d0*n_post(4) 
+          g_post(i,j,0) = 0.2d0*n_post(0)-0.2d0*n_post(3)
+          g_post(i,j,1) = 0.2d0*n_post(0)+0.5d0*n_post(1)+0.05d0*n_post(3)+0.25d0*n_post(4)
+          g_post(i,j,2) = 0.2d0*n_post(0)+0.5d0*n_post(2)+0.05d0*n_post(3)-0.25d0*n_post(4)
+          g_post(i,j,3) = 0.2d0*n_post(0)-0.5d0*n_post(1)+0.05d0*n_post(3)+0.25d0*n_post(4)
+          g_post(i,j,4) = 0.2d0*n_post(0)-0.5d0*n_post(2)+0.05d0*n_post(3)-0.25d0*n_post(4)
         enddo
     enddo
-    !$omp end parallel do
-    
     return
     end subroutine collisionT
 !===================================================================================================
 ! collisionT 结束: 完成温度分布函数 g 的碰撞更新，并加入热流修正项。
 !===================================================================================================
+
 
 
 
@@ -1515,49 +1634,20 @@ close(00)
     use commondata
     implicit none
     integer(kind=4) :: i, j
-    integer(kind=4) :: alpha, ii, jj
-    real(kind=8) :: value
+    integer(kind=4) :: ip, jp
+    integer(kind=4) :: alpha
     
-    g = 0.0d0
-    !$omp parallel do default(none) shared(g,g_post,ex,ey,streamInterpValidX,streamInterpValidY,streamInterpIndexX,streamInterpIndexY,streamInterpWeightX,streamInterpWeightY) private(i,j,alpha,ii,jj,value)
+    !$acc parallel loop gang vector collapse(2) default(none) present(g,g_post,ex,ey) async(1) private(alpha,ip,jp)
     do j = 1, ny
         do i = 1, nx
             do alpha = 0, 4
-                if(alpha.EQ.0) then
-                    g(alpha,i,j) = g_post(alpha,i,j)
-                elseif(ey(alpha).EQ.0) then
-                    if(streamInterpValidX(alpha,i)) then
-                        value = 0.0d0
-                        do ii = 1, 3
-                            value = value + streamInterpWeightX(alpha,i,ii)*g_post(alpha,streamInterpIndexX(alpha,i,ii),j)
-                        enddo
-                        g(alpha,i,j) = value
-                    endif
-                elseif(ex(alpha).EQ.0) then
-                    if(streamInterpValidY(alpha,j)) then
-                        value = 0.0d0
-                        do jj = 1, 3
-                            value = value + streamInterpWeightY(alpha,j,jj)*g_post(alpha,i,streamInterpIndexY(alpha,j,jj))
-                        enddo
-                        g(alpha,i,j) = value
-                    endif
-                else
-                    if(streamInterpValidX(alpha,i).AND.streamInterpValidY(alpha,j)) then
-                        value = 0.0d0
-                        do jj = 1, 3
-                            do ii = 1, 3
-                                value = value + streamInterpWeightX(alpha,i,ii)*streamInterpWeightY(alpha,j,jj)* &
-                                    g_post(alpha,streamInterpIndexX(alpha,i,ii),streamInterpIndexY(alpha,j,jj))
-                            enddo
-                        enddo
-                        g(alpha,i,j) = value
-                    endif
-                endif
+                ip = i-ex(alpha)
+                jp = j-ey(alpha)
+                
+                g(i,j,alpha) = g_post(ip,jp,alpha)
             enddo
         enddo
     enddo
-    !$omp end parallel do
-
     return
     end subroutine streamingT
 !===================================================================================================
@@ -1578,77 +1668,72 @@ close(00)
     !integer(kind=4) :: alpha
 
 #ifdef VerticalWallsPeriodicalT 
-    !$omp parallel do default(none) shared(g,g_post) private(j)
+    !$acc parallel loop gang vector default(none) present(g,g_post) async(1)
     do j = 1, ny
         !Left boundary
-        g(1,1,j) = g_post(1,nx,j)
+        g(1,j,1) = g_post(nx,j,1)
 
         !Right boundary
-        g(3,nx,j) = g_post(3,1,j)
+        g(nx,j,3) = g_post(1,j,3)
     enddo
-    !$omp end parallel do
 #endif
 
 #ifdef VerticalWallsConstT
-    !$omp parallel do default(none) shared(g,g_post,omegaT) private(j)
+    !$acc parallel loop gang vector default(none) present(g,g_post,omegaT) async(1)
     do j = 1, ny
         !Left boundary
 #ifdef EnableLegacyThermalScheme
-        g(1,1,j) = -g_post(3,1,j)+(4.0d0+paraA)/10.0d0*Thot
+        g(1,j,1) = -g_post(1,j,3)+(4.0d0+paraA)/10.0d0*Thot
 #else
-        g(1,1,j) = -g_post(3,1,j)+2.0d0*omegaT(3)*Thot
+        g(1,j,1) = -g_post(1,j,3)+2.0d0*omegaT(3)*Thot
 #endif
         !Right boundary
 #ifdef EnableLegacyThermalScheme
-        g(3,nx,j) = -g_post(1,nx,j)+(4.0d0+paraA)/10.0d0*Tcold
+        g(nx,j,3) = -g_post(nx,j,1)+(4.0d0+paraA)/10.0d0*Tcold
 #else
-        g(3,nx,j) = -g_post(1,nx,j)+2.0d0*omegaT(1)*Tcold
+        g(nx,j,3) = -g_post(nx,j,1)+2.0d0*omegaT(1)*Tcold
 #endif
     enddo
-    !$omp end parallel do
 #endif
 
 #ifdef VerticalWallsAdiabatic
-    !$omp parallel do default(none) shared(g,g_post) private(j)
+    !$acc parallel loop gang vector default(none) present(g,g_post) async(1)
     do j = 1, ny
         !Left boundary
-        g(1,1,j) = g_post(3,1,j)
+        g(1,j,1) = g_post(1,j,3)
 
         !Right boundary
-        g(3,nx,j) = g_post(1,nx,j)
+        g(nx,j,3) = g_post(nx,j,1)
     enddo
-    !$omp end parallel do
 #endif
 
 #ifdef HorizontalWallsAdiabatic
-    !$omp parallel do default(none) shared(g,g_post) private(i)
+    !$acc parallel loop gang vector default(none) present(g,g_post) async(1)
     do i = 1, nx
         !Bottom side
-        g(2,i,1) = g_post(4,i,1)
+        g(i,1,2) = g_post(i,1,4)
 
         !Top side
-        g(4,i,ny) = g_post(2,i,ny)
+        g(i,ny,4) = g_post(i,ny,2)
     enddo
-    !$omp end parallel do
 #endif
 
 #ifdef HorizontalWallsConstT
-    !$omp parallel do default(none) shared(g,g_post,omegaT) private(i)
+    !$acc parallel loop gang vector default(none) present(g,g_post,omegaT) async(1)
     do i = 1, nx
         !Bottom side
 #ifdef EnableLegacyThermalScheme
-        g(2,i,1) = -g_post(4,i,1)+(4.0d0+paraA)/10.0d0*Thot
+        g(i,1,2) = -g_post(i,1,4)+(4.0d0+paraA)/10.0d0*Thot
 #else
-        g(2,i,1) = -g_post(4,i,1)+2.0d0*omegaT(4)*Thot
+        g(i,1,2) = -g_post(i,1,4)+2.0d0*omegaT(4)*Thot
 #endif
         !Top side
 #ifdef EnableLegacyThermalScheme
-        g(4,i,ny) = -g_post(2,i,ny)+(4.0d0+paraA)/10.0d0*Tcold
+        g(i,ny,4) = -g_post(i,ny,2)+(4.0d0+paraA)/10.0d0*Tcold
 #else
-        g(4,i,ny) = -g_post(2,i,ny)+2.0d0*omegaT(2)*Tcold
+        g(i,ny,4) = -g_post(i,ny,2)+2.0d0*omegaT(2)*Tcold
 #endif
     enddo
-    !$omp end parallel do
 #endif
 
     return
@@ -1656,6 +1741,7 @@ close(00)
 !===================================================================================================
 ! bouncebackT 结束: 处理温度边界条件，包括恒温、绝热和周期边界。
 !===================================================================================================
+
 
 
 
@@ -1669,14 +1755,12 @@ close(00)
     implicit none
     integer(kind=4) :: i, j
 
-    !$omp parallel do default(none) shared(g, T) private(i,j)
+    !$acc parallel loop gang vector collapse(2) default(none) present(g,T) async(1)
     do j = 1, ny
         do i = 1, nx
-            T(i,j) = g(0,i,j)+g(1,i,j)+g(2,i,j)+g(3,i,j)+g(4,i,j)
+            T(i,j) = g(i,j,0)+g(i,j,1)+g(i,j,2)+g(i,j,3)+g(i,j,4)
         enddo
     enddo
-    !$omp end parallel do
-    
     return
     end subroutine macroT
 !===================================================================================================
@@ -1687,64 +1771,39 @@ close(00)
 
 !===================================================================================================
 ! 子程序: reconstruct_macro_from_fg
-! 作用: 从重启读回的 f/g 重新恢复 rho、u、v 和 T。
-! 用途: 在 loadInitField=1 续算分支中调用，使宏观量与重启的分布函数保持一致。
+! 作用: 从 STLBM 重启读回的 rho/u/v/T 同步 D2Q9 平衡态缓存。
 !===================================================================================================
     subroutine reconstruct_macro_from_fg()
     use commondata
     implicit none
-    integer(kind=4) :: i, j, iter
-    real(kind=8) :: momx, momy
+    integer(kind=4) :: i, j
     logical :: rho_bad
 
-    call macroT()
-
     rho_bad = .false.
-    !$omp parallel do default(none) shared(f,rho,u,v,T,Fx,Fy) private(i,j,iter,momx,momy) &
-    !$omp reduction(.or.:rho_bad)
     do j = 1, ny
         do i = 1, nx
-            rho(i,j) = f(0,i,j)+f(1,i,j)+f(2,i,j)+f(3,i,j)+f(4,i,j)+f(5,i,j)+f(6,i,j)+f(7,i,j)+f(8,i,j)
-            momx = f(1,i,j)-f(3,i,j)+f(5,i,j)-f(6,i,j)-f(7,i,j)+f(8,i,j)
-            momy = f(2,i,j)-f(4,i,j)+f(5,i,j)+f(6,i,j)-f(7,i,j)-f(8,i,j)
-
             if (rho(i,j).GT.0.0d0) then
-                u(i,j) = momx/rho(i,j)
-                v(i,j) = momy/rho(i,j)
-
-                do iter = 1, 3
-                    Fx(i,j) = 0.0d0
-                    Fy(i,j) = rho(i,j)*gBeta*(T(i,j)-Tref)
-
-#ifdef    SideHeatedHa
-                    Fx(i,j) = B2sigemarho*(v(i,j)*sin(phi)*cos(phi)-u(i,j)*sin(phi)*sin(phi))
-                    Fy(i,j) = rho(i,j)*gBeta*(T(i,j)-Tref)+rho(i,j)*B2sigemarho*(u(i,j)*sin(phi)*cos(phi)&
-                    -v(i,j)*cos(phi)*cos(phi))
-#endif
-
-                    u(i,j) = (momx + 0.5d0*Fx(i,j))/rho(i,j)
-                    v(i,j) = (momy + 0.5d0*Fy(i,j))/rho(i,j)
-                enddo
+                Fx(i,j) = 0.0d0
+                Fy(i,j) = 0.0d0
             else
                 rho_bad = .true.
                 Fx(i,j) = 0.0d0
                 Fy(i,j) = 0.0d0
-                u(i,j) = 0.0d0
-                v(i,j) = 0.0d0
             endif
         enddo
     enddo
-    !$omp end parallel do
 
     if (rho_bad) then
         write(*,*) "Warning: non-positive rho found during restart reconstruction."
         stop
     endif
 
+    call update_stlbm_equilibrium_arrays_host()
+
     return
     end subroutine reconstruct_macro_from_fg
 !===================================================================================================
-! reconstruct_macro_from_fg 结束: 从重启读回的 f/g 重新恢复 rho、u、v 和 T。
+! reconstruct_macro_from_fg end: current macro state is rebuilt from rho/u/v/T for STLBM restart.
 !===================================================================================================
 
 
@@ -1764,13 +1823,14 @@ close(00)
 
 
 
+    !$acc wait(1)
     error1 = 0.0d0
     error2 = 0.0d0
 
     error5 = 0.0d0
     error6 = 0.0d0
     
-    !$omp parallel do default(none) shared(u,up,v,vp,T,Tp) private(i,j) reduction(+:error1,error2,error5,error6)
+    !$acc parallel loop collapse(2) default(none) present(u,up,v,vp,T,Tp) reduction(+:error1,error2,error5,error6)
     do j = 1, ny
         do i = 1, nx
             error1 = error1+(u(i,j)-up(i,j))*(u(i,j)-up(i,j))+(v(i,j)-vp(i,j))*(v(i,j)-vp(i,j))
@@ -1784,21 +1844,27 @@ close(00)
             Tp(i,j) = T(i,j)
         enddo
     enddo
-    !$omp end parallel do 
-    
-    errorU = dsqrt(error1)/dsqrt(error2)                 !速度场相对L2误差：||u^n-u^{n-1}||_2 / ||u^n||_2
-    errorT = error5/error6                               !温度场相对L1误差：||T^n-T^{n-1}||_1 / ||T^n||_1
+    if (error2 .GT. 1.0d-30) then
+        errorU = dsqrt(error1)/dsqrt(error2)                 !速度场相对L2误差：||u^n-u^{n-1}||_2 / ||u^n||_2
+    else
+        errorU = dsqrt(error1)
+    endif
+    if (error6 .GT. 1.0d-30) then
+        errorT = error5/error6                               !温度场相对L1误差：||T^n-T^{n-1}||_1 / ||T^n||_1
+    else
+        errorT = error5
+    endif
 
   
 
-    call append_convergence_tecplot('convergence.plt', restartItcOffset+itc, errorU, errorT)
+    call append_convergence_tecplot('convergence2DOpenaccSTLBM.plt', restartItcOffset+itc, errorU, errorT)
 
     
-    write(caseTag,'("Ra=",ES10.3E2,",nx=",I0,",ny=",I0,",useG=",L1,",old=",L1)') Rayleigh, nx, ny, useG,&
+    write(caseTag,'("Ra=",ES24.16E3,",nx=",I0,",ny=",I0,",useG=",L1,",old=",L1)') Rayleigh, nx, ny, useG,&
     &useLegacyThermalScheme  !输出收敛曲线的对比
-    call append_convergence_master_tecplot('convergence_all.plt', caseTag, restartItcOffset+itc, errorU, errorT)
+    call append_convergence_master_tecplot('convergence_all_2DOpenaccSTLBM.plt', caseTag, restartItcOffset+itc, errorU, errorT)
 
-    write(*,'(I12,1X,ES24.16,1X,ES24.16)') restartItcOffset+itc, errorU, errorT
+    write(*,'(I12,1X,ES24.16E3,1X,ES24.16E3)') restartItcOffset+itc, errorU, errorT
 
 
     return
@@ -1910,13 +1976,14 @@ end subroutine append_convergence_master_tecplot
 
 
 
+
+
 !===================================================================================================
 ! 子程序: output_SnapshotFile
 ! 作用: 输出 u、v、T、rho 的二进制快照文件，供后处理分析使用。
-! 用途: 在运行过程中按采样间隔调用，也在程序结束前输出最后一帧。
 !===================================================================================================
   subroutine output_SnapshotFile()                                   !输出 uvTrho 二进制快照
-    use commondata                                                   !用于后处理快照；重启读入时必须按 u,v,T,rho 顺序读取
+    use commondata                                                   !用于后处理快照
     implicit none
     integer(kind=4) :: i, j
     character(len=100) :: filename
@@ -1929,13 +1996,14 @@ end subroutine append_convergence_master_tecplot
 
 #ifdef unsteadyFlow
     snapshotFileNum = snapshotFileNum+1
-    write(filename,'(i12.12)') snapshotFileNum   !unsteadyFlow：快照文件按调用次数编号，与 reloadFileNum 分离
+    write(filename,'(i12.12)') snapshotFileNum                       !unsteadyFlow：快照文件按调用次数编号，与 reloadFileNum 分离
 #endif
 
     filename = adjustl(filename)
 
     open(unit=03,file=trim(snapshotFilePrefix)//"-"//trim(filename)//'.bin',form="unformatted",access="sequential")    !二进制
     ! Post-processing snapshot only: write nondimensionalized u/v together with T and rho.
+    ! Do not use this file for strict restart; output_ReloadFile() keeps lattice velocities for that purpose.
     write(03) ((real(velocityScaleCompare*u(i,j),kind=8),i=1,nx),j=1,ny)
     write(03) ((real(velocityScaleCompare*v(i,j),kind=8),i=1,nx),j=1,ny)
     write(03) ((real(T(i,j),kind=8),i=1,nx),j=1,ny)
@@ -1953,13 +2021,13 @@ end subroutine append_convergence_master_tecplot
 
 !===================================================================================================
 ! 子程序: output_ReloadFile
-! 作用: 输出重启备份文件；基础记录为 f/g，EnableUseG 还包含 Bx_prev/By_prev 历史项。
+! 作用: 输出 STLBM 重启备份文件；直接记录宏观 rho/u/v/T。
 ! 用途: 在运行过程中定期调用，也在程序结束前调用。
 !===================================================================================================
-  subroutine output_ReloadFile()                                  !输出重启文件，名字由 reloadFilePrefix 控制
-    use commondata                                                !用于严格重启；rho/u/v/T 由 f/g 重建
+  subroutine output_ReloadFile()                                  !输出 reload 文件，名字由 reloadFilePrefix 控制
+    use commondata                                                !STLBM 严格重启直接读回 rho/u/v/T
     implicit none
-    integer(kind=4) :: i, j, alpha
+    integer(kind=4) :: i, j
     character(len=100) :: filename
 
 #ifdef steadyFlow
@@ -1969,39 +2037,35 @@ end subroutine append_convergence_master_tecplot
 
 #ifdef unsteadyFlow
     reloadFileNum = reloadFileNum + 1
-    write(filename,'(i12.12)') reloadFileNum     !unsteadyFlow：reload 文件使用独立编号，不依赖快照输出是否开启
+    write(filename,'(i12.12)') reloadFileNum                !unsteadyFlow：reload 文件使用独立编号，不依赖快照输出是否开启
 #endif
 
     filename = adjustl(filename)
 
     open(unit=05,file=trim(reloadFilePrefix)//"-"//trim(filename)//'.bin',form="unformatted",access="sequential")   !二进制
-    ! Strict restart files store f/g.  With EnableUseG, Bx_prev/By_prev must also be saved;
-    ! otherwise the first post-reload M1G correction would lose its previous-step history.
-    write(05) (((real(f(alpha,i,j),kind=8), i=1,nx), j=1,ny), alpha=0,8)
-    write(05) (((real(g(alpha,i,j),kind=8), i=1,nx), j=1,ny), alpha=0,4)
-#ifdef EnableUseG
-    write(05) ((real(Bx_prev(i,j),kind=8), i=1,nx), j=1,ny)
-    write(05) ((real(By_prev(i,j),kind=8), i=1,nx), j=1,ny)
-#endif
+    ! STLBM 不演化分布函数；严格重启保存宏观状态量。
+    write(05) ((real(rho(i,j),kind=8), i=1,nx), j=1,ny)
+    write(05) ((real(u(i,j),kind=8), i=1,nx), j=1,ny)
+    write(05) ((real(v(i,j),kind=8), i=1,nx), j=1,ny)
+    write(05) ((real(T(i,j),kind=8), i=1,nx), j=1,ny)
     close(05)
     call write_reload_metadata(trim(filename))
     
     open(unit=00,file=trim(settingsFile),status='unknown',position='append')
-    write(00,*) "Backup f/g restart state to: ", trim(reloadFilePrefix), "-", trim(filename),".bin"
+    write(00,*) "Backup STLBM rho/u/v/T restart state to: ", trim(reloadFilePrefix), "-", trim(filename),".bin"
     write(00,*) "Backup restart metadata to: ", trim(reloadFilePrefix), "-latest.meta"
     close(00)
     
     return
   end subroutine output_ReloadFile
 !===================================================================================================
-! output_ReloadFile 结束: 输出严格重启备份文件。
+! output_ReloadFile 结束: 输出 STLBM 严格重启备份文件。
 !===================================================================================================
 
 
 !===================================================================================================
 ! 子程序: write_reload_metadata
 ! 作用: 覆盖写出最新 reload 续算账本，恢复累计步数、t_ff、输出编号和最新 .bin 文件名。
-! 用途: 在 output_ReloadFile 写出重启二进制文件后调用，保证 latest.meta 指向最新状态。
 !===================================================================================================
   subroutine write_reload_metadata(filename)
     use commondata
@@ -2015,7 +2079,7 @@ end subroutine append_convergence_master_tecplot
 
     open(newunit=metaUnit, file=trim(reloadFilePrefix)//'-latest.meta', &
          status='replace', action='write', form='formatted')
-    write(metaUnit,'(A,1X,I0)') 'reload_meta_version', 2
+    write(metaUnit,'(A,1X,I0)') 'reload_meta_version', 3
 #ifdef steadyFlow
     write(metaUnit,'(A,1X,A)') 'flowMode', 'steadyFlow'
 #endif
@@ -2035,14 +2099,11 @@ end subroutine append_convergence_master_tecplot
     return
   end subroutine write_reload_metadata
 !===================================================================================================
-! write_reload_metadata 结束: 已更新 latest.meta 续算账本。
-!===================================================================================================
 
 
 !===================================================================================================
 ! 子程序: read_reload_metadata
 ! 作用: 优先读取 latest .meta；若没有，则根据手工编号做保守推断。
-! 用途: 在 initial 的续算分支中调用，用于确定实际读取的 reload 文件和累计时间。
 !===================================================================================================
   subroutine read_reload_metadata(reloadFileName)
     use commondata
@@ -2075,9 +2136,9 @@ end subroutine append_convergence_master_tecplot
     endif
 
     read(metaUnit,*,iostat=ios) label, metaVersion
-    if((ios.NE.0).OR.(trim(label).NE.'reload_meta_version').OR.(metaVersion.NE.2)) then
+    if((ios.NE.0).OR.(trim(label).NE.'reload_meta_version').OR.(metaVersion.NE.3)) then
         write(*,*) 'Error: invalid reload metadata version in ', trim(metaFile)
-        stop    !如果读取失败，或者标签不是 reload_meta_version，或者版本号不是 2，就说明文件格式不对，停止。
+        stop    !如果读取失败，或者标签不是 reload_meta_version，或者版本号不是 3，就说明文件格式不对，停止。
     endif
 
     read(metaUnit,*,iostat=ios) label, metaFlowMode
@@ -2166,15 +2227,12 @@ end subroutine append_convergence_master_tecplot
     return
   end subroutine read_reload_metadata
 !===================================================================================================
-! read_reload_metadata 结束: 已读取或推断续算文件名、累计步数和输出编号。
-!===================================================================================================
 
 
 !===================================================================================================
 ! 子程序: infer_reload_offsets_without_metadata
 ! 作用: 没有 latest .meta 时，只能根据文件编号和当前手工参数推断。
 ! 根据文件名编号和当前参数“猜一个合理值”，保证续算的时间/步数是连续的。
-! 用途: 作为 read_reload_metadata 的兜底路径，兼容旧格式 reload 文件。
 !===================================================================================================
   subroutine infer_reload_offsets_without_metadata()
     use commondata
@@ -2199,9 +2257,9 @@ end subroutine append_convergence_master_tecplot
     return
   end subroutine infer_reload_offsets_without_metadata
 !===================================================================================================
-! infer_reload_offsets_without_metadata 结束: 已根据手工编号保守推断续算偏移量。
-!===================================================================================================
 
+    
+    
 
 !===================================================================================================
 ! 子程序: output_Tecplot
@@ -2220,14 +2278,12 @@ end subroutine append_convergence_master_tecplot
     integer(kind=4), parameter :: kmax=1    !二维数据也按 3D 的 IJK 写，K=1
     character(len=40) :: zoneName           !zone 名称
     character(len=100) :: filename          !输出文件名字符串
-    ! OpenMP version: fields are host resident; no device update is required before output.
-
 #ifdef steadyFlow
     write(filename,'(i12.12)') restartItcOffset+itc
 #endif
 
 #ifdef unsteadyFlow
-    pltFileNum = pltFileNum+1               !plt 文件按调用次数编号
+    pltFileNum = pltFileNum+1               !Tecplot 文件使用独立输出编号
     write(filename,'(i12.12)') pltFileNum
 #endif
 
@@ -2304,8 +2360,7 @@ end subroutine append_convergence_master_tecplot
     !----zone ------------------------------------------------------------ !再写一次 299.0：Tecplot 规范里“zone header之后的数据描述块”会以 zone marker 开始。
     write(41) zoneMarker
 
-    !--------variable data format: 1=Float, 2=Double, 3=LongInt, 4=ShortInt, 5=Byte, 6=Bit
-    ! 这里所有变量按双精度输出
+    !--------variable data format, 1=Float, 2=Double, 3=LongInt,4=ShortInt, 5=Byte, 6=Bit  !每个变量的数据格式（这里都是 float）,双精度就是2
     write(41) 2
     write(41) 2
     write(41) 2
@@ -2342,6 +2397,7 @@ end subroutine append_convergence_master_tecplot
 
 
 
+
 !===================================================================================================
 ! 子程序: dumpstring
 ! 作用: 把字符串按 Tecplot 二进制格式写入文件。
@@ -2372,20 +2428,19 @@ end subroutine append_convergence_master_tecplot
 !===================================================================================================
 ! 子程序: calNuRe
 ! 作用: 计算体平均 Nu / Re，并把时间序列缓存到数组中。
-! 用途: 在采样时刻调用，用于生成非稳态 Nu/Re 时间历程和后处理输出。
 !===================================================================================================
   subroutine calNuRe()
     use commondata
     implicit none
     integer(kind=4) :: i, j
-    real(kind=8) :: NuVolAvg_temp    !体平均 Nu 的对流热通量积分
-    real(kind=8) :: ReVolAvg_temp    !体平均 Re 的速度模积分
-    real(kind=8) :: areaWeight
+    real(kind=8) :: NuVolAvg_temp    !体平均 Nu
+    real(kind=8) :: ReVolAvg_temp    !体平均 Re
     real(kind=8) :: sampleTime
     logical :: exNu, exRe
     logical, save :: first_nure_write = .true.
     
 
+    !$acc wait(1)
     if (dimensionlessTime.GE.dimensionlessTimeMax) then
         write(*,*) "Error: dimensionlessTime exceeds dimensionlessTimeMax, please enlarge dimensionlessTimeMax"
         open(unit=00,file=trim(settingsFile),status="unknown",position="append")
@@ -2403,14 +2458,14 @@ end subroutine append_convergence_master_tecplot
 #endif
 
     if((first_nure_write).AND.(loadInitField.EQ.1)) then
-        inquire(file="Nu_VolAvg.dat", exist=exNu)
-        inquire(file="Re_VolAvg.dat", exist=exRe)
+        inquire(file="Nu_VolAvg_2DOpenaccSTLBM.dat", exist=exNu)
+        inquire(file="Re_VolAvg_2DOpenaccSTLBM.dat", exist=exRe)
         if((.not.exNu).OR.(.not.exRe)) then
             write(*,*) "Error: restart requested but old Nu/Re time-series files are missing."
             open(unit=00,file=trim(settingsFile),status="unknown",position="append")
             write(00,*) "Error: restart requested but old Nu/Re time-series files are missing."
-            write(00,*) "Nu_VolAvg.dat exists =", exNu
-            write(00,*) "Re_VolAvg.dat exists =", exRe
+            write(00,*) "Nu_VolAvg_2DOpenaccSTLBM.dat exists =", exNu
+            write(00,*) "Re_VolAvg_2DOpenaccSTLBM.dat exists =", exRe
             close(00)
             stop
         endif
@@ -2420,34 +2475,30 @@ end subroutine append_convergence_master_tecplot
     
     NuVolAvg_temp = 0.0d0    
 #ifdef SideHeatedCell  
-    !$omp parallel do default(none) shared(u,T,quadWidthX,quadWidthY) private(i,j,areaWeight) reduction(+:NuVolAvg_temp)
+    !$acc parallel loop collapse(2) default(none) present(u,T) reduction(+:NuVolAvg_temp)
     do j = 1, ny
         do i = 1, nx
-            areaWeight = quadWidthX(i)*quadWidthY(j)
-            NuVolAvg_temp = NuVolAvg_temp+areaWeight*u(i,j)*(T(i,j)-Tref)     !非均匀网格 midpoint-rule 加权对流热通量
+            NuVolAvg_temp = NuVolAvg_temp+u(i,j)*T(i,j)     !对流热通量
         enddo
     enddo
-    !$omp end parallel do
 #endif
 
 #ifdef RayleighBenardCell  
-    !$omp parallel do default(none) shared(v,T,quadWidthX,quadWidthY) private(i,j,areaWeight) reduction(+:NuVolAvg_temp)
+    !$acc parallel loop collapse(2) default(none) present(v,T) reduction(+:NuVolAvg_temp)
     do j = 1, ny
         do i = 1, nx
-            areaWeight = quadWidthX(i)*quadWidthY(j)
-            NuVolAvg_temp = NuVolAvg_temp+areaWeight*v(i,j)*(T(i,j)-Tref)     !非均匀网格 midpoint-rule 加权对流热通量
+            NuVolAvg_temp = NuVolAvg_temp+v(i,j)*T(i,j)     !对流热通量
         enddo
     enddo
-    !$omp end parallel do
 #endif
 
 
-    NuVolAvg(dimensionlessTime) = NuVolAvg_temp/quadSumArea*lengthUnit/diffusivity+1.0d0    !!ISLBM体平均 Nusselt 数：非均匀网格体积分加权
+    NuVolAvg(dimensionlessTime) = NuVolAvg_temp/dble(nx*ny)*lengthUnit/diffusivity+1.0d0    !!体平均 Nusselt 数 = 1 + (常数系数) × 体平均对流热通量
 
     if((first_nure_write).AND.(loadInitField.EQ.0)) then
-        open(unit=01,file="Nu_VolAvg.dat",status='replace',action='write')
+        open(unit=01,file="Nu_VolAvg_2DOpenaccSTLBM.dat",status='replace',action='write')
     else
-        open(unit=01,file="Nu_VolAvg.dat",status='unknown',position='append',action='write')
+        open(unit=01,file="Nu_VolAvg_2DOpenaccSTLBM.dat",status='unknown',position='append',action='write')
     endif
     write(01,'(ES24.16E3,1X,ES24.16E3)') &
         real(sampleTime,kind=8), &
@@ -2455,21 +2506,19 @@ end subroutine append_convergence_master_tecplot
     close(01)
 
     ReVolAvg_temp = 0.0d0
-    !$omp parallel do default(none) shared(u,v,quadWidthX,quadWidthY) private(i,j,areaWeight) reduction(+:ReVolAvg_temp)
+    !$acc parallel loop collapse(2) default(none) present(u,v) reduction(+:ReVolAvg_temp)
     do j = 1, ny
         do i = 1, nx 
-            areaWeight = quadWidthX(i)*quadWidthY(j)
-            ReVolAvg_temp = ReVolAvg_temp+areaWeight*dsqrt(u(i,j)*u(i,j)+v(i,j)*v(i,j))
+            ReVolAvg_temp = ReVolAvg_temp+(u(i,j)*u(i,j)+v(i,j)*v(i,j))
         enddo
     enddo
-    !$omp end parallel do
-    ReVolAvg(dimensionlessTime) = ReVolAvg_temp/quadSumArea*lengthUnit/viscosity    !ISLBM全域体平均 Reynolds 数：速度模非均匀加权平均
+    ReVolAvg(dimensionlessTime) = dsqrt(ReVolAvg_temp/dble(nx*ny))*lengthUnit/viscosity    !全域体平均 RMS-Reynolds 数
 
 
     if((first_nure_write).AND.(loadInitField.EQ.0)) then
-        open(unit=02,file="Re_VolAvg.dat",status='replace',action='write')
+        open(unit=02,file="Re_VolAvg_2DOpenaccSTLBM.dat",status='replace',action='write')
     else
-        open(unit=02,file="Re_VolAvg.dat",status='unknown',position='append',action='write')
+        open(unit=02,file="Re_VolAvg_2DOpenaccSTLBM.dat",status='unknown',position='append',action='write')
     endif
     write(02,'(ES24.16E3,1X,ES24.16E3)') &
         real(sampleTime,kind=8), &
@@ -2487,9 +2536,8 @@ end subroutine append_convergence_master_tecplot
 
 #ifdef unsteadyFlow
 !===================================================================================================
-! 子程序: output_unsteady_NuRe_postprocess
-! 作用: 从完整 .dat 历史重建非稳态 Nu/Re 序列、运行平均和窗口平均。
-! 用途: 在 unsteadyFlow 工况结束后调用，用于整理本次运行段的采样结果。
+! Subroutine: output_unsteady_NuRe_postprocess
+! Purpose: rebuild unsteady Nu/Re series, running means, and window averages from full .dat history.
 !===================================================================================================
   subroutine output_unsteady_NuRe_postprocess()
     use commondata
@@ -2506,8 +2554,8 @@ end subroutine append_convergence_master_tecplot
     real(kind=8) :: Nu_FirstRelErr, Re_FirstRelErr, Nu_SecondRelErr, Re_SecondRelErr
     logical :: exNu, exRe
 
-    inquire(file='Nu_VolAvg.dat', exist=exNu)
-    inquire(file='Re_VolAvg.dat', exist=exRe)
+    inquire(file='Nu_VolAvg_2DOpenaccSTLBM.dat', exist=exNu)
+    inquire(file='Re_VolAvg_2DOpenaccSTLBM.dat', exist=exRe)
     if((.not.exNu).or.(.not.exRe)) then
         write(*,'(A)') 'Error: Nu/Re history files are missing before postprocessing.'
         open(unit=00,file=trim(settingsFile),status='unknown',position='append')
@@ -2516,17 +2564,17 @@ end subroutine append_convergence_master_tecplot
         error stop 1
     endif
 
-    open(newunit=nuUnit, file='Nu_VolAvg.dat', status='old', action='read', form='formatted')
-    open(newunit=reUnit, file='Re_VolAvg.dat', status='old', action='read', form='formatted')
+    open(newunit=nuUnit, file='Nu_VolAvg_2DOpenaccSTLBM.dat', status='old', action='read', form='formatted')
+    open(newunit=reUnit, file='Re_VolAvg_2DOpenaccSTLBM.dat', status='old', action='read', form='formatted')
 
     ! These files are derived views of the full .dat history, so rebuild one continuous ZONE.
-    open(newunit=seriesUnit, file='NuRe_VolAvg_2DOpenmp.plt', status='replace', action='write', form='formatted')
-    write(seriesUnit,'(A)') 'TITLE = "2D OpenMP Nu/Re volume averages"'
+    open(newunit=seriesUnit, file='NuRe_VolAvg_2DOpenaccSTLBM.plt', status='replace', action='write', form='formatted')
+    write(seriesUnit,'(A)') 'TITLE = "2D OpenACC STLBM Nu/Re volume averages"'
     write(seriesUnit,'(A)') 'VARIABLES = "time" "NuVolAvg" "ReVolAvg"'
     write(seriesUnit,'(A)') 'ZONE T="NuReVolAvg", F=POINT'
 
-    open(newunit=runningUnit, file='NuRe_VolAvg_runningMean_2DOpenmp.plt', status='replace', action='write', form='formatted')
-    write(runningUnit,'(A)') 'TITLE = "2D OpenMP Nu/Re running means"'
+    open(newunit=runningUnit, file='NuRe_VolAvg_runningMean_2DOpenaccSTLBM.plt', status='replace', action='write', form='formatted')
+    write(runningUnit,'(A)') 'TITLE = "2D OpenACC STLBM Nu/Re running means"'
     write(runningUnit,'(A)') 'VARIABLES = "time" "NuVolAvgMean" "ReVolAvgMean"'
     write(runningUnit,'(A)') 'ZONE T="NuReRunningMean", F=POINT'
 
@@ -2647,8 +2695,8 @@ end subroutine append_convergence_master_tecplot
     Nu_SecondRelErr = abs(Nu_SecondAvg - Nu_WholeAvg) / max(abs(Nu_WholeAvg), tiny(1.0d0))
     Re_SecondRelErr = abs(Re_SecondAvg - Re_WholeAvg) / max(abs(Re_WholeAvg), tiny(1.0d0))
 
-    open(unit=33, file='NuRe_TimeAverage_2DOpenmp.txt', status='replace', action='write', form='formatted')
-    write(33,'(A)') '# 2D OpenMP Nu/Re statistical-convergence window averages'
+    open(unit=33, file='NuRe_TimeAverage_2DOpenaccSTLBM.txt', status='replace', action='write', form='formatted')
+    write(33,'(A)') '# 2D OpenACC STLBM Nu/Re statistical-convergence window averages'
     write(33,'(A)') '# start_tf mid_tf end_tf whole_count first_count second_count ' // &
         'Nu_whole Re_whole Nu_first Re_first Nu_second Re_second ' // &
         'Nu_first_relerr Re_first_relerr Nu_second_relerr Re_second_relerr'
@@ -2672,12 +2720,11 @@ end subroutine append_convergence_master_tecplot
 
   end subroutine output_unsteady_NuRe_postprocess
 !===================================================================================================
-! output_unsteady_NuRe_postprocess 结束: 已输出非稳态 Nu/Re 序列和统计后处理结果。
-!===================================================================================================
 #endif
 
 
 !===================================================================================================
+#ifdef steadyFlow
 ! 子程序: SideHeatedcalc_Nu_global
 ! 作用: 计算侧壁差温工况下的全场平均 Nusselt 数。
 ! 用途: 在 SideHeatedCell 工况结束后的后处理中调用。
@@ -2686,29 +2733,37 @@ end subroutine append_convergence_master_tecplot
     use commondata
     implicit none
     integer(kind=4) :: i, j
-    real(kind=8) :: dTdx, qx, sum_qx, areaWeight
+    real(kind=8) :: dx, dT, qx, sum_qx
     real(kind=8) :: deltaT, coef
-    real(kind=8) :: derivative_line_x
 
+    ! 网格间距
+    dx = 1.0d0 / lengthUnit
     deltaT = Thot - Tcold
     coef   = velocityScaleCompare
 
     sum_qx = 0.0d0
 
-    !$omp parallel do default(none) shared(u,T,quadWidthX,quadWidthY,coef) private(i,j,dTdx,qx,areaWeight) reduction(+:sum_qx)
+    !$acc parallel loop collapse(2) default(none) present(u,T) reduction(+:sum_qx) private(dT,qx)
     do j = 1, ny
       do i = 1, nx
 
-        dTdx = derivative_line_x(T(1:nx,j), xp(i))
-        qx = coef*u(i,j)*(T(i,j)-Tref) - dTdx
-        areaWeight = quadWidthX(i)*quadWidthY(j)
-        sum_qx = sum_qx + areaWeight*qx
+        if (i == 1) then
+          ! i=1: 节点位于 x=dx/2，利用 (wall, i=1, i=2) 二次插值给出 dT/dx在x=dx/2 的二阶近似（边界特别处理）
+          dT = (-3.0d0*T(1,j) - T(2,j) + 4.0d0*Thot ) / (3.0d0*dx)
+        elseif (i == nx) then
+          ! i=nx: 节点位于 x=L-dx/2，利用 (i=nx-1, i=nx, wall) 二次插值给出 dT/dx在x=L-dx/2 的二阶近似（边界特别处理）
+          dT = ( -4.0d0*Tcold + 3.0d0*T(nx,j) + T(nx-1,j) ) / (3.0d0*dx)
+        else
+          ! 1<i<nx: 中心差分
+          dT = ( T(i-1,j) - T(i+1,j) ) / (2.0d0*dx)
+        endif
+
+        qx = coef*u(i,j)*(T(i,j)-Tref) + dT
+        sum_qx = sum_qx + qx
 
       enddo
     enddo
-    !$omp end parallel do
-
-    Nu_global = (sum_qx / quadSumArea) / deltaT
+    Nu_global = (sum_qx / dble(nx*ny)) / deltaT
 
     ! 屏幕输出
     write(*,'(a,1x,ES24.16E3)') "Nu_global =", real(Nu_global,kind=8)
@@ -2739,7 +2794,6 @@ end subroutine append_convergence_master_tecplot
     integer(kind=4) :: jmax, jmin
     real(kind=8) :: dx, dy, deltaT,coef
     real(kind=8) :: qx_wall, sum_hot, sum_cold, sum_mid
-    real(kind=8) :: u_mid, T_mid, dTdx_mid
     real(kind=8) :: denom
     real(kind=8) :: Nu_left(1:ny) 
     real(kind=8) :: f_m2,f_m1,f_0,f_p1,f_p2
@@ -2759,8 +2813,6 @@ end subroutine append_convergence_master_tecplot
     real(kind=8) :: Nu_left_ext(0:ny+1)
     real(kind=8) :: T_wb, T_wt     ! wall temperature at y=0 and y=1 on i=1 vertical line
     real(kind=8) :: yfit(4), Tfit(4)
-    real(kind=8) :: wall_derivative_x_left, wall_derivative_x_right
-    real(kind=8) :: interpolate_line_x, derivative_line_x
 
 
     dx = 1.0d0 / lengthUnit
@@ -2773,15 +2825,13 @@ end subroutine append_convergence_master_tecplot
     !-----------------------------
     ! (1) 左侧热壁平均 Nu_hot，同时记录 Numax/Numin 及其 y 位置
     sum_hot = 0.0d0
-    !$omp parallel do default(none) shared(T,Nu_left,quadWidthY,deltaT) private(j,qx_wall) reduction(+:sum_hot)
     do j = 1, ny
       ! 壁面导热通量：qx(x=0,j)
-      qx_wall = -wall_derivative_x_left(Thot, T(1,j), T(2,j))
+      qx_wall = (8.0d0*Thot - 9.0d0*T(1,j) + T(2,j)) / (3.0d0*dx)
       Nu_left(j)= qx_wall / deltaT
-      sum_hot   = sum_hot + Nu_left(j)*quadWidthY(j)
+      sum_hot   = sum_hot + Nu_left(j)
     enddo
-    !$omp end parallel do
-    Nu_hot = sum_hot / quadSumY
+    Nu_hot = sum_hot / dble(ny)
 
     ! 计算左壁面上下两个角点的热通量 
     ! 先把中间 j=1..ny 的值复制过来
@@ -2795,7 +2845,7 @@ end subroutine append_convergence_master_tecplot
 
     call fit_adiabatic_wall_T4(0.0d0, yfit, Tfit, T_wb)   ! 得到 T(y=0) = T_wb,拟合绝热壁面温度，用4个点
 
-    Nu_left_ext(0) = Nu_left(1)   ! 非均匀网格下角点不再使用均匀 dx 外推，避免污染极值判断
+    Nu_left_ext(0) = ( 2.0d0 * (Thot- T_wb) / dx ) / deltaT   ! 角点局部 Nu
 
     ! ---------- 左上角：在 i=1 这条竖线上，用 j=ny-3..ny 拟合得到 y=1 的温度 ----------
     yfit(1) = yp(ny-3);  Tfit(1) = T(1,ny-3)
@@ -2805,7 +2855,7 @@ end subroutine append_convergence_master_tecplot
 
     call fit_adiabatic_wall_T4(yp(ny+1), yfit, Tfit, T_wt)   ! 得到顶壁温度 T(y=yp(ny+1))
 
-    Nu_left_ext(ny+1) = Nu_left(ny)  ! 非均匀网格下角点不再使用均匀 dx 外推，避免污染极值判断
+    Nu_left_ext(ny+1) = ( 2.0d0 * (Thot-T_wt) / dx ) / deltaT  ! 角点局部 Nu
 
 
 
@@ -2874,45 +2924,55 @@ end subroutine append_convergence_master_tecplot
     !-----------------------------
     ! (2) 右侧冷壁平均 Nu_cold
     sum_cold = 0.0d0
-    !$omp parallel do default(none) shared(T,quadWidthY,deltaT) private(j,qx_wall) reduction(+:sum_cold)
     do j = 1, ny
-      qx_wall = -wall_derivative_x_right(T(nx-1,j), T(nx,j), Tcold)
-      sum_cold = sum_cold + qx_wall/deltaT*quadWidthY(j)
+      qx_wall = (-8.0d0*Tcold + 9.0d0*T(nx,j) - T(nx-1,j)) / (3.0d0*dx)
+      sum_cold = sum_cold + qx_wall/ deltaT
     enddo
-    !$omp end parallel do
-    Nu_cold = sum_cold / quadSumY
+    Nu_cold = (sum_cold / dble(ny))
 
     !-----------------------------
     ! (3) 竖直中线 x=1/2 的平均 Nu_middle
     sum_mid = 0.0d0
 
-    !$omp parallel do default(none) shared(u,T,quadWidthY,deltaT,coef) private(j,u_mid,T_mid,dTdx_mid) reduction(+:sum_mid)
-    do j = 1, ny
-      u_mid = interpolate_line_x(u(1:nx,j), 0.5d0)
-      T_mid = interpolate_line_x(T(1:nx,j), 0.5d0)
-      dTdx_mid = derivative_line_x(T(1:nx,j), 0.5d0)
-      sum_mid = sum_mid + (coef*u_mid*(T_mid-Tref) - dTdx_mid)/deltaT*quadWidthY(j)
-    enddo
-    !$omp end parallel do
+    if (mod(nx,2) == 1) then
+      iMid = (nx + 1)/2
 
-    Nu_middle = sum_mid / quadSumY
+      do j = 1, ny
+        sum_mid = sum_mid + ( coef*u(iMid,j)*(T(iMid,j)-Tref) + (T(iMid-1,j)-T(iMid+1,j))/(2.0d0*dx) ) / deltaT
+      enddo
+
+    else
+      iL = nx/2
+      iR = iL + 1
+
+      do j = 1, ny
+        sum_mid = sum_mid + (coef*( 0.5d0*( u(iL,j)*(T(iL,j)-Tref) + u(iR,j)*(T(iR,j)-Tref) )) &
+        + (T(iL,j)-T(iR,j))/dx )/ deltaT
+      enddo
+    endif
+
+    Nu_middle = (sum_mid / dble(ny))
 
     !-----------------------------
     ! 输出：屏幕 + 日志
-    write(*,'(a,1x,es16.8)') "Nu_hot    =", Nu_hot
-    write(*,'(a,1x,es16.8)') "Nu_cold   =", Nu_cold
-    write(*,'(a,1x,es16.8)') "Nu_middle =", Nu_middle
-    write(*,'(a,1x,es16.8,2x,a,1x,es16.8)') "Nu_hot_max =", Nu_hot_max, "y_max =", Nu_hot_max_position
-    write(*,'(a,1x,es16.8,2x,a,1x,es16.8)') "Nu_hot_min =", Nu_hot_min, "y_min =", Nu_hot_min_position
+    write(*,'(a,1x,ES24.16E3)') "Nu_hot    =", real(Nu_hot,kind=8)
+    write(*,'(a,1x,ES24.16E3)') "Nu_cold   =", real(Nu_cold,kind=8)
+    write(*,'(a,1x,ES24.16E3)') "Nu_middle =", real(Nu_middle,kind=8)
+    write(*,'(a,1x,ES24.16E3,2x,a,1x,ES24.16E3)') &
+        "Nu_hot_max =", real(Nu_hot_max,kind=8), "y_max =", real(Nu_hot_max_position,kind=8)
+    write(*,'(a,1x,ES24.16E3,2x,a,1x,ES24.16E3)') &
+        "Nu_hot_min =", real(Nu_hot_min,kind=8), "y_min =", real(Nu_hot_min_position,kind=8)
 
 
 
     open(unit=00,file=trim(settingsFile),status="unknown",position="append")
-    write(00,'(a,1x,es16.8)') "Nu_hot    =", Nu_hot
-    write(00,'(a,1x,es16.8)') "Nu_cold   =", Nu_cold
-    write(00,'(a,1x,es16.8)') "Nu_middle =", Nu_middle
-    write(00,'(a,1x,es16.8,2x,a,1x,es16.8)') "Nu_hot_max =", Nu_hot_max, "y_max =", Nu_hot_max_position
-    write(00,'(a,1x,es16.8,2x,a,1x,es16.8)') "Nu_hot_min =", Nu_hot_min, "y_min =", Nu_hot_min_position
+    write(00,'(a,1x,ES24.16E3)') "Nu_hot    =", real(Nu_hot,kind=8)
+    write(00,'(a,1x,ES24.16E3)') "Nu_cold   =", real(Nu_cold,kind=8)
+    write(00,'(a,1x,ES24.16E3)') "Nu_middle =", real(Nu_middle,kind=8)
+    write(00,'(a,1x,ES24.16E3,2x,a,1x,ES24.16E3)') &
+        "Nu_hot_max =", real(Nu_hot_max,kind=8), "y_max =", real(Nu_hot_max_position,kind=8)
+    write(00,'(a,1x,ES24.16E3,2x,a,1x,ES24.16E3)') &
+        "Nu_hot_min =", real(Nu_hot_min,kind=8), "y_min =", real(Nu_hot_min_position,kind=8)
     close(00)
 
     return
@@ -2920,6 +2980,7 @@ end subroutine append_convergence_master_tecplot
 !===================================================================================================
 ! SideHeatedcalc_Nu_wall_avg 结束: 计算侧壁差温工况下热壁、冷壁和中线的 Nusselt 数及其极值。
 !===================================================================================================
+#endif
 
 
 
@@ -3116,15 +3177,16 @@ end subroutine append_convergence_master_tecplot
     call fit_parabola_ls5(s, fu, +1, umax_fit, y_fit)
 
     ! ---- 输出 ----
-    write(*,'(A,1X,F12.6,1X,A,1X,F12.6,1X,A,1X,F12.6)') &
+    write(*,'(A,1X,ES24.16E3,1X,A,1X,ES24.16E3,1X,A,1X,ES24.16E3)') &
          'u_mid_max =', umax_fit*coef, 'at y =', y_fit, 'on x_mid =', xmid
          
 
     open(unit=00,file=trim(settingsFile),status='unknown',position='append')
     string = ctime( time() )
     write(00,*) '--- calc_umid_max --- ', string
-    write(00,*) 'x_mid =', xmid
-    write(00,*) 'u_mid_max =', umax_fit*coef, ' y_pos =', y_fit, ' (grid j0=', j0, ')'
+    write(00,'(A,1X,ES24.16E3)') 'x_mid =', real(xmid,kind=8)
+    write(00,'(A,1X,ES24.16E3,1X,A,1X,ES24.16E3,1X,A,I0,A)') &
+        'u_mid_max =', real(umax_fit*coef,kind=8), 'y_pos =', real(y_fit,kind=8), ' (grid j0=', j0, ')'
     close(00)
 
     return
@@ -3132,6 +3194,7 @@ end subroutine append_convergence_master_tecplot
 !===================================================================================================
 ! SideHeatedcalc_umid_max 结束: 计算侧壁差温工况下中心线水平速度的最大值及位置。
 !===================================================================================================
+
 
 
 
@@ -3200,15 +3263,16 @@ end subroutine append_convergence_master_tecplot
     call fit_parabola_ls5(s, fv, +1, vmax_fit, x_fit)
 
     ! ---- 输出 ----
-    write(*,'(A,1X,F12.6,1X,A,1X,F12.6,1X,A,1X,F12.6)') &
+    write(*,'(A,1X,ES24.16E3,1X,A,1X,ES24.16E3,1X,A,1X,ES24.16E3)') &
          'v_mid_max =', vmax_fit*coef, 'at x =', x_fit, 'on y_mid =', ymid
 
 
     open(unit=00,file=trim(settingsFile),status='unknown',position='append')
     string = ctime( time() )
     write(00,*) '--- calc_vmid_max --- ', string
-    write(00,*) 'y_mid =', ymid
-    write(00,*) 'v_mid_max =', vmax_fit*coef, ' x_pos =', x_fit, ' (grid i0=', i0, ')'
+    write(00,'(A,1X,ES24.16E3)') 'y_mid =', real(ymid,kind=8)
+    write(00,'(A,1X,ES24.16E3,1X,A,1X,ES24.16E3,1X,A,I0,A)') &
+        'v_mid_max =', real(vmax_fit*coef,kind=8), 'x_pos =', real(x_fit,kind=8), ' (grid i0=', i0, ')'
     close(00)
 
     return
@@ -3219,7 +3283,9 @@ end subroutine append_convergence_master_tecplot
 
 
 
+
 !===================================================================================================
+#ifdef steadyFlow
 ! 子程序: RBcalc_Nu_global
 ! 作用: 计算 Rayleigh-Benard 工况下的全场平均 Nusselt 数。
 ! 用途: 在 RayleighBenardCell 工况结束后的后处理中调用。
@@ -3237,9 +3303,7 @@ subroutine RBcalc_Nu_global()
 
   sum_qy = 0.0d0
 
-  !$omp parallel do default(none) &
-  !$omp shared(v,T,dy,coef) &
-  !$omp private(i,j,dTdy,qy) reduction(+:sum_qy)
+  !$acc parallel loop collapse(2) default(none) present(v,T) reduction(+:sum_qy) private(dTdy,qy)
   do j = 1, ny
     do i = 1, nx
 
@@ -3260,8 +3324,6 @@ subroutine RBcalc_Nu_global()
 
     enddo
   enddo
-  !$omp end parallel do
-
   Nu_global = (sum_qy / dble(nx*ny)) / deltaT
 
   write(*,'(a,1x,ES24.16E3)') "Nu_global =", real(Nu_global,kind=8)
@@ -3305,13 +3367,11 @@ subroutine RBcalc_Nu_wall_avg()
   !-----------------------------
   ! (1) 底部热壁平均 Nu_hot（不含角点）
   sum_hot = 0.0d0
-  !$omp parallel do default(none) shared(T,Nu_bot,dy,deltaT) private(i,qy_wall) reduction(+:sum_hot)
   do i = 1, nx
     qy_wall   = (8.0d0*Thot - 9.0d0*T(i,1) + T(i,2)) / (3.0d0*dy)
     Nu_bot(i)= qy_wall / deltaT
     sum_hot  = sum_hot + Nu_bot(i)
   enddo
-  !$omp end parallel do
   Nu_hot = sum_hot / dble(nx)
 
   !-----------------------------
@@ -3394,12 +3454,10 @@ subroutine RBcalc_Nu_wall_avg()
   !-----------------------------
   ! (2) 顶部冷壁平均 Nu_cold（不含角点）
   sum_cold = 0.0d0
-  !$omp parallel do default(none) shared(T,dy,deltaT) private(i,qy_wall) reduction(+:sum_cold)
   do i = 1, nx
     qy_wall = (-8.0d0*Tcold + 9.0d0*T(i,ny) - T(i,ny-1)) / (3.0d0*dy)
     sum_cold = sum_cold + qy_wall / deltaT
   enddo
-  !$omp end parallel do
   Nu_cold = sum_cold / dble(nx)
 
   !-----------------------------
@@ -3409,40 +3467,40 @@ subroutine RBcalc_Nu_wall_avg()
   if (mod(ny,2) == 1) then
     jMid = (ny + 1)/2
 
-    !$omp parallel do default(none) shared(v,T,jMid,dy,deltaT,coef) private(i) reduction(+:sum_mid)
     do i = 1, nx
       sum_mid = sum_mid + ( coef*v(i,jMid)*(T(i,jMid)-Tref) - (T(i,jMid+1)-T(i,jMid-1))/(2.0d0*dy) ) / deltaT
     enddo
-    !$omp end parallel do
 
   else
     jB = ny/2
     jT = jB + 1
 
-    !$omp parallel do default(none) shared(v,T,jB,jT,dy,deltaT,coef) private(i) reduction(+:sum_mid)
     do i = 1, nx
       sum_mid = sum_mid + (coef*( 0.5d0*( v(i,jB)*(T(i,jB)-Tref) + v(i,jT)*(T(i,jT)-Tref) )) &
       + (T(i,jB)-T(i,jT))/dy ) / deltaT
     enddo
-    !$omp end parallel do
   endif
 
   Nu_middle = sum_mid / dble(nx)
 
   !-----------------------------
   ! 输出：屏幕 + 日志
-  write(*,'(a,1x,es16.8)') "Nu_hot(bottom) =", Nu_hot
-  write(*,'(a,1x,es16.8)') "Nu_cold(top)   =", Nu_cold
-  write(*,'(a,1x,es16.8)') "Nu_middle      =", Nu_middle
-  write(*,'(a,1x,es16.8,2x,a,1x,es16.8)') "Nu_hot_max =", Nu_hot_max, "x_max =", Nu_hot_max_position
-  write(*,'(a,1x,es16.8,2x,a,1x,es16.8)') "Nu_hot_min =", Nu_hot_min, "x_min =", Nu_hot_min_position
+  write(*,'(a,1x,ES24.16E3)') "Nu_hot(bottom) =", real(Nu_hot,kind=8)
+  write(*,'(a,1x,ES24.16E3)') "Nu_cold(top)   =", real(Nu_cold,kind=8)
+  write(*,'(a,1x,ES24.16E3)') "Nu_middle      =", real(Nu_middle,kind=8)
+  write(*,'(a,1x,ES24.16E3,2x,a,1x,ES24.16E3)') &
+      "Nu_hot_max =", real(Nu_hot_max,kind=8), "x_max =", real(Nu_hot_max_position,kind=8)
+  write(*,'(a,1x,ES24.16E3,2x,a,1x,ES24.16E3)') &
+      "Nu_hot_min =", real(Nu_hot_min,kind=8), "x_min =", real(Nu_hot_min_position,kind=8)
 
   open(unit=00,file=trim(settingsFile),status="unknown",position="append")
-  write(00,'(a,1x,es16.8)') "Nu_hot(bottom) =", Nu_hot
-  write(00,'(a,1x,es16.8)') "Nu_cold(top)   =", Nu_cold
-  write(00,'(a,1x,es16.8)') "Nu_middle      =", Nu_middle
-  write(00,'(a,1x,es16.8,2x,a,1x,es16.8)') "Nu_hot_max =", Nu_hot_max, "x_max =", Nu_hot_max_position
-  write(00,'(a,1x,es16.8,2x,a,1x,es16.8)') "Nu_hot_min =", Nu_hot_min, "x_min =", Nu_hot_min_position
+  write(00,'(a,1x,ES24.16E3)') "Nu_hot(bottom) =", real(Nu_hot,kind=8)
+  write(00,'(a,1x,ES24.16E3)') "Nu_cold(top)   =", real(Nu_cold,kind=8)
+  write(00,'(a,1x,ES24.16E3)') "Nu_middle      =", real(Nu_middle,kind=8)
+  write(00,'(a,1x,ES24.16E3,2x,a,1x,ES24.16E3)') &
+      "Nu_hot_max =", real(Nu_hot_max,kind=8), "x_max =", real(Nu_hot_max_position,kind=8)
+  write(00,'(a,1x,ES24.16E3,2x,a,1x,ES24.16E3)') &
+      "Nu_hot_min =", real(Nu_hot_min,kind=8), "x_min =", real(Nu_hot_min_position,kind=8)
   close(00)
 
   return
@@ -3450,6 +3508,7 @@ end subroutine RBcalc_Nu_wall_avg
 !===================================================================================================
 ! RBcalc_Nu_wall_avg 结束: 计算 Rayleigh-Benard 工况下热壁、冷壁和中线的 Nusselt 数及其极值。
 !===================================================================================================
+#endif
 
 
 !===================================================================================================
@@ -3528,11 +3587,11 @@ subroutine RBcalc_umid_max()
   if (y_fit > 0.5d0*yLen) y_fit = yLen - y_fit
   
 
-  write(*,'(A,1X,ES16.8,2X,A,1X,ES16.8,2X,A,1X,ES16.8)') &
+  write(*,'(A,1X,ES24.16E3,2X,A,1X,ES24.16E3,2X,A,1X,ES24.16E3)') &
        'u_mid_max* =', umax_fit*coef, 'y =', y_fit, 'x_mid =', xmid
 
   open(unit=00,file=trim(settingsFile),status="unknown",position="append")
-  write(00,'(A,1X,ES16.8,2X,A,1X,ES16.8,2X,A,1X,ES16.8)') &
+  write(00,'(A,1X,ES24.16E3,2X,A,1X,ES24.16E3,2X,A,1X,ES24.16E3)') &
        'u_mid_max* =', umax_fit*coef, 'y =', y_fit, 'x_mid =', xmid
   close(00)
 
@@ -3606,19 +3665,21 @@ subroutine RBcalc_vmid_max()
 
   call fit_parabola_ls5(xk, fk, +1, vmax_fit, x_fit)
 
-  write(*,'(A,1X,ES16.8,2X,A,1X,ES16.8,2X,A,1X,ES16.8)') &
+  write(*,'(A,1X,ES24.16E3,2X,A,1X,ES24.16E3,2X,A,1X,ES24.16E3)') &
        'v_mid_max* =', vmax_fit*coef, 'x =', x_fit, 'y_mid =', ymid
 
   open(unit=00,file=trim(settingsFile),status="unknown",position="append")
-  write(00,'(A,1X,ES16.8,2X,A,1X,ES16.8,2X,A,1X,ES16.8)') &
+  write(00,'(A,1X,ES24.16E3,2X,A,1X,ES24.16E3,2X,A,1X,ES24.16E3)') &
        'v_mid_max* =', vmax_fit*coef, 'x =', x_fit, 'y_mid =', ymid
   close(00)
 
   return
 end subroutine RBcalc_vmid_max
 !===================================================================================================
-! RBcalc_vmid_max 结束: 计算 Rayleigh-Benard 工况下 y=1/2 处最大垂直速度及其位置。
-!===================================================================================================
+
+
+
+
 
 
 
@@ -3728,15 +3789,17 @@ subroutine calc_psi_vort_and_output()
   !=========================================================
   call calc_psi_absmax_fine_spline(psi, psi_abs_max, x_at_max, y_at_max, psi_center_abs_fine)
 
-  write(*,'(a,1x,es16.8)') "abs(psi_center_fine) =", psi_center_abs_fine
+  write(*,'(a,1x,ES24.16E3)') "abs(psi_center_fine) =", real(psi_center_abs_fine,kind=8)
 
-  write(*,'(a,1x,es16.8,2x,a,1x,es16.8,2x,a,1x,es16.8)') &
-       "max(|psi|) =", psi_abs_max, "x* =", x_at_max, "y* =", y_at_max
+  write(*,'(a,1x,ES24.16E3,2x,a,1x,ES24.16E3,2x,a,1x,ES24.16E3)') &
+       "max(|psi|) =", real(psi_abs_max,kind=8), "x* =", real(x_at_max,kind=8), &
+       "y* =", real(y_at_max,kind=8)
 
   open(unit=00,file=trim(settingsFile),status="unknown",position="append")
-  write(00,'(a,1x,es16.8)') "abs(psi_center_fine) =", psi_center_abs_fine
-  write(00,'(a,1x,es16.8,2x,a,1x,es16.8,2x,a,1x,es16.8)') &
-       "max(|psi|) =", psi_abs_max, "x* =", x_at_max, "y* =", y_at_max
+  write(00,'(a,1x,ES24.16E3)') "abs(psi_center_fine) =", real(psi_center_abs_fine,kind=8)
+  write(00,'(a,1x,ES24.16E3,2x,a,1x,ES24.16E3,2x,a,1x,ES24.16E3)') &
+       "max(|psi|) =", real(psi_abs_max,kind=8), "x* =", real(x_at_max,kind=8), &
+       "y* =", real(y_at_max,kind=8)
   close(00)
 
   return
@@ -4104,20 +4167,17 @@ subroutine output_psi_center_abs(psi)
   psi_center_abs = dabs(psi_center)
 
   ! Screen output
-  write(*,'(a,1x,es16.8)') "abs(psi_center_coarse) =", psi_center_abs
+  write(*,'(a,1x,ES24.16E3)') "abs(psi_center_coarse) =", real(psi_center_abs,kind=8)
 
   ! Log output
   open(unit=00,file=trim(settingsFile),status="unknown",position="append")
-  write(00,'(a,1x,es16.8)') "abs(psi_center_coarse) =", psi_center_abs
+  write(00,'(a,1x,ES24.16E3)') "abs(psi_center_coarse) =", real(psi_center_abs,kind=8)
   close(00)
 
   return
 contains
-!===================================================================================================
   ! 子程序: interp_lagrange_4
   ! 作用: 对给定的四个节点执行四点 Lagrange 插值。
-  ! 用途: 在 output_psi_center_abs 中对腔体中心 psi 做二维四点插值。
-!===================================================================================================
   subroutine interp_lagrange_4(xq, xk, fk, fq)
     implicit none
     real(kind=8), intent(in)  :: xq
@@ -4135,9 +4195,6 @@ contains
       fq = fq + fk(a) * basis
     end do
   end subroutine interp_lagrange_4
-!===================================================================================================
-! interp_lagrange_4 结束: 完成四点 Lagrange 插值。
-!===================================================================================================
 end subroutine output_psi_center_abs
 !===================================================================================================
 ! output_psi_center_abs 结束: 输出腔体中心位置的 abs(psi) 诊断结果。
