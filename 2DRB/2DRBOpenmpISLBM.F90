@@ -97,16 +97,19 @@
         !===============================================================================================
         ! 无量纲参数
         integer(kind=4), parameter :: nx=256, ny=256     !格子网格
-        ! 本文件采用erf非均匀网格; 均匀网格由其他基准文件负责。
+
+        ! 本文件采用erf非均匀网格。
         ! erf网格拉伸强度。数值越大, 节点越向两侧物理壁面聚集。
         real(kind=8), parameter :: ISLBM_StretchA=1.5d0
+
         ! raw坐标中第一个内部流体节点的位置rawX(1)/rawY(1), 也就是近壁的1个lu。
-        ! half-way壁面放在0.5*rawX(1)或0.5*rawY(1), 因此有效长度为1-ISLBM_Dx/DyMinRaw。
         real(kind=8), parameter :: ISLBM_DxMinRaw=0.5d0*(1.0d0 + &
             erf(ISLBM_StretchA*(1.0d0/dble(nx+1)-0.5d0))/erf(0.5d0*ISLBM_StretchA))
         real(kind=8), parameter :: ISLBM_DyMinRaw=0.5d0*(1.0d0 + &
             erf(ISLBM_StretchA*(1.0d0/dble(ny+1)-0.5d0))/erf(0.5d0*ISLBM_StretchA))
+
 #ifdef SideHeatedCell
+        ! half-way壁面放在0.5*rawX(1)或0.5*rawY(1), 因此有效长度为1-ISLBM_Dx/DyMinRaw。
         ! ISLBM有效长度含多少个近壁lu: lengthUnit=(rightWall-leftWall)/ISLBM_DxMinRaw。
         real(kind=8), parameter :: lengthUnit=(1.0d0-ISLBM_DxMinRaw)/ISLBM_DxMinRaw
 #else
@@ -161,7 +164,7 @@
         !===============================================================================================          
         
         !===============================================================================================
-        real(kind=8), parameter :: epsU=1.0d-7, epsT=1.0d-7    ! 稳态收敛阈值   
+        real(kind=8), parameter :: epsU=1.0d-7, epsT=1.0d-7    ! 文献稳态收敛阈值: 每2000步检查一次相对变化
 
 #ifdef steadyFlow
         real(kind=8), parameter :: outputSnapshotInterval=10.0d0   ! 快照和 Nu/Re 时间序列采样间隔（单位：t_ff）
@@ -222,18 +225,24 @@
         real(kind=8) :: errorU, errorT
         
         real(kind=8) :: xp(0:nx+1), yp(0:ny+1)      !无量纲的坐标数组，包括边界
+
         ! 非均匀网格积分宽度: quadWidthX/quadWidthY是每个流体节点代表的x/y方向控制宽度,
         ! quadSumX/quadSumY/quadSumArea用于Nu、Re和体平均量的面积加权归一化。
         real(kind=8) :: quadWidthX(1:nx), quadWidthY(1:ny), quadSumX, quadSumY, quadSumArea
+
         ! 归一化坐标中的1个lattice unit; 迁移时用xp(i)-ex(alpha)*ISLBM_Shift找上游点。
         real(kind=8), parameter :: ISLBM_Shift=1.0d0/lengthUnit
+
         ! ISLBM off-lattice迁移的三点Lagrange插值模板:
         ! streamInterpIndexX/Y保存每个方向alpha、每个节点对应的3个插值节点编号。
         integer(kind=4) :: streamInterpIndexX(0:8,1:nx,3), streamInterpIndexY(0:8,1:ny,3)
+
         ! streamInterpWeightX/Y保存上述3个插值节点的权重, 用于从f_post/g_post插值得到迁移后分布。
         real(kind=8) :: streamInterpWeightX(0:8,1:nx,3), streamInterpWeightY(0:8,1:ny,3)
+
         ! valid标志说明上游插值点是否仍在内部流体节点范围内; 越界时交给边界处理而不插值。
         logical :: streamInterpValidX(0:8,1:nx), streamInterpValidY(0:8,1:ny)
+
         real(kind=8), allocatable :: u(:,:), v(:,:), T(:,:), rho(:,:)
 
 #ifdef steadyFlow
@@ -566,7 +575,8 @@ end program main
     write(00,*) 'Qk=',real(Qk,kind=8), '; Qnu=',real(Qnu,kind=8), '; paraA=',real(paraA,kind=8)
 #else
     write(00,*) "thermalScheme = current D2Q5 (s_j/s_e/s_q)"
-    write(00,*) 'taug=',real(taug,kind=8)
+    write(00,*) 'Qk=',real(Qk,kind=8), '; Qnu=',real(Qnu,kind=8), &
+        '; thermalGeqCoeff=', real(thermalGeqCoeff,kind=8)
 #endif
     write(00,*) "viscosity =",real(viscosity,kind=8), "; diffusivity =",real(diffusivity,kind=8)
     write(00,*) "outputSnapshotFile =", outputSnapshotFile
@@ -975,9 +985,11 @@ close(00)
     do alpha = 0, 8
         do i = 1, nx
             ! 从当前节点xp(i)沿速度方向alpha反向回溯1个lattice unit, 得到off-lattice上游点。
-            ! 非均匀网格上target通常不落在节点上, 所以需要三点Lagrange插值。
+            ! 迁移插值模板按zzhao参考代码的写法固定在到达节点附近:
+            ! 内部点用(i-1,i,i+1), 边界附近用单边三点; 然后对该模板整体做速度平移。
+            ! 这与按target附近自动选三点不同, 在非均匀网格上二者不等价。
             target = xp(i) - dble(ex(alpha))*ISLBM_Shift
-            call build_lagrange_stencil_1d(nx, xp(1:nx), target, stencilIndex, stencilWeight, stencilValid)
+            call build_streaming_stencil_1d(nx, xp(1:nx), i, target, stencilIndex, stencilWeight, stencilValid)
             ! 保存x方向插值模板: stencilValid说明target是否在内部节点范围内;
             ! stencilIndex是3个插值节点编号, stencilWeight是对应权重。
             streamInterpValidX(alpha,i) = stencilValid
@@ -985,9 +997,9 @@ close(00)
             streamInterpWeightX(alpha,i,:) = stencilWeight
         enddo
         do j = 1, ny
-            ! y方向同理, 为streaming中的竖直和对角迁移提前准备插值模板。
+            ! y方向同理, 为streaming中的竖直和对角迁移提前准备到达点中心模板。
             target = yp(j) - dble(ey(alpha))*ISLBM_Shift
-            call build_lagrange_stencil_1d(ny, yp(1:ny), target, stencilIndex, stencilWeight, stencilValid)
+            call build_streaming_stencil_1d(ny, yp(1:ny), j, target, stencilIndex, stencilWeight, stencilValid)
             streamInterpValidY(alpha,j) = stencilValid
             streamInterpIndexY(alpha,j,:) = stencilIndex
             streamInterpWeightY(alpha,j,:) = stencilWeight
@@ -1003,9 +1015,57 @@ close(00)
 
 
 !===================================================================================================
+! 子程序: build_streaming_stencil_1d
+! 作用: 为 ISLBM 迁移选择到达点中心的三点 Lagrange 插值模板。
+! 用途: 被 prepare_islbm_streaming_stencils 调用, 专门匹配 zzhao 参考代码的 off-lattice 迁移写法。
+!===================================================================================================
+
+  subroutine build_streaming_stencil_1d(n, xnodes, nodeIndex, target, stencilIndex, stencilWeight, stencilValid)
+    implicit none
+    integer(kind=4), intent(in) :: n, nodeIndex
+    real(kind=8), intent(in) :: xnodes(n), target
+    integer(kind=4), intent(out) :: stencilIndex(3)
+    real(kind=8), intent(out) :: stencilWeight(3)
+    logical, intent(out) :: stencilValid
+    real(kind=8) :: xloc(3)
+    real(kind=8), parameter :: tol = 1.0d-12
+
+    ! 默认无效。target越过内部流体节点范围时, 说明该方向需要后续边界处理补齐。
+    stencilIndex = (/1, 1, 1/)
+    stencilWeight = 0.0d0
+    stencilValid = .false.
+    if(n.LT.3) return
+    if((target.LT.xnodes(1)-tol).OR.(target.GT.xnodes(n)+tol)) return
+
+    ! zzhao参考代码中, 内部迁移使用到达节点左右三点(i-1,i,i+1),
+    ! 边界处使用(1,2,3)或(n,n-1,n-2)这样的单边三点。
+    ! 这里用升序索引保存模板; Lagrange权重只依赖节点坐标, 顺序不影响插值结果。
+    if(nodeIndex.LE.1) then
+        stencilIndex = (/1, 2, 3/)
+    elseif(nodeIndex.GE.n) then
+        stencilIndex = (/n-2, n-1, n/)
+    else
+        stencilIndex = (/nodeIndex-1, nodeIndex, nodeIndex+1/)
+    endif
+
+    xloc(1) = xnodes(stencilIndex(1))
+    xloc(2) = xnodes(stencilIndex(2))
+    xloc(3) = xnodes(stencilIndex(3))
+    call lagrange_weights_3(xloc, target, stencilWeight)
+    stencilValid = .true.
+
+    return
+  end subroutine build_streaming_stencil_1d
+!===================================================================================================
+! build_streaming_stencil_1d 结束: 已返回迁移专用的到达点中心三点模板和权重。
+!===================================================================================================
+
+
+
+!===================================================================================================
 ! 子程序: build_lagrange_stencil_1d
 ! 作用: 为一维目标坐标选择三点 Lagrange 插值节点并计算对应权重。
-! 用途: 被 prepare_islbm_streaming_stencils 调用，用于构造 x/y 方向迁移插值模板。
+! 用途: 用于后处理中任意目标点的插值或导数辅助; streaming 使用 build_streaming_stencil_1d。
 !===================================================================================================
 
   subroutine build_lagrange_stencil_1d(n, xnodes, target, stencilIndex, stencilWeight, stencilValid)
@@ -1317,16 +1377,12 @@ close(00)
     implicit none
     real(kind=8), intent(in) :: twall, t1, t2
     real(kind=8), intent(out) :: derivativeValue
-    real(kind=8) :: dxHalf, dxLu, dx2, q
+    real(kind=8) :: xnode(3), fnode(3)
 
-    ! 文献式(28)中的第一个网格间距是1个lu, 物理壁面到第一个流体节点只有0.5个lu。
-    ! 因此xp(1)是半格距dxHalf, 公式分母里的Delta x应取dxLu=2*dxHalf。
-    dxHalf = xp(1)
-    dxLu = 2.0d0*dxHalf
-    dx2 = xp(2) - xp(1)
-    q = dx2/dxLu
-    derivativeValue = (-4.0d0*q*(q+1.0d0)*twall + (2.0d0*q+1.0d0)**2*t1 - t2) / &
-        (q*(2.0d0*q+1.0d0)*dxLu)
+    ! 与zzhao后处理和文献壁面公式一致: 用(wall,1,2)三点二次Lagrange在物理壁面xp=0处求dT/dx。
+    xnode = (/ 0.0d0, xp(1), xp(2) /)
+    fnode = (/ twall, t1, t2 /)
+    call lagrange_derivative_3(xnode, fnode, 0.0d0, derivativeValue)
 
     return
   end subroutine wall_derivative_x_left
@@ -1346,15 +1402,12 @@ close(00)
     implicit none
     real(kind=8), intent(in) :: tnm1, tn, twall
     real(kind=8), intent(out) :: derivativeValue
-    real(kind=8) :: dxHalf, dxLu, dx2, q
+    real(kind=8) :: xnode(3), fnode(3)
 
-    ! 右壁同理: 最后一个流体节点到物理壁面是0.5个lu, 式(28)分母使用完整lu。
-    dxHalf = 1.0d0 - xp(nx)
-    dxLu = 2.0d0*dxHalf
-    dx2 = xp(nx) - xp(nx-1)
-    q = dx2/dxLu
-    derivativeValue = (4.0d0*q*(q+1.0d0)*twall - (2.0d0*q+1.0d0)**2*tn + tnm1) / &
-        (q*(2.0d0*q+1.0d0)*dxLu)
+    ! 右壁在xp=1处, 用最靠近右壁的两个内部节点和壁面点构造三点Lagrange导数。
+    xnode = (/ xp(nx-1), xp(nx), 1.0d0 /)
+    fnode = (/ tnm1, tn, twall /)
+    call lagrange_derivative_3(xnode, fnode, 1.0d0, derivativeValue)
 
     return
   end subroutine wall_derivative_x_right
@@ -1374,15 +1427,12 @@ close(00)
     implicit none
     real(kind=8), intent(in) :: twall, t1, t2
     real(kind=8), intent(out) :: derivativeValue
-    real(kind=8) :: dyHalf, dyLu, dy2, q
+    real(kind=8) :: ynode(3), fnode(3)
 
-    ! 文献式(28)使用完整lu; 底壁到第一个流体节点是0.5个lu。
-    dyHalf = yp(1)
-    dyLu = 2.0d0*dyHalf
-    dy2 = yp(2) - yp(1)
-    q = dy2/dyLu
-    derivativeValue = (-4.0d0*q*(q+1.0d0)*twall + (2.0d0*q+1.0d0)**2*t1 - t2) / &
-        (q*(2.0d0*q+1.0d0)*dyLu)
+    ! 底壁在yp=0处, 使用壁面点和前两个内部节点做三点Lagrange导数。
+    ynode = (/ 0.0d0, yp(1), yp(2) /)
+    fnode = (/ twall, t1, t2 /)
+    call lagrange_derivative_3(ynode, fnode, 0.0d0, derivativeValue)
 
     return
   end subroutine wall_derivative_y_bottom
@@ -1402,15 +1452,12 @@ close(00)
     implicit none
     real(kind=8), intent(in) :: tnm1, tn, twall
     real(kind=8), intent(out) :: derivativeValue
-    real(kind=8) :: dyHalf, dyLu, dy2, q
+    real(kind=8) :: ynode(3), fnode(3)
 
-    ! 顶壁同理: 最后一个流体节点到物理壁面是0.5个lu, 式(28)分母使用完整lu。
-    dyHalf = 1.0d0 - yp(ny)
-    dyLu = 2.0d0*dyHalf
-    dy2 = yp(ny) - yp(ny-1)
-    q = dy2/dyLu
-    derivativeValue = (4.0d0*q*(q+1.0d0)*twall - (2.0d0*q+1.0d0)**2*tn + tnm1) / &
-        (q*(2.0d0*q+1.0d0)*dyLu)
+    ! 顶壁在yp=1处, 使用最后两个内部节点和壁面点做三点Lagrange导数。
+    ynode = (/ yp(ny-1), yp(ny), 1.0d0 /)
+    fnode = (/ tnm1, tn, twall /)
+    call lagrange_derivative_3(ynode, fnode, 1.0d0, derivativeValue)
 
     return
   end subroutine wall_derivative_y_top
@@ -2040,7 +2087,7 @@ close(00)
     use commondata
     implicit none
     integer(kind=4) :: i, j
-    real(kind=8) :: error1, error2, error5, error6
+    real(kind=8) :: error1, error2, error5, error6, areaWeight
     character(len=64) :: caseTag
 
 
@@ -2051,14 +2098,17 @@ close(00)
     error5 = 0.0d0
     error6 = 0.0d0
     
-    !$omp parallel do default(none) shared(u,up,v,vp,T,Tp) private(i,j) reduction(+:error1,error2,error5,error6)
+    !$omp parallel do default(none) shared(u,up,v,vp,T,Tp,quadWidthX,quadWidthY) &
+    !$omp& private(i,j,areaWeight) reduction(+:error1,error2,error5,error6)
     do j = 1, ny
         do i = 1, nx
-            error1 = error1+(u(i,j)-up(i,j))*(u(i,j)-up(i,j))+(v(i,j)-vp(i,j))*(v(i,j)-vp(i,j))
-            error2 = error2+u(i,j)*u(i,j)+v(i,j)*v(i,j)
+            areaWeight = quadWidthX(i)*quadWidthY(j)
+            error1 = error1+areaWeight*((u(i,j)-up(i,j))*(u(i,j)-up(i,j)) + &
+                (v(i,j)-vp(i,j))*(v(i,j)-vp(i,j)))
+            error2 = error2+areaWeight*(u(i,j)*u(i,j)+v(i,j)*v(i,j))
                 
-            error5 = error5+dABS( T(i,j)-Tp(i,j) )
-            error6 = error6+dABS( T(i,j) )
+            error5 = error5+areaWeight*dABS( T(i,j)-Tp(i,j) )
+            error6 = error6+areaWeight*dABS( T(i,j) )
                 
             up(i,j) = u(i,j)
             vp(i,j) = v(i,j)
@@ -2067,8 +2117,8 @@ close(00)
     enddo
     !$omp end parallel do 
     
-    errorU = dsqrt(error1)/dsqrt(error2)                 !速度场相对L2误差：||u^n-u^{n-1}||_2 / ||u^n||_2
-    errorT = error5/error6                               !温度场相对L1误差：||T^n-T^{n-1}||_1 / ||T^n||_1
+    errorU = dsqrt(error1)/dsqrt(error2)                 !非均匀面积加权速度相对L2误差
+    errorT = error5/error6                               !非均匀面积加权温度相对L1误差
 
   
 
@@ -2222,6 +2272,7 @@ end subroutine append_convergence_master_tecplot
     write(03) ((real(T(i,j),kind=8),i=1,nx),j=1,ny)
     write(03) ((real(rho(i,j),kind=8), i=1,nx), j=1,ny)
     close(03)
+    call output_SnapshotMeshFile(trim(filename))
 
     return
   end subroutine output_SnapshotFile
@@ -2230,7 +2281,41 @@ end subroutine append_convergence_master_tecplot
 !===================================================================================================
 
 
-    
+!===================================================================================================
+! 子程序: output_SnapshotMeshFile
+! 作用: 为同编号二进制快照输出 ISLBM 非均匀坐标 sidecar 文件。
+! 用途: 避免修改旧快照二进制格式，同时让独立后处理能读取 xp/yp。
+!===================================================================================================
+  subroutine output_SnapshotMeshFile(snapshotId)
+    use commondata
+    implicit none
+    character(len=*), intent(in) :: snapshotId
+    integer(kind=4) :: i, j, meshUnit
+    character(len=160) :: meshFilename
+
+    meshFilename = trim(snapshotFilePrefix)//"-"//trim(snapshotId)//"-mesh.dat"
+    open(newunit=meshUnit, file=trim(meshFilename), status='replace', action='write', form='formatted')
+    write(meshUnit,'(A)') '# ISLBM nonuniform coordinates for the matching snapshot .bin'
+    write(meshUnit,'(A)') '# binary fields are U_nd, V_nd, T, rho'
+    write(meshUnit,'(A)') '# coordinates are xp(1:nx), yp(1:ny)'
+    write(meshUnit,'(A,1X,I0,1X,I0)') 'nx_ny', nx, ny
+    write(meshUnit,'(A)') '# i xp(i)'
+    do i = 1, nx
+        write(meshUnit,'(I8,1X,ES24.16E3)') i, real(xp(i),kind=8)
+    enddo
+    write(meshUnit,'(A)') '# j yp(j)'
+    do j = 1, ny
+        write(meshUnit,'(I8,1X,ES24.16E3)') j, real(yp(j),kind=8)
+    enddo
+    close(meshUnit)
+
+    return
+  end subroutine output_SnapshotMeshFile
+!===================================================================================================
+! output_SnapshotMeshFile 结束: 已输出同编号快照的非均匀坐标。
+!===================================================================================================
+
+
 
 !===================================================================================================
 ! 子程序: output_ReloadFile
@@ -2661,7 +2746,7 @@ end subroutine append_convergence_master_tecplot
     implicit none
     integer(kind=4) :: i, j
     real(kind=8) :: NuVolAvg_temp    !体平均 Nu 的对流热通量积分
-    real(kind=8) :: ReVolAvg_temp    !体平均 Re 的速度平方积分, 最后取rms
+    real(kind=8) :: ReVolAvg_temp    !体平均 Re 的速度模长积分
     real(kind=8) :: areaWeight
     real(kind=8) :: sampleTime
     logical :: exNu, exRe
@@ -2741,13 +2826,12 @@ end subroutine append_convergence_master_tecplot
     do j = 1, ny
         do i = 1, nx 
             areaWeight = quadWidthX(i)*quadWidthY(j)
-            ReVolAvg_temp = ReVolAvg_temp+areaWeight*(u(i,j)*u(i,j)+v(i,j)*v(i,j))
+            ReVolAvg_temp = ReVolAvg_temp+areaWeight*dsqrt(u(i,j)*u(i,j)+v(i,j)*v(i,j))
         enddo
     enddo
     !$omp end parallel do
-    ! 文献中的体平均Re采用rms速度: Re = sqrt(<u^2+v^2>_V)*L/nu。
-    ! 这里先用非均匀网格面积权重平均速度平方, 再开方转换为Re。
-    ReVolAvg(dimensionlessTime) = dsqrt(ReVolAvg_temp/quadSumArea)*lengthUnit/viscosity
+    ! 文献中的体平均Re采用速度模长平均: Re = <sqrt(u^2+v^2)>_V*L/nu。
+    ReVolAvg(dimensionlessTime) = ReVolAvg_temp/quadSumArea*lengthUnit/viscosity
 
 
     if((first_nure_write).AND.(loadInitField.EQ.0)) then
@@ -3548,7 +3632,6 @@ subroutine RBcalc_Nu_wall_avg()
   Tfit(3)=T(3,2)
   Tfit(4)=T(4,2)
   call fit_adiabatic_wall_T4(0.0d0, xfit, Tfit, T_wl2)  ! 估计 T(x=0, y=yp(2))
-
   ! 右下角附近：i=nx-3..nx, j=1
   xfit(1)=xp(nx-3);  Tfit(1)=T(nx-3,1)
   xfit(2)=xp(nx-2);  Tfit(2)=T(nx-2,1)
@@ -3560,7 +3643,6 @@ subroutine RBcalc_Nu_wall_avg()
   Tfit(3)=T(nx-1,2)
   Tfit(4)=T(nx  ,2)
   call fit_adiabatic_wall_T4(xp(nx+1), xfit, Tfit, T_wr2)  ! 估计 T(x=xp(nx+1), y=yp(2))
-
   ! 组装扩展数组：角点只用于找 max/min 与拟合
   Nu_bot_ext(1:nx) = Nu_bot(1:nx)
   call wall_derivative_y_bottom(Thot, T_wl, T_wl2, qy_wall)
@@ -3831,7 +3913,12 @@ subroutine calc_psi_vort_and_output()
   integer(kind=4) :: i, j
   real(kind=8) :: coef
   real(kind=8) :: segmentIntegral
+#ifdef SideHeatedCell
+  real(kind=8) :: xNode(3), vNode(3)
+#endif
+#ifdef RayleighBenardCell
   real(kind=8) :: yNode(3), uNode(3)
+#endif
   real(kind=8) :: dv_dx, du_dy
   real(kind=8) :: psi(nx,ny), vort(nx,ny)
   real(kind=8) :: psiTopAbsMax
@@ -3843,11 +3930,39 @@ subroutine calc_psi_vort_and_output()
   coef = velocityScaleCompare
 
   !=========================================================
-  ! (A) 计算流函数 psi：psi(x,y)=∫_0^y u(x,mu)dmu。
-  !     ISLBM非均匀网格下不能使用固定dy的Simpson公式。
-  !     这里从底壁psi=0开始, 每一小段用三点二次Lagrange多项式做解析积分。
+  ! (A) 计算流函数 psi。
+  !     SideHeatedCell 按zzhao后处理从左壁积分: psi(x,y)=-∫_0^x v(mu,y)dmu。
+  !     RayleighBenardCell 保留从底壁积分: psi(x,y)=∫_0^y u(x,mu)dmu。
+  !     ISLBM非均匀网格下不能使用固定dx/dy的Simpson公式。
+  !     每一小段用三点二次Lagrange多项式做解析积分。
   !=========================================================
 
+#ifdef SideHeatedCell
+  do j = 1, ny
+
+    ! 左壁无滑移: v(x=0)=0, 所以第一个内部节点的积分为
+    ! -∫_0^xp(1) v dx, 用(0,xp(1),xp(2))三点二次插值积分。
+    xNode = (/ 0.0d0, xp(1), xp(2) /)
+    vNode = (/ 0.0d0, v(1,j), v(2,j) /)
+    call integrate_lagrange_3_segment(xNode, vNode, 0.0d0, xp(1), segmentIntegral)
+    psi(1,j) = -segmentIntegral*coef
+
+    do i = 2, nx
+      if (i == 2) then
+        xNode = (/ 0.0d0, xp(1), xp(2) /)
+        vNode = (/ 0.0d0, v(1,j), v(2,j) /)
+      else
+        xNode = (/ xp(i-2), xp(i-1), xp(i) /)
+        vNode = (/ v(i-2,j), v(i-1,j), v(i,j) /)
+      endif
+      call integrate_lagrange_3_segment(xNode, vNode, xp(i-1), xp(i), segmentIntegral)
+      psi(i,j) = psi(i-1,j) - segmentIntegral*coef
+    end do
+
+  end do
+#endif
+
+#ifdef RayleighBenardCell
   do i = 1, nx
 
     ! 底壁无滑移: u(y=0)=0, 所以第一个内部节点的积分为
@@ -3870,9 +3985,20 @@ subroutine calc_psi_vort_and_output()
     end do
 
   end do
+#endif
 
 
   psiTopAbsMax = 0.0d0
+#ifdef SideHeatedCell
+  do j = 1, ny
+    psiTopAbsMax = max(psiTopAbsMax, dabs(psi(nx,j)))
+  enddo
+  write(*,'(a,1x,es16.8)') "max(|psi_right_internal|) =", psiTopAbsMax
+  open(unit=00,file=trim(settingsFile),status="unknown",position="append")
+  write(00,'(a,1x,es16.8)') "max(|psi_right_internal|) =", psiTopAbsMax
+  close(00)
+#endif
+#ifdef RayleighBenardCell
   do i = 1, nx
     psiTopAbsMax = max(psiTopAbsMax, dabs(psi(i,ny)))
   enddo
@@ -3880,6 +4006,7 @@ subroutine calc_psi_vort_and_output()
   open(unit=00,file=trim(settingsFile),status="unknown",position="append")
   write(00,'(a,1x,es16.8)') "max(|psi_top_internal|) =", psiTopAbsMax
   close(00)
+#endif
 
   call output_psi_center_abs(psi)     ! 基于粗网格局部四点插值得到中心点处的 abs(psi)
 
