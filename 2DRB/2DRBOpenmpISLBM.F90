@@ -230,8 +230,8 @@
         ! quadSumX/quadSumY/quadSumArea用于Nu、Re和体平均量的面积加权归一化。
         real(kind=8) :: quadWidthX(1:nx), quadWidthY(1:ny), quadSumX, quadSumY, quadSumArea
 
-        ! 归一化坐标中的1个lattice unit; 迁移时用xp(i)-ex(alpha)*ISLBM_Shift找上游点。
-        real(kind=8), parameter :: ISLBM_Shift=1.0d0/lengthUnit
+        ! 归一化坐标中的1个lattice unit; 迁移时用xp(i)-ex(alpha)*ISLBM_LatticeUnit找上游点。
+        real(kind=8), parameter :: ISLBM_LatticeUnit=1.0d0/lengthUnit
 
         ! ISLBM off-lattice迁移的三点Lagrange插值模板:
         ! streamInterpIndexX/Y保存每个方向alpha、每个节点对应的3个插值节点编号。
@@ -533,7 +533,7 @@ end program main
         open(unit=01,file=trim(snapshotFilePrefix)//"-"//"readme",status="unknown")    !trim去掉字符串尾部空格，换了存储路径，可自己更改
         write(01,*) "snapshot file prefix exists!"
         write(01,*) "records: U_nd, V_nd, T, rho on ISLBM nonuniform nodes"
-        write(01,*) "coordinates are xp(1:nx), yp(1:ny); Tecplot output writes them explicitly"
+        write(01,*) "coordinates are xp(1:nx), yp(1:ny) in ", trim(snapshotFilePrefix)//"-mesh.dat"
         close(01)
         write(00,*) "Snapshot data will be stored in ", snapshotFilePrefix
     endif
@@ -597,6 +597,7 @@ end program main
     endif
     write(00,*) "itc_max =",itc_max
     write(00,*) "default epsU =", real(epsU,kind=8),"; epsT =", real(epsT,kind=8)
+    write(00,*) "ISLBM_StretchA =", real(ISLBM_StretchA,kind=8)
     write(00,*) "useG =", useG
     write(00,*) "    "
 
@@ -622,10 +623,14 @@ end program main
     ! 第一个流体节点位于 0.5/L0，最后一个流体节点位于 1-0.5/L0。
     call build_islbm_mesh()
     call build_islbm_quadrature()
-    call prepare_islbm_streaming_stencils()
+    call build_islbm_streaming_stencils()
+    if(outputSnapshotFile.EQ.1) then
+        call output_SnapshotMeshFile()
+        write(00,*) "Snapshot mesh coordinates stored in ", trim(snapshotFilePrefix)//"-mesh.dat"
+    endif
     write(00,*) "ISLBM mesh = erf; stretchA =", real(ISLBM_StretchA,kind=8)
     write(00,*) "ISLBM effective lengthUnit L0 =", real(lengthUnit,kind=8)
-    write(00,*) "ISLBM streaming shift =", real(ISLBM_Shift,kind=8)
+    write(00,*) "ISLBM lattice unit in normalized coordinates =", real(ISLBM_LatticeUnit,kind=8)
     write(00,*) "ISLBM quadrature sums =", real(quadSumX,kind=8), real(quadSumY,kind=8), real(quadSumArea,kind=8)
 
     allocate (u(nx,ny))
@@ -864,6 +869,9 @@ close(00)
 
     ! 第一步: 生成原始erf拉伸坐标rawX/rawY。此时坐标还没有按half-way物理壁面修正;
     ! ISLBM_StretchA控制拉伸强度, 数值越大, 流体节点越向两侧壁面聚集。
+    ! 注意: rawX/rawY只是用来生成非均匀分布的参考坐标序列。
+    ! rawX(0)=0和rawX(nx+1)=1是这个参考序列的两个端点, 不必直接等同于最终物理壁面。
+    ! 最终物理壁面在哪里, 由下面half-way边界选择出的leftWall/rightWall等位置决定。
     erfNorm = erf(0.5d0*ISLBM_StretchA)
     do i = 0, nx+1
         rawX(i) = 0.5d0*(1.0d0 + erf(ISLBM_StretchA*(dble(i)/dble(nx+1)-0.5d0))/erfNorm)
@@ -872,8 +880,10 @@ close(00)
         rawY(j) = 0.5d0*(1.0d0 + erf(ISLBM_StretchA*(dble(j)/dble(ny+1)-0.5d0))/erfNorm)
     enddo
 
-    ! 第二步: 采用half-way壁面。物理壁面位于边界外点与第一个内部流体节点之间,
-    ! 因此有效物理区间为[leftWall,rightWall]和[bottomWall,topWall]。
+    ! 第二步: 采用half-way壁面。物理壁面位于参考端点rawX(0)与第一个内部流体节点rawX(1)之间,
+    ! 即raw坐标中的半个近壁lu位置; 右侧和y方向同理。
+    ! 因此有效物理区间不是原始的[rawX(0),rawX(nx+1)], 而是[leftWall,rightWall]和[bottomWall,topWall]。
+    ! 后续再把这个有效物理区间映射为最终归一化坐标xp/yp中的[0,1]。
     leftWall = 0.5d0*rawX(1)
     rightWall = 1.0d0 - 0.5d0*rawX(1)
     bottomWall = 0.5d0*rawY(1)
@@ -915,12 +925,23 @@ close(00)
     real(kind=8) :: leftGhostX, rightGhostX, bottomGhostY, topGhostY
 
     ! 非均匀网格不能用简单的sum/(nx*ny)做全场平均。
-    ! quadWidthX(i)/quadWidthY(j)是第i/j个流体节点代表的控制宽度。
-    ! 文献式(29)采用(y_{j+1}-y_{j-1})/2的midpoint-rule权重;
-    ! 对half-way壁面, 公式中的外侧点不是物理壁面0/1, 而是壁面外半个近壁lu的虚拟点。
-    ! 本代码的xp/yp已把物理壁面归一化到0和1, 因此虚拟点为-xp(1)和1+(1-xp(nx))。
+    ! quadWidthX(i)/quadWidthY(j)是第i/j个流体节点代表的控制宽度,
+    ! 也就是做 midpoint-rule 积分时每个节点应该乘上的物理区间长度。
+    ! 对内部节点, 节点i负责左右相邻节点中点之间的区间:
+    !   [(x_{i-1}+x_i)/2, (x_i+x_{i+1})/2],
+    ! 因而宽度为 (x_{i+1}-x_{i-1})/2, 这就是文献式(29)的 midpoint-rule 权重。
+    ! 对第一个流体节点, 左侧没有另一个流体节点; 真实计算域从物理壁面x=0开始。
+    ! 因此第一个节点必须代表 [0, (xp(1)+xp(2))/2] 这一段,
+    ! 否则从物理壁面到第一个节点附近的一小段区域就没有任何节点负责。
+    ! 所以 quadWidthX(1)=0.5*(xp(1)+xp(2)), y方向同理。
+    ! 如果仍想写成 (x_{i+1}-x_{i-1})/2, 边界处的 x_{i-1} 必须是
+    ! 关于物理壁面对称的虚拟点 -xp(1), 不能直接使用 xp(0)=0。
+    ! 因为 build_islbm_mesh() 中 xp(0)/yp(0) 已经表示物理壁面, 不是外侧虚拟点。
+    ! 末端节点同理: 控制体从相邻节点中点延伸到物理壁面x=1或y=1。
+    ! 下面实际采用这个虚拟点写法, 这样首末节点和内部节点都保持同一种宽度公式。
     ! 这样quadSumX/quadSumY对应完整有效物理长度, 应为1。
     ! 注意: 这里是面积积分宽度, 与off-lattice迁移插值权重streamInterpWeightX/Y不是同一类量。
+
     leftGhostX = -xp(1)
     rightGhostX = 1.0d0 + (1.0d0 - xp(nx))
     bottomGhostY = -yp(1)
@@ -948,6 +969,7 @@ close(00)
     do j = 1, ny
         quadSumY = quadSumY + quadWidthY(j)
     enddo
+    ! 累加结束再做相乘，得到整个面积的总积分权重
     quadSumArea = quadSumX*quadSumY
 
     return
@@ -959,12 +981,12 @@ close(00)
 
 
 !===================================================================================================
-! 子程序: prepare_islbm_streaming_stencils
+! 子程序: build_islbm_streaming_stencils
 ! 作用: 为每个速度方向和每个节点预生成 off-lattice 迁移所需的三点插值模板。
 ! 用途: 在 initial 中调用，供 streaming 和 streamingT 快速插值读取 f_post/g_post。
 !===================================================================================================
 
-  subroutine prepare_islbm_streaming_stencils()
+  subroutine build_islbm_streaming_stencils()
     use commondata
     implicit none
     integer(kind=4) :: alpha, i, j
@@ -972,7 +994,7 @@ close(00)
     real(kind=8) :: stencilWeight(3), target
     logical :: stencilValid
 
-    ! 这些模板只依赖非均匀坐标xp/yp、离散速度ex/ey和ISLBM_Shift, 不随时间变化。
+    ! 这些模板只依赖非均匀坐标xp/yp、离散速度ex/ey和ISLBM_LatticeUnit, 不随时间变化。
     ! 因此在初始化时预先生成一次, 后续streaming/streamingT可直接查表, 避免每步重复找插值节点。
     ! 先初始化。
     streamInterpIndexX = 1
@@ -984,11 +1006,17 @@ close(00)
 
     do alpha = 0, 8
         do i = 1, nx
-            ! 从当前节点xp(i)沿速度方向alpha反向回溯1个lattice unit, 得到off-lattice上游点。
-            ! 迁移插值模板按zzhao参考代码的写法固定在到达节点附近:
+            ! 这里采用pull形式的反向追踪。LBM迁移关系可写成:
+            !   f_alpha(x+e_alpha*dt,t+dt)=f_alpha^+(x,t)。
+            ! 因此要更新当前节点xp(i)上的f_alpha, 需要反推它来自哪个上游位置:
+            !   x_old = xp(i) - ex(alpha)*1lu。
+            ! ex(alpha)= 1时, 当前点的向右分布来自左侧上游;
+            ! ex(alpha)=-1时, 当前点的向左分布来自右侧上游。
+            ! 非均匀网格中x_old通常不落在节点上, 所以target就是后续Lagrange插值的位置。
+            ! 迁移插值模板由于按照1个lattice unit移动，不会超出一个非均匀网格间距，于是固定模板在到达节点附近:
             ! 内部点用(i-1,i,i+1), 边界附近用单边三点; 然后对该模板整体做速度平移。
             ! 这与按target附近自动选三点不同, 在非均匀网格上二者不等价。
-            target = xp(i) - dble(ex(alpha))*ISLBM_Shift
+            target = xp(i) - dble(ex(alpha))*ISLBM_LatticeUnit
             call build_streaming_stencil_1d(nx, xp(1:nx), i, target, stencilIndex, stencilWeight, stencilValid)
             ! 保存x方向插值模板: stencilValid说明target是否在内部节点范围内;
             ! stencilIndex是3个插值节点编号, stencilWeight是对应权重。
@@ -997,8 +1025,10 @@ close(00)
             streamInterpWeightX(alpha,i,:) = stencilWeight
         enddo
         do j = 1, ny
-            ! y方向同理, 为streaming中的竖直和对角迁移提前准备到达点中心模板。
-            target = yp(j) - dble(ey(alpha))*ISLBM_Shift
+            ! y方向同理: 反向追踪 y_old = yp(j) - ey(alpha)*1lu。
+            ! ey(alpha)= 1时来自下侧上游; ey(alpha)=-1时来自上侧上游。
+            ! 这里为streaming中的竖直和对角迁移提前准备到达点中心模板。
+            target = yp(j) - dble(ey(alpha))*ISLBM_LatticeUnit
             call build_streaming_stencil_1d(ny, yp(1:ny), j, target, stencilIndex, stencilWeight, stencilValid)
             streamInterpValidY(alpha,j) = stencilValid
             streamInterpIndexY(alpha,j,:) = stencilIndex
@@ -1007,9 +1037,9 @@ close(00)
     enddo
 
     return
-  end subroutine prepare_islbm_streaming_stencils
+  end subroutine build_islbm_streaming_stencils
 !===================================================================================================
-! prepare_islbm_streaming_stencils 结束: 已生成 ISLBM 迁移插值节点、权重和有效性标志。
+! build_islbm_streaming_stencils 结束: 已生成 ISLBM 迁移插值节点、权重和有效性标志。
 !===================================================================================================
 
 
@@ -1017,7 +1047,7 @@ close(00)
 !===================================================================================================
 ! 子程序: build_streaming_stencil_1d
 ! 作用: 为 ISLBM 迁移选择到达点中心的三点 Lagrange 插值模板。
-! 用途: 被 prepare_islbm_streaming_stencils 调用, 专门匹配 zzhao 参考代码的 off-lattice 迁移写法。
+! 用途: 被 build_islbm_streaming_stencils 调用的 off-lattice 迁移。
 !===================================================================================================
 
   subroutine build_streaming_stencil_1d(n, xnodes, nodeIndex, target, stencilIndex, stencilWeight, stencilValid)
@@ -1031,14 +1061,21 @@ close(00)
     real(kind=8), parameter :: tol = 1.0d-12
 
     ! 默认无效。target越过内部流体节点范围时, 说明该方向需要后续边界处理补齐。
+    ! 以左边界i=1为例, 若ex=+1, pull反向追踪得到target=xp(1)-1lu,
+    ! 这个上游点在壁面外侧, 不是流体内的f_post插值问题, 因而直接return并保持stencilValid=.false.。
+    ! 后续streaming看到valid为false就不会填这个方向, 该未知分布由bounceback/bouncebackT边界条件给出。
+    ! 只有target仍在内部流体节点范围内的方向, 才继续向下选择三点模板并做Lagrange插值。
     stencilIndex = (/1, 1, 1/)
     stencilWeight = 0.0d0
     stencilValid = .false.
     if(n.LT.3) return
     if((target.LT.xnodes(1)-tol).OR.(target.GT.xnodes(n)+tol)) return
 
-    ! zzhao参考代码中, 内部迁移使用到达节点左右三点(i-1,i,i+1),
+    ! 内部迁移使用到达节点左右三点(i-1,i,i+1),
     ! 边界处使用(1,2,3)或(n,n-1,n-2)这样的单边三点。
+    ! 注意: 这里的边界单边模板只会作用于已通过上面越界检查的方向。
+    ! 仍以左边界i=1为例, ex=-1时target=xp(1)+1lu在流体内部,
+    ! 这个方向可由内部f_post插值得到, 因此使用(1,2,3)模板。
     ! 这里用升序索引保存模板; Lagrange权重只依赖节点坐标, 顺序不影响插值结果。
     if(nodeIndex.LE.1) then
         stencilIndex = (/1, 2, 3/)
@@ -1051,7 +1088,7 @@ close(00)
     xloc(1) = xnodes(stencilIndex(1))
     xloc(2) = xnodes(stencilIndex(2))
     xloc(3) = xnodes(stencilIndex(3))
-    call lagrange_weights_3(xloc, target, stencilWeight)
+    call build_lagrange_weights_3(xloc, target, stencilWeight)
     stencilValid = .true.
 
     return
@@ -1111,7 +1148,7 @@ close(00)
     xloc(3) = xnodes(stencilIndex(3))
     ! 根据选出的3个节点位置计算target处的二次Lagrange基函数权重。
     ! 插值时 f(target) ~= stencilWeight(1)*f(stencilIndex(1)) + ...
-    call lagrange_weights_3(xloc, target, stencilWeight)
+    call build_lagrange_weights_3(xloc, target, stencilWeight)
     stencilValid = .true.
 
     return
@@ -1123,12 +1160,12 @@ close(00)
 
 
 !===================================================================================================
-! 子程序: lagrange_weights_3
+! 子程序: build_lagrange_weights_3
 ! 作用: 计算三点 Lagrange 插值在目标点 x0 处的三个基函数权重。
-! 用途: 被 build_lagrange_stencil_1d 和三点插值函数调用。
+! 用途: 被 build_streaming_stencil_1d 和 build_lagrange_stencil_1d 调用。
 !===================================================================================================
 
-  subroutine lagrange_weights_3(xnode, x0, lagrangeWeight)
+  subroutine build_lagrange_weights_3(xnode, x0, lagrangeWeight)
     implicit none
     real(kind=8), intent(in) :: xnode(3), x0
     real(kind=8), intent(out) :: lagrangeWeight(3)
@@ -1141,37 +1178,15 @@ close(00)
     lagrangeWeight(3) = ((x0-xnode(1))*(x0-xnode(2)))/((xnode(3)-xnode(1))*(xnode(3)-xnode(2)))
 
     return
-  end subroutine lagrange_weights_3
+  end subroutine build_lagrange_weights_3
 !===================================================================================================
-! lagrange_weights_3 结束: 已计算三点 Lagrange 插值权重。
+! build_lagrange_weights_3 结束: 已计算三点 Lagrange 插值权重。
 !===================================================================================================
-
-!===================================================================================================
-! 子程序: lagrange_interp_3
-! 作用: 用三点 Lagrange 权重对目标点 x0 的函数值进行插值。
-! 用途: 被 interpolate_line_x 调用，用于一维非均匀网格上的场变量插值。
-!===================================================================================================
-  subroutine lagrange_interp_3(xnode, fnode, x0, interpValue)
-    implicit none
-    real(kind=8), intent(in) :: xnode(3), fnode(3), x0
-    real(kind=8), intent(out) :: interpValue
-    real(kind=8) :: lagrangeWeight(3)
-
-    call lagrange_weights_3(xnode, x0, lagrangeWeight)
-    interpValue = lagrangeWeight(1)*fnode(1) + lagrangeWeight(2)*fnode(2) + lagrangeWeight(3)*fnode(3)
-
-    return
-  end subroutine lagrange_interp_3
-!===================================================================================================
-! lagrange_interp_3 结束: 已完成三点 Lagrange 插值。
-!===================================================================================================
-
-
 
 !===================================================================================================
 ! 子程序: lagrange_derivative_3
 ! 作用: 计算三点二次 Lagrange 插值多项式在目标点 x0 处的一阶导数。
-! 用途: 被 derivative_line_x 调用，用于非均匀网格上的一维导数估计。
+! 用途: 在非均匀网格 Nu、涡量等后处理中直接用于一维导数估计。
 !===================================================================================================
   subroutine lagrange_derivative_3(xnode, fnode, x0, derivativeValue)
     implicit none
@@ -1235,234 +1250,6 @@ close(00)
   end subroutine integrate_lagrange_3_segment
 !===================================================================================================
 ! integrate_lagrange_3_segment 结束: 已完成三点二次 Lagrange 分段解析积分。
-!===================================================================================================
-
-
-
-!===================================================================================================
-! 子程序: interpolate_line_x
-! 作用: 在 x 方向非均匀节点上对一条场变量线进行三点 Lagrange 插值。
-! 用途: 用于壁面/中线后处理，在任意 targetX 位置估计场变量。
-!===================================================================================================
-  subroutine interpolate_line_x(fieldLine, targetX, interpValue)
-    use commondata
-    implicit none
-    real(kind=8), intent(in) :: fieldLine(1:nx), targetX
-    real(kind=8), intent(out) :: interpValue
-    integer(kind=4) :: stencilIndex(3)
-    real(kind=8) :: stencilWeight(3), xnode(3), fnode(3)
-    logical :: stencilValid
-
-    call build_lagrange_stencil_1d(nx, xp(1:nx), targetX, stencilIndex, stencilWeight, stencilValid)
-    if(.not.stencilValid) then
-        interpValue = 0.0d0
-        return
-    endif
-    xnode = (/ xp(stencilIndex(1)), xp(stencilIndex(2)), xp(stencilIndex(3)) /)
-    fnode = (/ fieldLine(stencilIndex(1)), fieldLine(stencilIndex(2)), fieldLine(stencilIndex(3)) /)
-    call lagrange_interp_3(xnode, fnode, targetX, interpValue)
-
-    return
-  end subroutine interpolate_line_x
-!===================================================================================================
-! interpolate_line_x 结束: 已完成 x 方向一维场变量插值。
-!===================================================================================================
-
-
-
-!===================================================================================================
-! 子程序: interpolate_line_y
-! 作用: 在 y 方向非均匀节点上对第 iCol 列场变量进行三点 Lagrange 插值。
-! 用途: 用于 Rayleigh-Benard 工况中线后处理，在任意 targetY 位置估计场变量。
-!===================================================================================================
-  subroutine interpolate_line_y(field2D, iCol, targetY, interpValue)
-    use commondata
-    implicit none
-    real(kind=8), intent(in) :: field2D(1:nx,1:ny), targetY
-    integer(kind=4), intent(in) :: iCol
-    real(kind=8), intent(out) :: interpValue
-    integer(kind=4) :: stencilIndex(3)
-    real(kind=8) :: stencilWeight(3), ynode(3), fnode(3)
-    logical :: stencilValid
-
-    call build_lagrange_stencil_1d(ny, yp(1:ny), targetY, stencilIndex, stencilWeight, stencilValid)
-    if(.not.stencilValid) then
-        interpValue = 0.0d0
-        return
-    endif
-    ynode = (/ yp(stencilIndex(1)), yp(stencilIndex(2)), yp(stencilIndex(3)) /)
-    fnode = (/ field2D(iCol,stencilIndex(1)), field2D(iCol,stencilIndex(2)), &
-        field2D(iCol,stencilIndex(3)) /)
-    call lagrange_interp_3(ynode, fnode, targetY, interpValue)
-
-    return
-  end subroutine interpolate_line_y
-!===================================================================================================
-! interpolate_line_y 结束: 已完成 y 方向一维场变量插值。
-!===================================================================================================
-
-
-
-!===================================================================================================
-! 子程序: derivative_line_x
-! 作用: 在 x 方向非均匀节点上计算一条场变量线在 targetX 处的一阶导数。
-! 用途: 用于 Nusselt 数后处理中的温度梯度估计。
-!===================================================================================================
-  subroutine derivative_line_x(fieldLine, targetX, derivativeValue)
-    use commondata
-    implicit none
-    real(kind=8), intent(in) :: fieldLine(1:nx), targetX
-    real(kind=8), intent(out) :: derivativeValue
-    integer(kind=4) :: stencilIndex(3)
-    real(kind=8) :: stencilWeight(3), xnode(3), fnode(3)
-    logical :: stencilValid
-
-    call build_lagrange_stencil_1d(nx, xp(1:nx), targetX, stencilIndex, stencilWeight, stencilValid)
-    if(.not.stencilValid) then
-        derivativeValue = 0.0d0
-        return
-    endif
-    xnode = (/ xp(stencilIndex(1)), xp(stencilIndex(2)), xp(stencilIndex(3)) /)
-    fnode = (/ fieldLine(stencilIndex(1)), fieldLine(stencilIndex(2)), fieldLine(stencilIndex(3)) /)
-    call lagrange_derivative_3(xnode, fnode, targetX, derivativeValue)
-
-    return
-  end subroutine derivative_line_x
-!===================================================================================================
-! derivative_line_x 结束: 已完成 x 方向一维导数估计。
-!===================================================================================================
-
-
-
-!===================================================================================================
-! 子程序: derivative_line_y
-! 作用: 在 y 方向非均匀节点上计算第 iCol 列场变量在 targetY 处的一阶导数。
-! 用途: 用于 Rayleigh-Benard 工况 Nusselt 数后处理中的温度梯度估计。
-!===================================================================================================
-  subroutine derivative_line_y(field2D, iCol, targetY, derivativeValue)
-    use commondata
-    implicit none
-    real(kind=8), intent(in) :: field2D(1:nx,1:ny), targetY
-    integer(kind=4), intent(in) :: iCol
-    real(kind=8), intent(out) :: derivativeValue
-    integer(kind=4) :: stencilIndex(3)
-    real(kind=8) :: stencilWeight(3), ynode(3), fnode(3)
-    logical :: stencilValid
-
-    call build_lagrange_stencil_1d(ny, yp(1:ny), targetY, stencilIndex, stencilWeight, stencilValid)
-    if(.not.stencilValid) then
-        derivativeValue = 0.0d0
-        return
-    endif
-    ynode = (/ yp(stencilIndex(1)), yp(stencilIndex(2)), yp(stencilIndex(3)) /)
-    fnode = (/ field2D(iCol,stencilIndex(1)), field2D(iCol,stencilIndex(2)), &
-        field2D(iCol,stencilIndex(3)) /)
-    call lagrange_derivative_3(ynode, fnode, targetY, derivativeValue)
-
-    return
-  end subroutine derivative_line_y
-!===================================================================================================
-! derivative_line_y 结束: 已完成 y 方向一维导数估计。
-!===================================================================================================
-
-
-
-!===================================================================================================
-! 子程序: wall_derivative_x_left
-! 作用: 用左壁面温度和前两个内部节点估计左壁处的 x 方向温度导数。
-! 用途: 在侧壁差温工况的热壁 Nusselt 数后处理中调用。
-!===================================================================================================
-  subroutine wall_derivative_x_left(twall, t1, t2, derivativeValue)
-    use commondata
-    implicit none
-    real(kind=8), intent(in) :: twall, t1, t2
-    real(kind=8), intent(out) :: derivativeValue
-    real(kind=8) :: xnode(3), fnode(3)
-
-    ! 与zzhao后处理和文献壁面公式一致: 用(wall,1,2)三点二次Lagrange在物理壁面xp=0处求dT/dx。
-    xnode = (/ 0.0d0, xp(1), xp(2) /)
-    fnode = (/ twall, t1, t2 /)
-    call lagrange_derivative_3(xnode, fnode, 0.0d0, derivativeValue)
-
-    return
-  end subroutine wall_derivative_x_left
-!===================================================================================================
-! wall_derivative_x_left 结束: 已估计左壁处的 x 方向温度导数。
-!===================================================================================================
-
-
-
-!===================================================================================================
-! 子程序: wall_derivative_x_right
-! 作用: 用右壁面温度和最后两个内部节点估计右壁处的 x 方向温度导数。
-! 用途: 在侧壁差温工况的冷壁 Nusselt 数后处理中调用。
-!===================================================================================================
-  subroutine wall_derivative_x_right(tnm1, tn, twall, derivativeValue)
-    use commondata
-    implicit none
-    real(kind=8), intent(in) :: tnm1, tn, twall
-    real(kind=8), intent(out) :: derivativeValue
-    real(kind=8) :: xnode(3), fnode(3)
-
-    ! 右壁在xp=1处, 用最靠近右壁的两个内部节点和壁面点构造三点Lagrange导数。
-    xnode = (/ xp(nx-1), xp(nx), 1.0d0 /)
-    fnode = (/ tnm1, tn, twall /)
-    call lagrange_derivative_3(xnode, fnode, 1.0d0, derivativeValue)
-
-    return
-  end subroutine wall_derivative_x_right
-!===================================================================================================
-! wall_derivative_x_right 结束: 已估计右壁处的 x 方向温度导数。
-!===================================================================================================
-
-
-
-!===================================================================================================
-! 子程序: wall_derivative_y_bottom
-! 作用: 用底壁面温度和前两个内部节点估计底壁处的 y 方向温度导数。
-! 用途: 在 Rayleigh-Benard 工况的底部热壁 Nusselt 数后处理中调用。
-!===================================================================================================
-  subroutine wall_derivative_y_bottom(twall, t1, t2, derivativeValue)
-    use commondata
-    implicit none
-    real(kind=8), intent(in) :: twall, t1, t2
-    real(kind=8), intent(out) :: derivativeValue
-    real(kind=8) :: ynode(3), fnode(3)
-
-    ! 底壁在yp=0处, 使用壁面点和前两个内部节点做三点Lagrange导数。
-    ynode = (/ 0.0d0, yp(1), yp(2) /)
-    fnode = (/ twall, t1, t2 /)
-    call lagrange_derivative_3(ynode, fnode, 0.0d0, derivativeValue)
-
-    return
-  end subroutine wall_derivative_y_bottom
-!===================================================================================================
-! wall_derivative_y_bottom 结束: 已估计底壁处的 y 方向温度导数。
-!===================================================================================================
-
-
-
-!===================================================================================================
-! 子程序: wall_derivative_y_top
-! 作用: 用顶壁面温度和最后两个内部节点估计顶壁处的 y 方向温度导数。
-! 用途: 在 Rayleigh-Benard 工况的顶部冷壁 Nusselt 数后处理中调用。
-!===================================================================================================
-  subroutine wall_derivative_y_top(tnm1, tn, twall, derivativeValue)
-    use commondata
-    implicit none
-    real(kind=8), intent(in) :: tnm1, tn, twall
-    real(kind=8), intent(out) :: derivativeValue
-    real(kind=8) :: ynode(3), fnode(3)
-
-    ! 顶壁在yp=1处, 使用最后两个内部节点和壁面点做三点Lagrange导数。
-    ynode = (/ yp(ny-1), yp(ny), 1.0d0 /)
-    fnode = (/ tnm1, tn, twall /)
-    call lagrange_derivative_3(ynode, fnode, 1.0d0, derivativeValue)
-
-    return
-  end subroutine wall_derivative_y_top
-!===================================================================================================
-! wall_derivative_y_top 结束: 已估计顶壁处的 y 方向温度导数。
 !===================================================================================================
 
 
@@ -2272,7 +2059,6 @@ end subroutine append_convergence_master_tecplot
     write(03) ((real(T(i,j),kind=8),i=1,nx),j=1,ny)
     write(03) ((real(rho(i,j),kind=8), i=1,nx), j=1,ny)
     close(03)
-    call output_SnapshotMeshFile(trim(filename))
 
     return
   end subroutine output_SnapshotFile
@@ -2283,19 +2069,18 @@ end subroutine append_convergence_master_tecplot
 
 !===================================================================================================
 ! 子程序: output_SnapshotMeshFile
-! 作用: 为同编号二进制快照输出 ISLBM 非均匀坐标 sidecar 文件。
-! 用途: 避免修改旧快照二进制格式，同时让独立后处理能读取 xp/yp。
+! 作用: 输出 ISLBM 非均匀坐标公共 sidecar 文件。
+! 用途: 网格在整个算例中不随时间变化, 因此所有二进制快照共用同一个 xp/yp 文件。
 !===================================================================================================
-  subroutine output_SnapshotMeshFile(snapshotId)
+  subroutine output_SnapshotMeshFile()
     use commondata
     implicit none
-    character(len=*), intent(in) :: snapshotId
     integer(kind=4) :: i, j, meshUnit
     character(len=160) :: meshFilename
 
-    meshFilename = trim(snapshotFilePrefix)//"-"//trim(snapshotId)//"-mesh.dat"
+    meshFilename = trim(snapshotFilePrefix)//"-mesh.dat"
     open(newunit=meshUnit, file=trim(meshFilename), status='replace', action='write', form='formatted')
-    write(meshUnit,'(A)') '# ISLBM nonuniform coordinates for the matching snapshot .bin'
+    write(meshUnit,'(A)') '# ISLBM nonuniform coordinates shared by all matching snapshot .bin files'
     write(meshUnit,'(A)') '# binary fields are U_nd, V_nd, T, rho'
     write(meshUnit,'(A)') '# coordinates are xp(1:nx), yp(1:ny)'
     write(meshUnit,'(A,1X,I0,1X,I0)') 'nx_ny', nx, ny
@@ -2312,7 +2097,7 @@ end subroutine append_convergence_master_tecplot
     return
   end subroutine output_SnapshotMeshFile
 !===================================================================================================
-! output_SnapshotMeshFile 结束: 已输出同编号快照的非均匀坐标。
+! output_SnapshotMeshFile 结束: 已输出所有快照共用的非均匀坐标。
 !===================================================================================================
 
 
@@ -2351,11 +2136,6 @@ end subroutine append_convergence_master_tecplot
 #endif
     close(05)
     call write_reload_metadata(trim(filename))
-    
-    open(unit=00,file=trim(settingsFile),status='unknown',position='append')
-    write(00,*) "Backup f/g restart state to: ", trim(reloadFilePrefix), "-", trim(filename),".bin"
-    write(00,*) "Backup restart metadata to: ", trim(reloadFilePrefix), "-latest.meta"
-    close(00)
     
     return
   end subroutine output_ReloadFile
@@ -2746,7 +2526,7 @@ end subroutine append_convergence_master_tecplot
     implicit none
     integer(kind=4) :: i, j
     real(kind=8) :: NuVolAvg_temp    !体平均 Nu 的对流热通量积分
-    real(kind=8) :: ReVolAvg_temp    !体平均 Re 的速度模长积分
+    real(kind=8) :: ReVolAvg_temp    !体平均 Re 的速度平方积分
     real(kind=8) :: areaWeight
     real(kind=8) :: sampleTime
     logical :: exNu, exRe
@@ -2826,12 +2606,12 @@ end subroutine append_convergence_master_tecplot
     do j = 1, ny
         do i = 1, nx 
             areaWeight = quadWidthX(i)*quadWidthY(j)
-            ReVolAvg_temp = ReVolAvg_temp+areaWeight*dsqrt(u(i,j)*u(i,j)+v(i,j)*v(i,j))
+            ReVolAvg_temp = ReVolAvg_temp+areaWeight*(u(i,j)*u(i,j)+v(i,j)*v(i,j))
         enddo
     enddo
     !$omp end parallel do
-    ! 文献中的体平均Re采用速度模长平均: Re = <sqrt(u^2+v^2)>_V*L/nu。
-    ReVolAvg(dimensionlessTime) = ReVolAvg_temp/quadSumArea*lengthUnit/viscosity
+    ! 体平均Re采用RMS速度定义: Re = sqrt(<u^2+v^2>_V)*L/nu。
+    ReVolAvg(dimensionlessTime) = dsqrt(ReVolAvg_temp/quadSumArea)*lengthUnit/viscosity
 
 
     if((first_nure_write).AND.(loadInitField.EQ.0)) then
@@ -3055,6 +2835,7 @@ end subroutine append_convergence_master_tecplot
     implicit none
     integer(kind=4) :: i, j
     real(kind=8) :: dTdx, qx, sum_qx, areaWeight
+    real(kind=8) :: xnode(3), fnode(3)
     real(kind=8) :: deltaT, coef
 
     deltaT = Thot - Tcold
@@ -3063,11 +2844,23 @@ end subroutine append_convergence_master_tecplot
     sum_qx = 0.0d0
 
     !$omp parallel do default(none) shared(u,T,xp,quadWidthX,quadWidthY,coef) &
-    !$omp private(i,j,dTdx,qx,areaWeight) reduction(+:sum_qx)
+    !$omp private(i,j,dTdx,qx,areaWeight,xnode,fnode) reduction(+:sum_qx)
     do j = 1, ny
       do i = 1, nx
 
-        call derivative_line_x(T(1:nx,j), xp(i), dTdx)
+        ! 这里target总是当前节点xp(i), 不需要再调用通用搜索模板。
+        ! 直接按节点位置选择三点模板, 但仍复用lagrange_derivative_3保持非均匀导数公式统一。
+        if(i.EQ.1) then
+            xnode = (/ xp(1), xp(2), xp(3) /)
+            fnode = (/ T(1,j), T(2,j), T(3,j) /)
+        elseif(i.EQ.nx) then
+            xnode = (/ xp(nx-2), xp(nx-1), xp(nx) /)
+            fnode = (/ T(nx-2,j), T(nx-1,j), T(nx,j) /)
+        else
+            xnode = (/ xp(i-1), xp(i), xp(i+1) /)
+            fnode = (/ T(i-1,j), T(i,j), T(i+1,j) /)
+        endif
+        call lagrange_derivative_3(xnode, fnode, xp(i), dTdx)
         qx = coef*u(i,j)*(T(i,j)-Tref) - dTdx
         areaWeight = quadWidthX(i)*quadWidthY(j)
         sum_qx = sum_qx + areaWeight*qx
@@ -3105,9 +2898,13 @@ end subroutine append_convergence_master_tecplot
     implicit none
     integer(kind=4) :: j
     integer(kind=4) :: jmax, jmin
+    integer(kind=4) :: midIndex(3)
     real(kind=8) :: deltaT,coef
     real(kind=8) :: qx_wall, sum_hot, sum_cold, sum_mid
     real(kind=8) :: u_mid, T_mid, dTdx_mid
+    real(kind=8) :: xnode(3), fnode(3)
+    real(kind=8) :: xmidNode(3), xmidWeight(3)
+    logical :: midStencilValid
     real(kind=8) :: Nu_left(1:ny) 
     !------------------------------------------------------------
     ! 5-point least-squares parabola fit (general, can be one-sided)
@@ -3126,10 +2923,14 @@ end subroutine append_convergence_master_tecplot
     !-----------------------------
     ! (1) 左侧热壁平均 Nu_hot，同时记录 Numax/Numin 及其 y 位置
     sum_hot = 0.0d0
-    !$omp parallel do default(none) shared(T,Nu_left,quadWidthY,deltaT) private(j,qx_wall) reduction(+:sum_hot)
+    !$omp parallel do default(none) shared(T,Nu_left,quadWidthY,deltaT,xp) &
+    !$omp private(j,qx_wall,xnode,fnode) reduction(+:sum_hot)
     do j = 1, ny
       ! 壁面导热通量：qx(x=0,j)
-      call wall_derivative_x_left(Thot, T(1,j), T(2,j), qx_wall)
+      ! 左壁target固定为物理壁面x=0, 直接用(wall,1,2)三点, 复用lagrange_derivative_3。
+      xnode = (/ 0.0d0, xp(1), xp(2) /)
+      fnode = (/ Thot, T(1,j), T(2,j) /)
+      call lagrange_derivative_3(xnode, fnode, 0.0d0, qx_wall)
       qx_wall = -qx_wall
       Nu_left(j)= qx_wall / deltaT
       sum_hot   = sum_hot + Nu_left(j)*quadWidthY(j)
@@ -3205,9 +3006,13 @@ end subroutine append_convergence_master_tecplot
     !-----------------------------
     ! (2) 右侧冷壁平均 Nu_cold
     sum_cold = 0.0d0
-    !$omp parallel do default(none) shared(T,quadWidthY,deltaT) private(j,qx_wall) reduction(+:sum_cold)
+    !$omp parallel do default(none) shared(T,quadWidthY,deltaT,xp) &
+    !$omp private(j,qx_wall,xnode,fnode) reduction(+:sum_cold)
     do j = 1, ny
-      call wall_derivative_x_right(T(nx-1,j), T(nx,j), Tcold, qx_wall)
+      ! 右壁target固定为物理壁面x=1, 直接用(nx-1,nx,wall)三点。
+      xnode = (/ xp(nx-1), xp(nx), 1.0d0 /)
+      fnode = (/ T(nx-1,j), T(nx,j), Tcold /)
+      call lagrange_derivative_3(xnode, fnode, 1.0d0, qx_wall)
       qx_wall = -qx_wall
       sum_cold = sum_cold + qx_wall/deltaT*quadWidthY(j)
     enddo
@@ -3218,11 +3023,24 @@ end subroutine append_convergence_master_tecplot
     ! (3) 竖直中线 x=1/2 的平均 Nu_middle
     sum_mid = 0.0d0
 
-    !$omp parallel do default(none) shared(u,T,quadWidthY,deltaT,coef) private(j,u_mid,T_mid,dTdx_mid) reduction(+:sum_mid)
+    ! x=0.5的插值/导数模板在整个y循环中不变, 因此先在循环外选定一次。
+    ! build_lagrange_stencil_1d返回的xmidWeight可直接用于u/T中线插值。
+    call build_lagrange_stencil_1d(nx, xp(1:nx), 0.5d0, midIndex, xmidWeight, midStencilValid)
+    if(.not.midStencilValid) then
+      write(*,*) "Error: x=0.5 is outside ISLBM x nodes in SideHeatedcalc_Nu_wall_avg"
+      stop
+    endif
+    xmidNode = (/ xp(midIndex(1)), xp(midIndex(2)), xp(midIndex(3)) /)
+
+    !$omp parallel do default(none) shared(u,T,quadWidthY,deltaT,coef,midIndex,xmidNode,xmidWeight) &
+    !$omp private(j,u_mid,T_mid,dTdx_mid,fnode) reduction(+:sum_mid)
     do j = 1, ny
-      call interpolate_line_x(u(1:nx,j), 0.5d0, u_mid)
-      call interpolate_line_x(T(1:nx,j), 0.5d0, T_mid)
-      call derivative_line_x(T(1:nx,j), 0.5d0, dTdx_mid)
+      u_mid = xmidWeight(1)*u(midIndex(1),j) + xmidWeight(2)*u(midIndex(2),j) + &
+        xmidWeight(3)*u(midIndex(3),j)
+      T_mid = xmidWeight(1)*T(midIndex(1),j) + xmidWeight(2)*T(midIndex(2),j) + &
+        xmidWeight(3)*T(midIndex(3),j)
+      fnode = (/ T(midIndex(1),j), T(midIndex(2),j), T(midIndex(3),j) /)
+      call lagrange_derivative_3(xmidNode, fnode, 0.5d0, dTdx_mid)
       sum_mid = sum_mid + (coef*u_mid*(T_mid-Tref) - dTdx_mid)/deltaT*quadWidthY(j)
     enddo
     !$omp end parallel do
@@ -3396,10 +3214,12 @@ end subroutine append_convergence_master_tecplot
     integer(kind=4) :: j, k
     integer(kind=4) :: j0
     integer(kind=4) :: jj(5)
+    integer(kind=4) :: midIndex(3)
     real(kind=8) :: uline(1:ny)
     real(kind=8) :: s(5), fu(5)
     real(kind=8) :: umax_grid, umax_fit, y_fit
-    real(kind=8) :: xmid
+    real(kind=8) :: xmid, xmidWeight(3)
+    logical :: midStencilValid
     character(len=24) :: ctime, string
     integer(kind=4) :: time
     real(kind=8) :: coef
@@ -3408,9 +3228,15 @@ end subroutine append_convergence_master_tecplot
 
     ! ---- (1) 构造中线剖面 u(x=1/2, y_j) ----
     xmid = 0.5d0
-    ! x=0.5 通常不一定落在非均匀节点上, 用三点Lagrange插值得到剖面值。
+    ! x=0.5 通常不一定落在非均匀节点上; 中线模板不随j变化, 因此先建一次。
+    call build_lagrange_stencil_1d(nx, xp(1:nx), xmid, midIndex, xmidWeight, midStencilValid)
+    if(.not.midStencilValid) then
+      write(*,*) "Error: xmid is outside ISLBM x nodes in SideHeatedcalc_umid_max"
+      stop
+    endif
     do j = 1, ny
-      call interpolate_line_x(u(1:nx,j), xmid, uline(j))
+      uline(j) = xmidWeight(1)*u(midIndex(1),j) + xmidWeight(2)*u(midIndex(2),j) + &
+        xmidWeight(3)*u(midIndex(3),j)
     enddo
 
     ! ---- (2) 先找网格最大值点 j0 ----
@@ -3470,10 +3296,12 @@ end subroutine append_convergence_master_tecplot
     integer(kind=4) :: i, k
     integer(kind=4) :: i0
     integer(kind=4) :: ii(5)
+    integer(kind=4) :: midIndex(3)
     real(kind=8) :: vline(1:nx)
     real(kind=8) :: s(5), fv(5)
     real(kind=8) :: vmax_grid, vmax_fit, x_fit
-    real(kind=8) :: ymid
+    real(kind=8) :: ymid, ymidWeight(3)
+    logical :: midStencilValid
     character(len=24) :: ctime, string
     integer(kind=4) :: time
     real(kind=8) :: coef
@@ -3482,9 +3310,15 @@ end subroutine append_convergence_master_tecplot
 
     ! ---- (1) 构造中线剖面 v(x_i, y=1/2) ----
     ymid = 0.5d0
-    ! y=0.5 通常不一定落在非均匀节点上, 用三点Lagrange插值得到剖面值。
+    ! y=0.5 通常不一定落在非均匀节点上; 中线模板不随i变化, 因此先建一次。
+    call build_lagrange_stencil_1d(ny, yp(1:ny), ymid, midIndex, ymidWeight, midStencilValid)
+    if(.not.midStencilValid) then
+      write(*,*) "Error: ymid is outside ISLBM y nodes in SideHeatedcalc_vmid_max"
+      stop
+    endif
     do i = 1, nx
-      call interpolate_line_y(v, i, ymid, vline(i))
+      vline(i) = ymidWeight(1)*v(i,midIndex(1)) + ymidWeight(2)*v(i,midIndex(2)) + &
+        ymidWeight(3)*v(i,midIndex(3))
     enddo
 
     ! ---- (2) 先找网格最大值点 i0 ----
@@ -3543,6 +3377,7 @@ subroutine RBcalc_Nu_global()
   implicit none
   integer(kind=4) :: i, j
   real(kind=8) :: dTdy, qy, sum_qy, areaWeight
+  real(kind=8) :: ynode(3), fnode(3)
   real(kind=8) :: deltaT, coef
 
   deltaT = Thot - Tcold
@@ -3552,12 +3387,23 @@ subroutine RBcalc_Nu_global()
 
   !$omp parallel do default(none) &
   !$omp shared(v,T,yp,quadWidthX,quadWidthY,coef) &
-  !$omp private(i,j,dTdy,qy,areaWeight) reduction(+:sum_qy)
+  !$omp private(i,j,dTdy,qy,areaWeight,ynode,fnode) reduction(+:sum_qy)
   do j = 1, ny
     do i = 1, nx
 
-      ! 这里用y方向三点Lagrange导数计算局部dT/dy, 再做面积加权平均。
-      call derivative_line_y(T, i, yp(j), dTdy)
+      ! 这里target总是当前节点yp(j), 不需要再调用通用搜索模板。
+      ! 直接按节点位置选择三点模板, 但仍复用lagrange_derivative_3保持非均匀导数公式统一。
+      if(j.EQ.1) then
+        ynode = (/ yp(1), yp(2), yp(3) /)
+        fnode = (/ T(i,1), T(i,2), T(i,3) /)
+      elseif(j.EQ.ny) then
+        ynode = (/ yp(ny-2), yp(ny-1), yp(ny) /)
+        fnode = (/ T(i,ny-2), T(i,ny-1), T(i,ny) /)
+      else
+        ynode = (/ yp(j-1), yp(j), yp(j+1) /)
+        fnode = (/ T(i,j-1), T(i,j), T(i,j+1) /)
+      endif
+      call lagrange_derivative_3(ynode, fnode, yp(j), dTdy)
       qy = coef * v(i,j) * (T(i,j) - Tref) - dTdy
       areaWeight = quadWidthX(i)*quadWidthY(j)
       sum_qy = sum_qy + areaWeight*qy
@@ -3591,6 +3437,7 @@ subroutine RBcalc_Nu_wall_avg()
   integer(kind=4) :: i, k
   integer(kind=4) :: imax, imin
   integer(kind=4) :: ii(5)
+  integer(kind=4) :: midIndex(3)
   real(kind=8) :: deltaT
   real(kind=8) :: qy_wall, sum_hot, sum_cold, sum_mid, coef
   real(kind=8), dimension(1:nx) :: Nu_bot
@@ -3599,6 +3446,8 @@ subroutine RBcalc_Nu_wall_avg()
   real(kind=8) :: xk(5), fk(5)
   real(kind=8) :: fstar, xstar
   real(kind=8) :: v_mid, T_mid, dTdy_mid
+  real(kind=8) :: ynode(3), fnode(3), ymidNode(3), ymidWeight(3)
+  logical :: midStencilValid
 
 
   deltaT = Thot - Tcold
@@ -3607,11 +3456,14 @@ subroutine RBcalc_Nu_wall_avg()
   !-----------------------------
   ! (1) 底部热壁平均 Nu_hot（不含角点）
   sum_hot = 0.0d0
-  !$omp parallel do default(none) shared(T,Nu_bot,quadWidthX,deltaT) &
-  !$omp private(i,qy_wall) reduction(+:sum_hot)
+  !$omp parallel do default(none) shared(T,Nu_bot,quadWidthX,deltaT,yp) &
+  !$omp private(i,qy_wall,ynode,fnode) reduction(+:sum_hot)
   do i = 1, nx
     ! 底壁热通量取 -dT/dy; dT/dy由非均匀网格壁面Lagrange公式给出。
-    call wall_derivative_y_bottom(Thot, T(i,1), T(i,2), qy_wall)
+    ! 底壁target固定为物理壁面y=0, 直接用(wall,1,2)三点。
+    ynode = (/ 0.0d0, yp(1), yp(2) /)
+    fnode = (/ Thot, T(i,1), T(i,2) /)
+    call lagrange_derivative_3(ynode, fnode, 0.0d0, qy_wall)
     qy_wall   = -qy_wall
     Nu_bot(i)= qy_wall / deltaT
     sum_hot  = sum_hot + Nu_bot(i)*quadWidthX(i)
@@ -3645,9 +3497,12 @@ subroutine RBcalc_Nu_wall_avg()
   call fit_adiabatic_wall_T4(xp(nx+1), xfit, Tfit, T_wr2)  ! 估计 T(x=xp(nx+1), y=yp(2))
   ! 组装扩展数组：角点只用于找 max/min 与拟合
   Nu_bot_ext(1:nx) = Nu_bot(1:nx)
-  call wall_derivative_y_bottom(Thot, T_wl, T_wl2, qy_wall)
+  ynode = (/ 0.0d0, yp(1), yp(2) /)
+  fnode = (/ Thot, T_wl, T_wl2 /)
+  call lagrange_derivative_3(ynode, fnode, 0.0d0, qy_wall)
   Nu_bot_ext(0) = -qy_wall / deltaT
-  call wall_derivative_y_bottom(Thot, T_wr, T_wr2, qy_wall)
+  fnode = (/ Thot, T_wr, T_wr2 /)
+  call lagrange_derivative_3(ynode, fnode, 0.0d0, qy_wall)
   Nu_bot_ext(nx+1) = -qy_wall / deltaT
 
   !-----------------------------
@@ -3709,10 +3564,14 @@ subroutine RBcalc_Nu_wall_avg()
   !-----------------------------
   ! (2) 顶部冷壁平均 Nu_cold（不含角点）
   sum_cold = 0.0d0
-  !$omp parallel do default(none) shared(T,quadWidthX,deltaT) private(i,qy_wall) reduction(+:sum_cold)
+  !$omp parallel do default(none) shared(T,quadWidthX,deltaT,yp) &
+  !$omp private(i,qy_wall,ynode,fnode) reduction(+:sum_cold)
   do i = 1, nx
     ! 顶壁同样取 -dT/dy, 保持与底壁Nu符号定义一致。
-    call wall_derivative_y_top(T(i,ny-1), T(i,ny), Tcold, qy_wall)
+    ! 顶壁target固定为物理壁面y=1, 直接用(ny-1,ny,wall)三点。
+    ynode = (/ yp(ny-1), yp(ny), 1.0d0 /)
+    fnode = (/ T(i,ny-1), T(i,ny), Tcold /)
+    call lagrange_derivative_3(ynode, fnode, 1.0d0, qy_wall)
     qy_wall = -qy_wall
     sum_cold = sum_cold + qy_wall/deltaT*quadWidthX(i)
   enddo
@@ -3723,12 +3582,23 @@ subroutine RBcalc_Nu_wall_avg()
   ! 中线的 Nusselt 数：在物理中线 y=0.5 上插值。
   sum_mid = 0.0d0
 
-  !$omp parallel do default(none) shared(v,T,quadWidthX,deltaT,coef) &
-  !$omp private(i,v_mid,T_mid,dTdy_mid) reduction(+:sum_mid)
+  ! y=0.5的插值/导数模板在整个x循环中不变, 因此先在循环外选定一次。
+  call build_lagrange_stencil_1d(ny, yp(1:ny), 0.5d0, midIndex, ymidWeight, midStencilValid)
+  if(.not.midStencilValid) then
+    write(*,*) "Error: y=0.5 is outside ISLBM y nodes in RBcalc_Nu_wall_avg"
+    stop
+  endif
+  ymidNode = (/ yp(midIndex(1)), yp(midIndex(2)), yp(midIndex(3)) /)
+
+  !$omp parallel do default(none) shared(v,T,quadWidthX,deltaT,coef,midIndex,ymidNode,ymidWeight) &
+  !$omp private(i,v_mid,T_mid,dTdy_mid,fnode) reduction(+:sum_mid)
   do i = 1, nx
-    call interpolate_line_y(v, i, 0.5d0, v_mid)
-    call interpolate_line_y(T, i, 0.5d0, T_mid)
-    call derivative_line_y(T, i, 0.5d0, dTdy_mid)
+    v_mid = ymidWeight(1)*v(i,midIndex(1)) + ymidWeight(2)*v(i,midIndex(2)) + &
+      ymidWeight(3)*v(i,midIndex(3))
+    T_mid = ymidWeight(1)*T(i,midIndex(1)) + ymidWeight(2)*T(i,midIndex(2)) + &
+      ymidWeight(3)*T(i,midIndex(3))
+    fnode = (/ T(i,midIndex(1)), T(i,midIndex(2)), T(i,midIndex(3)) /)
+    call lagrange_derivative_3(ymidNode, fnode, 0.5d0, dTdy_mid)
     sum_mid = sum_mid + (coef*v_mid*(T_mid-Tref) - dTdy_mid)/deltaT*quadWidthX(i)
   enddo
   !$omp end parallel do
@@ -3769,11 +3639,13 @@ subroutine RBcalc_umid_max()
   integer(kind=4) :: j, k
   integer(kind=4) :: j0
   integer(kind=4) :: jj(5)
+  integer(kind=4) :: midIndex(3)
   real(kind=8) :: uline(1:ny)
   real(kind=8) :: yk(5), fk(5)
   real(kind=8) :: umax_fit, y_fit
-  real(kind=8) :: coef, xmid, targetX
+  real(kind=8) :: coef, xmid, targetX, xmidWeight(3)
   real(kind=8) :: umax_grid, yLen
+  logical :: midStencilValid
 
   coef = velocityScaleCompare
 
@@ -3781,9 +3653,15 @@ subroutine RBcalc_umid_max()
   targetX = 0.5d0
   xmid = targetX
 
-  ! x=0.5 通常不一定落在非均匀节点上, 用三点Lagrange插值得到剖面值。
+  ! x=0.5 通常不一定落在非均匀节点上; 中线模板不随j变化, 因此先建一次。
+  call build_lagrange_stencil_1d(nx, xp(1:nx), targetX, midIndex, xmidWeight, midStencilValid)
+  if(.not.midStencilValid) then
+    write(*,*) "Error: targetX is outside ISLBM x nodes in RBcalc_umid_max"
+    stop
+  endif
   do j = 1, ny
-    call interpolate_line_x(u(1:nx,j), targetX, uline(j))
+    uline(j) = xmidWeight(1)*u(midIndex(1),j) + xmidWeight(2)*u(midIndex(2),j) + &
+      xmidWeight(3)*u(midIndex(3),j)
   enddo
 
   ! ---- (2) 找峰值所在网格点 j0 ----
@@ -3843,19 +3721,27 @@ subroutine RBcalc_vmid_max()
   integer(kind=4) :: i, k
   integer(kind=4) :: i0
   integer(kind=4) :: ii(5)
+  integer(kind=4) :: midIndex(3)
   real(kind=8) :: vline(1:nx)
   real(kind=8) :: xk(5), fk(5)
   real(kind=8) :: vmax_fit, x_fit
-  real(kind=8) :: coef, ymid
+  real(kind=8) :: coef, ymid, ymidWeight(3)
   real(kind=8) :: vmax_grid
+  logical :: midStencilValid
 
   coef = velocityScaleCompare
 
   ! ---- (1) 取 y=1/2 中线剖面 v(x_i, y=1/2) ----
   ymid = 0.5d0
-  ! y=0.5 通常不一定落在非均匀节点上, 用三点Lagrange插值得到剖面值。
+  ! y=0.5 通常不一定落在非均匀节点上; 中线模板不随i变化, 因此先建一次。
+  call build_lagrange_stencil_1d(ny, yp(1:ny), ymid, midIndex, ymidWeight, midStencilValid)
+  if(.not.midStencilValid) then
+    write(*,*) "Error: ymid is outside ISLBM y nodes in RBcalc_vmid_max"
+    stop
+  endif
   do i = 1, nx
-    call interpolate_line_y(v, i, ymid, vline(i))
+    vline(i) = ymidWeight(1)*v(i,midIndex(1)) + ymidWeight(2)*v(i,midIndex(2)) + &
+      ymidWeight(3)*v(i,midIndex(3))
   enddo
 
   ! ---- (2) 找峰值所在网格点 i0 ----
@@ -3913,12 +3799,8 @@ subroutine calc_psi_vort_and_output()
   integer(kind=4) :: i, j
   real(kind=8) :: coef
   real(kind=8) :: segmentIntegral
-#ifdef SideHeatedCell
   real(kind=8) :: xNode(3), vNode(3)
-#endif
-#ifdef RayleighBenardCell
   real(kind=8) :: yNode(3), uNode(3)
-#endif
   real(kind=8) :: dv_dx, du_dy
   real(kind=8) :: psi(nx,ny), vort(nx,ny)
   real(kind=8) :: psiTopAbsMax
@@ -4018,8 +3900,31 @@ subroutine calc_psi_vort_and_output()
   do j = 1, ny
     do i = 1, nx
 
-      call derivative_line_x(v(1:nx,j), xp(i), dv_dx)
-      call derivative_line_y(u, i, yp(j), du_dy)
+      ! target就是当前节点, 不需要每次调用通用derivative_line_*搜索模板。
+      ! 直接选当前节点附近三点, 再复用lagrange_derivative_3保持非均匀导数公式统一。
+      if(i.EQ.1) then
+        xNode = (/ xp(1), xp(2), xp(3) /)
+        vNode = (/ v(1,j), v(2,j), v(3,j) /)
+      elseif(i.EQ.nx) then
+        xNode = (/ xp(nx-2), xp(nx-1), xp(nx) /)
+        vNode = (/ v(nx-2,j), v(nx-1,j), v(nx,j) /)
+      else
+        xNode = (/ xp(i-1), xp(i), xp(i+1) /)
+        vNode = (/ v(i-1,j), v(i,j), v(i+1,j) /)
+      endif
+      call lagrange_derivative_3(xNode, vNode, xp(i), dv_dx)
+
+      if(j.EQ.1) then
+        yNode = (/ yp(1), yp(2), yp(3) /)
+        uNode = (/ u(i,1), u(i,2), u(i,3) /)
+      elseif(j.EQ.ny) then
+        yNode = (/ yp(ny-2), yp(ny-1), yp(ny) /)
+        uNode = (/ u(i,ny-2), u(i,ny-1), u(i,ny) /)
+      else
+        yNode = (/ yp(j-1), yp(j), yp(j+1) /)
+        uNode = (/ u(i,j-1), u(i,j), u(i,j+1) /)
+      endif
+      call lagrange_derivative_3(yNode, uNode, yp(j), du_dy)
 
       ! psi 用了L/kappa；vort 也应在同一标度下
       ! vort = d(v*coef)/dx - d(u*coef)/dy = coef*(dv/dx - du/dy)
