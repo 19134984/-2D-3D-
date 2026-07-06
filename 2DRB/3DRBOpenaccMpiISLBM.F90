@@ -1,4 +1,4 @@
-﻿!=============================================================
+!=============================================================
 !!!    注释区，代码描述
 !!!    三维浮力驱动自然对流
 !!!    D3Q19 流场 + D3Q7 温度场
@@ -91,9 +91,9 @@
 
 !算法切换
 !启用 M1G 修正；注释掉则不使用 useG 相关修正
-#define EnableUseG
+!#define EnableUseG
 !启用旧算法
-!#define EnableLegacyThermalScheme
+#define EnableLegacyThermalScheme
 
 ! 温度算法宏的选择：legacy D3Q7 和 EnableUseG 历史通量修正属于两套温度模型，不能混用。
 #if defined(EnableUseG) && defined(EnableLegacyThermalScheme)
@@ -224,18 +224,26 @@ module commondata3dOpenaccMpi
   !===============================================================================================
   ! 无量纲参数
   integer(kind=4), parameter :: nx=80, ny=80, nz=80     ! 三个方向的流体节点数；不包括边界节点
-  integer(kind=4), parameter :: meshModeUniform=0, meshModeErf=1
-  integer(kind=4), parameter :: meshMode=meshModeErf
-  real(kind=8), parameter :: islbmStretchA=1.5d0
-  real(kind=8), parameter :: islbmDxMinRaw=0.5d0*(1.0d0+erf(islbmStretchA*(1.0d0/dble(nx+1)-0.5d0))/erf(0.5d0*islbmStretchA))
-  real(kind=8), parameter :: islbmDyMinRaw=0.5d0*(1.0d0+erf(islbmStretchA*(1.0d0/dble(ny+1)-0.5d0))/erf(0.5d0*islbmStretchA))
-  real(kind=8), parameter :: islbmDzMinRaw=0.5d0*(1.0d0+erf(islbmStretchA*(1.0d0/dble(nz+1)-0.5d0))/erf(0.5d0*islbmStretchA))
+  ! 本文件采用erf非均匀网格。
+  ! erf网格拉伸强度。数值越大, 节点越向两侧物理壁面聚集。
+  real(kind=8), parameter :: ISLBM_StretchA=1.5d0
+
+  ! raw坐标中第一个内部流体节点的位置rawX(1)/rawY(1)/rawZ(1), 也就是近壁的1个lu。
+  real(kind=8), parameter :: ISLBM_DxMinRaw=0.5d0*(1.0d0 + &
+      erf(ISLBM_StretchA*(1.0d0/dble(nx+1)-0.5d0))/erf(0.5d0*ISLBM_StretchA))
+  real(kind=8), parameter :: ISLBM_DyMinRaw=0.5d0*(1.0d0 + &
+      erf(ISLBM_StretchA*(1.0d0/dble(ny+1)-0.5d0))/erf(0.5d0*ISLBM_StretchA))
+  real(kind=8), parameter :: ISLBM_DzMinRaw=0.5d0*(1.0d0 + &
+      erf(ISLBM_StretchA*(1.0d0/dble(nz+1)-0.5d0))/erf(0.5d0*ISLBM_StretchA))
 #ifdef SideHeatedCell
-  real(kind=8), parameter :: lengthUnit=(1.0d0-islbmDyMinRaw)/islbmDyMinRaw
+  ! half-way壁面放在0.5*rawY(1), 因此有效长度为1-ISLBM_DyMinRaw。
+  ! ISLBM有效长度含多少个近壁lu: lengthUnit=(topWall-bottomWall)/ISLBM_DyMinRaw。
+  real(kind=8), parameter :: lengthUnit=(1.0d0-ISLBM_DyMinRaw)/ISLBM_DyMinRaw     ! 侧壁差温：特征长度取 y 方向 half-way 有效距离
 #else
-  real(kind=8), parameter :: lengthUnit=(1.0d0-islbmDzMinRaw)/islbmDzMinRaw
+  ! half-way壁面放在0.5*rawZ(1), 因此有效长度为1-ISLBM_DzMinRaw。
+  ! ISLBM有效长度含多少个近壁lu: lengthUnit=(backWall-frontWall)/ISLBM_DzMinRaw。
+  real(kind=8), parameter :: lengthUnit=(1.0d0-ISLBM_DzMinRaw)/ISLBM_DzMinRaw     ! RB 上下差温：特征长度取 z 方向 half-way 有效距离
 #endif
-  real(kind=8), parameter :: islbmShift=1.0d0/lengthUnit
   real(kind=8), parameter :: pi=acos(-1.0d0)
 
   real(kind=8), parameter :: Rayleigh=1.0d6
@@ -338,8 +346,12 @@ module commondata3dOpenaccMpi
   real(kind=8) :: errorU, errorT
 
   real(kind=8) :: xp(0:nx+1), yp(0:ny+1), zp(0:nz+1)   ! 无量纲坐标数组，包括边界壁面位置
-  real(kind=8) :: quadWx(1:nx), quadWy(1:ny), quadWz(1:nz)
+  real(kind=8) :: quadWidthX(1:nx), quadWidthY(1:ny), quadWidthZ(1:nz)
   real(kind=8) :: quadSumX, quadSumY, quadSumZ, quadSumVolume
+
+  ! 归一化坐标中的1个lattice unit; 迁移时用 xp(i)-ex(alpha)*ISLBM_LatticeUnit 找上游点。
+  real(kind=8), parameter :: ISLBM_LatticeUnit=1.0d0/lengthUnit
+
   real(kind=8), allocatable :: u(:,:,:), v(:,:,:), w(:,:,:), T(:,:,:), rho(:,:,:) ! 宏观变量
 
 #ifdef steadyFlow
@@ -371,18 +383,23 @@ module commondata3dOpenaccMpi
   integer(kind=4) :: ex(0:qf-1), ey(0:qf-1), ez(0:qf-1), opp(0:qf-1)
   integer(kind=4) :: exT(0:qt-1), eyT(0:qt-1), ezT(0:qt-1), oppT(0:qt-1)
   real(kind=8) :: omega(0:qf-1), omegaT(0:qt-1)
-  integer(kind=4), allocatable :: stream_ix(:,:,:), stream_iy(:,:,:), stream_iz(:,:,:)
-  integer(kind=4), allocatable :: stream_ixT(:,:,:), stream_iyT(:,:,:), stream_izT(:,:,:)
-  real(kind=8), allocatable :: stream_wx(:,:,:), stream_wy(:,:,:), stream_wz(:,:,:)
-  real(kind=8), allocatable :: stream_wxT(:,:,:), stream_wyT(:,:,:), stream_wzT(:,:,:)
-  logical, allocatable :: stream_x_valid(:,:), stream_y_valid(:,:), stream_z_valid(:,:)
-  logical, allocatable :: stream_x_validT(:,:), stream_y_validT(:,:), stream_z_validT(:,:)
-  public :: meshModeUniform, meshModeErf, meshMode, islbmStretchA, islbmShift
-  public :: quadWx, quadWy, quadWz, quadSumX, quadSumY, quadSumZ, quadSumVolume
-  public :: stream_ix, stream_iy, stream_iz, stream_wx, stream_wy, stream_wz
-  public :: stream_ixT, stream_iyT, stream_izT, stream_wxT, stream_wyT, stream_wzT
-  public :: stream_x_valid, stream_y_valid, stream_z_valid
-  public :: stream_x_validT, stream_y_validT, stream_z_validT
+
+  ! ISLBM off-lattice迁移的三点Lagrange插值模板:
+  ! streamInterpIndexX/Y/Z保存流场每个方向alpha、每个本地节点对应的3个插值节点编号。
+  integer(kind=4), allocatable :: streamInterpIndexX(:,:,:), streamInterpIndexY(:,:,:), streamInterpIndexZ(:,:,:)
+
+  ! streamInterpWeightX/Y/Z保存上述3个插值节点的权重, 用于从f_post/g_post插值得到迁移后分布。
+  real(kind=8), allocatable :: streamInterpWeightX(:,:,:), streamInterpWeightY(:,:,:), streamInterpWeightZ(:,:,:)
+
+  ! valid标志说明上游插值点是否在本rank内部或halo范围内; 越界时交给MPI边界/物理边界处理。
+  logical, allocatable :: streamInterpValidX(:,:), streamInterpValidY(:,:), streamInterpValidZ(:,:)
+
+  ! 温度场D3Q7的速度是流场D3Q19的前7个方向, streamingT 复用同一套插值模板。
+  public :: ISLBM_StretchA, ISLBM_LatticeUnit
+  public :: quadWidthX, quadWidthY, quadWidthZ, quadSumX, quadSumY, quadSumZ, quadSumVolume
+  public :: streamInterpIndexX, streamInterpIndexY, streamInterpIndexZ, &
+    streamInterpWeightX, streamInterpWeightY, streamInterpWeightZ
+  public :: streamInterpValidX, streamInterpValidY, streamInterpValidZ
 
   !===============================================================================================
 end module commondata3dOpenaccMpi
@@ -593,10 +610,9 @@ program main3dOpenaccMpi
   call deallocate_halo_buffers_3d_openacc_mpi()
   deallocate(XLocalCountAll, YLocalCountAll, ZLocalCountAll)
   deallocate(XStartGlobalAll, YStartGlobalAll, ZStartGlobalAll)
-  if(allocated(stream_ix)) deallocate(stream_ix, stream_iy, stream_iz, stream_wx, stream_wy, stream_wz, &
-       stream_x_valid, stream_y_valid, stream_z_valid)
-  if(allocated(stream_ixT)) deallocate(stream_ixT, stream_iyT, stream_izT, stream_wxT, stream_wyT, stream_wzT, &
-       stream_x_validT, stream_y_validT, stream_z_validT)
+  if(allocated(streamInterpIndexX)) deallocate(streamInterpIndexX, streamInterpIndexY, &
+       streamInterpIndexZ, streamInterpWeightX, streamInterpWeightY, streamInterpWeightZ, &
+       streamInterpValidX, streamInterpValidY, streamInterpValidZ)
 
 
   write(00,*) 'Successfully: DNS completed!'
@@ -614,6 +630,7 @@ end program main3dOpenaccMpi
 !===================================================================================================
 ! 子程序: init_mpi_cartesian
 ! 作用: 初始化 MPI rank 信息、三维笛卡尔通信器和当前 rank 的局部网格范围。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===================================================================================================
 subroutine init_mpi_cartesian()
   use mpi
@@ -885,11 +902,15 @@ subroutine init_mpi_cartesian()
   close(00)
 
 end subroutine init_mpi_cartesian
+!===========================================================================================================================
+! init_mpi_cartesian 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
 
 
 !===========================================================================================================================
 ! 子程序: bind_openacc_device_to_local_rank
 ! 作用: 按节点内 rank 将 MPI 进程和 OpenACC GPU 一对一绑定。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===========================================================================================================================
 subroutine bind_openacc_device_to_local_rank()
   use mpi
@@ -967,11 +988,15 @@ subroutine bind_openacc_device_to_local_rank()
   call acc_init(acc_device_default)
 
 end subroutine bind_openacc_device_to_local_rank
+!===========================================================================================================================
+! bind_openacc_device_to_local_rank 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
 
 
 !===========================================================================================================================
 ! 子程序: allocate_halo_buffers_3d_openacc_mpi
 ! 作用: 按当前 rank 的局部网格大小分配 halo 通信缓冲区，并在 GPU 上创建对应设备端内存。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===========================================================================================================================
 subroutine allocate_halo_buffers_3d_openacc_mpi()
   use openacc
@@ -999,7 +1024,7 @@ subroutine allocate_halo_buffers_3d_openacc_mpi()
   allocate(gSendZLower(xLocalCount*yLocalCount), gSendZUpper(xLocalCount*yLocalCount))
   allocate(gRecvZLower(xLocalCount*yLocalCount), gRecvZUpper(xLocalCount*yLocalCount))
 
-  ! enter data create(...) 的作用：
+  !$acc enter data create(...) 的作用：
   !   1) 在 GPU 上给这些 halo buffer 创建对应设备端内存；
   !   2) 不从 CPU 复制初值，因为 buffer 每次通信前都会在 GPU kernel 中重新 pack；
   !   3) 后续 host_data use_device(...) 可以把 GPU 地址直接交给支持 GPU-aware 的 MPI_SENDRECV。
@@ -1012,11 +1037,15 @@ subroutine allocate_halo_buffers_3d_openacc_mpi()
 
   return
 end subroutine allocate_halo_buffers_3d_openacc_mpi
+!===========================================================================================================================
+! allocate_halo_buffers_3d_openacc_mpi 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
 
 
 !===========================================================================================================================
 ! 子程序: deallocate_halo_buffers_3d_openacc_mpi
 ! 作用: 释放 GPU 端和 CPU 端 halo buffer，最后 nullify pointer，避免留下悬空指针。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===========================================================================================================================
 subroutine deallocate_halo_buffers_3d_openacc_mpi()
   use openacc
@@ -1025,7 +1054,7 @@ subroutine deallocate_halo_buffers_3d_openacc_mpi()
 
   if(.not.associated(fSendXLower)) return
 
-  ! exit data delete(...) 的作用：
+  !$acc exit data delete(...) 的作用：
   !   1) 删除这些 halo buffer 在 GPU 上的设备端副本；
   !   2) 不把设备端内容拷回 CPU，因为通信 buffer 只是临时中转数据；
   !   3) 防止后面 CPU deallocate 后 GPU 端仍保留无效映射。
@@ -1053,11 +1082,15 @@ subroutine deallocate_halo_buffers_3d_openacc_mpi()
 
   return
 end subroutine deallocate_halo_buffers_3d_openacc_mpi
+!===========================================================================================================================
+! deallocate_halo_buffers_3d_openacc_mpi 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
 
 
 !===========================================================================================================================
 ! 子程序: enter_data_3d_openacc_mpi
 ! 作用: 把局部计算场放到当前 rank 绑定的 GPU 上，并创建碰撞后缓冲区。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===========================================================================================================================
 subroutine enter_data_3d_openacc_mpi()
   use openacc
@@ -1066,12 +1099,11 @@ subroutine enter_data_3d_openacc_mpi()
 
   if(accDataResident) return
 
-  !$acc enter data copyin(xp,yp,zp,quadWx,quadWy,quadWz,quadSumX,quadSumY,quadSumZ,quadSumVolume)
+  !$acc enter data copyin(xp,yp,zp,quadWidthX,quadWidthY,quadWidthZ,quadSumX,quadSumY,quadSumZ,quadSumVolume)
   !$acc enter data copyin(ex,ey,ez,opp,exT,eyT,ezT,oppT,omega,omegaT)
-  !$acc enter data copyin(stream_ix,stream_iy,stream_iz,stream_wx,stream_wy,stream_wz)
-  !$acc enter data copyin(stream_x_valid,stream_y_valid,stream_z_valid)
-  !$acc enter data copyin(stream_ixT,stream_iyT,stream_izT,stream_wxT,stream_wyT,stream_wzT)
-  !$acc enter data copyin(stream_x_validT,stream_y_validT,stream_z_validT)
+  !$acc enter data copyin(streamInterpIndexX,streamInterpIndexY,streamInterpIndexZ, &
+  !$acc& streamInterpWeightX,streamInterpWeightY,streamInterpWeightZ)
+  !$acc enter data copyin(streamInterpValidX,streamInterpValidY,streamInterpValidZ)
   !$acc enter data copyin(u,v,w,T,rho,f,g,Bx_prev,By_prev,Bz_prev)
 #ifdef steadyFlow
   !$acc enter data copyin(up,vp,wp,Tp)
@@ -1081,11 +1113,15 @@ subroutine enter_data_3d_openacc_mpi()
 
   return
 end subroutine enter_data_3d_openacc_mpi
+!===========================================================================================================================
+! enter_data_3d_openacc_mpi 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
 
 
 !===========================================================================================================================
 ! 子程序: exit_data_3d_openacc_mpi
 ! 作用: 结束前删除局部场在 GPU 上的设备端副本。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===========================================================================================================================
 subroutine exit_data_3d_openacc_mpi()
   use openacc
@@ -1098,21 +1134,24 @@ subroutine exit_data_3d_openacc_mpi()
   !$acc exit data delete(up,vp,wp,Tp)
 #endif
   !$acc exit data delete(f_post,g_post,u,v,w,T,rho,f,g,Bx_prev,By_prev,Bz_prev)
-  !$acc exit data delete(stream_ixT,stream_iyT,stream_izT,stream_wxT,stream_wyT,stream_wzT)
-  !$acc exit data delete(stream_x_validT,stream_y_validT,stream_z_validT)
-  !$acc exit data delete(stream_ix,stream_iy,stream_iz,stream_wx,stream_wy,stream_wz)
-  !$acc exit data delete(stream_x_valid,stream_y_valid,stream_z_valid)
-  !$acc exit data delete(xp,yp,zp,quadWx,quadWy,quadWz,quadSumX,quadSumY,quadSumZ,quadSumVolume)
+  !$acc exit data delete(streamInterpIndexX,streamInterpIndexY,streamInterpIndexZ, &
+  !$acc& streamInterpWeightX,streamInterpWeightY,streamInterpWeightZ)
+  !$acc exit data delete(streamInterpValidX,streamInterpValidY,streamInterpValidZ)
+  !$acc exit data delete(xp,yp,zp,quadWidthX,quadWidthY,quadWidthZ,quadSumX,quadSumY,quadSumZ,quadSumVolume)
   !$acc exit data delete(ex,ey,ez,opp,exT,eyT,ezT,oppT,omega,omegaT)
   accDataResident = .false.
 
   return
 end subroutine exit_data_3d_openacc_mpi
+!===========================================================================================================================
+! exit_data_3d_openacc_mpi 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
 
 
 !===================================================================================================
 ! 子程序: mesh_StartGlobal_LocalCount
 ! 作用: 给定某一方向的全局网格数量、MPI 分块数和当前 rank 坐标，返回该 rank 的全局起点和局部数量。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===================================================================================================
 subroutine mesh_StartGlobal_LocalCount(TotalMeshCount, MpiCount, MpiCoord, StartGlobal, LocalCount)
   implicit none
@@ -1133,6 +1172,9 @@ subroutine mesh_StartGlobal_LocalCount(TotalMeshCount, MpiCount, MpiCoord, Start
   endif
 
 end subroutine mesh_StartGlobal_LocalCount
+!===========================================================================================================================
+! mesh_StartGlobal_LocalCount 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
 
 
 
@@ -1273,9 +1315,9 @@ subroutine initial()
   ! MPI 版本中 xp/yp/zp 仍然保留为全局一维坐标表，每个 rank 都有完整副本。
   call build_islbm_mesh_3d()
   call build_islbm_quadrature_3d()
-  write(00,*) 'ISLBM meshMode =', meshMode, '; stretchA =', real(islbmStretchA,kind=8)
-  write(00,*) 'ISLBM effective lengthUnit =', real(lengthUnit,kind=8)
-  write(00,*) 'ISLBM streaming shift =', real(islbmShift,kind=8)
+  write(00,*) 'ISLBM mesh = erf; stretchA =', real(ISLBM_StretchA,kind=8)
+  write(00,*) 'ISLBM effective lengthUnit L0 =', real(lengthUnit,kind=8)
+  write(00,*) 'ISLBM lattice unit in normalized coordinates =', real(ISLBM_LatticeUnit,kind=8)
   write(00,*) 'ISLBM quadrature volume =', real(quadSumVolume,kind=8)
 
 
@@ -1308,7 +1350,7 @@ subroutine initial()
   ! 初始化
   !-----------------------------------------------------------------------------------------------
   call init_lattice_constants()  !速度集和权重
-  call prepare_islbm_streaming_stencils_3d()
+  call build_islbm_streaming_stencils_3d()
 
   rho = 1.0d0
   f = 0.0d0
@@ -1500,87 +1542,135 @@ subroutine initial()
   ReVolAvg = 0.0d0
 
 end subroutine initial
+!===========================================================================================================================
+! initial 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
 
 
+!===========================================================================================================================
+! 子程序: build_islbm_mesh_3d
+! 作用: 执行本子程序对应的初始化、迁移、碰撞、边界、通信或后处理步骤。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
+!===========================================================================================================================
 subroutine build_islbm_mesh_3d()
   use commondata3dOpenaccMpi
   implicit none
 
   integer(kind=4) :: i, j, k
-  real(kind=8) :: rawX(1:nx), rawY(1:ny), rawZ(1:nz)
-  real(kind=8) :: erfNorm, wall0, wall1
+  real(kind=8) :: rawX(0:nx+1), rawY(0:ny+1), rawZ(0:nz+1)
+  real(kind=8) :: erfNorm
+  real(kind=8) :: leftWall, rightWall, bottomWall, topWall, frontWall, backWall
+  real(kind=8) :: lengthX, lengthY, lengthZ
 
-  if(meshMode.EQ.meshModeErf) then
-    erfNorm = erf(0.5d0*islbmStretchA)
-    do i = 1, nx
-      rawX(i) = 0.5d0*(1.0d0 + erf(islbmStretchA*(dble(i)/dble(nx+1)-0.5d0))/erfNorm)
-    enddo
-    do j = 1, ny
-      rawY(j) = 0.5d0*(1.0d0 + erf(islbmStretchA*(dble(j)/dble(ny+1)-0.5d0))/erfNorm)
-    enddo
-    do k = 1, nz
-      rawZ(k) = 0.5d0*(1.0d0 + erf(islbmStretchA*(dble(k)/dble(nz+1)-0.5d0))/erfNorm)
-    enddo
-  else
-    do i = 1, nx
-      rawX(i) = dble(i) - 0.5d0
-    enddo
-    do j = 1, ny
-      rawY(j) = dble(j) - 0.5d0
-    enddo
-    do k = 1, nz
-      rawZ(k) = dble(k) - 0.5d0
-    enddo
-  endif
+  ! 第一步: 生成原始erf拉伸坐标rawX/rawY/rawZ。此时坐标还没有按half-way物理壁面修正;
+  ! ISLBM_StretchA控制拉伸强度, 数值越大, 流体节点越向两侧壁面聚集。
+  ! 注意: rawX/rawY/rawZ只是用来生成非均匀分布的参考坐标序列。
+  ! raw端点0和1不必直接等同于最终物理壁面。
+  erfNorm = erf(0.5d0*ISLBM_StretchA)
+  do i = 0, nx+1
+    rawX(i) = 0.5d0*(1.0d0 + erf(ISLBM_StretchA*(dble(i)/dble(nx+1)-0.5d0))/erfNorm)
+  enddo
+  do j = 0, ny+1
+    rawY(j) = 0.5d0*(1.0d0 + erf(ISLBM_StretchA*(dble(j)/dble(ny+1)-0.5d0))/erfNorm)
+  enddo
+  do k = 0, nz+1
+    rawZ(k) = 0.5d0*(1.0d0 + erf(ISLBM_StretchA*(dble(k)/dble(nz+1)-0.5d0))/erfNorm)
+  enddo
+
+  ! 第二步: 采用half-way壁面。物理壁面位于参考端点与第一个内部流体节点之间。
+  ! 因此有效物理区间不是原始raw端点区间, 后续再映射为最终归一化坐标[0,1]。
+  leftWall = 0.5d0*rawX(1)
+  rightWall = 1.0d0-0.5d0*rawX(1)
+  bottomWall = 0.5d0*rawY(1)
+  topWall = 1.0d0-0.5d0*rawY(1)
+  frontWall = 0.5d0*rawZ(1)
+  backWall = 1.0d0-0.5d0*rawZ(1)
+
+  lengthX = rightWall - leftWall
+  lengthY = topWall - bottomWall
+  lengthZ = backWall - frontWall
 
   xp(0) = 0.0d0; xp(nx+1) = 1.0d0
-  wall0 = merge(0.5d0*rawX(1), 0.0d0, meshMode.EQ.meshModeErf)
-  wall1 = merge(1.0d0-0.5d0*rawX(1), dble(nx), meshMode.EQ.meshModeErf)
   do i = 1, nx
-    xp(i) = (rawX(i)-wall0)/(wall1-wall0)
+    xp(i) = (rawX(i)-leftWall)/lengthX
   enddo
 
   yp(0) = 0.0d0; yp(ny+1) = 1.0d0
-  wall0 = merge(0.5d0*rawY(1), 0.0d0, meshMode.EQ.meshModeErf)
-  wall1 = merge(1.0d0-0.5d0*rawY(1), dble(ny), meshMode.EQ.meshModeErf)
   do j = 1, ny
-    yp(j) = (rawY(j)-wall0)/(wall1-wall0)
+    yp(j) = (rawY(j)-bottomWall)/lengthY
   enddo
 
   zp(0) = 0.0d0; zp(nz+1) = 1.0d0
-  wall0 = merge(0.5d0*rawZ(1), 0.0d0, meshMode.EQ.meshModeErf)
-  wall1 = merge(1.0d0-0.5d0*rawZ(1), dble(nz), meshMode.EQ.meshModeErf)
   do k = 1, nz
-    zp(k) = (rawZ(k)-wall0)/(wall1-wall0)
+    zp(k) = (rawZ(k)-frontWall)/lengthZ
   enddo
 
+  return
 end subroutine build_islbm_mesh_3d
+!===========================================================================================================================
+! build_islbm_mesh_3d 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
 
 
+!===========================================================================================================================
+! 子程序: build_islbm_quadrature_3d
+! 作用: 执行本子程序对应的初始化、迁移、碰撞、边界、通信或后处理步骤。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
+!===========================================================================================================================
 subroutine build_islbm_quadrature_3d()
   use commondata3dOpenaccMpi
   implicit none
 
   integer(kind=4) :: i, j, k
+  real(kind=8) :: leftGhostX, rightGhostX, bottomGhostY, topGhostY, frontGhostZ, backGhostZ
 
-  do i = 1, nx
-    quadWx(i) = 0.5d0*(xp(i+1)-xp(i-1))
+  ! 非均匀网格体积分不能用简单sum/(nx*ny*nz)。
+  ! 内部节点使用 midpoint-rule 宽度 (x_{i+1}-x_{i-1})/2。
+  ! 边界节点的控制体从物理壁面0/1延伸到相邻节点中点;
+  ! 等价写法是在物理壁面外放置关于壁面对称的虚拟点。
+  leftGhostX = -xp(1)
+  rightGhostX = 1.0d0 + (1.0d0 - xp(nx))
+  bottomGhostY = -yp(1)
+  topGhostY = 1.0d0 + (1.0d0 - yp(ny))
+  frontGhostZ = -zp(1)
+  backGhostZ = 1.0d0 + (1.0d0 - zp(nz))
+
+  quadWidthX(1) = 0.5d0*(xp(2)-leftGhostX)
+  do i = 2, nx-1
+    quadWidthX(i) = 0.5d0*(xp(i+1)-xp(i-1))
   enddo
-  do j = 1, ny
-    quadWy(j) = 0.5d0*(yp(j+1)-yp(j-1))
+  quadWidthX(nx) = 0.5d0*(rightGhostX-xp(nx-1))
+
+  quadWidthY(1) = 0.5d0*(yp(2)-bottomGhostY)
+  do j = 2, ny-1
+    quadWidthY(j) = 0.5d0*(yp(j+1)-yp(j-1))
   enddo
-  do k = 1, nz
-    quadWz(k) = 0.5d0*(zp(k+1)-zp(k-1))
+  quadWidthY(ny) = 0.5d0*(topGhostY-yp(ny-1))
+
+  quadWidthZ(1) = 0.5d0*(zp(2)-frontGhostZ)
+  do k = 2, nz-1
+    quadWidthZ(k) = 0.5d0*(zp(k+1)-zp(k-1))
   enddo
-  quadSumX = sum(quadWx)
-  quadSumY = sum(quadWy)
-  quadSumZ = sum(quadWz)
+  quadWidthZ(nz) = 0.5d0*(backGhostZ-zp(nz-1))
+
+  quadSumX = sum(quadWidthX)
+  quadSumY = sum(quadWidthY)
+  quadSumZ = sum(quadWidthZ)
   quadSumVolume = quadSumX*quadSumY*quadSumZ
 
+  return
 end subroutine build_islbm_quadrature_3d
+!===========================================================================================================================
+! build_islbm_quadrature_3d 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
 
 
-subroutine prepare_islbm_streaming_stencils_3d()
+!===========================================================================================================================
+! 子程序: build_islbm_streaming_stencils_3d
+! 作用: 执行本子程序对应的初始化、迁移、碰撞、边界、通信或后处理步骤。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
+!===========================================================================================================================
+subroutine build_islbm_streaming_stencils_3d()
   use commondata3dOpenaccMpi
   implicit none
 
@@ -1588,127 +1678,114 @@ subroutine prepare_islbm_streaming_stencils_3d()
   real(kind=8) :: target, ww(3)
   logical :: ok
 
-  if(allocated(stream_ix)) deallocate(stream_ix, stream_iy, stream_iz, stream_wx, stream_wy, stream_wz, &
-       stream_x_valid, stream_y_valid, stream_z_valid)
-  if(allocated(stream_ixT)) deallocate(stream_ixT, stream_iyT, stream_izT, stream_wxT, stream_wyT, stream_wzT, &
-       stream_x_validT, stream_y_validT, stream_z_validT)
+  if(allocated(streamInterpIndexX)) deallocate(streamInterpIndexX, streamInterpIndexY, &
+       streamInterpIndexZ, streamInterpWeightX, streamInterpWeightY, streamInterpWeightZ, &
+       streamInterpValidX, streamInterpValidY, streamInterpValidZ)
 
-  allocate(stream_ix(0:qf-1,xLocalCount,3), stream_iy(0:qf-1,yLocalCount,3), stream_iz(0:qf-1,zLocalCount,3))
-  allocate(stream_wx(0:qf-1,xLocalCount,3), stream_wy(0:qf-1,yLocalCount,3), stream_wz(0:qf-1,zLocalCount,3))
-  allocate(stream_x_valid(0:qf-1,xLocalCount), stream_y_valid(0:qf-1,yLocalCount), stream_z_valid(0:qf-1,zLocalCount))
-  allocate(stream_ixT(0:qt-1,xLocalCount,3), stream_iyT(0:qt-1,yLocalCount,3), stream_izT(0:qt-1,zLocalCount,3))
-  allocate(stream_wxT(0:qt-1,xLocalCount,3), stream_wyT(0:qt-1,yLocalCount,3), stream_wzT(0:qt-1,zLocalCount,3))
-  allocate(stream_x_validT(0:qt-1,xLocalCount), stream_y_validT(0:qt-1,yLocalCount), stream_z_validT(0:qt-1,zLocalCount))
+  allocate(streamInterpIndexX(0:qf-1,xLocalCount,3), streamInterpIndexY(0:qf-1,yLocalCount,3), &
+    streamInterpIndexZ(0:qf-1,zLocalCount,3))
+  allocate(streamInterpWeightX(0:qf-1,xLocalCount,3), streamInterpWeightY(0:qf-1,yLocalCount,3), &
+    streamInterpWeightZ(0:qf-1,zLocalCount,3))
+  allocate(streamInterpValidX(0:qf-1,xLocalCount), streamInterpValidY(0:qf-1,yLocalCount), streamInterpValidZ(0:qf-1,zLocalCount))
 
-  stream_ix = 1; stream_iy = 1; stream_iz = 1
-  stream_wx = 0.0d0; stream_wy = 0.0d0; stream_wz = 0.0d0
-  stream_x_valid = .false.; stream_y_valid = .false.; stream_z_valid = .false.
+  streamInterpIndexX = 1; streamInterpIndexY = 1; streamInterpIndexZ = 1
+  streamInterpWeightX = 0.0d0; streamInterpWeightY = 0.0d0; streamInterpWeightZ = 0.0d0
+  streamInterpValidX = .false.; streamInterpValidY = .false.; streamInterpValidZ = .false.
 
   do alpha = 0, qf-1
     do i = 1, xLocalCount
-      globalIndex = xStartGlobal + i - 1
-      target = xp(globalIndex) - dble(ex(alpha))*islbmShift
-      call build_lagrange_stencil_1d(nx, xp(1:nx), target, idxGlobal, ww, ok)
-      stream_x_valid(alpha,i) = ok .AND. all(idxGlobal.GE.xStartGlobal) .AND. all(idxGlobal.LE.xEndGlobal)
-      if(stream_x_valid(alpha,i)) then
+      if(ex(alpha).EQ.0) then
+        streamInterpValidX(alpha,i) = .true.
+        streamInterpIndexX(alpha,i,:) = (/i, i, i/)
+        streamInterpWeightX(alpha,i,:) = (/0.0d0, 1.0d0, 0.0d0/)
+      else
+        globalIndex = xStartGlobal + i - 1
+        target = xp(globalIndex) - dble(ex(alpha))*ISLBM_LatticeUnit
+        call build_streaming_stencil_1d(nx, xp(1:nx), globalIndex, target, idxGlobal, ww, ok)
         idxLocal = idxGlobal - xStartGlobal + 1
-        stream_ix(alpha,i,:) = idxLocal
-        stream_wx(alpha,i,:) = ww
+        streamInterpValidX(alpha,i) = ok .AND. all(idxLocal.GE.0) .AND. all(idxLocal.LE.xLocalCount+1)
+        if(streamInterpValidX(alpha,i)) then
+          streamInterpIndexX(alpha,i,:) = idxLocal
+          streamInterpWeightX(alpha,i,:) = ww
+        endif
       endif
     enddo
     do i = 1, yLocalCount
-      globalIndex = yStartGlobal + i - 1
-      target = yp(globalIndex) - dble(ey(alpha))*islbmShift
-      call build_lagrange_stencil_1d(ny, yp(1:ny), target, idxGlobal, ww, ok)
-      stream_y_valid(alpha,i) = ok .AND. all(idxGlobal.GE.yStartGlobal) .AND. all(idxGlobal.LE.yEndGlobal)
-      if(stream_y_valid(alpha,i)) then
+      if(ey(alpha).EQ.0) then
+        streamInterpValidY(alpha,i) = .true.
+        streamInterpIndexY(alpha,i,:) = (/i, i, i/)
+        streamInterpWeightY(alpha,i,:) = (/0.0d0, 1.0d0, 0.0d0/)
+      else
+        globalIndex = yStartGlobal + i - 1
+        target = yp(globalIndex) - dble(ey(alpha))*ISLBM_LatticeUnit
+        call build_streaming_stencil_1d(ny, yp(1:ny), globalIndex, target, idxGlobal, ww, ok)
         idxLocal = idxGlobal - yStartGlobal + 1
-        stream_iy(alpha,i,:) = idxLocal
-        stream_wy(alpha,i,:) = ww
+        streamInterpValidY(alpha,i) = ok .AND. all(idxLocal.GE.0) .AND. all(idxLocal.LE.yLocalCount+1)
+        if(streamInterpValidY(alpha,i)) then
+          streamInterpIndexY(alpha,i,:) = idxLocal
+          streamInterpWeightY(alpha,i,:) = ww
+        endif
       endif
     enddo
     do i = 1, zLocalCount
-      globalIndex = zStartGlobal + i - 1
-      target = zp(globalIndex) - dble(ez(alpha))*islbmShift
-      call build_lagrange_stencil_1d(nz, zp(1:nz), target, idxGlobal, ww, ok)
-      stream_z_valid(alpha,i) = ok .AND. all(idxGlobal.GE.zStartGlobal) .AND. all(idxGlobal.LE.zEndGlobal)
-      if(stream_z_valid(alpha,i)) then
+      if(ez(alpha).EQ.0) then
+        streamInterpValidZ(alpha,i) = .true.
+        streamInterpIndexZ(alpha,i,:) = (/i, i, i/)
+        streamInterpWeightZ(alpha,i,:) = (/0.0d0, 1.0d0, 0.0d0/)
+      else
+        globalIndex = zStartGlobal + i - 1
+        target = zp(globalIndex) - dble(ez(alpha))*ISLBM_LatticeUnit
+        call build_streaming_stencil_1d(nz, zp(1:nz), globalIndex, target, idxGlobal, ww, ok)
         idxLocal = idxGlobal - zStartGlobal + 1
-        stream_iz(alpha,i,:) = idxLocal
-        stream_wz(alpha,i,:) = ww
+        streamInterpValidZ(alpha,i) = ok .AND. all(idxLocal.GE.0) .AND. all(idxLocal.LE.zLocalCount+1)
+        if(streamInterpValidZ(alpha,i)) then
+          streamInterpIndexZ(alpha,i,:) = idxLocal
+          streamInterpWeightZ(alpha,i,:) = ww
+        endif
       endif
     enddo
   enddo
 
-  stream_ixT = 1; stream_iyT = 1; stream_izT = 1
-  stream_wxT = 0.0d0; stream_wyT = 0.0d0; stream_wzT = 0.0d0
-  stream_x_validT = .false.; stream_y_validT = .false.; stream_z_validT = .false.
+  ! exT/eyT/ezT 与 ex/ey/ez 的前 qt 个方向一致, 因此温度场直接复用上面的模板。
 
-  do alpha = 0, qt-1
-    do i = 1, xLocalCount
-      globalIndex = xStartGlobal + i - 1
-      target = xp(globalIndex) - dble(exT(alpha))*islbmShift
-      call build_lagrange_stencil_1d(nx, xp(1:nx), target, idxGlobal, ww, ok)
-      stream_x_validT(alpha,i) = ok .AND. all(idxGlobal.GE.xStartGlobal) .AND. all(idxGlobal.LE.xEndGlobal)
-      if(stream_x_validT(alpha,i)) then
-        idxLocal = idxGlobal - xStartGlobal + 1
-        stream_ixT(alpha,i,:) = idxLocal
-        stream_wxT(alpha,i,:) = ww
-      endif
-    enddo
-    do i = 1, yLocalCount
-      globalIndex = yStartGlobal + i - 1
-      target = yp(globalIndex) - dble(eyT(alpha))*islbmShift
-      call build_lagrange_stencil_1d(ny, yp(1:ny), target, idxGlobal, ww, ok)
-      stream_y_validT(alpha,i) = ok .AND. all(idxGlobal.GE.yStartGlobal) .AND. all(idxGlobal.LE.yEndGlobal)
-      if(stream_y_validT(alpha,i)) then
-        idxLocal = idxGlobal - yStartGlobal + 1
-        stream_iyT(alpha,i,:) = idxLocal
-        stream_wyT(alpha,i,:) = ww
-      endif
-    enddo
-    do i = 1, zLocalCount
-      globalIndex = zStartGlobal + i - 1
-      target = zp(globalIndex) - dble(ezT(alpha))*islbmShift
-      call build_lagrange_stencil_1d(nz, zp(1:nz), target, idxGlobal, ww, ok)
-      stream_z_validT(alpha,i) = ok .AND. all(idxGlobal.GE.zStartGlobal) .AND. all(idxGlobal.LE.zEndGlobal)
-      if(stream_z_validT(alpha,i)) then
-        idxLocal = idxGlobal - zStartGlobal + 1
-        stream_izT(alpha,i,:) = idxLocal
-        stream_wzT(alpha,i,:) = ww
-      endif
-    enddo
-  enddo
-
-end subroutine prepare_islbm_streaming_stencils_3d
+  return
+end subroutine build_islbm_streaming_stencils_3d
+!===========================================================================================================================
+! build_islbm_streaming_stencils_3d 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
 
 
-subroutine build_lagrange_stencil_1d(n, xnodes, target, idx, ww, ok)
+!===========================================================================================================================
+! 子程序: build_streaming_stencil_1d
+! 作用: 执行本子程序对应的初始化、迁移、碰撞、边界、通信或后处理步骤。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
+!===========================================================================================================================
+subroutine build_streaming_stencil_1d(n, xnodes, nodeIndex, target, idx, ww, ok)
   implicit none
 
-  integer(kind=4), intent(in) :: n
+  integer(kind=4), intent(in) :: n, nodeIndex
   real(kind=8), intent(in) :: xnodes(1:n), target
   integer(kind=4), intent(out) :: idx(3)
   real(kind=8), intent(out) :: ww(3)
   logical, intent(out) :: ok
-  integer(kind=4) :: center
   real(kind=8) :: xloc(3)
+  real(kind=8), parameter :: tol=1.0d-12
 
+  ! 迁移专用模板按到达节点中心选取:
+  ! 内部点用(nodeIndex-1,nodeIndex,nodeIndex+1), 边界附近用单边三点。
+  ! target越过内部流体节点范围时保持无效, 交由后续边界条件补齐。
   ok = .false.
   idx = 1
   ww = 0.0d0
-  if((target.LT.xnodes(1)) .OR. (target.GT.xnodes(n))) return
+  if(n.LT.3) return
+  if((target.LT.xnodes(1)-tol) .OR. (target.GT.xnodes(n)+tol)) return
 
-  center = 1
-  do while((center.LT.n) .AND. (xnodes(center+1).LE.target))
-    center = center + 1
-  enddo
-  if(center.LE.1) then
+  if(nodeIndex.LE.1) then
     idx = (/1, 2, 3/)
-  elseif(center.GE.n-1) then
+  elseif(nodeIndex.GE.n) then
     idx = (/n-2, n-1, n/)
   else
-    idx = (/center-1, center, center+1/)
+    idx = (/nodeIndex-1, nodeIndex, nodeIndex+1/)
   endif
 
   xloc(1) = xnodes(idx(1))
@@ -1717,9 +1794,18 @@ subroutine build_lagrange_stencil_1d(n, xnodes, target, idx, ww, ok)
   call lagrange_weights_3(xloc, target, ww)
   ok = .true.
 
-end subroutine build_lagrange_stencil_1d
+  return
+end subroutine build_streaming_stencil_1d
+!===========================================================================================================================
+! build_streaming_stencil_1d 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
 
 
+!===========================================================================================================================
+! 子程序: lagrange_weights_3
+! 作用: 执行本子程序对应的初始化、迁移、碰撞、边界、通信或后处理步骤。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
+!===========================================================================================================================
 subroutine lagrange_weights_3(xnode, x0, ww)
   implicit none
 
@@ -1731,11 +1817,15 @@ subroutine lagrange_weights_3(xnode, x0, ww)
   ww(3) = (x0-xnode(1))*(x0-xnode(2))/((xnode(3)-xnode(1))*(xnode(3)-xnode(2)))
 
 end subroutine lagrange_weights_3
+!===========================================================================================================================
+! lagrange_weights_3 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
 
 
 !===========================================================================================================================
 ! 子程序: init_lattice_constants
 ! 作用: 初始化 D3Q19 / D3Q7 的离散速度、反向索引和权重。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===========================================================================================================================
 subroutine init_lattice_constants()
   use commondata3dOpenaccMpi
@@ -1767,6 +1857,9 @@ subroutine init_lattice_constants()
 #endif
 
 end subroutine init_lattice_constants
+!===========================================================================================================================
+! init_lattice_constants 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
 
 
 
@@ -2037,11 +2130,15 @@ subroutine collision()
   enddo
 
 end subroutine collision
+!===========================================================================================================================
+! collision 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
 
 
 !===================================================================================================
 ! 子程序: exchange_f_post_halo_mpi
 ! 作用: 交换流场碰撞后分布函数 f_post 的一层 halo，为后续 pull streaming 提供分区外上游值。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===================================================================================================
 subroutine exchange_f_post_halo_mpi()
   use mpi
@@ -2187,11 +2284,15 @@ subroutine exchange_f_post_halo_mpi()
   endif
 
 end subroutine exchange_f_post_halo_mpi
+!===========================================================================================================================
+! exchange_f_post_halo_mpi 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
 
 
 !===================================================================================================
 ! 子程序: exchange_g_post_halo_mpi
 ! 作用: 交换温度场碰撞后分布函数 g_post 的一层 halo，为后续 pull streaming 提供分区外上游值。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===================================================================================================
 subroutine exchange_g_post_halo_mpi()
   use mpi
@@ -2305,6 +2406,9 @@ subroutine exchange_g_post_halo_mpi()
   endif
 
 end subroutine exchange_g_post_halo_mpi
+!===========================================================================================================================
+! exchange_g_post_halo_mpi 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
 
 
 !===========================================================================================================================
@@ -2319,23 +2423,24 @@ subroutine streaming()
   integer(kind=4) :: i, j, k, ip, jp, kp, alpha, ii, jj, kk
   real(kind=8) :: value
 
-  ! ISLBM pull streaming：模板完全落在本 rank owned 区域时做三维二次 Lagrange 插值；
-  ! 否则退回到现有一层 halo pull，避免用不完整 halo 伪造跨 rank 二次插值。
+  ! ISLBM pull streaming：内部rank界面允许使用一层halo做二次Lagrange插值；
+  ! 只有物理边界越过内部流体节点范围时才退回一层pull并交给边界条件修正。
   !$acc parallel loop gang vector collapse(3) if(accDataResident) &
-  !$acc& present(f,f_post,ex,ey,ez,stream_x_valid,stream_y_valid,stream_z_valid) &
-  !$acc& present(stream_ix,stream_iy,stream_iz,stream_wx,stream_wy,stream_wz) &
+  !$acc& present(f,f_post,ex,ey,ez,streamInterpValidX,streamInterpValidY,streamInterpValidZ) &
+  !$acc& present(streamInterpIndexX,streamInterpIndexY,streamInterpIndexZ) &
+  !$acc& present(streamInterpWeightX,streamInterpWeightY,streamInterpWeightZ) &
   !$acc& private(alpha,ip,jp,kp,ii,jj,kk,value)
   do k = 1, zLocalCount
     do j = 1, yLocalCount
       do i = 1, xLocalCount
         do alpha = 0, qf-1
-          if(stream_x_valid(alpha,i) .AND. stream_y_valid(alpha,j) .AND. stream_z_valid(alpha,k)) then
+          if(streamInterpValidX(alpha,i) .AND. streamInterpValidY(alpha,j) .AND. streamInterpValidZ(alpha,k)) then
             value = 0.0d0
             do kk = 1, 3
               do jj = 1, 3
                 do ii = 1, 3
-                  value = value + stream_wx(alpha,i,ii)*stream_wy(alpha,j,jj)*stream_wz(alpha,k,kk)* &
-                       f_post(stream_ix(alpha,i,ii),stream_iy(alpha,j,jj),stream_iz(alpha,k,kk),alpha)
+                  value = value + streamInterpWeightX(alpha,i,ii)*streamInterpWeightY(alpha,j,jj)*streamInterpWeightZ(alpha,k,kk)* &
+                       f_post(streamInterpIndexX(alpha,i,ii),streamInterpIndexY(alpha,j,jj),streamInterpIndexZ(alpha,k,kk),alpha)
                 enddo
               enddo
             enddo
@@ -2352,6 +2457,9 @@ subroutine streaming()
   enddo
 
 end subroutine streaming
+!===========================================================================================================================
+! streaming 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
 
 
 !===========================================================================================================================
@@ -2444,6 +2552,9 @@ subroutine bounceback()
 #endif
 
 end subroutine bounceback
+!===========================================================================================================================
+! bounceback 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
 
 
 !===========================================================================================================================
@@ -2481,6 +2592,9 @@ subroutine macro()
   enddo
 
 end subroutine macro
+!===========================================================================================================================
+! macro 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
 
 
 !===========================================================================================================================
@@ -2598,22 +2712,23 @@ subroutine streamingT()
   integer(kind=4) :: i, j, k, ip, jp, kp, alpha, ii, jj, kk
   real(kind=8) :: value
 
-  ! 温度场同样采用 rank-local 二次 Lagrange；跨 rank 或物理边界附近回退一层 halo pull。
+  ! 温度场同样允许内部rank界面使用一层halo；物理边界越界时回退并由边界条件修正。
   !$acc parallel loop gang vector collapse(3) if(accDataResident) &
-  !$acc& present(g,g_post,exT,eyT,ezT,stream_x_validT,stream_y_validT,stream_z_validT) &
-  !$acc& present(stream_ixT,stream_iyT,stream_izT,stream_wxT,stream_wyT,stream_wzT) &
+  !$acc& present(g,g_post,exT,eyT,ezT,streamInterpValidX,streamInterpValidY,streamInterpValidZ) &
+  !$acc& present(streamInterpIndexX,streamInterpIndexY,streamInterpIndexZ) &
+  !$acc& present(streamInterpWeightX,streamInterpWeightY,streamInterpWeightZ) &
   !$acc& private(alpha,ip,jp,kp,ii,jj,kk,value)
   do k = 1, zLocalCount
     do j = 1, yLocalCount
       do i = 1, xLocalCount
         do alpha = 0, qt-1
-          if(stream_x_validT(alpha,i) .AND. stream_y_validT(alpha,j) .AND. stream_z_validT(alpha,k)) then
+          if(streamInterpValidX(alpha,i) .AND. streamInterpValidY(alpha,j) .AND. streamInterpValidZ(alpha,k)) then
             value = 0.0d0
             do kk = 1, 3
               do jj = 1, 3
                 do ii = 1, 3
-                  value = value + stream_wxT(alpha,i,ii)*stream_wyT(alpha,j,jj)*stream_wzT(alpha,k,kk)* &
-                       g_post(stream_ixT(alpha,i,ii),stream_iyT(alpha,j,jj),stream_izT(alpha,k,kk),alpha)
+                  value = value + streamInterpWeightX(alpha,i,ii)*streamInterpWeightY(alpha,j,jj)*streamInterpWeightZ(alpha,k,kk)* &
+                       g_post(streamInterpIndexX(alpha,i,ii),streamInterpIndexY(alpha,j,jj),streamInterpIndexZ(alpha,k,kk),alpha)
                 enddo
               enddo
             enddo
@@ -2854,6 +2969,9 @@ subroutine reconstruct_macro_from_fg()
   return
 end subroutine reconstruct_macro_from_fg
 !===========================================================================================================================
+! reconstruct_macro_from_fg 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
+!===========================================================================================================================
 ! reconstruct_macro_from_fg end: current macro state is rebuilt; EnableUseG history is read separately
 !===========================================================================================================================
 
@@ -2925,12 +3043,16 @@ subroutine check()
   endif
 
 end subroutine check
+!===========================================================================================================================
+! check 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
 #endif
 
 
 !===========================================================================================================================
 ! 子程序: append_convergence_tecplot
 ! 作用: 向单个收敛历史文件追加一条误差记录。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===========================================================================================================================
 subroutine append_convergence_tecplot(filename, itcLoc, errorULoc, errorTLoc)
   use commondata3dOpenaccMpi, only: loadInitField
@@ -2968,11 +3090,15 @@ subroutine append_convergence_tecplot(filename, itcLoc, errorULoc, errorTLoc)
   endif
 
 end subroutine append_convergence_tecplot
+!===========================================================================================================================
+! append_convergence_tecplot 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
 
 
 !===========================================================================================================================
 ! 子程序: append_convergence_master_tecplot
 ! 作用: 向带 zone 名称的收敛历史文件追加一条记录。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===========================================================================================================================
 subroutine append_convergence_master_tecplot(filename, zoneName, itcLoc, errorULoc, errorTLoc)
   use commondata3dOpenaccMpi, only: loadInitField
@@ -3009,11 +3135,15 @@ subroutine append_convergence_master_tecplot(filename, zoneName, itcLoc, errorUL
   close(u)
 
 end subroutine append_convergence_master_tecplot
+!===========================================================================================================================
+! append_convergence_master_tecplot 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
 
 
 !===================================================================================================
 ! 子程序: gather_output_fields_mpi
 ! 作用: 汇总各 rank 的局部 u/v/w/T/rho 到 root 的全局数组 u_all/v_all/w_all/T_all/rho_all。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===================================================================================================
 subroutine gather_output_fields_mpi()
   use commondata3dOpenaccMpi
@@ -3040,11 +3170,15 @@ subroutine gather_output_fields_mpi()
   endif
 
 end subroutine gather_output_fields_mpi
+!===========================================================================================================================
+! gather_output_fields_mpi 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
 
 
 !===================================================================================================
 ! 子程序: gather_reload_fields_mpi
 ! 作用: 汇总 f/g 和 EnableUseG 历史热流项到 root 的全局数组，供 root 写严格重启文件。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===================================================================================================
 subroutine gather_reload_fields_mpi()
   use commondata3dOpenaccMpi
@@ -3073,11 +3207,15 @@ subroutine gather_reload_fields_mpi()
   endif
 
 end subroutine gather_reload_fields_mpi
+!===========================================================================================================================
+! gather_reload_fields_mpi 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
 
 
 !===================================================================================================
 ! 子程序: gather_scalar_field_root_mpi
 ! 作用: root 将各 rank 的局部三维标量场按全局坐标拼到 globalField。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===================================================================================================
 subroutine gather_scalar_field_root_mpi(localField, globalField, tagBase)
   use mpi
@@ -3132,11 +3270,15 @@ subroutine gather_scalar_field_root_mpi(localField, globalField, tagBase)
   deallocate(buffer)
 
 end subroutine gather_scalar_field_root_mpi
+!===========================================================================================================================
+! gather_scalar_field_root_mpi 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
 
 
 !===================================================================================================
 ! 子程序: send_scalar_field_mpi
 ! 作用: 非 root 将当前 rank 的局部三维标量场打包成连续 buffer 后发送给 root。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===================================================================================================
 subroutine send_scalar_field_mpi(localField, tagBase)
   use mpi
@@ -3162,11 +3304,15 @@ subroutine send_scalar_field_mpi(localField, tagBase)
   deallocate(buffer)
 
 end subroutine send_scalar_field_mpi
+!===========================================================================================================================
+! send_scalar_field_mpi 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
 
 
 !===================================================================================================
 ! 子程序: gather_distribution_field_root_mpi
 ! 作用: root 收集一个带速度方向维度的分布函数场，例如 f -> f_all 或 g -> g_all。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===================================================================================================
 subroutine gather_distribution_field_root_mpi(localField, globalField, qMax, tagBase)
   use mpi
@@ -3221,11 +3367,15 @@ subroutine gather_distribution_field_root_mpi(localField, globalField, qMax, tag
   deallocate(buffer)
 
 end subroutine gather_distribution_field_root_mpi
+!===========================================================================================================================
+! gather_distribution_field_root_mpi 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
 
 
 !===================================================================================================
 ! 子程序: send_distribution_field_mpi
 ! 作用: 非 root 将当前 rank 的局部分布函数场打包成连续 buffer 后发送给 root。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===================================================================================================
 subroutine send_distribution_field_mpi(localField, qMax, tagBase)
   use mpi
@@ -3253,6 +3403,9 @@ subroutine send_distribution_field_mpi(localField, qMax, tagBase)
   deallocate(buffer)
 
 end subroutine send_distribution_field_mpi
+!===========================================================================================================================
+! send_distribution_field_mpi 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
 
 
 !===========================================================================================================================
@@ -3350,6 +3503,7 @@ end subroutine output_ReloadFile
 !===========================================================================================================================
 ! 子程序: write_reload_metadata
 ! 作用: 覆盖写出最新 reload 续算账本，恢复累计步数、t_ff、输出编号和最新 .bin 文件名。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===========================================================================================================================
 subroutine write_reload_metadata(filename)
   use commondata3dOpenaccMpi
@@ -3384,11 +3538,15 @@ subroutine write_reload_metadata(filename)
   return
 end subroutine write_reload_metadata
 !===========================================================================================================================
+! write_reload_metadata 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
+!===========================================================================================================================
 
 
 !===========================================================================================================================
 ! 子程序: read_reload_metadata
 ! 作用: 优先读取 latest .meta；若没有，则根据手工编号做保守推断。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===========================================================================================================================
 subroutine read_reload_metadata(reloadFileName)
   use commondata3dOpenaccMpi
@@ -3518,12 +3676,16 @@ subroutine read_reload_metadata(reloadFileName)
   return
 end subroutine read_reload_metadata
 !===========================================================================================================================
+! read_reload_metadata 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
+!===========================================================================================================================
 
 
 !===========================================================================================================================
 ! 子程序: infer_reload_offsets_without_metadata
 ! 作用: 没有 latest .meta 时，只能根据文件编号和当前手工参数推断。
 ! 根据文件名编号和当前参数“猜一个合理值”，保证续算的时间/步数尽量连续。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===========================================================================================================================
 subroutine infer_reload_offsets_without_metadata()
   use commondata3dOpenaccMpi
@@ -3548,11 +3710,15 @@ subroutine infer_reload_offsets_without_metadata()
   return
 end subroutine infer_reload_offsets_without_metadata
 !===========================================================================================================================
+! infer_reload_offsets_without_metadata 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
+!===========================================================================================================================
 
 
 !===================================================================================================
 ! 子程序: read_reload_fields_mpi
 ! 作用: root 读取全局 reload 文件，再按当前 MPI 分解把局部数据发送给各 rank。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===================================================================================================
 subroutine read_reload_fields_mpi(reloadFileName)
   use mpi
@@ -3796,6 +3962,9 @@ subroutine read_reload_fields_mpi(reloadFileName)
   endif
 
 end subroutine read_reload_fields_mpi
+!===========================================================================================================================
+! read_reload_fields_mpi 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
 
 
 !===========================================================================================================================
@@ -3888,7 +4057,7 @@ subroutine calNuRe()
 
   NuVolAvg_temp = 0.0d0
 #ifdef SideHeatedCell
-  !$acc parallel loop gang vector collapse(3) if(accDataResident) present(v,T,quadWx,quadWy,quadWz) &
+  !$acc parallel loop gang vector collapse(3) if(accDataResident) present(v,T,quadWidthX,quadWidthY,quadWidthZ) &
   !$acc& private(globalI,globalJ,globalK,volumeWeight) reduction(+:NuVolAvg_temp)
   do k = 1, zLocalCount
     do j = 1, yLocalCount
@@ -3896,13 +4065,13 @@ subroutine calNuRe()
         globalI = xStartGlobal + i - 1
         globalJ = yStartGlobal + j - 1
         globalK = zStartGlobal + k - 1
-        volumeWeight = quadWx(globalI)*quadWy(globalJ)*quadWz(globalK)
+        volumeWeight = quadWidthX(globalI)*quadWidthY(globalJ)*quadWidthZ(globalK)
         NuVolAvg_temp = NuVolAvg_temp + volumeWeight*v(i,j,k)*(T(i,j,k) - Tref)
       enddo
     enddo
   enddo
 #else
-  !$acc parallel loop gang vector collapse(3) if(accDataResident) present(w,T,quadWx,quadWy,quadWz) &
+  !$acc parallel loop gang vector collapse(3) if(accDataResident) present(w,T,quadWidthX,quadWidthY,quadWidthZ) &
   !$acc& private(globalI,globalJ,globalK,volumeWeight) reduction(+:NuVolAvg_temp)
   do k = 1, zLocalCount
     do j = 1, yLocalCount
@@ -3910,7 +4079,7 @@ subroutine calNuRe()
         globalI = xStartGlobal + i - 1
         globalJ = yStartGlobal + j - 1
         globalK = zStartGlobal + k - 1
-        volumeWeight = quadWx(globalI)*quadWy(globalJ)*quadWz(globalK)
+        volumeWeight = quadWidthX(globalI)*quadWidthY(globalJ)*quadWidthZ(globalK)
         NuVolAvg_temp = NuVolAvg_temp + volumeWeight*w(i,j,k)*(T(i,j,k) - Tref)
       enddo
     enddo
@@ -3918,7 +4087,7 @@ subroutine calNuRe()
 #endif
 
   ReVolAvg_temp = 0.0d0
-  !$acc parallel loop gang vector collapse(3) if(accDataResident) present(u,v,w,quadWx,quadWy,quadWz) &
+  !$acc parallel loop gang vector collapse(3) if(accDataResident) present(u,v,w,quadWidthX,quadWidthY,quadWidthZ) &
   !$acc& private(globalI,globalJ,globalK,volumeWeight) reduction(+:ReVolAvg_temp)
   do k = 1, zLocalCount
     do j = 1, yLocalCount
@@ -3926,7 +4095,7 @@ subroutine calNuRe()
         globalI = xStartGlobal + i - 1
         globalJ = yStartGlobal + j - 1
         globalK = zStartGlobal + k - 1
-        volumeWeight = quadWx(globalI)*quadWy(globalJ)*quadWz(globalK)
+        volumeWeight = quadWidthX(globalI)*quadWidthY(globalJ)*quadWidthZ(globalK)
         ReVolAvg_temp = ReVolAvg_temp + volumeWeight*dsqrt(u(i,j,k)*u(i,j,k)+v(i,j,k)*v(i,j,k)+w(i,j,k)*w(i,j,k))
       enddo
     enddo
@@ -3977,6 +4146,7 @@ end subroutine calNuRe
 !===========================================================================================================================
 ! 子程序: output_unsteady_NuRe_postprocess
 ! 作用: 从完整 Nu/Re 历史文件重建非稳态时间序列、运行平均值和分段窗口平均值。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===========================================================================================================================
 subroutine output_unsteady_NuRe_postprocess()
   use commondata3dOpenaccMpi
@@ -4161,6 +4331,9 @@ subroutine output_unsteady_NuRe_postprocess()
 
 end subroutine output_unsteady_NuRe_postprocess
 !===========================================================================================================================
+! output_unsteady_NuRe_postprocess 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
+!===========================================================================================================================
 #endif
 
 
@@ -4174,7 +4347,7 @@ subroutine SideHeatedcalc_Nu_global()
   use commondata3dOpenaccMpi
   implicit none
   integer(kind=4) :: i, j, k
-  real(kind=8) :: dy, dTdy, qy, sum_qy
+  real(kind=8) :: dy, dTdy, qy, sum_qy, volumeWeight
   real(kind=8) :: deltaT, coef
 
   dy = 1.0d0 / lengthUnit
@@ -4194,12 +4367,13 @@ subroutine SideHeatedcalc_Nu_global()
         endif
 
         qy = coef * v_all(i,j,k) * (T_all(i,j,k) - Tref) + dTdy
-        sum_qy = sum_qy + qy
+        volumeWeight = quadWidthX(i)*quadWidthY(j)*quadWidthZ(k)
+        sum_qy = sum_qy + volumeWeight*qy
       enddo
     enddo
   enddo
 
-  Nu_global = (sum_qy / dble(nx * ny * nz)) / deltaT
+  Nu_global = (sum_qy / quadSumVolume) / deltaT
 
   write(*,'(a,1x,ES24.16E3)') 'Nu_global =', Nu_global
   open(unit=00, file=trim(settingsFile), status='unknown', position='append')
@@ -4224,7 +4398,7 @@ subroutine RBcalc_Nu_global()
   use commondata3dOpenaccMpi
   implicit none
   integer(kind=4) :: i, j, k
-  real(kind=8) :: dz, dTdz, qz, sum_qz
+  real(kind=8) :: dz, dTdz, qz, sum_qz, volumeWeight
   real(kind=8) :: deltaT, coef
 
   dz = 1.0d0 / lengthUnit
@@ -4244,12 +4418,13 @@ subroutine RBcalc_Nu_global()
         endif
 
         qz = coef * w_all(i,j,k) * (T_all(i,j,k) - Tref) - dTdz
-        sum_qz = sum_qz + qz
+        volumeWeight = quadWidthX(i)*quadWidthY(j)*quadWidthZ(k)
+        sum_qz = sum_qz + volumeWeight*qz
       enddo
     enddo
   enddo
 
-  Nu_global = (sum_qz / dble(nx * ny * nz)) / deltaT
+  Nu_global = (sum_qz / quadSumVolume) / deltaT
 
   write(*,'(a,1x,ES24.16E3)') 'Nu_global =', Nu_global
   open(unit=00, file=trim(settingsFile), status='unknown', position='append')
@@ -4768,24 +4943,35 @@ end subroutine fit_parabola_ls5
 subroutine SideHeatedcalc_umid_max()
   call calc_umid_max_common('SideHeatedcalc_umid_max')
 end subroutine SideHeatedcalc_umid_max
+!===========================================================================================================================
+! SideHeatedcalc_umid_max 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
 
 
 !===========================================================================================================================
 ! 子程序: SideHeatedcalc_vmid_max
 ! 作用: 计算侧壁差温工况下 y=Ly/2 中面上的 v 最大值及其位置。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===========================================================================================================================
 subroutine SideHeatedcalc_vmid_max()
   call calc_vmid_max_common('SideHeatedcalc_vmid_max')
 end subroutine SideHeatedcalc_vmid_max
+!===========================================================================================================================
+! SideHeatedcalc_vmid_max 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
 
 
 !===========================================================================================================================
 ! 子程序: SideHeatedcalc_wmid_max
 ! 作用: 计算侧壁差温工况下 z=Lz/2 中面上的 w 最大值及其位置。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===========================================================================================================================
 subroutine SideHeatedcalc_wmid_max()
   call calc_wmid_max_common('SideHeatedcalc_wmid_max')
 end subroutine SideHeatedcalc_wmid_max
+!===========================================================================================================================
+! SideHeatedcalc_wmid_max 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
 
 
 !===========================================================================================================================
@@ -4798,16 +4984,16 @@ subroutine SideHeatedcalc_centerline_uv_max()
   use commondata3dOpenaccMpi
   implicit none
   integer(kind=4) :: i, j, iL, iR, jL, jR, kL, kR, iBest, jBest
-  real(kind=8) :: targetX, targetY, targetZ, wx, wy, wz
+  real(kind=8) :: targetX, targetY, targetZ, weightX, weightY, weightZ
   real(kind=8) :: val, valL, valR, valB, valT
   real(kind=8) :: umax, vmax, yAtU, xAtV
 
   targetX = 0.5d0 * xp(nx+1)
   targetY = 0.5d0 * yp(ny+1)
   targetZ = 0.5d0 * zp(nz+1)
-  call find_bracketing_index(xp, nx, targetX, iL, iR, wx)
-  call find_bracketing_index(yp, ny, targetY, jL, jR, wy)
-  call find_bracketing_index(zp, nz, targetZ, kL, kR, wz)
+  call find_bracketing_index(xp, nx, targetX, iL, iR, weightX)
+  call find_bracketing_index(yp, ny, targetY, jL, jR, weightY)
+  call find_bracketing_index(zp, nz, targetZ, kL, kR, weightZ)
 
   umax = -huge(1.0d0)
   jBest = 1
@@ -4817,14 +5003,14 @@ subroutine SideHeatedcalc_centerline_uv_max()
       valL = u_all(iL,j,kL)
       valR = u_all(iR,j,kL)
     else
-      valL = (1.0d0 - wz) * u_all(iL,j,kL) + wz * u_all(iL,j,kR)
-      valR = (1.0d0 - wz) * u_all(iR,j,kL) + wz * u_all(iR,j,kR)
+      valL = (1.0d0 - weightZ) * u_all(iL,j,kL) + weightZ * u_all(iL,j,kR)
+      valR = (1.0d0 - weightZ) * u_all(iR,j,kL) + weightZ * u_all(iR,j,kR)
     endif
 
     if (iL .EQ. iR) then
       val = valL
     else
-      val = (1.0d0 - wx) * valL + wx * valR
+      val = (1.0d0 - weightX) * valL + weightX * valR
     endif
 
     if (val .GT. umax) then
@@ -4842,14 +5028,14 @@ subroutine SideHeatedcalc_centerline_uv_max()
       valB = v_all(i,jL,kL)
       valT = v_all(i,jR,kL)
     else
-      valB = (1.0d0 - wz) * v_all(i,jL,kL) + wz * v_all(i,jL,kR)
-      valT = (1.0d0 - wz) * v_all(i,jR,kL) + wz * v_all(i,jR,kR)
+      valB = (1.0d0 - weightZ) * v_all(i,jL,kL) + weightZ * v_all(i,jL,kR)
+      valT = (1.0d0 - weightZ) * v_all(i,jR,kL) + weightZ * v_all(i,jR,kR)
     endif
 
     if (jL .EQ. jR) then
       val = valB
     else
-      val = (1.0d0 - wy) * valB + wy * valT
+      val = (1.0d0 - weightY) * valB + weightY * valT
     endif
 
     if (val .GT. vmax) then
@@ -4874,6 +5060,9 @@ subroutine SideHeatedcalc_centerline_uv_max()
   close(00)
 
 end subroutine SideHeatedcalc_centerline_uv_max
+!===========================================================================================================================
+! SideHeatedcalc_centerline_uv_max 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
 
 
 !===========================================================================================================================
@@ -4885,7 +5074,7 @@ subroutine SideHeatedcalc_kinetic_energy_avg()
   use commondata3dOpenaccMpi
   implicit none
   integer(kind=4) :: i, j, k
-  real(kind=8) :: coef, energyAvg
+  real(kind=8) :: coef, energyAvg, volumeWeight
 
   coef = velocityScaleCompare
   energyAvg = 0.0d0
@@ -4893,12 +5082,14 @@ subroutine SideHeatedcalc_kinetic_energy_avg()
   do k = 1, nz
     do j = 1, ny
       do i = 1, nx
-        energyAvg = energyAvg + (coef * u_all(i,j,k))**2 + (coef * v_all(i,j,k))**2 + (coef * w_all(i,j,k))**2
+        volumeWeight = quadWidthX(i)*quadWidthY(j)*quadWidthZ(k)
+        energyAvg = energyAvg + volumeWeight*((coef * u_all(i,j,k))**2 + &
+          (coef * v_all(i,j,k))**2 + (coef * w_all(i,j,k))**2)
       enddo
     enddo
   enddo
 
-  energyAvg = 0.5d0 * energyAvg / dble(nx * ny * nz)
+  energyAvg = 0.5d0 * energyAvg / quadSumVolume
 
   write(*,'(A,1X,ES24.16E3)') 'KineticEnergyAvg =', energyAvg
 
@@ -4908,38 +5099,54 @@ subroutine SideHeatedcalc_kinetic_energy_avg()
   close(00)
 
 end subroutine SideHeatedcalc_kinetic_energy_avg
+!===========================================================================================================================
+! SideHeatedcalc_kinetic_energy_avg 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
 
 
 !===========================================================================================================================
 ! 子程序: RBcalc_umid_max
 ! 作用: 计算 Rayleigh-Benard 工况下 x=Lx/2 中面上的 u 最大值及其位置。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===========================================================================================================================
 subroutine RBcalc_umid_max()
   call calc_umid_max_common('RBcalc_umid_max')
 end subroutine RBcalc_umid_max
+!===========================================================================================================================
+! RBcalc_umid_max 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
 
 
 !===========================================================================================================================
 ! 子程序: RBcalc_vmid_max
 ! 作用: 计算 Rayleigh-Benard 工况下 y=Ly/2 中面上的 v 最大值及其位置。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===========================================================================================================================
 subroutine RBcalc_vmid_max()
   call calc_vmid_max_common('RBcalc_vmid_max')
 end subroutine RBcalc_vmid_max
+!===========================================================================================================================
+! RBcalc_vmid_max 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
 
 
 !===========================================================================================================================
 ! 子程序: RBcalc_wmid_max
 ! 作用: 计算 Rayleigh-Benard 工况下 z=Lz/2 中面上的 w 最大值及其位置。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===========================================================================================================================
 subroutine RBcalc_wmid_max()
   call calc_wmid_max_common('RBcalc_wmid_max')
 end subroutine RBcalc_wmid_max
+!===========================================================================================================================
+! RBcalc_wmid_max 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
 
 
 !===========================================================================================================================
 ! 子程序: calc_umid_max_common
 ! 作用: 供 3D 后处理复用，统计 x=Lx/2 中面上的 u 最大值及其位置。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===========================================================================================================================
 subroutine calc_umid_max_common(logTag)
   use commondata3dOpenaccMpi
@@ -4978,11 +5185,15 @@ subroutine calc_umid_max_common(logTag)
   close(00)
 
 end subroutine calc_umid_max_common
+!===========================================================================================================================
+! calc_umid_max_common 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
 
 
 !===========================================================================================================================
 ! 子程序: calc_vmid_max_common
 ! 作用: 供 3D 后处理复用，统计 y=Ly/2 中面上的 v 最大值及其位置。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===========================================================================================================================
 subroutine calc_vmid_max_common(logTag)
   use commondata3dOpenaccMpi
@@ -5021,11 +5232,15 @@ subroutine calc_vmid_max_common(logTag)
   close(00)
 
 end subroutine calc_vmid_max_common
+!===========================================================================================================================
+! calc_vmid_max_common 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
 
 
 !===========================================================================================================================
 ! 子程序: calc_wmid_max_common
 ! 作用: 供 3D 后处理复用，统计 z=Lz/2 中面上的 w 最大值及其位置。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===========================================================================================================================
 subroutine calc_wmid_max_common(logTag)
   use commondata3dOpenaccMpi
@@ -5065,11 +5280,15 @@ subroutine calc_wmid_max_common(logTag)
   close(00)
 
 end subroutine calc_wmid_max_common
+!===========================================================================================================================
+! calc_wmid_max_common 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
 
 
 !===========================================================================================================================
 ! 子程序: find_bracketing_index
 ! 作用: 在一维坐标数组中寻找包围目标点的左右索引及插值权重。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===========================================================================================================================
 subroutine find_bracketing_index(coord, n, target, iL, iR, weight)
   implicit none
@@ -5093,11 +5312,15 @@ subroutine find_bracketing_index(coord, n, target, iL, iR, weight)
   weight = max(0.0d0, min(1.0d0, weight))
 
 end subroutine find_bracketing_index
+!===========================================================================================================================
+! find_bracketing_index 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
 
 
 !===========================================================================================================================
 ! 子程序: interp_scalar_x
 ! 作用: 在 x 方向对标量场做线性插值。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===========================================================================================================================
 subroutine interp_scalar_x(iL, iR, weight, j, k, field, val)
   use commondata3dOpenaccMpi
@@ -5115,11 +5338,15 @@ subroutine interp_scalar_x(iL, iR, weight, j, k, field, val)
   endif
 
 end subroutine interp_scalar_x
+!===========================================================================================================================
+! interp_scalar_x 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
 
 
 !===========================================================================================================================
 ! 子程序: interp_scalar_y
 ! 作用: 在 y 方向对标量场做线性插值。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===========================================================================================================================
 subroutine interp_scalar_y(jL, jR, weight, i, k, field, val)
   use commondata3dOpenaccMpi
@@ -5137,11 +5364,15 @@ subroutine interp_scalar_y(jL, jR, weight, i, k, field, val)
   endif
 
 end subroutine interp_scalar_y
+!===========================================================================================================================
+! interp_scalar_y 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
 
 
 !===========================================================================================================================
 ! 子程序: interp_scalar_z
 ! 作用: 在 z 方向对标量场做线性插值。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===========================================================================================================================
 subroutine interp_scalar_z(kL, kR, weight, i, j, field, val)
   use commondata3dOpenaccMpi
@@ -5159,11 +5390,15 @@ subroutine interp_scalar_z(kL, kR, weight, i, j, field, val)
   endif
 
 end subroutine interp_scalar_z
+!===========================================================================================================================
+! interp_scalar_z 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
 
 
 !===========================================================================================================================
 ! 子程序: write_midplane_x
 ! 作用: 输出 x=Lx/2 中面的 Tecplot 切片文件。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===========================================================================================================================
 subroutine write_midplane_x(filename)
   use commondata3dOpenaccMpi
@@ -5193,11 +5428,15 @@ subroutine write_midplane_x(filename)
        ny, nz, yp(1:ny), zp(1:nz), uSlice, vSlice, wSlice, tSlice)
 
 end subroutine write_midplane_x
+!===========================================================================================================================
+! write_midplane_x 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
 
 
 !===========================================================================================================================
 ! 子程序: write_midplane_y
 ! 作用: 输出 y=Ly/2 中面的 Tecplot 切片文件。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===========================================================================================================================
 subroutine write_midplane_y(filename)
   use commondata3dOpenaccMpi
@@ -5227,11 +5466,15 @@ subroutine write_midplane_y(filename)
        nx, nz, xp(1:nx), zp(1:nz), uSlice, vSlice, wSlice, tSlice)
 
 end subroutine write_midplane_y
+!===========================================================================================================================
+! write_midplane_y 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
 
 
 !===========================================================================================================================
 ! 子程序: write_midplane_z
 ! 作用: 输出 z=Lz/2 中面的 Tecplot 切片文件。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===========================================================================================================================
 subroutine write_midplane_z(filename)
   use commondata3dOpenaccMpi
@@ -5262,11 +5505,15 @@ subroutine write_midplane_z(filename)
        nx, ny, xp(1:nx), yp(1:ny), uSlice, vSlice, wSlice, tSlice)
 
 end subroutine write_midplane_z
+!===========================================================================================================================
+! write_midplane_z 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
 
 
 !===========================================================================================================================
 ! 子程序: write_midplane_stream_x
 ! 作用: 输出 x=Lx/2 中面的流函数/涡量诊断切片。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===========================================================================================================================
 subroutine write_midplane_stream_x(filename)
   use commondata3dOpenaccMpi
@@ -5361,11 +5608,15 @@ subroutine write_midplane_stream_x(filename)
        ny, nz, yp(1:ny), zp(1:nz), psiSlice, vortSlice)
 
 end subroutine write_midplane_stream_x
+!===========================================================================================================================
+! write_midplane_stream_x 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
 
 
 !===========================================================================================================================
 ! 子程序: write_midplane_stream_y
 ! 作用: 输出 y=Ly/2 中面的流函数/涡量诊断切片。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===========================================================================================================================
 subroutine write_midplane_stream_y(filename)
   use commondata3dOpenaccMpi
@@ -5460,11 +5711,15 @@ subroutine write_midplane_stream_y(filename)
        nx, nz, xp(1:nx), zp(1:nz), psiSlice, vortSlice)
 
 end subroutine write_midplane_stream_y
+!===========================================================================================================================
+! write_midplane_stream_y 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
 
 
 !===========================================================================================================================
 ! 子程序: write_midplane_stream_z
 ! 作用: 输出 z=Lz/2 中面的流函数/涡量诊断切片。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===========================================================================================================================
 subroutine write_midplane_stream_z(filename)
   use commondata3dOpenaccMpi
@@ -5559,11 +5814,15 @@ subroutine write_midplane_stream_z(filename)
        nx, ny, xp(1:nx), yp(1:ny), psiSlice, vortSlice)
 
 end subroutine write_midplane_stream_z
+!===========================================================================================================================
+! write_midplane_stream_z 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
 
 
 !===========================================================================================================================
 ! 子程序: write_full_fields_plt
 ! 作用: 以 Tecplot 二进制 plt 格式输出三维全场的 X/Y/Z/U/V/W/T，变量按双精度写出。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===========================================================================================================================
 subroutine write_full_fields_plt(filename)
   use commondata3dOpenaccMpi
@@ -5656,11 +5915,15 @@ subroutine write_full_fields_plt(filename)
   close(uout)
   return
 end subroutine write_full_fields_plt
+!===========================================================================================================================
+! write_full_fields_plt 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
 
 
 !===========================================================================================================================
 ! 子程序: write_slice_fields_plt
 ! 作用: 以 Tecplot 二进制 plt 格式输出二维切片上的 4 个场变量，变量按双精度写出。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===========================================================================================================================
 subroutine write_slice_fields_plt(filename, title, var1Name, var2Name, field1Name, field2Name, field3Name, field4Name, &
      ni, nj, coord1, coord2, field1, field2, field3, field4)
@@ -5736,11 +5999,15 @@ subroutine write_slice_fields_plt(filename, title, var1Name, var2Name, field1Nam
   close(uout)
   return
 end subroutine write_slice_fields_plt
+!===========================================================================================================================
+! write_slice_fields_plt 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
 
 
 !===========================================================================================================================
 ! 子程序: write_slice_psi_vort_plt
 ! 作用: 以 Tecplot 二进制 plt 格式输出二维切面的流函数/涡量数据，变量按双精度写出。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===========================================================================================================================
 subroutine write_slice_psi_vort_plt(filename, title, var1Name, var2Name, psiName, vortName, ni, nj, coord1, coord2, psi, vort)
   implicit none
@@ -5807,11 +6074,15 @@ subroutine write_slice_psi_vort_plt(filename, title, var1Name, var2Name, psiName
   close(uout)
   return
 end subroutine write_slice_psi_vort_plt
+!===========================================================================================================================
+! write_slice_psi_vort_plt 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
 
 
 !===========================================================================================================================
 ! 子程序: dumpstring_to_unit
 ! 作用: 按 Tecplot 二进制字符串格式向指定文件单元写入字符串。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===========================================================================================================================
 subroutine dumpstring_to_unit(iunit, instring)
   implicit none
@@ -5828,3 +6099,6 @@ subroutine dumpstring_to_unit(iunit, instring)
 
   return
 end subroutine dumpstring_to_unit
+!===========================================================================================================================
+! dumpstring_to_unit 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================

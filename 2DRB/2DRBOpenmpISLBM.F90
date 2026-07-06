@@ -57,9 +57,9 @@
 
 !算法切换
 !启用 M1G 修正；注释掉则不使用 useG 相关修正
-#define EnableUseG
+!#define EnableUseG
 !启用旧温度算法
-!#define EnableLegacyThermalScheme
+#define EnableLegacyThermalScheme
 
 !   温度算法宏的选择
 #if defined(EnableUseG) && defined(EnableLegacyThermalScheme)
@@ -96,7 +96,7 @@
 
         !===============================================================================================
         ! 无量纲参数
-        integer(kind=4), parameter :: nx=256, ny=256     !格子网格
+        integer(kind=4), parameter :: nx=513, ny=513     !格子网格
 
         ! 本文件采用erf非均匀网格。
         ! erf网格拉伸强度。数值越大, 节点越向两侧物理壁面聚集。
@@ -118,7 +118,7 @@
 #endif
         real(kind=8), parameter :: pi = acos(-1.0d0)
 
-        real(kind=8), parameter :: Rayleigh=1.0d6
+        real(kind=8), parameter :: Rayleigh=1.0d8
         real(kind=8), parameter :: Prandtl=0.71d0       
         real(kind=8), parameter :: Mach=0.1d0
         real(kind=8), parameter :: Thot=0.5d0, Tcold=-0.5d0
@@ -364,7 +364,10 @@
 
 #ifdef steadyFlow
         ! 周期输出按累计格子步判断，续算时才能接回不断电运行应有的输出节奏。
-        if(MOD(restartItcOffset+itc,2000).EQ.0) call check()
+        if(MOD(restartItcOffset+itc,2000).EQ.0) then
+            call check()
+            call output_steady_monitor()
+        endif
         if( (outputPltFile.EQ.1).AND.(MOD(restartItcOffset+itc, outputPltFileIntervalItc).EQ.0) ) then
             call output_Tecplot()  !稳态模式下的可选周期 Tecplot 输出
         endif
@@ -1874,7 +1877,7 @@ close(00)
     use commondata
     implicit none
     integer(kind=4) :: i, j
-    real(kind=8) :: error1, error2, error5, error6, areaWeight
+    real(kind=8) :: error1, error2, error5, error6
     character(len=64) :: caseTag
 
 
@@ -1885,17 +1888,16 @@ close(00)
     error5 = 0.0d0
     error6 = 0.0d0
     
-    !$omp parallel do default(none) shared(u,up,v,vp,T,Tp,quadWidthX,quadWidthY) &
-    !$omp& private(i,j,areaWeight) reduction(+:error1,error2,error5,error6)
+    !$omp parallel do default(none) shared(u,up,v,vp,T,Tp) &
+    !$omp& private(i,j) reduction(+:error1,error2,error5,error6)
     do j = 1, ny
         do i = 1, nx
-            areaWeight = quadWidthX(i)*quadWidthY(j)
-            error1 = error1+areaWeight*((u(i,j)-up(i,j))*(u(i,j)-up(i,j)) + &
+            error1 = error1+((u(i,j)-up(i,j))*(u(i,j)-up(i,j)) + &
                 (v(i,j)-vp(i,j))*(v(i,j)-vp(i,j)))
-            error2 = error2+areaWeight*(u(i,j)*u(i,j)+v(i,j)*v(i,j))
+            error2 = error2+(u(i,j)*u(i,j)+v(i,j)*v(i,j))
                 
-            error5 = error5+areaWeight*dABS( T(i,j)-Tp(i,j) )
-            error6 = error6+areaWeight*dABS( T(i,j) )
+            error5 = error5+dABS( T(i,j)-Tp(i,j) )
+            error6 = error6+dABS( T(i,j) )
                 
             up(i,j) = u(i,j)
             vp(i,j) = v(i,j)
@@ -1904,8 +1906,8 @@ close(00)
     enddo
     !$omp end parallel do 
     
-    errorU = dsqrt(error1)/dsqrt(error2)                 !非均匀面积加权速度相对L2误差
-    errorT = error5/error6                               !非均匀面积加权温度相对L1误差
+    errorU = dsqrt(error1)/dsqrt(error2)                 !节点等权速度相对L2误差：保持原有sqrt(sum)/sqrt(sum)形式
+    errorT = error5/error6                               !节点等权温度相对L1误差
 
   
 
@@ -1923,6 +1925,84 @@ close(00)
     end subroutine check
 !===================================================================================================
 ! check 结束: 计算稳态收敛误差并写出收敛历史。
+!===================================================================================================
+
+!===================================================================================================
+! 子程序: output_steady_monitor
+! 作用: 在 steadyFlow 中按 check 的间隔输出当前误差和瞬时体平均 Nu/Re。
+! 说明: 只做诊断, 不推进 dimensionlessTime, 也不写 Nu_VolAvg/Re_VolAvg 正式采样文件。
+!===================================================================================================
+    subroutine output_steady_monitor()
+    use commondata
+    implicit none
+    integer(kind=4) :: i, j
+    integer :: monitorUnit
+    real(kind=8) :: NuVolAvg_temp, ReVolAvg_temp
+    real(kind=8) :: NuVolAvg_inst, ReVolAvg_inst
+    real(kind=8) :: areaWeight
+    logical :: monitorFileExists
+    logical, save :: first_monitor_write = .true.
+
+    NuVolAvg_temp = 0.0d0
+#ifdef SideHeatedCell
+    !$omp parallel do default(none) shared(u,T,quadWidthX,quadWidthY) &
+    !$omp& private(i,j,areaWeight) reduction(+:NuVolAvg_temp)
+    do j = 1, ny
+        do i = 1, nx
+            areaWeight = quadWidthX(i)*quadWidthY(j)
+            NuVolAvg_temp = NuVolAvg_temp+areaWeight*u(i,j)*(T(i,j)-Tref)
+        enddo
+    enddo
+    !$omp end parallel do
+#endif
+
+#ifdef RayleighBenardCell
+    !$omp parallel do default(none) shared(v,T,quadWidthX,quadWidthY) &
+    !$omp& private(i,j,areaWeight) reduction(+:NuVolAvg_temp)
+    do j = 1, ny
+        do i = 1, nx
+            areaWeight = quadWidthX(i)*quadWidthY(j)
+            NuVolAvg_temp = NuVolAvg_temp+areaWeight*v(i,j)*(T(i,j)-Tref)
+        enddo
+    enddo
+    !$omp end parallel do
+#endif
+
+    ReVolAvg_temp = 0.0d0
+    !$omp parallel do default(none) shared(u,v,quadWidthX,quadWidthY) &
+    !$omp& private(i,j,areaWeight) reduction(+:ReVolAvg_temp)
+    do j = 1, ny
+        do i = 1, nx
+            areaWeight = quadWidthX(i)*quadWidthY(j)
+            ReVolAvg_temp = ReVolAvg_temp+areaWeight*(u(i,j)*u(i,j)+v(i,j)*v(i,j))
+        enddo
+    enddo
+    !$omp end parallel do
+
+    NuVolAvg_inst = NuVolAvg_temp/quadSumArea*lengthUnit/diffusivity+1.0d0
+    ReVolAvg_inst = dsqrt(ReVolAvg_temp/quadSumArea)*lengthUnit/viscosity
+
+    if(first_monitor_write) then
+        inquire(file="steady_monitor.dat", exist=monitorFileExists)
+        if((loadInitField.EQ.0).OR.(.not.monitorFileExists)) then
+            open(newunit=monitorUnit,file="steady_monitor.dat",status="replace",action="write")
+            write(monitorUnit,'(A)') "# itc errorU errorT NuVolAvg ReVolAvg"
+        else
+            open(newunit=monitorUnit,file="steady_monitor.dat",status="old",position="append",action="write")
+        endif
+        first_monitor_write = .false.
+    else
+        open(newunit=monitorUnit,file="steady_monitor.dat",status="unknown",position="append",action="write")
+    endif
+
+    write(monitorUnit,'(I12,4(1X,ES24.16E3))') restartItcOffset+itc, &
+        real(errorU,kind=8), real(errorT,kind=8), real(NuVolAvg_inst,kind=8), real(ReVolAvg_inst,kind=8)
+    close(monitorUnit)
+
+    return
+    end subroutine output_steady_monitor
+!===================================================================================================
+! output_steady_monitor 结束: 已输出 steadyFlow 诊断时间序列。
 !===================================================================================================
 #endif
 

@@ -34,6 +34,14 @@ Choose the closest baseline before generating or editing code:
 - If a requested change would require a large structural departure from one of
   the four core baselines, call out that departure before proceeding.
 
+## Language
+
+- Use Simplified Chinese for user-facing explanations, progress updates, and
+  final responses by default.
+- Keep code, commands, file paths, variable names, compiler messages, and API
+  identifiers in their original language unless the user explicitly asks for a
+  translation.
+
 ## Priority
 
 If there is any conflict between older notes and current work, follow this

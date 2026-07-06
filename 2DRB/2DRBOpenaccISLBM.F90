@@ -1,4 +1,4 @@
-﻿!=============================================================
+!=============================================================
 !!!    注释区，代码描述
 !!!    二维浮力驱动自然对流 OpenACC 并行版本
 !!!    LBM方法
@@ -8,8 +8,8 @@
 
 !=============================================================
 !   自定义宏，一些选项的开关
-!#define steadyFlow    
-#define unsteadyFlow
+#define steadyFlow
+!#define unsteadyFlow
 
 !   流动模式宏的选择，两个都开、两个都关都会报错；只有二选一才通过。
 #if defined(steadyFlow) && defined(unsteadyFlow)
@@ -33,17 +33,17 @@
 #endif
 
 !   温度边界(for Rayleigh Benard Cell)，包括水平边界恒温，垂直边界温度不可穿透以及周期
-#define RayleighBenardCell
-#define HorizontalWallsConstT
-#define VerticalWallsAdiabatic
+!#define RayleighBenardCell
+!#define HorizontalWallsConstT
+!#define VerticalWallsAdiabatic
 !#define VerticalWallsPeriodicalT
 
 
 
 !   温度边界(for Side Heated Cell)，包括水平边界温度不可穿透，垂直边界恒温,侧壁加热加磁场
-!#define SideHeatedCell
-!#define HorizontalWallsAdiabatic
-!#define VerticalWallsConstT
+#define SideHeatedCell
+#define HorizontalWallsAdiabatic
+#define VerticalWallsConstT
 !#define SideHeatedHa  
 !~~temperature B.C.~~
 
@@ -57,9 +57,9 @@
 
 !算法切换
 !启用 M1G 修正；注释掉则不使用 useG 相关修正
-#define EnableUseG
+!#define EnableUseG
 !启用旧温度算法
-!#define EnableLegacyThermalScheme
+#define EnableLegacyThermalScheme
 
 !   温度算法宏的选择
 #if defined(EnableUseG) && defined(EnableLegacyThermalScheme)
@@ -94,21 +94,29 @@
 
         !===============================================================================================
         ! 无量纲参数
-        integer(kind=4), parameter :: nx=1024, ny=1024     !格子网格
-        integer(kind=4), parameter :: meshModeUniform=0, meshModeErf=1
-        integer(kind=4), parameter :: meshMode=meshModeErf
-        real(kind=8), parameter :: islbmStretchA=1.5d0
-        real(kind=8), parameter :: islbmDxMinRaw=0.5d0*(1.0d0+erf(islbmStretchA*(1.0d0/dble(nx+1)-0.5d0))/erf(0.5d0*islbmStretchA))
-        real(kind=8), parameter :: islbmDyMinRaw=0.5d0*(1.0d0+erf(islbmStretchA*(1.0d0/dble(ny+1)-0.5d0))/erf(0.5d0*islbmStretchA))
+        integer(kind=4), parameter :: nx=513, ny=513     !格子网格
+
+        ! 本文件采用erf非均匀网格。
+        ! erf网格拉伸强度。数值越大, 节点越向两侧物理壁面聚集。
+        real(kind=8), parameter :: ISLBM_StretchA=1.5d0
+
+        ! raw坐标中第一个内部流体节点的位置rawX(1)/rawY(1), 也就是近壁的1个lu。
+        real(kind=8), parameter :: ISLBM_DxMinRaw=0.5d0*(1.0d0 + &
+            erf(ISLBM_StretchA*(1.0d0/dble(nx+1)-0.5d0))/erf(0.5d0*ISLBM_StretchA))
+        real(kind=8), parameter :: ISLBM_DyMinRaw=0.5d0*(1.0d0 + &
+            erf(ISLBM_StretchA*(1.0d0/dble(ny+1)-0.5d0))/erf(0.5d0*ISLBM_StretchA))
 #ifdef SideHeatedCell
-        real(kind=8), parameter :: lengthUnit=(1.0d0-islbmDxMinRaw)/islbmDxMinRaw     !ISLBM有效特征长度：物理壁面采用 half-way 位置
+        ! half-way壁面放在0.5*rawX(1)或0.5*rawY(1), 因此有效长度为1-ISLBM_Dx/DyMinRaw。
+        ! ISLBM有效长度含多少个近壁lu: lengthUnit=(rightWall-leftWall)/ISLBM_DxMinRaw。
+        real(kind=8), parameter :: lengthUnit=(1.0d0-ISLBM_DxMinRaw)/ISLBM_DxMinRaw
 #else
-        real(kind=8), parameter :: lengthUnit=(1.0d0-islbmDyMinRaw)/islbmDyMinRaw     !ISLBM有效特征长度：物理壁面采用 half-way 位置
+        ! ISLBM有效长度含多少个近壁lu: lengthUnit=(topWall-bottomWall)/ISLBM_DyMinRaw。
+        real(kind=8), parameter :: lengthUnit=(1.0d0-ISLBM_DyMinRaw)/ISLBM_DyMinRaw
 #endif
         real(kind=8), parameter :: pi = acos(-1.0d0)
 
-        real(kind=8), parameter :: Rayleigh=1.0d7        
-        real(kind=8), parameter :: Prandtl=0.7d0       
+        real(kind=8), parameter :: Rayleigh=1.0d8
+        real(kind=8), parameter :: Prandtl=0.71d0
         real(kind=8), parameter :: Mach=0.1d0
         real(kind=8), parameter :: Thot=0.5d0, Tcold=-0.5d0
         real(kind=8), parameter :: Tref=0.5d0*(Thot+Tcold)
@@ -119,7 +127,8 @@
 
         ! velocityScaleCompare is used only in velocity-related post-processing to convert lattice velocity
         ! to the nondimensional velocity scale adopted by the reference paper being compared.
-        real(kind=8), parameter :: velocityScaleCompare=lengthUnit/diffusivity   ! 默认采用热扩散标度 UL/kappa；若要按自由落体标度比较，可改为 1.0d0/velocityUnit
+        real(kind=8), parameter :: velocityScaleCompare=lengthUnit/diffusivity
+        ! 默认采用热扩散标度 UL/kappa；若要按自由落体标度比较，可改为 1.0d0/velocityUnit
         
         integer(kind=4), parameter :: nxHalf=(nx-1)/2+1, nyHalf=(ny-1)/2+1
 
@@ -179,7 +188,9 @@
         real(kind=8), parameter :: unsteadyAverageStartTf=0.5d0*unsteadyRunDuration  ! 平均窗口起点
         real(kind=8), parameter :: unsteadyAverageEndTf=unsteadyRunDuration          ! 平均窗口终点
         real(kind=8), parameter :: unsteadyAverageMidTf=0.5d0*(unsteadyAverageStartTf+unsteadyAverageEndTf) ! 前/后半分界
-        integer(kind=4), parameter :: unsteadySampleCount=max(1, int(unsteadyRunDuration/outputSnapshotInterval+0.5d0))   !计数器，输出多少次快照
+        integer(kind=4), parameter :: unsteadySampleCount=max(1, &
+          int(unsteadyRunDuration/outputSnapshotInterval+0.5d0))
+        ! 计数器，输出多少次快照
         integer(kind=4), parameter :: dimensionlessTimeMax=unsteadySampleCount
         integer(kind=4), parameter :: outputSnapshotFile=1   ! 是否输出后处理快照文件：0=不输出，1=输出
         integer(kind=4), parameter :: outputPltFile=1   ! 是否输出 plt 文件：0=不输出，1=输出
@@ -218,11 +229,12 @@
         real(kind=8) :: errorU, errorT
         
         real(kind=8) :: xp(0:nx+1), yp(0:ny+1)      !无量纲的坐标数组，包括边界
-        real(kind=8) :: wx(1:nx), wy(1:ny), quadSumX, quadSumY, quadSumArea
-        real(kind=8), parameter :: islbmShift=1.0d0/lengthUnit
-        integer(kind=4) :: stream_ix(0:8,1:nx,3), stream_iy(0:8,1:ny,3)
-        real(kind=8) :: stream_wx(0:8,1:nx,3), stream_wy(0:8,1:ny,3)
-        logical :: stream_x_valid(0:8,1:nx), stream_y_valid(0:8,1:ny)
+        real(kind=8) :: quadWidthX(1:nx), quadWidthY(1:ny), quadSumX, quadSumY, quadSumArea
+        ! 归一化坐标中的1个lattice unit; 迁移时用xp(i)-ex(alpha)*ISLBM_LatticeUnit找上游点。
+        real(kind=8), parameter :: ISLBM_LatticeUnit=1.0d0/lengthUnit
+        integer(kind=4) :: streamInterpIndexX(0:8,1:nx,3), streamInterpIndexY(0:8,1:ny,3)
+        real(kind=8) :: streamInterpWeightX(0:8,1:nx,3), streamInterpWeightY(0:8,1:ny,3)
+        logical :: streamInterpValidX(0:8,1:nx), streamInterpValidY(0:8,1:ny)
         real(kind=8), allocatable :: u(:,:), v(:,:), T(:,:), rho(:,:)
 
 #ifdef steadyFlow
@@ -349,7 +361,10 @@
 #ifdef steadyFlow
         ! 周期输出按累计格子步判断；否则从 1050tf 续算会在 1150tf 才输出，
         ! 而不是接回不断电运行应有的 1100tf、1200tf、...
-        if(MOD(restartItcOffset+itc,2000).EQ.0) call check()
+        if(MOD(restartItcOffset+itc,2000).EQ.0) then
+            call check()
+            call output_steady_monitor()
+        endif
         if( (outputPltFile.EQ.1).AND.(MOD(restartItcOffset+itc, outputPltFileIntervalItc).EQ.0) ) then
             call update_host_tecplot_2d_openacc()
             call output_Tecplot()  !稳态模式下的可选周期 Tecplot 输出
@@ -501,6 +516,7 @@
 !===================================================================================================
 ! 子程序: initial
 ! 作用: 初始化网格坐标、场变量、分布函数、输出文件和重启信息。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===========================================================================================================================
   subroutine initial()
     use commondata
@@ -532,6 +548,8 @@
     if(outputSnapshotFile.EQ.1) then
         open(unit=01,file=trim(snapshotFilePrefix)//"-"//"readme",status="unknown")    !trim去掉字符串尾部空格，换了存储路径，可自己更改
         write(01,*) "snapshot file prefix exists!"
+        write(01,*) "records: U_nd, V_nd, T, rho on ISLBM nonuniform nodes"
+        write(01,*) "coordinates are xp(1:nx), yp(1:ny) in ", trim(snapshotFilePrefix)//"-mesh.dat"
         close(01)
         write(00,*) "Snapshot data will be stored in ", snapshotFilePrefix
     endif
@@ -620,10 +638,14 @@
     ! 第一个流体节点位于 0.5/L0，最后一个流体节点位于 1-0.5/L0。
     call build_islbm_mesh()
     call build_islbm_quadrature()
-    call prepare_islbm_streaming_stencils()
-    write(00,*) "ISLBM meshMode =", meshMode, "; stretchA =", real(islbmStretchA,kind=8)
+    call build_islbm_streaming_stencils()
+    if(outputSnapshotFile.EQ.1) then
+        call output_SnapshotMeshFile()
+        write(00,*) "Snapshot mesh coordinates stored in ", trim(snapshotFilePrefix)//"-mesh.dat"
+    endif
+    write(00,*) "ISLBM mesh = erf; stretchA =", real(ISLBM_StretchA,kind=8)
     write(00,*) "ISLBM effective lengthUnit L0 =", real(lengthUnit,kind=8)
-    write(00,*) "ISLBM streaming shift =", real(islbmShift,kind=8)
+    write(00,*) "ISLBM lattice unit in normalized coordinates =", real(ISLBM_LatticeUnit,kind=8)
     write(00,*) "ISLBM quadrature sums =", real(quadSumX,kind=8), real(quadSumY,kind=8), real(quadSumArea,kind=8)
 
     allocate (u(nx,ny))
@@ -841,11 +863,19 @@ close(00)
     return
   end subroutine initial
 !===================================================================================================
+! initial 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===================================================================================================
+!===================================================================================================
 !初始化结束
 !===================================================================================================
 
 
 
+!===================================================================================================
+!===================================================================================================
+! 子程序: build_islbm_mesh
+! 作用: 执行本子程序对应的初始化、迁移、碰撞、边界、通信或后处理步骤。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===================================================================================================
   subroutine build_islbm_mesh()
     use commondata
@@ -854,38 +884,20 @@ close(00)
     real(kind=8) :: rawX(0:nx+1), rawY(0:ny+1)
     real(kind=8) :: erfNorm, leftWall, rightWall, bottomWall, topWall, lengthX, lengthY
 
-    if(meshMode.EQ.meshModeErf) then
-        erfNorm = erf(0.5d0*islbmStretchA)
-        do i = 0, nx+1
-            rawX(i) = 0.5d0*(1.0d0 + erf(islbmStretchA*(dble(i)/dble(nx+1)-0.5d0))/erfNorm)
-        enddo
-        do j = 0, ny+1
-            rawY(j) = 0.5d0*(1.0d0 + erf(islbmStretchA*(dble(j)/dble(ny+1)-0.5d0))/erfNorm)
-        enddo
-    else
-        rawX(0) = 0.0d0
-        rawX(nx+1) = 1.0d0
-        do i = 1, nx
-            rawX(i) = (dble(i)-0.5d0)/dble(nx)
-        enddo
-        rawY(0) = 0.0d0
-        rawY(ny+1) = 1.0d0
-        do j = 1, ny
-            rawY(j) = (dble(j)-0.5d0)/dble(ny)
-        enddo
-    endif
+    ! 第一步: 生成原始erf拉伸坐标rawX/rawY。此时坐标还没有按half-way物理壁面修正。
+    erfNorm = erf(0.5d0*ISLBM_StretchA)
+    do i = 0, nx+1
+        rawX(i) = 0.5d0*(1.0d0 + erf(ISLBM_StretchA*(dble(i)/dble(nx+1)-0.5d0))/erfNorm)
+    enddo
+    do j = 0, ny+1
+        rawY(j) = 0.5d0*(1.0d0 + erf(ISLBM_StretchA*(dble(j)/dble(ny+1)-0.5d0))/erfNorm)
+    enddo
 
-    if(meshMode.EQ.meshModeErf) then
-        leftWall = 0.5d0*rawX(1)
-        rightWall = 1.0d0 - 0.5d0*rawX(1)
-        bottomWall = 0.5d0*rawY(1)
-        topWall = 1.0d0 - 0.5d0*rawY(1)
-    else
-        leftWall = 0.0d0
-        rightWall = 1.0d0
-        bottomWall = 0.0d0
-        topWall = 1.0d0
-    endif
+    ! 第二步: 采用half-way壁面。物理壁面位于参考端点与第一个内部流体节点之间。
+    leftWall = 0.5d0*rawX(1)
+    rightWall = 1.0d0 - 0.5d0*rawX(1)
+    bottomWall = 0.5d0*rawY(1)
+    topWall = 1.0d0 - 0.5d0*rawY(1)
 
     lengthX = rightWall - leftWall
     lengthY = topWall - bottomWall
@@ -902,32 +914,66 @@ close(00)
 
     return
   end subroutine build_islbm_mesh
+!===================================================================================================
+! build_islbm_mesh 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===================================================================================================
 
+!===================================================================================================
+! 子程序: build_islbm_quadrature
+! 作用: 执行本子程序对应的初始化、迁移、碰撞、边界、通信或后处理步骤。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
+!===================================================================================================
   subroutine build_islbm_quadrature()
     use commondata
     implicit none
     integer(kind=4) :: i, j
+    real(kind=8) :: leftGhostX, rightGhostX, bottomGhostY, topGhostY
 
-    do i = 1, nx
-        wx(i) = 0.5d0*(xp(i+1)-xp(i-1))
+    ! midpoint-rule在边界控制体上的写法:
+    ! 每个流体节点代表一个控制体, 控制体边界取相邻节点的中点。
+    ! 对边界流体节点, 控制体的一侧边界是物理壁面0/1, 另一侧是第1、2个流体节点的中点。
+    ! 这等价于在注释里引入虚拟点 x_0_virtual=-xp(1), x_{nx+1}_virtual=1+(1-xp(nx)):
+    !   quadWidthX(1)=0.5*(xp(2)-x_0_virtual) = (xp(1)-0) + 0.5*(xp(2)-xp(1))
+    ! 内部节点仍为0.5*(xp(i+1)-xp(i-1))。这样quadSumX/quadSumY对应完整物理长度1。
+    leftGhostX = -xp(1)
+    rightGhostX = 1.0d0 + (1.0d0 - xp(nx))
+    bottomGhostY = -yp(1)
+    topGhostY = 1.0d0 + (1.0d0 - yp(ny))
+
+    quadWidthX(1) = 0.5d0*(xp(2)-leftGhostX)
+    do i = 2, nx-1
+        quadWidthX(i) = 0.5d0*(xp(i+1)-xp(i-1))
     enddo
-    do j = 1, ny
-        wy(j) = 0.5d0*(yp(j+1)-yp(j-1))
+    quadWidthX(nx) = 0.5d0*(rightGhostX-xp(nx-1))
+
+    quadWidthY(1) = 0.5d0*(yp(2)-bottomGhostY)
+    do j = 2, ny-1
+        quadWidthY(j) = 0.5d0*(yp(j+1)-yp(j-1))
     enddo
+    quadWidthY(ny) = 0.5d0*(topGhostY-yp(ny-1))
+
     quadSumX = 0.0d0
     do i = 1, nx
-        quadSumX = quadSumX + wx(i)
+        quadSumX = quadSumX + quadWidthX(i)
     enddo
     quadSumY = 0.0d0
     do j = 1, ny
-        quadSumY = quadSumY + wy(j)
+        quadSumY = quadSumY + quadWidthY(j)
     enddo
     quadSumArea = quadSumX*quadSumY
 
     return
   end subroutine build_islbm_quadrature
+!===================================================================================================
+! build_islbm_quadrature 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===================================================================================================
 
-  subroutine prepare_islbm_streaming_stencils()
+!===================================================================================================
+! 子程序: build_islbm_streaming_stencils
+! 作用: 执行本子程序对应的初始化、迁移、碰撞、边界、通信或后处理步骤。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
+!===================================================================================================
+  subroutine build_islbm_streaming_stencils()
     use commondata
     implicit none
     integer(kind=4) :: alpha, i, j
@@ -935,33 +981,88 @@ close(00)
     real(kind=8) :: w(3), target
     logical :: ok
 
-    stream_ix = 1
-    stream_iy = 1
-    stream_wx = 0.0d0
-    stream_wy = 0.0d0
-    stream_x_valid = .false.
-    stream_y_valid = .false.
+    streamInterpIndexX = 1
+    streamInterpIndexY = 1
+    streamInterpWeightX = 0.0d0
+    streamInterpWeightY = 0.0d0
+    streamInterpValidX = .false.
+    streamInterpValidY = .false.
 
     do alpha = 0, 8
         do i = 1, nx
-            target = xp(i) - dble(ex(alpha))*islbmShift
-            call build_lagrange_stencil_1d(nx, xp(1:nx), target, idx, w, ok)
-            stream_x_valid(alpha,i) = ok
-            stream_ix(alpha,i,:) = idx
-            stream_wx(alpha,i,:) = w
+            ! pull形式: f_alpha(x_i,t+1) 需要上一时刻碰撞后沿-alpha方向的出发点。
+            ! 对均匀格子 target 会正好落在相邻格点; 非均匀格子一般是off-lattice点,
+            ! 所以用迁移后的 f_post 在当前节点附近的三点模板上插值。
+            target = xp(i) - dble(ex(alpha))*ISLBM_LatticeUnit
+            call build_streaming_stencil_1d(nx, xp(1:nx), i, target, idx, w, ok)
+            streamInterpValidX(alpha,i) = ok
+            streamInterpIndexX(alpha,i,:) = idx
+            streamInterpWeightX(alpha,i,:) = w
         enddo
         do j = 1, ny
-            target = yp(j) - dble(ey(alpha))*islbmShift
-            call build_lagrange_stencil_1d(ny, yp(1:ny), target, idx, w, ok)
-            stream_y_valid(alpha,j) = ok
-            stream_iy(alpha,j,:) = idx
-            stream_wy(alpha,j,:) = w
+            target = yp(j) - dble(ey(alpha))*ISLBM_LatticeUnit
+            call build_streaming_stencil_1d(ny, yp(1:ny), j, target, idx, w, ok)
+            streamInterpValidY(alpha,j) = ok
+            streamInterpIndexY(alpha,j,:) = idx
+            streamInterpWeightY(alpha,j,:) = w
         enddo
     enddo
 
     return
-  end subroutine prepare_islbm_streaming_stencils
+  end subroutine build_islbm_streaming_stencils
+!===================================================================================================
+! build_islbm_streaming_stencils 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===================================================================================================
 
+!===================================================================================================
+! 子程序: build_streaming_stencil_1d
+! 作用: 执行本子程序对应的初始化、迁移、碰撞、边界、通信或后处理步骤。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
+!===================================================================================================
+  subroutine build_streaming_stencil_1d(n, xnodes, nodeIndex, target, idx, w, ok)
+    implicit none
+    integer(kind=4), intent(in) :: n, nodeIndex
+    real(kind=8), intent(in) :: xnodes(n), target
+    integer(kind=4), intent(out) :: idx(3)
+    real(kind=8), intent(out) :: w(3)
+    logical, intent(out) :: ok
+    real(kind=8) :: xloc(3)
+    real(kind=8), parameter :: tol = 1.0d-12
+
+    idx = (/1, 1, 1/)
+    w = 0.0d0
+    ok = .false.
+    if(n.LT.3) return
+    if((target.LT.xnodes(1)-tol).OR.(target.GT.xnodes(n)+tol)) return
+
+    ! ISLBM streaming的插值模板以当前到达节点为中心选择。
+    ! 靠近物理边界时, 指向壁面的分布函数会先由边界条件处理并直接return;
+    ! 仍需要插值的方向只会使用一侧三点模板(/1,2,3/)或(/n-2,n-1,n/)。
+    if(nodeIndex.LE.1) then
+        idx = (/1, 2, 3/)
+    elseif(nodeIndex.GE.n) then
+        idx = (/n-2, n-1, n/)
+    else
+        idx = (/nodeIndex-1, nodeIndex, nodeIndex+1/)
+    endif
+
+    xloc(1) = xnodes(idx(1))
+    xloc(2) = xnodes(idx(2))
+    xloc(3) = xnodes(idx(3))
+    call build_lagrange_weights_3(xloc, target, w)
+    ok = .true.
+
+    return
+  end subroutine build_streaming_stencil_1d
+!===================================================================================================
+! build_streaming_stencil_1d 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===================================================================================================
+
+!===================================================================================================
+! 子程序: build_lagrange_stencil_1d
+! 作用: 执行本子程序对应的初始化、迁移、碰撞、边界、通信或后处理步骤。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
+!===================================================================================================
   subroutine build_lagrange_stencil_1d(n, xnodes, target, idx, w, ok)
     implicit none
     integer(kind=4), intent(in) :: n
@@ -994,13 +1095,21 @@ close(00)
     xloc(1) = xnodes(idx(1))
     xloc(2) = xnodes(idx(2))
     xloc(3) = xnodes(idx(3))
-    call lagrange_weights_3(xloc, target, w)
+    call build_lagrange_weights_3(xloc, target, w)
     ok = .true.
 
     return
   end subroutine build_lagrange_stencil_1d
+!===================================================================================================
+! build_lagrange_stencil_1d 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===================================================================================================
 
-  subroutine lagrange_weights_3(xnode, x0, w)
+!===================================================================================================
+! 子程序: build_lagrange_weights_3
+! 作用: 执行本子程序对应的初始化、迁移、碰撞、边界、通信或后处理步骤。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
+!===================================================================================================
+  subroutine build_lagrange_weights_3(xnode, x0, w)
     implicit none
     real(kind=8), intent(in) :: xnode(3), x0
     real(kind=8), intent(out) :: w(3)
@@ -1010,21 +1119,86 @@ close(00)
     w(3) = ((x0-xnode(1))*(x0-xnode(2)))/((xnode(3)-xnode(1))*(xnode(3)-xnode(2)))
 
     return
-  end subroutine lagrange_weights_3
+  end subroutine build_lagrange_weights_3
+!===================================================================================================
+! build_lagrange_weights_3 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===================================================================================================
+
+!===================================================================================================
+! 子程序: lagrange_derivative_3
+! 作用: 执行本子程序对应的初始化、迁移、碰撞、边界、通信或后处理步骤。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
+!===================================================================================================
+  subroutine lagrange_derivative_3(xnode, fnode, x0, derivativeValue)
+    implicit none
+    real(kind=8), intent(in) :: xnode(3), fnode(3), x0
+    real(kind=8), intent(out) :: derivativeValue
+
+    derivativeValue = &
+        fnode(1)*(2.0d0*x0-xnode(2)-xnode(3))/((xnode(1)-xnode(2))*(xnode(1)-xnode(3))) + &
+        fnode(2)*(2.0d0*x0-xnode(1)-xnode(3))/((xnode(2)-xnode(1))*(xnode(2)-xnode(3))) + &
+        fnode(3)*(2.0d0*x0-xnode(1)-xnode(2))/((xnode(3)-xnode(1))*(xnode(3)-xnode(2)))
+
+    return
+  end subroutine lagrange_derivative_3
+!===================================================================================================
+! lagrange_derivative_3 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===================================================================================================
+
+!===================================================================================================
+! 子程序: integrate_lagrange_3_segment
+! 作用: 执行本子程序对应的初始化、迁移、碰撞、边界、通信或后处理步骤。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
+!===================================================================================================
+  subroutine integrate_lagrange_3_segment(xnode, fnode, xLeft, xRight, integralValue)
+    implicit none
+    real(kind=8), intent(in) :: xnode(3), fnode(3), xLeft, xRight
+    real(kind=8), intent(out) :: integralValue
+    integer(kind=4) :: k, m, n
+    real(kind=8) :: denom, nodeSum, nodeProduct, basisIntegral
+
+    integralValue = 0.0d0
+    do k = 1, 3
+      if(k.EQ.1) then
+        m = 2
+        n = 3
+      elseif(k.EQ.2) then
+        m = 1
+        n = 3
+      else
+        m = 1
+        n = 2
+      endif
+      denom = (xnode(k)-xnode(m))*(xnode(k)-xnode(n))
+      nodeSum = xnode(m) + xnode(n)
+      nodeProduct = xnode(m)*xnode(n)
+      basisIntegral = ((xRight**3-xLeft**3)/3.0d0 - &
+          0.5d0*nodeSum*(xRight**2-xLeft**2) + &
+          nodeProduct*(xRight-xLeft))/denom
+      integralValue = integralValue + fnode(k)*basisIntegral
+    enddo
+
+    return
+  end subroutine integrate_lagrange_3_segment
+!===================================================================================================
+! integrate_lagrange_3_segment 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===================================================================================================
 !===================================================================================================
 
 
 !===================================================================================================
 ! 子程序: enter_data_2d_openacc
 ! 作用: 在主时间推进前把主要数组和常量映射到 OpenACC 设备端。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===================================================================================================
   subroutine enter_data_2d_openacc()
     use openacc
     use commondata
     implicit none
 
-    !$acc enter data copyin(xp,yp,wx,wy,quadSumX,quadSumY,quadSumArea,ex,ey,omega,omegaT)
-    !$acc enter data copyin(stream_ix,stream_iy,stream_wx,stream_wy,stream_x_valid,stream_y_valid)
+    !$acc enter data copyin(xp,yp,quadWidthX,quadWidthY,quadSumX,quadSumY,quadSumArea,ex,ey,omega,omegaT)
+    !$acc enter data copyin(streamInterpIndexX,streamInterpIndexY,streamInterpWeightX, &
+    !$acc& streamInterpWeightY,streamInterpValidX,streamInterpValidY)
     !$acc enter data copyin(u,v,T,rho,f,g,Fx,Fy,Bx_prev,By_prev)
     !$acc enter data create(f_post,g_post)
 #ifdef steadyFlow
@@ -1032,10 +1206,14 @@ close(00)
 #endif
   end subroutine enter_data_2d_openacc
 !===================================================================================================
+! enter_data_2d_openacc 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===================================================================================================
+!===================================================================================================
 
 !===================================================================================================
 ! 子程序: update_host_snapshot_2d_openacc
 ! 作用: 在主机端输出 uvTrho 快照或做 CPU 后处理前，同步宏观场。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===================================================================================================
   subroutine update_host_snapshot_2d_openacc()
     use commondata
@@ -1045,10 +1223,14 @@ close(00)
     !$acc update self(u,v,T,rho)
   end subroutine update_host_snapshot_2d_openacc
 !===================================================================================================
+! update_host_snapshot_2d_openacc 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===================================================================================================
+!===================================================================================================
 
 !===================================================================================================
 ! 子程序: update_host_tecplot_2d_openacc
 ! 作用: Tecplot 主场输出只需要 u、v、T。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===================================================================================================
   subroutine update_host_tecplot_2d_openacc()
     use commondata
@@ -1058,10 +1240,14 @@ close(00)
     !$acc update self(u,v,T)
   end subroutine update_host_tecplot_2d_openacc
 !===================================================================================================
+! update_host_tecplot_2d_openacc 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===================================================================================================
+!===================================================================================================
 
 !===================================================================================================
 ! 子程序: update_host_reload_2d_openacc
 ! 作用: 严格重启文件需要 f/g；EnableUseG 还需要保存历史通量。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===================================================================================================
   subroutine update_host_reload_2d_openacc()
     use commondata
@@ -1074,10 +1260,14 @@ close(00)
 #endif
   end subroutine update_host_reload_2d_openacc
 !===================================================================================================
+! update_host_reload_2d_openacc 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===================================================================================================
+!===================================================================================================
 
 !===================================================================================================
 ! 子程序: exit_data_2d_openacc
 ! 作用: 在计算结束后释放设备端常驻数据。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===================================================================================================
   subroutine exit_data_2d_openacc()
     use commondata
@@ -1087,9 +1277,13 @@ close(00)
     !$acc exit data delete(up,vp,Tp)
 #endif
     !$acc exit data delete(f_post,g_post,u,v,T,rho,f,g,Fx,Fy,Bx_prev,By_prev)
-    !$acc exit data delete(stream_ix,stream_iy,stream_wx,stream_wy,stream_x_valid,stream_y_valid)
-    !$acc exit data delete(xp,yp,wx,wy,quadSumX,quadSumY,quadSumArea,ex,ey,omega,omegaT)
+    !$acc exit data delete(streamInterpIndexX,streamInterpIndexY,streamInterpWeightX, &
+    !$acc& streamInterpWeightY,streamInterpValidX,streamInterpValidY)
+    !$acc exit data delete(xp,yp,quadWidthX,quadWidthY,quadSumX,quadSumY,quadSumArea,ex,ey,omega,omegaT)
   end subroutine exit_data_2d_openacc
+!===================================================================================================
+! exit_data_2d_openacc 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===================================================================================================
 !===================================================================================================
 
 
@@ -1209,29 +1403,30 @@ close(00)
     real(kind=8) :: value
     
     !$acc parallel loop gang vector collapse(2) default(none) &
-    !$acc& present(f,f_post,ex,ey,stream_x_valid,stream_y_valid,stream_ix,stream_iy,stream_wx,stream_wy) &
+    !$acc& present(f,f_post,ex,ey,streamInterpValidX,streamInterpValidY) &
+    !$acc& present(streamInterpIndexX,streamInterpIndexY,streamInterpWeightX,streamInterpWeightY) &
     !$acc& async(1) private(alpha,ii,jj,value)
     do j = 1, ny
         do i = 1, nx
             do alpha = 0, 8
-                if((ex(alpha).EQ.0).AND.stream_y_valid(alpha,j)) then
+                if((ex(alpha).EQ.0).AND.streamInterpValidY(alpha,j)) then
                     value = 0.0d0
                     do jj = 1, 3
-                        value = value + stream_wy(alpha,j,jj)*f_post(i,stream_iy(alpha,j,jj),alpha)
+                        value = value + streamInterpWeightY(alpha,j,jj)*f_post(i,streamInterpIndexY(alpha,j,jj),alpha)
                     enddo
                     f(i,j,alpha) = value
-                elseif((ey(alpha).EQ.0).AND.stream_x_valid(alpha,i)) then
+                elseif((ey(alpha).EQ.0).AND.streamInterpValidX(alpha,i)) then
                     value = 0.0d0
                     do ii = 1, 3
-                        value = value + stream_wx(alpha,i,ii)*f_post(stream_ix(alpha,i,ii),j,alpha)
+                        value = value + streamInterpWeightX(alpha,i,ii)*f_post(streamInterpIndexX(alpha,i,ii),j,alpha)
                     enddo
                     f(i,j,alpha) = value
-                elseif(stream_x_valid(alpha,i).AND.stream_y_valid(alpha,j)) then
+                elseif(streamInterpValidX(alpha,i).AND.streamInterpValidY(alpha,j)) then
                     value = 0.0d0
                     do jj = 1, 3
                         do ii = 1, 3
-                            value = value + stream_wx(alpha,i,ii)*stream_wy(alpha,j,jj)* &
-                                f_post(stream_ix(alpha,i,ii),stream_iy(alpha,j,jj),alpha)
+                            value = value + streamInterpWeightX(alpha,i,ii)*streamInterpWeightY(alpha,j,jj)* &
+                                f_post(streamInterpIndexX(alpha,i,ii),streamInterpIndexY(alpha,j,jj),alpha)
                         enddo
                     enddo
                     f(i,j,alpha) = value
@@ -1319,6 +1514,7 @@ close(00)
 !===================================================================================================
 ! 子程序: macro
 ! 作用: 由流场分布函数恢复 rho、u、v，并加入半步力项速度修正。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===================================================================================================
   subroutine macro()
     use commondata
@@ -1329,12 +1525,17 @@ close(00)
     do j = 1, ny
         do i = 1, nx
             rho(i,j) = f(i,j,0)+f(i,j,1)+f(i,j,2)+f(i,j,3)+f(i,j,4)+f(i,j,5)+f(i,j,6)+f(i,j,7)+f(i,j,8)
-            u(i,j) = ( f(i,j,1)-f(i,j,3)+f(i,j,5)-f(i,j,6)-f(i,j,7)+f(i,j,8)+0.5d0*Fx(i,j) )/rho(i,j)     !含力LBM的半步动量修正：rho*u = Σ f e + 0.5*F，对应Guo forcing的二阶定义
+            ! 含力LBM的半步动量修正: rho*u = sum(f e) + 0.5*F, 对应Guo forcing的二阶定义。
+            u(i,j) = (f(i,j,1)-f(i,j,3)+f(i,j,5)-f(i,j,6)-f(i,j,7)+f(i,j,8) + &
+              0.5d0*Fx(i,j))/rho(i,j)
             v(i,j) = ( f(i,j,2)-f(i,j,4)+f(i,j,5)+f(i,j,6)-f(i,j,7)-f(i,j,8)+0.5d0*Fy(i,j) )/rho(i,j)
         enddo
     enddo
     return
   end subroutine macro
+!===================================================================================================
+! macro 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===================================================================================================
 !===================================================================================================
 
 !===================================================================================================
@@ -1441,29 +1642,30 @@ close(00)
     real(kind=8) :: value
     
     !$acc parallel loop gang vector collapse(2) default(none) &
-    !$acc& present(g,g_post,ex,ey,stream_x_valid,stream_y_valid,stream_ix,stream_iy,stream_wx,stream_wy) &
+    !$acc& present(g,g_post,ex,ey,streamInterpValidX,streamInterpValidY) &
+    !$acc& present(streamInterpIndexX,streamInterpIndexY,streamInterpWeightX,streamInterpWeightY) &
     !$acc& async(1) private(alpha,ii,jj,value)
     do j = 1, ny
         do i = 1, nx
             do alpha = 0, 4
-                if((ex(alpha).EQ.0).AND.stream_y_valid(alpha,j)) then
+                if((ex(alpha).EQ.0).AND.streamInterpValidY(alpha,j)) then
                     value = 0.0d0
                     do jj = 1, 3
-                        value = value + stream_wy(alpha,j,jj)*g_post(i,stream_iy(alpha,j,jj),alpha)
+                        value = value + streamInterpWeightY(alpha,j,jj)*g_post(i,streamInterpIndexY(alpha,j,jj),alpha)
                     enddo
                     g(i,j,alpha) = value
-                elseif((ey(alpha).EQ.0).AND.stream_x_valid(alpha,i)) then
+                elseif((ey(alpha).EQ.0).AND.streamInterpValidX(alpha,i)) then
                     value = 0.0d0
                     do ii = 1, 3
-                        value = value + stream_wx(alpha,i,ii)*g_post(stream_ix(alpha,i,ii),j,alpha)
+                        value = value + streamInterpWeightX(alpha,i,ii)*g_post(streamInterpIndexX(alpha,i,ii),j,alpha)
                     enddo
                     g(i,j,alpha) = value
-                elseif(stream_x_valid(alpha,i).AND.stream_y_valid(alpha,j)) then
+                elseif(streamInterpValidX(alpha,i).AND.streamInterpValidY(alpha,j)) then
                     value = 0.0d0
                     do jj = 1, 3
                         do ii = 1, 3
-                            value = value + stream_wx(alpha,i,ii)*stream_wy(alpha,j,jj)* &
-                                g_post(stream_ix(alpha,i,ii),stream_iy(alpha,j,jj),alpha)
+                            value = value + streamInterpWeightX(alpha,i,ii)*streamInterpWeightY(alpha,j,jj)* &
+                                g_post(streamInterpIndexX(alpha,i,ii),streamInterpIndexY(alpha,j,jj),alpha)
                         enddo
                     enddo
                     g(i,j,alpha) = value
@@ -1597,6 +1799,7 @@ close(00)
 !===================================================================================================
 ! 子程序: reconstruct_macro_from_fg
 ! 作用: 从重启读回的 f/g 重新恢复 rho、u、v 和 T。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===================================================================================================
     subroutine reconstruct_macro_from_fg()
     use commondata
@@ -1648,6 +1851,9 @@ close(00)
     return
     end subroutine reconstruct_macro_from_fg
 !===================================================================================================
+! reconstruct_macro_from_fg 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===================================================================================================
+!===================================================================================================
 ! reconstruct_macro_from_fg end: 重新恢复 rho、u、v 和 T
 !===================================================================================================
 
@@ -1675,11 +1881,13 @@ close(00)
     error5 = 0.0d0
     error6 = 0.0d0
     
-    !$acc parallel loop collapse(2) default(none) present(u,up,v,vp,T,Tp) reduction(+:error1,error2,error5,error6)
+    !$acc parallel loop collapse(2) default(none) present(u,up,v,vp,T,Tp) &
+    !$acc& reduction(+:error1,error2,error5,error6)
     do j = 1, ny
         do i = 1, nx
-            error1 = error1+(u(i,j)-up(i,j))*(u(i,j)-up(i,j))+(v(i,j)-vp(i,j))*(v(i,j)-vp(i,j))
-            error2 = error2+u(i,j)*u(i,j)+v(i,j)*v(i,j)
+            error1 = error1+((u(i,j)-up(i,j))*(u(i,j)-up(i,j)) + &
+                (v(i,j)-vp(i,j))*(v(i,j)-vp(i,j)))
+            error2 = error2+(u(i,j)*u(i,j)+v(i,j)*v(i,j))
                 
             error5 = error5+dABS( T(i,j)-Tp(i,j) )
             error6 = error6+dABS( T(i,j) )
@@ -1716,6 +1924,83 @@ close(00)
     end subroutine check
 !===================================================================================================
 ! check 结束: 计算稳态收敛误差并写出收敛历史。
+!===================================================================================================
+
+!===================================================================================================
+! 子程序: output_steady_monitor
+! 作用: 在 steadyFlow 中按 check 的间隔输出当前误差和瞬时体平均 Nu/Re。
+! 说明: 只做诊断, 不推进 dimensionlessTime, 也不写 Nu_VolAvg/Re_VolAvg 正式采样文件。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
+!===================================================================================================
+    subroutine output_steady_monitor()
+    use commondata
+    implicit none
+    integer(kind=4) :: i, j
+    integer :: monitorUnit
+    real(kind=8) :: NuVolAvg_temp, ReVolAvg_temp
+    real(kind=8) :: NuVolAvg_inst, ReVolAvg_inst
+    real(kind=8) :: areaWeight
+    logical :: monitorFileExists
+    logical, save :: first_monitor_write = .true.
+
+    !$acc wait(1)
+    NuVolAvg_temp = 0.0d0
+#ifdef SideHeatedCell
+    !$acc parallel loop collapse(2) default(none) present(u,T,quadWidthX,quadWidthY) &
+    !$acc& private(areaWeight) reduction(+:NuVolAvg_temp)
+    do j = 1, ny
+        do i = 1, nx
+            areaWeight = quadWidthX(i)*quadWidthY(j)
+            NuVolAvg_temp = NuVolAvg_temp+areaWeight*u(i,j)*(T(i,j)-Tref)
+        enddo
+    enddo
+#endif
+
+#ifdef RayleighBenardCell
+    !$acc parallel loop collapse(2) default(none) present(v,T,quadWidthX,quadWidthY) &
+    !$acc& private(areaWeight) reduction(+:NuVolAvg_temp)
+    do j = 1, ny
+        do i = 1, nx
+            areaWeight = quadWidthX(i)*quadWidthY(j)
+            NuVolAvg_temp = NuVolAvg_temp+areaWeight*v(i,j)*(T(i,j)-Tref)
+        enddo
+    enddo
+#endif
+
+    ReVolAvg_temp = 0.0d0
+    !$acc parallel loop collapse(2) default(none) present(u,v,quadWidthX,quadWidthY) &
+    !$acc& private(areaWeight) reduction(+:ReVolAvg_temp)
+    do j = 1, ny
+        do i = 1, nx
+            areaWeight = quadWidthX(i)*quadWidthY(j)
+            ReVolAvg_temp = ReVolAvg_temp+areaWeight*(u(i,j)*u(i,j)+v(i,j)*v(i,j))
+        enddo
+    enddo
+
+    NuVolAvg_inst = NuVolAvg_temp/quadSumArea*lengthUnit/diffusivity+1.0d0
+    ReVolAvg_inst = dsqrt(ReVolAvg_temp/quadSumArea)*lengthUnit/viscosity
+
+    if(first_monitor_write) then
+        inquire(file="steady_monitor.dat", exist=monitorFileExists)
+        if((loadInitField.EQ.0).OR.(.not.monitorFileExists)) then
+            open(newunit=monitorUnit,file="steady_monitor.dat",status="replace",action="write")
+            write(monitorUnit,'(A)') "# itc errorU errorT NuVolAvg ReVolAvg"
+        else
+            open(newunit=monitorUnit,file="steady_monitor.dat",status="old",position="append",action="write")
+        endif
+        first_monitor_write = .false.
+    else
+        open(newunit=monitorUnit,file="steady_monitor.dat",status="unknown",position="append",action="write")
+    endif
+
+    write(monitorUnit,'(I12,4(1X,ES24.16E3))') restartItcOffset+itc, &
+        real(errorU,kind=8), real(errorT,kind=8), real(NuVolAvg_inst,kind=8), real(ReVolAvg_inst,kind=8)
+    close(monitorUnit)
+
+    return
+    end subroutine output_steady_monitor
+!===================================================================================================
+! output_steady_monitor 结束: 已输出 steadyFlow 诊断时间序列。
 !===================================================================================================
 #endif
 
@@ -1826,6 +2111,7 @@ end subroutine append_convergence_master_tecplot
 !===================================================================================================
 ! 子程序: output_SnapshotFile
 ! 作用: 输出 u、v、T、rho 的二进制快照文件，供后处理分析使用。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===================================================================================================
   subroutine output_SnapshotFile()                                   !输出 uvTrho 二进制快照
     use commondata                                                   !用于后处理快照
@@ -1859,6 +2145,35 @@ end subroutine append_convergence_master_tecplot
   end subroutine output_SnapshotFile
 !===================================================================================================
 ! output_SnapshotFile 结束: 输出 u、v、T、rho 的二进制快照文件。
+!===================================================================================================
+
+!===================================================================================================
+! 子程序: output_SnapshotMeshFile
+! 作用: 输出所有快照共用的非均匀网格坐标。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
+!===================================================================================================
+  subroutine output_SnapshotMeshFile()
+    use commondata
+    implicit none
+    integer(kind=4) :: i, j
+
+    open(unit=07,file=trim(snapshotFilePrefix)//"-mesh.dat",status="replace",action="write")
+    write(07,'(A)') "# ISLBM nonuniform mesh coordinates for snapshot binary files"
+    write(07,'(A,1X,I0,1X,I0)') "nx_ny", nx, ny
+    write(07,'(A)') "# xp"
+    do i = 1, nx
+        write(07,'(I8,1X,ES24.16E3)') i, real(xp(i),kind=8)
+    enddo
+    write(07,'(A)') "# yp"
+    do j = 1, ny
+        write(07,'(I8,1X,ES24.16E3)') j, real(yp(j),kind=8)
+    enddo
+    close(07)
+
+    return
+  end subroutine output_SnapshotMeshFile
+!===================================================================================================
+! output_SnapshotMeshFile 结束: 已输出所有快照共用的非均匀坐标。
 !===================================================================================================
 
 
@@ -1898,11 +2213,6 @@ end subroutine append_convergence_master_tecplot
     close(05)
     call write_reload_metadata(trim(filename))
     
-    open(unit=00,file=trim(settingsFile),status='unknown',position='append')
-    write(00,*) "Backup f/g restart state to: ", trim(reloadFilePrefix), "-", trim(filename),".bin"
-    write(00,*) "Backup restart metadata to: ", trim(reloadFilePrefix), "-latest.meta"
-    close(00)
-    
     return
   end subroutine output_ReloadFile
 !===================================================================================================
@@ -1913,6 +2223,7 @@ end subroutine append_convergence_master_tecplot
 !===================================================================================================
 ! 子程序: write_reload_metadata
 ! 作用: 覆盖写出最新 reload 续算账本，恢复累计步数、t_ff、输出编号和最新 .bin 文件名。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===================================================================================================
   subroutine write_reload_metadata(filename)
     use commondata
@@ -1946,11 +2257,15 @@ end subroutine append_convergence_master_tecplot
     return
   end subroutine write_reload_metadata
 !===================================================================================================
+! write_reload_metadata 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===================================================================================================
+!===================================================================================================
 
 
 !===================================================================================================
 ! 子程序: read_reload_metadata
 ! 作用: 优先读取 latest .meta；若没有，则根据手工编号做保守推断。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===================================================================================================
   subroutine read_reload_metadata(reloadFileName)
     use commondata
@@ -2074,12 +2389,16 @@ end subroutine append_convergence_master_tecplot
     return
   end subroutine read_reload_metadata
 !===================================================================================================
+! read_reload_metadata 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===================================================================================================
+!===================================================================================================
 
 
 !===================================================================================================
 ! 子程序: infer_reload_offsets_without_metadata
 ! 作用: 没有 latest .meta 时，只能根据文件编号和当前手工参数推断。
 ! 根据文件名编号和当前参数“猜一个合理值”，保证续算的时间/步数是连续的。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===================================================================================================
   subroutine infer_reload_offsets_without_metadata()
     use commondata
@@ -2103,6 +2422,9 @@ end subroutine append_convergence_master_tecplot
 
     return
   end subroutine infer_reload_offsets_without_metadata
+!===================================================================================================
+! infer_reload_offsets_without_metadata 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===================================================================================================
 !===================================================================================================
 
     
@@ -2204,7 +2526,8 @@ end subroutine append_convergence_master_tecplot
     write(41) 0
     write(41) eohMarker
 
-    !----zone ------------------------------------------------------------ !再写一次 299.0：Tecplot 规范里“zone header之后的数据描述块”会以 zone marker 开始。
+    !----zone ------------------------------------------------------------
+    ! 再写一次 299.0: Tecplot 规范里 zone header 之后的数据描述块会以 zone marker 开始。
     write(41) zoneMarker
 
     !--------variable data format, 1=Float, 2=Double, 3=LongInt,4=ShortInt, 5=Byte, 6=Bit  !每个变量的数据格式（这里都是 float）,双精度就是2
@@ -2275,6 +2598,7 @@ end subroutine append_convergence_master_tecplot
 !===================================================================================================
 ! 子程序: calNuRe
 ! 作用: 计算体平均 Nu / Re，并把时间序列缓存到数组中。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===================================================================================================
   subroutine calNuRe()
     use commondata
@@ -2323,20 +2647,20 @@ end subroutine append_convergence_master_tecplot
     
     NuVolAvg_temp = 0.0d0    
 #ifdef SideHeatedCell  
-    !$acc parallel loop collapse(2) default(none) present(u,T,wx,wy) private(areaWeight) reduction(+:NuVolAvg_temp)
+    !$acc parallel loop collapse(2) default(none) present(u,T,quadWidthX,quadWidthY) private(areaWeight) reduction(+:NuVolAvg_temp)
     do j = 1, ny
         do i = 1, nx
-            areaWeight = wx(i)*wy(j)
+            areaWeight = quadWidthX(i)*quadWidthY(j)
             NuVolAvg_temp = NuVolAvg_temp+areaWeight*u(i,j)*(T(i,j)-Tref)     !非均匀网格 midpoint-rule 加权对流热通量
         enddo
     enddo
 #endif
 
 #ifdef RayleighBenardCell  
-    !$acc parallel loop collapse(2) default(none) present(v,T,wx,wy) private(areaWeight) reduction(+:NuVolAvg_temp)
+    !$acc parallel loop collapse(2) default(none) present(v,T,quadWidthX,quadWidthY) private(areaWeight) reduction(+:NuVolAvg_temp)
     do j = 1, ny
         do i = 1, nx
-            areaWeight = wx(i)*wy(j)
+            areaWeight = quadWidthX(i)*quadWidthY(j)
             NuVolAvg_temp = NuVolAvg_temp+areaWeight*v(i,j)*(T(i,j)-Tref)     !非均匀网格 midpoint-rule 加权对流热通量
         enddo
     enddo
@@ -2356,14 +2680,14 @@ end subroutine append_convergence_master_tecplot
     close(01)
 
     ReVolAvg_temp = 0.0d0
-    !$acc parallel loop collapse(2) default(none) present(u,v,wx,wy) private(areaWeight) reduction(+:ReVolAvg_temp)
+    !$acc parallel loop collapse(2) default(none) present(u,v,quadWidthX,quadWidthY) private(areaWeight) reduction(+:ReVolAvg_temp)
     do j = 1, ny
         do i = 1, nx 
-            areaWeight = wx(i)*wy(j)
-            ReVolAvg_temp = ReVolAvg_temp+areaWeight*dsqrt(u(i,j)*u(i,j)+v(i,j)*v(i,j))
+            areaWeight = quadWidthX(i)*quadWidthY(j)
+            ReVolAvg_temp = ReVolAvg_temp+areaWeight*(u(i,j)*u(i,j)+v(i,j)*v(i,j))
         enddo
     enddo
-    ReVolAvg(dimensionlessTime) = ReVolAvg_temp/quadSumArea*lengthUnit/viscosity    !ISLBM全域体平均 Reynolds 数：速度模非均匀加权平均
+    ReVolAvg(dimensionlessTime) = dsqrt(ReVolAvg_temp/quadSumArea)*lengthUnit/viscosity    !ISLBM全域体平均 Reynolds 数：速度RMS非均匀加权平均
 
 
     if((first_nure_write).AND.(loadInitField.EQ.0)) then
@@ -2387,8 +2711,9 @@ end subroutine append_convergence_master_tecplot
 
 #ifdef unsteadyFlow
 !===================================================================================================
-! Subroutine: output_unsteady_NuRe_postprocess
-! Purpose: rebuild unsteady Nu/Re series, running means, and window averages from full .dat history.
+! 子程序: output_unsteady_NuRe_postprocess
+! 作用: 从完整 Nu/Re 历史文件重建非稳态时间序列、运行平均值和分段窗口平均值。
+! 用途: 非稳态算例结束后用于输出后处理统计文件。
 !===================================================================================================
   subroutine output_unsteady_NuRe_postprocess()
     use commondata
@@ -2571,6 +2896,9 @@ end subroutine append_convergence_master_tecplot
 
   end subroutine output_unsteady_NuRe_postprocess
 !===================================================================================================
+! output_unsteady_NuRe_postprocess 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===================================================================================================
+!===================================================================================================
 #endif
 
 
@@ -2584,37 +2912,36 @@ end subroutine append_convergence_master_tecplot
     use commondata
     implicit none
     integer(kind=4) :: i, j
-    real(kind=8) :: dx, dT, qx, sum_qx
+    real(kind=8) :: dTdx, qx, sum_qx, areaWeight
+    real(kind=8) :: xnode(3), fnode(3)
     real(kind=8) :: deltaT, coef
 
-    ! 网格间距
-    dx = 1.0d0 / lengthUnit
     deltaT = Thot - Tcold
     coef   = velocityScaleCompare
 
     sum_qx = 0.0d0
 
-    !$acc parallel loop collapse(2) default(none) present(u,T) reduction(+:sum_qx) private(dT,qx)
     do j = 1, ny
       do i = 1, nx
 
-        if (i == 1) then
-          ! i=1: 节点位于 x=dx/2，利用 (wall, i=1, i=2) 二次插值给出 dT/dx在x=dx/2 的二阶近似（边界特别处理）
-          dT = (-3.0d0*T(1,j) - T(2,j) + 4.0d0*Thot ) / (3.0d0*dx)
-        elseif (i == nx) then
-          ! i=nx: 节点位于 x=L-dx/2，利用 (i=nx-1, i=nx, wall) 二次插值给出 dT/dx在x=L-dx/2 的二阶近似（边界特别处理）
-          dT = ( -4.0d0*Tcold + 3.0d0*T(nx,j) + T(nx-1,j) ) / (3.0d0*dx)
+        if(i.EQ.1) then
+            xnode = (/ xp(1), xp(2), xp(3) /)
+            fnode = (/ T(1,j), T(2,j), T(3,j) /)
+        elseif(i.EQ.nx) then
+            xnode = (/ xp(nx-2), xp(nx-1), xp(nx) /)
+            fnode = (/ T(nx-2,j), T(nx-1,j), T(nx,j) /)
         else
-          ! 1<i<nx: 中心差分
-          dT = ( T(i-1,j) - T(i+1,j) ) / (2.0d0*dx)
+            xnode = (/ xp(i-1), xp(i), xp(i+1) /)
+            fnode = (/ T(i-1,j), T(i,j), T(i+1,j) /)
         endif
-
-        qx = coef*u(i,j)*(T(i,j)-Tref) + dT
-        sum_qx = sum_qx + qx
+        call lagrange_derivative_3(xnode, fnode, xp(i), dTdx)
+        qx = coef*u(i,j)*(T(i,j)-Tref) - dTdx
+        areaWeight = quadWidthX(i)*quadWidthY(j)
+        sum_qx = sum_qx + areaWeight*qx
 
       enddo
     enddo
-    Nu_global = (sum_qx / dble(nx*ny)) / deltaT
+    Nu_global = (sum_qx / quadSumArea) / deltaT
 
     ! 屏幕输出
     write(*,'(a,1x,ES24.16E3)') "Nu_global =", real(Nu_global,kind=8)
@@ -2641,33 +2968,26 @@ end subroutine append_convergence_master_tecplot
   subroutine SideHeatedcalc_Nu_wall_avg()
     use commondata
     implicit none
-    integer(kind=4) :: j, iMid
+    integer(kind=4) :: j
     integer(kind=4) :: jmax, jmin
-    real(kind=8) :: dx, dy, deltaT,coef
+    integer(kind=4) :: midIndex(3)
+    real(kind=8) :: deltaT,coef
     real(kind=8) :: qx_wall, sum_hot, sum_cold, sum_mid
-    real(kind=8) :: denom
+    real(kind=8) :: u_mid, T_mid, dTdx_mid
+    real(kind=8) :: xnode(3), fnode(3)
+    real(kind=8) :: xmidNode(3), xmidWeight(3)
+    logical :: midStencilValid
     real(kind=8) :: Nu_left(1:ny) 
-    real(kind=8) :: f_m2,f_m1,f_0,f_p1,f_p2
     !------------------------------------------------------------
     ! 5-point least-squares parabola fit (general, can be one-sided)
     !------------------------------------------------------------
-    integer(kind=4) :: k,iL,iR
+    integer(kind=4) :: k
     integer(kind=4) :: jj(5)
-    real(kind=8) :: xk(5), fk(5), yk(5)
-    real(kind=8) :: S0, S1, S2, S3, S4
-    real(kind=8) :: F0, F1, F2
-    real(kind=8) :: D, Da, Db, Dc
-    real(kind=8) :: a, b, c
-    real(kind=8) :: delta, fstar, ystar
-    real(kind=8) :: xmin, xmax
-    real(kind=8), parameter :: epsD = 1.0d-20, epsA = 1.0d-14
+    real(kind=8) :: fk(5), yk(5)
+    real(kind=8) :: fstar, ystar
     real(kind=8) :: Nu_left_ext(0:ny+1)
-    real(kind=8) :: T_wb, T_wt     ! wall temperature at y=0 and y=1 on i=1 vertical line
-    real(kind=8) :: yfit(4), Tfit(4)
 
 
-    dx = 1.0d0 / lengthUnit
-    dy = 1.0d0 / lengthUnit
     deltaT = Thot - Tcold
     coef   = velocityScaleCompare
 
@@ -2678,39 +2998,20 @@ end subroutine append_convergence_master_tecplot
     sum_hot = 0.0d0
     do j = 1, ny
       ! 壁面导热通量：qx(x=0,j)
-      qx_wall = (8.0d0*Thot - 9.0d0*T(1,j) + T(2,j)) / (3.0d0*dx)
+      xnode = (/ 0.0d0, xp(1), xp(2) /)
+      fnode = (/ Thot, T(1,j), T(2,j) /)
+      call lagrange_derivative_3(xnode, fnode, 0.0d0, qx_wall)
+      qx_wall = -qx_wall
       Nu_left(j)= qx_wall / deltaT
-      sum_hot   = sum_hot + Nu_left(j)
+      sum_hot   = sum_hot + Nu_left(j)*quadWidthY(j)
     enddo
-    Nu_hot = sum_hot / dble(ny)
+    Nu_hot = sum_hot / quadSumY
 
-    ! 计算左壁面上下两个角点的热通量 
-    ! 先把中间 j=1..ny 的值复制过来
+    ! 角点没有唯一的壁面法向Nu定义; 这里只把相邻壁面Nu复制到扩展数组,
+    ! 用于后面的极值搜索和五点拟合, 避免重新引入均匀网格角点外推公式。
     Nu_left_ext(1:ny) = Nu_left(1:ny)
-
-    ! ---------- 左下角：在 i=1 这条竖线上，用 j=1..4 拟合得到 y=0 的温度 ----------
-    yfit(1) = yp(1);  Tfit(1) = T(1,1)
-    yfit(2) = yp(2);  Tfit(2) = T(1,2)
-    yfit(3) = yp(3);  Tfit(3) = T(1,3)
-    yfit(4) = yp(4);  Tfit(4) = T(1,4)
-
-    call fit_adiabatic_wall_T4(0.0d0, yfit, Tfit, T_wb)   ! 得到 T(y=0) = T_wb,拟合绝热壁面温度，用4个点
-
-    Nu_left_ext(0) = ( 2.0d0 * (Thot- T_wb) / dx ) / deltaT   ! 角点局部 Nu
-
-    ! ---------- 左上角：在 i=1 这条竖线上，用 j=ny-3..ny 拟合得到 y=1 的温度 ----------
-    yfit(1) = yp(ny-3);  Tfit(1) = T(1,ny-3)
-    yfit(2) = yp(ny-2);  Tfit(2) = T(1,ny-2)
-    yfit(3) = yp(ny-1);  Tfit(3) = T(1,ny-1)
-    yfit(4) = yp(ny  );  Tfit(4) = T(1,ny  )
-
-    call fit_adiabatic_wall_T4(yp(ny+1), yfit, Tfit, T_wt)   ! 得到顶壁温度 T(y=yp(ny+1))
-
-    Nu_left_ext(ny+1) = ( 2.0d0 * (Thot-T_wt) / dx ) / deltaT  ! 角点局部 Nu
-
-
-
-
+    Nu_left_ext(0) = Nu_left(1)
+    Nu_left_ext(ny+1) = Nu_left(ny)
 
     ! 网格上先找最大/最小
     jmax = 0
@@ -2776,33 +3077,36 @@ end subroutine append_convergence_master_tecplot
     ! (2) 右侧冷壁平均 Nu_cold
     sum_cold = 0.0d0
     do j = 1, ny
-      qx_wall = (-8.0d0*Tcold + 9.0d0*T(nx,j) - T(nx-1,j)) / (3.0d0*dx)
-      sum_cold = sum_cold + qx_wall/ deltaT
+      xnode = (/ xp(nx-1), xp(nx), 1.0d0 /)
+      fnode = (/ T(nx-1,j), T(nx,j), Tcold /)
+      call lagrange_derivative_3(xnode, fnode, 1.0d0, qx_wall)
+      qx_wall = -qx_wall
+      sum_cold = sum_cold + qx_wall/deltaT*quadWidthY(j)
     enddo
-    Nu_cold = (sum_cold / dble(ny))
+    Nu_cold = sum_cold / quadSumY
 
     !-----------------------------
     ! (3) 竖直中线 x=1/2 的平均 Nu_middle
     sum_mid = 0.0d0
 
-    if (mod(nx,2) == 1) then
-      iMid = (nx + 1)/2
-
-      do j = 1, ny
-        sum_mid = sum_mid + ( coef*u(iMid,j)*(T(iMid,j)-Tref) + (T(iMid-1,j)-T(iMid+1,j))/(2.0d0*dx) ) / deltaT
-      enddo
-
-    else
-      iL = nx/2
-      iR = iL + 1
-
-      do j = 1, ny
-        sum_mid = sum_mid + (coef*( 0.5d0*( u(iL,j)*(T(iL,j)-Tref) + u(iR,j)*(T(iR,j)-Tref) )) &
-        + (T(iL,j)-T(iR,j))/dx )/ deltaT
-      enddo
+    call build_lagrange_stencil_1d(nx, xp(1:nx), 0.5d0, midIndex, xmidWeight, midStencilValid)
+    if(.not.midStencilValid) then
+      write(*,*) "Error: x=0.5 is outside ISLBM x nodes in SideHeatedcalc_Nu_wall_avg"
+      stop
     endif
+    xmidNode = (/ xp(midIndex(1)), xp(midIndex(2)), xp(midIndex(3)) /)
 
-    Nu_middle = (sum_mid / dble(ny))
+    do j = 1, ny
+      u_mid = xmidWeight(1)*u(midIndex(1),j) + xmidWeight(2)*u(midIndex(2),j) + &
+        xmidWeight(3)*u(midIndex(3),j)
+      T_mid = xmidWeight(1)*T(midIndex(1),j) + xmidWeight(2)*T(midIndex(2),j) + &
+        xmidWeight(3)*T(midIndex(3),j)
+      fnode = (/ T(midIndex(1),j), T(midIndex(2),j), T(midIndex(3),j) /)
+      call lagrange_derivative_3(xmidNode, fnode, 0.5d0, dTdx_mid)
+      sum_mid = sum_mid + (coef*u_mid*(T_mid-Tref) - dTdx_mid)/deltaT*quadWidthY(j)
+    enddo
+
+    Nu_middle = sum_mid / quadSumY
 
     !-----------------------------
     ! 输出：屏幕 + 日志
@@ -2972,13 +3276,14 @@ end subroutine append_convergence_master_tecplot
     use commondata
     implicit none
     integer(kind=4) :: j, k
-    integer(kind=4) :: iMid, iL, iR
+    integer(kind=4) :: midIndex(3)
     integer(kind=4) :: j0
     integer(kind=4) :: jj(5)
     real(kind=8) :: uline(1:ny)
     real(kind=8) :: s(5), fu(5)
     real(kind=8) :: umax_grid, umax_fit, y_fit
-    real(kind=8) :: xmid
+    real(kind=8) :: xmid, xmidWeight(3)
+    logical :: midStencilValid
     character(len=24) :: ctime, string
     integer(kind=4) :: time
     real(kind=8) :: coef
@@ -2986,20 +3291,16 @@ end subroutine append_convergence_master_tecplot
     coef = velocityScaleCompare
 
     ! ---- (1) 构造中线剖面 u(x=1/2, y_j) ----
-    if (mod(nx,2) == 1) then
-      iMid = (nx + 1)/2
-      xmid = xp(iMid)
-      do j = 1, ny
-        uline(j) = u(iMid,j)
-      enddo
-    else
-      iL = nx/2
-      iR = iL + 1
-      xmid = 0.5d0*(xp(iL) + xp(iR))
-      do j = 1, ny
-        uline(j) = 0.5d0*(u(iL,j) + u(iR,j))
-      enddo
+    xmid = 0.5d0
+    call build_lagrange_stencil_1d(nx, xp(1:nx), xmid, midIndex, xmidWeight, midStencilValid)
+    if(.not.midStencilValid) then
+      write(*,*) "Error: xmid is outside ISLBM x nodes in SideHeatedcalc_umid_max"
+      stop
     endif
+    do j = 1, ny
+      uline(j) = xmidWeight(1)*u(midIndex(1),j) + xmidWeight(2)*u(midIndex(2),j) + &
+        xmidWeight(3)*u(midIndex(3),j)
+    enddo
 
     ! ---- (2) 先找网格最大值点 j0 ----
     j0 = 1
@@ -3058,13 +3359,14 @@ end subroutine append_convergence_master_tecplot
     use commondata
     implicit none
     integer(kind=4) :: i, k
-    integer(kind=4) :: jMid, jB, jT
+    integer(kind=4) :: midIndex(3)
     integer(kind=4) :: i0
     integer(kind=4) :: ii(5)
     real(kind=8) :: vline(1:nx)
     real(kind=8) :: s(5), fv(5)
     real(kind=8) :: vmax_grid, vmax_fit, x_fit
-    real(kind=8) :: ymid
+    real(kind=8) :: ymid, ymidWeight(3)
+    logical :: midStencilValid
     character(len=24) :: ctime, string
     integer(kind=4) :: time
     real(kind=8) :: coef
@@ -3072,20 +3374,16 @@ end subroutine append_convergence_master_tecplot
     coef = velocityScaleCompare
 
     ! ---- (1) 构造中线剖面 v(x_i, y=1/2) ----
-    if (mod(ny,2) == 1) then
-      jMid = (ny + 1)/2
-      ymid = yp(jMid)
-      do i = 1, nx
-        vline(i) = v(i,jMid)
-      enddo
-    else
-      jB = ny/2
-      jT = jB + 1
-      ymid = 0.5d0*(yp(jB) + yp(jT))
-      do i = 1, nx
-        vline(i) = 0.5d0*(v(i,jB) + v(i,jT))
-      enddo
+    ymid = 0.5d0
+    call build_lagrange_stencil_1d(ny, yp(1:ny), ymid, midIndex, ymidWeight, midStencilValid)
+    if(.not.midStencilValid) then
+      write(*,*) "Error: ymid is outside ISLBM y nodes in SideHeatedcalc_vmid_max"
+      stop
     endif
+    do i = 1, nx
+      vline(i) = ymidWeight(1)*v(i,midIndex(1)) + ymidWeight(2)*v(i,midIndex(2)) + &
+        ymidWeight(3)*v(i,midIndex(3))
+    enddo
 
     ! ---- (2) 先找网格最大值点 i0 ----
     i0 = 1
@@ -3145,37 +3443,37 @@ subroutine RBcalc_Nu_global()
   use commondata
   implicit none
   integer(kind=4) :: i, j
-  real(kind=8) :: dy, dTdy, qy, sum_qy
+  real(kind=8) :: dTdy, qy, sum_qy, areaWeight
+  real(kind=8) :: ynode(3), fnode(3)
   real(kind=8) :: deltaT, coef
 
-  dy     = 1.0d0 / lengthUnit
   deltaT = Thot - Tcold
   coef   = velocityScaleCompare
 
   sum_qy = 0.0d0
 
-  !$acc parallel loop collapse(2) default(none) present(v,T) reduction(+:sum_qy) private(dTdy,qy)
   do j = 1, ny
     do i = 1, nx
 
-      if (j == 1) then
-        ! y=dy/2：用 (wall, j=1, j=2) 二次插值给 dT/dy 的二阶近似
-        dTdy = ( 3.0d0*T(i,1) + T(i,2) - 4.0d0*Thot ) / (3.0d0*dy)
-
-      elseif (j == ny) then
-        ! y=1-dy/2：用 (j=ny-1, j=ny, wall)
-        dTdy = ( 4.0d0*Tcold - 3.0d0*T(i,ny) - T(i,ny-1) ) / (3.0d0*dy)
-
+      if(j.EQ.1) then
+        ynode = (/ yp(1), yp(2), yp(3) /)
+        fnode = (/ T(i,1), T(i,2), T(i,3) /)
+      elseif(j.EQ.ny) then
+        ynode = (/ yp(ny-2), yp(ny-1), yp(ny) /)
+        fnode = (/ T(i,ny-2), T(i,ny-1), T(i,ny) /)
       else
-        dTdy = ( T(i,j+1) - T(i,j-1) ) / (2.0d0*dy)
+        ynode = (/ yp(j-1), yp(j), yp(j+1) /)
+        fnode = (/ T(i,j-1), T(i,j), T(i,j+1) /)
       endif
+      call lagrange_derivative_3(ynode, fnode, yp(j), dTdy)
 
       qy = coef * v(i,j) * (T(i,j) - Tref) - dTdy
-      sum_qy = sum_qy + qy
+      areaWeight = quadWidthX(i)*quadWidthY(j)
+      sum_qy = sum_qy + areaWeight*qy
 
     enddo
   enddo
-  Nu_global = (sum_qy / dble(nx*ny)) / deltaT
+  Nu_global = (sum_qy / quadSumArea) / deltaT
 
   write(*,'(a,1x,ES24.16E3)') "Nu_global =", real(Nu_global,kind=8)
   open(unit=00,file=trim(settingsFile),status="unknown",position="append")
@@ -3199,19 +3497,21 @@ subroutine RBcalc_Nu_wall_avg()
   implicit none
   integer(kind=4) :: i, k
   integer(kind=4) :: imax, imin
-  integer(kind=4) :: jMid, jB, jT
+  integer(kind=4) :: midIndex(3)
   integer(kind=4) :: ii(5)
-  real(kind=8) :: dx, dy, deltaT
+  real(kind=8) :: deltaT
   real(kind=8) :: qy_wall, sum_hot, sum_cold, sum_mid, coef
+  real(kind=8) :: v_mid, T_mid, dTdy_mid
   real(kind=8), dimension(1:nx) :: Nu_bot
   real(kind=8), dimension(0:nx+1) :: Nu_bot_ext
-  real(kind=8) :: xfit(4), Tfit(4), T_wl, T_wr
+  real(kind=8) :: xfit(4), Tfit(4), T_wl, T_wr, T_wl2, T_wr2
   real(kind=8) :: xk(5), fk(5)
+  real(kind=8) :: ynode(3), fnode(3)
+  real(kind=8) :: ymidNode(3), ymidWeight(3)
   real(kind=8) :: fstar, xstar
+  logical :: midStencilValid
 
 
-  dx     = 1.0d0 / lengthUnit
-  dy     = 1.0d0 / lengthUnit
   deltaT = Thot - Tcold
   coef   = velocityScaleCompare
 
@@ -3219,32 +3519,50 @@ subroutine RBcalc_Nu_wall_avg()
   ! (1) 底部热壁平均 Nu_hot（不含角点）
   sum_hot = 0.0d0
   do i = 1, nx
-    qy_wall   = (8.0d0*Thot - 9.0d0*T(i,1) + T(i,2)) / (3.0d0*dy)
+    ynode = (/ 0.0d0, yp(1), yp(2) /)
+    fnode = (/ Thot, T(i,1), T(i,2) /)
+    call lagrange_derivative_3(ynode, fnode, 0.0d0, qy_wall)
+    qy_wall = -qy_wall
     Nu_bot(i)= qy_wall / deltaT
-    sum_hot  = sum_hot + Nu_bot(i)
+    sum_hot  = sum_hot + Nu_bot(i)*quadWidthX(i)
   enddo
-  Nu_hot = sum_hot / dble(nx)
+  Nu_hot = sum_hot / quadSumX
 
   !-----------------------------
-  ! (1.1) 角点扩展：用侧壁绝热（Neumann）4点拟合得到 x=0 与 x=1 处 y=dy/2 的温度
-  ! 左下角附近：i=1..4, j=1
+  ! (1.1) 角点扩展：用侧壁绝热（Neumann）4点拟合得到 x=0 与 x=1 处近壁温度
+  ! 左下角附近：i=1..4, j=1 和 j=2
   xfit(1)=xp(1);  Tfit(1)=T(1,1)
   xfit(2)=xp(2);  Tfit(2)=T(2,1)
   xfit(3)=xp(3);  Tfit(3)=T(3,1)
   xfit(4)=xp(4);  Tfit(4)=T(4,1)
-  call fit_adiabatic_wall_T4(0.0d0, xfit, Tfit, T_wl)   ! 估计 T(x=0, y=dy/2)
+  call fit_adiabatic_wall_T4(0.0d0, xfit, Tfit, T_wl)
+  xfit(1)=xp(1);  Tfit(1)=T(1,2)
+  xfit(2)=xp(2);  Tfit(2)=T(2,2)
+  xfit(3)=xp(3);  Tfit(3)=T(3,2)
+  xfit(4)=xp(4);  Tfit(4)=T(4,2)
+  call fit_adiabatic_wall_T4(0.0d0, xfit, Tfit, T_wl2)
 
-  ! 右下角附近：i=nx-3..nx, j=1
+  ! 右下角附近：i=nx-3..nx, j=1 和 j=2
   xfit(1)=xp(nx-3);  Tfit(1)=T(nx-3,1)
   xfit(2)=xp(nx-2);  Tfit(2)=T(nx-2,1)
   xfit(3)=xp(nx-1);  Tfit(3)=T(nx-1,1)
   xfit(4)=xp(nx  );  Tfit(4)=T(nx  ,1)
-  call fit_adiabatic_wall_T4(xp(nx+1), xfit, Tfit, T_wr)   ! 估计 T(x=xp(nx+1), y=dy/2)
+  call fit_adiabatic_wall_T4(1.0d0, xfit, Tfit, T_wr)
+  xfit(1)=xp(nx-3);  Tfit(1)=T(nx-3,2)
+  xfit(2)=xp(nx-2);  Tfit(2)=T(nx-2,2)
+  xfit(3)=xp(nx-1);  Tfit(3)=T(nx-1,2)
+  xfit(4)=xp(nx  );  Tfit(4)=T(nx  ,2)
+  call fit_adiabatic_wall_T4(1.0d0, xfit, Tfit, T_wr2)
 
   ! 组装扩展数组：角点只用于找 max/min 与拟合
   Nu_bot_ext(1:nx) = Nu_bot(1:nx)
-  Nu_bot_ext(0)    = ( 2.0d0 * (Thot - T_wl) / dy ) / deltaT
-  Nu_bot_ext(nx+1) = ( 2.0d0 * (Thot - T_wr) / dy ) / deltaT
+  ynode = (/ 0.0d0, yp(1), yp(2) /)
+  fnode = (/ Thot, T_wl, T_wl2 /)
+  call lagrange_derivative_3(ynode, fnode, 0.0d0, qy_wall)
+  Nu_bot_ext(0) = -qy_wall / deltaT
+  fnode = (/ Thot, T_wr, T_wr2 /)
+  call lagrange_derivative_3(ynode, fnode, 0.0d0, qy_wall)
+  Nu_bot_ext(nx+1) = -qy_wall / deltaT
 
   !-----------------------------
   ! (1.2) 网格上找 Numax/Numin（含角点 0 与 nx+1）
@@ -3306,33 +3624,36 @@ subroutine RBcalc_Nu_wall_avg()
   ! (2) 顶部冷壁平均 Nu_cold（不含角点）
   sum_cold = 0.0d0
   do i = 1, nx
-    qy_wall = (-8.0d0*Tcold + 9.0d0*T(i,ny) - T(i,ny-1)) / (3.0d0*dy)
-    sum_cold = sum_cold + qy_wall / deltaT
+    ynode = (/ yp(ny-1), yp(ny), 1.0d0 /)
+    fnode = (/ T(i,ny-1), T(i,ny), Tcold /)
+    call lagrange_derivative_3(ynode, fnode, 1.0d0, qy_wall)
+    qy_wall = -qy_wall
+    sum_cold = sum_cold + qy_wall/deltaT*quadWidthX(i)
   enddo
-  Nu_cold = sum_cold / dble(nx)
+  Nu_cold = sum_cold / quadSumX
 
   !-----------------------------
-  ! 中线的 Nusselt 数
+  ! 中线的 Nusselt 数：在物理中线 y=0.5 上插值。
   sum_mid = 0.0d0
 
-  if (mod(ny,2) == 1) then
-    jMid = (ny + 1)/2
-
-    do i = 1, nx
-      sum_mid = sum_mid + ( coef*v(i,jMid)*(T(i,jMid)-Tref) - (T(i,jMid+1)-T(i,jMid-1))/(2.0d0*dy) ) / deltaT
-    enddo
-
-  else
-    jB = ny/2
-    jT = jB + 1
-
-    do i = 1, nx
-      sum_mid = sum_mid + (coef*( 0.5d0*( v(i,jB)*(T(i,jB)-Tref) + v(i,jT)*(T(i,jT)-Tref) )) &
-      + (T(i,jB)-T(i,jT))/dy ) / deltaT
-    enddo
+  call build_lagrange_stencil_1d(ny, yp(1:ny), 0.5d0, midIndex, ymidWeight, midStencilValid)
+  if(.not.midStencilValid) then
+    write(*,*) "Error: y=0.5 is outside ISLBM y nodes in RBcalc_Nu_wall_avg"
+    stop
   endif
+  ymidNode = (/ yp(midIndex(1)), yp(midIndex(2)), yp(midIndex(3)) /)
 
-  Nu_middle = sum_mid / dble(nx)
+  do i = 1, nx
+    v_mid = ymidWeight(1)*v(i,midIndex(1)) + ymidWeight(2)*v(i,midIndex(2)) + &
+      ymidWeight(3)*v(i,midIndex(3))
+    T_mid = ymidWeight(1)*T(i,midIndex(1)) + ymidWeight(2)*T(i,midIndex(2)) + &
+      ymidWeight(3)*T(i,midIndex(3))
+    fnode = (/ T(i,midIndex(1)), T(i,midIndex(2)), T(i,midIndex(3)) /)
+    call lagrange_derivative_3(ymidNode, fnode, 0.5d0, dTdy_mid)
+    sum_mid = sum_mid + (coef*v_mid*(T_mid-Tref) - dTdy_mid)/deltaT*quadWidthX(i)
+  enddo
+
+  Nu_middle = sum_mid / quadSumX
 
   !-----------------------------
   ! 输出：屏幕 + 日志
@@ -3371,14 +3692,15 @@ subroutine RBcalc_umid_max()
   use commondata
   implicit none
   integer(kind=4) :: j, k
-  integer(kind=4) :: iMid, iL, iR
+  integer(kind=4) :: midIndex(3)
   integer(kind=4) :: j0
   integer(kind=4) :: jj(5)
   real(kind=8) :: uline(1:ny)
   real(kind=8) :: yk(5), fk(5)
   real(kind=8) :: umax_fit, y_fit
-  real(kind=8) :: coef, xmid, targetX, w
+  real(kind=8) :: coef, xmid, targetX, xmidWeight(3)
   real(kind=8) :: umax_grid, yLen
+  logical :: midStencilValid
 
   coef = velocityScaleCompare
 
@@ -3386,26 +3708,15 @@ subroutine RBcalc_umid_max()
   targetX = 0.5d0
   xmid = targetX
 
-  iL = 1
-  do while (iL < nx .and. xp(iL+1) < targetX)
-    iL = iL + 1
-  enddo
-  iR = min(iL + 1, nx)
-
-  if (dabs(xp(iL) - targetX) <= 1.0d-14) then
-    do j = 1, ny
-      uline(j) = u(iL,j)
-    enddo
-  elseif (iR == iL) then
-    do j = 1, ny
-      uline(j) = u(iL,j)
-    enddo
-  else
-    w = (targetX - xp(iL)) / (xp(iR) - xp(iL))
-    do j = 1, ny
-      uline(j) = (1.0d0 - w) * u(iL,j) + w * u(iR,j)
-    enddo
+  call build_lagrange_stencil_1d(nx, xp(1:nx), targetX, midIndex, xmidWeight, midStencilValid)
+  if(.not.midStencilValid) then
+    write(*,*) "Error: targetX is outside ISLBM x nodes in RBcalc_umid_max"
+    stop
   endif
+  do j = 1, ny
+    uline(j) = xmidWeight(1)*u(midIndex(1),j) + xmidWeight(2)*u(midIndex(2),j) + &
+      xmidWeight(3)*u(midIndex(3),j)
+  enddo
 
   ! ---- (2) 找峰值所在网格点 j0 ----
   j0 = 1
@@ -3462,32 +3773,29 @@ subroutine RBcalc_vmid_max()
   use commondata
   implicit none
   integer(kind=4) :: i, k
-  integer(kind=4) :: jMid, jB, jT
+  integer(kind=4) :: midIndex(3)
   integer(kind=4) :: i0
   integer(kind=4) :: ii(5)
   real(kind=8) :: vline(1:nx)
   real(kind=8) :: xk(5), fk(5)
   real(kind=8) :: vmax_fit, x_fit
-  real(kind=8) :: coef, ymid
+  real(kind=8) :: coef, ymid, ymidWeight(3)
   real(kind=8) :: vmax_grid
+  logical :: midStencilValid
 
   coef = velocityScaleCompare
 
   ! ---- (1) 取 y=1/2 中线剖面 v(x_i, y=1/2) ----
-  if (mod(ny,2) == 1) then
-    jMid = (ny + 1)/2
-    ymid = yp(jMid)
-    do i = 1, nx
-      vline(i) = v(i,jMid)
-    enddo
-  else
-    jB = ny/2
-    jT = jB + 1
-    ymid = 0.5d0*(yp(jB) + yp(jT))
-    do i = 1, nx
-      vline(i) = 0.5d0*(v(i,jB) + v(i,jT))
-    enddo
+  ymid = 0.5d0
+  call build_lagrange_stencil_1d(ny, yp(1:ny), ymid, midIndex, ymidWeight, midStencilValid)
+  if(.not.midStencilValid) then
+    write(*,*) "Error: ymid is outside ISLBM y nodes in RBcalc_vmid_max"
+    stop
   endif
+  do i = 1, nx
+    vline(i) = ymidWeight(1)*v(i,midIndex(1)) + ymidWeight(2)*v(i,midIndex(2)) + &
+      ymidWeight(3)*v(i,midIndex(3))
+  enddo
 
   ! ---- (2) 找峰值所在网格点 i0 ----
   i0 = 1
@@ -3527,6 +3835,9 @@ subroutine RBcalc_vmid_max()
   return
 end subroutine RBcalc_vmid_max
 !===================================================================================================
+! RBcalc_vmid_max 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===================================================================================================
+!===================================================================================================
 
 
 
@@ -3543,85 +3854,128 @@ subroutine calc_psi_vort_and_output()
   use commondata
   implicit none
 
-  integer(kind=4) :: i, j, m
-  real(kind=8) :: dx, dy, coef
-  real(kind=8) :: u1, u2, u_mid, inc
+  integer(kind=4) :: i, j
+  real(kind=8) :: coef
+  real(kind=8) :: segmentIntegral
+  real(kind=8) :: xNode(3), vNode(3)
+  real(kind=8) :: yNode(3), uNode(3)
   real(kind=8) :: dv_dx, du_dy
   real(kind=8) :: psi(nx,ny), vort(nx,ny)
+  real(kind=8) :: psiTopAbsMax
 
 
   ! for fine-grid max(|psi|)  10001*10001
   real(kind=8) :: psi_abs_max, x_at_max, y_at_max, psi_center_abs_fine
 
 
-  dx   = 1.0d0 / lengthUnit
-  dy   = 1.0d0 / lengthUnit
   coef = velocityScaleCompare
 
   !=========================================================
-  ! (A) 计算流函数 psi：  psi(x,y)=∫_0^y u(x,mu)dmu
-  !     积分用“累积 Simpson”，中点 u(y=整点) 用二阶多项式插值
+  ! (A) 计算流函数 psi。
+  !     SideHeatedCell 按zzhao后处理从左壁积分: psi(x,y)=-∫_0^x v(mu,y)dmu。
+  !     RayleighBenardCell 保留从底壁积分: psi(x,y)=∫_0^y u(x,mu)dmu。
+  !     ISLBM非均匀网格下不能使用固定dx/dy的Simpson公式。
+  !     每一小段用三点二次Lagrange多项式做解析积分。
   !=========================================================
 
-  do i = 1, nx
+#ifdef SideHeatedCell
+  do j = 1, ny
+    xNode = (/ 0.0d0, xp(1), xp(2) /)
+    vNode = (/ 0.0d0, v(1,j), v(2,j) /)
+    call integrate_lagrange_3_segment(xNode, vNode, 0.0d0, xp(1), segmentIntegral)
+    psi(1,j) = -segmentIntegral*coef
 
-    ! ---- (A1) 第一个半格点 y=dy/2 的积分：用二次多项式并强制壁面 u=0（no-slip）
-    ! 这里第一小段 [0,dy/2] 单独处理，整体阶数由它控制
-    u1 = u(i,1) * coef
-    u2 = u(i,2) * coef
-    psi(i,1) = dy * (21.0d0*u1 - u2) / 72.0d0   !第一个点的psi
-
-    ! ---- (A2) 从 y=(j-1/2)dy 到 y=(j+1/2)dy 的每一段长度为 dy，用 Simpson：
-    ! ∫_{y_{j-1/2}}^{y_{j+1/2}} u dy ≈ dy/6 * [ u_{j-1/2} + 4 u_{j} + u_{j+1/2} ]
-    do j = 2, ny
-      m = j - 1   ! 这一段的中点在 y = m*dy（整点）
-
-      ! ---- (A2.1) 计算中点速度 u(y=m*dy)：
-      ! 用二阶 Lagrange 插值（三点），把半格点值插到整点
-      !
-      ! 对 m>=2：用 (m-1/2, m+1/2) 及更下方的 (m-3/2) 三点 => 系数(-1/8, 3/4, 3/8)
-      ! 对 m=1（靠近底壁）：只能用最靠近底部的三点 => 系数( 3/8, 3/4,-1/8)
-      if (m == 1) then
-        u_mid = ( 3.0d0/8.0d0*u(i,1) + 3.0d0/4.0d0*u(i,2) - 1.0d0/8.0d0*u(i,3) ) * coef
+    do i = 2, nx
+      if (i == 2) then
+        xNode = (/ 0.0d0, xp(1), xp(2) /)
+        vNode = (/ 0.0d0, v(1,j), v(2,j) /)
       else
-        u_mid = ( -1.0d0/8.0d0*u(i,m-1) + 3.0d0/4.0d0*u(i,m) + 3.0d0/8.0d0*u(i,m+1) ) * coef
-      end if
-
-      inc = dy/6.0d0 * ( (u(i,j-1)*coef) + 4.0d0*u_mid + (u(i,j)*coef) )
-      psi(i,j) = psi(i,j-1) + inc
+        xNode = (/ xp(i-2), xp(i-1), xp(i) /)
+        vNode = (/ v(i-2,j), v(i-1,j), v(i,j) /)
+      endif
+      call integrate_lagrange_3_segment(xNode, vNode, xp(i-1), xp(i), segmentIntegral)
+      psi(i,j) = psi(i-1,j) - segmentIntegral*coef
     end do
 
   end do
+#endif
+
+#ifdef RayleighBenardCell
+  do i = 1, nx
+    yNode = (/ 0.0d0, yp(1), yp(2) /)
+    uNode = (/ 0.0d0, u(i,1), u(i,2) /)
+    call integrate_lagrange_3_segment(yNode, uNode, 0.0d0, yp(1), segmentIntegral)
+    psi(i,1) = segmentIntegral*coef
+
+    do j = 2, ny
+      if (j == 2) then
+        yNode = (/ 0.0d0, yp(1), yp(2) /)
+        uNode = (/ 0.0d0, u(i,1), u(i,2) /)
+      else
+        yNode = (/ yp(j-2), yp(j-1), yp(j) /)
+        uNode = (/ u(i,j-2), u(i,j-1), u(i,j) /)
+      endif
+      call integrate_lagrange_3_segment(yNode, uNode, yp(j-1), yp(j), segmentIntegral)
+      psi(i,j) = psi(i,j-1) + segmentIntegral*coef
+    end do
+
+  end do
+#endif
+
+  psiTopAbsMax = 0.0d0
+#ifdef SideHeatedCell
+  do j = 1, ny
+    psiTopAbsMax = max(psiTopAbsMax, dabs(psi(nx,j)))
+  enddo
+  write(*,'(a,1x,es16.8)') "max(|psi_right_internal|) =", psiTopAbsMax
+  open(unit=00,file=trim(settingsFile),status="unknown",position="append")
+  write(00,'(a,1x,es16.8)') "max(|psi_right_internal|) =", psiTopAbsMax
+  close(00)
+#endif
+#ifdef RayleighBenardCell
+  do i = 1, nx
+    psiTopAbsMax = max(psiTopAbsMax, dabs(psi(i,ny)))
+  enddo
+  write(*,'(a,1x,es16.8)') "max(|psi_top_internal|) =", psiTopAbsMax
+  open(unit=00,file=trim(settingsFile),status="unknown",position="append")
+  write(00,'(a,1x,es16.8)') "max(|psi_top_internal|) =", psiTopAbsMax
+  close(00)
+#endif
 
 
   call output_psi_center_abs(psi)     ! 基于粗网格局部四点插值得到中心点处的 abs(psi)
 
   !=========================================================
   ! (B) 计算涡量 vort = dv/dx - du/dy（2D）
-  !     内部用中心差分；边界节点用“壁在半格距”假设下的二阶单边公式
+  !     ISLBM非均匀网格下用三点Lagrange导数, 不再使用固定dx/dy中心差分。
   !=========================================================
 
   do j = 1, ny
     do i = 1, nx
 
-      ! ---- dv/dx
-      if (i == 1) then
-        ! 在 x=dx/2 处，用 (wall, i=1, i=2) 二次拟合得到二阶近似
-        dv_dx = ( 3.0d0*v(1,j) + v(2,j) - 4.0d0*0.0d0 ) / (3.0d0*dx)
-      elseif (i == nx) then
-        dv_dx = ( -3.0d0*v(nx,j) - v(nx-1,j) + 4.0d0*0.0d0 ) / (3.0d0*dx)
+      if(i.EQ.1) then
+        xNode = (/ xp(1), xp(2), xp(3) /)
+        vNode = (/ v(1,j), v(2,j), v(3,j) /)
+      elseif(i.EQ.nx) then
+        xNode = (/ xp(nx-2), xp(nx-1), xp(nx) /)
+        vNode = (/ v(nx-2,j), v(nx-1,j), v(nx,j) /)
       else
-        dv_dx = ( v(i+1,j) - v(i-1,j) ) / (2.0d0*dx)
-      end if
+        xNode = (/ xp(i-1), xp(i), xp(i+1) /)
+        vNode = (/ v(i-1,j), v(i,j), v(i+1,j) /)
+      endif
+      call lagrange_derivative_3(xNode, vNode, xp(i), dv_dx)
 
-      ! ---- du/dy
-      if (j == 1) then
-        du_dy = ( 3.0d0*u(i,1) + u(i,2) - 4.0d0*0.0d0 ) / (3.0d0*dy)
-      elseif (j == ny) then
-        du_dy = ( -3.0d0*u(i,ny) - u(i,ny-1) + 4.0d0*0.0d0 ) / (3.0d0*dy)
+      if(j.EQ.1) then
+        yNode = (/ yp(1), yp(2), yp(3) /)
+        uNode = (/ u(i,1), u(i,2), u(i,3) /)
+      elseif(j.EQ.ny) then
+        yNode = (/ yp(ny-2), yp(ny-1), yp(ny) /)
+        uNode = (/ u(i,ny-2), u(i,ny-1), u(i,ny) /)
       else
-        du_dy = ( u(i,j+1) - u(i,j-1) ) / (2.0d0*dy)
-      end if
+        yNode = (/ yp(j-1), yp(j), yp(j+1) /)
+        uNode = (/ u(i,j-1), u(i,j), u(i,j+1) /)
+      endif
+      call lagrange_derivative_3(yNode, uNode, yp(j), du_dy)
 
       ! psi 用了L/kappa；vort 也应在同一标度下
       ! vort = d(v*coef)/dx - d(u*coef)/dy = coef*(dv/dx - du/dy)
@@ -4029,6 +4383,7 @@ subroutine output_psi_center_abs(psi)
 contains
   ! 子程序: interp_lagrange_4
   ! 作用: 对给定的四个节点执行四点 Lagrange 插值。
+! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
   subroutine interp_lagrange_4(xq, xk, fk, fq)
     implicit none
     real(kind=8), intent(in)  :: xq
