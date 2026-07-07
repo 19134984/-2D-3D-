@@ -1,5 +1,5 @@
 param(
-    [string]$SourceFile = "2DRBOpenmp.F90",
+    [string]$SourceFile = (([char]0x5747).ToString()+([char]0x5300).ToString()+([char]0x7f51).ToString()+([char]0x683c).ToString()+"\2DRBOpenmp.F90"),
     [string]$BuildRoot = "C:\msys64\tmp\fortran-2drb-build",
     [switch]$Run,
     [switch]$SyntaxOnly,

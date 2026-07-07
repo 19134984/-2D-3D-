@@ -1,0 +1,15 @@
+#!/bin/bash
+#PBS -N P100_LBM_Job
+#PBS -q batch
+#PBS -l nodes=node05:ppn=1
+#PBS -l walltime=240:00:00
+#PBS -j oe
+
+# 进入提交作业时所在的目录
+cd $PBS_O_WORKDIR
+
+# 导入极其关键的 NVIDIA 环境变量，供后台作业调用
+export PATH=/opt/nvidia/hpc_sdk/Linux_x86_64/24.3/compilers/bin:$PATH
+
+# 运行您刚刚编译好的程序
+./a.out

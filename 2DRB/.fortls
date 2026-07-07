@@ -1,6 +1,12 @@
 {
   "source_dirs": [
-    "fortls_stubs"
+    "fortls_stubs",
+    "\u5747\u5300\u7f51\u683c",
+    "ISLBM",
+    "STLBM",
+    "Xs",
+    "\u540e\u5904\u7406",
+    "\u57fa\u51c6\u4ee3\u7801"
   ],
   "include_dirs": [
     "C:/msys64/ucrt64/include"

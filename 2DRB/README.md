@@ -1,39 +1,80 @@
 # 2DRB Code Guide
 
-This folder contains the main 2D side-heated cavity codes and a few supporting variants.
+This repository now groups solver variants by numerical method and role. Prefer
+working inside the matching folder instead of adding new top-level source files.
 
-## Main source files
+## Main Folders
 
-- `2DRBOpenmp.F90`
-  Baseline main program in the original project layout.
+- `均匀网格/`
+  Uniform-grid 2D/3D solvers. This is the default baseline family for new
+  natural-convection, Rayleigh-Benard, OpenMP, OpenACC, and MPI work.
 
-- `2DRB_ISLBM.F90`
-  Non-uniform-mesh / ISLBM-oriented main source used for the current sidewall natural convection work.
+- `ISLBM/`
+  Interpolation-supplemented / non-uniform-mesh LBM variants. Use this folder
+  for ISLBM development and 2D-to-3D ISLBM alignment work.
 
-- `ChaiPRE2020.F90`
-  Chai reference-style source kept here for comparison and verification.
+- `STLBM/`
+  Simplified thermal LBM variants.
 
-## Subfolders
+- `Xs/`
+  Latest LBM-CDE reproduction sources with the `chi` parameter.
 
-- `diagnostics/`
-  Small diagnostic and sweep variants of the Chai code:
-  - `ChaiPRE2020_41.F90`
-  - `ChaiPRE2020_81.F90`
-  - `ChaiPRE2020_sweep.F90`
+- `基准代码/`
+  Small reference or benchmark baseline code kept for comparison.
 
-- `docs/`
-  Notes and validation records:
-  - `ISLBM_BENCHMARK.md`
+- `后处理/`
+  Post-processing programs.
 
-- `build/`
-  Local temporary build artifacts for the baseline path. Ignored by git.
+- `运行脚本/`
+  Shell and PBS run scripts.
 
-- `build_islbm/`
-  Local temporary build artifacts for the ISLBM path. Ignored by git.
+- `references-code/`
+  External or paper/reference implementations. Treat these as comparison
+  material unless a task explicitly asks to adopt one as the main framework.
 
-## Suggested entry points
+- `pdf/`
+  Papers, extracted text, literature notes, and supporting research material.
 
-- If you want the original baseline code, start with `2DRBOpenmp.F90`.
-- If you want the non-uniform mesh / ISLBM version, start with `2DRB_ISLBM.F90`.
-- If you want the Chai comparison code, start with `ChaiPRE2020.F90`.
-- If you want quick small-grid checks or parameter sweeps, look in `diagnostics/`.
+- `tools/`
+  Local checking and helper scripts.
+
+## Core Baselines
+
+Use these files as the canonical uniform-grid starting points unless the task
+explicitly targets another method family:
+
+- `均匀网格/2DRBOpenmp.F90`
+  2D OpenMP baseline.
+
+- `均匀网格/3DRBOpenmp.F90`
+  3D OpenMP baseline.
+
+- `均匀网格/3DRBOpenacc.F90`
+  3D single-GPU OpenACC baseline.
+
+- `均匀网格/3DRBOpenaccMpi.F90`
+  3D MPI + OpenACC baseline.
+
+## Method-Specific Entry Points
+
+- ISLBM 2D CPU: `ISLBM/2DRBOpenmpISLBM.F90`
+- ISLBM 3D CPU: `ISLBM/3DRBOpenmpISLBM.F90`
+- ISLBM 3D MPI CPU: `ISLBM/3DRBOpenmpMpiISLBM.F90`
+- ISLBM 3D GPU: `ISLBM/3DRBOpenaccISLBM.F90`
+- ISLBM 3D MPI + GPU: `ISLBM/3DRBOpenaccMpiISLBM.F90`
+- STLBM 2D CPU: `STLBM/2DRBOpenmpSTLBM.F90`
+- STLBM 2D GPU: `STLBM/2DRBOpenaccSTLBM.F90`
+- LBM-CDE with `chi`: `Xs/2DRBOpenmpLBMCDE.F90`
+- LBM-CDE with `chi`, GPU port: `Xs/2DRBOpenaccLBMCDE.F90`
+
+## Build Helper
+
+The local build helper accepts subfolder paths:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\build_in_ascii_path.ps1 -SourceFile .\均匀网格\2DRBOpenmp.F90 -SyntaxOnly
+powershell -ExecutionPolicy Bypass -File .\build_in_ascii_path.ps1 -SourceFile .\ISLBM\3DRBOpenmpISLBM.F90 -SyntaxOnly
+```
+
+Use `-UseMpi` for MPI sources and override `-ParallelFlag` or `-ExtraArgs` only
+when the targeted source requires different compiler options.
