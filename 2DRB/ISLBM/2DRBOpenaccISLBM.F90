@@ -57,9 +57,9 @@
 
 !算法切换
 !启用 M1G 修正；注释掉则不使用 useG 相关修正
-!#define EnableUseG
+#define EnableUseG
 !启用旧温度算法
-#define EnableLegacyThermalScheme
+!#define EnableLegacyThermalScheme
 
 !   温度算法宏的选择
 #if defined(EnableUseG) && defined(EnableLegacyThermalScheme)
@@ -101,18 +101,11 @@
         real(kind=8), parameter :: ISLBM_StretchA=1.5d0
 
         ! raw坐标中第一个内部流体节点的位置rawX(1)/rawY(1), 也就是近壁的1个lu。
-        real(kind=8), parameter :: ISLBM_DxMinRaw=0.5d0*(1.0d0 + &
-            erf(ISLBM_StretchA*(1.0d0/dble(nx+1)-0.5d0))/erf(0.5d0*ISLBM_StretchA))
-        real(kind=8), parameter :: ISLBM_DyMinRaw=0.5d0*(1.0d0 + &
-            erf(ISLBM_StretchA*(1.0d0/dble(ny+1)-0.5d0))/erf(0.5d0*ISLBM_StretchA))
-#ifdef SideHeatedCell
+        ! 这些依赖erf()的派生量在initial()开头统一计算，避免NVHPC编译期parameter限制。
+        real(kind=8) :: ISLBM_DxMinRaw, ISLBM_DyMinRaw
         ! half-way壁面放在0.5*rawX(1)或0.5*rawY(1), 因此有效长度为1-ISLBM_Dx/DyMinRaw。
         ! ISLBM有效长度含多少个近壁lu: lengthUnit=(rightWall-leftWall)/ISLBM_DxMinRaw。
-        real(kind=8), parameter :: lengthUnit=(1.0d0-ISLBM_DxMinRaw)/ISLBM_DxMinRaw
-#else
-        ! ISLBM有效长度含多少个近壁lu: lengthUnit=(topWall-bottomWall)/ISLBM_DyMinRaw。
-        real(kind=8), parameter :: lengthUnit=(1.0d0-ISLBM_DyMinRaw)/ISLBM_DyMinRaw
-#endif
+        real(kind=8) :: lengthUnit
         real(kind=8), parameter :: pi = acos(-1.0d0)
 
         real(kind=8), parameter :: Rayleigh=1.0d8
@@ -120,14 +113,12 @@
         real(kind=8), parameter :: Mach=0.1d0
         real(kind=8), parameter :: Thot=0.5d0, Tcold=-0.5d0
         real(kind=8), parameter :: Tref=0.5d0*(Thot+Tcold)
-        real(kind=8), parameter :: tauf=0.5d0+Mach*lengthUnit*dsqrt(3.0d0*Prandtl/Rayleigh) 
-        real(kind=8), parameter :: viscosity=(tauf-0.5d0)/3.0d0
-        real(kind=8), parameter :: diffusivity=viscosity/Prandtl
+        real(kind=8) :: tauf, viscosity, diffusivity
         
 
         ! velocityScaleCompare is used only in velocity-related post-processing to convert lattice velocity
         ! to the nondimensional velocity scale adopted by the reference paper being compared.
-        real(kind=8), parameter :: velocityScaleCompare=lengthUnit/diffusivity
+        real(kind=8) :: velocityScaleCompare
         ! 默认采用热扩散标度 UL/kappa；若要按自由落体标度比较，可改为 1.0d0/velocityUnit
         
         integer(kind=4), parameter :: nxHalf=(nx-1)/2+1, nyHalf=(ny-1)/2+1
@@ -136,30 +127,27 @@
 #ifdef  SideHeatedHa
         real(kind=8), parameter :: Ha=20.0d0                           !磁场强度
         real(kind=8), parameter :: phi=(0.0d0)*(pi/180.0d0)            !磁场角度，以水平向右为0，修改0.0d0即可
-        real(kind=8), parameter :: B2sigemarho=(Ha**2*viscosity)/(lengthUnit*lengthUnit)  !动量方程上的源项系数
+        real(kind=8) :: B2sigemarho  !动量方程上的源项系数
 #endif
 
         ! 高阶矩参数修正
-        real(kind=8), parameter :: paraA=20.0d0*dsqrt(3.0d0)*diffusivity-4.0d0
-
-
-
+        real(kind=8) :: paraA
         ! 浮力项参数
-        real(kind=8), parameter :: gBeta1=Rayleigh*viscosity*diffusivity/lengthUnit
-        real(kind=8), parameter :: gBeta=gBeta1/lengthUnit/lengthUnit             !gbetaΔT
+        real(kind=8) :: gBeta1
+        real(kind=8) :: gBeta             !gbetaΔT
         
-        real(kind=8), parameter :: timeUnit=dsqrt(lengthUnit/gBeta)      !无量纲时间
-        real(kind=8), parameter :: velocityUnit=dsqrt(gBeta*lengthUnit)  !无量纲速度
+        real(kind=8) :: timeUnit      !无量纲时间
+        real(kind=8) :: velocityUnit  !无量纲速度
     
-        real(kind=8), parameter :: Snu=1.0d0/tauf, Sq=8.0d0*(2.0d0*tauf-1.0d0)/(8.0d0*tauf-1.0d0)  !动量的多松弛系数
+        real(kind=8) :: Snu, Sq  !动量的多松弛系数
 
 #ifdef EnableLegacyThermalScheme
-        real(kind=8), parameter :: Qk=3.0d0-dsqrt(3.0d0), Qnu=4.0d0*dsqrt(3.0d0)-6.0d0             !旧温度算法的多松弛系数
-        real(kind=8), parameter :: thermalGeqCoeff=10.0d0/(4.0d0+paraA)
+        real(kind=8) :: Qk, Qnu             !旧温度算法的多松弛系数
+        real(kind=8) :: thermalGeqCoeff
 #else
-        real(kind=8), parameter :: taug = 0.5d0 + (tauf - 0.5d0)/Prandtl
-        real(kind=8), parameter :: Qnu = 1.0d0, Qk = 1.0d0/taug
-        real(kind=8), parameter :: thermalGeqCoeff=3.0d0
+        real(kind=8) :: taug
+        real(kind=8) :: Qnu, Qk
+        real(kind=8) :: thermalGeqCoeff
 #endif
         !===============================================================================================          
         
@@ -195,7 +183,7 @@
         integer(kind=4), parameter :: outputSnapshotFile=1   ! 是否输出后处理快照文件：0=不输出，1=输出
         integer(kind=4), parameter :: outputPltFile=1   ! 是否输出 plt 文件：0=不输出，1=输出
         integer(kind=4), parameter :: outputReloadFile=1 ! 是否周期输出 f/g 重启文件：0=不输出，1=输出
-        integer(kind=4), parameter :: itc_max=max(1, int(unsteadyRunDuration*timeUnit+0.5d0)) ! 非稳态：由总 t_ff 自动换算格子步
+        integer(kind=4) :: itc_max ! 非稳态：由总 t_ff 自动换算格子步
 #endif
 
         integer(kind=4) :: snapshotFileNum, pltFileNum  ! 快照/plt 输出文件的计数器
@@ -212,16 +200,16 @@
         ! 体平均 Nu 和 Re 的时间序列缓存
         ! 只有在启用并调用 calNuRe() 的情况下这些数组才会被真正填充
   
-        character(len=100) :: snapshotFilePrefix="buoyancyCavity2DOpenaccSnapshot"
+        character(len=100) :: snapshotFilePrefix="buoyancyCavity2DOpenaccISLBMSnapshot"
         ! 快照输出文件前缀（实际文件名形如：<snapshotFilePrefix>-<编号>.bin）
 
-        character(len=100) :: pltFolderPrefix="buoyancyCavity2DOpenaccTecplot"
+        character(len=100) :: pltFolderPrefix="buoyancyCavity2DOpenaccISLBMTecplot"
         ! plt 输出文件前缀（实际文件名形如：<pltFolderPrefix>-<编号>.plt）
 
-        character(len=100) :: reloadFilePrefix="reloadFile2DOpenacc"
+        character(len=100) :: reloadFilePrefix="reloadFile2DOpenaccISLBM"
         ! 重启读取文件的前缀；latest meta 模式实际读取 meta 中记录的 <reloadFilePrefix>-<编号>.bin
-        
-        character(len=100) :: settingsFile="SimulationSettings2DOpenacc.txt"
+
+        character(len=100) :: settingsFile="SimulationSettings2DOpenaccISLBM.txt"
         !===============================================================================================
 
         !===============================================================================================
@@ -229,12 +217,24 @@
         real(kind=8) :: errorU, errorT
         
         real(kind=8) :: xp(0:nx+1), yp(0:ny+1)      !无量纲的坐标数组，包括边界
+
+        ! 非均匀网格积分宽度: quadWidthX/quadWidthY是每个流体节点代表的x/y方向控制宽度,
+        ! quadSumX/quadSumY/quadSumArea用于Nu、Re和体平均量的面积加权归一化。
         real(kind=8) :: quadWidthX(1:nx), quadWidthY(1:ny), quadSumX, quadSumY, quadSumArea
+
         ! 归一化坐标中的1个lattice unit; 迁移时用xp(i)-ex(alpha)*ISLBM_LatticeUnit找上游点。
-        real(kind=8), parameter :: ISLBM_LatticeUnit=1.0d0/lengthUnit
+        real(kind=8) :: ISLBM_LatticeUnit
+
+        ! ISLBM off-lattice迁移的三点Lagrange插值模板:
+        ! streamInterpIndexX/Y保存每个方向alpha、每个节点对应的3个插值节点编号。
         integer(kind=4) :: streamInterpIndexX(0:8,1:nx,3), streamInterpIndexY(0:8,1:ny,3)
+
+        ! streamInterpWeightX/Y保存上述3个插值节点的权重, 用于从f_post/g_post插值得到迁移后分布。
         real(kind=8) :: streamInterpWeightX(0:8,1:nx,3), streamInterpWeightY(0:8,1:ny,3)
+
+        ! valid标志说明上游插值点是否仍在内部流体节点范围内; 越界时交给边界处理而不插值。
         logical :: streamInterpValidX(0:8,1:nx), streamInterpValidY(0:8,1:ny)
+
         real(kind=8), allocatable :: u(:,:), v(:,:), T(:,:), rho(:,:)
 
 #ifdef steadyFlow
@@ -278,6 +278,70 @@
 
 
 !=============================================================
+! 子程序: init_islbm_derived_parameters
+! 作用: 计算依赖erf非均匀网格和lengthUnit的派生参数。
+! 说明: NVHPC不支持erf()出现在parameter初始化表达式中，因此这些量在运行开始时计算一次。
+!=============================================================
+    subroutine init_islbm_derived_parameters()
+    use commondata
+    implicit none
+    real(kind=8) :: erfNorm
+
+    !===============================================================================================
+    ! ISLBM网格和特征尺度派生量
+    !===============================================================================================
+    erfNorm = erf(0.5d0*ISLBM_StretchA)
+    ISLBM_DxMinRaw = 0.5d0*(1.0d0 + &
+        erf(ISLBM_StretchA*(1.0d0/dble(nx+1)-0.5d0))/erfNorm)
+    ISLBM_DyMinRaw = 0.5d0*(1.0d0 + &
+        erf(ISLBM_StretchA*(1.0d0/dble(ny+1)-0.5d0))/erfNorm)
+
+#ifdef SideHeatedCell
+    lengthUnit = (1.0d0-ISLBM_DxMinRaw)/ISLBM_DxMinRaw
+#else
+    lengthUnit = (1.0d0-ISLBM_DyMinRaw)/ISLBM_DyMinRaw
+#endif
+    ISLBM_LatticeUnit = 1.0d0/lengthUnit
+
+    !===============================================================================================
+    ! 由lengthUnit派生的输运参数、力项参数和松弛系数
+    !===============================================================================================
+    tauf = 0.5d0+Mach*lengthUnit*dsqrt(3.0d0*Prandtl/Rayleigh)
+    viscosity = (tauf-0.5d0)/3.0d0
+    diffusivity = viscosity/Prandtl
+    velocityScaleCompare = lengthUnit/diffusivity
+
+#ifdef SideHeatedHa
+    B2sigemarho = (Ha**2*viscosity)/(lengthUnit*lengthUnit)
+#endif
+
+    paraA = 20.0d0*dsqrt(3.0d0)*diffusivity-4.0d0
+    gBeta1 = Rayleigh*viscosity*diffusivity/lengthUnit
+    gBeta = gBeta1/lengthUnit/lengthUnit
+    timeUnit = dsqrt(lengthUnit/gBeta)
+    velocityUnit = dsqrt(gBeta*lengthUnit)
+    Snu = 1.0d0/tauf
+    Sq = 8.0d0*(2.0d0*tauf-1.0d0)/(8.0d0*tauf-1.0d0)
+
+#ifdef EnableLegacyThermalScheme
+    Qk = 3.0d0-dsqrt(3.0d0)
+    Qnu = 4.0d0*dsqrt(3.0d0)-6.0d0
+    thermalGeqCoeff = 10.0d0/(4.0d0+paraA)
+#else
+    taug = 0.5d0 + (tauf - 0.5d0)/Prandtl
+    Qnu = 1.0d0
+    Qk = 1.0d0/taug
+    thermalGeqCoeff = 3.0d0
+#endif
+
+#ifdef unsteadyFlow
+    itc_max = max(1, int(unsteadyRunDuration*timeUnit+0.5d0))
+#endif
+
+    return
+    end subroutine init_islbm_derived_parameters
+!=============================================================
+
 
     program main
 
@@ -306,12 +370,19 @@
     else
         open(unit=00,file=trim(settingsFile),status='replace')
     endif
-    string = ctime( time() )                      !ctime把 time() 返回的时间戳转换成可读的字符串
-    write(00,*) 'Start: ', string                 !什么时候开始计算
+    ! 记录本次计算的开始时间; ctime把 time() 返回的时间戳转换成可读字符串。
+    string = ctime( time() )
+    write(00,*) 'Start: ', string
+
+    ! 初始化 OpenACC 运行时。
+    ! acc_device_default表示使用编译器/运行环境默认的OpenACC设备类型, NVHPC下通常是NVIDIA GPU。
     write(00,*) "Starting OpenACC >>>>>>"
     call acc_init(acc_device_default)
+
+    ! 查询当前进程可见的默认OpenACC设备数量, 写入设置文件用于确认GPU是否被运行环境暴露。
     numAccDevices = acc_get_num_devices(acc_device_default)
     write(00,*) "Visible OpenACC devices:", numAccDevices
+
     close(00)
     !===============================================================================================
 
@@ -409,6 +480,16 @@
     ! 取墙钟结束计数器，用于后面输出 OpenACC 实际耗时。
     call system_clock(wallClockEnd, wallClockRate)
     timeEnd2 = dble(wallClockEnd) / dble(max(wallClockRate,1_8))
+
+    ! 先写出性能统计。放在最终后处理之前, 避免后续诊断异常时丢失基本耗时信息。
+    open(unit=00,file=trim(settingsFile),status='unknown',position='append')        !在这个txt文件后面继续写（追加模式）
+    write(00,*) "======================================================================"
+    write(00,*) "Time (CPU) = ", real(timeEnd-timeStart,kind=8), "s"                             !当前进程累计消耗的 CPU 时间,包括并行
+    write(00,*) "MLUPS = ", real( dble(nx)*dble(ny)*dble(itc)/(timeEnd-timeStart)/1.0d6,kind=8 )   !百万格点更新/秒
+    write(00,*) "Time (ACC) = ", real(timeEnd2-timeStart2,kind=8), "s"                           !墙钟时间
+    write(00,*) "MLUPS (ACC) = ", real( dble(nx)*dble(ny)*dble(itc)/(timeEnd2-timeStart2)/1.0d6,kind=8 )   !百万格点更新/秒
+    close(00)
+
     call update_host_snapshot_2d_openacc()
 
 #ifdef steadyFlow
@@ -468,11 +549,6 @@
      
 
     open(unit=00,file=trim(settingsFile),status='unknown',position='append')        !在这个txt文件后面继续写（追加模式）
-    write(00,*) "======================================================================"
-    write(00,*) "Time (CPU) = ", real(timeEnd-timeStart,kind=8), "s"                             !当前进程累计消耗的 CPU 时间,包括并行
-    write(00,*) "MLUPS = ", real( dble(nx)*dble(ny)*dble(itc)/(timeEnd-timeStart)/1.0d6,kind=8 )   !百万格点更新/秒
-    write(00,*) "Time (ACC) = ", real(timeEnd2-timeStart2,kind=8), "s"                           !墙钟时间
-    write(00,*) "MLUPS (ACC) = ", real( dble(nx)*dble(ny)*dble(itc)/(timeEnd2-timeStart2)/1.0d6,kind=8 )   !百万格点更新/秒
 #ifdef steadyFlow
     write(00,'(a,1x,ES24.16E3)') "Nu_global =", real(Nu_global,kind=8)
     write(00,'(a,1x,ES24.16E3)') "Nu_hot    =", real(Nu_hot,kind=8)
@@ -528,6 +604,8 @@
     real(kind=8) :: xLen, yLen, rbInitPerturbAmp
     character(len=100) :: reloadFileName
     
+
+    call init_islbm_derived_parameters()
 
     itc = 0
     errorU = 100.0d0
@@ -977,9 +1055,9 @@ close(00)
     use commondata
     implicit none
     integer(kind=4) :: alpha, i, j
-    integer(kind=4) :: idx(3)
-    real(kind=8) :: w(3), target
-    logical :: ok
+    integer(kind=4) :: stencilIndex(3)
+    real(kind=8) :: stencilWeight(3), target
+    logical :: stencilValid
 
     streamInterpIndexX = 1
     streamInterpIndexY = 1
@@ -994,17 +1072,17 @@ close(00)
             ! 对均匀格子 target 会正好落在相邻格点; 非均匀格子一般是off-lattice点,
             ! 所以用迁移后的 f_post 在当前节点附近的三点模板上插值。
             target = xp(i) - dble(ex(alpha))*ISLBM_LatticeUnit
-            call build_streaming_stencil_1d(nx, xp(1:nx), i, target, idx, w, ok)
-            streamInterpValidX(alpha,i) = ok
-            streamInterpIndexX(alpha,i,:) = idx
-            streamInterpWeightX(alpha,i,:) = w
+            call build_streaming_stencil_1d(nx, xp(1:nx), i, target, stencilIndex, stencilWeight, stencilValid)
+            streamInterpValidX(alpha,i) = stencilValid
+            streamInterpIndexX(alpha,i,:) = stencilIndex
+            streamInterpWeightX(alpha,i,:) = stencilWeight
         enddo
         do j = 1, ny
             target = yp(j) - dble(ey(alpha))*ISLBM_LatticeUnit
-            call build_streaming_stencil_1d(ny, yp(1:ny), j, target, idx, w, ok)
-            streamInterpValidY(alpha,j) = ok
-            streamInterpIndexY(alpha,j,:) = idx
-            streamInterpWeightY(alpha,j,:) = w
+            call build_streaming_stencil_1d(ny, yp(1:ny), j, target, stencilIndex, stencilWeight, stencilValid)
+            streamInterpValidY(alpha,j) = stencilValid
+            streamInterpIndexY(alpha,j,:) = stencilIndex
+            streamInterpWeightY(alpha,j,:) = stencilWeight
         enddo
     enddo
 
@@ -1019,19 +1097,19 @@ close(00)
 ! 作用: 执行本子程序对应的初始化、迁移、碰撞、边界、通信或后处理步骤。
 ! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===================================================================================================
-  subroutine build_streaming_stencil_1d(n, xnodes, nodeIndex, target, idx, w, ok)
+  subroutine build_streaming_stencil_1d(n, xnodes, nodeIndex, target, stencilIndex, stencilWeight, stencilValid)
     implicit none
     integer(kind=4), intent(in) :: n, nodeIndex
     real(kind=8), intent(in) :: xnodes(n), target
-    integer(kind=4), intent(out) :: idx(3)
-    real(kind=8), intent(out) :: w(3)
-    logical, intent(out) :: ok
+    integer(kind=4), intent(out) :: stencilIndex(3)
+    real(kind=8), intent(out) :: stencilWeight(3)
+    logical, intent(out) :: stencilValid
     real(kind=8) :: xloc(3)
     real(kind=8), parameter :: tol = 1.0d-12
 
-    idx = (/1, 1, 1/)
-    w = 0.0d0
-    ok = .false.
+    stencilIndex = (/1, 1, 1/)
+    stencilWeight = 0.0d0
+    stencilValid = .false.
     if(n.LT.3) return
     if((target.LT.xnodes(1)-tol).OR.(target.GT.xnodes(n)+tol)) return
 
@@ -1039,18 +1117,18 @@ close(00)
     ! 靠近物理边界时, 指向壁面的分布函数会先由边界条件处理并直接return;
     ! 仍需要插值的方向只会使用一侧三点模板(/1,2,3/)或(/n-2,n-1,n/)。
     if(nodeIndex.LE.1) then
-        idx = (/1, 2, 3/)
+        stencilIndex = (/1, 2, 3/)
     elseif(nodeIndex.GE.n) then
-        idx = (/n-2, n-1, n/)
+        stencilIndex = (/n-2, n-1, n/)
     else
-        idx = (/nodeIndex-1, nodeIndex, nodeIndex+1/)
+        stencilIndex = (/nodeIndex-1, nodeIndex, nodeIndex+1/)
     endif
 
-    xloc(1) = xnodes(idx(1))
-    xloc(2) = xnodes(idx(2))
-    xloc(3) = xnodes(idx(3))
-    call build_lagrange_weights_3(xloc, target, w)
-    ok = .true.
+    xloc(1) = xnodes(stencilIndex(1))
+    xloc(2) = xnodes(stencilIndex(2))
+    xloc(3) = xnodes(stencilIndex(3))
+    call build_lagrange_weights_3(xloc, target, stencilWeight)
+    stencilValid = .true.
 
     return
   end subroutine build_streaming_stencil_1d
@@ -1063,40 +1141,40 @@ close(00)
 ! 作用: 执行本子程序对应的初始化、迁移、碰撞、边界、通信或后处理步骤。
 ! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===================================================================================================
-  subroutine build_lagrange_stencil_1d(n, xnodes, target, idx, w, ok)
+  subroutine build_lagrange_stencil_1d(n, xnodes, target, stencilIndex, stencilWeight, stencilValid)
     implicit none
     integer(kind=4), intent(in) :: n
     real(kind=8), intent(in) :: xnodes(n), target
-    integer(kind=4), intent(out) :: idx(3)
-    real(kind=8), intent(out) :: w(3)
-    logical, intent(out) :: ok
+    integer(kind=4), intent(out) :: stencilIndex(3)
+    real(kind=8), intent(out) :: stencilWeight(3)
+    logical, intent(out) :: stencilValid
     integer(kind=4) :: mid
     real(kind=8) :: xloc(3)
     real(kind=8), parameter :: tol = 1.0d-12
 
-    idx = (/1, 1, 1/)
-    w = 0.0d0
-    ok = .false.
+    stencilIndex = (/1, 1, 1/)
+    stencilWeight = 0.0d0
+    stencilValid = .false.
     if(n.LT.3) return
     if((target.LT.xnodes(1)-tol).OR.(target.GT.xnodes(n)+tol)) return
 
     if(target.LE.xnodes(2)) then
-        idx = (/1, 2, 3/)
+        stencilIndex = (/1, 2, 3/)
     elseif(target.GE.xnodes(n-1)) then
-        idx = (/n-2, n-1, n/)
+        stencilIndex = (/n-2, n-1, n/)
     else
         mid = 2
         do while((mid.LT.n-1).AND.(xnodes(mid+1).LT.target))
             mid = mid + 1
         enddo
-        idx = (/mid-1, mid, mid+1/)
+        stencilIndex = (/mid-1, mid, mid+1/)
     endif
 
-    xloc(1) = xnodes(idx(1))
-    xloc(2) = xnodes(idx(2))
-    xloc(3) = xnodes(idx(3))
-    call build_lagrange_weights_3(xloc, target, w)
-    ok = .true.
+    xloc(1) = xnodes(stencilIndex(1))
+    xloc(2) = xnodes(stencilIndex(2))
+    xloc(3) = xnodes(stencilIndex(3))
+    call build_lagrange_weights_3(xloc, target, stencilWeight)
+    stencilValid = .true.
 
     return
   end subroutine build_lagrange_stencil_1d
@@ -1302,7 +1380,8 @@ close(00)
     real(kind=8) :: s(0:8)
     real(kind=8) :: fSource(0:8)
 
-    !$acc parallel loop gang vector collapse(2) default(none) present(f,f_post,rho,u,v,Fx,Fy,T) async(1) &
+    !$acc parallel loop gang vector collapse(2) default(none) present(f,f_post,rho,u,v,Fx,Fy,T) &
+    !$acc& copyin(Snu,Sq,gBeta) async(1) &
     !$acc& private(alpha,s,m,m_post,meq,fSource)
     do j = 1, ny
         do i = 1, nx
@@ -1395,13 +1474,17 @@ close(00)
 ! 用途: 在主程序时间推进循环中调用，位于 collision 之后、bounceback 之前。
 !===================================================================================================
   subroutine streaming()                                    !先迁移，再边界处理
-    use commondata                                            !迁移步骤：pull streaming，把碰撞后的 f_post 拉取到当前格点
+    use commondata                                            !ISLBM迁移：从 off-lattice 上游位置二次插值读取 f_post
     implicit none
     integer(kind=4) :: i, j
     integer(kind=4) :: alpha
     integer(kind=4) :: ii, jj
     real(kind=8) :: value
     
+    ! OpenACC版本中 f/f_post 的存储顺序为(i,j,alpha)。
+    ! 每个(i,j,alpha)只写自己的f(i,j,alpha), 不同线程之间没有写冲突。
+    ! 若某个方向的上游点越过内部流体节点范围, valid为false,
+    ! 该方向在streaming中置零, 后续bounceback边界处理会重新给出边界分布函数。
     !$acc parallel loop gang vector collapse(2) default(none) &
     !$acc& present(f,f_post,ex,ey,streamInterpValidX,streamInterpValidY) &
     !$acc& present(streamInterpIndexX,streamInterpIndexY,streamInterpWeightX,streamInterpWeightY) &
@@ -1409,29 +1492,48 @@ close(00)
     do j = 1, ny
         do i = 1, nx
             do alpha = 0, 8
-                if((ex(alpha).EQ.0).AND.streamInterpValidY(alpha,j)) then
-                    value = 0.0d0
-                    do jj = 1, 3
-                        value = value + streamInterpWeightY(alpha,j,jj)*f_post(i,streamInterpIndexY(alpha,j,jj),alpha)
-                    enddo
-                    f(i,j,alpha) = value
-                elseif((ey(alpha).EQ.0).AND.streamInterpValidX(alpha,i)) then
-                    value = 0.0d0
-                    do ii = 1, 3
-                        value = value + streamInterpWeightX(alpha,i,ii)*f_post(streamInterpIndexX(alpha,i,ii),j,alpha)
-                    enddo
-                    f(i,j,alpha) = value
-                elseif(streamInterpValidX(alpha,i).AND.streamInterpValidY(alpha,j)) then
-                    value = 0.0d0
-                    do jj = 1, 3
+                if(alpha.EQ.0) then
+                    ! alpha=0为静止方向, 速度为(0,0), 不发生迁移, 直接原地复制。
+                    f(i,j,alpha) = f_post(i,j,alpha)
+                elseif(ey(alpha).EQ.0) then
+                    ! 纯x方向迁移: y不变, 只需在当前行j上按x方向三点Lagrange模板插值。
+                    if(streamInterpValidX(alpha,i)) then
+                        value = 0.0d0
                         do ii = 1, 3
-                            value = value + streamInterpWeightX(alpha,i,ii)*streamInterpWeightY(alpha,j,jj)* &
-                                f_post(streamInterpIndexX(alpha,i,ii),streamInterpIndexY(alpha,j,jj),alpha)
+                            value = value + streamInterpWeightX(alpha,i,ii)*f_post(streamInterpIndexX(alpha,i,ii),j,alpha)
                         enddo
-                    enddo
-                    f(i,j,alpha) = value
+                        f(i,j,alpha) = value
+                    else
+                        f(i,j,alpha) = 0.0d0
+                    endif
+                elseif(ex(alpha).EQ.0) then
+                    ! 纯y方向迁移: x不变, 只需在当前列i上按y方向三点Lagrange模板插值。
+                    if(streamInterpValidY(alpha,j)) then
+                        value = 0.0d0
+                        do jj = 1, 3
+                            value = value + streamInterpWeightY(alpha,j,jj)*f_post(i,streamInterpIndexY(alpha,j,jj),alpha)
+                        enddo
+                        f(i,j,alpha) = value
+                    else
+                        f(i,j,alpha) = 0.0d0
+                    endif
                 else
-                    f(i,j,alpha) = 0.0d0
+                    ! 对角方向迁移: x和y都偏移, 使用x/y两个一维三点模板的张量积插值。
+                    ! 实际参与的是3x3个上游节点, 二维权重为streamInterpWeightX*streamInterpWeightY。
+                    if(streamInterpValidX(alpha,i).AND.streamInterpValidY(alpha,j)) then
+                        value = 0.0d0
+                        do jj = 1, 3
+                            do ii = 1, 3
+                                value = value + streamInterpWeightX(alpha,i,ii)*streamInterpWeightY(alpha,j,jj)* &
+                                    f_post(streamInterpIndexX(alpha,i,ii),streamInterpIndexY(alpha,j,jj),alpha)
+                            enddo
+                        enddo
+                        f(i,j,alpha) = value
+                    else
+                        ! 上游点越过内部流体节点范围时不做off-lattice插值。
+                        ! 这里先清零, 随后的bounceback会按速度边界条件覆盖对应的未知分布函数。
+                        f(i,j,alpha) = 0.0d0
+                    endif
                 endif
             enddo
         enddo
@@ -1556,12 +1658,14 @@ close(00)
     real(kind=8) :: q(0:4)
     real(kind=8) :: Bx, By
     real(kind=8) :: dBx, dBy
-    real(kind=8), parameter :: SG = 1.0d0 - 0.5d0*Qk
+    real(kind=8) :: SG
 
 
+    SG = 1.0d0 - 0.5d0*Qk
 
 
-    !$acc parallel loop gang vector collapse(2) default(none) present(g,g_post,u,v,T,Bx_prev,By_prev) async(1) &
+    !$acc parallel loop gang vector collapse(2) default(none) present(g,g_post,u,v,T,Bx_prev,By_prev) &
+    !$acc& copyin(Qk,Qnu,thermalGeqCoeff,paraA,SG) async(1) &
     !$acc& private(alpha,n,neq,q,n_post,Bx,By,dBx,dBy)
     do j = 1, ny
         do i = 1, nx
@@ -1634,13 +1738,17 @@ close(00)
 ! 用途: 在主程序时间推进循环中调用，位于 collisionT 之后、bouncebackT 之前。
 !===================================================================================================
     subroutine streamingT()
-    use commondata
+    use commondata                                            !ISLBM温度迁移：从 off-lattice 上游位置二次插值读取 g_post
     implicit none
     integer(kind=4) :: i, j
     integer(kind=4) :: alpha
     integer(kind=4) :: ii, jj
     real(kind=8) :: value
     
+    ! OpenACC版本中 g/g_post 的存储顺序为(i,j,alpha)。
+    ! 每个(i,j,alpha)只写自己的g(i,j,alpha), 不同线程之间没有写冲突。
+    ! 若某个方向的上游点越过内部流体节点范围, valid为false,
+    ! 该方向在streamingT中置零, 后续bouncebackT温度边界处理会重新给出边界分布函数。
     !$acc parallel loop gang vector collapse(2) default(none) &
     !$acc& present(g,g_post,ex,ey,streamInterpValidX,streamInterpValidY) &
     !$acc& present(streamInterpIndexX,streamInterpIndexY,streamInterpWeightX,streamInterpWeightY) &
@@ -1648,29 +1756,48 @@ close(00)
     do j = 1, ny
         do i = 1, nx
             do alpha = 0, 4
-                if((ex(alpha).EQ.0).AND.streamInterpValidY(alpha,j)) then
-                    value = 0.0d0
-                    do jj = 1, 3
-                        value = value + streamInterpWeightY(alpha,j,jj)*g_post(i,streamInterpIndexY(alpha,j,jj),alpha)
-                    enddo
-                    g(i,j,alpha) = value
-                elseif((ey(alpha).EQ.0).AND.streamInterpValidX(alpha,i)) then
-                    value = 0.0d0
-                    do ii = 1, 3
-                        value = value + streamInterpWeightX(alpha,i,ii)*g_post(streamInterpIndexX(alpha,i,ii),j,alpha)
-                    enddo
-                    g(i,j,alpha) = value
-                elseif(streamInterpValidX(alpha,i).AND.streamInterpValidY(alpha,j)) then
-                    value = 0.0d0
-                    do jj = 1, 3
+                if(alpha.EQ.0) then
+                    ! alpha=0为静止方向, 速度为(0,0), 不发生迁移, 直接原地复制。
+                    g(i,j,alpha) = g_post(i,j,alpha)
+                elseif(ey(alpha).EQ.0) then
+                    ! 纯x方向迁移: y不变, 只需在当前行j上按x方向三点Lagrange模板插值。
+                    if(streamInterpValidX(alpha,i)) then
+                        value = 0.0d0
                         do ii = 1, 3
-                            value = value + streamInterpWeightX(alpha,i,ii)*streamInterpWeightY(alpha,j,jj)* &
-                                g_post(streamInterpIndexX(alpha,i,ii),streamInterpIndexY(alpha,j,jj),alpha)
+                            value = value + streamInterpWeightX(alpha,i,ii)*g_post(streamInterpIndexX(alpha,i,ii),j,alpha)
                         enddo
-                    enddo
-                    g(i,j,alpha) = value
+                        g(i,j,alpha) = value
+                    else
+                        g(i,j,alpha) = 0.0d0
+                    endif
+                elseif(ex(alpha).EQ.0) then
+                    ! 纯y方向迁移: x不变, 只需在当前列i上按y方向三点Lagrange模板插值。
+                    if(streamInterpValidY(alpha,j)) then
+                        value = 0.0d0
+                        do jj = 1, 3
+                            value = value + streamInterpWeightY(alpha,j,jj)*g_post(i,streamInterpIndexY(alpha,j,jj),alpha)
+                        enddo
+                        g(i,j,alpha) = value
+                    else
+                        g(i,j,alpha) = 0.0d0
+                    endif
                 else
-                    g(i,j,alpha) = 0.0d0
+                    ! 对角方向迁移: x和y都偏移, 使用x/y两个一维三点模板的张量积插值。
+                    ! 实际参与的是3x3个上游节点, 二维权重为streamInterpWeightX*streamInterpWeightY。
+                    if(streamInterpValidX(alpha,i).AND.streamInterpValidY(alpha,j)) then
+                        value = 0.0d0
+                        do jj = 1, 3
+                            do ii = 1, 3
+                                value = value + streamInterpWeightX(alpha,i,ii)*streamInterpWeightY(alpha,j,jj)* &
+                                    g_post(streamInterpIndexX(alpha,i,ii),streamInterpIndexY(alpha,j,jj),alpha)
+                            enddo
+                        enddo
+                        g(i,j,alpha) = value
+                    else
+                        ! 上游点越过内部流体节点范围时不做off-lattice插值。
+                        ! 这里先清零, 随后的bouncebackT会按温度边界条件覆盖对应的未知分布函数。
+                        g(i,j,alpha) = 0.0d0
+                    endif
                 endif
             enddo
         enddo
@@ -1706,7 +1833,7 @@ close(00)
 #endif
 
 #ifdef VerticalWallsConstT
-    !$acc parallel loop gang vector default(none) present(g,g_post,omegaT) async(1)
+    !$acc parallel loop gang vector default(none) present(g,g_post,omegaT) copyin(paraA) async(1)
     do j = 1, ny
         !Left boundary
 #ifdef EnableLegacyThermalScheme
@@ -1746,7 +1873,7 @@ close(00)
 #endif
 
 #ifdef HorizontalWallsConstT
-    !$acc parallel loop gang vector default(none) present(g,g_post,omegaT) async(1)
+    !$acc parallel loop gang vector default(none) present(g,g_post,omegaT) copyin(paraA) async(1)
     do i = 1, nx
         !Bottom side
 #ifdef EnableLegacyThermalScheme
@@ -4405,4 +4532,3 @@ end subroutine output_psi_center_abs
 !===================================================================================================
 ! output_psi_center_abs 结束: 输出腔体中心位置的 abs(psi) 诊断结果。
 !===================================================================================================
-
