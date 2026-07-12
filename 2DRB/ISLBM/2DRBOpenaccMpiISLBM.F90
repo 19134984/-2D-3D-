@@ -57,9 +57,9 @@
 
 !算法切换
 !启用 M1G 修正；注释掉则不使用 useG 相关修正
-!#define EnableUseG
+#define EnableUseG
 !启用旧温度算法
-#define EnableLegacyThermalScheme
+!#define EnableLegacyThermalScheme
 
 !   温度算法宏的选择
 #if defined(EnableUseG) && defined(EnableLegacyThermalScheme)
@@ -162,17 +162,15 @@
         real(kind=8), parameter :: ISLBM_StretchA=1.5d0
 
         ! raw坐标中第一个内部流体节点的位置rawX(1)/rawY(1), 也就是近壁的1个lu。
-        real(kind=8), parameter :: ISLBM_DxMinRaw=0.5d0*(1.0d0 + &
-            erf(ISLBM_StretchA*(1.0d0/dble(nx+1)-0.5d0))/erf(0.5d0*ISLBM_StretchA))
-        real(kind=8), parameter :: ISLBM_DyMinRaw=0.5d0*(1.0d0 + &
-            erf(ISLBM_StretchA*(1.0d0/dble(ny+1)-0.5d0))/erf(0.5d0*ISLBM_StretchA))
+        ! 这些依赖erf()的派生量在运行开始时统一计算, 避免NVHPC编译期parameter限制。
+        real(kind=8) :: ISLBM_DxMinRaw, ISLBM_DyMinRaw
 #ifdef SideHeatedCell
         ! half-way壁面放在0.5*rawX(1)或0.5*rawY(1), 因此有效长度为1-ISLBM_Dx/DyMinRaw。
         ! ISLBM有效长度含多少个近壁lu: lengthUnit=(rightWall-leftWall)/ISLBM_DxMinRaw。
-        real(kind=8), parameter :: lengthUnit=(1.0d0-ISLBM_DxMinRaw)/ISLBM_DxMinRaw
+        real(kind=8) :: lengthUnit
 #else
         ! ISLBM有效长度含多少个近壁lu: lengthUnit=(topWall-bottomWall)/ISLBM_DyMinRaw。
-        real(kind=8), parameter :: lengthUnit=(1.0d0-ISLBM_DyMinRaw)/ISLBM_DyMinRaw
+        real(kind=8) :: lengthUnit
 #endif
         real(kind=8), parameter :: pi = acos(-1.0d0)
 
@@ -181,14 +179,12 @@
         real(kind=8), parameter :: Mach=0.1d0
         real(kind=8), parameter :: Thot=0.5d0, Tcold=-0.5d0
         real(kind=8), parameter :: Tref=0.5d0*(Thot+Tcold)
-        real(kind=8), parameter :: tauf=0.5d0+Mach*lengthUnit*dsqrt(3.0d0*Prandtl/Rayleigh) 
-        real(kind=8), parameter :: viscosity=(tauf-0.5d0)/3.0d0
-        real(kind=8), parameter :: diffusivity=viscosity/Prandtl
+        real(kind=8) :: tauf, viscosity, diffusivity
         
 
         ! velocityScaleCompare is used only in velocity-related post-processing to convert lattice velocity
         ! to the nondimensional velocity scale adopted by the reference paper being compared.
-        real(kind=8), parameter :: velocityScaleCompare=lengthUnit/diffusivity
+        real(kind=8) :: velocityScaleCompare
         ! 默认采用热扩散标度 UL/kappa；若要按自由落体标度比较，可改为 1.0d0/velocityUnit
         
         integer(kind=4), parameter :: nxHalf=(nx-1)/2+1, nyHalf=(ny-1)/2+1
@@ -197,30 +193,28 @@
 #ifdef  SideHeatedHa
         real(kind=8), parameter :: Ha=20.0d0                           !磁场强度
         real(kind=8), parameter :: phi=(0.0d0)*(pi/180.0d0)            !磁场角度，以水平向右为0，修改0.0d0即可
-        real(kind=8), parameter :: B2sigemarho=(Ha**2*viscosity)/(lengthUnit*lengthUnit)  !动量方程上的源项系数
+        real(kind=8) :: B2sigemarho  !动量方程上的源项系数
 #endif
 
         ! 高阶矩参数修正
-        real(kind=8), parameter :: paraA=20.0d0*dsqrt(3.0d0)*diffusivity-4.0d0
-
-
+        real(kind=8) :: paraA
 
         ! 浮力项参数
-        real(kind=8), parameter :: gBeta1=Rayleigh*viscosity*diffusivity/lengthUnit
-        real(kind=8), parameter :: gBeta=gBeta1/lengthUnit/lengthUnit             !gbetaΔT
+        real(kind=8) :: gBeta1
+        real(kind=8) :: gBeta             !gbetaΔT
         
-        real(kind=8), parameter :: timeUnit=dsqrt(lengthUnit/gBeta)      !无量纲时间
-        real(kind=8), parameter :: velocityUnit=dsqrt(gBeta*lengthUnit)  !无量纲速度
+        real(kind=8) :: timeUnit      !无量纲时间
+        real(kind=8) :: velocityUnit  !无量纲速度
     
-        real(kind=8), parameter :: Snu=1.0d0/tauf, Sq=8.0d0*(2.0d0*tauf-1.0d0)/(8.0d0*tauf-1.0d0)  !动量的多松弛系数
+        real(kind=8) :: Snu, Sq  !动量的多松弛系数
 
 #ifdef EnableLegacyThermalScheme
-        real(kind=8), parameter :: Qk=3.0d0-dsqrt(3.0d0), Qnu=4.0d0*dsqrt(3.0d0)-6.0d0             !旧温度算法的多松弛系数
-        real(kind=8), parameter :: thermalGeqCoeff=10.0d0/(4.0d0+paraA)
+        real(kind=8) :: Qk, Qnu             !旧温度算法的多松弛系数
+        real(kind=8) :: thermalGeqCoeff
 #else
-        real(kind=8), parameter :: taug = 0.5d0 + (tauf - 0.5d0)/Prandtl
-        real(kind=8), parameter :: Qnu = 1.0d0, Qk = 1.0d0/taug
-        real(kind=8), parameter :: thermalGeqCoeff=3.0d0
+        real(kind=8) :: taug
+        real(kind=8) :: Qnu, Qk
+        real(kind=8) :: thermalGeqCoeff
 #endif
         !===============================================================================================          
         
@@ -255,7 +249,7 @@
         integer(kind=4), parameter :: outputSnapshotFile=1   ! 是否输出后处理快照文件：0=不输出，1=输出
         integer(kind=4), parameter :: outputPltFile=1   ! 是否输出 plt 文件：0=不输出，1=输出
         integer(kind=4), parameter :: outputReloadFile=1 ! 是否周期输出 f/g 重启文件：0=不输出，1=输出
-        integer(kind=4), parameter :: itc_max=max(1, int(unsteadyRunDuration*timeUnit+0.5d0)) ! 非稳态：由总 t_ff 自动换算格子步
+        integer(kind=4) :: itc_max ! 非稳态：由总 t_ff 自动换算格子步
 #endif
 
         integer(kind=4) :: snapshotFileNum, pltFileNum  ! 快照/plt 输出文件的计数器
@@ -272,15 +266,15 @@
         ! 体平均 Nu 和 Re 的时间序列缓存
         ! 只有在启用并调用 calNuRe() 的情况下这些数组才会被真正填充
   
-        character(len=100) :: snapshotFilePrefix="buoyancyCavity2DOpenaccMpiSnapshot"
+        character(len=100) :: snapshotFilePrefix="buoyancyCavity2DOpenaccMpiISLBMSnapshot"
         ! 快照输出文件前缀（实际文件名形如：<snapshotFilePrefix>-<编号>.bin）
 
-        character(len=100) :: pltFolderPrefix="buoyancyCavity2DOpenaccMpiTecplot"
+        character(len=100) :: pltFolderPrefix="buoyancyCavity2DOpenaccMpiISLBMTecplot"
         ! plt 输出文件前缀（实际文件名形如：<pltFolderPrefix>-<编号>.plt）
 
-        character(len=100) :: reloadFilePrefix="reloadFile2DOpenaccMpi"
+        character(len=100) :: reloadFilePrefix="reloadFile2DOpenaccMpiISLBM"
         ! 重启读取文件的前缀；latest meta 模式实际读取 meta 中记录的 <reloadFilePrefix>-<编号>.bin
-        character(len=100) :: settingsFile="SimulationSettings2DOpenaccMpi.txt"
+        character(len=100) :: settingsFile="SimulationSettings2DOpenaccMpiISLBM.txt"
         !===============================================================================================
 
         !===============================================================================================
@@ -291,7 +285,7 @@
         real(kind=8) :: quadWidthX(1:nx), quadWidthY(1:ny)          !非均匀网格 midpoint-rule 积分权重
         real(kind=8) :: quadSumX, quadSumY, quadSumArea
         ! 归一化坐标中的1个lattice unit; 迁移时用xp(i)-ex(alpha)*ISLBM_LatticeUnit找上游点。
-        real(kind=8), parameter :: ISLBM_LatticeUnit=1.0d0/lengthUnit
+        real(kind=8) :: ISLBM_LatticeUnit
         real(kind=8), allocatable :: u(:,:), v(:,:), T(:,:), rho(:,:)
 
 #ifdef steadyFlow
@@ -363,6 +357,72 @@
 
 
 !=============================================================
+! 子程序: init_islbm_derived_parameters_mpi
+! 作用: 计算依赖erf非均匀网格和lengthUnit的派生参数。
+! 说明: NVHPC不支持erf()出现在parameter初始化表达式中，因此这些量在运行开始时计算一次。
+!=============================================================
+    subroutine init_islbm_derived_parameters_mpi()
+    use commondata
+    implicit none
+    real(kind=8) :: erfNorm
+
+    !===============================================================================================
+    ! ISLBM网格和特征尺度派生量
+    !===============================================================================================
+    erfNorm = erf(0.5d0*ISLBM_StretchA)
+    ISLBM_DxMinRaw = 0.5d0*(1.0d0 + &
+        erf(ISLBM_StretchA*(1.0d0/dble(nx+1)-0.5d0))/erfNorm)
+    ISLBM_DyMinRaw = 0.5d0*(1.0d0 + &
+        erf(ISLBM_StretchA*(1.0d0/dble(ny+1)-0.5d0))/erfNorm)
+
+#ifdef SideHeatedCell
+    lengthUnit = (1.0d0-ISLBM_DxMinRaw)/ISLBM_DxMinRaw
+#else
+    lengthUnit = (1.0d0-ISLBM_DyMinRaw)/ISLBM_DyMinRaw
+#endif
+    ISLBM_LatticeUnit = 1.0d0/lengthUnit
+
+    !===============================================================================================
+    ! 由lengthUnit派生的输运参数、力项参数和松弛系数
+    !===============================================================================================
+    tauf = 0.5d0+Mach*lengthUnit*dsqrt(3.0d0*Prandtl/Rayleigh)
+    viscosity = (tauf-0.5d0)/3.0d0
+    diffusivity = viscosity/Prandtl
+    velocityScaleCompare = lengthUnit/diffusivity
+
+#ifdef SideHeatedHa
+    B2sigemarho = (Ha**2*viscosity)/(lengthUnit*lengthUnit)
+#endif
+
+    paraA = 20.0d0*dsqrt(3.0d0)*diffusivity-4.0d0
+    gBeta1 = Rayleigh*viscosity*diffusivity/lengthUnit
+    gBeta = gBeta1/lengthUnit/lengthUnit
+    timeUnit = dsqrt(lengthUnit/gBeta)
+    velocityUnit = dsqrt(gBeta*lengthUnit)
+    Snu = 1.0d0/tauf
+    Sq = 8.0d0*(2.0d0*tauf-1.0d0)/(8.0d0*tauf-1.0d0)
+
+#ifdef EnableLegacyThermalScheme
+    Qk = 3.0d0-dsqrt(3.0d0)
+    Qnu = 4.0d0*dsqrt(3.0d0)-6.0d0
+    thermalGeqCoeff = 10.0d0/(4.0d0+paraA)
+#else
+    taug = 0.5d0 + (tauf - 0.5d0)/Prandtl
+    Qnu = 1.0d0
+    Qk = 1.0d0/taug
+    thermalGeqCoeff = 3.0d0
+#endif
+
+#ifdef unsteadyFlow
+    itc_max = max(1, int(unsteadyRunDuration*timeUnit+0.5d0))
+#endif
+
+    return
+    end subroutine init_islbm_derived_parameters_mpi
+!=============================================================
+
+
+!=============================================================
 
     program main
 
@@ -385,6 +445,7 @@
 
     !===============================================================================================
     !设置 MPI 笛卡尔分解和每个 rank 对应的 OpenACC 设备
+    call init_islbm_derived_parameters_mpi()
     call MPI_INIT(IERR)         !MPI 初始化
     call init_mpi_cartesian()   !建立笛卡尔通信器，确定当前 rank 的局部网格范围、物理边界标记和邻居 rank
     ! GPU-aware MPI 需要每个 MPI rank 先绑定到正确 GPU；这里参考 side_acc_mono.F90 的 local_rank 绑定方式。
@@ -2441,7 +2502,11 @@ close(00)
     real(kind=8) :: s(0:8)
     real(kind=8) :: fSource(0:8)
 
-    !$acc parallel loop gang vector collapse(2) present(f,f_post,rho,u,v,Fx,Fy,T) async(1) &
+#ifdef SideHeatedHa
+    !$acc parallel loop gang vector collapse(2) present(f,f_post,rho,u,v,Fx,Fy,T) copyin(Snu,Sq,gBeta,B2sigemarho) async(1) &
+#else
+    !$acc parallel loop gang vector collapse(2) present(f,f_post,rho,u,v,Fx,Fy,T) copyin(Snu,Sq,gBeta) async(1) &
+#endif
     !$acc& private(alpha,s,m,m_post,meq,fSource)
     do j = 1, yLocalCount
         do i = 1, xLocalCount
@@ -2674,7 +2739,11 @@ close(00)
     implicit none
     integer(kind=4) :: i, j
 
-    !$acc parallel loop gang vector collapse(2) present(f,rho,u,v,Fx,Fy) async(1)
+#ifdef SideHeatedHa
+    !$acc parallel loop gang vector collapse(2) present(f,rho,u,v,Fx,Fy,T) copyin(gBeta,B2sigemarho) async(1)
+#else
+    !$acc parallel loop gang vector collapse(2) present(f,rho,u,v,Fx,Fy,T) copyin(gBeta) async(1)
+#endif
     do j = 1, yLocalCount
         do i = 1, xLocalCount
             rho(i,j) = f(i,j,0)+f(i,j,1)+f(i,j,2)+f(i,j,3)+f(i,j,4)+f(i,j,5)+f(i,j,6)+f(i,j,7)+f(i,j,8)
@@ -2710,12 +2779,14 @@ close(00)
     real(kind=8) :: q(0:4)
     real(kind=8) :: Bx, By
     real(kind=8) :: dBx, dBy
-    real(kind=8), parameter :: SG = 1.0d0 - 0.5d0*Qk
+    real(kind=8) :: SG
+
+    SG = 1.0d0 - 0.5d0*Qk
 
 
 
 
-    !$acc parallel loop gang vector collapse(2) present(g,g_post,u,v,T,Bx_prev,By_prev) async(1) &
+    !$acc parallel loop gang vector collapse(2) present(g,g_post,u,v,T,Bx_prev,By_prev) copyin(Qk,Qnu,thermalGeqCoeff,paraA,SG) async(1) &
     !$acc& private(alpha,n,neq,q,n_post,Bx,By,dBx,dBy)
     do j = 1, yLocalCount
         do i = 1, xLocalCount
@@ -2872,7 +2943,7 @@ close(00)
 
 #ifdef VerticalWallsConstT
     if(hasLeftBoundary) then
-        !$acc parallel loop gang vector present(g,g_post,omegaT) async(1)
+        !$acc parallel loop gang vector present(g,g_post,omegaT) copyin(paraA) async(1)
         do j = 1, yLocalCount
 #ifdef EnableLegacyThermalScheme
             g(1,j,1) = -g_post(1,j,3)+(4.0d0+paraA)/10.0d0*Thot
@@ -2882,7 +2953,7 @@ close(00)
         enddo
     endif
     if(hasRightBoundary) then
-        !$acc parallel loop gang vector present(g,g_post,omegaT) async(1)
+        !$acc parallel loop gang vector present(g,g_post,omegaT) copyin(paraA) async(1)
         do j = 1, yLocalCount
 #ifdef EnableLegacyThermalScheme
             g(xLocalCount,j,3) = -g_post(xLocalCount,j,1)+(4.0d0+paraA)/10.0d0*Tcold
@@ -2925,7 +2996,7 @@ close(00)
 
 #ifdef HorizontalWallsConstT
     if(hasBottomBoundary) then
-        !$acc parallel loop gang vector present(g,g_post,omegaT) async(1)
+        !$acc parallel loop gang vector present(g,g_post,omegaT) copyin(paraA) async(1)
         do i = 1, xLocalCount
 #ifdef EnableLegacyThermalScheme
             g(i,1,2) = -g_post(i,1,4)+(4.0d0+paraA)/10.0d0*Thot
@@ -2935,7 +3006,7 @@ close(00)
         enddo
     endif
     if(hasTopBoundary) then
-        !$acc parallel loop gang vector present(g,g_post,omegaT) async(1)
+        !$acc parallel loop gang vector present(g,g_post,omegaT) copyin(paraA) async(1)
         do i = 1, xLocalCount
 #ifdef EnableLegacyThermalScheme
             g(i,yLocalCount,4) = -g_post(i,yLocalCount,2)+(4.0d0+paraA)/10.0d0*Tcold
@@ -5568,4 +5639,3 @@ end subroutine output_psi_center_abs
 !===================================================================================================
 ! output_psi_center_abs 结束: 输出腔体中心位置的 abs(psi) 诊断结果。
 !===================================================================================================
-

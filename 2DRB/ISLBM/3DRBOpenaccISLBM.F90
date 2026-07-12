@@ -91,9 +91,9 @@
 
 !算法切换
 !启用 M1G 修正；注释掉则不使用 useG 相关修正
-!#define EnableUseG
+#define EnableUseG
 !启用旧算法
-#define EnableLegacyThermalScheme
+!#define EnableLegacyThermalScheme
 
 !   温度算法宏的选择
 #if defined(EnableUseG) && defined(EnableLegacyThermalScheme)
@@ -142,21 +142,17 @@ module commondata3dOpenacc
   real(kind=8), parameter :: ISLBM_StretchA=1.5d0
 
   ! raw坐标中第一个内部流体节点的位置rawX(1)/rawY(1)/rawZ(1), 也就是近壁的1个lu。
-  real(kind=8), parameter :: ISLBM_DxMinRaw=0.5d0*(1.0d0 + &
-      erf(ISLBM_StretchA*(1.0d0/dble(nx+1)-0.5d0))/erf(0.5d0*ISLBM_StretchA))
-  real(kind=8), parameter :: ISLBM_DyMinRaw=0.5d0*(1.0d0 + &
-      erf(ISLBM_StretchA*(1.0d0/dble(ny+1)-0.5d0))/erf(0.5d0*ISLBM_StretchA))
-  real(kind=8), parameter :: ISLBM_DzMinRaw=0.5d0*(1.0d0 + &
-      erf(ISLBM_StretchA*(1.0d0/dble(nz+1)-0.5d0))/erf(0.5d0*ISLBM_StretchA))
+  ! 这些依赖erf()的派生量在运行开始时统一计算, 避免NVHPC编译期parameter限制。
+  real(kind=8) :: ISLBM_DxMinRaw, ISLBM_DyMinRaw, ISLBM_DzMinRaw
 
 #ifdef SideHeatedCell
   ! half-way壁面放在0.5*rawY(1), 因此有效长度为1-ISLBM_DyMinRaw。
-  ! ISLBM有效长度含多少个近壁lu: lengthUnit=(topWall-bottomWall)/ISLBM_DyMinRaw。
-  real(kind=8), parameter :: lengthUnit=(1.0d0-ISLBM_DyMinRaw)/ISLBM_DyMinRaw     ! 侧壁差温：特征长度取 y 方向 half-way 有效距离
+  ! ISLBM有效长度含多少个近壁lu: lengthUnit=(rightWall-leftWall)/ISLBM_DyMinRaw。
+  real(kind=8) :: lengthUnit     ! 侧壁差温：特征长度取 y 方向 half-way 有效距离
 #else
   ! half-way壁面放在0.5*rawZ(1), 因此有效长度为1-ISLBM_DzMinRaw。
-  ! ISLBM有效长度含多少个近壁lu: lengthUnit=(backWall-frontWall)/ISLBM_DzMinRaw。
-  real(kind=8), parameter :: lengthUnit=(1.0d0-ISLBM_DzMinRaw)/ISLBM_DzMinRaw     ! RB 上下差温：特征长度取 z 方向 half-way 有效距离
+  ! ISLBM有效长度含多少个近壁lu: lengthUnit=(topWall-bottomWall)/ISLBM_DzMinRaw。
+  real(kind=8) :: lengthUnit     ! RB 上下差温：特征长度取 z 方向 half-way 有效距离
 #endif
   real(kind=8), parameter :: pi=acos(-1.0d0)
 
@@ -165,40 +161,38 @@ module commondata3dOpenacc
   real(kind=8), parameter :: Mach=0.1d0
   real(kind=8), parameter :: Thot=0.5d0, Tcold=-0.5d0
   real(kind=8), parameter :: Tref=0.5d0*(Thot+Tcold)
-  real(kind=8), parameter :: tauf=0.5d0+Mach*lengthUnit*dsqrt(3.0d0*Prandtl/Rayleigh)
-  real(kind=8), parameter :: viscosity=(tauf-0.5d0)/3.0d0
-  real(kind=8), parameter :: diffusivity=viscosity/Prandtl
+  real(kind=8) :: tauf, viscosity, diffusivity
 
   real(kind=8), parameter :: cs2T=0.25d0
 
   ! 高阶矩参数修正 aT
-  real(kind=8), parameter :: paraA=42.0d0*dsqrt(3.0d0)*diffusivity-6.0d0
+  real(kind=8) :: paraA
 
   ! velocityScaleCompare 把格子速度换算到热扩散标度 U*L/alpha。
   ! 它用于速度输出，也用于 Nu 诊断中的对流热通量部分。
-  real(kind=8), parameter :: velocityScaleCompare=lengthUnit/diffusivity
+  real(kind=8) :: velocityScaleCompare
 
   ! 浮力项参数
   ! 浮力沿 z 方向施加；输出文件中的 W_nd 是竖直速度。
-  real(kind=8), parameter :: gBeta1=Rayleigh*viscosity*diffusivity/lengthUnit
-  real(kind=8), parameter :: gBeta=gBeta1/lengthUnit/lengthUnit
-  real(kind=8), parameter :: timeUnit=dsqrt(lengthUnit/gBeta)
-  real(kind=8), parameter :: velocityUnit=dsqrt(gBeta*lengthUnit)
+  real(kind=8) :: gBeta1
+  real(kind=8) :: gBeta
+  real(kind=8) :: timeUnit
+  real(kind=8) :: velocityUnit
 
   ! 动量方程的多松弛系数
-  real(kind=8), parameter :: Se=1.0d0/tauf, Seps=1.0d0/tauf
-  real(kind=8), parameter :: Snu=1.0d0/tauf, Spi=1.0d0/tauf
-  real(kind=8), parameter :: Sq=8.0d0*(2.0d0*tauf-1.0d0)/(8.0d0*tauf-1.0d0)
-  real(kind=8), parameter :: Sm=8.0d0*(2.0d0*tauf-1.0d0)/(8.0d0*tauf-1.0d0)
+  real(kind=8) :: Se, Seps
+  real(kind=8) :: Snu, Spi
+  real(kind=8) :: Sq
+  real(kind=8) :: Sm
 
   ! 温度方程的多松弛系数
 #ifdef EnableLegacyThermalScheme
-  real(kind=8), parameter :: Qk=3.0d0-dsqrt(3.0d0), Qnu=4.0d0*dsqrt(3.0d0)-6.0d0
-  real(kind=8), parameter :: thermalGeqCoeff=7.0d0/((6.0d0+paraA)*cs2T)
+  real(kind=8) :: Qk, Qnu
+  real(kind=8) :: thermalGeqCoeff
 #else
-  real(kind=8), parameter :: taug=0.5d0+diffusivity/cs2T
-  real(kind=8), parameter :: Qnu=1.0d0, Qk=1.0d0/taug
-  real(kind=8), parameter :: thermalGeqCoeff=1.0d0/cs2T
+  real(kind=8) :: taug
+  real(kind=8) :: Qnu, Qk
+  real(kind=8) :: thermalGeqCoeff
 #endif
 
   !===============================================================================================
@@ -231,7 +225,7 @@ module commondata3dOpenacc
   integer(kind=4), parameter :: outputSnapshotFile=1
   integer(kind=4), parameter :: outputPltFile=1
   integer(kind=4), parameter :: outputReloadFile=1
-  integer(kind=4), parameter :: itc_max=max(1, int(unsteadyRunDuration*timeUnit+0.5d0))
+  integer(kind=4) :: itc_max ! 非稳态：由总 t_ff 自动换算格子步
 #endif
 
   integer(kind=4) :: snapshotFileNum, pltFileNum
@@ -241,10 +235,10 @@ module commondata3dOpenacc
 
   real(kind=8) :: NuVolAvg(0:dimensionlessTimeMax), ReVolAvg(0:dimensionlessTimeMax)
 
-  character(len=100) :: snapshotFilePrefix="buoyancyCavity3DOpenaccSnapshot"
-  character(len=100) :: pltFolderPrefix="buoyancyCavity3DOpenaccTecplot"
-  character(len=100) :: reloadFilePrefix="reloadFile3DOpenacc"
-  character(len=100) :: settingsFile="SimulationSettings3DOpenacc.txt"
+  character(len=100) :: snapshotFilePrefix="buoyancyCavity3DOpenaccISLBMSnapshot"
+  character(len=100) :: pltFolderPrefix="buoyancyCavity3DOpenaccISLBMTecplot"
+  character(len=100) :: reloadFilePrefix="reloadFile3DOpenaccISLBM"
+  character(len=100) :: settingsFile="SimulationSettings3DOpenaccISLBM.txt"
   !===============================================================================================
 
   real(kind=8) :: errorU, errorT
@@ -257,7 +251,7 @@ module commondata3dOpenacc
   real(kind=8) :: quadSumX, quadSumY, quadSumZ, quadSumVolume
 
   ! 归一化坐标中的1个lattice unit; 迁移时以 x 为例用 xp(i)-ex(alpha)*ISLBM_LatticeUnit 找上游点, y/z 同理。
-  real(kind=8), parameter :: ISLBM_LatticeUnit=1.0d0/lengthUnit
+  real(kind=8) :: ISLBM_LatticeUnit
 
   ! ISLBM off-lattice迁移的三点Lagrange插值模板:
   ! streamInterpIndexX/Y/Z保存流场每个方向alpha、每个节点对应的3个插值节点编号。
@@ -314,6 +308,75 @@ end module commondata3dOpenacc
 
 
 !=============================================================
+! 子程序: init_islbm_derived_parameters3d
+! 作用: 计算依赖erf非均匀网格和lengthUnit的派生参数。
+! 说明: NVHPC不支持erf()出现在parameter初始化表达式中，因此这些量在运行开始时计算一次。
+!=============================================================
+subroutine init_islbm_derived_parameters3d()
+  use commondata3dOpenacc
+  implicit none
+  real(kind=8) :: erfNorm
+
+  !===============================================================================================
+  ! ISLBM网格和特征尺度派生量
+  !===============================================================================================
+  erfNorm = erf(0.5d0*ISLBM_StretchA)
+  ISLBM_DxMinRaw = 0.5d0*(1.0d0 + &
+      erf(ISLBM_StretchA*(1.0d0/dble(nx+1)-0.5d0))/erfNorm)
+  ISLBM_DyMinRaw = 0.5d0*(1.0d0 + &
+      erf(ISLBM_StretchA*(1.0d0/dble(ny+1)-0.5d0))/erfNorm)
+  ISLBM_DzMinRaw = 0.5d0*(1.0d0 + &
+      erf(ISLBM_StretchA*(1.0d0/dble(nz+1)-0.5d0))/erfNorm)
+
+#ifdef SideHeatedCell
+  lengthUnit = (1.0d0-ISLBM_DyMinRaw)/ISLBM_DyMinRaw
+#else
+  lengthUnit = (1.0d0-ISLBM_DzMinRaw)/ISLBM_DzMinRaw
+#endif
+  ISLBM_LatticeUnit = 1.0d0/lengthUnit
+
+  !===============================================================================================
+  ! 由lengthUnit派生的输运参数、力项参数和松弛系数
+  !===============================================================================================
+  tauf = 0.5d0+Mach*lengthUnit*dsqrt(3.0d0*Prandtl/Rayleigh)
+  viscosity = (tauf-0.5d0)/3.0d0
+  diffusivity = viscosity/Prandtl
+  paraA = 42.0d0*dsqrt(3.0d0)*diffusivity-6.0d0
+  velocityScaleCompare = lengthUnit/diffusivity
+
+  gBeta1 = Rayleigh*viscosity*diffusivity/lengthUnit
+  gBeta = gBeta1/lengthUnit/lengthUnit
+  timeUnit = dsqrt(lengthUnit/gBeta)
+  velocityUnit = dsqrt(gBeta*lengthUnit)
+
+  Se = 1.0d0/tauf
+  Seps = 1.0d0/tauf
+  Snu = 1.0d0/tauf
+  Spi = 1.0d0/tauf
+  Sq = 8.0d0*(2.0d0*tauf-1.0d0)/(8.0d0*tauf-1.0d0)
+  Sm = 8.0d0*(2.0d0*tauf-1.0d0)/(8.0d0*tauf-1.0d0)
+
+#ifdef EnableLegacyThermalScheme
+  Qk = 3.0d0-dsqrt(3.0d0)
+  Qnu = 4.0d0*dsqrt(3.0d0)-6.0d0
+  thermalGeqCoeff = 7.0d0/((6.0d0+paraA)*cs2T)
+#else
+  taug = 0.5d0+diffusivity/cs2T
+  Qnu = 1.0d0
+  Qk = 1.0d0/taug
+  thermalGeqCoeff = 1.0d0/cs2T
+#endif
+
+#ifdef unsteadyFlow
+  itc_max = max(1, int(unsteadyRunDuration*timeUnit+0.5d0))
+#endif
+
+  return
+end subroutine init_islbm_derived_parameters3d
+!=============================================================
+
+
+!=============================================================
 !   主程序
 
 
@@ -332,6 +395,8 @@ program main3dOpenacc
 #ifdef unsteadyFlow
   integer(kind=4) :: nextSampleItc, nextSampleAbsItc, unsteadyItcRemaining
 #endif
+
+  call init_islbm_derived_parameters3d()
 
   ! 先写日志头，并初始化 OpenACC 设备
   if (loadInitField .EQ. 1) then
@@ -651,28 +716,6 @@ subroutine initial3d()
   write(00,*) "ISLBM effective lengthUnit L0 =", real(lengthUnit,kind=8)
   write(00,*) "ISLBM lattice unit in normalized coordinates =", real(ISLBM_LatticeUnit,kind=8)
   write(00,*) "ISLBM quadrature volume =", real(quadSumVolume,kind=8)
-#if 0
-  xp(0) = 0.0d0
-  xp(nx+1) = dble(nx)
-  do i = 1, nx
-    xp(i) = dble(i) - 0.5d0
-  enddo
-  xp = xp / lengthUnit
-
-  yp(0) = 0.0d0
-  yp(ny+1) = dble(ny)
-  do j = 1, ny
-    yp(j) = dble(j) - 0.5d0
-  enddo
-  yp = yp / lengthUnit
-
-  zp(0) = 0.0d0
-  zp(nz+1) = dble(nz)
-  do k = 1, nz
-    zp(k) = dble(k) - 0.5d0
-  enddo
-  zp = zp / lengthUnit
-#endif
 
 
 
@@ -691,8 +734,6 @@ subroutine initial3d()
   !-----------------------------------------------------------------------------------------------
   ! 初始化
   !-----------------------------------------------------------------------------------------------
-  call init_lattice_constants_3d()  !速度集和权重
-
   rho = 1.0d0
   f = 0.0d0
   g = 0.0d0
@@ -1067,74 +1108,78 @@ subroutine build_islbm_mesh_3d()
   enddo
 
   ! 第二步: 采用half-way壁面。物理壁面位于参考端点与第一个内部流体节点之间。
-  leftWall = 0.5d0*rawX(1)
-  rightWall = 1.0d0-0.5d0*rawX(1)
-  bottomWall = 0.5d0*rawY(1)
-  topWall = 1.0d0-0.5d0*rawY(1)
-  frontWall = 0.5d0*rawZ(1)
-  backWall = 1.0d0-0.5d0*rawZ(1)
+  ! 3D命名约定为: front/back 是 x-normal 前后壁, left/right 是 y-normal 左右壁,
+  ! bottom/top 是 z-normal 上下壁。后续再映射为最终归一化坐标[0,1]。
+  frontWall = 0.5d0*rawX(1)
+  backWall = 1.0d0 - 0.5d0*rawX(1)
+  leftWall = 0.5d0*rawY(1)
+  rightWall = 1.0d0 - 0.5d0*rawY(1)
+  bottomWall = 0.5d0*rawZ(1)
+  topWall = 1.0d0 - 0.5d0*rawZ(1)
 
-  lengthX = rightWall - leftWall
-  lengthY = topWall - bottomWall
-  lengthZ = backWall - frontWall
+  lengthX = backWall - frontWall
+  lengthY = rightWall - leftWall
+  lengthZ = topWall - bottomWall
 
   xp(0) = 0.0d0; xp(nx+1) = 1.0d0
   do i = 1, nx
-    xp(i) = (rawX(i)-leftWall)/lengthX
+    xp(i) = (rawX(i)-frontWall)/lengthX
   enddo
 
   yp(0) = 0.0d0; yp(ny+1) = 1.0d0
   do j = 1, ny
-    yp(j) = (rawY(j)-bottomWall)/lengthY
+    yp(j) = (rawY(j)-leftWall)/lengthY
   enddo
 
   zp(0) = 0.0d0; zp(nz+1) = 1.0d0
   do k = 1, nz
-    zp(k) = (rawZ(k)-frontWall)/lengthZ
+    zp(k) = (rawZ(k)-bottomWall)/lengthZ
   enddo
 
   return
 end subroutine build_islbm_mesh_3d
 !===========================================================================================================================
-! build_islbm_mesh_3d 结束: 已完成本子程序对应的计算或数据处理步骤。
+! build_islbm_mesh_3d 结束: 已生成按 half-way 物理壁面归一化的 ISLBM 坐标 xp/yp/zp。
 !===========================================================================================================================
 
 
 !===========================================================================================================================
 ! 子程序: build_islbm_quadrature_3d
-! 作用: 执行本子程序对应的初始化、迁移、碰撞、边界、通信或后处理步骤。
-! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
+! 作用: 根据非均匀坐标 xp/yp/zp 计算节点积分宽度和总体积权重。
+! 用途: 在 initial 中调用，为 Nu、Re、体平均量和全局积分提供 quadWidth* 与 quadSum*。
 !===========================================================================================================================
 subroutine build_islbm_quadrature_3d()
   use commondata3dOpenacc
   implicit none
   integer(kind=4) :: i, j, k
-  real(kind=8) :: leftGhostX, rightGhostX, bottomGhostY, topGhostY, frontGhostZ, backGhostZ
+  real(kind=8) :: frontGhostX, backGhostX, leftGhostY, rightGhostY, bottomGhostZ, topGhostZ
 
-  leftGhostX = -xp(1)
-  rightGhostX = 1.0d0 + (1.0d0 - xp(nx))
-  bottomGhostY = -yp(1)
-  topGhostY = 1.0d0 + (1.0d0 - yp(ny))
-  frontGhostZ = -zp(1)
-  backGhostZ = 1.0d0 + (1.0d0 - zp(nz))
+  ! 端点控制宽度用镜像ghost节点表达。
+  ! x方向对应front/back, y方向对应left/right, z方向对应bottom/top。
+  frontGhostX = -xp(1)
+  backGhostX = 1.0d0 + (1.0d0 - xp(nx))
+  leftGhostY = -yp(1)
+  rightGhostY = 1.0d0 + (1.0d0 - yp(ny))
+  bottomGhostZ = -zp(1)
+  topGhostZ = 1.0d0 + (1.0d0 - zp(nz))
 
-  quadWidthX(1) = 0.5d0*(xp(2)-leftGhostX)
+  quadWidthX(1) = 0.5d0*(xp(2)-frontGhostX)
   do i = 2, nx-1
     quadWidthX(i) = 0.5d0*(xp(i+1)-xp(i-1))
   enddo
-  quadWidthX(nx) = 0.5d0*(rightGhostX-xp(nx-1))
+  quadWidthX(nx) = 0.5d0*(backGhostX-xp(nx-1))
 
-  quadWidthY(1) = 0.5d0*(yp(2)-bottomGhostY)
+  quadWidthY(1) = 0.5d0*(yp(2)-leftGhostY)
   do j = 2, ny-1
     quadWidthY(j) = 0.5d0*(yp(j+1)-yp(j-1))
   enddo
-  quadWidthY(ny) = 0.5d0*(topGhostY-yp(ny-1))
+  quadWidthY(ny) = 0.5d0*(rightGhostY-yp(ny-1))
 
-  quadWidthZ(1) = 0.5d0*(zp(2)-frontGhostZ)
+  quadWidthZ(1) = 0.5d0*(zp(2)-bottomGhostZ)
   do k = 2, nz-1
     quadWidthZ(k) = 0.5d0*(zp(k+1)-zp(k-1))
   enddo
-  quadWidthZ(nz) = 0.5d0*(backGhostZ-zp(nz-1))
+  quadWidthZ(nz) = 0.5d0*(topGhostZ-zp(nz-1))
 
   quadSumX = sum(quadWidthX)
   quadSumY = sum(quadWidthY)
@@ -1156,9 +1201,10 @@ end subroutine build_islbm_quadrature_3d
 subroutine build_islbm_streaming_stencils_3d()
   use commondata3dOpenacc
   implicit none
-  integer(kind=4) :: alpha, i, j, k, idx(3)
-  real(kind=8) :: ww(3), target
-  logical :: ok
+  integer(kind=4) :: alpha, i, j, k
+  integer(kind=4) :: stencilIndex(3)
+  real(kind=8) :: stencilWeight(3), target
+  logical :: stencilValid
 
   streamInterpIndexX = 1; streamInterpIndexY = 1; streamInterpIndexZ = 1
   streamInterpWeightX = 0.0d0; streamInterpWeightY = 0.0d0; streamInterpWeightZ = 0.0d0
@@ -1166,18 +1212,24 @@ subroutine build_islbm_streaming_stencils_3d()
   do alpha = 0, qf-1
     do i = 1, nx
       target = xp(i) - dble(ex(alpha))*ISLBM_LatticeUnit
-      call build_streaming_stencil_1d(nx, xp(1:nx), i, target, idx, ww, ok)
-      streamInterpValidX(alpha,i) = ok; streamInterpIndexX(alpha,i,:) = idx; streamInterpWeightX(alpha,i,:) = ww
+      call build_streaming_stencil_1d(nx, xp(1:nx), i, target, stencilIndex, stencilWeight, stencilValid)
+      streamInterpValidX(alpha,i) = stencilValid
+      streamInterpIndexX(alpha,i,:) = stencilIndex
+      streamInterpWeightX(alpha,i,:) = stencilWeight
     enddo
     do j = 1, ny
       target = yp(j) - dble(ey(alpha))*ISLBM_LatticeUnit
-      call build_streaming_stencil_1d(ny, yp(1:ny), j, target, idx, ww, ok)
-      streamInterpValidY(alpha,j) = ok; streamInterpIndexY(alpha,j,:) = idx; streamInterpWeightY(alpha,j,:) = ww
+      call build_streaming_stencil_1d(ny, yp(1:ny), j, target, stencilIndex, stencilWeight, stencilValid)
+      streamInterpValidY(alpha,j) = stencilValid
+      streamInterpIndexY(alpha,j,:) = stencilIndex
+      streamInterpWeightY(alpha,j,:) = stencilWeight
     enddo
     do k = 1, nz
       target = zp(k) - dble(ez(alpha))*ISLBM_LatticeUnit
-      call build_streaming_stencil_1d(nz, zp(1:nz), k, target, idx, ww, ok)
-      streamInterpValidZ(alpha,k) = ok; streamInterpIndexZ(alpha,k,:) = idx; streamInterpWeightZ(alpha,k,:) = ww
+      call build_streaming_stencil_1d(nz, zp(1:nz), k, target, stencilIndex, stencilWeight, stencilValid)
+      streamInterpValidZ(alpha,k) = stencilValid
+      streamInterpIndexZ(alpha,k,:) = stencilIndex
+      streamInterpWeightZ(alpha,k,:) = stencilWeight
     enddo
   enddo
 
@@ -1192,36 +1244,39 @@ end subroutine build_islbm_streaming_stencils_3d
 
 !===========================================================================================================================
 ! 子程序: build_streaming_stencil_1d
-! 作用: 执行本子程序对应的初始化、迁移、碰撞、边界、通信或后处理步骤。
-! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
+! 作用: 为 ISLBM 迁移选择到达点中心的三点 Lagrange 插值模板。
+! 用途: 被 build_islbm_streaming_stencils_3d 调用的 off-lattice 迁移辅助。
 !===========================================================================================================================
-subroutine build_streaming_stencil_1d(n, xnodes, nodeIndex, target, idx, ww, ok)
+subroutine build_streaming_stencil_1d(n, xnodes, nodeIndex, target, stencilIndex, stencilWeight, stencilValid)
   implicit none
   integer(kind=4), intent(in) :: n, nodeIndex
   real(kind=8), intent(in) :: xnodes(n), target
-  integer(kind=4), intent(out) :: idx(3)
-  real(kind=8), intent(out) :: ww(3)
-  logical, intent(out) :: ok
+  integer(kind=4), intent(out) :: stencilIndex(3)
+  real(kind=8), intent(out) :: stencilWeight(3)
+  logical, intent(out) :: stencilValid
   real(kind=8) :: xloc(3)
   real(kind=8), parameter :: tol=1.0d-12
 
-  idx = (/1, 1, 1/)
-  ww = 0.0d0
-  ok = .false.
+  ! 迁移专用模板按到达节点中心选取:
+  ! 内部点用(nodeIndex-1,nodeIndex,nodeIndex+1), 边界附近用单边三点。
+  ! target越过内部流体节点范围时保持无效, 交由后续边界条件补齐。
+  stencilIndex = (/1, 1, 1/)
+  stencilWeight = 0.0d0
+  stencilValid = .false.
   if(n.LT.3) return
   if((target.LT.xnodes(1)-tol).OR.(target.GT.xnodes(n)+tol)) return
 
   if(nodeIndex.LE.1) then
-    idx = (/1, 2, 3/)
+    stencilIndex = (/1, 2, 3/)
   elseif(nodeIndex.GE.n) then
-    idx = (/n-2, n-1, n/)
+    stencilIndex = (/n-2, n-1, n/)
   else
-    idx = (/nodeIndex-1, nodeIndex, nodeIndex+1/)
+    stencilIndex = (/nodeIndex-1, nodeIndex, nodeIndex+1/)
   endif
 
-  xloc = (/xnodes(idx(1)), xnodes(idx(2)), xnodes(idx(3))/)
-  call lagrange_weights_3(xloc, target, ww)
-  ok = .true.
+  xloc = (/xnodes(stencilIndex(1)), xnodes(stencilIndex(2)), xnodes(stencilIndex(3))/)
+  call lagrange_weights_3(xloc, target, stencilWeight)
+  stencilValid = .true.
 
   return
 end subroutine build_streaming_stencil_1d
@@ -1232,39 +1287,39 @@ end subroutine build_streaming_stencil_1d
 
 !===========================================================================================================================
 ! 子程序: build_lagrange_stencil_1d
-! 作用: 执行本子程序对应的初始化、迁移、碰撞、边界、通信或后处理步骤。
-! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
+! 作用: 为一维目标坐标选择三点 Lagrange 插值节点并计算对应权重。
+! 用途: 用于后处理中任意目标点的插值或导数辅助; streaming 使用 build_streaming_stencil_1d。
 !===========================================================================================================================
-subroutine build_lagrange_stencil_1d(n, xnodes, target, idx, ww, ok)
+subroutine build_lagrange_stencil_1d(n, xnodes, target, stencilIndex, stencilWeight, stencilValid)
   implicit none
   integer(kind=4), intent(in) :: n
   real(kind=8), intent(in) :: xnodes(n), target
-  integer(kind=4), intent(out) :: idx(3)
-  real(kind=8), intent(out) :: ww(3)
-  logical, intent(out) :: ok
+  integer(kind=4), intent(out) :: stencilIndex(3)
+  real(kind=8), intent(out) :: stencilWeight(3)
+  logical, intent(out) :: stencilValid
   integer(kind=4) :: mid
   real(kind=8) :: xloc(3)
   real(kind=8), parameter :: tol=1.0d-12
 
-  idx = (/1, 1, 1/)
-  ww = 0.0d0
-  ok = .false.
+  stencilIndex = (/1, 1, 1/)
+  stencilWeight = 0.0d0
+  stencilValid = .false.
   if(n.LT.3) return
   if((target.LT.xnodes(1)-tol).OR.(target.GT.xnodes(n)+tol)) return
   if(target.LE.xnodes(2)) then
-    idx = (/1, 2, 3/)
+    stencilIndex = (/1, 2, 3/)
   elseif(target.GE.xnodes(n-1)) then
-    idx = (/n-2, n-1, n/)
+    stencilIndex = (/n-2, n-1, n/)
   else
     mid = 2
     do while((mid.LT.n-1).AND.(xnodes(mid+1).LT.target))
       mid = mid + 1
     enddo
-    idx = (/mid-1, mid, mid+1/)
+    stencilIndex = (/mid-1, mid, mid+1/)
   endif
-  xloc = (/xnodes(idx(1)), xnodes(idx(2)), xnodes(idx(3))/)
-  call lagrange_weights_3(xloc, target, ww)
-  ok = .true.
+  xloc = (/xnodes(stencilIndex(1)), xnodes(stencilIndex(2)), xnodes(stencilIndex(3))/)
+  call lagrange_weights_3(xloc, target, stencilWeight)
+  stencilValid = .true.
 
   return
 end subroutine build_lagrange_stencil_1d
@@ -1275,28 +1330,28 @@ end subroutine build_lagrange_stencil_1d
 
 !===========================================================================================================================
 ! 子程序: build_node_lagrange_stencil_1d
-! 作用: 执行本子程序对应的初始化、迁移、碰撞、边界、通信或后处理步骤。
-! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
+! 作用: 根据已有节点编号选择其附近的三点 Lagrange 模板。
+! 用途: 用于需要在节点位置计算导数或局部拟合的后处理路径。
 !===========================================================================================================================
-subroutine build_node_lagrange_stencil_1d(n, nodeIndex, idx, ok)
+subroutine build_node_lagrange_stencil_1d(n, nodeIndex, stencilIndex, stencilValid)
   implicit none
   integer(kind=4), intent(in) :: n, nodeIndex
-  integer(kind=4), intent(out) :: idx(3)
-  logical, intent(out) :: ok
+  integer(kind=4), intent(out) :: stencilIndex(3)
+  logical, intent(out) :: stencilValid
 
-  idx = (/1, 1, 1/)
-  ok = .false.
+  stencilIndex = (/1, 1, 1/)
+  stencilValid = .false.
   if(n.LT.3) return
   if((nodeIndex.LT.1).OR.(nodeIndex.GT.n)) return
 
   if(nodeIndex.LE.1) then
-    idx = (/1, 2, 3/)
+    stencilIndex = (/1, 2, 3/)
   elseif(nodeIndex.GE.n) then
-    idx = (/n-2, n-1, n/)
+    stencilIndex = (/n-2, n-1, n/)
   else
-    idx = (/nodeIndex-1, nodeIndex, nodeIndex+1/)
+    stencilIndex = (/nodeIndex-1, nodeIndex, nodeIndex+1/)
   endif
-  ok = .true.
+  stencilValid = .true.
 
   return
 end subroutine build_node_lagrange_stencil_1d
@@ -1307,17 +1362,17 @@ end subroutine build_node_lagrange_stencil_1d
 
 !===========================================================================================================================
 ! 子程序: lagrange_weights_3
-! 作用: 执行本子程序对应的初始化、迁移、碰撞、边界、通信或后处理步骤。
-! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
+! 作用: 计算三点 Lagrange 插值在目标点 x0 处的三个基函数权重。
+! 用途: 被迁移插值、后处理插值和导数辅助例程复用。
 !===========================================================================================================================
-subroutine lagrange_weights_3(xnode, x0, ww)
+subroutine lagrange_weights_3(xnode, x0, lagrangeWeight)
   implicit none
   real(kind=8), intent(in) :: xnode(3), x0
-  real(kind=8), intent(out) :: ww(3)
+  real(kind=8), intent(out) :: lagrangeWeight(3)
 
-  ww(1) = ((x0-xnode(2))*(x0-xnode(3)))/((xnode(1)-xnode(2))*(xnode(1)-xnode(3)))
-  ww(2) = ((x0-xnode(1))*(x0-xnode(3)))/((xnode(2)-xnode(1))*(xnode(2)-xnode(3)))
-  ww(3) = ((x0-xnode(1))*(x0-xnode(2)))/((xnode(3)-xnode(1))*(xnode(3)-xnode(2)))
+  lagrangeWeight(1) = ((x0-xnode(2))*(x0-xnode(3)))/((xnode(1)-xnode(2))*(xnode(1)-xnode(3)))
+  lagrangeWeight(2) = ((x0-xnode(1))*(x0-xnode(3)))/((xnode(2)-xnode(1))*(xnode(2)-xnode(3)))
+  lagrangeWeight(3) = ((x0-xnode(1))*(x0-xnode(2)))/((xnode(3)-xnode(1))*(xnode(3)-xnode(2)))
 
   return
 end subroutine lagrange_weights_3
@@ -1406,14 +1461,15 @@ subroutine collision3d()
   real(kind=8) :: FxLoc, FyLoc, FzLoc
 
   ! 流场采用 D3Q19 MRT。这里把正变换和逆变换都显式展开
-  !$acc parallel loop : 为整个三重循环生成一个 GPU kernel。
+  ! OpenACC parallel loop: 为整个三重循环生成一个 GPU kernel。
   ! gang/vector   : 指示 OpenACC 把迭代映射到粗粒度/细粒度并行层次。
   ! collapse(3)   : 把 i-j-k 三层循环展平，扩大可并行的迭代空间。
   ! default(none) : 强制显式写出数据属性，避免变量被编译器偷偷按默认规则处理。
   ! present(...)  : 这些数组已经由 enter data 放到 GPU，这里直接使用，不再重复拷贝。
   ! async(1)      : 投递到编号 1 的异步队列；同一队列中的 kernel 按顺序执行，但 CPU 不必原地等待。
   ! private(...)  : 每个并行迭代拥有自己的临时标量/小数组，避免线程之间相互覆盖。
-  !$acc parallel loop gang vector collapse(3) default(none) present(f,f_post,rho,u,v,w,T) async(1) &
+  !$acc parallel loop gang vector collapse(3) default(none) present(f,f_post,rho,u,v,w,T) &
+  !$acc& copyin(Se,Seps,Sq,Sm,Snu,Spi,gBeta) async(1) &
   !$acc& private(alpha,m,meq,m_post,s,fSource,rhoLoc,uLoc,vLoc,wLoc,u2,uDotF,FxLoc,FyLoc,FzLoc)
   do k = 1, nz
     do j = 1, ny
@@ -1670,14 +1726,18 @@ end subroutine collision3d
 ! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===========================================================================================================================
 subroutine streaming3d()
-  use commondata3dOpenacc
+  use commondata3dOpenacc                              ! ISLBM迁移：从 off-lattice 上游位置插值读取 f_post
   implicit none
 
   integer(kind=4) :: i, j, k, ii, jj, kk, alpha
   real(kind=8) :: value
 
+  ! OpenACC版本中 f/f_post 的存储顺序为(i,j,k,alpha)。
+  ! 每个(i,j,k,alpha)只写自己的f(i,j,k,alpha), 不同线程之间没有写冲突。
+  ! 若某个方向的上游点越过内部流体节点范围, valid为false,
+  ! 该方向在streaming3d中置零, 后续bounceback3d会按速度边界条件覆盖对应的未知分布函数。
   !$acc parallel loop gang vector collapse(3) default(none) &
-  !$acc& present(f,f_post,streamInterpValidX,streamInterpValidY,streamInterpValidZ) &
+  !$acc& present(f,f_post,ex,ey,ez,streamInterpValidX,streamInterpValidY,streamInterpValidZ) &
   !$acc& present(streamInterpIndexX,streamInterpIndexY,streamInterpIndexZ) &
   !$acc& present(streamInterpWeightX,streamInterpWeightY,streamInterpWeightZ) &
   !$acc& async(1) private(alpha,ii,jj,kk,value)
@@ -1685,18 +1745,90 @@ subroutine streaming3d()
     do j = 1, ny
       do i = 1, nx
         do alpha = 0, qf-1
-          if(streamInterpValidX(alpha,i).AND.streamInterpValidY(alpha,j).AND.streamInterpValidZ(alpha,k)) then
-            value = 0.0d0
-            do kk = 1, 3
+          if(alpha.EQ.0) then
+            ! alpha=0为静止方向, 速度为(0,0,0), 不发生迁移, 直接原地复制。
+            f(i,j,k,alpha) = f_post(i,j,k,alpha)
+          elseif((ey(alpha).EQ.0).AND.(ez(alpha).EQ.0)) then
+            ! 纯x方向迁移: y/z不变, 只需在当前(j,k)线上按x方向三点Lagrange模板插值。
+            ! 3D中x方向对应前/后方向。
+            if(streamInterpValidX(alpha,i)) then
+              value = 0.0d0
+              do ii = 1, 3
+                value = value + streamInterpWeightX(alpha,i,ii) * &
+                  f_post(streamInterpIndexX(alpha,i,ii),j,k,alpha)
+              enddo
+              f(i,j,k,alpha) = value
+            else
+              f(i,j,k,alpha) = 0.0d0
+            endif
+          elseif((ex(alpha).EQ.0).AND.(ez(alpha).EQ.0)) then
+            ! 纯y方向迁移: x/z不变, 只需在当前(i,k)线上按y方向三点Lagrange模板插值。
+            ! 3D中y方向对应左/右方向。
+            if(streamInterpValidY(alpha,j)) then
+              value = 0.0d0
+              do jj = 1, 3
+                value = value + streamInterpWeightY(alpha,j,jj) * &
+                  f_post(i,streamInterpIndexY(alpha,j,jj),k,alpha)
+              enddo
+              f(i,j,k,alpha) = value
+            else
+              f(i,j,k,alpha) = 0.0d0
+            endif
+          elseif((ex(alpha).EQ.0).AND.(ey(alpha).EQ.0)) then
+            ! 纯z方向迁移: x/y不变, 只需在当前(i,j)线上按z方向三点Lagrange模板插值。
+            ! 3D中z方向对应下/上方向。
+            if(streamInterpValidZ(alpha,k)) then
+              value = 0.0d0
+              do kk = 1, 3
+                value = value + streamInterpWeightZ(alpha,k,kk) * &
+                  f_post(i,j,streamInterpIndexZ(alpha,k,kk),alpha)
+              enddo
+              f(i,j,k,alpha) = value
+            else
+              f(i,j,k,alpha) = 0.0d0
+            endif
+          elseif(ez(alpha).EQ.0) then
+            ! xy面对角迁移: z不变, 使用x/y两个一维三点模板的张量积插值。
+            if(streamInterpValidX(alpha,i).AND.streamInterpValidY(alpha,j)) then
+              value = 0.0d0
               do jj = 1, 3
                 do ii = 1, 3
                   value = value + streamInterpWeightX(alpha,i,ii)*streamInterpWeightY(alpha,j,jj) * &
-                    streamInterpWeightZ(alpha,k,kk) * &
-                    f_post(streamInterpIndexX(alpha,i,ii),streamInterpIndexY(alpha,j,jj),streamInterpIndexZ(alpha,k,kk),alpha)
+                    f_post(streamInterpIndexX(alpha,i,ii),streamInterpIndexY(alpha,j,jj),k,alpha)
                 enddo
               enddo
-            enddo
-            f(i,j,k,alpha) = value
+              f(i,j,k,alpha) = value
+            else
+              f(i,j,k,alpha) = 0.0d0
+            endif
+          elseif(ey(alpha).EQ.0) then
+            ! xz面对角迁移: y不变, 使用x/z两个一维三点模板的张量积插值。
+            if(streamInterpValidX(alpha,i).AND.streamInterpValidZ(alpha,k)) then
+              value = 0.0d0
+              do kk = 1, 3
+                do ii = 1, 3
+                  value = value + streamInterpWeightX(alpha,i,ii)*streamInterpWeightZ(alpha,k,kk) * &
+                    f_post(streamInterpIndexX(alpha,i,ii),j,streamInterpIndexZ(alpha,k,kk),alpha)
+                enddo
+              enddo
+              f(i,j,k,alpha) = value
+            else
+              f(i,j,k,alpha) = 0.0d0
+            endif
+          elseif(ex(alpha).EQ.0) then
+            ! yz面对角迁移: x不变, 使用y/z两个一维三点模板的张量积插值。
+            if(streamInterpValidY(alpha,j).AND.streamInterpValidZ(alpha,k)) then
+              value = 0.0d0
+              do kk = 1, 3
+                do jj = 1, 3
+                  value = value + streamInterpWeightY(alpha,j,jj)*streamInterpWeightZ(alpha,k,kk) * &
+                    f_post(i,streamInterpIndexY(alpha,j,jj),streamInterpIndexZ(alpha,k,kk),alpha)
+                enddo
+              enddo
+              f(i,j,k,alpha) = value
+            else
+              f(i,j,k,alpha) = 0.0d0
+            endif
           else
             f(i,j,k,alpha) = 0.0d0
           endif
@@ -1801,8 +1933,8 @@ subroutine bounceback3d()
       f(i,ny,k,4) = f_post(i,ny,k,3)
       f(i,ny,k,9) = f_post(i,ny,k,8)
       f(i,ny,k,10) = f_post(i,ny,k,7)
-      f(i,ny,k,16) = f_post(i,ny,k,15)
-      f(i,ny,k,18) = f_post(i,ny,k,17)
+      f(i,ny,k,16) = f_post(i,ny,k,17)
+      f(i,ny,k,18) = f_post(i,ny,k,15)
     enddo
   enddo
 #endif
@@ -1868,7 +2000,7 @@ subroutine macro3d()
   real(kind=8) :: FzLoc
 
 
- !$acc parallel loop gang vector collapse(3) default(none) present(f,rho,u,v,w,T) async(1) private(FzLoc)
+ !$acc parallel loop gang vector collapse(3) default(none) present(f,rho,u,v,w,T) copyin(gBeta) async(1) private(FzLoc)
   do k = 1, nz
     do j = 1, ny
       do i = 1, nx
@@ -1910,10 +2042,13 @@ subroutine collisionT3d()
   integer(kind=4) :: i, j, k
   real(kind=8) :: n(0:qt-1), neq(0:qt-1), q(0:qt-1), n_post(0:qt-1)
   real(kind=8) :: Bx, By, Bz, dBx, dBy, dBz
-  real(kind=8), parameter :: SG = 1.0d0 - 0.5d0 * Qk
+  real(kind=8) :: SG
+
+  SG = 1.0d0 - 0.5d0 * Qk
 
   ! 温度场采用 D3Q7 MRT
-  !$acc parallel loop gang vector collapse(3) default(none) present(g,g_post,u,v,w,T,Bx_prev,By_prev,Bz_prev) async(1) &
+  !$acc parallel loop gang vector collapse(3) default(none) present(g,g_post,u,v,w,T,Bx_prev,By_prev,Bz_prev) &
+  !$acc& copyin(Qk,Qnu,thermalGeqCoeff,paraA,SG) async(1) &
   !$acc& private(n,neq,q,n_post,Bx,By,Bz,dBx,dBy,dBz)
   do k = 1, nz
     do j = 1, ny
@@ -2005,14 +2140,17 @@ end subroutine collisionT3d
 ! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===========================================================================================================================
 subroutine streamingT3d()
-  use commondata3dOpenacc
+  use commondata3dOpenacc                              ! ISLBM温度迁移：从 off-lattice 上游位置插值读取 g_post
   implicit none
 
   integer(kind=4) :: i, j, k, ii, jj, kk, alpha
   real(kind=8) :: value
 
+  ! OpenACC版本中 g/g_post 的存储顺序为(i,j,k,alpha)。
+  ! D3Q7温度场只有静止方向和三个坐标轴方向, 没有面对角方向。
+  ! valid=false时先置零, 后续bouncebackT3d会按温度边界条件覆盖对应的未知分布函数。
   !$acc parallel loop gang vector collapse(3) default(none) &
-  !$acc& present(g,g_post,streamInterpValidX,streamInterpValidY,streamInterpValidZ) &
+  !$acc& present(g,g_post,exT,eyT,ezT,streamInterpValidX,streamInterpValidY,streamInterpValidZ) &
   !$acc& present(streamInterpIndexX,streamInterpIndexY,streamInterpIndexZ) &
   !$acc& present(streamInterpWeightX,streamInterpWeightY,streamInterpWeightZ) &
   !$acc& async(1) private(alpha,ii,jj,kk,value)
@@ -2020,18 +2158,45 @@ subroutine streamingT3d()
     do j = 1, ny
       do i = 1, nx
         do alpha = 0, qt-1
-          if(streamInterpValidX(alpha,i).AND.streamInterpValidY(alpha,j).AND.streamInterpValidZ(alpha,k)) then
-            value = 0.0d0
-            do kk = 1, 3
-              do jj = 1, 3
-                do ii = 1, 3
-                  value = value + streamInterpWeightX(alpha,i,ii)*streamInterpWeightY(alpha,j,jj) * &
-                    streamInterpWeightZ(alpha,k,kk) * &
-                    g_post(streamInterpIndexX(alpha,i,ii),streamInterpIndexY(alpha,j,jj),streamInterpIndexZ(alpha,k,kk),alpha)
-                enddo
+          if(alpha.EQ.0) then
+            ! alpha=0为静止方向, 速度为(0,0,0), 不发生迁移, 直接原地复制。
+            g(i,j,k,alpha) = g_post(i,j,k,alpha)
+          elseif((eyT(alpha).EQ.0).AND.(ezT(alpha).EQ.0)) then
+            ! 纯x方向迁移: y/z不变, 只需在当前(j,k)线上按x方向三点Lagrange模板插值。
+            if(streamInterpValidX(alpha,i)) then
+              value = 0.0d0
+              do ii = 1, 3
+                value = value + streamInterpWeightX(alpha,i,ii) * &
+                  g_post(streamInterpIndexX(alpha,i,ii),j,k,alpha)
               enddo
-            enddo
-            g(i,j,k,alpha) = value
+              g(i,j,k,alpha) = value
+            else
+              g(i,j,k,alpha) = 0.0d0
+            endif
+          elseif((exT(alpha).EQ.0).AND.(ezT(alpha).EQ.0)) then
+            ! 纯y方向迁移: x/z不变, 只需在当前(i,k)线上按y方向三点Lagrange模板插值。
+            if(streamInterpValidY(alpha,j)) then
+              value = 0.0d0
+              do jj = 1, 3
+                value = value + streamInterpWeightY(alpha,j,jj) * &
+                  g_post(i,streamInterpIndexY(alpha,j,jj),k,alpha)
+              enddo
+              g(i,j,k,alpha) = value
+            else
+              g(i,j,k,alpha) = 0.0d0
+            endif
+          elseif((exT(alpha).EQ.0).AND.(eyT(alpha).EQ.0)) then
+            ! 纯z方向迁移: x/y不变, 只需在当前(i,j)线上按z方向三点Lagrange模板插值。
+            if(streamInterpValidZ(alpha,k)) then
+              value = 0.0d0
+              do kk = 1, 3
+                value = value + streamInterpWeightZ(alpha,k,kk) * &
+                  g_post(i,j,streamInterpIndexZ(alpha,k,kk),alpha)
+              enddo
+              g(i,j,k,alpha) = value
+            else
+              g(i,j,k,alpha) = 0.0d0
+            endif
           else
             g(i,j,k,alpha) = 0.0d0
           endif
@@ -2079,7 +2244,7 @@ subroutine bouncebackT3d()
 #endif
 
 #ifdef VerticalWallsConstT
-  !$acc parallel loop gang vector collapse(2) default(none) present(g,g_post,omegaT) async(1)
+  !$acc parallel loop gang vector collapse(2) default(none) present(g,g_post,omegaT) copyin(paraA) async(1)
   do k = 1, nz
     do i = 1, nx
 #ifdef EnableLegacyThermalScheme
@@ -2114,7 +2279,7 @@ subroutine bouncebackT3d()
 #endif
 
 #ifdef HorizontalWallsConstT
- !$acc parallel loop gang vector collapse(2) default(none) present(g,g_post,omegaT) async(1)
+ !$acc parallel loop gang vector collapse(2) default(none) present(g,g_post,omegaT) copyin(paraA) async(1)
   do j = 1, ny
     do i = 1, nx
 #ifdef EnableLegacyThermalScheme
