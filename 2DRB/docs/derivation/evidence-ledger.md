@@ -29,6 +29,22 @@
 | 第 34 页 / PDF 第 34 页 | Eqs. (A.6b)-(A.7b) | `tilde(f)` 对应 `f_tilde`；`F_alpha` 对应 `force` | 变换分布的宏观动量重构为 `rho_0 u=sum_i c_i f_tilde_i+dt F/2`。 | 半源项不能在一次碰撞净源证明中遗漏；它使守恒动量的 transformed nonequilibrium moment 为 `-dt F/2`。 |
 | 第 35 页 / PDF 第 35 页 | Eqs. (A.14)-(A.19) | `tilde(g)` 对应 `g_tilde`；`Psi` 对应显式标量源；`Q` 对应 `heat_source` | 标量场使用相同梯形变换；宏观量重构为 `T=sum_i g_tilde_i+dt Q/2`。 | Eq. (A.16) 是 BGK 特例；TRT 偶、奇源因子仍须按投影算子分别推导。 |
 
+### Task 3：有效率与二阶恢复的新增核对
+
+| 印刷页 / PDF 页 | 方程或位置 | 符号映射 | 允许主张 | 限制 |
+| --- | --- | --- | --- | --- |
+| 第 4 页 / PDF 第 4 页 | Eqs. (1a)-(1c)、Eq. (2) | `delta rho,u,p,T,F,Q,kappa` 对应本项目同名宏观符号；`sigma_alpha_beta` 对应恢复的黏性应力 | 目标连续性、弱可压 N-S 与 CDE 的分量形式；黏性应力分解为剪切偏差部分与 `mu^B tr(S) I`。 | 目标 PDE 只用于最终比对，不能作为 `second_order_residual_table()` 的零残差输入。 |
+| 第 4-5 页 / PDF 第 4-5 页 | Eqs. (3)-(6) | `f, f^eq` 对应流场分布与平衡分布；连续矩对应 Task 1 离散矩约束 | `f^eq` 的零至三阶矩分别给出 `delta rho`、`rho0 u`、`delta rho c_s^2 I+rho0 uu` 与对称三阶速度矩；正文把截断 Maxwellian 的首误差标为 `O(Ma^3)`。 | 连续 Hermite 矩必须与 D2Q9 精确求积能力分开；不能据此消去所有离散高阶矩。 |
+| 第 5-6 页 / PDF 第 5-6 页 | Eqs. (7)-(10) | `integral S dv`、`integral v S dv`、`integral vv S dv` 对应 flow source 的零、一、二阶矩 | 由零、一阶矩获得连续性和 Euler 层；Eq. (10) 展示平衡矩导数中的 `uF+Fu`，供二阶应力与源二阶矩逐项相消。 | Eq. (10) 使用连续 BGK 的领先 CE 近似；TRT 离散 Hénon 平移与半源项需另行推导。 |
+| 第 6 页 / PDF 第 6 页 | Eqs. (11)-(14) | `chi_s,chi_b` 对应 shear/bulk feedback；`nu,nu^B` 对应物理输运系数 | Eq. (11) 给出源二阶矩及 Mach 分级；保留至 `O(Ma^2)` 得到 Eq. (13)，连续输运为 `nu=(1-chi_s)tau_f c_s^2`、`nu^B=2(1-chi_b)tau_f c_s^2/D`。 | Eq. (11) 的密度梯度和二次速度导数项是 `O(Ma^3)`，最后一项是 `O(Ma^4)`；不得称二阶恢复为无条件精确。 |
+| 第 7 页 / PDF 第 7 页 | Eqs. (18)-(21) | 标量零阶源、平衡一/二阶矩导数对应 CDE 守恒层和非平衡通量核 | `integral R dv=Q`；Eq. (21) 在标量通量核中产生 `p grad(T)/rho0`、`T F/rho0`、`Q u` 与 `c_s^2 grad(T)`。 | Eq. (21) 仍是连续领先 CE；离散二阶系数应使用 `dt(1/s-1/2)`。 |
+| 第 8 页 / PDF 第 8 页 | Eqs. (22)-(25) | `chi_kappa` 对应 scalar-flux feedback；`kappa` 对应物理扩散率 | Eq. (22) 要求源一阶矩包含 `p grad(T)/rho0+T F/rho0+Q u+(c_s^2-kappa/tau_g)grad(T)`；Eq. (24) 的参数化形式和 Eq. (25) 的连续 `kappa` 由此得到。 | Eq. (22) 的 `-T u div(u)` 明标为 `O(Ma^3)` 并被论文舍弃；本项目把它列为首个 Mach 余项而不是零。 |
+| 第 9 页 / PDF 第 9 页 | Eqs. (26)-(29) | `tau_fL,tau_gL` 对应 BGK 格子松弛时间；TRT 中分别映射到物理 even/odd Hénon 平移 | 梯形离散后 `nu=(tau_fL-1/2)(1-chi_s)c_s^2 dt`、`nu^B=2(tau_fL-1/2)(1-chi_b)c_s^2dt/D`、`kappa=(tau_gL-1/2)(1-chi_kappa)c_s^2dt`。 | 原式是 BGK；TRT 中 shear/bulk 用 `sigma_f^+`、scalar flux 用 `sigma_g^-` 是项目内 parity 矩推导，不是论文逐字结论。 |
+| 第 10 页 / PDF 第 10 页 | Eq. (30) | `integral vv(tilde f-f^eq)dv` 对应 transformed 二阶非平衡矩 | 给出 transformed 非平衡应力、应变、`uF+Fu` 和半时间步应变项的完整关系，可分别投影到 off-diagonal、deviatoric diagonal 与 trace。 | Eq. (30) 本身使用论文 BGK `tau_f`；有效 TRT 块率由代回 Task 2 的 parity collision 得到。 |
+| 第 10 页 / PDF 第 10 页 | Eqs. (31)-(33) | off-diagonal closure、trace closure、diagonal reconstruction对应三个 flow physical blocks | Eq. (31) 闭合非对角应变；Eq. (32) 闭合 `tr(S)`；Eq. (33) 用迹重构对角应变。它们固定所有因子 2、`D`、`rho0`、`c_s^2` 与 `dt`。 | 局部应变闭合不改变未参与源反馈的 ghost 率，也不提供边界 magic parameter。 |
+| 第 10 页 / PDF 第 10 页 | Eqs. (34)-(35) | `integral v(tilde g-g^eq)dv` 对应 scalar odd nonequilibrium flux；`p/rho0` 对应 `pressure_ratio` | Eq. (35) 给出 `grad(T)` 对局部非平衡通量以及 affine `T F/rho0+Q u` 的闭合；直接代回可导出冻结压力下的 scalar-flux 有效率。 | 该式支持局部闭合。空间变 `p/rho0` 的乘积导数、高阶 modified equation 和边界行为需另行分析。 |
+| 第 33-35 页 / PDF 第 33-35 页 | Eqs. (A.1)-(A.5)、(A.6b)-(A.7b)、(A.14)-(A.19) | 一般梯形变换、flow/scalar 显式 LBE 与半源宏观重构 | 二阶 CE 可使用 `I-Lambda/2=Lambda Sigma`，并由半源重构消去 Taylor 时间离散项；正确 parity 源传递系数为 `(1-s/2)/(s sigma)=1`。 | Appendix 只印出 BGK 分量式；`Lambda=s_+P_++s_-P_-` 的算子推广和残差扰动属于本项目显式代数。 |
+
 ## 2. Wang et al. (2013)
 
 原始 PDF：`D:\桌面\代码\代码\热对流\2DRB\pdf\Lattice Boltzmann simulations of thermal convective flows in two dimensions.pdf`
