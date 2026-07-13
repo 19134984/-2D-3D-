@@ -56,6 +56,7 @@
 | 期刊页 264 / PDF 第 3 页 | Eqs. (11)-(12) | 论文 D2Q5 的 `e_i, i=0,...,4` 对应 `d2q5().velocities`；`N` 是温度分布的矩变换 | 该 D2Q5 使用 D2Q9 的前五个速度；矩基可用于从平衡矩反解静止态权重。 | **D2Q5-only。** |
 | 期刊页 265 / PDF 第 4 页 | Eqs. (14)-(17) | 论文自由参数 `a` 对应 D2Q5 平衡矩第四分量的系数；`T` 对应零阶标量矩；`sigma_kappa,sigma_nu` 是两组温度非守恒矩的松弛率 | D2Q5 平衡矩为 `(T,uT,vT,aT,0)`，`a` 是自由参数；Eq. (17) 只给出四阶误差项的**各向同性条件**。 | **D2Q5-only。** Eq. (17) 本身不是完整四阶误差消除条件；Eq. (14) 也不会唯一固定 `w_0,w_1,...,w_4`，除非另行选定 `a`。 |
 | 期刊页 265 / PDF 第 4 页 | Eqs. (18)-(19) | `sigma_e,sigma_nu,sigma_kappa` 是 D2Q5 温度模型的非守恒矩松弛率 | 若要进一步主张完整四阶误差消除，还必须结合额外松弛率关系和这些特殊参数值，不能只引用 Eq. (17)。 | **D2Q5-only。** 这些关系不得导入 D2Q9。 |
+| 期刊页 265 / PDF 第 4 页 | Eqs. (15)-(17) 的精确率映射 | Wang 的 `sigma_kappa,sigma_e,sigma_nu` 是碰撞率，分别映射到 Dubois `s1,s3,s4`；Hénon 量是 `1/sigma_kappa-1/2` 等 | Eq. (17) 精确等价于 Dubois `sigma1*sigma4=1/6`，也就是 `kappa22=2*kappa40` 的各向同性条件。 | 不能把 Wang 的率符号直接当作 Hénon `sigma_j`；该式不保证 `kappa40=kappa22=0`。 |
 
 ## 3. Contrino et al. / Luo (2014)
 
@@ -67,6 +68,7 @@
 | 期刊页 259 / PDF 第 3 页 | Eq. (9) | 论文 `c_s` 对应 `sqrt(Lattice.cs2)` | 独立复核标准格子标度下 `c_s^2 = 1/3`。 | 该式位于流动 D2Q9 模型部分。 |
 | 期刊页 260 / PDF 第 4 页 | Eqs. (13)-(17) | 论文 `n^eq=(T,uT,vT,aT,0)^T` 对应 D2Q5 平衡矩；`a` 是自由参数 | 复核 D2Q5 的参数化平衡矩、松弛矩阵和四阶误差条件。 | **D2Q5-only。** `a` 的存在再次说明 D2Q5 权重不是由速度集唯一决定。 |
 | 期刊页 260 / PDF 第 4 页 | Eqs. (18)-(21) | 论文 `sigma_k=1/s_k-1/2` 对应后续 TRT 的 Hénon 平移参数 | 这些特定参数关系可消除该 D2Q5 热模型的完整四阶误差。 | **D2Q5-only。** 不得作为 D2Q9 TRT 系数的证据。 |
+| 期刊页 260 / PDF 第 4 页 | Eqs. (15)-(20) 的精确率映射 | Luo 的 `sigma_kappa,sigma_e,sigma_nu` 与 Wang 一样是碰撞率；其括号 `1/sigma-1/2` 才对应 Dubois Hénon `sigma1,sigma3,sigma4` | Eq. (17) 复核各向同性；Eqs. (18)-(20) 另加特殊率关系后才消除完整四阶项。 | Luo 的完整消除参数仍属于该 D2Q5 模型，不提供 D2Q9 四阶系数。 |
 
 ## 4. Dubois & Lallemand, Towards higher order lattice Boltzmann schemes
 
@@ -75,8 +77,11 @@
 | 印刷页 / PDF 页 | 方程或位置 | 符号映射 | 允许主张 | 限制 |
 | --- | --- | --- | --- | --- |
 | 第 5 页 / PDF 第 5 页 | Eq. (16) | 论文 `sigma_k` 对应后续代码中的 Hénon 参数；`s_k` 对应矩空间松弛率 | 可使用 `sigma_k = 1/s_k - 1/2` 在松弛率与平移参数之间转换。 | 这只是参数定义，不自动给出 TRT magic parameter。 |
-| 第 11 页 / PDF 第 11 页 | Eqs. (40)-(42) | 论文 D2Q5 的 `kappa_40,kappa_22` 对应四阶等效方程系数 | 可引用 D2Q5 四阶等效方程及其两个误差系数。 | **D2Q5-only。** |
-| 第 16 页 / PDF 第 16 页 | Eq. (55) | 论文 `sigma_1,sigma_3` 对应 D2Q5 两组非守恒矩的 Hénon 参数 | 可引用该 D2Q5 模型完整四阶消除的一组参数值。 | **D2Q5-only。** 不得迁移到 D2Q9。 |
+| 第 11 页 / PDF 第 11 页 | Eq. (39) | `Psi` 对应 `m0,m1,m2,m3,m4` 的碰撞更新；非守恒率为 `(s1,s1,s3,s4)`，`m3_eq=alpha*rho` | 可精确构造参数化 D2Q5 碰撞矩阵；只有 `m0` 守恒。 | Eq. (39) 必须与 Appendix Eq. (79) 的同一矩排序配套使用。 |
+| 第 11 页 / PDF 第 11 页 | Eqs. (40)-(42) | `lambda,Delta t,sigma1` 固定二阶和四阶有量纲前因子；`kappa40,kappa22` 是无量纲四阶系数 | 可逐项比较生成器的扩散率、轴向四阶系数和混合四阶系数，并引用 Eqs. (41)-(42) 的闭式。 | **D2Q5-only。** 论文闭式只作为生成结果的外部比较，不作为递推输入。 |
+| 第 16 页 / PDF 第 16 页 | Eq. (55) 及其后 TRT 讨论 | `sigma1,sigma3,sigma4` 是 D2Q5 Hénon 参数 | 同时令 `kappa40=kappa22=0` 得到 Eq. (55)；再加 `sigma3=sigma4` 得 `sigma1=1/sqrt(12)`、`sigma3=sigma4=1/sqrt(3)`。 | 这是完整消除条件，不能与仅有 `sigma1*sigma4=1/6` 的各向同性条件混为一谈。 |
+| 第 17 页 / PDF 第 17 页 | Eq. (55) 后的平面波段落 | `B=diag(1,exp(+ikx Delta x),exp(+iky Delta x),exp(-ikx Delta x),exp(-iky Delta x))`，`G=B M^-1 Psi M` | 固定 Route A 的正相位 streaming 约定和 hydrodynamic 根 `z=exp(Delta t partial_t)`。 | 数值特征值只能作抽查；项目符号答案使用形式级数递推。 |
+| 第 38 页 / PDF 第 38 页 | Appendix Eq. (79) | 速度顺序为 rest/east/north/west/south，矩阵第二、三行含 `lambda` | 可从 `m_eq=(rho,0,0,alpha rho,0)` 反解 `w0=(1-alpha)/5`、移动权重 `(4+alpha)/20` 和 `c_e=(4+alpha)/10`。 | 不能用 Task 1 的固定 `alpha=-2/3` 权重代替一般模型。 |
 
 ## 5. Ginzburg & d'Humières (2003)
 
