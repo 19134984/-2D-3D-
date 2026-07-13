@@ -15,6 +15,7 @@ bin/Debug/
 obj/Debug/
 hostfile.*
 fort.*
+.worktrees/
 
 # Root-level temporary text extracted from papers during manual review.
 /_*.txt
