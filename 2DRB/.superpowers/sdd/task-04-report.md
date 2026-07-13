@@ -15,6 +15,14 @@
 - `docs/derivation/evidence-ledger.md`
 - `.superpowers/sdd/task-04-report.md`
 
+## Minor 审查修复
+
+在 `1dab741` 基础上补强了两个审查项，未修改任何推导系数或生产代码：
+
+- 附录明确区分 Dubois Eq. (15) 与第 17 页正相位 $B$ 的相反空间位移符号。本验证器固定采用第 17 页约定；两者以 $\boldsymbol k\mapsto-\boldsymbol k$ 对应，所以当前纯扩散偶数阶系数不变。Task 5 的源项或平流符号必须在其自行固定的 Fourier 约定下重新推导。
+- Route B 禁词门禁同时扫描 `taylor_moment_route` 与 `_streaming_taylor_residual`，防止独立性只在公开入口表面成立。
+- monkeypatch 门禁改为一般有理点上的 `order=4` 调用，并精确断言 `diffusion=7/100`、`kappa40=26483/3850`、`kappa22=-25317/1925`。
+
 ## 原始证据核对
 
 直接提取并渲染检查了本地 Dubois--Lallemand PDF：
@@ -54,7 +62,7 @@ Route B 不构造 `G`，也不使用特征值、特征向量、特征多项式�
 
 以消去非守恒矩，得到 `L0=0`、二阶扩散、`L2=0` 和四阶空间算子。
 
-两路只共享矩阵、速度和通用截断多项式工具。测试还 monkeypatch `amplification_matrix` 和 `amplification_route` 为抛异常函数，Route B 仍能返回正确扩散率。
+两路只共享矩阵、速度和通用截断多项式工具。测试还 monkeypatch `amplification_matrix` 和 `amplification_route` 为抛异常函数，Route B 仍能独立返回一般有理点上的精确二阶与四阶系数；公开入口和内部 streaming Taylor helper 也同时接受禁词扫描。
 
 ## 精确结果
 
@@ -127,12 +135,12 @@ Route A/B 与相位测试先因新入口不存在产生 4 个 assertion `FAIL`�
 
 `python -m unittest tests.derivation.test_d2q5_reference -v`
 
-- `Ran 19 tests in 49.793s`
+- `Ran 19 tests in 52.000s`
 - `OK`
 
 `python -m unittest discover -s tests/derivation -v`
 
-- `Ran 55 tests in 61.686s`
+- `Ran 55 tests in 62.081s`
 - `OK`
 
 最终还执行 diff check、控制字符扫描、Markdown dollar delimiter 和 LaTeX 花括号平衡检查；结果记录在提交前验证输出中。

@@ -242,20 +242,27 @@ class SecondOrderRouteTests(D2Q5ReferenceImportTests):
         self.assertIsNone(route_a.kappa40)
         self.assertIsNone(route_b.kappa40)
 
-    def test_taylor_route_source_contains_no_eigen_route_vocabulary(self) -> None:
-        source = inspect.getsource(taylor_moment_route).lower()
+    def test_taylor_route_sources_contain_no_eigen_route_vocabulary(self) -> None:
+        route_b_callables = {
+            "taylor_moment_route": taylor_moment_route,
+            "_streaming_taylor_residual": (
+                d2q5_reference_module._streaming_taylor_residual
+            ),
+        }
 
-        for forbidden in (
-            "amplification_matrix",
-            "amplification_route",
-            "characteristic",
-            "eigen",
-            "gamma",
-            "log(",
-            "z_h",
-        ):
-            with self.subTest(forbidden=forbidden):
-                self.assertNotIn(forbidden, source)
+        for callable_name, callable_object in route_b_callables.items():
+            source = inspect.getsource(callable_object).lower()
+            for forbidden in (
+                "amplification_matrix",
+                "amplification_route",
+                "characteristic",
+                "eigen",
+                "gamma",
+                "log(",
+                "z_h",
+            ):
+                with self.subTest(callable=callable_name, forbidden=forbidden):
+                    self.assertNotIn(forbidden, source)
 
     def test_taylor_route_does_not_call_amplification_implementation(self) -> None:
         with patch.object(
@@ -272,10 +279,12 @@ class SecondOrderRouteTests(D2Q5ReferenceImportTests):
                 Rational(1, 5),
                 Rational(2, 7),
                 Rational(3, 11),
-                order=2,
+                order=4,
             )
 
         self.assertEqual(result.diffusion, Rational(7, 100))
+        self.assertEqual(result.kappa40, Rational(26483, 3850))
+        self.assertEqual(result.kappa22, Rational(-25317, 1925))
 
 
 class FourthOrderReferenceTests(D2Q5ReferenceImportTests):
