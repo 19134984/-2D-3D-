@@ -67,7 +67,7 @@ class D2Q9MomentTests(unittest.TestCase):
 
 - [ ] **Step 2: Run the tests and confirm failure**
 
-Run: python -m unittest tests.derivation.test_lattice -v  
+Run: python -m unittest tests.derivation.test_lattice -v
 Expected: the delayed-import assertion reports the missing lattice behavior as
 `FAIL`, with zero syntax or collection errors.
 
@@ -92,7 +92,7 @@ Use exact SymPy Rational values. Record every paper equation used in evidence-le
 
 - [ ] **Step 4: Run tests**
 
-Run: python -m unittest tests.derivation.test_lattice -v  
+Run: python -m unittest tests.derivation.test_lattice -v
 Expected: all lattice tests pass.
 
 - [ ] **Step 5: Commit**
@@ -137,7 +137,7 @@ class SourceCollisionTests(unittest.TestCase):
 
 - [ ] **Step 2: Run tests and confirm failure**
 
-Run: python -m unittest tests.derivation.test_sources_collision -v  
+Run: python -m unittest tests.derivation.test_sources_collision -v
 Expected: assertion failure for the unimplemented source/collision behavior.
 
 - [ ] **Step 3: Implement parity-resolved sources**
@@ -160,8 +160,8 @@ Add explicit tests that net momentum and net heat source after one collision are
 
 - [ ] **Step 5: Run tests and write derivation chapter**
 
-Run: python -m unittest tests.derivation.test_sources_collision -v  
-Expected: all tests pass.  
+Run: python -m unittest tests.derivation.test_sources_collision -v
+Expected: all tests pass.
 Chapter must show the projection algebra, source moment table, trapezoidal operator derivation, and componentwise BGK limit.
 
 - [ ] **Step 6: Commit**
@@ -205,7 +205,7 @@ class EffectiveRateTests(unittest.TestCase):
 
 - [ ] **Step 2: Run tests and confirm failure**
 
-Run: python -m unittest tests.derivation.test_effective_rates -v  
+Run: python -m unittest tests.derivation.test_effective_rates -v
 Expected: assertion failure for the unimplemented effective-rate behavior.
 
 - [ ] **Step 3: Implement local feedback elimination**
@@ -218,8 +218,8 @@ Write explicit order-by-order equations for continuity, momentum, and temperatur
 
 - [ ] **Step 5: Run tests and perform adversarial equation review**
 
-Run: python -m unittest tests.derivation.test_effective_rates -v  
-Expected: all tests pass.  
+Run: python -m unittest tests.derivation.test_effective_rates -v
+Expected: all tests pass.
 Independent reviewer must check conservation, half-source terms, and pressure cancellation.
 
 - [ ] **Step 6: Commit**
@@ -257,7 +257,7 @@ class D2Q5ReferenceTests(unittest.TestCase):
 
 - [ ] **Step 2: Run tests and confirm failure**
 
-Run: python -m unittest tests.derivation.test_d2q5_reference -v  
+Run: python -m unittest tests.derivation.test_d2q5_reference -v
 Expected: assertion failure for the unimplemented series behavior.
 
 - [ ] **Step 3: Implement two coefficient routes**
@@ -270,7 +270,7 @@ The chapter must reproduce Dubois-Lallemand D2Q5 equations (40)-(42) and (55), s
 
 - [ ] **Step 5: Run tests**
 
-Run: python -m unittest tests.derivation.test_d2q5_reference -v  
+Run: python -m unittest tests.derivation.test_d2q5_reference -v
 Expected: all tests pass and both routes agree.
 
 - [ ] **Step 6: Commit**
@@ -325,7 +325,7 @@ class D2Q9FourthOrderTests(unittest.TestCase):
 
 - [ ] **Step 2: Run tests and confirm failure**
 
-Run: python -m unittest tests.derivation.test_d2q9_fourth_order -v  
+Run: python -m unittest tests.derivation.test_d2q9_fourth_order -v
 Expected: assertion failure for the unimplemented D2Q9 behavior.
 
 - [ ] **Step 3: Implement source-feedback D2Q9 matrices**
@@ -342,7 +342,7 @@ Document the exact nonzero residual obtained from the printed k22 formula and th
 
 - [ ] **Step 6: Run tests and commit**
 
-Run: python -m unittest tests.derivation.test_d2q9_fourth_order -v  
+Run: python -m unittest tests.derivation.test_d2q9_fourth_order -v
 Expected: all tests pass.
 
 ~~~powershell
@@ -389,7 +389,7 @@ class BoundaryResidualTests(unittest.TestCase):
 
 - [ ] **Step 2: Run tests and confirm failure**
 
-Run: python -m unittest tests.derivation.test_boundary -v  
+Run: python -m unittest tests.derivation.test_boundary -v
 Expected: assertion failure for the unimplemented boundary behavior.
 
 - [ ] **Step 3: Implement chain Taylor residuals**
@@ -402,8 +402,8 @@ classify_magic() returns one of: universal_magic, restricted_calibration, bounda
 
 - [ ] **Step 5: Run tests and write chapter**
 
-Run: python -m unittest tests.derivation.test_boundary -v  
-Expected: all tests pass.  
+Run: python -m unittest tests.derivation.test_boundary -v
+Expected: all tests pass.
 Chapter must state every assumption beside each candidate constant.
 
 - [ ] **Step 6: Commit**
@@ -441,7 +441,7 @@ class ParameterTests(unittest.TestCase):
 
 - [ ] **Step 2: Run tests and confirm failure**
 
-Run: python -m unittest tests.derivation.test_parameters -v  
+Run: python -m unittest tests.derivation.test_parameters -v
 Expected: assertion failure for the unimplemented parameter behavior.
 
 - [ ] **Step 3: Implement exact and numerical solvers**
@@ -454,7 +454,7 @@ The chapter fixes this order: half-source macroscopic reconstruction; equilibriu
 
 - [ ] **Step 5: Run tests and commit**
 
-Run: python -m unittest tests.derivation.test_parameters -v  
+Run: python -m unittest tests.derivation.test_parameters -v
 Expected: all tests pass.
 
 ~~~powershell
@@ -484,7 +484,7 @@ Every major claim is labeled strictly_proved, restricted_model, numerical_eviden
 
 - [ ] **Step 3: Run the full derivation suite**
 
-Run: python -m unittest discover -s tests/derivation -v  
+Run: python -m unittest discover -s tests/derivation -v
 Expected: all tests pass with zero failures and zero errors.
 
 - [ ] **Step 4: Conduct three-agent cross-review**
@@ -520,12 +520,12 @@ xelatex -interaction=nonstopmode -halt-on-error -output-directory output/pdf doc
 
 - [ ] **Step 2: Build the PDF**
 
-Run: powershell -ExecutionPolicy Bypass -File tools/derivation/build_report.ps1  
+Run: powershell -ExecutionPolicy Bypass -File tools/derivation/build_report.ps1
 Expected: exit 0 and output/pdf/lbm-cde-trt-derivation.pdf exists.
 
 - [ ] **Step 3: Render every PDF page**
 
-Run: pdftoppm -png output/pdf/lbm-cde-trt-derivation.pdf output/pdf/rendered/page  
+Run: pdftoppm -png output/pdf/lbm-cde-trt-derivation.pdf output/pdf/rendered/page
 Expected: one PNG per PDF page.
 
 - [ ] **Step 4: Visually inspect and revise**
@@ -534,11 +534,11 @@ Inspect every page for clipped equations, broken Chinese glyphs, overfull boxes,
 
 - [ ] **Step 5: Run final verification**
 
-Run: python -m unittest discover -s tests/derivation -v  
-Expected: all tests pass.  
-Run: git diff --check  
-Expected: no whitespace errors.  
-Run: pdfinfo output/pdf/lbm-cde-trt-derivation.pdf  
+Run: python -m unittest discover -s tests/derivation -v
+Expected: all tests pass.
+Run: git diff --check
+Expected: no whitespace errors.
+Run: pdfinfo output/pdf/lbm-cde-trt-derivation.pdf
 Expected: valid PDF metadata and nonzero page count.
 
 - [ ] **Step 6: Commit**
