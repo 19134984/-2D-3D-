@@ -301,6 +301,22 @@ class SecondOrderResidualTests(EffectiveRateTestCase):
         self.assertEqual(table["first_omitted_epsilon_order"], 3)
         self.assertEqual(table["first_omitted_mach_order"], 3)
 
+    def test_coefficient_variation_order_is_separate_from_constant_omissions(
+        self,
+    ) -> None:
+        table = second_order_residual_table()
+
+        self.assertEqual(table.get("coefficient_variation_epsilon_order"), 2)
+        self.assertEqual(
+            table.get("constant_coefficient_first_omitted_epsilon_order"),
+            3,
+        )
+        self.assertEqual(
+            table.get("coefficient_assumption"),
+            "frozen_through_ce2",
+        )
+        self.assertEqual(table["first_omitted_epsilon_order"], 3)
+
     def test_removing_each_inverse_design_source_moment_exposes_residual(self) -> None:
         defaults = SourceMomentConstraints()
         cases = {

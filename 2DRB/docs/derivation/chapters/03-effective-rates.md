@@ -208,3 +208,5 @@ $$
 $$
 
 一般不为零。本章不把局部率式宣称为变系数四阶等效方程、边界 magic parameter 或普适稳定性判据。
+
+在第四章采用的 $\nabla=\epsilon\nabla_1$ 标度下，若 $\delta\pi$ 是慢变量上的 $O(1)$ 系数变化，则 $\nabla\delta\pi\cdot\nabla T$ 与 $\delta\pi\nabla^2T$ 都是 $O(\epsilon^2)$。它们不是常系数模型的 $O(\epsilon^3)$ 首个遗漏项。要保持所述二阶目标方程，必须把 $\pi$ 在 CE2 内视为常数/冻结系数，或把该乘积导数显式加入目标方程；仅有空间光滑性不会提高它的 CE 阶数。

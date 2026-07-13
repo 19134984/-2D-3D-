@@ -156,6 +156,14 @@ $$
 
 正确 $b$ 同样给出 $c=1$。前者控制 even stress 或 odd scalar flux 的非守恒构成矩，后者控制 $\boldsymbol F$、$Q$ 进入守恒方程的净幅值。
 
+以下把连续性、动量和 CDE 的首个离散遗漏写为 $O(\epsilon^3)$ 时，采用精确假设
+
+$$
+\boxed{\texttt{coefficient\_assumption = frozen\_through\_ce2}}.
+$$
+
+即 $s_f^\pm,s_g^\pm,\chi_s,\chi_b,\chi_\kappa$ 与 $\pi=p/\rho_0$ 在 CE 二阶内为常数/冻结系数。若这些系数在慢变量上变化，它们的乘积导数必须在二阶方程中保留。
+
 ## 4. 连续性与动量方程
 
 Task 1/原论文 Eq. (6) 的流场平衡矩与 Task 2 的源矩是
@@ -387,7 +395,7 @@ $$
 
 同时验证 $\partial\nu/\partial s_f^+\ne0$、$\partial\kappa/\partial s_g^-\ne0$。这只证明二阶体相输运的 parity 归属。
 
-## 7. 冻结压力与变系数余项
+## 7. 冻结压力与二阶变系数余项
 
 局部冻结 $\pi=p/\rho_0$ 时，第三章的
 
@@ -407,15 +415,24 @@ $$
 \right].
 $$
 
-该项一般非零。因此“压力从物理 $\kappa$ 中消去”是局部冻结系数模态结论；若要主张空间变率、边界层或更高阶 modified equation 仍完全消去，必须另做变系数 Taylor 分析。
+该项一般非零。在 $\nabla=\epsilon\nabla_1$ 且 $\delta\pi=O(1)$ 的系数计数下，两项都是 $O(\epsilon^2)$；光滑性只保证导数存在，不会把它们提升到 $O(\epsilon^3)$。因此“压力从物理 $\kappa$ 中消去”是局部冻结系数模态结论。若系数不冻结，必须把该余项以及空间变 $s$、$\chi$ 引起的同类乘积导数纳入二阶目标方程。
 
-## 8. 首个遗漏项族与结论边界
+残差元数据据此分离为
 
-本章首个 CE 遗漏阶是 $O(\epsilon^3)$，包括：
+```text
+coefficient_variation_epsilon_order = 2
+coefficient_assumption = frozen_through_ce2
+constant_coefficient_first_omitted_epsilon_order = 3
+```
+
+旧键 `first_omitted_epsilon_order=3` 只保留为常系数路径的兼容值，不能用它给变系数余项定阶。
+
+## 8. 常/冻结系数下的首个遗漏项族与结论边界
+
+在 `frozen_through_ce2` 假设下，首个 CE 遗漏阶是 $O(\epsilon^3)$，包括：
 
 - Taylor 展开的 $\Delta t^3D_1^3h^{(0)}/6$、$D_1D_2$ 混合项和 $h^{(2)}$ 通量；
 - $\partial_t\boldsymbol F$、$\partial_tQ$ 在二阶 midpoint 配对之后留下的更高时间导数；
-- 非均匀 $s$、$\chi$、$p/\rho_0$ 所产生的乘积导数；
 - Task 2 已保留的三、四阶 D2Q9 源矩进入的色散/各向异性项；
 - ghost 率和边界闭合对三阶及更高误差的影响。
 
@@ -440,4 +457,4 @@ $$
 Eq. (11) 还含 $O(\mathrm{Ma}^4)$ 的
 $-2\rho_0u_\alpha u_\beta\partial_\gamma u_\gamma$。原论文 Eq. (6) 后也把截断 Maxwellian 的首个平衡矩误差标为 $O(\mathrm{Ma}^3)$。
 
-因此本章允许的最终主张是：在上述 CE 与低 Mach 标度、正确的 Task 1--2 矩约束、parity-specific 梯形因子以及局部光滑系数下，连续性、动量和 CDE 恢复到二阶，并得到第三章的物理输运系数。它不是无条件精确格式、变系数四阶结果或边界一致性证明。
+因此本章允许的最终主张是：在上述 CE 与低 Mach 标度、正确的 Task 1--2 矩约束、parity-specific 梯形因子，并且 $s$、$\chi$、$p/\rho_0$ 在 CE2 内为常数/冻结系数时，连续性、动量和 CDE 恢复到二阶，并得到第三章的物理输运系数。仅有局部光滑性不足以满足这个假设。它不是无条件精确格式、一般变系数二阶闭合、变系数四阶结果或边界一致性证明。

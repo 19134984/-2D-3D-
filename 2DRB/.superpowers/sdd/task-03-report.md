@@ -59,6 +59,8 @@ dt sigma_flux_eff(pi0)
 
 该式一般非零。
 
+在本任务的 `grad=epsilon grad_1` 标度下，若 `delta pi` 是慢变量上的 `O(1)` 系数变化，上述两个乘积导数均为 `O(epsilon^2)`。因此二阶恢复要求 `pi` 在 CE2 内冻结/常数，或把该残差加入目标方程；空间光滑本身不会把它提升为三阶。
+
 ## 二阶 CE 与结论等级
 
 离散推导采用
@@ -79,7 +81,7 @@ I-Lambda/2 = Lambda Sigma
 
 与 `dt*F/2`、`dt*Q/2` 宏观重构一起消去二阶 Taylor 时间离散项。流场 `uF`、标量 `p grad(T)`、`T F`、`Q u` 均由命名平衡矩和源矩逐项相消，不把目标 PDE 输入残差表。
 
-首个遗漏 CE 家族为 `O(epsilon^3)`；首个 Mach 家族为 `O(Ma^3)`。报告章明确保留论文 Eq. (11) 的密度梯度/二次速度导数项、Eq. (22) 的 `-T u div(u)`、变系数乘积导数、`d_t F/d_t Q` 的更高时间导数、ghost/边界和 Task 2 三四阶矩贡献。
+变系数乘积导数单列为 `O(epsilon^2)`，对应精确假设 `coefficient_assumption=frozen_through_ce2`。只有在 $s$、$\chi$、$p/\rho_0$ 于 CE2 内常数/冻结时，首个离散遗漏 CE 家族才是 `O(epsilon^3)`；首个 Mach 家族为 `O(Ma^3)`。报告章另行保留论文 Eq. (11) 的密度梯度/二次速度导数项、Eq. (22) 的 `-T u div(u)`、`d_t F/d_t Q` 的更高时间导数、ghost/边界和 Task 2 三四阶矩贡献。
 
 ## 残差生成与扰动证据
 
@@ -88,6 +90,9 @@ I-Lambda/2 = Lambda Sigma
 ```text
 p_grad_T, T_F, Q_u, u_F, d_t_F, d_t_Q,
 s_f_minus_transport, s_g_plus_transport,
+coefficient_variation_epsilon_order,
+constant_coefficient_first_omitted_epsilon_order,
+coefficient_assumption,
 first_omitted_epsilon_order, first_omitted_mach_order
 ```
 
@@ -101,6 +106,8 @@ first_omitted_epsilon_order, first_omitted_mach_order
 - flow odd 因子错设为 1 时，`T_F=u_F=s_f_minus/2`，`d_t_F=1/2`。
 - scalar even 因子错设为 1 时，`Q_u=s_g_plus/2`，`d_t_Q=1/2`。
 - 直接求导验证 `partial(nu)/partial(s_f_minus)=0`、`partial(kappa)/partial(s_g_plus)=0`，而对正确物理 parity 率的导数非零。
+
+阶数元数据分别固定为 `coefficient_variation_epsilon_order=2`、`constant_coefficient_first_omitted_epsilon_order=3` 和 `coefficient_assumption="frozen_through_ce2"`。兼容键 `first_omitted_epsilon_order=3` 只描述常/冻结系数路径。
 
 ## TDD 记录
 
@@ -135,17 +142,31 @@ Ran 1 test in 0.189s
 FAILED (failures=1)
 ```
 
-将 Euler force/heat 改为 `c=b+s/2` 后，该目标测试 1/1 通过，最终 Task 3 targeted 14/14 通过。
+将 Euler force/heat 改为 `c=b+s/2` 后，该目标测试 1/1 通过，原 Task 3 提交的 targeted 为 14/14。
+
+### 变系数 CE 阶数审查返工 RED/GREEN
+
+异人审查指出：在 `grad=epsilon grad_1` 下，变量系数乘积导数已经是 `O(epsilon^2)`，不能与常系数首个 `O(epsilon^3)` 遗漏族合并。新增专门元数据测试后先得到
+
+```text
+test_coefficient_variation_order_is_separate_from_constant_omissions ... FAIL
+AssertionError: None != 2
+
+Ran 1 test in 0.133s
+FAILED (failures=1)
+```
+
+实现分离元数据并收紧假设后，该目标测试 1/1 通过，Task 3 targeted 为 15/15。
 
 ## 验证结果
 
 ```text
 python -m unittest tests.derivation.test_effective_rates -v
-Ran 14 tests
+Ran 15 tests
 OK
 
 python -m unittest discover -s tests/derivation -v
-Ran 35 tests
+Ran 36 tests
 OK
 
 git diff --check
@@ -158,6 +179,7 @@ Markdown 扫描覆盖 03/04 两章和证据账本：除 tab/LF/CR 外无控制�
 
 - 不把 `sigma_eff` 当成新的 nominal TRT 输入。
 - 不把 frozen-pressure modal identity 外推成变系数四阶等效方程。
+- 不把“系数光滑”当成 `frozen_through_ce2`；一般系数变化残差已经位于 `O(epsilon^2)`。
 - 不声称 `s_f_minus`、`s_g_plus` 对边界或高阶误差没有影响。
 - 不声称二阶恢复消除了列出的 `O(epsilon^3)`、`O(Ma^3)` 或更高项。
 - 未运行 Fortran benchmark，因为本任务没有修改生产数值求解器。

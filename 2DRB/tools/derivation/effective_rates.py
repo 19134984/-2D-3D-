@@ -299,7 +299,7 @@ def second_order_residual_table(
     equilibrium: EquilibriumMomentConstraints | None = None,
     sources: SourceMomentConstraints | None = None,
     trapezoidal: TrapezoidalFactors | None = None,
-) -> Mapping[str, Expr | int]:
+) -> Mapping[str, Expr | int | str]:
     """Generate second-order residuals from named moments and CE transfers.
 
     In the transformed-LBE CE hierarchy, a nonconserved source block with
@@ -368,7 +368,7 @@ def second_order_residual_table(
         * sigma_g_minus
     )
 
-    residuals: dict[str, Expr | int] = {
+    residuals: dict[str, Expr | int | str] = {
         "p_grad_T": simplify(
             sympify(equilibrium.scalar_second_pressure)
             - scalar_flux_transfer
@@ -412,6 +412,9 @@ def second_order_residual_table(
             * sigma_g_minus
             / (sympify(cs2) + sympify(pressure_ratio))
         ),
+        "coefficient_variation_epsilon_order": 2,
+        "coefficient_assumption": "frozen_through_ce2",
+        "constant_coefficient_first_omitted_epsilon_order": 3,
         "first_omitted_epsilon_order": 3,
         "first_omitted_mach_order": 3,
     }
