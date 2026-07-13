@@ -172,6 +172,29 @@ class LatticeMomentTests(LatticeTestCase):
             lattice.lambda_t,
         )
 
+    def test_d2q9_lambda_t_fourth_raw_moments(self) -> None:
+        lattice = d2q9()
+        moment = lambda powers: raw_moment(
+            lattice.lambda_t, lattice.velocities, powers
+        )
+
+        self.assertEqual(
+            (
+                moment((4, 0)),
+                moment((0, 4)),
+                moment((2, 2)),
+                moment((3, 1)),
+                moment((1, 3)),
+            ),
+            (
+                Rational(1, 3),
+                Rational(1, 3),
+                Rational(1, 9),
+                0,
+                0,
+            ),
+        )
+
     def test_raw_and_hermite_moments_are_exact(self) -> None:
         lattice = d2q9()
 

@@ -113,3 +113,60 @@ OK
 - **D2Q5 参数边界：** 文献的 D2Q5 平衡矩含自由参数 `a`；本任务只把 `a=-2/3` 的标准二阶各向同性格点作为代数验证器。后续参数化 D2Q5 工作必须另行建模。
 - **符号边界：** Ginzburg & d'Humières 使用 `Lambda^2` 和自身松弛率归一化；账本只记录原式与映射，尚未把它当作后续 D2Q9 TRT magic parameter 的无条件同义词。
 - PDF 渲染器报告个别字体边界框/缺失字体警告，但上述公式、表格和页码在渲染图中清晰可辨，不影响证据读取。
+
+## Task 01 异人审查返工
+
+返工依据：Carver 对提交 `68f3ef041259ca277b875f3edc479b67955600ac` 的两项 important finding。
+
+### 文献主张修正
+
+- 重新渲染并目视核对 Wang 2013 期刊页 265（PDF 第 4 页）。原文明确说明 Eq. (17) 用于获得四阶误差项的各向同性；该式本身不是完整四阶误差消除条件。
+- 证据账本已把 Eq. (17) 限定为 D2Q5 四阶误差各向同性条件，并单列 Eqs. (18)-(19) 的额外松弛率关系和特殊参数值。以上 D2Q5-only 关系不得导入 D2Q9。
+- `LBM-CDE.pdf` 的 `lambda` 结论已限定为论文规定的低阶作用：零阶、一阶矩为零，二阶矩为指定各向同性值。所选离散 D2Q9 向量仍有非零四阶 raw moments，Task 5 必须保留。
+
+### 四阶矩独立计算
+
+零速度项不贡献四阶矩。轴向与对角移动权重直接求和得到：
+
+- `M40 = M04 = 2(1/9) + 4(1/36) = 1/3`；
+- `M22 = 4(1/36) = 1/9`；
+- `M31 = M13 = 0`，因为四个对角方向按坐标镜像成对抵消。
+
+### 返工 RED
+
+先在新回归测试中故意把 `M40,M04,M22` 占位为零，同时保留 `M31=M13=0`：
+
+```text
+python -m unittest tests.derivation.test_lattice.LatticeMomentTests.test_d2q9_lambda_t_fourth_raw_moments -v
+```
+
+关键输出：
+
+```text
+test_d2q9_lambda_t_fourth_raw_moments (...) ... FAIL
+AssertionError: Tuples differ: (1/3, 1/3, 1/9, 0, 0) != (0, 0, 0, 0, 0)
+
+Ran 1 test in 0.001s
+FAILED (failures=1)
+```
+
+失败是预期的数值 assertion failure，不是导入、语法或测试收集错误。
+
+### 返工 GREEN
+
+将前三个占位值替换为独立计算的精确 SymPy rationals 后，目标回归测试输出：
+
+```text
+test_d2q9_lambda_t_fourth_raw_moments (...) ... ok
+
+Ran 1 test in 0.001s
+OK
+```
+
+完整测试命令：
+
+```text
+python -m unittest tests.derivation.test_lattice -v
+```
+
+完整结果：11 项全部 `ok`，`Ran 11 tests in 0.004s`，`OK`。
