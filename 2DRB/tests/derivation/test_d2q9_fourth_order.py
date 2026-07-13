@@ -14,6 +14,7 @@ from sympy import (
     exp,
     eye,
     simplify,
+    solve,
     sqrt,
     symbols,
     zeros,
@@ -770,6 +771,71 @@ class D2Q9FourthOrderRouteTests(D2Q9TemperatureImportTests):
                 simplify(external.pde_c22 - feedback.pde_c22),
                 expected_c22,
             )
+
+    def test_canonical_undivided_conditions_match_both_routes_at_exact_points(self):
+        canonical_api = getattr(
+            d2q9_temperature_module,
+            "canonical_quartic_condition",
+            None,
+        )
+        self.assertTrue(
+            callable(canonical_api),
+            "Task 5 must expose canonical undivided quartic conditions",
+        )
+        for name, parameters in self.points:
+            if parameters["case"] == "baseline":
+                continue
+            canonical = canonical_api(
+                case=parameters["case"],
+                pi=parameters["pi"],
+                chi_kappa=parameters["chi_kappa"],
+                sigma_odd_ghost=parameters["sigma_odd_ghost"],
+                sigma_even=parameters["sigma_even"],
+            )
+            self.assertEqual(canonical.provenance, "reviewed_formula_input")
+            for route in self.results[name]:
+                with self.subTest(point=name, route=type(route).__name__):
+                    self.assertEqual(
+                        simplify(canonical.coefficients.pde_c40 - route.pde_c40),
+                        0,
+                    )
+                    self.assertEqual(
+                        simplify(canonical.coefficients.pde_c22 - route.pde_c22),
+                        0,
+                    )
+
+    def test_canonical_a_one_condition_remains_undivided(self):
+        canonical_api = getattr(
+            d2q9_temperature_module,
+            "canonical_quartic_condition",
+            None,
+        )
+        self.assertTrue(
+            callable(canonical_api),
+            "Task 5 must expose canonical undivided quartic conditions",
+        )
+        sigma_o, sigma_e, transport_ratio = symbols("sigma_o sigma_e K")
+        cases = (
+            ("feedback", Rational(1, 4), Rational(1, 12)),
+            ("external", -1, Rational(1, 36)),
+        )
+        for case, chi_kappa, expected_squared in cases:
+            canonical = canonical_api(
+                case=case,
+                pi=Rational(2, 3),
+                chi_kappa=chi_kappa,
+                sigma_odd_ghost=sigma_o,
+                sigma_even=sigma_e,
+            )
+            b = (1 - chi_kappa) * Rational(1, 3)
+            residual = simplify(
+                canonical.undivided_polynomial.subs(
+                    sigma_o, transport_ratio / b
+                )
+            )
+            self.assertEqual(residual.diff(sigma_e), 0)
+            roots = solve(residual, transport_ratio**2, dict=False)
+            self.assertEqual(roots, [expected_squared])
 
     def test_y_route_sources_and_helpers_exclude_the_other_route(self) -> None:
         inspections = (

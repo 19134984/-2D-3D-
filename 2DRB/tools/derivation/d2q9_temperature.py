@@ -88,6 +88,16 @@ class QuarticConditionSystem:
 
 
 @dataclass(frozen=True)
+class CanonicalQuarticCondition:
+    """Reviewed undivided Task 5 condition plus its standard output objects."""
+
+    coefficients: D2Q9EquivalentCoefficients
+    conditions: QuarticConditionSystem
+    undivided_polynomial: Expr
+    provenance: str = "reviewed_formula_input"
+
+
+@dataclass(frozen=True)
 class PrintedDuboisCoefficients:
     """The D2Q9 expressions printed after Dubois--Lallemand Eq. (44)."""
 
@@ -482,6 +492,70 @@ def quartic_condition_system(
         solve_for=variables,
         solutions=solutions,
         status=status,
+    )
+
+
+def canonical_quartic_condition(
+    *,
+    case: str,
+    pi: Expr,
+    chi_kappa: Expr,
+    sigma_odd_ghost: Expr,
+    sigma_even: Expr,
+) -> CanonicalQuarticCondition:
+    """Return the reviewed external/feedback condition before dividing by branches.
+
+    The closed polynomial is a canonical Task 5 input.  Independent route
+    tests validate its scaled ``C40`` and ``C22`` at multiple exact points.
+    Consumers can therefore eliminate special branches without copying the
+    reviewed formula or dividing by ``a-1``, ``b``, or ``sigma_odd_ghost``.
+    """
+
+    if case not in {"external", "feedback"}:
+        raise ValueError("canonical quartic condition requires external or feedback")
+    pi, chi_kappa, sigma_odd_ghost, sigma_even = map(
+        sympify, (pi, chi_kappa, sigma_odd_ghost, sigma_even)
+    )
+    cs2 = Rational(1, 3)
+    a = simplify(cs2 + pi)
+    b = simplify((1 - chi_kappa) * cs2)
+    sigma_o = sigma_odd_ghost
+    sigma_e = sigma_even
+    if case == "external":
+        undivided = simplify(
+            12 * b * sigma_o * (a - 1) * sigma_e
+            + 12 * b**2 * sigma_o**2
+            + a
+            + b
+            - 3 * a * b
+        )
+        c40 = simplify(-sigma_o * undivided / 12)
+    else:
+        if a == 0:
+            raise ValueError("a=0 is a singular feedback equilibrium closure")
+        undivided = simplify(
+            12 * b * sigma_o * (a - 1) * sigma_e
+            + 12 * b**2 * sigma_o**2
+            - 3 * a**2
+            + 2 * a
+        )
+        c40 = simplify(-b * sigma_o * undivided / (12 * a))
+    c22 = simplify(2 * c40)
+    coefficients = D2Q9EquivalentCoefficients(
+        diffusion=simplify(b * sigma_o),
+        pde_c40=c40,
+        pde_c22=c22,
+        isotropy_residual=0,
+        cancellation_residual=(c40, c22),
+    )
+    conditions = quartic_condition_system(
+        coefficients,
+        solve_for=(sigma_e,),
+    )
+    return CanonicalQuarticCondition(
+        coefficients=coefficients,
+        conditions=conditions,
+        undivided_polynomial=undivided,
     )
 
 
