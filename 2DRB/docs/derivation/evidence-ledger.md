@@ -2,7 +2,7 @@
 
 本账本只登记已在原始 PDF 中逐页目视核对的内容。`tmp/pdfs/` 中的文本提取只可用于定位，不作为证据；`Xs/` 是既有复现代码，只可用于实现对照，不能替代论文中的理论依据。
 
-核对日期：2026-07-13。
+核对日期：2026-07-14。
 
 ## 证据使用规则
 
@@ -116,3 +116,60 @@ Task 2 的源项三、四阶 raw moment 表是把 Eqs. (13)、(24) 代入本节 
 
 由 Wang 的 Eqs. (12) 与 (14) 在静止态反解可得
 `w_0=(1-a)/5`、四个移动方向 `w_i=(4+a)/20`。选择 `a=-2/3` 才得到本任务的 `1/3,1/6` 权重以及 `c_s^2=1/3`。因此，后续若研究论文中的可变 `a` 模型，必须显式构造参数化 D2Q5，不能把本验证格点当作一般结论。
+
+## Task 5：D2Q9 冻结系数四阶生成器的证据闭环
+
+下表只登记 Task 5 实际使用的原文方程。D2Q9 四阶系数本身由项目内两条独立离散代数路线生成；原文没有被当作待求系数的闭式输入。
+
+| 原始来源 | 方程或位置 | Task 5 的精确使用 | 允许主张 | 限制 |
+| --- | --- | --- | --- | --- |
+| `LBM-CDE.pdf` 第 7 页 | Eqs. (16)-(17) 及 Eq. (16) 后正文 | 固定 $e_i=w_i+(\pi/c_s^2)\lambda_i$，并与本账本已经逐项核对的 D2Q9 `lambda_t` 一起形成 $G=e\ell^T$。 | 可精确求得平衡态零至四阶离散 raw moments；Task 5 明确保留 $M_{40}=M_{04}=a$、$M_{22}=c_s^2a$。 | 原文只规定低阶构造；D2Q9 高阶矩必须逐项求和，不能从“二阶修正”推断其为零。 |
+| `LBM-CDE.pdf` 第 8 页 | Eqs. (22)-(24) | 在 $u=F=Q=0$ 后保留奇源一阶通量 $(\pi+\chi_\kappa c_s^2)\nabla T=d\nabla T$，形成 $H_{i\alpha}=w_ic_{i\alpha}d/c_s^2$。 | 可构造实际精确外梯度矩阵 $C_{\rm ext}$，并逐项计算源的非零三阶 raw moments。 | Eq. (24) 没有宣称未列出的离散高阶源矩为零；Task 5 的三阶源矩是 D2Q9 精确求和结果。 |
+| `LBM-CDE.pdf` 第 10 页 | Eqs. (34)-(35) | 在冻结系数且 $u=F=Q=0$ 后，把 transformed nonequilibrium flux 闭合为 $\nabla T=-2J(I-G)\widetilde g/[\Delta t(a+2b\sigma_o)]$。 | 可构造实际反馈矩阵 $C_{\rm fb}$，并由物理通量块推出 $\sigma_f=(b/a)\sigma_o$。 | $a=0$ 与 $a+2b\sigma_o=0$ 是奇异闭合；空间变系数和高阶乘积导数不在本任务内。 |
+| `LBM-CDE.pdf` 第 11 页 | Eq. (36) 及该页 D2Q9 离散化说明 | 固定相反速度映射和实际二维 D2Q9 离散集合；与本账本的标准 D2Q9 常数合用。 | 可在九速度原始人口空间构造 $P_\pm$、$H$、$J$ 和三个碰撞矩阵。 | 该页的模型充分性说明不是“所有高阶矩均为零”的证明。 |
+| `LBM-CDE.pdf` 第 33、35 页 | Eqs. (A.1)-(A.5)、(A.14)-(A.19) | 固定 transformed population 和梯形源因子；在 TRT parity 投影后分别使用 $1-s_e/2$、$1-s_o/2$。 | 可把实际外源和反馈写成显式碰撞后矩阵，并保持宏观温度重构的一致性。 | 原文印刷的是 BGK 分量式；TRT 三块推广属于项目内代数推导。 |
+| Dubois--Lallemand 第 12 页 / PDF 第 12 页 | Eq. (44) 后的 D2Q9 $\kappa_{40}$、$\kappa_{22}$ 印刷式，以及同页 TRT 段落 | 已直接渲染并目视核对该页；`printed_dubois_coefficients()` 对两个印刷式逐项编码，并采用同页 $\sigma_1=\sigma_5$、$\sigma_3=\sigma_4=\sigma_7=\sigma_8$ 和 $\sigma_1=1/\sqrt{12}$、$\sigma_3=1/\sqrt3$。 | 在 $\xi=a_4=1/3$ 处可精确审计出 $\kappa_{40}^{\rm printed}=0$、$\kappa_{22}^{\rm printed}=1/\sqrt3$。 | 该印刷式只作为外部审计，未输入 LBM-CDE 生成路线；不猜测哪个印刷符号有误，也不静默修正。 |
+
+### Task 5 的项目内离散恒等式
+
+以下结论是由上述原文低阶定义与本账本 D2Q9 常数逐项精确求和得到，不是论文逐字列出的闭式：
+
+- $JH=dI_2$、$(HJ)^2=dHJ$，且 $d\ne0$ 时 $\operatorname{rank}(HJ)=2$。
+- 实现始终用 $K_{i\alpha}=w_ic_{i\alpha}/c_s^2$ 构造 $P_{\rm flux}=KJ$，因此 $d=0$ 时不形成 $HJ/d$。
+- $L_{40}=L_{04}=1/3$、$L_{22}=1/9$、$L_{31}=L_{13}=0$；外梯度源的三阶 raw moment 由 D2Q9 四阶权重矩产生，不能删除。
+- Wang/Luo D2Q5 四阶条件和 Ginzburg--d'Humières 边界 magic 参数均未作为 Task 5 的 D2Q9 体相四阶输入。
+
+## Task 6：源感知边界残差的证据闭环
+
+本节追加而不改写 Task 5 的 D2Q9 四阶账目。论文边界式固定 kinetic rule；残差系数、秩和制造解是项目内 exact rational algebra，不反向声称为论文印刷闭式。
+
+| 原始来源 | 方程或位置 | Task 6 的精确使用 | 允许主张 | 限制 |
+| --- | --- | --- | --- | --- |
+| Ginzburg--d'Humières (2003)，文章页 066614-6 / PDF 第 6 页 | Eq. (41) | 映射 $\lambda_\nu=s_f^+$、$\lambda_2=s_f^-$，并用 $\sigma=1/s-1/2$ 得 $\Lambda^2=(4/3)\sigma_f^+\sigma_f^-$。 | 在该论文 normalization 下精确连接 $\Lambda^2$ 与 D2Q9 TRT Hénon product。 | 不能把 $\Lambda$ 的命名直接移植到其他 normalization。 |
+| 同上，文章页 066614-7 / PDF 第 7 页 | Eqs. (42)-(43) | 使用 $D_{\rm eff}^2-D_{1/2}^2=4\Lambda^2-1$；令该项为零。 | 在 steady linear/Stokes、uniform body force、half-force gauge、flat halfway wall、无 feedback 时，$\Lambda^2=1/4\Leftrightarrow\sigma_f^+\sigma_f^-=3/16$。 | 这是 `restricted_calibration`，不是 universal constant；pressure-boundary drive 不在此行。 |
+| Wang et al. (2013)，边界条件节 | Eqs. (30)-(32) | Eq. (30) 固定 velocity BB；Eq. (31) 固定温度 ABB；Eq. (32) 固定绝热 BB 的反射形式。 | 可独立核对 BB/ABB 的相反方向、正负号和 wall equilibrium 结构。 | 论文该温度实现的 D2Q5 参数不能移植为本任务 D2Q9 magic product。 |
+| `LBM-CDE.pdf` 第 11 页 | Eqs. (36)-(39) | Eq. (36) 固定速度 BB；Eq. (37) 固定 Dirichlet ABB；Eq. (38) 保留 stationary pressure-coupled ABB；Eq. (39) 固定 adiabatic BB。 | Task 6 对实际 D2Q9 transformed populations 构造四类 wall/corner link chain。 | 这些 kinetic rules 本身不证明某个率乘积能消去全部 source/time/pressure/corner jets。 |
+| `LBM-CDE.pdf` 第 7 页 | Eqs. (16)-(17) | ABB wall term 使用完整 $2[w_i+\lambda_{t,i}\pi_w/c_s^2]T_w$。 | 可保留 pressure equilibrium wall contribution；法向 D2Q9 聚合权重为 $1/6+\pi/2$。 | 不得删去 $\pi_w$，也不得用 D2Q5 权重替换。 |
+| `LBM-CDE.pdf` 第 8 页 | Eqs. (22)-(24) | 温度 odd source 保留 $(p\nabla T+T\boldsymbol F)/\rho_0+Q\boldsymbol u+\chi_\kappa c_s^2\nabla T$；even source 为原始 $w_iQ$。 | 可分别建立 external exact-gradient、force-only、hydrostatic pair 和 uniform-$Q$ wall probes。 | Local-feedback homogeneous 消元后，even $Q$ 仍用原始 D2Q9/D1Q3 权重，不能用 pressure-modified equilibrium weights。 |
+| `LBM-CDE.pdf` 第 10 页 | Eqs. (34)-(35) | 使用物理 scalar-flux shift $\sigma_{g,\rm flux}=[(1-\chi_\kappa)c_s^2/(c_s^2+\pi)]\sigma_g^-$；保留 nominal scalar even/odd ghost shifts。 | Local-feedback homogeneous D1Q3 与 external-gradient D1Q3 在 steady 1D quadratic row 均生成 $\sigma_{g,\rm flux}\sigma_g^+=3/16$。 | 两路线相同只限冻结压力、CDE-consistent uniform $Q$、无流/力/time/tangential jets；一般残差不得外推。 |
+| `LBM-CDE.pdf` 第 33、35 页 | Eqs. (A.1)-(A.5)、(A.14)-(A.19) | 保留 $T=\sum_i\widetilde g_i+Q/2$，以及 scalar even/odd 的 $1-s_g^+/2$、$1-s_g^-/2$ 源因子。 | 可审计 quadratic ABB、variable-pressure ABB 和 adiabatic force/hydrostatic cancellation 中的 half-source 项。 | 不能用一个共享源 prefactor 代替 parity-specific factors。 |
+| Contrino et al. / Luo (2014)，Eq. (50) 后 pressure-drive 讨论 | pressure-boundary Poiseuille calibration | 作为独立 normalization 记录 $\sigma_f^+\sigma_f^-=3/8$。 | 可与 uniform-body-force $3/16$ 分栏比较。 | 未使用该 $3/8$ 推导 body-force、temperature ABB 或 corner 条件。 |
+
+### Task 6 的项目内离散恒等式与制造解
+
+- General velocity 采用两层分类：完整 wall table 的顶层 `status=boundary_correction_required`，因为压力、力、时间、法/切向速度导数和 source jets 仍为显式 nonzero unresolved；`rate_compatibility_status` 只检查 shear/bulk 子系统，$\chi_s=\chi_b$ 为 `restricted_calibration` 并返回唯一 `rate_compatibility_conditions`，$\chi_s\ne\chi_b$ 为 `no_single_magic` 且条件为空。
+- Uniform-force 与 pressure-driven Poiseuille 目前只保留各自论文 normalization/gauge 的 `source_evidence_only` 系数映射，`probes_quadratic_slip=False`；本任务没有声称用独立 quadratic field/population stencil 重新生成 $3/16$ 或 $3/8$。
+- External-gradient quadratic ABB：
+  $$
+  \frac{R_{\rm ABB}}{T_{nn}}
+  =\frac{16(1-\chi_\kappa)\sigma_g^+\sigma_g^--3(1+3\pi)}{36}
+  =\frac{1+3\pi}{36}
+  \left(16\sigma_{g,\rm flux}\sigma_g^+-3\right).
+  $$
+- Local-feedback homogeneous quadratic ABB 使用原始 even-$Q$ 权重，独立生成同一受限二次行；这只证明该行一致。
+- Primary ABB、adiabatic 与 corner API 分别消费可执行 symbolic population-chain/finite-assignment generator；调用追踪测试锁定消费关系。Direct manufactured helpers 不复用这些主生成器。
+- Affine $T$、affine $\pi$ 的 finite wall-equilibrium product chain 生成 $R=-T_n\pi_n/4$，该项率无关。除已解析 quadratic/affine-pressure rows 外，一般 ABB source/time/force/tangential rows 显式标为 unresolved。
+- Adiabatic primary generator 分别符号求解 affine normal pair 与两个 quadratic tangential diagonal population 的 collision-streaming-reflection 方程，得到 normal odd-flux $-(1-\chi_\kappa)\sigma_g^-T_n/3$ 和切向二阶和 $(1-\chi_\kappa)\sigma_g^-T_{\tau\tau}/9$。nominal even rate 与压力改变中间 recurrence，但在受限 profile 中被精确消元；wall-time 与法向曲率仍为 `unsupported_unresolved`。
+- Force-only/hydrostatic probe 为 $\sigma_g^-T(F_n/\rho_0-\pi_n)$；uniform $Q$ probe 将同一个 even-source increment 实际加入两个人口，再从奇部差证明其抵消，推导对象保留 $Q$。
+- Mixed Dirichlet/adiabatic corner 对一个 shared diagonal unknown 有两条方程：generic $\operatorname{rank}A=1$、$\operatorname{rank}[A|b]=2$。制造场 $T=T_w+T_{xy}xy$ 的 overwrite 顺序差首项为 $-(1+3\pi)T_{xy}h^2/72$。naive/shared source counts 由有限赋值序列长度及人口标识去重生成，不是字面常数。
+- 本任务没有把任何场景分类为 `universal_magic`。D2Q5 bulk isotropy/stability constants 没有作为 D2Q9 boundary 输入。
