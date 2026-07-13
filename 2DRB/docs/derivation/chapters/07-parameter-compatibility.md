@@ -1,8 +1,8 @@
-# 07 TRT 参数兼容性与不可兼容性
+# TRT 参数兼容性与不可兼容性
 
 本章把第五章的受限壁面残差与第六章的冻结系数四阶体相条件放进同一个精确求解器。目标不是选一个文献参数点，而是回答：给定输运系数、名义 TRT 率、物理有效块、体相四阶条件和壁面标定后，这组约束是否仍有解。
 
-## 1. 量、约束与报告接口
+## 量、约束与报告接口
 
 统一记
 
@@ -39,7 +39,7 @@ $$
 
 Task 5 的 `canonical_quartic_condition()` 从受审闭式输入构造保留因子的四阶多项式，并在多个精确参数点同时与 amplification route 和 Taylor route 核对。参数层直接消费该规范对象；包括 $a=1$ 在内都从同一个未除以 $a-1$ 的多项式分类，不再复制一套 reviewed family，也不把某个有理专门化点冒充一般证据。
 
-## 2. Task 5 体相条件
+## Task 5 体相条件
 
 `recover_baseline_quartic_family()` 对 `amplification_route(order=4)` 的输出调用 `quartic_condition_system()`，恢复完整基线族
 
@@ -65,7 +65,7 @@ $$
 
 它们只适用于 $a\ne1$、$b\ne0$ 和非零主平移。求解器先分类 $a=0$、$b=0$ 与 $a=1$，不会把含 $a-1$ 的表达式称为普适公式。
 
-## 3. 与受限标量 ABB 的精确消元
+## 与受限标量 ABB 的精确消元
 
 Task 6 在以下假设内给出唯一可用的标量 ABB 行：D2Q9 两率标量碰撞、平直 grid-aligned halfway wall、稳态一维二次温度场、半热源重构、完整压力平衡墙项，以及对应的 external-gradient 或 local-feedback population chain。在这个适用域内，
 
@@ -79,7 +79,7 @@ $$
 \sigma_e=\frac{3a}{16K}.
 $$
 
-### 3.1 局部反馈
+### 局部反馈
 
 把 $\sigma_o=K/b$ 与上式代入 Task 5 反馈主分支，精确约去分母后得到
 
@@ -87,7 +87,7 @@ $$
 \boxed{K^2=\frac{a(3a+1)}{48}}.
 $$
 
-### 3.2 外置精确梯度源
+### 外置精确梯度源
 
 相同消元给出
 
@@ -121,7 +121,7 @@ $$
 
 因此必须给出 $\chi_\kappa$ 才能生成名义奇率。正物理分支还要求 $a\ne0$、$b>0$、$K>0$、三个相关 Hénon 平移为正，并逐一检查名义奇率、名义偶率和物理通量率是否属于开区间 $(0,2)$。该区间只表示形式可接受，不表示条件数良好或数值稳健。
 
-## 4. 低扩散率与诚实的约束选择
+## 低扩散率与诚实的约束选择
 
 若 $\Delta t=1$ 且目标 $\kappa=10^{-3}$，一般不能同时满足上述体相四阶条件与受限 ABB 条件。求解器返回 `no_feasible_solution`，并把 `bulk_quartic_and_restricted_abb` 列入违反项；它不会静默保留其中一个条件。
 
@@ -165,7 +165,7 @@ $$
 
 显式边界修正与 split-even MRT 不是同一种机制。前者是当前根据违反的受限 ABB product 识别出的结构性最小扩展，但仓库尚无 correction formula 或 corrected residual，因而不能称为充分方案；后者只有在矩空间推导明确“哪个偶模态进入 ABB、哪个独立偶模态进入 $C_{40}$”，并证明双约束 Jacobian 满秩后，才能升级为可行结论。当前二者都不能标成 `feasible_exact`；split-even 只报告 `candidate_requiring_mode_jacobian_derivation`。
 
-## 5. 特殊与退化分支
+## 特殊与退化分支
 
 求解顺序固定为先分类、后除法：
 
@@ -183,7 +183,7 @@ $$
 
 数值可行性优先于代数边界分类：形式交点 $a=1/9$、$K=-1/18$ 虽满足 $a+2K=0$，但因 $K<0$ 返回 `no_feasible_solution`。任一实际碰撞率不在 $(0,2)$ 也采用相同优先级。只有自由符号无法判定时才保留条件报告，而不是宣称已经可行。
 
-## 6. 流动侧兼容性
+## 流动侧兼容性
 
 剪切输运给出
 
@@ -227,7 +227,7 @@ $$
 
 若保留 trace jets，求解器改为消费 Task 6 的 general residual/classification。$\chi_b\ne\chi_s$ 时，已解析 shear/bulk 两行的 `rate_compatibility_status` 为 `no_single_magic`，返回 `mrt_extension_required`；若选择独立剪切/体积率，还必须同时加入一般速度边界修正，不能只解剪切/体积两行后宣称通用壁面标定。另一条独立充分路线是直接采用一般速度边界修正。即使 $\chi_b=\chi_s$，完整一般壁面表仍保留未闭合 jets，因此顶层状态是 `boundary_correction_required`，而不是 universal magic。
 
-## 7. 结论边界
+## 结论边界
 
 - $1/\sqrt{72}$ 只是特定约束集合在 $\pi=0$ 的兼容点，不是通用推荐值。
 - $3/16$ 只在 Task 6 明示的受限墙面、source/gauge、几何和场假设内使用。

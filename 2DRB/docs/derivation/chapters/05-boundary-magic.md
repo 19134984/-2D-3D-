@@ -1,8 +1,8 @@
-# 05 源感知边界残差与 magic 分类
+# 源感知边界残差与 magic 分类
 
 本章不把某个松弛率乘积先验称为“magic”。判定顺序固定为：先写 transformed population 的碰撞后链，保留独立墙面 Taylor jets，再检查同一条件能否同时消去所有非零系数。`classify_magic()` 同时返回系数表、假设、参数映射、未满足 jets 和已显式相消的零行。对于 general velocity，返回值还包含 `rate_compatibility_status`：它只审计已解析的 shear/bulk 两行，不能代替完整墙面闭合状态。
 
-## 1. 记号、率映射和六个适用域
+## 记号、率映射和六个适用域
 
 Hénon 平移量统一记为
 
@@ -31,7 +31,7 @@ $$
 
 压力边界驱动 Poiseuille 的 $3/8$ 是独立子域，不属于均匀体力一行。Wang/Luo 的 D2Q5 各向同性 $1/6$ 和特定稳定参数 $1/4$ 也不属于本章 D2Q9 温度边界标定。
 
-## 2. Classical velocity：1/4 与 3/16 是同一受限标定
+## Classical velocity：1/4 与 3/16 是同一受限标定
 
 Ginzburg--d'Humières 的 normalization 是
 
@@ -83,7 +83,7 @@ $$
 
 验证 transformed momentum 的 $-\boldsymbol F/2$ 被 half-force reconstruction 恢复，不产生伪滑移。Uniform-force 的 $3/16$ 与 pressure-drive 的 $3/8$ 当前只编码为 `source_evidence_only`：它们保留各自论文 normalization/gauge 的系数映射，但 `probes_quadratic_slip=False`，没有被描述为由本项目独立二次场或人口 stencil 重新生成。二者仍分支记录，避免把两个 gauge 混为一谈。
 
-## 3. Flow feedback：物理块与 nominal ghost 不可混用
+## Flow feedback：物理块与 nominal ghost 不可混用
 
 Task 3 的映射是
 
@@ -126,9 +126,9 @@ $$
 
 即使 $\chi_s=\chi_b$，也只能说“已解析的 rate 子系统兼容”，不能说完整边界已经闭合。
 
-## 4. Temperature Dirichlet ABB：两条独立 population 路线
+## Temperature Dirichlet ABB：两条独立 population 路线
 
-### 4.1 墙面平衡项与 transformed source
+### 墙面平衡项与 transformed source
 
 每条 Dirichlet ABB link 使用完整墙面项
 
@@ -160,7 +160,7 @@ $$
 \sigma_{g,\mathrm{even\ ghost}}=\sigma_g^+.
 $$
 
-### 4.2 显式精确梯度源链
+### 显式精确梯度源链
 
 把三个法向 D2Q9 links 聚合为 D1Q3，权重为 $W_0=2/3$、$W_+=W_-=1/6$，并代入
 
@@ -190,7 +190,7 @@ $$
 \sigma_{g,\mathrm{flux}}^{\mathrm{phys}}\sigma_g^+=\frac3{16}.
 $$
 
-### 4.3 局部非平衡反馈消元链
+### 局部非平衡反馈消元链
 
 第二条路线不使用显式梯度源。它把 local nonequilibrium feedback 消去为 homogeneous physical-flux block，使用
 
@@ -213,7 +213,7 @@ $$
 
 因此两条路线只在“冻结压力、稳态一维二次温度、CDE-consistent uniform $Q$、无流/力/切向/墙时变”这一行相同。一般 source/time/force/variable-pressure 系数必须分别推导，不能从该相同结果外推。
 
-### 4.4 主生成路线与一般 ABB 独立 jets
+### 主生成路线与一般 ABB 独立 jets
 
 主 API 不再直接填写最终系数表。`_temperature_abb_population_chain()` 先生成有限 D1Q3 population、collision、streaming、宏观重构与 ABB 方程，再从解中提取 steady quadratic 行；affine $T\pi$ 墙面平衡乘积由独立有限差分方程生成。`temperature_abb_residual()` 只消费该生成结果。测试通过调用追踪锁定这条依赖关系，而直接制造解仍使用独立 helper，不复用主生成器。
 
@@ -239,7 +239,7 @@ $$
 
 因此 general ABB 是 `boundary_correction_required`，而不是 universal magic。
 
-## 5. Adiabatic BB：先求 kinetic odd flux
+## Adiabatic BB：先求 kinetic odd flux
 
 `_adiabatic_population_chain()` 不预填法向或对角系数：它在 `flat_grid_aligned_halfway`、`half_source`、`transformed_cde_chain`、D2Q9 $c_s^2=1/3$ 下，分别求解 affine 法向人口对和两条 quadratic tangential diagonal population 的 collision、streaming、odd-source 与 reflection 有限方程，再从求解后的 reflected defect 提取法向 kinetic odd flux 与切向曲率。方程显式含 nominal even/odd rate、$c_s^2$ 与压力比；改变 even rate 或压力会改变中间方程，而对称消元后的两个受限系数保持不变。`adiabatic_bb_residual()` 只消费该生成结果。压力、力、热源导数、wall-time 和法向曲率等一般行仍显式保留为 nonzero unresolved。
 
@@ -267,7 +267,7 @@ $$
 
 所以 force-only 非零，而 hydrostatic pair $F_n/\rho_0=\pi_n$ 精确相消。Uniform $Q$ probe 把同一个 $(1-s_g^+/2)w_iQ$ 增量实际加入正、负人口，再由两者之差证明 $Q$ 不进入 homogeneous odd-flux 行；推导对象保留 $Q$，不是用常数零替代输入。绝热 wall-time/法向曲率制造入口在冻结稳态范围之外明确返回 `unsupported_unresolved`。一般绝热墙由此分类为 `boundary_correction_required`。
 
-## 6. Mixed corner：覆盖顺序不是同时满足
+## Mixed corner：覆盖顺序不是同时满足
 
 在采用 `grid_aligned_right_angle_corner`、half-source 规范的 Dirichlet/adiabatic 直角角点，同一个 diagonal incoming population $z$ 被两条墙方程同时使用：
 
@@ -308,7 +308,7 @@ $$
 
 这项不含 $\sigma_g^+$、$\sigma_g^-$ 或 $\chi_\kappa$，无法靠 rate tuning 消除。`_corner_population_chain()` 从两条共享对角人口赋值生成方程、秩、距离和源计数；naive 计数等于赋值序列长度，共享计数等于人口标识去重后的长度，因此得到两次覆盖与一次共享源，而不是在结果表中写死 `2/1`。独立 corner 制造解另行构造同样的有限赋值序列。分类必须是 `corner_closure_conflict`。
 
-## 7. 结论边界
+## 结论边界
 
 - `universal_magic`：本章没有找到满足该定义的条件。
 - `restricted_calibration`：只用于假设完整写出的 classical、1D shear 或 1D scalar quadratic 行。

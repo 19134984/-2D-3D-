@@ -3,6 +3,8 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..\..')
 $outputDir = Join-Path $repoRoot 'output\pdf'
 $texSource = 'docs/lbm-cde-trt-derivation.tex'
+$assembler = Join-Path $PSScriptRoot 'assemble_report.py'
+$python = (Get-Command python -ErrorAction Stop).Source
 $tempBase = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())
 $tempRoot = [IO.Path]::GetFullPath(
     (Join-Path $tempBase 'lbm-cde-trt-report-build')
@@ -11,6 +13,15 @@ $tempRoot = [IO.Path]::GetFullPath(
 if (-not $tempRoot.StartsWith($tempBase, [StringComparison]::OrdinalIgnoreCase)) {
     throw "Refusing to use a build directory outside the system temp root: $tempRoot"
 }
+
+& $python $assembler
+if ($LASTEXITCODE -ne 0) {
+    throw "Markdown report assembly failed with exit code $LASTEXITCODE"
+}
+
+$env:SOURCE_DATE_EPOCH = '1783900800'
+$env:FORCE_SOURCE_DATE = '1'
+
 if (Test-Path -LiteralPath $tempRoot) {
     Remove-Item -LiteralPath $tempRoot -Recurse -Force
 }
