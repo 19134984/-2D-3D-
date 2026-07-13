@@ -10,6 +10,9 @@ a.out
 *.out
 *.dat
 *.png
+__pycache__/
+*.py[cod]
+_markdown_*/
 tmp-build-*/
 bin/Debug/
 obj/Debug/

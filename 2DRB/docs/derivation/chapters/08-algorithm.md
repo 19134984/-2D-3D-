@@ -16,7 +16,7 @@ $$
 
 以及压力修正、力、热源、速度边界、温度边界和 mixed-corner 策略。启动时执行：
 
-1. 将每个名义率转换为 $\sigma=1/s-1/2$，分别检查 $0<s<2$；任一实际数值率越界即为物理不可行；
+1. 将每个名义率转换为 $\sigma=1/s-1/2$，分别检查 $0<s<2$；剪切、bulk/trace 和标量通量的任一实际数值率越界，或相应物理输运非正，即为物理不可行；
 2. 检查 $a=c_s^2+p/\rho_0$、标量输运块 $b$、目标 $K$ 或 $\nu$ 的正性与反馈闭合分母；自由符号无法判定时必须保留条件报告；
 3. 用第七章求解器验证请求的体相/壁面约束集合，若状态为 `no_feasible_solution` 或 `degenerate_branch` 则停止；
 4. 记录所有 restricted 假设、显式边界修正和 corner 策略，不能只记录数值率。
@@ -25,7 +25,7 @@ $$
 
 ## 2. 一个时间步的固定顺序
 
-### 第 1 步：用半力、半热源重构 $\rho,\boldsymbol u,T$
+### 第 1 步：用半力、半热源重构 rho、u、T
 
 从 transformed populations $\widetilde f_i,\widetilde g_i$ 重构
 
@@ -219,15 +219,15 @@ MPI/OpenACC 版本必须在同一逻辑位置完成 halo/device 同步；同步�
 
 ### 第 7 步：依次施加速度 BB、温度 ABB、绝热 BB 和显式 corner rule
 
-1. 对固壁速度 link 应用所选 halfway BB。只有受限稳态一维剪切子域才可使用 $(1-\chi_s)\sigma_f^+\sigma_f^-=3/16$ 标定。
+1. 对固壁速度 link 应用所选 halfway BB。只有平直、格点对齐的 halfway 壁、稳态一维 Stokes 剪切、均匀体力、half-force gauge、冻结 feedback 且无 bulk/time/tangential jets 的受限子域，才可使用 $(1-\chi_s)\sigma_f^+\sigma_f^-=3/16$ 标定；pressure-driven gauge 的 $3/8$ 不与它混用。
 2. 对 Dirichlet 温度 link 应用 ABB，墙项保留
 
    $$
    2\left(w_i+\lambda_i\frac{p_w/\rho_0}{c_s^2}\right)T_w.
    $$
 
-3. 对绝热 link 应用 homogeneous Neumann/BB；不要把 uniform heat source 重复写入 odd-flux 边界行。
-4. mixed Dirichlet/adiabatic corner 对共享 diagonal population 只赋值一次。默认显式策略为：轴向 links 各自执行所属边界，共享 diagonal 采用 Dirichlet-priority ABB，跳过随后对同一 population 的 adiabatic overwrite，并把未满足的绝热 corner residual 记入诊断。若项目选择别的单一闭合，必须替换整条 corner 策略，而不是交换两次 overwrite 的顺序。
+3. 对绝热 link 应用 homogeneous Neumann/BB；不要把 uniform heat source 重复写入 odd-flux 边界行。已解析行限定于平直、格点对齐的 halfway 壁、half-source、transformed CDE chain 和 D2Q9 $c_s^2=1/3$；其中 affine-normal 还要求稳态、常压力比和零切向 jets。它们不代表一般闭合：一般 wall-time、normal-curvature 和 source rows 仍为 `unresolved`，需要另行边界修正。
+4. 在格点对齐直角、half-source 规范的 mixed Dirichlet/adiabatic corner，对共享 diagonal population 只赋值一次。默认显式策略为：轴向 links 各自执行所属边界，共享 diagonal 采用 Dirichlet-priority ABB，跳过随后对同一 population 的 adiabatic overwrite，并把未满足的绝热 corner residual 记入诊断。若项目选择别的单一闭合，必须替换整条 corner 策略，而不是交换两次 overwrite 的顺序。
 
 共享 corner source increment 只计一次，diagonal wall distance 使用 $h/\sqrt2$。一般 mixed corner 的两条方程秩不兼容，因此这里明确选择工程闭合，不宣称同时精确满足两类边界。
 
@@ -248,17 +248,17 @@ MPI/OpenACC 版本必须在同一逻辑位置完成 halo/device 同步；同步�
 
 配置层必须显式选择以下一种，不允许求解器暗中替换：
 
-### A. 低 $\kappa$ + 体相四阶消除 + 显式边界修正
+### A. 低 kappa + 体相四阶消除 + 显式边界修正
 
-名义率满足 Task 5 四阶条件；Dirichlet 墙面使用已验证的显式修正。该策略只释放受限 ABB product，不是一般 source/time/pressure jets 的通用修复。
+名义率满足 Task 5 四阶条件；求解器把 Dirichlet 墙面的显式修正报告为结构性最小扩展。本文尚未给出 correction formula 或 corrected residual，因此该分支状态仍是 `boundary_correction_required`，不是已实现方案，更不是一般 source/time/pressure jets 的通用修复。
 
-### B. 低 $\kappa$ + 受限 ABB 标定 + 保留体相 $q^4$ 误差
+### B. 低 kappa + 受限 ABB 标定 + 保留体相 q4 误差
 
-用 $\sigma_{\rm flux}\sigma_e=3/16$ 生成名义偶率，随后计算并报告非零 $C_{40},C_{22}$。不得把“各向同性残差为零”写成“四阶误差为零”。
+仅在平直、格点对齐的 halfway 壁、稳态一维二次温度场、half-source 重构、完整 pressure-wall equilibrium term，以及相匹配的 external-gradient 或 local-feedback population chain 下，用 $\sigma_{\rm flux}\sigma_e=3/16$ 生成名义偶率。随后计算并报告非零 $C_{40},C_{22}$；不得把“各向同性残差为零”写成“四阶误差为零”。
 
 ### C. 两项都强制时采用独立新推导
 
-显式受限 ABB 边界修正是当前已验证的充分路线。split-even MRT 只是增加独立偶模态的候选；在明确 ABB 与 $C_{40}$ 分别依赖哪个偶模态、并证明两约束 Jacobian 满秩前，只能标记 `split_even_mrt_candidate_requiring_mode_jacobian_derivation`，不能与显式边界修正并列为充分方案，也不能预先标记 `feasible_exact`。
+显式受限 ABB 边界修正是已识别的结构性最小扩展，但尚待 correction formula、实现与 corrected-residual 验证。split-even MRT 是增加独立偶模态的另一候选；在明确 ABB 与 $C_{40}$ 分别依赖哪个偶模态、并证明两约束 Jacobian 满秩前，只能标记 `split_even_mrt_candidate_requiring_mode_jacobian_derivation`。两条路线当前都不是已证明充分方案，也不能预先标记 `feasible_exact`。
 
 ## 4. 最小伪代码
 

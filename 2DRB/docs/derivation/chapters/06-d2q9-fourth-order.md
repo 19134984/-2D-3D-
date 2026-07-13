@@ -39,8 +39,8 @@ $$
 其中标准 D2Q9 的 $c_s^2=1/3$。令 $\ell^T=(1,\ldots,1)$，
 
 $$
-e_i=w_i+\frac{\pi}{c_s^2}\lambda_i,qquad
-G=e\ell^T,qquad
+e_i=w_i+\frac{\pi}{c_s^2}\lambda_i,\qquad
+G=e\ell^T,\qquad
 H_{i\alpha}=w_ic_{i\alpha}\frac d{c_s^2},
 \qquad
 J_{\alpha i}=c_{i\alpha}.
@@ -49,8 +49,8 @@ $$
 以 $P_+$、$P_-$ 表示速度反演的偶、奇投影，原始 TRT 碰撞为
 
 $$
-S=s_eP_+ +s_oP_-,qquad
-C_0=I-S(I-G),qquad
+S=s_eP_+ +s_oP_-,\qquad
+C_0=I-S(I-G),\qquad
 \sigma_j=\frac1{s_j}-\frac12.
 $$
 
@@ -94,8 +94,8 @@ $$
 实现中始终构造
 
 $$
-K_{i\alpha}=\frac{w_ic_{i\alpha}}{c_s^2},qquad
-P_{\rm flux}=KJ,qquad
+K_{i\alpha}=\frac{w_ic_{i\alpha}}{c_s^2},\qquad
+P_{\rm flux}=KJ,\qquad
 P_{\rm odd\ ghost}=P_--P_{\rm flux},
 $$
 
@@ -125,14 +125,14 @@ $\sigma_f=(b/a)\sigma_o$ 后与实际反馈碰撞等价。
 对本项目的 D2Q9 $\lambda_i$，精确 raw moments 为
 
 $$
-L_{40}=L_{04}=\frac13,qquad L_{22}=\frac19,qquad
+L_{40}=L_{04}=\frac13,\qquad L_{22}=\frac19,\qquad
 L_{31}=L_{13}=0.
 $$
 
 因此平衡态高阶矩不是零：
 
 $$
-M_{40}^{\rm eq}=M_{04}^{\rm eq}=aT,qquad
+M_{40}^{\rm eq}=M_{04}^{\rm eq}=aT,\qquad
 M_{22}^{\rm eq}=c_s^2aT.
 $$
 
@@ -263,7 +263,7 @@ C_{40}^{\rm ext}-C_{40}^{\rm fb}=-\frac{1823}{465696},
 C_{22}^{\rm ext}-C_{22}^{\rm fb}=-\frac{1823}{232848}.
 $$
 
-## 7. $\Gamma$ 与 PDE 方向系数
+## 7. Gamma 与 PDE 方向系数
 
 由固定 Fourier 约定，
 
@@ -299,16 +299,22 @@ $$
 $$
 
 $$
-\begin{aligned}
-\kappa_{22}^{\rm printed}={}&
-2\left[\sigma_1+\sigma_5
--2\sigma_1\sigma_5(\sigma_3+\sigma_7+4\sigma_8)\right](a_4-4)\\
-&+12\xi\left[\sigma_5+3\sigma_1
+\kappa_{22}^{\rm printed}=2A(a_4-4)+12\xi B,
+$$
+
+其中
+
+$$
+A=\sigma_1+\sigma_5
+-2\sigma_1\sigma_5(\sigma_3+\sigma_7+4\sigma_8),
+$$
+
+$$
+B=\sigma_5+3\sigma_1
 -2\sigma_1\sigma_5(\sigma_3+\sigma_7)
--2\sigma_1\sigma_3\sigma_5\\
-&\hspace{4.7em}-8\sigma_1\sigma_8(\sigma_1+\sigma_5)
-+\sigma_1^2\sigma_7\right].
-\end{aligned}
+-2\sigma_1\sigma_3\sigma_5
+-8\sigma_1\sigma_8(\sigma_1+\sigma_5)
++\sigma_1^2\sigma_7.
 $$
 
 按同页印刷的 TRT 关系

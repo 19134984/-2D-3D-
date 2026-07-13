@@ -125,7 +125,7 @@ $$
 
 若 $\Delta t=1$ 且目标 $\kappa=10^{-3}$，一般不能同时满足上述体相四阶条件与受限 ABB 条件。求解器返回 `no_feasible_solution`，并把 `bulk_quartic_and_restricted_abb` 列入违反项；它不会静默保留其中一个条件。
 
-若明确选择“保留体相四阶消除，墙面使用显式修正”，低扩散率仍可有可接受的名义率。以反馈分支
+若明确选择“保留体相四阶消除，并把显式墙面修正列为待完成扩展”，低扩散率仍可有可接受的名义率。这里仅证明名义率在形式上可接受，并未给出修正公式或修正后 residual。以反馈分支
 
 $$
 a=\frac13,
@@ -161,24 +161,25 @@ $$
 
 1. 低 $\kappa$ + 体相四阶消除 + 显式墙面修正；
 2. 低 $\kappa$ + 受限 ABB 标定 + 保留体相四阶误差；
-3. 当两者都必须满足时，采用已验证的显式受限 ABB 边界修正；split-even MRT 只能列作有待另行推导的候选。
+3. 当两者都必须满足时，把显式受限 ABB 边界修正列为已识别的结构性最小扩展；它与 split-even MRT 一样，仍需另行完成推导、实现和 residual 验证。
 
-显式边界修正与 split-even MRT 不是同一种机制。前者是当前用于释放受限 ABB product 的充分扩展；后者只有在矩空间推导明确“哪个偶模态进入 ABB、哪个独立偶模态进入 $C_{40}$”，并证明双约束 Jacobian 满秩后，才能升级为可行结论。当前 split-even 只报告 `candidate_requiring_mode_jacobian_derivation`，不能与显式修正并列为已证明充分方案，也不能标成 `feasible_exact`。
+显式边界修正与 split-even MRT 不是同一种机制。前者是当前根据违反的受限 ABB product 识别出的结构性最小扩展，但仓库尚无 correction formula 或 corrected residual，因而不能称为充分方案；后者只有在矩空间推导明确“哪个偶模态进入 ABB、哪个独立偶模态进入 $C_{40}$”，并证明双约束 Jacobian 满秩后，才能升级为可行结论。当前二者都不能标成 `feasible_exact`；split-even 只报告 `candidate_requiring_mode_jacobian_derivation`。
 
 ## 5. 特殊与退化分支
 
 求解顺序固定为先分类、后除法：
 
-| 分支 | 精确结论 | 报告 |
-| --- | --- | --- |
-| 数值 $a\le0$ | 平衡/物理块非正 | `no_feasible_solution`，列出 `a_not_positive` |
-| 数值 $b\le0$ | 输运块非正 | `no_feasible_solution`，列出 `b_not_positive` |
-| 数值 $K\le0$ | 目标扩散输运非正 | `no_feasible_solution`，列出相应非正约束 |
-| $a=1$，反馈 | 直接条件 $12K^2=1$ | 不使用主分支除以 $a-1$ |
-| $a=1$，外置梯度 | $1-2b+12K^2=0$，正支要求 $b>1/2$ | 不使用主分支除以 $a-1$ |
-| 兼容根号为零 | 零 Hénon 平移不作为可行 ABB 极限 | `no_feasible_solution` |
-| 兼容根号为负 | 无实正物理分支 | `no_feasible_solution` |
-| 反馈 $a+2K=0$ 且其余输入为正 | 局部梯度闭合奇异 | `degenerate_branch` |
+- 数值 $a\le0$：平衡/物理块非正，返回 `no_feasible_solution` 与
+  `a_not_positive`。
+- 数值 $b\le0$：输运块非正，返回 `no_feasible_solution` 与
+  `b_not_positive`。
+- 数值 $K\le0$：目标扩散输运非正，返回 `no_feasible_solution`。
+- $a=1$、反馈：直接使用未除式条件 $12K^2=1$，不除以 $a-1$。
+- $a=1$、外置梯度：直接使用 $1-2b+12K^2=0$；正支要求 $b>1/2$。
+- 兼容根号为零：零 Hénon 平移不作为可行 ABB 极限。
+- 兼容根号为负：不存在实正物理分支。
+- 反馈 $a+2K=0$ 且其余输入为正：局部梯度闭合奇异，返回
+  `degenerate_branch`。
 
 数值可行性优先于代数边界分类：形式交点 $a=1/9$、$K=-1/18$ 虽满足 $a+2K=0$，但因 $K<0$ 返回 `no_feasible_solution`。任一实际碰撞率不在 $(0,2)$ 也采用相同优先级。只有自由符号无法判定时才保留条件报告，而不是宣称已经可行。
 
@@ -189,6 +190,18 @@ $$
 $$
 \nu=c_s^2\Delta t(1-\chi_s)\sigma_f^+.
 $$
+
+同一名义偶 shift 还产生独立体积块
+
+$$
+\sigma_{b,\mathrm{eff}}=(1-\chi_b)\sigma_f^+,
+\qquad
+\nu^B=\frac2D c_s^2\Delta t\,\sigma_{b,\mathrm{eff}}.
+$$
+
+二维参数报告因此同时返回 sigma_bulk_physical、physical_bulk 实际率与
+nu_bulk_2d，并在任何壁面分类之前检查 $1-\chi_b>0$、体积 shift、$\nu^B$
+及体积实际率 $0<s_{b,\mathrm{eff}}<2$。剪切率可接受不能替代这组门禁。
 
 只保留 Task 6 的稳态一维均匀体力剪切行时，
 

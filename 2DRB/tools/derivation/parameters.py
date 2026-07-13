@@ -585,15 +585,21 @@ def solve_flow_parameters(
         )
     sigma_plus = simplify(nu / shear_denominator)
     physical_shear_shift = simplify((1 - chi_s) * sigma_plus)
+    physical_bulk_shift = simplify((1 - chi_b) * sigma_plus)
+    nu_bulk_2d = simplify(cs2 * dt * physical_bulk_shift)
     partial_rates = {
         "nominal_even": simplify(1 / (sigma_plus + Rational(1, 2))),
         "physical_shear": simplify(
             1 / (physical_shear_shift + Rational(1, 2))
         ),
+        "physical_bulk": simplify(
+            1 / (physical_bulk_shift + Rational(1, 2))
+        ),
     }
     partial_checks = {
         "nominal_even_rate": _open_rate_check(partial_rates["nominal_even"]),
         "physical_shear_rate": _open_rate_check(partial_rates["physical_shear"]),
+        "physical_bulk_rate": _open_rate_check(partial_rates["physical_bulk"]),
     }
     flow_conditions, flow_violations, unresolved_flow = _condition_partition(
         {
@@ -601,10 +607,15 @@ def solve_flow_parameters(
             "cs2_positive": _positive_check(cs2),
             "dt_positive": _positive_check(dt),
             "one_minus_chi_s_positive": _positive_check(1 - chi_s),
+            "one_minus_chi_b_positive": _positive_check(1 - chi_b),
             "sigma_f_plus_positive": _positive_check(sigma_plus),
             "sigma_shear_physical_positive": _positive_check(
                 physical_shear_shift
             ),
+            "sigma_bulk_physical_positive": _positive_check(
+                physical_bulk_shift
+            ),
+            "nu_bulk_2d_positive": _positive_check(nu_bulk_2d),
             **partial_checks,
         }
     )
@@ -616,6 +627,8 @@ def solve_flow_parameters(
                 "nu": nu,
                 "sigma_f_plus": sigma_plus,
                 "sigma_shear_physical": physical_shear_shift,
+                "sigma_bulk_physical": physical_bulk_shift,
+                "nu_bulk_2d": nu_bulk_2d,
             },
             collision_rates=partial_rates,
             open_interval_checks=partial_checks,
@@ -648,6 +661,8 @@ def solve_flow_parameters(
             "nu": nu,
             "sigma_f_plus": sigma_plus,
             "sigma_shear_physical": physical_shear_shift,
+            "sigma_bulk_physical": physical_bulk_shift,
+            "nu_bulk_2d": nu_bulk_2d,
         }
         if classification.rate_compatibility_status == "no_single_magic":
             return ParameterReport(
@@ -713,11 +728,15 @@ def solve_flow_parameters(
         "physical_shear": simplify(
             1 / (physical_shear_shift + Rational(1, 2))
         ),
+        "physical_bulk": simplify(
+            1 / (physical_bulk_shift + Rational(1, 2))
+        ),
     }
     checks = {
         "nominal_even_rate": _open_rate_check(rates["nominal_even"]),
         "nominal_odd_rate": _open_rate_check(rates["nominal_odd"]),
         "physical_shear_rate": _open_rate_check(rates["physical_shear"]),
+        "physical_bulk_rate": _open_rate_check(rates["physical_bulk"]),
     }
     nu_positive = symbols("nu_positive", positive=True)
     odd_rate_as_nu = simplify(
@@ -732,6 +751,8 @@ def solve_flow_parameters(
         "sigma_f_plus": sigma_plus,
         "sigma_f_minus": sigma_minus,
         "sigma_shear_physical": physical_shear_shift,
+        "sigma_bulk_physical": physical_bulk_shift,
+        "nu_bulk_2d": nu_bulk_2d,
         "s_f_minus_as_nu": odd_rate_as_nu,
         "s_f_minus_limit_nu_to_zero_positive": limit(
             odd_rate_as_nu, nu_positive, 0, dir="+"
@@ -743,11 +764,16 @@ def solve_flow_parameters(
             "cs2_positive": _positive_check(cs2),
             "dt_positive": _positive_check(dt),
             "one_minus_chi_s_positive": _positive_check(1 - chi_s),
+            "one_minus_chi_b_positive": _positive_check(1 - chi_b),
             "sigma_f_plus_positive": _positive_check(sigma_plus),
             "sigma_f_minus_positive": _positive_check(sigma_minus),
             "sigma_shear_physical_positive": _positive_check(
                 physical_shear_shift
             ),
+            "sigma_bulk_physical_positive": _positive_check(
+                physical_bulk_shift
+            ),
+            "nu_bulk_2d_positive": _positive_check(nu_bulk_2d),
             **checks,
         }
     )

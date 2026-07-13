@@ -135,7 +135,7 @@ G_0-I&-v_0\\
 \boldsymbol1^{\mathsf T}&0
 \end{pmatrix}
 \begin{pmatrix}v_n\\z_n\end{pmatrix}
-=
+{}={}
 \begin{pmatrix}
 -\displaystyle\sum_{r=1}^nG_rv_{n-r}
 +\displaystyle\sum_{r=1}^{n-1}z_rv_{n-r}\\
@@ -164,7 +164,7 @@ $$
 
 $$
 \sum_{p=0}^4\frac{\Delta t^p}{p!}\partial_t^pf_i
-=
+{}={}
 \sum_{p=0}^4\frac{\Delta t^p}{p!}
 (\boldsymbol c_i\cdot\nabla)^pf_i^*+O(\Delta t^5).
 $$

@@ -633,6 +633,43 @@ class FlowCompatibilityTests(unittest.TestCase):
         self.assertIn("one_minus_chi_s_not_positive", report.violated_constraints)
         self.assertIn("nominal_even_rate", report.violated_constraints)
 
+    def test_negative_bulk_transport_precedes_restricted_or_general_wall_status(self):
+        self.require_parameters()
+        for retain_trace_jets in (False, True):
+            with self.subTest(retain_trace_jets=retain_trace_jets):
+                report = solve_flow_parameters(
+                    nu=Rational(1, 1000),
+                    cs2=Rational(1, 3),
+                    dt=1,
+                    chi_s=Rational(1, 4),
+                    chi_b=2,
+                    retain_trace_jets=retain_trace_jets,
+                )
+                self.assertEqual(report.status, "no_feasible_solution")
+                self.assertEqual(
+                    report.exact_substitutions["sigma_bulk_physical"],
+                    Rational(-1, 250),
+                )
+                self.assertEqual(
+                    report.exact_substitutions["nu_bulk_2d"],
+                    Rational(-1, 750),
+                )
+                self.assertEqual(
+                    report.collision_rates["physical_bulk"], Rational(125, 62)
+                )
+                self.assertFalse(
+                    report.open_interval_checks["physical_bulk_rate"]
+                )
+                self.assertIn(
+                    "one_minus_chi_b_not_positive", report.violated_constraints
+                )
+                self.assertIn(
+                    "sigma_bulk_physical_not_positive",
+                    report.violated_constraints,
+                )
+                self.assertIn("nu_bulk_2d_not_positive", report.violated_constraints)
+                self.assertIn("physical_bulk_rate", report.violated_constraints)
+
 
 class AlgorithmDocumentationTests(unittest.TestCase):
     def test_flow_feedback_affine_term_uses_latex_thin_space_not_comma(self):

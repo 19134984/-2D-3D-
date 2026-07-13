@@ -1,0 +1,81 @@
+\documentclass[UTF8,openany,11pt]{ctexbook}
+
+\usepackage[a4paper,margin=24mm,headheight=15pt]{geometry}
+\usepackage{amsmath,amssymb,mathtools,bm}
+\usepackage{booktabs,longtable,array}
+\usepackage{xcolor}
+\usepackage{microtype}
+\usepackage{seqsplit}
+\usepackage{fancyhdr}
+\usepackage{hyperref}
+\usepackage{bookmark}
+\usepackage[texMathDollars,pipeTables,tableCaptions]{markdown}
+\markdownSetup{rendererPrototypes={
+  codeSpan={\ifmmode\text{#1}\else\texttt{\seqsplit{#1}}\fi}
+}}
+
+\definecolor{linkblue}{RGB}{26,79,132}
+\hypersetup{
+  colorlinks=true,
+  linkcolor=linkblue,
+  urlcolor=linkblue,
+  citecolor=linkblue,
+  pdftitle={基于 LBM-CDE 的 TRT 推广、边界 magic 与温度四阶误差推导},
+  pdfauthor={Codex 多智能体推导与审查}
+}
+
+\setlength{\parindent}{2em}
+\setlength{\parskip}{0.25em}
+\setcounter{tocdepth}{2}
+\setcounter{secnumdepth}{3}
+\allowdisplaybreaks[3]
+\emergencystretch=4em
+\sloppy
+\raggedbottom
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{LBM-CDE--TRT 推导报告}
+\fancyhead[R]{\leftmark}
+\fancyfoot[C]{\thepage}
+
+\newcommand{\claimproved}{\texttt{strictly\_proved}}
+\newcommand{\claimrestricted}{\texttt{restricted\_model}}
+\newcommand{\claimnumeric}{\texttt{numerical\_evidence}}
+\newcommand{\claimunresolved}{\texttt{unresolved}}
+
+\begin{document}
+
+\begin{titlepage}
+  \centering
+  \vspace*{28mm}
+  {\Huge\bfseries 基于 LBM-CDE 的 TRT 推广\par}
+  \vspace{4mm}
+  {\LARGE\bfseries 边界 magic 与温度四阶误差推导\par}
+  \vspace{16mm}
+  {\large 精确符号生成、独立路线复算与多智能体交叉审查\par}
+  \vfill
+  {\large 生成日期：\today\par}
+  \vspace{4mm}
+  {\normalsize 研究代码基线：本仓库推导工具；\texttt{Xs/} 仅作实现比较\par}
+\end{titlepage}
+
+\frontmatter
+\tableofcontents
+
+\mainmatter
+\markdownInput{docs/lbm-cde-trt-derivation.md}
+\markdownInput{docs/derivation/chapters/02-trt-source-design.md}
+\markdownInput{docs/derivation/chapters/03-effective-rates.md}
+\markdownInput{docs/derivation/chapters/04-second-order-recovery.md}
+\markdownInput{docs/derivation/chapters/05-boundary-magic.md}
+\markdownInput{docs/derivation/chapters/06-d2q9-fourth-order.md}
+\markdownInput{docs/derivation/chapters/07-parameter-compatibility.md}
+\markdownInput{docs/derivation/chapters/08-algorithm.md}
+
+\appendix
+\markdownInput{docs/derivation/chapters/A-d2q5-verifier.md}
+\markdownInput{docs/derivation/review-matrix.md}
+\markdownInput{docs/derivation/references.md}
+
+\end{document}

@@ -12,18 +12,26 @@ $$
 
 任何数值结论必须同时附带 normalization、驱动/源实现、宏观量 gauge 和几何。Task 6 分开处理六个适用域：
 
-| 适用域 | 碰撞/源实现 | 可报告的结论 | 分类 |
-| --- | --- | --- | --- |
-| classical velocity | D2Q9 两率、均匀体力、half-force momentum、平直 halfway wall、无反馈 | $\Lambda^2=1/4\Leftrightarrow\sigma_f^+\sigma_f^-=3/16$ | `restricted_calibration` |
-| flow feedback | 一维剪切、均匀体力、冻结反馈 | $(1-\chi_s)\sigma_f^+\sigma_f^-=3/16$ | `restricted_calibration` |
-| scalar external-gradient | D2Q9 温度 ABB、显式精确梯度源、稳态一维二次场 | $\sigma_{g,\mathrm{flux}}\sigma_g^+=3/16$ | `restricted_calibration` |
-| scalar local-feedback | 局部非平衡反馈消元后的 homogeneous physical-flux block、稳态一维二次场 | 与上一行具有相同二次 ABB 行；不得外推到一般源/time/force jets | `restricted_calibration` |
-| general source-aware wall | velocity BB、ABB 或绝热 BB；压力、热源、时间、法/切向导数和力 jets 独立 | 未完成的 population-chain 系数显式标为 nonzero unresolved，不能伪记为零 | 顶层恒为 `boundary_correction_required`；velocity 另报 rate 子系统状态 |
-| mixed corner | 一个对角未知 population 同时受 Dirichlet ABB 与绝热 BB 约束 | 一般 $\operatorname{rank}A=1<\operatorname{rank}[A|b]=2$，覆盖顺序相关 | `corner_closure_conflict` |
+- **classical velocity：** D2Q9 两率、均匀体力、half-force momentum、平直
+  halfway wall、无反馈时，
+  $\Lambda^2=1/4\Leftrightarrow\sigma_f^+\sigma_f^-=3/16$；分类为
+  `restricted_calibration`。
+- **flow feedback：** 一维剪切、均匀体力、冻结反馈时，候选条件为
+  $(1-\chi_s)\sigma_f^+\sigma_f^-=3/16$；仍是 `restricted_calibration`。
+- **scalar external-gradient：** D2Q9 温度 ABB、显式精确梯度源、稳态一维
+  二次场下，$\sigma_{g,\mathrm{flux}}\sigma_g^+=3/16$。
+- **scalar local-feedback：** homogeneous physical-flux block 在同一稳态一维
+  二次场产生相同 ABB 行，但不得外推到一般 source/time/force jets。
+- **general source-aware wall：** velocity BB、ABB 或绝热 BB 的压力、热源、
+  时间、法/切向导数和力 jets 独立；未闭合项标为 nonzero unresolved，顶层恒为
+  `boundary_correction_required`，velocity 另报 rate 子系统状态。
+- **mixed corner：** 一个共享对角 population 同时受 Dirichlet ABB 与绝热 BB
+  约束；一般 $\operatorname{rank}A=1<\operatorname{rank}[A|b]=2$，分类为
+  `corner_closure_conflict`。
 
 压力边界驱动 Poiseuille 的 $3/8$ 是独立子域，不属于均匀体力一行。Wang/Luo 的 D2Q5 各向同性 $1/6$ 和特定稳定参数 $1/4$ 也不属于本章 D2Q9 温度边界标定。
 
-## 2. Classical velocity：$1/4$ 与 $3/16$ 是同一受限标定
+## 2. Classical velocity：1/4 与 3/16 是同一受限标定
 
 Ginzburg--d'Humières 的 normalization 是
 
@@ -40,8 +48,8 @@ $$
 在 Wang/Luo 的 D2Q9 矩排序中，黏性应力是中心对称 even block，三阶伴随通量是 odd block，因此
 
 $$
-\lambda_\nu=s_f^+,qquad
-\lambda_2=s_f^-,qquad
+\lambda_\nu=s_f^+,\qquad
+\lambda_2=s_f^-,\qquad
 \Lambda^2=\frac43\sigma_f^+\sigma_f^-.
 $$
 
@@ -81,7 +89,7 @@ Task 3 的映射是
 
 $$
 \sigma_{f,\mathrm{shear}}^{\mathrm{phys}}
-=(1-\chi_s)\sigma_f^+,qquad
+=(1-\chi_s)\sigma_f^+,\qquad
 \sigma_{f,\mathrm{bulk}}^{\mathrm{phys}}
 =(1-\chi_b)\sigma_f^+.
 $$
@@ -89,7 +97,7 @@ $$
 未参与该物理闭合的 ghost 仍是
 
 $$
-\sigma_{f,\mathrm{even\ ghost}}=\sigma_f^+,qquad
+\sigma_{f,\mathrm{even\ ghost}}=\sigma_f^+,\qquad
 \sigma_{f,\mathrm{odd\ ghost}}=\sigma_f^-.
 $$
 
@@ -126,7 +134,7 @@ $$
 
 $$
 2\left(w_i+\lambda_{t,i}\frac{\pi_w}{c_s^2}\right)T_w,
-\qquad \pi=\frac p{\rho_0},qquad c_s^2=\frac13.
+\qquad \pi=\frac p{\rho_0},\qquad c_s^2=\frac13.
 $$
 
 温度宏观重构与源因子是
@@ -148,7 +156,7 @@ $$
 $$
 
 $$
-\sigma_{g,\mathrm{odd\ ghost}}=\sigma_g^-,qquad
+\sigma_{g,\mathrm{odd\ ghost}}=\sigma_g^-,\qquad
 \sigma_{g,\mathrm{even\ ghost}}=\sigma_g^+.
 $$
 
@@ -233,9 +241,9 @@ $$
 
 ## 5. Adiabatic BB：先求 kinetic odd flux
 
-`_adiabatic_population_chain()` 不预填法向或对角系数：它分别求解 affine 法向人口对和两条 quadratic tangential diagonal population 的 collision、streaming、odd-source 与 reflection 有限方程，再从求解后的 reflected defect 提取法向 kinetic odd flux 与切向曲率。方程显式含 nominal even/odd rate、$c_s^2$ 与压力比；改变 even rate 或压力会改变中间方程，而对称消元后的两个受限系数保持不变。`adiabatic_bb_residual()` 只消费该生成结果。压力、力、热源导数、wall-time 和法向曲率等一般行仍显式保留为 nonzero unresolved。
+`_adiabatic_population_chain()` 不预填法向或对角系数：它在 `flat_grid_aligned_halfway`、`half_source`、`transformed_cde_chain`、D2Q9 $c_s^2=1/3$ 下，分别求解 affine 法向人口对和两条 quadratic tangential diagonal population 的 collision、streaming、odd-source 与 reflection 有限方程，再从求解后的 reflected defect 提取法向 kinetic odd flux 与切向曲率。方程显式含 nominal even/odd rate、$c_s^2$ 与压力比；改变 even rate 或压力会改变中间方程，而对称消元后的两个受限系数保持不变。`adiabatic_bb_residual()` 只消费该生成结果。压力、力、热源导数、wall-time 和法向曲率等一般行仍显式保留为 nonzero unresolved。
 
-绝热 BB 首先给出 reflected odd-flux condition，而不是先代入 $T_n=0$。一维 affine 法向链产生
+绝热 BB 首先给出 reflected odd-flux condition，而不是先代入 $T_n=0$。下述一维 affine 法向链还要求稳态、常压力比与零切向 jets，并产生
 
 $$
 R_{\mathrm{odd}}
@@ -261,7 +269,7 @@ $$
 
 ## 6. Mixed corner：覆盖顺序不是同时满足
 
-在 Dirichlet/adiabatic 直角角点，同一个 diagonal incoming population $z$ 被两条墙方程同时使用：
+在采用 `grid_aligned_right_angle_corner`、half-source 规范的 Dirichlet/adiabatic 直角角点，同一个 diagonal incoming population $z$ 被两条墙方程同时使用：
 
 $$
 z=b_D=-g_{\bar i}^*+2g_{i,w}^{eq},
