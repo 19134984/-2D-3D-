@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="620" viewBox="0 0 1200 620" role="img" aria-labelledby="title desc">
+  <title id="title">用轴向波和对角波分离 D2Q5 的两个四阶误差系数</title>
+  <desc id="desc">左侧轴向波的波数为一零，只测到 kappa40。右侧对角波的波数为一一，测到二倍 kappa40 加 kappa22。底部显示先由轴向波求 kappa40，再用对角组合减去二倍 kappa40 求 kappa22，并强调各向同性是 kappa22 等于二倍 kappa40，完全消除则两个系数都为零。</desc>
+  <defs>
+    <marker id="arrow-blue" markerWidth="11" markerHeight="9" refX="10" refY="4.5" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L11,4.5 L0,9 Z" fill="#1769aa"/>
+    </marker>
+    <marker id="arrow-orange" markerWidth="11" markerHeight="9" refX="10" refY="4.5" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L11,4.5 L0,9 Z" fill="#b76500"/>
+    </marker>
+    <style>
+      .title{font:600 24px 'Microsoft YaHei',sans-serif;fill:#17324d}
+      .head{font:600 19px 'Microsoft YaHei',sans-serif;fill:#17324d}
+      .body{font:16px 'Microsoft YaHei',sans-serif;fill:#243746}
+      .math{font:17px Consolas,'Microsoft YaHei',sans-serif;fill:#243746}
+      .small{font:14px 'Microsoft YaHei',sans-serif;fill:#4b5f70}
+      .axisbox{fill:#eef6ff;stroke:#1769aa;stroke-width:2}
+      .diagbox{fill:#fff4e5;stroke:#b76500;stroke-width:2}
+      .solvebox{fill:#f1f8f4;stroke:#27845b;stroke-width:2}
+      .comparebox{fill:#f5f1ff;stroke:#7258b7;stroke-width:2}
+      .grid{stroke:#a7b4c0;stroke-width:1.2}
+      .node{fill:#ffffff;stroke:#60788c;stroke-width:1.4}
+      .axiswave{stroke:#1769aa;stroke-width:4;fill:none;marker-end:url(#arrow-blue)}
+      .diagwave{stroke:#b76500;stroke-width:4;fill:none;marker-end:url(#arrow-orange)}
+      .guide{stroke:#8193a3;stroke-width:1.8;fill:none;stroke-dasharray:6 5}
+    </style>
+  </defs>
+
+  <text class="title" x="600" y="38" text-anchor="middle">两次传播方向测试，把两个四阶系数拆开</text>
+
+  <rect class="axisbox" x="45" y="70" width="520" height="300" rx="14"/>
+  <text class="head" x="305" y="105" text-anchor="middle">测试一：沿 x 轴传播</text>
+
+  <g aria-label="轴向方格与波数箭头">
+    <path class="grid" d="M115 150 H315 M115 200 H315 M115 250 H315 M115 300 H315 M115 150 V300 M165 150 V300 M215 150 V300 M265 150 V300 M315 150 V300"/>
+    <circle class="node" cx="115" cy="150" r="5"/><circle class="node" cx="165" cy="150" r="5"/><circle class="node" cx="215" cy="150" r="5"/><circle class="node" cx="265" cy="150" r="5"/><circle class="node" cx="315" cy="150" r="5"/>
+    <circle class="node" cx="115" cy="200" r="5"/><circle class="node" cx="165" cy="200" r="5"/><circle class="node" cx="215" cy="200" r="5"/><circle class="node" cx="265" cy="200" r="5"/><circle class="node" cx="315" cy="200" r="5"/>
+    <circle class="node" cx="115" cy="250" r="5"/><circle class="node" cx="165" cy="250" r="5"/><circle class="node" cx="215" cy="250" r="5"/><circle class="node" cx="265" cy="250" r="5"/><circle class="node" cx="315" cy="250" r="5"/>
+    <circle class="node" cx="115" cy="300" r="5"/><circle class="node" cx="165" cy="300" r="5"/><circle class="node" cx="215" cy="300" r="5"/><circle class="node" cx="265" cy="300" r="5"/><circle class="node" cx="315" cy="300" r="5"/>
+    <path class="axiswave" d="M135 225 H292"/>
+    <text class="small" x="215" y="334" text-anchor="middle">波数方向 (p,q) = (1,0)</text>
+  </g>
+
+  <text class="math" x="420" y="172" text-anchor="middle">p⁴ + q⁴ = 1</text>
+  <text class="math" x="420" y="212" text-anchor="middle">p²q² = 0</text>
+  <text class="body" x="420" y="260" text-anchor="middle">混合导数看不见</text>
+  <text class="math" x="420" y="304" text-anchor="middle">测得：κ₄₀</text>
+  <text class="small" x="420" y="338" text-anchor="middle">先用它确定轴向系数</text>
+
+  <rect class="diagbox" x="635" y="70" width="520" height="300" rx="14"/>
+  <text class="head" x="895" y="105" text-anchor="middle">测试二：沿 45° 对角线传播</text>
+
+  <g aria-label="对角方格与波数箭头">
+    <path class="grid" d="M705 150 H905 M705 200 H905 M705 250 H905 M705 300 H905 M705 150 V300 M755 150 V300 M805 150 V300 M855 150 V300 M905 150 V300"/>
+    <circle class="node" cx="705" cy="150" r="5"/><circle class="node" cx="755" cy="150" r="5"/><circle class="node" cx="805" cy="150" r="5"/><circle class="node" cx="855" cy="150" r="5"/><circle class="node" cx="905" cy="150" r="5"/>
+    <circle class="node" cx="705" cy="200" r="5"/><circle class="node" cx="755" cy="200" r="5"/><circle class="node" cx="805" cy="200" r="5"/><circle class="node" cx="855" cy="200" r="5"/><circle class="node" cx="905" cy="200" r="5"/>
+    <circle class="node" cx="705" cy="250" r="5"/><circle class="node" cx="755" cy="250" r="5"/><circle class="node" cx="805" cy="250" r="5"/><circle class="node" cx="855" cy="250" r="5"/><circle class="node" cx="905" cy="250" r="5"/>
+    <circle class="node" cx="705" cy="300" r="5"/><circle class="node" cx="755" cy="300" r="5"/><circle class="node" cx="805" cy="300" r="5"/><circle class="node" cx="855" cy="300" r="5"/><circle class="node" cx="905" cy="300" r="5"/>
+    <path class="diagwave" d="M725 285 L883 165"/>
+    <text class="small" x="805" y="334" text-anchor="middle">波数方向 (p,q) = (1,1)</text>
+  </g>
+
+  <text class="math" x="1010" y="172" text-anchor="middle">p⁴ + q⁴ = 2</text>
+  <text class="math" x="1010" y="212" text-anchor="middle">p²q² = 1</text>
+  <text class="body" x="1010" y="260" text-anchor="middle">轴向与混合项都出现</text>
+  <text class="math" x="1010" y="304" text-anchor="middle">测得：2κ₄₀ + κ₂₂</text>
+  <text class="small" x="1010" y="338" text-anchor="middle">再减去两倍轴向结果</text>
+
+  <path class="guide" d="M305 372 V408 H470"/>
+  <path class="guide" d="M895 372 V408 H730"/>
+
+  <rect class="solvebox" x="285" y="410" width="630" height="82" rx="12"/>
+  <text class="head" x="600" y="441" text-anchor="middle">解出第二个系数</text>
+  <text class="math" x="600" y="476" text-anchor="middle">κ₂₂ = [对角测试结果] − 2κ₄₀</text>
+
+  <rect class="comparebox" x="105" y="525" width="990" height="70" rx="12"/>
+  <text class="body" x="600" y="553" text-anchor="middle">各向同性：κ₂₂ = 2κ₄₀（允许二者非零）</text>
+  <text class="body" x="600" y="582" text-anchor="middle">完全消除：κ₄₀ = 0 且 κ₂₂ = 0（更强的条件）</text>
+</svg>
