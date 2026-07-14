@@ -21,5 +21,5 @@
   <text class="label" x="490" y="205" text-anchor="middle">i=1，c₁=+1（向右）</text>
   <text class="label" x="380" y="78" text-anchor="middle">i=0，c₀=0</text>
   <text class="small" x="380" y="245" text-anchor="middle">反向映射：0↔0，1↔2；格子单位中 Δx=Δt=1</text>
-  <text class="small" x="380" y="272" text-anchor="middle">population 沿箭头迁移；宏观标量由 g₀+g₁+g₂ 重构</text>
+  <text class="small" x="380" y="272" text-anchor="middle">population 沿箭头迁移；本节温度示例中 T=g₀+g₁+g₂</text>
 </svg>

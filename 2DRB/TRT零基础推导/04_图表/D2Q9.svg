@@ -26,15 +26,15 @@
     <circle class="node" cx="560" cy="165" r="12"/><circle class="node" cx="220" cy="165" r="12"/>
     <circle class="node" cx="220" cy="505" r="12"/><circle class="node" cx="560" cy="505" r="12"/>
   </g>
-  <text class="label" x="617" y="328">1 东</text><text class="small" x="617" y="349">(1,0), w=1/9</text>
-  <text class="label" x="390" y="92" text-anchor="middle">2 北 (0,1), w=1/9</text>
-  <text class="label" x="163" y="328" text-anchor="end">3 西</text><text class="small" x="163" y="349" text-anchor="end">(-1,0), w=1/9</text>
-  <text class="label" x="390" y="586" text-anchor="middle">4 南 (0,-1), w=1/9</text>
-  <text class="label" x="578" y="150">5 东北</text><text class="small" x="578" y="171">(1,1), w=1/36</text>
-  <text class="label" x="202" y="150" text-anchor="end">6 西北</text><text class="small" x="202" y="171" text-anchor="end">(-1,1), w=1/36</text>
-  <text class="label" x="202" y="520" text-anchor="end">7 西南</text><text class="small" x="202" y="541" text-anchor="end">(-1,-1), w=1/36</text>
-  <text class="label" x="578" y="520">8 东南</text><text class="small" x="578" y="541">(1,-1), w=1/36</text>
-  <text class="label" x="390" y="328" text-anchor="middle">0</text><text class="small" x="390" y="350" text-anchor="middle">w₀=4/9</text>
+  <text class="label" x="617" y="328">i=1 东</text><text class="small" x="617" y="349">(1,0), w=1/9</text>
+  <text class="label" x="390" y="92" text-anchor="middle">i=2 北 (0,1), w=1/9</text>
+  <text class="label" x="163" y="328" text-anchor="end">i=3 西</text><text class="small" x="163" y="349" text-anchor="end">(-1,0), w=1/9</text>
+  <text class="label" x="390" y="586" text-anchor="middle">i=4 南 (0,-1), w=1/9</text>
+  <text class="label" x="578" y="150">i=5 东北</text><text class="small" x="578" y="171">(1,1), w=1/36</text>
+  <text class="label" x="202" y="150" text-anchor="end">i=6 西北</text><text class="small" x="202" y="171" text-anchor="end">(-1,1), w=1/36</text>
+  <text class="label" x="202" y="520" text-anchor="end">i=7 西南</text><text class="small" x="202" y="541" text-anchor="end">(-1,-1), w=1/36</text>
+  <text class="label" x="578" y="520">i=8 东南</text><text class="small" x="578" y="541">(1,-1), w=1/36</text>
+  <text class="label" x="390" y="328" text-anchor="middle">i=0</text><text class="small" x="390" y="350" text-anchor="middle">w₀=4/9</text>
   <text class="small" x="390" y="626" text-anchor="middle">反向对：1↔3，2↔4，5↔7，6↔8，0↔0</text>
   <text class="small" x="390" y="652" text-anchor="middle">蓝色为轴向，紫色为对角；颜色不是新的物理变量</text>
 </svg>
