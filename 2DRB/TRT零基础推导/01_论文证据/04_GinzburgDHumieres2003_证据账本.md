@@ -13,8 +13,8 @@
 
 | 原符号 | 原文含义 | 统一符号 | 精确映射或备注 |
 | --- | --- | --- | --- |
-| `λ_ν` | 中心反演下不变的偶/黏性通道碰撞率 | `r_even` | `r_even=λ_ν`，`H_even=1/r_even-1/2` |
-| `λ_2` | 其他模态的奇/第二通道碰撞率 | `r_odd` | `r_odd=λ_2`，`H_odd=1/r_odd-1/2` |
+| `λ_ν` | 中心反演下不变的偶/黏性通道碰撞率 | `r_even` | `r_even=λ_ν`；`τ_even=1/r_even`；`H_even=τ_even-1/2=1/r_even-1/2` |
+| `λ_2` | 其他模态的奇/第二通道碰撞率 | `r_odd` | `r_odd=λ_2`；`τ_odd=1/r_odd`；`H_odd=τ_odd-1/2=1/r_odd-1/2` |
 | `Λ²` | Eq. (41) 定义的归一化偶奇 Hénon 乘积 | `Λ²` | `Λ²=(4/3)H_even H_odd` |
 | `H_{qeff}`, `H_q` | 沿链接 `c_q` 的有效通道宽度与规定宽度 | `W_{q,eff}`, `W_q` | 仅为避免与本教程 Hénon 参数 `H` 混淆而改名；二者都是格子长度 |
 | `D_eff`, `D_{1/2}` | 有效通道直径；以截断链接中点计算的直径 | 保持不变 | 格子长度，不是扩散系数 |
@@ -23,7 +23,7 @@
 | `Θ_q` | `c_q` 在墙面法向上的投影（格子单位） | 保持不变 | 主坐标轴强迫下的相关链接取 `Θ_q²=1` |
 | `κ_{±1}`, `\barκ_{−1}`, `\barκ_{−2}` | 边界闭合系数 | 保持原记号 | 不是温度扩散率 `κ` |
 
-所有 `H=1/r-1/2` 换算均是定义和精确代数，要求相应 `r_even≠0` 与 `r_odd≠0`。本账本不从这一定义自动假定 `0<r<2`。
+所有三联换算都按 `τ=1/r`、`H=τ-1/2=1/r-1/2` 进行，属于定义和精确代数，要求相应 `r_even≠0` 与 `r_odd≠0`。本账本不从这一定义自动假定 `0<r<2`。
 
 ## 核心证据
 
@@ -96,14 +96,18 @@
   \tag{41}
   \]
 
-- **统一符号：**
+- **统一符号：** 使用本账本开头的三联映射
 
   \[
   \Lambda^2=\frac43H_{\mathrm{even}}H_{\mathrm{odd}},
   \quad
-  H_{\mathrm{even}}=\frac1{r_{\mathrm{even}}}-\frac12,
+  \tau_{\mathrm{even}}=\frac1{r_{\mathrm{even}}},\quad
+  H_{\mathrm{even}}=\tau_{\mathrm{even}}-\frac12
+  =\frac1{r_{\mathrm{even}}}-\frac12,
   \quad
-  H_{\mathrm{odd}}=\frac1{r_{\mathrm{odd}}}-\frac12.
+  \tau_{\mathrm{odd}}=\frac1{r_{\mathrm{odd}}},\quad
+  H_{\mathrm{odd}}=\tau_{\mathrm{odd}}-\frac12
+  =\frac1{r_{\mathrm{odd}}}-\frac12.
   \]
 
 - **允许主张：** 论文的 `Λ²` 包含因子 `4/3`；因此 `Λ²` 不等于未归一化的 `H_even H_odd`。
