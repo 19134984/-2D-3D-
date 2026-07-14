@@ -1,0 +1,50 @@
+{
+  "retrieved_on": "2026-07-14",
+  "backend": "OpenAI web search fallback; publisher and journal domains preferred because parallel-cli was unavailable",
+  "query": "LBM populations collision streaming moments beginner foundations; restricted to Springer, Annual Reviews, and APS metadata",
+  "scope_note": "These sources may support beginner explanations of LBM vocabulary and workflow only. They do not replace the four local PDFs for magic parameters or fourth-order thermal coefficients.",
+  "results": [
+    {
+      "title": "The Lattice Boltzmann Method: Principles and Practice",
+      "authors": ["Timm Krüger", "Halim Kusumaatmaja", "Alexandr Kuzmin", "Orest Shardt", "Goncalo Silva", "Erlend Magnus Viggen"],
+      "year": 2017,
+      "url": "https://link.springer.com/book/10.1007/978-3-319-44649-3",
+      "doi": "10.1007/978-3-319-44649-3",
+      "source_domain": "link.springer.com",
+      "source_type": "authoritative textbook",
+      "primary_source": false,
+      "verification": "Springer bibliographic page and table of contents opened; full book text was not inspected",
+      "snippet_or_relevance": "Springer identifies dedicated chapters on the lattice Boltzmann equation, its analysis, boundary conditions, advection-diffusion, and MRT/TRT operators.",
+      "allowed_use": "Define populations, discrete velocities, collision, streaming, moments, DnQm naming, and the broad relation among BGK, MRT, and TRT.",
+      "forbidden_use": "Do not use this metadata page to assert a particular magic constant, the Ginzburg normalization, Dubois Eq. (55), or global convergence order."
+    },
+    {
+      "title": "Lattice Boltzmann Method for Fluid Flows",
+      "authors": ["Shiyi Chen", "Gary D. Doolen"],
+      "year": 1998,
+      "url": "https://www.annualreviews.org/content/journals/10.1146/annurev.fluid.30.1.329",
+      "doi": "10.1146/annurev.fluid.30.1.329",
+      "source_domain": "annualreviews.org",
+      "source_type": "peer-reviewed authoritative review",
+      "primary_source": false,
+      "verification": "Annual Reviews title, authors, year, pages, DOI, keywords, and abstract opened",
+      "snippet_or_relevance": "The abstract describes LBM as a mesoscopic, parallel numerical method for fluid flows and notes its usefulness for complex boundaries and extensions.",
+      "allowed_use": "Provide historical and conceptual context for why LBM evolves discrete kinetic populations and reconstructs macroscopic flow quantities.",
+      "forbidden_use": "Do not cite it as the derivation of the TRT boundary magic value or the D2Q5 fourth-order cancellation conditions."
+    },
+    {
+      "title": "Theory of the lattice Boltzmann method: From the Boltzmann equation to the lattice Boltzmann equation",
+      "authors": ["Xiaoyi He", "Li-Shi Luo"],
+      "year": 1997,
+      "url": "https://doi.org/10.1103/PhysRevE.56.6811",
+      "doi": "10.1103/PhysRevE.56.6811",
+      "source_domain": "journals.aps.org",
+      "source_type": "original peer-reviewed article",
+      "primary_source": true,
+      "verification": "APS direct page returned 403; title, authors, journal, volume, pages, year, DOI, and publisher were cross-checked through DOI-indexed metadata",
+      "snippet_or_relevance": "The article is a foundational derivation connecting the continuous Boltzmann equation to a lattice Boltzmann equation.",
+      "allowed_use": "Explain that LBM has a kinetic derivation and that its populations are numerical distribution components, not literal tracked particles.",
+      "forbidden_use": "Do not infer any TRT-specific rate product, halfway-wall condition, or D2Q5 fourth-order coefficient from the bibliographic record alone."
+    }
+  ]
+}
