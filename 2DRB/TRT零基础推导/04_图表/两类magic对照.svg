@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="1400" height="520" viewBox="0 0 1400 520" role="img" aria-labelledby="title desc">
   <title id="title">D2Q9 流场 boundary magic 与 D2Q5 温度体相四阶关系对照</title>
-  <desc id="desc">上方实线矩形链表示 D2Q9 流场率经过三十六分之三的 Hénon 乘积，得到受限 halfway bounce-back 边界 magic。下方虚线圆角矩形链表示 D2Q5 温度率先满足六分之一的四阶各向同性关系，再加入 H_e 的 Dubois Eq. 55，才同时消除两个指定体相四阶系数。两条链互相独立，不能混用碰撞率。</desc>
+  <desc id="desc">上方实线矩形链表示 D2Q9 流场率经过十六分之三的 Hénon 乘积，得到受限 halfway bounce-back 边界 magic。下方虚线圆角矩形链表示 D2Q5 温度率先满足六分之一的四阶各向同性关系，再加入 H_e 的 Dubois Eq. 55，才同时消除两个指定体相四阶系数。两条链互相独立，不能混用碰撞率。</desc>
   <defs>
     <style>
       .bg { fill: #ffffff; }
@@ -46,7 +46,7 @@
   <text class="label" x="1115" y="113" text-anchor="middle">受限 halfway BB boundary magic</text>
   <text class="body" x="1115" y="147" text-anchor="middle">有效零速度位置 = 名义链接中点</text>
   <text class="small" x="1115" y="179" text-anchor="middle">稳态 / Stokes · 均匀力 · 格线对齐平壁</text>
-  <text class="small" x="1115" y="205" text-anchor="middle">静止 halfway BB · If = −1/2</text>
+  <text class="small" x="1115" y="205" text-anchor="middle">静止 halfway BB · I_f = −1/2</text>
 
   <line class="divider" x1="42" y1="260" x2="1358" y2="260"/>
 
