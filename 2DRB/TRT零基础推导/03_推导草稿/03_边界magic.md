@@ -354,7 +354,14 @@ u_{\mathrm{slip}}
 \tag{3.17}
 \]
 
-整理为
+由于前文已规定 $D_{\mathrm{eff}}>0$，所以 $D_{\mathrm{eff}}\ne0$，可以把 $1$ 改写成同分母形式：
+
+\[
+1=\frac{D_{\mathrm{eff}}^2}{D_{\mathrm{eff}}^2}
+\qquad(D_{\mathrm{eff}}\ne0).
+\]
+
+因此，两项同分母相减为
 
 \[
 \frac{u_{\mathrm{slip}}}{u_0}
@@ -809,68 +816,83 @@ u_{\mathrm{slip}}
 
 ## 7. 从 $3/16$ 解出两个碰撞率的关系
 
-令
+为了做纯代数求解，令
 
 \[
-a\equiv r_{\mathrm{even}},
+x\equiv r_{\mathrm{even}},
 \qquad
-b\equiv r_{\mathrm{odd}}.
+y\equiv r_{\mathrm{odd}}.
 \]
+
+这里临时字母 $x,y$ 只占位表示两个流场碰撞率；它们不是空间坐标。特别地，不用 $a$ 作此处的占位符，因为全书已把 $a$ 保留给 D2Q5 平衡矩参数。
 
 则
 
 \[
-H_{\mathrm{even}}=\frac1a-\frac12
-=\frac{2-a}{2a},
+H_{\mathrm{even}}=\frac1x-\frac12
+=\frac{2-x}{2x},
 \]
 
 \[
-H_{\mathrm{odd}}=\frac1b-\frac12
-=\frac{2-b}{2b}.
+H_{\mathrm{odd}}=\frac1y-\frac12
+=\frac{2-y}{2y}.
 \]
 
 代入 $H_{\mathrm{even}}H_{\mathrm{odd}}=3/16$：
 
 \[
-\frac{(2-a)(2-b)}{4ab}=\frac3{16}.
+\frac{(2-x)(2-y)}{4xy}=\frac3{16}.
 \tag{3.42}
 \]
 
-这里要求 $a\ne0$、$b\ne0$。两边乘 $16ab$：
+这里要求 $x\ne0$、$y\ne0$。两边乘 $16xy$：
 
 \[
-4(2-a)(2-b)=3ab.
+4(2-x)(2-y)=3xy.
 \]
 
 先展开括号：
 
 \[
-(2-a)(2-b)=4-2a-2b+ab.
+(2-x)(2-y)=4-2x-2y+xy.
 \]
 
 乘 4：
 
 \[
-16-8a-8b+4ab=3ab.
+16-8x-8y+4xy=3xy.
 \]
 
 右边移到左边：
 
 \[
-16-8a-8b+ab=0.
+16-8x-8y+xy=0.
 \]
 
-把含 $b$ 的项放在一起：
+把含 $y$ 的项放在一起：
 
 \[
-b(a-8)=8a-16=8(a-2).
+y(x-8)=8x-16=8(x-2).
 \]
 
-若 $a\ne8$，
+若 $x\ne8$，
 
 \[
-b=8\frac{a-2}{a-8}
-=8\frac{2-a}{8-a}.
+y=8\frac{x-2}{x-8}.
+\]
+
+现在把分子和分母各乘一次 $-1$：
+
+\[
+\frac{x-2}{x-8}
+=\frac{-(2-x)}{-(8-x)}
+=\frac{2-x}{8-x}.
+\]
+
+因此
+
+\[
+y=8\frac{2-x}{8-x}.
 \]
 
 恢复原记号：
