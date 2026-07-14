@@ -6,7 +6,7 @@
 
 上一章已经介绍 population、碰撞、迁移和反向方向。本章统一使用下面的记号：
 
-| 记号 | 本章含义 | 不是什麽 |
+| 记号 | 本章含义 | 不是什么 |
 | --- | --- | --- |
 | $h_i$ | 碰撞前、第 $i$ 个离散方向的 population | 不是单颗真实粒子 |
 | $h_i^{\mathrm{eq}}$ | 由当前宏观量算出的第 $i$ 个方向平衡值 | 不是整个计算结束后的最终答案 |
@@ -24,6 +24,8 @@
 ---
 
 ## 1. 什么叫“松弛到平衡”
+
+**推导身份：** 本节是主稿从一阶松弛 ODE 所作的独立教学推演，不是四篇论文的逐式原文或历史推导；它只为建立“偏差—平衡—离散率”的直觉。
 
 ### 1.1 先不用 LBM，只看一个数
 
@@ -82,7 +84,12 @@ d(t)\equiv q(t)-q^{\mathrm{eq}}.
 \tag{2.3}
 \]
 
-若 $d\ne0$，两边除以 $d$ 再乘 $\mathrm dt$：
+先分两种初值：
+
+- 若 $d(0)=0$，式 (2.3) 给出 $\mathrm dd/\mathrm dt=0$，因此 $d(t)=0$ 是一直停在平衡态的合法解；
+- 以下处理 $d(0)\ne0$ 的分支，此时才做除以 $d$ 的操作。
+
+对非零分支，两边除以 $d$ 再乘 $\mathrm dt$：
 
 \[
 \frac{\mathrm dd}{d}=-\frac{\mathrm dt}{\theta}.
@@ -94,7 +101,21 @@ d(t)\equiv q(t)-q^{\mathrm{eq}}.
 \ln|d(t)|-\ln|d(0)|=-\frac t\theta.
 \]
 
-指数函数是自然对数的反函数，因此
+其中 $|d|$ 表示偏差的绝对值，$\ln$ 表示自然对数。对上式两边取指数，先得到的是
+
+\[
+|d(t)|=|d(0)|\exp\left(-\frac t\theta\right).
+\]
+
+令 $s$ 表示初始偏差的符号：$d(0)>0$ 时 $s=+1$，$d(0)<0$ 时 $s=-1$。指数因子始终为正，所以该连续衰减分支保持初始符号。于是
+
+\[
+d(t)=s|d(t)|
+=s|d(0)|\exp\left(-\frac t\theta\right)
+=d(0)\exp\left(-\frac t\theta\right).
+\]
+
+因此可以写成
 
 \[
 d(t)=d(0)\exp\left(-\frac t\theta\right).
@@ -110,6 +131,8 @@ q(t)=q^{\mathrm{eq}}
 \tag{2.5}
 \]
 
+因为 $\exp(-t/\theta)$ 对有限 $t$ 始终为正，若初始偏差 $d(0)\ne0$，连续解的偏差只会缩小而不会改变正负号。后面离散更新在 $r>1$ 时可以越过平衡，正是离散一步更新与连续指数衰减的一个区别。
+
 仍取 $q(0)=0.20$、$q^{\mathrm{eq}}=0.50$、$\theta=2$。在 $t=2$ 时，
 
 \[
@@ -121,7 +144,24 @@ q(2)=0.50-0.30e^{-1}
 
 ### 1.3 从连续时间变成一步离散更新
 
-计算机每次只能前进一步。用最简单的前向差分近似导数：
+计算机每次只能前进一步。先把一维时间 Taylor 展开写出：
+
+\[
+q(t+\Delta t)
+=q(t)+\Delta t\,q_t(t)
++\frac{\Delta t^2}{2}q_{tt}(t)
++O(\Delta t^3).
+\]
+
+其中 $q_t=\mathrm dq/\mathrm dt$，$q_{tt}=\mathrm d^2q/\mathrm dt^2$。两边减 $q(t)$，再除以非零的 $\Delta t$：
+
+\[
+\frac{q(t+\Delta t)-q(t)}{\Delta t}
+=q_t(t)+\frac{\Delta t}{2}q_{tt}(t)
++O(\Delta t^2).
+\]
+
+若把 $q^*$ 记作这一步 ODE 松弛更新后的 $q(t+\Delta t)$，丢掉首个修正项 $\Delta t\,q_{tt}/2=O(\Delta t)$ 及更高项，就得到最简单的一阶前向差分：
 
 \[
 \frac{\mathrm dq}{\mathrm dt}
@@ -242,6 +282,8 @@ Dubois 与 Lallemand 在其一般矩方法中也把 $0<s_k<2$ 列为松弛参数
 ---
 
 ## 2. 从一个数推广到每个 population：BGK
+
+**推导身份：** 本节是主稿把标量更新推广到 populations 后所作的独立教学演算；Dubois–Lallemand 的对应论文证据会在具体公式后标出。
 
 ### 2.1 BGK 的名字与作用
 
@@ -376,12 +418,16 @@ m_k^*=m_k+s_k\left(m_k^{\mathrm{eq}}-m_k\right),
 
 这是初学者最容易被一句“众所周知”跳过去的地方。本节不把 $-1/2$ 当作经验修正，而从“碰撞后还要整步迁移”的二阶 Taylor 展开中把它算出来。
 
+**推导身份：** 下面是主稿基于碰撞—迁移定义所作的独立 Taylor 教学推演，用来复核 Dubois–Lallemand Eq. (16) 的结构；它不是该论文的逐字或逐式历史推导。
+
 先把本节推导边界写清楚：
 
 1. 暂时没有外力项和热源项；若加入源项，它自己的时间离散也可能带来半步修正，必须重新分析。
-2. 使用一个守恒标量和统一碰撞率的教学模型；本节只解释 Hénon shift 的时间离散来源。
-3. 假设 population 对时间、空间至少有连续的三阶导数，使 Taylor 展开和三阶余项有意义。
+2. 使用一个守恒标量和空间、时间上均取常数的统一碰撞率 $r$；本节只解释 Hénon shift 的时间离散来源。
+3. 假设 population 沿每条特征方向至少有连续且有界的四阶导数，使显式三阶项和 $O(\Delta t^4)$ 余项有意义。
 4. 这是一段体相、光滑区域的等效方程推导，不包含壁面闭合，因此不能从本节直接推出 boundary magic。
+
+还有一个与前面 ODE 类比不同的计阶约定：从式 (2.17) 开始，我们研究一族形式上的 LBM 离散格式，令 $\Delta t$ 变小，同时把无量纲碰撞率 $r=O(1)$ 和格子速度比例保持固定。若硬要换回第 1 节的 ODE 类比，则 $\theta=\Delta t/r$ 会随网格一起变化；这里不是“固定连续 $\theta$ 的前向 Euler 收敛证明”。
 
 ### 3.1 先写完整碰撞—迁移方程
 
@@ -408,6 +454,8 @@ D_i\equiv\partial_t+\boldsymbol c_i\cdot\boldsymbol\nabla.
 - $\partial_t$ 看时间变化；
 - $\boldsymbol c_i\cdot\boldsymbol\nabla$ 看沿第 $i$ 个速度方向的空间变化；
 - $D_i$ 把二者合在一起。
+
+$D_i^2h_i$ 表示把同一个算子连续作用两次，即 $D_i(D_i h_i)$；$D_i^3h_i=D_i(D_i^2h_i)$ 表示连续作用三次。它们不是普通数字 $D_i$ 的平方或立方。
 
 在一维、速度 $c_i=c$ 时，
 
@@ -452,7 +500,19 @@ h_i(\boldsymbol x+\boldsymbol c_i\Delta t,t+\Delta t)
 
 ### 3.3 把 population 写成“平衡态 + 小偏差”
 
-当 $\Delta t$ 足够小，假设 population 可以按 $\Delta t$ 展开：
+当 $\Delta t$ 足够小，引入与 $\Delta t$ 无关并在极限中保持有界的系数场 $h_i^{(1)},h_i^{(2)},h_i^{(3)}$。上标括号只是阶数编号，不是幂。若 $\Delta t$ 保留时间单位，则 $\Delta t h_i^{(1)}$、$\Delta t^2h_i^{(2)}$ 必须与 $h_i$ 同量纲，所以 $h_i^{(1)}$、$h_i^{(2)}$ 的量纲分别是 population/时间、population/时间平方。
+
+完整多写一项是
+
+\[
+h_i=h_i^{\mathrm{eq}}
++\Delta t h_i^{(1)}
++\Delta t^2h_i^{(2)}
++\Delta t^3h_i^{(3)}
++O(\Delta t^4).
+\]
+
+本节保留到二阶，把首个舍弃项 $\Delta t^3h_i^{(3)}$ 与更高项合并，得到
 
 \[
 h_i=h_i^{\mathrm{eq}}
@@ -462,7 +522,7 @@ h_i=h_i^{\mathrm{eq}}
 \tag{2.21}
 \]
 
-这里的上标 $(1)$、$(2)$ 是展开系数的编号，不是幂：$h_i^{(1)}$ 不表示 $h_i$ 的一次方。
+式 (2.21) 中的 $O(\Delta t^3)$ 就包含刚才显式写出的 $\Delta t^3h_i^{(3)}$。
 
 由式 (2.21)，
 
@@ -658,7 +718,15 @@ D_-^2
 \tag{2.33}
 \]
 
-为什么可以暂时略去 $\partial_t^2\rho$？从式 (2.33) 可见，时间变化的第一项本身带一个 $\Delta t$：形式计阶为 $\partial_t\rho=O(\Delta t)$。再作用一次 $\partial_t$，就有 $\partial_t^2\rho=O(\Delta t^2)$；它在右端又乘 $\Delta t$，贡献为 $O(\Delta t^3)$，超出此处保留的最低非零扩散阶。因此
+为什么可以暂时略去 $\partial_t^2\rho$？引入一个只用于标记阶数的无量纲小参数 $\varepsilon$，把 $\Delta t$ 记作 $O(\varepsilon)$，再定义慢时间 $T=\varepsilon t$。链式法则给
+
+\[
+\partial_t=\varepsilon\partial_T,
+\qquad
+\partial_t^2=\varepsilon^2\partial_T^2.
+\]
+
+所以 $\partial_t\rho=O(\varepsilon)$，而 $\partial_t^2\rho=O(\varepsilon^2)$；后者在式 (2.33) 右端又乘一个 $\Delta t=O(\varepsilon)$，贡献为 $O(\varepsilon^3)$。这正是本小节采用的扩散慢时间计阶，并不是说任何快速瞬态都能删除 $\partial_t^2\rho$。保留最低非零扩散阶：
 
 \[
 \partial_t\rho
@@ -672,6 +740,8 @@ D_-^2
 =c^2\Delta t\left(\frac1r-\frac12\right)}.
 \tag{2.34}
 \]
+
+这里 $\kappa$ 是这个 D1Q2 教学模型在慢时间极限下的扩散系数。
 
 这个 D1Q2 只是为展示 $-1/2$ 的来源而搭建的最小课堂模型。D2Q5、D2Q9 的具体扩散率或黏性系数还会乘各自平衡矩和速度集给出的因子，不能把式 (2.34) 的 $c^2$ 原样复制过去；但 Hénon 组合 $1/r-1/2$ 会再次出现。
 
@@ -710,6 +780,8 @@ H+\frac12=\frac1r,
 r=\frac1{H+1/2}.
 \]
 
+倒数换算要求 $r\ne0$；从 $H$ 反求 $r$ 时还要求 $H\ne-1/2$，否则分母为零。
+
 数值检查：
 
 | $r$ | $\tau=1/r$ | $H=\tau-1/2$ | 偏差倍率 $1-r$ |
@@ -740,6 +812,8 @@ r=\frac1{1/3+1/2}
 ---
 
 ## 4. 偶部和奇部：TRT 的两个抽屉
+
+**推导身份：** 本节从和与差的定义独立推演偶奇投影，目的是让每个 $1/2$ 和反向变号都可手算，不把它冒充四篇论文的原文段落。
 
 ### 4.1 先认清反向方向
 
@@ -874,6 +948,8 @@ h_i^{\mathrm{eq},-}
 
 ## 5. 给两个抽屉不同碰撞率：TRT
 
+**推导身份：** 本节的分量式、两个数字例和 BGK 极限证明是主稿基于偶奇定义所作的独立教学复算；论文原符号将在第 6 节单独映射。
+
 ### 5.1 从 BGK 的一个率变成两个率
 
 BGK 对全部偏差使用同一个 $r$。TRT 的全称是 two-relaxation-time，即“两松弛时间”。等价地，它使用两个碰撞率：
@@ -984,6 +1060,25 @@ h_i^*-h_{\bar i}^*
 
 偶通道修正互相抵消，所以奇率控制一对 population 的“差”。这正是 TRT 可以分别调节两类性质的代数原因。
 
+这里还要避免一个误解：式 (2.51) 表明**单独一对** population 的和一般可以被偶通道改变，只有当该对的 $\Delta^+=0$ 时才单独守恒。真正要求的是所有方向的守恒总和。对完整、反向成对的速度集，奇部在每一对中相消，而偶部在全体方向上的和等于原 populations 的和，因此
+
+\[
+\sum_i(h_i^{\mathrm{eq},-}-h_i^-)=0,
+\]
+
+\[
+\sum_i(h_i^{\mathrm{eq},+}-h_i^+)
+=\sum_i(h_i^{\mathrm{eq}}-h_i)=0.
+\]
+
+后一等号使用了平衡态与当前态共享同一个守恒总和。于是对式 (2.47) 求和后仍有
+
+\[
+\sum_i h_i^*=\sum_i h_i.
+\]
+
+所以 TRT 守恒的是规定的全体方向总和，而不是无条件守恒每一对的和。
+
 ### 5.3 完整算一对 TRT 碰撞
 
 仍用
@@ -1092,6 +1187,120 @@ h_{\bar i}^*=0.10+0+0.09=0.19.
 
 这再次验证：奇部偏差的倍率是 $1-r_-$。
 
+刚才特意取了 $h_i^+=h_i^{\mathrm{eq},+}=0.20$，所以偶修正为零。它只完整测试了奇通道。下面再用一个 D1Q3 例子让偶、奇两个通道同时工作，并检查全体方向总和。
+
+取静止方向 $0$ 和一对反向方向 $i,\bar i$：
+
+\[
+(h_0,h_i,h_{\bar i})
+=\left(\frac15,\frac7{10},\frac3{10}\right),
+\]
+
+平衡态取
+
+\[
+(h_0^{\mathrm{eq}},h_i^{\mathrm{eq}},h_{\bar i}^{\mathrm{eq}})
+=\left(\frac25,\frac9{20},\frac7{20}\right).
+\]
+
+先检查总和：
+
+\[
+\frac15+\frac7{10}+\frac3{10}=\frac65,
+\]
+
+\[
+\frac25+\frac9{20}+\frac7{20}=\frac65.
+\]
+
+当前方向对的偶、奇部为
+
+\[
+h_i^+=\frac{7/10+3/10}{2}=\frac12,
+\qquad
+h_i^-=\frac{7/10-3/10}{2}=\frac15.
+\]
+
+平衡方向对的偶、奇部为
+
+\[
+h_i^{\mathrm{eq},+}
+=\frac{9/20+7/20}{2}=\frac25,
+\qquad
+h_i^{\mathrm{eq},-}
+=\frac{9/20-7/20}{2}=\frac1{20}.
+\]
+
+所以
+
+\[
+\Delta^+=\frac25-\frac12=-\frac1{10},
+\qquad
+\Delta^-=\frac1{20}-\frac15=-\frac3{20}.
+\]
+
+取
+
+\[
+r_+=\frac65,
+\qquad
+r_-=\frac45.
+\]
+
+第 $i$ 个方向为
+
+\[
+\begin{aligned}
+h_i^*
+&=\frac7{10}+\frac65\left(-\frac1{10}\right)
++\frac45\left(-\frac3{20}\right)\\
+&=\frac7{10}-\frac3{25}-\frac3{25}
+=\frac{23}{50}.
+\end{aligned}
+\]
+
+反向方向的奇修正变号：
+
+\[
+\begin{aligned}
+h_{\bar i}^*
+&=\frac3{10}+\frac65\left(-\frac1{10}\right)
+-\frac45\left(-\frac3{20}\right)\\
+&=\frac3{10}-\frac3{25}+\frac3{25}
+=\frac3{10}.
+\end{aligned}
+\]
+
+静止方向只有偶部，因此
+
+\[
+h_0^*
+=\frac15+\frac65\left(\frac25-\frac15\right)
+=\frac{11}{25}.
+\]
+
+全体方向总和为
+
+\[
+\frac{11}{25}+\frac{23}{50}+\frac3{10}
+=\frac{22+23+15}{50}
+=\frac65.
+\]
+
+再从碰撞后数值反算两个投影：
+
+\[
+\frac{23/50+3/10}{2}=\frac{19}{50}
+=\frac12+\frac65\left(-\frac1{10}\right),
+\]
+
+\[
+\frac{23/50-3/10}{2}=\frac2{25}
+=\frac15+\frac45\left(-\frac3{20}\right).
+\]
+
+偶部从 $1/2$ 变成 $19/50$，奇部从 $1/5$ 变成 $2/25$；两条通道和全体守恒都得到数字验证。
+
 ### 5.4 逐项证明 TRT 在两率相等时回到 BGK
 
 令
@@ -1138,6 +1347,14 @@ h_i^*=h_i+r(h_i^{\mathrm{eq}}-h_i),
 
 这正是 BGK 式 (2.12)。证明完成。
 
+静止方向也没有漏掉：因为 $h_0^-=h_0^{\mathrm{eq},-}=0$ 且 $h_0^+=h_0$，两率相等时式 (2.47) 给
+
+\[
+h_0^*=h_0+r(h_0^{\mathrm{eq}}-h_0),
+\]
+
+同样是 BGK。上面的 $i$ 又是任意移动方向，所以它的反向方向也已经包含在证明中。
+
 注意：这不是“两个方法碰巧给出相近结果”，而是每个方向的代数表达式完全相同。
 
 ### 5.5 TRT 和 MRT 的关系
@@ -1169,6 +1386,8 @@ TRT 可以看成一种有结构的两率限制：
 
 这一节非常重要，因为四篇论文对 $\sigma$、$\lambda$ 和 $\Lambda$ 的用法并不统一。
 
+**表格身份：** 下表是主稿对四个本地论文证据账本的综合翻译，不是任意一篇论文原有的统一符号表。
+
 | 论文 | 论文原符号 | 原符号类型 | 本教程统一记号 | 精确换算 | 原文位置 |
 | --- | --- | --- | --- | --- | --- |
 | Wang et al. 2013 | $s_\nu,s_q$ | D2Q9 流场碰撞率 | $r_\nu^{(f)},r_q^{(f)}$ | $H_j^{(f)}=1/r_j^{(f)}-1/2$ | PDF p. 3, Eqs. (8)–(10) |
@@ -1187,7 +1406,11 @@ TRT 可以看成一种有结构的两率限制：
 3. Ginzburg 的小写 $\lambda$ 是碰撞率；
 4. Ginzburg 的大写 $\Lambda^2$ 不是碰撞率，也不等于未经缩放的 $H_{\mathrm{even}}H_{\mathrm{odd}}$。
 
-因此，看到两个公式都写 $\sigma$，不能直接令它们相等。必须先完成
+另外，第二篇应用论文的本地文件名前缀虽然是 `[Luo2014]`，正文第一作者实际是 **Dario Contrino**，所以本教程写作 Contrino et al. 2014。
+
+因此，看到两个公式都写 $\sigma$，不能直接令它们相等。正确流程要先判断“原符号的类型”，再分三条路：
+
+1. 若原符号本身是碰撞率，例如 Wang/Contrino 的 $\sigma_\kappa$ 或 Ginzburg 的 $\lambda_\nu$，才使用
 
 \[
 \text{论文原符号}
@@ -1199,7 +1422,23 @@ TRT 可以看成一种有结构的两率限制：
 H=\tau-1/2
 \]
 
-这一整条翻译链。
+这一整条率—时间—Hénon 翻译链。
+
+2. Dubois 的 $\sigma_k$ 已经是 Hénon 参数，所以直接写
+
+\[
+\sigma_k\longrightarrow H_k,
+\qquad
+r_k=\frac1{H_k+1/2}.
+\]
+
+3. Ginzburg 的 $\Lambda^2$ 是两个 Hénon 参数的归一化乘积，保留为
+
+\[
+\Lambda^2=\frac43H_{\mathrm{even}}H_{\mathrm{odd}},
+\]
+
+不能把它塞进单一的 $r\to\tau\to H$ 链。
 
 ---
 
@@ -1226,7 +1465,7 @@ $\tau=1/r$ 只做率—时间的倒数换算。二阶等效输运系数通常含
 
 ### 7.5 后面的 magic 常数不是一个普适数字
 
-下一章会看到边界分析中的 $\Lambda^2=1/4$，再换算为特定归一化下的 $H_{\mathrm{even}}H_{\mathrm{odd}}=3/16$；温度 D2Q5 四阶各向同性则出现 $H_\kappa H_\nu=1/6$。三者的对象和归一化不同，不能混写。
+下一章会看到：在 Ginzburg 的受限流场边界分析中，$\Lambda^2=1/4$ 与 $H_{\mathrm{even}}H_{\mathrm{odd}}=3/16$ 是**同一个边界约束**的归一化与未归一化写法；温度 D2Q5 体相四阶各向同性的 $H_\kappa H_\nu=1/6$ 才是另一个对象。前两者也只在稳态、格线对齐平壁、halfway bounce-back、线性/Stokes、均匀力及 $I_f=-1/2$ 等条件下由 Ginzburg p. 7, Eqs. (42)–(43) 得到，不能当成任意边界的普适常数。
 
 ---
 
@@ -1248,7 +1487,7 @@ $\tau=1/r$ 只做率—时间的倒数换算。二阶等效输运系数通常含
 - 松弛矩更新、$0<s_k<2$、BGK 作为统一率特例：Dubois & Lallemand, *Towards higher order lattice Boltzmann schemes*, PDF/印刷 p. 4, Eqs. (12)–(14)。
 - Hénon 参数 $\sigma_k=1/s_k-1/2$ 及二阶输运系数与之成正比：同文 PDF/印刷 p. 5, Eq. (16) 及后文说明。
 - Wang/Contrino 的 D2Q9 与 D2Q5 碰撞率符号：两篇应用论文 PDF pp. 3–4 的相应碰撞矩阵与参数式。
-- Ginzburg 的 $\lambda_\nu,\lambda_2,\Lambda^2$：*Multireflection boundary conditions for lattice Boltzmann models*, PDF pp. 3, 6, 尤其 Eq. (41)。
+- Ginzburg 的 $\lambda_\nu,\lambda_2,\Lambda^2$ 定义：*Multireflection boundary conditions for lattice Boltzmann models*, PDF pp. 3, 6，尤其 Eq. (41)；$\Lambda^2=1/4$、对应 $H_{\mathrm{even}}H_{\mathrm{odd}}=3/16$ 及 halfway 有效宽度结论来自 PDF p. 7, Eqs. (42)–(43)，并依赖稳态平行平板 Poiseuille、格线对齐 halfway BB、线性/Stokes、均匀力和 $I_f=-1/2$ 等限定条件。
 - 本章 D1Q2 Taylor 展开是对式 (2.17) 的教学性逐阶演算，用于解释 $-1/2$ 的来源；它不替代四篇论文中 D2Q5/D2Q9 的具体高阶等效方程。
 
 下一章将在这里建立的 $r\leftrightarrow\tau\leftrightarrow H$ 与偶奇投影之上，严格限定场景，推导边界滑移和 boundary magic。
