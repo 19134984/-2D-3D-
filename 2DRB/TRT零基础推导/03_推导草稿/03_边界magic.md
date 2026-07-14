@@ -148,11 +148,26 @@ f_{\bar q}(\boldsymbol x_b,t+1)=0.12.
 
 这就是“反弹”二字的离散含义。
 
-Ginzburg 的通用六-population 边界式 Eq. (22) 是一个线性重构：它把当前边界节点以及沿同一链接向流体内部一、两个节点上的正反向 populations 加权相加，再加入规定的壁面动量项和一个可选校正项。先解释 Eq. (23) 中将出现的符号：
+Ginzburg 的通用六-population 边界式 Eq. (22) 是一个线性重构：它把当前边界节点以及沿同一链接向流体内部一、两个节点上的正反向 populations 加权相加，再加入规定的壁面动量项和一个附加项。把论文的碰撞后记号 $\widetilde f$ 改写成本教程的星号，原式结构是
 
-- $\kappa_1,\kappa_0,\kappa_{-1},\bar\kappa_{-1},\bar\kappa_{-2}$ 是这个线性重构中不同位置、不同方向 population 的权重；下标表示沿链接相对边界节点的位移层，横线表示反向 population；
-- $w_q$ 是乘在规定壁面方向动量 $j_{qw}$ 前面的边界权重，不是 D2Q9 平衡态的格子权重；
-- $F_{\bar q}^{pc}$ 是论文用上标 `pc` 标记的可选附加 population 校正项，它与宏观均匀体力 $F$ 不是同一个量；本章的普通 BB 专门化把它取为零。
+\[
+\begin{aligned}
+f_{\bar q}(\boldsymbol x_b,t+1)={}&
+\kappa_1 f_q^*(\boldsymbol x_b,t)
++\kappa_0 f_q^*(\boldsymbol x_b-\boldsymbol c_q,t)\\
+&+\kappa_{-1}f_q^*(\boldsymbol x_b-2\boldsymbol c_q,t)
++\bar\kappa_{-1}f_{\bar q}^*(\boldsymbol x_b,t)\\
+&+\bar\kappa_{-2}f_{\bar q}^*(\boldsymbol x_b-\boldsymbol c_q,t)
+-w_qt_p^*j_{qw}+t_p^*F_{\bar q}^{pc}.
+\end{aligned}
+\]
+
+现在每个符号的身份可以直接从它所乘的项读取，而不猜测下标含义：
+
+- $\kappa_1,\kappa_0,\kappa_{-1}$ 分别乘式中列出的三个正向碰撞后 populations；$\bar\kappa_{-1},\bar\kappa_{-2}$ 分别乘式中列出的两个反向碰撞后 populations；
+- $w_q$ 是乘在规定壁面方向动量项 $t_p^*j_{qw}$ 前面的边界系数，不是 D2Q9 平衡态的格子权重；
+- $t_p^*$ 是论文按离散速度组给定的模型系数；本章不需要它的数值，因为它所乘的两个边界项都会取零；
+- $F_{\bar q}^{pc}$ 是论文保留上标 `pc` 的附加项，原文在 Sec. III E 进一步讨论；它不是这里的宏观均匀体力 $F$，本章普通 BB 专门化取其为零。
 
 普通 BB 特例 Eq. (23) 为
 
