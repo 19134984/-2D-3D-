@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="300" viewBox="0 0 760 300" role="img" aria-labelledby="title desc">
+  <title id="title">D1Q3 三个离散速度方向</title>
+  <desc id="desc">中心格点有静止方向零、向右方向一和向左方向二；方向一与方向二互为反向。</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#1261a0"/></marker>
+    <style>
+      .axis{stroke:#59636e;stroke-width:2}.move{stroke:#1261a0;stroke-width:4;marker-end:url(#arrow)}
+      .node{fill:#ffffff;stroke:#1d2733;stroke-width:2}.origin{fill:#ffe6a7;stroke:#9a6700;stroke-width:3}
+      .label{font-family:"Microsoft YaHei",sans-serif;font-size:18px;fill:#17212b}.small{font-size:15px;fill:#46515c}
+    </style>
+  </defs>
+  <rect x="0" y="0" width="760" height="300" fill="#ffffff"/>
+  <text class="label" x="380" y="35" text-anchor="middle">D1Q3：一维空间，3 个离散速度</text>
+  <line class="axis" x1="105" y1="145" x2="655" y2="145"/>
+  <circle class="node" cx="150" cy="145" r="15"/>
+  <circle class="origin" cx="380" cy="145" r="20"/>
+  <circle class="node" cx="610" cy="145" r="15"/>
+  <line class="move" x1="355" y1="125" x2="180" y2="125"/>
+  <line class="move" x1="405" y1="165" x2="580" y2="165"/>
+  <text class="label" x="245" y="105" text-anchor="middle">i=2，c₂=-1（向左）</text>
+  <text class="label" x="490" y="205" text-anchor="middle">i=1，c₁=+1（向右）</text>
+  <text class="label" x="380" y="78" text-anchor="middle">i=0，c₀=0</text>
+  <text class="small" x="380" y="245" text-anchor="middle">反向映射：0↔0，1↔2；格子单位中 Δx=Δt=1</text>
+  <text class="small" x="380" y="272" text-anchor="middle">population 沿箭头迁移；宏观标量由 g₀+g₁+g₂ 重构</text>
+</svg>

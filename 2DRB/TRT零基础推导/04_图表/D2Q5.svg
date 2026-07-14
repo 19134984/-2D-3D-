@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="700" height="590" viewBox="0 0 700 590" role="img" aria-labelledby="title desc">
+  <title id="title">D2Q5 离散速度、编号和反向方向</title>
+  <desc id="desc">中心方向零，东一、北二、西三、南四；一与三、二与四互为反向。</desc>
+  <defs>
+    <marker id="arrow5" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#1261a0"/></marker>
+    <style>
+      .grid{stroke:#c7cdd3;stroke-width:1}.move{stroke:#1261a0;stroke-width:4;marker-end:url(#arrow5)}
+      .node{fill:#ffffff;stroke:#1d2733;stroke-width:2}.origin{fill:#ffe6a7;stroke:#9a6700;stroke-width:3}
+      .label{font-family:"Microsoft YaHei",sans-serif;font-size:18px;fill:#17212b}.small{font-size:15px;fill:#46515c}
+    </style>
+  </defs>
+  <rect width="700" height="590" fill="#ffffff"/>
+  <text class="label" x="350" y="35" text-anchor="middle">D2Q5：中心 + 东北西南四个轴向方向</text>
+  <g>
+    <line class="grid" x1="140" y1="300" x2="560" y2="300"/><line class="grid" x1="350" y1="90" x2="350" y2="510"/>
+    <circle class="origin" cx="350" cy="300" r="23"/>
+    <circle class="node" cx="535" cy="300" r="15"/><circle class="node" cx="350" cy="115" r="15"/>
+    <circle class="node" cx="165" cy="300" r="15"/><circle class="node" cx="350" cy="485" r="15"/>
+    <line class="move" x1="380" y1="300" x2="505" y2="300"/>
+    <line class="move" x1="350" y1="270" x2="350" y2="145"/>
+    <line class="move" x1="320" y1="300" x2="195" y2="300"/>
+    <line class="move" x1="350" y1="330" x2="350" y2="455"/>
+  </g>
+  <text class="label" x="570" y="290">i=1，c₁=(1,0)</text>
+  <text class="label" x="350" y="82" text-anchor="middle">i=2，c₂=(0,1)</text>
+  <text class="label" x="130" y="290" text-anchor="end">i=3，c₃=(-1,0)</text>
+  <text class="label" x="350" y="545" text-anchor="middle">i=4，c₄=(0,-1)</text>
+  <text class="label" x="350" y="292" text-anchor="middle">i=0</text>
+  <text class="small" x="350" y="568" text-anchor="middle">反向对：1↔3，2↔4，0↔0；D2Q5 没有对角速度</text>
+</svg>
