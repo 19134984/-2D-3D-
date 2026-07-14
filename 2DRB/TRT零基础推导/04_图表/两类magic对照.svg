@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="520" viewBox="0 0 1400 520" role="img" aria-labelledby="title desc">
+  <title id="title">D2Q9 流场 boundary magic 与 D2Q5 温度体相四阶关系对照</title>
+  <desc id="desc">上方实线矩形链表示 D2Q9 流场率经过三十六分之三的 Hénon 乘积，得到受限 halfway bounce-back 边界 magic。下方虚线圆角矩形链表示 D2Q5 温度率先满足六分之一的四阶各向同性关系，再加入 H_e 的 Dubois Eq. 55，才同时消除两个指定体相四阶系数。两条链互相独立，不能混用碰撞率。</desc>
+  <defs>
+    <style>
+      .bg { fill: #ffffff; }
+      .heading { font: 700 25px "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; fill: #111111; }
+      .label { font: 700 18px "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; fill: #111111; }
+      .body { font: 17px "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; fill: #111111; }
+      .small { font: 15px "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; fill: #222222; }
+      .flow-box { fill: #f7f7f7; stroke: #111111; stroke-width: 3; }
+      .temp-box { fill: #ffffff; stroke: #111111; stroke-width: 3; stroke-dasharray: 10 6; }
+      .flow-line { fill: none; stroke: #111111; stroke-width: 3; marker-end: url(#arrow-solid); }
+      .temp-line { fill: none; stroke: #111111; stroke-width: 3; stroke-dasharray: 10 6; marker-end: url(#arrow-open); }
+      .divider { stroke: #777777; stroke-width: 1.5; }
+    </style>
+    <marker id="arrow-solid" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#111111"/>
+    </marker>
+    <marker id="arrow-open" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="10" markerHeight="10" orient="auto-start-reverse">
+      <path d="M 1 1 L 11 6 L 1 11" fill="#ffffff" stroke="#111111" stroke-width="2"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1400" height="520"/>
+  <text class="heading" x="700" y="42" text-anchor="middle">两类 magic：对象、乘积与结论必须沿各自链条读取</text>
+
+  <circle cx="62" cy="152" r="28" fill="#111111"/>
+  <text x="62" y="159" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="20" font-weight="700" fill="#ffffff">A</text>
+  <text class="label" x="62" y="198" text-anchor="middle">边界链</text>
+
+  <rect class="flow-box" x="125" y="88" width="300" height="128"/>
+  <text class="label" x="275" y="124" text-anchor="middle">D2Q9 flow rates</text>
+  <text class="body" x="275" y="158" text-anchor="middle">rν(f)（黏性/偶通道）</text>
+  <text class="body" x="275" y="188" text-anchor="middle">rq(f)（能量流/奇通道）</text>
+
+  <path class="flow-line" d="M 425 152 L 500 152"/>
+  <rect class="flow-box" x="510" y="88" width="300" height="128"/>
+  <text class="label" x="660" y="128" text-anchor="middle">Hν(f) Hq(f) = 3/16</text>
+  <text class="body" x="660" y="162" text-anchor="middle">等价归一化：Λ² = 1/4</text>
+  <text class="small" x="660" y="191" text-anchor="middle">同一约束的两种写法</text>
+
+  <path class="flow-line" d="M 810 152 L 885 152"/>
+  <rect class="flow-box" x="895" y="76" width="440" height="152"/>
+  <text class="label" x="1115" y="113" text-anchor="middle">受限 halfway BB boundary magic</text>
+  <text class="body" x="1115" y="147" text-anchor="middle">有效零速度位置 = 名义链接中点</text>
+  <text class="small" x="1115" y="179" text-anchor="middle">稳态 / Stokes · 均匀力 · 格线对齐平壁</text>
+  <text class="small" x="1115" y="205" text-anchor="middle">静止 halfway BB · If = −1/2</text>
+
+  <line class="divider" x1="42" y1="260" x2="1358" y2="260"/>
+
+  <rect x="34" y="326" width="56" height="56" transform="rotate(45 62 354)" fill="#ffffff" stroke="#111111" stroke-width="3" stroke-dasharray="7 5"/>
+  <text class="label" x="62" y="361" text-anchor="middle">B</text>
+  <text class="label" x="62" y="407" text-anchor="middle">体相链</text>
+
+  <rect class="temp-box" x="125" y="292" width="300" height="128" rx="24"/>
+  <text class="label" x="275" y="328" text-anchor="middle">D2Q5 temperature rates</text>
+  <text class="body" x="275" y="362" text-anchor="middle">rκ（热通量）、rν（各向异性）</text>
+  <text class="body" x="275" y="392" text-anchor="middle">re（能量型高阶矩）</text>
+
+  <path class="temp-line" d="M 425 356 L 500 356"/>
+  <rect class="temp-box" x="510" y="280" width="350" height="152" rx="24"/>
+  <text class="label" x="685" y="318" text-anchor="middle">Hκ Hν = 1/6</text>
+  <text class="body" x="685" y="351" text-anchor="middle">只得到四阶各向同性</text>
+  <text class="label" x="685" y="384" text-anchor="middle">＋ He 满足 Dubois Eq. (55)</text>
+  <text class="small" x="685" y="412" text-anchor="middle">第二条关系不可省略</text>
+
+  <path class="temp-line" d="M 860 356 L 935 356"/>
+  <rect class="temp-box" x="945" y="280" width="390" height="152" rx="24"/>
+  <text class="label" x="1140" y="326" text-anchor="middle">κ40 = κ22 = 0</text>
+  <text class="body" x="1140" y="361" text-anchor="middle">同时消除两个指定四阶系数</text>
+  <text class="small" x="1140" y="395" text-anchor="middle">仅限纯热、无平流、均匀格子</text>
+  <text class="small" x="1140" y="420" text-anchor="middle">D2Q5 体相等效方程</text>
+
+  <text class="small" x="700" y="485" text-anchor="middle">形状与线型也编码类别：A 为实线直角框，B 为虚线圆角框；两条链无交叉箭头。</text>
+</svg>
