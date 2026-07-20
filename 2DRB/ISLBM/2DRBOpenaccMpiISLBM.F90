@@ -431,9 +431,11 @@
     use commondata
     implicit none
     real(kind=8) :: timeStart, timeEnd
+    real(kind=8) :: cpuElapsedLocal, cpuElapsedTotal
     character(len=24) :: ctime, string
     INTEGER(kind=4) :: time
     real(kind=8) :: timeStart2, timeEnd2
+    real(kind=8) :: wallElapsedLocal, wallElapsedMax
     integer(kind=4) :: numAccDevices, accDeviceId
     integer(kind=4) :: nodeComm, nodeLocalRank, nodeLocalSize
 #ifdef unsteadyFlow
@@ -623,6 +625,32 @@
     call MPI_BARRIER(COMM2D, IERR)
     call CPU_TIME(timeEnd)         !当前进程累计消耗的 CPU 时间,包括并行
     timeEnd2 = MPI_WTIME()         !MPI 墙钟时间
+    cpuElapsedLocal = timeEnd-timeStart
+    wallElapsedLocal = timeEnd2-timeStart2
+    ! CPU_TIME 是单个 MPI rank 的 host 进程 CPU 时间；这里汇总所有 rank，作为 GPU 版的 CPU 侧诊断。
+    call MPI_REDUCE(cpuElapsedLocal, cpuElapsedTotal, 1, MPI_DOUBLE_PRECISION, MPI_SUM, 0, COMM2D, IERR)
+    ! 墙钟性能由最慢 rank/GPU 决定，取所有 rank 的最大耗时作为 MPI 总吞吐的计时分母。
+    call MPI_REDUCE(wallElapsedLocal, wallElapsedMax, 1, MPI_DOUBLE_PRECISION, MPI_MAX, 0, COMM2D, IERR)
+
+    ! 性能测试结果先于最终后处理写出，避免 Tecplot/psi-vort 等诊断 I/O 影响或中断 MLUPS 记录。
+    open(unit=00,file=trim(settingsFile),status='unknown',position='append')
+    write(00,*) "======================================================================"
+    write(00,*) "Time (CPU, local rank host diagnostic) = ", &
+        real(cpuElapsedLocal,kind=8), "s"
+    write(00,*) "MLUPS (CPU, local rank host diagnostic) = ", &
+        real( dble(nx)*dble(ny)*dble(itc)/max(cpuElapsedLocal,1.0d-12)/1.0d6,kind=8 )
+    write(00,*) "Time (MPI wall, local rank) = ", real(wallElapsedLocal,kind=8), "s"
+    if(isRoot) then
+        write(00,*) "Time (CPU, all ranks host sum) = ", real(cpuElapsedTotal,kind=8), "s"
+        write(00,*) "Effective host CPU cores from timers = ", &
+            real(cpuElapsedTotal/max(wallElapsedMax,1.0d-12),kind=8)
+        write(00,*) "MLUPS (CPU, all ranks host sum) = ", &
+            real( dble(nx)*dble(ny)*dble(itc)/max(cpuElapsedTotal,1.0d-12)/1.0d6,kind=8 )
+        write(00,*) "Time (MPI wall, max rank) = ", real(wallElapsedMax,kind=8), "s"
+        write(00,*) "MLUPS (MPI wall, all GPUs) = ", &
+            real( dble(nx)*dble(ny)*dble(itc)/max(wallElapsedMax,1.0d-12)/1.0d6,kind=8 )
+    endif
+    close(00)
 
 #ifdef steadyFlow
     call output_Tecplot()          !输出最后一步的plt结果
@@ -683,10 +711,7 @@
 
     open(unit=00,file=trim(settingsFile),status='unknown',position='append')        !在这个txt文件后面继续写（追加模式）
     write(00,*) "======================================================================"
-    write(00,*) "Time (CPU) = ", real(timeEnd-timeStart,kind=8), "s"                             !当前进程累计消耗的 CPU 时间,包括并行
-    write(00,*) "MLUPS = ", real( dble(nx)*dble(ny)*dble(itc)/(timeEnd-timeStart)/1.0d6,kind=8 )   !百万格点更新/秒
-    write(00,*) "Time (MPI wall) = ", real(timeEnd2-timeStart2,kind=8), "s"                      !墙钟时间
-    write(00,*) "MLUPS (MPI wall) = ", real( dble(nx)*dble(ny)*dble(itc)/(timeEnd2-timeStart2)/1.0d6,kind=8 )   !百万格点更新/秒
+    write(00,*) "Final diagnostics:"
 #ifdef steadyFlow
     write(00,'(a,1x,ES24.16E3)') "Nu_global =", real(Nu_global,kind=8)
     write(00,*) "Nu_hot    =", Nu_hot
@@ -1143,7 +1168,7 @@
         write(00,*) "ISLBM quadrature sums:", real(quadSumX,kind=8), real(quadSumY,kind=8), real(quadSumArea,kind=8)
         write(00,*) "ISLBM MPI streaming fallback stencil entries:", streamStencilFallbackGlobal
         write(00,*) "Internal rank interfaces use one-layer halo values for ISLBM Lagrange streaming."
-        write(00,*) "Fallback entries are physical-boundary/out-of-halo cases handled by boundary conditions."
+        write(00,*) "Fallback entries should remain zero for the intended non-coarse MPI decompositions."
     endif
 
     allocate (u(xLocalCount,yLocalCount))
@@ -1464,19 +1489,21 @@ close(00)
     ! 若它仍是 =>null() 的空 pointer，则 associated(...) 为 .false.，直接执行下面的 allocate。
     if(associated(fHaloSendDown)) call deallocate_halo_buffers_2d_openacc_mpi()
 
-    ! f: 每条边只交换 3 个跨界 D2Q9 方向；x 向列交换包含上下 halo，所以长度为 3*(yLocalCount+2)。
-    allocate(fHaloSendDown(3*xLocalCount), fHaloSendUp(3*xLocalCount))
-    allocate(fHaloRecvDown(3*xLocalCount), fHaloRecvUp(3*xLocalCount))
-    allocate(fHaloSendLeft(3*(yLocalCount+2)), fHaloSendRight(3*(yLocalCount+2)))
-    allocate(fHaloRecvLeft(3*(yLocalCount+2)), fHaloRecvRight(3*(yLocalCount+2)))
+    ! ISLBM 的三点 Lagrange streaming 模板以当前节点为中心；在 MPI 接口旁，即使目标点位于本 rank 内，
+    ! 模板也可能读到另一侧 halo。因此 MPI 内部接口必须交换整行/整列的全部分布函数方向。
+    ! f: D2Q9 全量交换；x 向列交换包含上下 halo，以便二维分解时角点 halo 也完整。
+    allocate(fHaloSendDown(9*xLocalCount), fHaloSendUp(9*xLocalCount))
+    allocate(fHaloRecvDown(9*xLocalCount), fHaloRecvUp(9*xLocalCount))
+    allocate(fHaloSendLeft(9*(yLocalCount+2)), fHaloSendRight(9*(yLocalCount+2)))
+    allocate(fHaloRecvLeft(9*(yLocalCount+2)), fHaloRecvRight(9*(yLocalCount+2)))
 
-    ! g: 每条边只交换 1 个跨界 D2Q5 方向；D2Q5 没有对角方向，所以列交换不需要上下 halo。
-    allocate(gHaloSendDown(xLocalCount), gHaloSendUp(xLocalCount))
-    allocate(gHaloRecvDown(xLocalCount), gHaloRecvUp(xLocalCount))
-    allocate(gHaloSendLeft(yLocalCount), gHaloSendRight(yLocalCount))
-    allocate(gHaloRecvLeft(yLocalCount), gHaloRecvRight(yLocalCount))
+    ! g: D2Q5 全量交换；D2Q5 没有对角方向，所以 x 向列交换不需要上下 halo。
+    allocate(gHaloSendDown(5*xLocalCount), gHaloSendUp(5*xLocalCount))
+    allocate(gHaloRecvDown(5*xLocalCount), gHaloRecvUp(5*xLocalCount))
+    allocate(gHaloSendLeft(5*yLocalCount), gHaloSendRight(5*yLocalCount))
+    allocate(gHaloRecvLeft(5*yLocalCount), gHaloRecvRight(5*yLocalCount))
 
-    !$acc enter data create(...) 的作用：
+    ! OpenACC enter data create(...) 的作用：
     !   在 GPU 上为这些动态分配的 halo buffer 创建设备端内存，并建立 host pointer 到 device pointer 的映射。
     !   这里不会把 CPU 端数据 copyin 到 GPU；这些 buffer 后面会直接在 GPU kernel 中 pack/clear/unpack。
     !   有了这个映射，后续 present(...) 可以确认 buffer 已在设备端，
@@ -1501,7 +1528,7 @@ close(00)
     implicit none
 
     if(.not.associated(fHaloSendDown)) return
-    !$acc exit data delete(...) 的作用：
+    ! OpenACC exit data delete(...) 的作用：
     !   释放这些 halo buffer 在 GPU 上的设备端内存，并删除 OpenACC 维护的 host/device 映射。
     !   delete 不会把 GPU 数据 copyout 回 CPU；这些通信缓冲区只是临时工作区，不需要保留其内容。
     !   下面的 Fortran deallocate(...) 才负责释放 CPU/host 端 pointer 数组。
@@ -1648,9 +1675,9 @@ close(00)
     use commondata
     implicit none
     integer(kind=4) :: alpha, i, j, globalI, globalJ
-    integer(kind=4) :: idxGlobal(3), idxLocal(3)
-    real(kind=8) :: w(3), target
-    logical :: ok
+    integer(kind=4) :: stencilIndexGlobal(3), stencilIndexLocal(3)
+    real(kind=8) :: stencilWeight(3), target
+    logical :: stencilValid
 
     streamInterpIndexX = 1
     streamInterpIndexY = 1
@@ -1665,26 +1692,30 @@ close(00)
         do i = 1, xLocalCount
             globalI = xStartGlobal + i - 1
             target = xp(globalI) - dble(ex(alpha))*ISLBM_LatticeUnit
-            call build_streaming_stencil_1d(nx, xp(1:nx), globalI, target, idxGlobal, w, ok)
-            idxLocal = idxGlobal - xStartGlobal + 1
-            if(ok.AND.all(idxLocal.GE.0).AND.all(idxLocal.LE.xLocalCount+1)) then
+            call build_streaming_stencil_1d(nx, xp(1:nx), globalI, target, &
+                stencilIndexGlobal, stencilWeight, stencilValid)
+            stencilIndexLocal = stencilIndexGlobal - xStartGlobal + 1
+            ! all(...) 要求三点模板全部落在当前 rank 的 owned 区或一层 halo 内。
+            if(stencilValid.AND.all(stencilIndexLocal.GE.0).AND.all(stencilIndexLocal.LE.xLocalCount+1)) then
                 streamInterpValidX(alpha,i) = .true.
-                streamInterpIndexX(alpha,i,:) = idxLocal
-                streamInterpWeightX(alpha,i,:) = w
-            elseif(ok) then
+                streamInterpIndexX(alpha,i,:) = stencilIndexLocal
+                streamInterpWeightX(alpha,i,:) = stencilWeight
+            elseif(stencilValid) then
                 streamStencilFallbackLocal = streamStencilFallbackLocal + 1
             endif
         enddo
         do j = 1, yLocalCount
             globalJ = yStartGlobal + j - 1
             target = yp(globalJ) - dble(ey(alpha))*ISLBM_LatticeUnit
-            call build_streaming_stencil_1d(ny, yp(1:ny), globalJ, target, idxGlobal, w, ok)
-            idxLocal = idxGlobal - yStartGlobal + 1
-            if(ok.AND.all(idxLocal.GE.0).AND.all(idxLocal.LE.yLocalCount+1)) then
+            call build_streaming_stencil_1d(ny, yp(1:ny), globalJ, target, &
+                stencilIndexGlobal, stencilWeight, stencilValid)
+            stencilIndexLocal = stencilIndexGlobal - yStartGlobal + 1
+            ! all(...) 要求三点模板全部落在当前 rank 的 owned 区或一层 halo 内。
+            if(stencilValid.AND.all(stencilIndexLocal.GE.0).AND.all(stencilIndexLocal.LE.yLocalCount+1)) then
                 streamInterpValidY(alpha,j) = .true.
-                streamInterpIndexY(alpha,j,:) = idxLocal
-                streamInterpWeightY(alpha,j,:) = w
-            elseif(ok) then
+                streamInterpIndexY(alpha,j,:) = stencilIndexLocal
+                streamInterpWeightY(alpha,j,:) = stencilWeight
+            elseif(stencilValid) then
                 streamStencilFallbackLocal = streamStencilFallbackLocal + 1
             endif
         enddo
@@ -1704,35 +1735,35 @@ close(00)
 ! 作用: 对 off-lattice streaming 目标点, 以当前到达节点为中心选择三点模板。
 ! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===================================================================================================
-  subroutine build_streaming_stencil_1d(n, xnodes, nodeIndex, target, idx, w, ok)
+  subroutine build_streaming_stencil_1d(n, xnodes, nodeIndex, target, stencilIndex, stencilWeight, stencilValid)
     implicit none
     integer(kind=4), intent(in) :: n, nodeIndex
     real(kind=8), intent(in) :: xnodes(n), target
-    integer(kind=4), intent(out) :: idx(3)
-    real(kind=8), intent(out) :: w(3)
-    logical, intent(out) :: ok
+    integer(kind=4), intent(out) :: stencilIndex(3)
+    real(kind=8), intent(out) :: stencilWeight(3)
+    logical, intent(out) :: stencilValid
     real(kind=8) :: xloc(3)
     real(kind=8), parameter :: tol = 1.0d-12
 
-    idx = (/1, 1, 1/)
-    w = 0.0d0
-    ok = .false.
+    stencilIndex = (/1, 1, 1/)
+    stencilWeight = 0.0d0
+    stencilValid = .false.
     if(n.LT.3) return
     if((target.LT.xnodes(1)-tol).OR.(target.GT.xnodes(n)+tol)) return
 
     if(nodeIndex.LE.1) then
-        idx = (/1, 2, 3/)
+        stencilIndex = (/1, 2, 3/)
     elseif(nodeIndex.GE.n) then
-        idx = (/n-2, n-1, n/)
+        stencilIndex = (/n-2, n-1, n/)
     else
-        idx = (/nodeIndex-1, nodeIndex, nodeIndex+1/)
+        stencilIndex = (/nodeIndex-1, nodeIndex, nodeIndex+1/)
     endif
 
-    xloc(1) = xnodes(idx(1))
-    xloc(2) = xnodes(idx(2))
-    xloc(3) = xnodes(idx(3))
-    call build_lagrange_weights_3(xloc, target, w)
-    ok = .true.
+    xloc(1) = xnodes(stencilIndex(1))
+    xloc(2) = xnodes(stencilIndex(2))
+    xloc(3) = xnodes(stencilIndex(3))
+    call build_lagrange_weights_3(xloc, target, stencilWeight)
+    stencilValid = .true.
 
     return
   end subroutine build_streaming_stencil_1d
@@ -1745,40 +1776,40 @@ close(00)
 ! 作用: 对一个目标点选择三点二次 Lagrange 插值模板。
 ! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===================================================================================================
-  subroutine build_lagrange_stencil_1d(n, xnodes, target, idx, w, ok)
+  subroutine build_lagrange_stencil_1d(n, xnodes, target, stencilIndex, stencilWeight, stencilValid)
     implicit none
     integer(kind=4), intent(in) :: n
     real(kind=8), intent(in) :: xnodes(n), target
-    integer(kind=4), intent(out) :: idx(3)
-    real(kind=8), intent(out) :: w(3)
-    logical, intent(out) :: ok
+    integer(kind=4), intent(out) :: stencilIndex(3)
+    real(kind=8), intent(out) :: stencilWeight(3)
+    logical, intent(out) :: stencilValid
     integer(kind=4) :: mid
     real(kind=8) :: xloc(3)
     real(kind=8), parameter :: tol = 1.0d-12
 
-    idx = (/1, 1, 1/)
-    w = 0.0d0
-    ok = .false.
+    stencilIndex = (/1, 1, 1/)
+    stencilWeight = 0.0d0
+    stencilValid = .false.
     if(n.LT.3) return
     if((target.LT.xnodes(1)-tol).OR.(target.GT.xnodes(n)+tol)) return
 
     if(target.LE.xnodes(2)) then
-        idx = (/1, 2, 3/)
+        stencilIndex = (/1, 2, 3/)
     elseif(target.GE.xnodes(n-1)) then
-        idx = (/n-2, n-1, n/)
+        stencilIndex = (/n-2, n-1, n/)
     else
         mid = 2
         do while((mid.LT.n-1).AND.(xnodes(mid+1).LT.target))
             mid = mid + 1
         enddo
-        idx = (/mid-1, mid, mid+1/)
+        stencilIndex = (/mid-1, mid, mid+1/)
     endif
 
-    xloc(1) = xnodes(idx(1))
-    xloc(2) = xnodes(idx(2))
-    xloc(3) = xnodes(idx(3))
-    call build_lagrange_weights_3(xloc, target, w)
-    ok = .true.
+    xloc(1) = xnodes(stencilIndex(1))
+    xloc(2) = xnodes(stencilIndex(2))
+    xloc(3) = xnodes(stencilIndex(3))
+    call build_lagrange_weights_3(xloc, target, stencilWeight)
+    stencilValid = .true.
 
     return
   end subroutine build_lagrange_stencil_1d
@@ -1791,14 +1822,14 @@ close(00)
 ! 作用: 计算三点二次 Lagrange 插值权重。
 ! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===================================================================================================
-  subroutine build_lagrange_weights_3(xnode, x0, w)
+  subroutine build_lagrange_weights_3(xnode, x0, stencilWeight)
     implicit none
     real(kind=8), intent(in) :: xnode(3), x0
-    real(kind=8), intent(out) :: w(3)
+    real(kind=8), intent(out) :: stencilWeight(3)
 
-    w(1) = ((x0-xnode(2))*(x0-xnode(3)))/((xnode(1)-xnode(2))*(xnode(1)-xnode(3)))
-    w(2) = ((x0-xnode(1))*(x0-xnode(3)))/((xnode(2)-xnode(1))*(xnode(2)-xnode(3)))
-    w(3) = ((x0-xnode(1))*(x0-xnode(2)))/((xnode(3)-xnode(1))*(xnode(3)-xnode(2)))
+    stencilWeight(1) = ((x0-xnode(2))*(x0-xnode(3)))/((xnode(1)-xnode(2))*(xnode(1)-xnode(3)))
+    stencilWeight(2) = ((x0-xnode(1))*(x0-xnode(3)))/((xnode(2)-xnode(1))*(xnode(2)-xnode(3)))
+    stencilWeight(3) = ((x0-xnode(1))*(x0-xnode(2)))/((xnode(3)-xnode(1))*(xnode(3)-xnode(2)))
 
     return
   end subroutine build_lagrange_weights_3
@@ -1901,34 +1932,31 @@ close(00)
   subroutine exchange_f_post_halo_mpi()
     use commondata
     implicit none
-    integer(kind=4) :: i, j, idx, rowCount, colCount
+    integer(kind=4) :: i, j, alpha, idx, rowCount, colCount
     integer :: status(MPI_STATUS_SIZE)
 
     !$acc wait(1)
-    rowCount = 3*xLocalCount
+    rowCount = 9*xLocalCount
     ! GPU-aware MPI 路径：在 GPU 上 pack 连续缓冲区，再用 host_data use_device 把设备端地址传给 MPI_SENDRECV。
-    ! pull streaming 只会从 ghost 层读取跨界迁移回 owned 区域的方向，所以每条边只需要 3 个 D2Q9 方向。
-    ! y 向发送：
-    !   下边界 j=1 发给 down 的方向为 4,7,8；上边界 j=yLocalCount 发给 top 的方向为 2,5,6。
+    ! ISLBM 的三点 Lagrange streaming 模板以当前节点为中心；接口旁的模板可能读取 ghost 行任意 alpha。
+    ! 因此 y 向 halo 交换 D2Q9 全部方向，不能沿用均匀网格只交换跨界方向的写法。
     ! 这里统一清零接收缓冲区，避免保留旧设备值。
     !$acc parallel loop gang vector present(fHaloRecvDown,fHaloRecvUp)
     do idx = 1, rowCount
         fHaloRecvDown(idx) = 0.0d0
         fHaloRecvUp(idx) = 0.0d0
     enddo
-    !$acc parallel loop gang vector present(f_post,fHaloSendDown,fHaloSendUp) private(idx)
+    !$acc parallel loop gang vector collapse(2) present(f_post,fHaloSendDown,fHaloSendUp) private(idx)
     do i = 1, xLocalCount
-        idx = 3*(i-1)
-        fHaloSendDown(idx+1) = f_post(i,1,4)
-        fHaloSendDown(idx+2) = f_post(i,1,7)
-        fHaloSendDown(idx+3) = f_post(i,1,8)
-        fHaloSendUp(idx+1) = f_post(i,yLocalCount,2)
-        fHaloSendUp(idx+2) = f_post(i,yLocalCount,5)
-        fHaloSendUp(idx+3) = f_post(i,yLocalCount,6)
+        do alpha = 0, 8
+            idx = 9*(i-1) + alpha + 1
+            fHaloSendDown(idx) = f_post(i,1,alpha)
+            fHaloSendUp(idx) = f_post(i,yLocalCount,alpha)
+        enddo
     enddo
     ! MPI_SENDRECV 参数含义：
     !   fHaloSendDown             : 发送缓冲区，当前 rank 的下边界拥有行 j=1。
-    !   rowCount                   : 发送/接收元素数，3 个跨 y 边界方向乘以 x 方向 owned 长度。
+    !   rowCount                   : 发送/接收元素数，9 个 D2Q9 方向乘以 x 方向 owned 长度。
     !   MPI_DOUBLE_PRECISION       : 数据类型，对应 real(kind=8)。
     !   down, 101                  : 发送目标 rank 和发送 tag；这里发给下邻居。
     !   fHaloRecvUp               : 接收缓冲区，接收到的数据后面解包到当前 rank 的上 halo 行。
@@ -1940,36 +1968,31 @@ close(00)
     call MPI_SENDRECV(fHaloSendUp, rowCount, MPI_DOUBLE_PRECISION, top, 102, &
         fHaloRecvDown, rowCount, MPI_DOUBLE_PRECISION, down, 102, COMM2D, status, IERR)
     !$acc end host_data
-    !$acc parallel loop gang vector present(f_post,fHaloRecvDown,fHaloRecvUp) private(idx)
+    !$acc parallel loop gang vector collapse(2) present(f_post,fHaloRecvDown,fHaloRecvUp) private(idx)
     do i = 1, xLocalCount
-        idx = 3*(i-1)
-        f_post(i,0,2) = fHaloRecvDown(idx+1)
-        f_post(i,0,5) = fHaloRecvDown(idx+2)
-        f_post(i,0,6) = fHaloRecvDown(idx+3)
-        f_post(i,yLocalCount+1,4) = fHaloRecvUp(idx+1)
-        f_post(i,yLocalCount+1,7) = fHaloRecvUp(idx+2)
-        f_post(i,yLocalCount+1,8) = fHaloRecvUp(idx+3)
+        do alpha = 0, 8
+            idx = 9*(i-1) + alpha + 1
+            f_post(i,0,alpha) = fHaloRecvDown(idx)
+            f_post(i,yLocalCount+1,alpha) = fHaloRecvUp(idx)
+        enddo
     enddo
 
     ! x 方向固定 i 的列在 Fortran 内存里不是连续块，所以先在 GPU 上 pack 到一维连续缓冲区。
     ! 这里 j 覆盖 0:yLocalCount+1，把刚刚 y 方向交换得到的上下 halo 也带上，用于补齐角点 halo。
-    ! x 向发送：
-    !   左边界 i=1 发给 left 的方向为 3,6,7；右边界 i=xLocalCount 发给 right 的方向为 1,5,8。
-    colCount = 3*(yLocalCount+2)
+    ! x 向同样交换 D2Q9 全部方向。
+    colCount = 9*(yLocalCount+2)
     !$acc parallel loop gang vector present(fHaloRecvLeft,fHaloRecvRight)
     do idx = 1, colCount
         fHaloRecvLeft(idx) = 0.0d0
         fHaloRecvRight(idx) = 0.0d0
     enddo
-    !$acc parallel loop gang vector present(f_post,fHaloSendLeft,fHaloSendRight) private(idx)
+    !$acc parallel loop gang vector collapse(2) present(f_post,fHaloSendLeft,fHaloSendRight) private(idx)
     do j = 0, yLocalCount+1
-        idx = 3*j
-        fHaloSendLeft(idx+1) = f_post(1,j,3)
-        fHaloSendLeft(idx+2) = f_post(1,j,6)
-        fHaloSendLeft(idx+3) = f_post(1,j,7)
-        fHaloSendRight(idx+1) = f_post(xLocalCount,j,1)
-        fHaloSendRight(idx+2) = f_post(xLocalCount,j,5)
-        fHaloSendRight(idx+3) = f_post(xLocalCount,j,8)
+        do alpha = 0, 8
+            idx = 9*j + alpha + 1
+            fHaloSendLeft(idx) = f_post(1,j,alpha)
+            fHaloSendRight(idx) = f_post(xLocalCount,j,alpha)
+        enddo
     enddo
 
     !$acc host_data use_device(fHaloSendRight,fHaloRecvLeft,fHaloSendLeft,fHaloRecvRight)
@@ -1979,15 +2002,13 @@ close(00)
         fHaloRecvRight, colCount, MPI_DOUBLE_PRECISION, right, 104, COMM2D, status, IERR)
     !$acc end host_data
 
-    !$acc parallel loop gang vector present(f_post,fHaloRecvLeft,fHaloRecvRight) private(idx)
+    !$acc parallel loop gang vector collapse(2) present(f_post,fHaloRecvLeft,fHaloRecvRight) private(idx)
     do j = 0, yLocalCount+1
-        idx = 3*j
-        f_post(0,j,1) = fHaloRecvLeft(idx+1)
-        f_post(0,j,5) = fHaloRecvLeft(idx+2)
-        f_post(0,j,8) = fHaloRecvLeft(idx+3)
-        f_post(xLocalCount+1,j,3) = fHaloRecvRight(idx+1)
-        f_post(xLocalCount+1,j,6) = fHaloRecvRight(idx+2)
-        f_post(xLocalCount+1,j,7) = fHaloRecvRight(idx+3)
+        do alpha = 0, 8
+            idx = 9*j + alpha + 1
+            f_post(0,j,alpha) = fHaloRecvLeft(idx)
+            f_post(xLocalCount+1,j,alpha) = fHaloRecvRight(idx)
+        enddo
     enddo
 
     return
@@ -2004,23 +2025,25 @@ close(00)
   subroutine exchange_g_post_halo_mpi()
     use commondata
     implicit none
-    integer(kind=4) :: i, j, rowCount, colCount
+    integer(kind=4) :: i, j, alpha, idx, rowCount, colCount
     integer :: status(MPI_STATUS_SIZE)
 
     !$acc wait(1)
-    rowCount = xLocalCount
+    rowCount = 5*xLocalCount
     ! 温度分布函数同样采用 GPU-aware MPI：先在 GPU 上 pack 到连续缓冲区，再传设备地址给 MPI。
-    ! D2Q5 温度场每条边只有 1 个方向跨界：
-    !   下边界发 4，上边界发 2；收到后分别写入下 halo 的 2 和上 halo 的 4。
+    ! ISLBM 接口旁的三点模板可能读取 ghost 行任意 alpha，因此 D2Q5 也交换全部 5 个方向。
     !$acc parallel loop gang vector present(gHaloRecvDown,gHaloRecvUp)
-    do i = 1, rowCount
-        gHaloRecvDown(i) = 0.0d0
-        gHaloRecvUp(i) = 0.0d0
+    do idx = 1, rowCount
+        gHaloRecvDown(idx) = 0.0d0
+        gHaloRecvUp(idx) = 0.0d0
     enddo
-    !$acc parallel loop gang vector present(g_post,gHaloSendDown,gHaloSendUp)
+    !$acc parallel loop gang vector collapse(2) present(g_post,gHaloSendDown,gHaloSendUp) private(idx)
     do i = 1, xLocalCount
-        gHaloSendDown(i) = g_post(i,1,4)
-        gHaloSendUp(i) = g_post(i,yLocalCount,2)
+        do alpha = 0, 4
+            idx = 5*(i-1) + alpha + 1
+            gHaloSendDown(idx) = g_post(i,1,alpha)
+            gHaloSendUp(idx) = g_post(i,yLocalCount,alpha)
+        enddo
     enddo
     !$acc host_data use_device(gHaloSendDown,gHaloRecvUp,gHaloSendUp,gHaloRecvDown)
     call MPI_SENDRECV(gHaloSendDown, rowCount, MPI_DOUBLE_PRECISION, down, 201, &
@@ -2028,23 +2051,29 @@ close(00)
     call MPI_SENDRECV(gHaloSendUp, rowCount, MPI_DOUBLE_PRECISION, top, 202, &
         gHaloRecvDown, rowCount, MPI_DOUBLE_PRECISION, down, 202, COMM2D, status, IERR)
     !$acc end host_data
-    !$acc parallel loop gang vector present(g_post,gHaloRecvDown,gHaloRecvUp)
+    !$acc parallel loop gang vector collapse(2) present(g_post,gHaloRecvDown,gHaloRecvUp) private(idx)
     do i = 1, xLocalCount
-        g_post(i,0,2) = gHaloRecvDown(i)
-        g_post(i,yLocalCount+1,4) = gHaloRecvUp(i)
+        do alpha = 0, 4
+            idx = 5*(i-1) + alpha + 1
+            g_post(i,0,alpha) = gHaloRecvDown(idx)
+            g_post(i,yLocalCount+1,alpha) = gHaloRecvUp(idx)
+        enddo
     enddo
 
-    ! x 向同理：左边界发 3，右边界发 1；D2Q5 没有对角方向，所以不需要交换角点 halo。
-    colCount = yLocalCount
+    ! x 向同理交换 D2Q5 全部方向；D2Q5 没有对角方向，所以不需要交换角点 halo。
+    colCount = 5*yLocalCount
     !$acc parallel loop gang vector present(gHaloRecvLeft,gHaloRecvRight)
-    do j = 1, colCount
-        gHaloRecvLeft(j) = 0.0d0
-        gHaloRecvRight(j) = 0.0d0
+    do idx = 1, colCount
+        gHaloRecvLeft(idx) = 0.0d0
+        gHaloRecvRight(idx) = 0.0d0
     enddo
-    !$acc parallel loop gang vector present(g_post,gHaloSendLeft,gHaloSendRight)
+    !$acc parallel loop gang vector collapse(2) present(g_post,gHaloSendLeft,gHaloSendRight) private(idx)
     do j = 1, yLocalCount
-        gHaloSendLeft(j) = g_post(1,j,3)
-        gHaloSendRight(j) = g_post(xLocalCount,j,1)
+        do alpha = 0, 4
+            idx = 5*(j-1) + alpha + 1
+            gHaloSendLeft(idx) = g_post(1,j,alpha)
+            gHaloSendRight(idx) = g_post(xLocalCount,j,alpha)
+        enddo
     enddo
 
     !$acc host_data use_device(gHaloSendRight,gHaloRecvLeft,gHaloSendLeft,gHaloRecvRight)
@@ -2054,10 +2083,13 @@ close(00)
         gHaloRecvRight, colCount, MPI_DOUBLE_PRECISION, right, 204, COMM2D, status, IERR)
     !$acc end host_data
 
-    !$acc parallel loop gang vector present(g_post,gHaloRecvLeft,gHaloRecvRight)
+    !$acc parallel loop gang vector collapse(2) present(g_post,gHaloRecvLeft,gHaloRecvRight) private(idx)
     do j = 1, yLocalCount
-        g_post(0,j,1) = gHaloRecvLeft(j)
-        g_post(xLocalCount+1,j,3) = gHaloRecvRight(j)
+        do alpha = 0, 4
+            idx = 5*(j-1) + alpha + 1
+            g_post(0,j,alpha) = gHaloRecvLeft(idx)
+            g_post(xLocalCount+1,j,alpha) = gHaloRecvRight(idx)
+        enddo
     enddo
 
     return
@@ -2603,42 +2635,47 @@ close(00)
     use commondata                                            !ISLBM迁移：内部rank界面允许使用一层halo做二次插值
     implicit none
     integer(kind=4) :: i, j
-    integer(kind=4) :: ip, jp
     integer(kind=4) :: alpha, ii, jj
     real(kind=8) :: value
-    logical :: useInterp
     
+    ! OpenACC版本中 f/f_post 的存储顺序为(i,j,alpha)。
+    ! MPI内部rank界面可通过一层halo做二次Lagrange插值；
+    ! 若模板无效, 该方向先置零, 后续物理边界条件会重新给出边界分布函数。
     !$acc parallel loop gang vector collapse(2) &
     !$acc& present(f,f_post,ex,ey,streamInterpValidX,streamInterpValidY) &
     !$acc& present(streamInterpIndexX,streamInterpIndexY,streamInterpWeightX,streamInterpWeightY) &
-    !$acc& async(1) private(ip,jp,alpha,ii,jj,value,useInterp)
+    !$acc& async(1) private(alpha,ii,jj,value)
     do j = 1, yLocalCount
         do i = 1, xLocalCount
             do alpha = 0, 8
-                useInterp = .false.
                 if(alpha.EQ.0) then
+                    ! alpha=0为静止方向, 速度为(0,0), 不发生迁移, 直接原地复制。
                     f(i,j,alpha) = f_post(i,j,alpha)
                 elseif(ey(alpha).EQ.0) then
-                    useInterp = streamInterpValidX(alpha,i)
-                    if(useInterp) then
+                    ! 纯x方向迁移: y不变, 只需在当前行j上按x方向三点Lagrange模板插值。
+                    if(streamInterpValidX(alpha,i)) then
                         value = 0.0d0
                         do ii = 1, 3
                             value = value + streamInterpWeightX(alpha,i,ii)*f_post(streamInterpIndexX(alpha,i,ii),j,alpha)
                         enddo
                         f(i,j,alpha) = value
+                    else
+                        f(i,j,alpha) = 0.0d0
                     endif
                 elseif(ex(alpha).EQ.0) then
-                    useInterp = streamInterpValidY(alpha,j)
-                    if(useInterp) then
+                    ! 纯y方向迁移: x不变, 只需在当前列i上按y方向三点Lagrange模板插值。
+                    if(streamInterpValidY(alpha,j)) then
                         value = 0.0d0
                         do jj = 1, 3
                             value = value + streamInterpWeightY(alpha,j,jj)*f_post(i,streamInterpIndexY(alpha,j,jj),alpha)
                         enddo
                         f(i,j,alpha) = value
+                    else
+                        f(i,j,alpha) = 0.0d0
                     endif
                 else
-                    useInterp = streamInterpValidX(alpha,i).AND.streamInterpValidY(alpha,j)
-                    if(useInterp) then
+                    ! 对角方向迁移: x和y都偏移, 使用x/y两个一维三点模板的张量积插值。
+                    if(streamInterpValidX(alpha,i).AND.streamInterpValidY(alpha,j)) then
                         value = 0.0d0
                         do jj = 1, 3
                             do ii = 1, 3
@@ -2647,12 +2684,9 @@ close(00)
                             enddo
                         enddo
                         f(i,j,alpha) = value
+                    else
+                        f(i,j,alpha) = 0.0d0
                     endif
-                endif
-                if((.not.useInterp).AND.(alpha.NE.0)) then
-                    ip = i-ex(alpha)
-                    jp = j-ey(alpha)
-                    f(i,j,alpha) = f_post(ip,jp,alpha)
                 endif
             enddo
         enddo
@@ -2863,42 +2897,46 @@ close(00)
     use commondata
     implicit none
     integer(kind=4) :: i, j
-    integer(kind=4) :: ip, jp
     integer(kind=4) :: alpha, ii, jj
     real(kind=8) :: value
-    logical :: useInterp
     
+    ! OpenACC版本中 g/g_post 的存储顺序为(i,j,alpha)。
+    ! 温度场同样允许内部rank界面使用一层halo做二次插值；无效模板先置零, 后续温度边界条件接管。
     !$acc parallel loop gang vector collapse(2) &
     !$acc& present(g,g_post,ex,ey,streamInterpValidX,streamInterpValidY) &
     !$acc& present(streamInterpIndexX,streamInterpIndexY,streamInterpWeightX,streamInterpWeightY) &
-    !$acc& async(1) private(ip,jp,alpha,ii,jj,value,useInterp)
+    !$acc& async(1) private(alpha,ii,jj,value)
     do j = 1, yLocalCount
         do i = 1, xLocalCount
             do alpha = 0, 4
-                useInterp = .false.
                 if(alpha.EQ.0) then
+                    ! alpha=0为静止方向, 速度为(0,0), 不发生迁移, 直接原地复制。
                     g(i,j,alpha) = g_post(i,j,alpha)
                 elseif(ey(alpha).EQ.0) then
-                    useInterp = streamInterpValidX(alpha,i)
-                    if(useInterp) then
+                    ! 纯x方向迁移: y不变, 只需在当前行j上按x方向三点Lagrange模板插值。
+                    if(streamInterpValidX(alpha,i)) then
                         value = 0.0d0
                         do ii = 1, 3
                             value = value + streamInterpWeightX(alpha,i,ii)*g_post(streamInterpIndexX(alpha,i,ii),j,alpha)
                         enddo
                         g(i,j,alpha) = value
+                    else
+                        g(i,j,alpha) = 0.0d0
                     endif
                 elseif(ex(alpha).EQ.0) then
-                    useInterp = streamInterpValidY(alpha,j)
-                    if(useInterp) then
+                    ! 纯y方向迁移: x不变, 只需在当前列i上按y方向三点Lagrange模板插值。
+                    if(streamInterpValidY(alpha,j)) then
                         value = 0.0d0
                         do jj = 1, 3
                             value = value + streamInterpWeightY(alpha,j,jj)*g_post(i,streamInterpIndexY(alpha,j,jj),alpha)
                         enddo
                         g(i,j,alpha) = value
+                    else
+                        g(i,j,alpha) = 0.0d0
                     endif
                 else
-                    useInterp = streamInterpValidX(alpha,i).AND.streamInterpValidY(alpha,j)
-                    if(useInterp) then
+                    ! D2Q5温度格子通常不会进入对角方向；保留该分支以复用x/y张量积模板。
+                    if(streamInterpValidX(alpha,i).AND.streamInterpValidY(alpha,j)) then
                         value = 0.0d0
                         do jj = 1, 3
                             do ii = 1, 3
@@ -2907,12 +2945,9 @@ close(00)
                             enddo
                         enddo
                         g(i,j,alpha) = value
+                    else
+                        g(i,j,alpha) = 0.0d0
                     endif
-                endif
-                if((.not.useInterp).AND.(alpha.NE.0)) then
-                    ip = i-ex(alpha)
-                    jp = j-ey(alpha)
-                    g(i,j,alpha) = g_post(ip,jp,alpha)
                 endif
             enddo
         enddo
@@ -3129,10 +3164,9 @@ close(00)
     subroutine check()
     use commondata
     implicit none
-    integer(kind=4) :: i, j, globalI, globalJ
+    integer(kind=4) :: i, j
     real(kind=8) :: error1, error2, error5, error6
     real(kind=8) :: error1Global, error2Global, error5Global, error6Global
-    real(kind=8) :: areaWeight
     character(len=64) :: caseTag
 
 
@@ -3144,19 +3178,15 @@ close(00)
     error6 = 0.0d0
     
     !$acc wait(1)
-    !$acc parallel loop collapse(2) present(u,up,v,vp,T,Tp,quadWidthX,quadWidthY) &
-    !$acc& private(globalI,globalJ,areaWeight) reduction(+:error1,error2,error5,error6)
+    !$acc parallel loop collapse(2) present(u,up,v,vp,T,Tp) reduction(+:error1,error2,error5,error6)
     do j = 1, yLocalCount
         do i = 1, xLocalCount
-            globalI = xStartGlobal + i - 1
-            globalJ = yStartGlobal + j - 1
-            areaWeight = quadWidthX(globalI)*quadWidthY(globalJ)
-            error1 = error1+areaWeight*((u(i,j)-up(i,j))*(u(i,j)-up(i,j)) + &
+            error1 = error1+((u(i,j)-up(i,j))*(u(i,j)-up(i,j)) + &
                 (v(i,j)-vp(i,j))*(v(i,j)-vp(i,j)))
-            error2 = error2+areaWeight*(u(i,j)*u(i,j)+v(i,j)*v(i,j))
+            error2 = error2+(u(i,j)*u(i,j)+v(i,j)*v(i,j))
                 
-            error5 = error5+areaWeight*dABS( T(i,j)-Tp(i,j) )
-            error6 = error6+areaWeight*dABS( T(i,j) )
+            error5 = error5+dABS( T(i,j)-Tp(i,j) )
+            error6 = error6+dABS( T(i,j) )
                 
             up(i,j) = u(i,j)
             vp(i,j) = v(i,j)
@@ -3176,8 +3206,16 @@ close(00)
     call MPI_ALLREDUCE(error5, error5Global, 1, MPI_DOUBLE_PRECISION, MPI_SUM, COMM2D, IERR)
     call MPI_ALLREDUCE(error6, error6Global, 1, MPI_DOUBLE_PRECISION, MPI_SUM, COMM2D, IERR)
 
-    errorU = dsqrt(error1Global)/dsqrt(error2Global)      !速度场相对L2误差：||u^n-u^{n-1}||_2 / ||u^n||_2
-    errorT = error5Global/error6Global                    !温度场相对L1误差：||T^n-T^{n-1}||_1 / ||T^n||_1
+    if (error2Global .GT. 1.0d-30) then
+        errorU = dsqrt(error1Global)/dsqrt(error2Global)  !速度场相对L2误差：||u^n-u^{n-1}||_2 / ||u^n||_2
+    else
+        errorU = dsqrt(error1Global)
+    endif
+    if (error6Global .GT. 1.0d-30) then
+        errorT = error5Global/error6Global                !温度场相对L1误差：||T^n-T^{n-1}||_1 / ||T^n||_1
+    else
+        errorT = error5Global
+    endif
 
   
 

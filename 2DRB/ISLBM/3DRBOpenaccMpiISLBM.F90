@@ -229,20 +229,16 @@ module commondata3dOpenaccMpi
   real(kind=8), parameter :: ISLBM_StretchA=1.5d0
 
   ! raw坐标中第一个内部流体节点的位置rawX(1)/rawY(1)/rawZ(1), 也就是近壁的1个lu。
-  real(kind=8), parameter :: ISLBM_DxMinRaw=0.5d0*(1.0d0 + &
-      erf(ISLBM_StretchA*(1.0d0/dble(nx+1)-0.5d0))/erf(0.5d0*ISLBM_StretchA))
-  real(kind=8), parameter :: ISLBM_DyMinRaw=0.5d0*(1.0d0 + &
-      erf(ISLBM_StretchA*(1.0d0/dble(ny+1)-0.5d0))/erf(0.5d0*ISLBM_StretchA))
-  real(kind=8), parameter :: ISLBM_DzMinRaw=0.5d0*(1.0d0 + &
-      erf(ISLBM_StretchA*(1.0d0/dble(nz+1)-0.5d0))/erf(0.5d0*ISLBM_StretchA))
+  ! NVHPC/OpenACC 下 erf() 不适合放在 parameter 初始化表达式里，运行开始时统一计算。
+  real(kind=8) :: ISLBM_DxMinRaw, ISLBM_DyMinRaw, ISLBM_DzMinRaw
 #ifdef SideHeatedCell
   ! half-way壁面放在0.5*rawY(1), 因此有效长度为1-ISLBM_DyMinRaw。
   ! ISLBM有效长度含多少个近壁lu: lengthUnit=(topWall-bottomWall)/ISLBM_DyMinRaw。
-  real(kind=8), parameter :: lengthUnit=(1.0d0-ISLBM_DyMinRaw)/ISLBM_DyMinRaw     ! 侧壁差温：特征长度取 y 方向 half-way 有效距离
+  real(kind=8) :: lengthUnit     ! 侧壁差温：特征长度取 y 方向 half-way 有效距离
 #else
   ! half-way壁面放在0.5*rawZ(1), 因此有效长度为1-ISLBM_DzMinRaw。
   ! ISLBM有效长度含多少个近壁lu: lengthUnit=(backWall-frontWall)/ISLBM_DzMinRaw。
-  real(kind=8), parameter :: lengthUnit=(1.0d0-ISLBM_DzMinRaw)/ISLBM_DzMinRaw     ! RB 上下差温：特征长度取 z 方向 half-way 有效距离
+  real(kind=8) :: lengthUnit     ! RB 上下差温：特征长度取 z 方向 half-way 有效距离
 #endif
   real(kind=8), parameter :: pi=acos(-1.0d0)
 
@@ -251,40 +247,31 @@ module commondata3dOpenaccMpi
   real(kind=8), parameter :: Mach=0.1d0
   real(kind=8), parameter :: Thot=0.5d0, Tcold=-0.5d0
   real(kind=8), parameter :: Tref=0.5d0*(Thot+Tcold)       ! 参考温度，计算热膨胀系数和无量纲温度用
-  real(kind=8), parameter :: tauf=0.5d0+Mach*lengthUnit*dsqrt(3.0d0*Prandtl/Rayleigh)
-  real(kind=8), parameter :: viscosity=(tauf-0.5d0)/3.0d0  ! 动量扩散率 nu
-  real(kind=8), parameter :: diffusivity=viscosity/Prandtl ! 热扩散率 kappa
+  real(kind=8) :: tauf, viscosity, diffusivity             ! 动量/热扩散相关派生量
 
   real(kind=8), parameter :: cs2T=0.25d0                   ! UseG D3Q7 温度格子的 cs_T^2
 
   ! 高阶矩参数修正 aT，legacy D3Q7 温度算法使用。
-  real(kind=8), parameter :: paraA=42.0d0*dsqrt(3.0d0)*diffusivity-6.0d0
+  real(kind=8) :: paraA
 
 
 
   ! 速度后处理的比较标度，只影响输出诊断，不参与主时间推进。
-  real(kind=8), parameter :: velocityScaleCompare=lengthUnit/diffusivity
+  real(kind=8) :: velocityScaleCompare
 
   ! 浮力项参数；浮力沿 z 方向施加，输出变量 W_nd 是竖直速度
-  real(kind=8), parameter :: gBeta1=Rayleigh*viscosity*diffusivity/lengthUnit
-  real(kind=8), parameter :: gBeta=gBeta1/lengthUnit/lengthUnit
-  real(kind=8), parameter :: timeUnit=dsqrt(lengthUnit/gBeta)      ! 1 个自由落体时间对应的格子步数
-  real(kind=8), parameter :: velocityUnit=dsqrt(gBeta*lengthUnit)  ! 自由落体速度标度
+  real(kind=8) :: gBeta1, gBeta
+  real(kind=8) :: timeUnit       ! 1 个自由落体时间对应的格子步数
+  real(kind=8) :: velocityUnit   ! 自由落体速度标度
 
   ! 动量方程的多松弛系数
-  real(kind=8), parameter :: Se=1.0d0/tauf, Seps=1.0d0/tauf
-  real(kind=8), parameter :: Snu=1.0d0/tauf, Spi=1.0d0/tauf
-  real(kind=8), parameter :: Sq=8.0d0*(2.0d0*tauf-1.0d0)/(8.0d0*tauf-1.0d0)
-  real(kind=8), parameter :: Sm=8.0d0*(2.0d0*tauf-1.0d0)/(8.0d0*tauf-1.0d0)
+  real(kind=8) :: Se, Seps, Snu, Spi, Sq, Sm
 
   ! 温度方程的多松弛系数：legacy 使用 Xu D3Q7 参数，UseG 使用 Chai 型通量修正。
 #ifdef EnableLegacyThermalScheme
-  real(kind=8), parameter :: Qk=3.0d0-dsqrt(3.0d0), Qnu=4.0d0*dsqrt(3.0d0)-6.0d0
-  real(kind=8), parameter :: thermalGeqCoeff=7.0d0/((6.0d0+paraA)*cs2T)
+  real(kind=8) :: Qk, Qnu, thermalGeqCoeff
 #else
-  real(kind=8), parameter :: taug=0.5d0+diffusivity/cs2T
-  real(kind=8), parameter :: Qnu=1.0d0, Qk=1.0d0/taug
-  real(kind=8), parameter :: thermalGeqCoeff=1.0d0/cs2T
+  real(kind=8) :: taug, Qnu, Qk, thermalGeqCoeff
 #endif
   !===============================================================================================
 
@@ -318,7 +305,7 @@ module commondata3dOpenaccMpi
   integer(kind=4), parameter :: outputSnapshotFile=1  ! 是否输出后处理快照文件：0=不输出，1=输出
   integer(kind=4), parameter :: outputPltFile=1       ! 是否输出 Tecplot 文件：0=不输出，1=输出
   integer(kind=4), parameter :: outputReloadFile=1    ! 是否周期输出 f/g 重启文件：0=不输出，1=输出
-  integer(kind=4), parameter :: itc_max=max(1, int(unsteadyRunDuration*timeUnit+0.5d0)) ! 非稳态总时长换算成格子步
+  integer(kind=4) :: itc_max ! 非稳态总时长换算成格子步
 #endif
 
   integer(kind=4) :: snapshotFileNum, pltFileNum  ! 快照/plt 输出文件计数器；reload 使用 reloadFileNum 独立编号
@@ -350,7 +337,7 @@ module commondata3dOpenaccMpi
   real(kind=8) :: quadSumX, quadSumY, quadSumZ, quadSumVolume
 
   ! 归一化坐标中的1个lattice unit; 迁移时用 xp(i)-ex(alpha)*ISLBM_LatticeUnit 找上游点。
-  real(kind=8), parameter :: ISLBM_LatticeUnit=1.0d0/lengthUnit
+  real(kind=8) :: ISLBM_LatticeUnit
 
   real(kind=8), allocatable :: u(:,:,:), v(:,:,:), w(:,:,:), T(:,:,:), rho(:,:,:) ! 宏观变量
 
@@ -393,6 +380,7 @@ module commondata3dOpenaccMpi
 
   ! valid标志说明上游插值点是否在本rank内部或halo范围内; 越界时交给MPI边界/物理边界处理。
   logical, allocatable :: streamInterpValidX(:,:), streamInterpValidY(:,:), streamInterpValidZ(:,:)
+  integer(kind=4) :: streamStencilFallbackLocal, streamStencilFallbackGlobal
 
   ! 温度场D3Q7的速度是流场D3Q19的前7个方向, streamingT 复用同一套插值模板。
   public :: ISLBM_StretchA, ISLBM_LatticeUnit
@@ -410,6 +398,75 @@ end module commondata3dOpenaccMpi
 
 
 !=============================================================
+! 子程序: init_islbm_derived_parameters_3d_mpi
+! 作用: 计算依赖erf非均匀网格和lengthUnit的派生参数。
+! 说明: NVHPC不支持erf()出现在parameter初始化表达式中，因此这些量在运行开始时计算一次。
+!=============================================================
+subroutine init_islbm_derived_parameters_3d_mpi()
+  use commondata3dOpenaccMpi
+  implicit none
+  real(kind=8) :: erfNorm
+
+  !===============================================================================================
+  ! ISLBM网格和特征尺度派生量
+  !===============================================================================================
+  erfNorm = erf(0.5d0*ISLBM_StretchA)
+  ISLBM_DxMinRaw = 0.5d0*(1.0d0 + &
+      erf(ISLBM_StretchA*(1.0d0/dble(nx+1)-0.5d0))/erfNorm)
+  ISLBM_DyMinRaw = 0.5d0*(1.0d0 + &
+      erf(ISLBM_StretchA*(1.0d0/dble(ny+1)-0.5d0))/erfNorm)
+  ISLBM_DzMinRaw = 0.5d0*(1.0d0 + &
+      erf(ISLBM_StretchA*(1.0d0/dble(nz+1)-0.5d0))/erfNorm)
+
+#ifdef SideHeatedCell
+  lengthUnit = (1.0d0-ISLBM_DyMinRaw)/ISLBM_DyMinRaw
+#else
+  lengthUnit = (1.0d0-ISLBM_DzMinRaw)/ISLBM_DzMinRaw
+#endif
+  ISLBM_LatticeUnit = 1.0d0/lengthUnit
+
+  !===============================================================================================
+  ! 由lengthUnit派生的输运参数、力项参数和松弛系数
+  !===============================================================================================
+  tauf = 0.5d0+Mach*lengthUnit*dsqrt(3.0d0*Prandtl/Rayleigh)
+  viscosity = (tauf-0.5d0)/3.0d0
+  diffusivity = viscosity/Prandtl
+  paraA = 42.0d0*dsqrt(3.0d0)*diffusivity-6.0d0
+  velocityScaleCompare = lengthUnit/diffusivity
+
+  gBeta1 = Rayleigh*viscosity*diffusivity/lengthUnit
+  gBeta = gBeta1/lengthUnit/lengthUnit
+  timeUnit = dsqrt(lengthUnit/gBeta)
+  velocityUnit = dsqrt(gBeta*lengthUnit)
+
+  Se = 1.0d0/tauf
+  Seps = 1.0d0/tauf
+  Snu = 1.0d0/tauf
+  Spi = 1.0d0/tauf
+  Sq = 8.0d0*(2.0d0*tauf-1.0d0)/(8.0d0*tauf-1.0d0)
+  Sm = 8.0d0*(2.0d0*tauf-1.0d0)/(8.0d0*tauf-1.0d0)
+
+#ifdef EnableLegacyThermalScheme
+  Qk = 3.0d0-dsqrt(3.0d0)
+  Qnu = 4.0d0*dsqrt(3.0d0)-6.0d0
+  thermalGeqCoeff = 7.0d0/((6.0d0+paraA)*cs2T)
+#else
+  taug = 0.5d0+diffusivity/cs2T
+  Qnu = 1.0d0
+  Qk = 1.0d0/taug
+  thermalGeqCoeff = 1.0d0/cs2T
+#endif
+
+#ifdef unsteadyFlow
+  itc_max = max(1, int(unsteadyRunDuration*timeUnit+0.5d0))
+#endif
+
+  return
+end subroutine init_islbm_derived_parameters_3d_mpi
+!=============================================================
+
+
+!=============================================================
 !   主程序
 
 
@@ -419,7 +476,9 @@ program main3dOpenaccMpi
   implicit none
 
   real(kind=8) :: timeStart, timeEnd
+  real(kind=8) :: cpuElapsedLocal, cpuElapsedTotal
   real(kind=8) :: timeStart2, timeEnd2
+  real(kind=8) :: wallElapsedLocal, wallElapsedMax
   character(len=24) :: ctime
   character(len=24) :: string
   integer(kind=4) :: time
@@ -430,6 +489,7 @@ program main3dOpenaccMpi
 
   !===============================================================================================
   ! 设置 MPI 笛卡尔分解，并将每个 rank 绑定到本节点的一张 GPU
+  call init_islbm_derived_parameters_3d_mpi()
   call MPI_INIT(IERR)         ! MPI 初始化
   call init_mpi_cartesian()   ! 建立笛卡尔通信器，确定当前 rank 的局部网格范围、物理边界标记和邻居 rank
   call bind_openacc_device_to_local_rank()  ! 按节点内 rank 将 MPI 进程和 GPU 一对一绑定
@@ -533,6 +593,32 @@ program main3dOpenaccMpi
   call MPI_BARRIER(COMM3D, IERR)
   call CPU_TIME(timeEnd)
   timeEnd2 = MPI_WTIME()
+  cpuElapsedLocal = timeEnd - timeStart
+  wallElapsedLocal = timeEnd2 - timeStart2
+  ! CPU_TIME 是单个 MPI rank 的 host 进程 CPU 时间；这里汇总所有 rank，作为 GPU 版的 CPU 侧诊断。
+  call MPI_REDUCE(cpuElapsedLocal, cpuElapsedTotal, 1, MPI_DOUBLE_PRECISION, MPI_SUM, 0, COMM3D, IERR)
+  ! 墙钟性能由最慢 rank/GPU 决定，取所有 rank 的最大耗时作为 MPI 总吞吐的计时分母。
+  call MPI_REDUCE(wallElapsedLocal, wallElapsedMax, 1, MPI_DOUBLE_PRECISION, MPI_MAX, 0, COMM3D, IERR)
+
+  ! 性能测试结果先于最终后处理写出，避免 Tecplot/NuRe 等诊断 I/O 影响 MLUPS 记录。
+  open(unit=00, file=trim(settingsFile), status='unknown', position='append')
+  write(00,*) '======================================================================'
+  write(00,*) 'Time (CPU, local rank host diagnostic) = ', &
+       real(cpuElapsedLocal, kind=8), 's'
+  write(00,*) 'MLUPS (CPU, local rank host diagnostic) = ', &
+       real(dble(nx)*dble(ny)*dble(nz)*dble(itc)/max(cpuElapsedLocal,1.0d-12)/1.0d6, kind=8)
+  write(00,*) 'Time (MPI wall, local rank) = ', real(wallElapsedLocal, kind=8), 's'
+  if(isRoot) then
+    write(00,*) 'Time (CPU, all ranks host sum) = ', real(cpuElapsedTotal, kind=8), 's'
+    write(00,*) 'Effective host CPU cores from timers = ', &
+         real(cpuElapsedTotal/max(wallElapsedMax,1.0d-12), kind=8)
+    write(00,*) 'MLUPS (CPU, all ranks host sum) = ', &
+         real(dble(nx)*dble(ny)*dble(nz)*dble(itc)/max(cpuElapsedTotal,1.0d-12)/1.0d6, kind=8)
+    write(00,*) 'Time (MPI wall, max rank) = ', real(wallElapsedMax, kind=8), 's'
+    write(00,*) 'MLUPS (MPI wall, all GPUs) = ', &
+         real(dble(nx)*dble(ny)*dble(nz)*dble(itc)/max(wallElapsedMax,1.0d-12)/1.0d6, kind=8)
+  endif
+  close(00)
 
 #ifdef steadyFlow
   call output_Tecplot()
@@ -580,14 +666,7 @@ program main3dOpenaccMpi
 
   open(unit=00, file=trim(settingsFile), status='unknown', position='append')
   write(00,*) '======================================================================'
-  write(00,*) 'Time (CPU) = ', real(timeEnd - timeStart, kind=8), 's'
-  write(00,*) 'MLUPS = ', &
-       real(dble(nx) * dble(ny) * dble(nz) * dble(itc) / &
-       & max(timeEnd - timeStart, 1.0d-12) / 1.0d6, kind=8)
-  write(00,*) 'Time (MPI wall) = ', real(timeEnd2 - timeStart2, kind=8), 's'
-  write(00,*) 'MLUPS (MPI wall) = ', &
-       real(dble(nx) * dble(ny) * dble(nz) * dble(itc) / &
-       & max(timeEnd2 - timeStart2, 1.0d-12) / 1.0d6, kind=8)
+  write(00,*) 'Final diagnostics:'
 #ifdef steadyFlow
   write(00,*) 'Nu_global =', Nu_global
   write(00,*) 'Nu_hot    =', Nu_hot
@@ -1007,24 +1086,25 @@ subroutine allocate_halo_buffers_3d_openacc_mpi()
   ! 如果之前已经分配过，先统一释放，再按新的 xLocalCount/yLocalCount/zLocalCount 重新分配。
   if(associated(fSendXLower)) call deallocate_halo_buffers_3d_openacc_mpi()
 
-  ! D3Q19 每个面只需要 5 个会跨过该面的速度方向。
-  ! x 先交换 owned 面；y 交换时包含 x halo；z 交换时再包含 x/y halo，用来补齐 D3Q19 的边线 ghost。
-  allocate(fSendXLower(5*yLocalCount*zLocalCount), fSendXUpper(5*yLocalCount*zLocalCount))
-  allocate(fRecvXLower(5*yLocalCount*zLocalCount), fRecvXUpper(5*yLocalCount*zLocalCount))
-  allocate(fSendYLower(5*(xLocalCount+2)*zLocalCount), fSendYUpper(5*(xLocalCount+2)*zLocalCount))
-  allocate(fRecvYLower(5*(xLocalCount+2)*zLocalCount), fRecvYUpper(5*(xLocalCount+2)*zLocalCount))
-  allocate(fSendZLower(5*(xLocalCount+2)*(yLocalCount+2)), fSendZUpper(5*(xLocalCount+2)*(yLocalCount+2)))
-  allocate(fRecvZLower(5*(xLocalCount+2)*(yLocalCount+2)), fRecvZUpper(5*(xLocalCount+2)*(yLocalCount+2)))
+  ! ISLBM 的三点 Lagrange streaming 模板以当前节点为中心；在 MPI 接口旁，即使目标点位于本 rank 内，
+  ! 模板也可能读到另一侧 halo。因此 MPI 内部接口必须交换整面的全部分布函数方向。
+  ! f: D3Q19 全量交换；x 先交换 owned 面，y 交换时带 x halo，z 交换时带 x/y halo 以补齐边线和角点 ghost。
+  allocate(fSendXLower(qf*yLocalCount*zLocalCount), fSendXUpper(qf*yLocalCount*zLocalCount))
+  allocate(fRecvXLower(qf*yLocalCount*zLocalCount), fRecvXUpper(qf*yLocalCount*zLocalCount))
+  allocate(fSendYLower(qf*(xLocalCount+2)*zLocalCount), fSendYUpper(qf*(xLocalCount+2)*zLocalCount))
+  allocate(fRecvYLower(qf*(xLocalCount+2)*zLocalCount), fRecvYUpper(qf*(xLocalCount+2)*zLocalCount))
+  allocate(fSendZLower(qf*(xLocalCount+2)*(yLocalCount+2)), fSendZUpper(qf*(xLocalCount+2)*(yLocalCount+2)))
+  allocate(fRecvZLower(qf*(xLocalCount+2)*(yLocalCount+2)), fRecvZUpper(qf*(xLocalCount+2)*(yLocalCount+2)))
 
-  ! D3Q7 温度格子只有坐标轴方向，不存在斜向速度，所以不需要传播边线或角点 halo。
-  allocate(gSendXLower(yLocalCount*zLocalCount), gSendXUpper(yLocalCount*zLocalCount))
-  allocate(gRecvXLower(yLocalCount*zLocalCount), gRecvXUpper(yLocalCount*zLocalCount))
-  allocate(gSendYLower(xLocalCount*zLocalCount), gSendYUpper(xLocalCount*zLocalCount))
-  allocate(gRecvYLower(xLocalCount*zLocalCount), gRecvYUpper(xLocalCount*zLocalCount))
-  allocate(gSendZLower(xLocalCount*yLocalCount), gSendZUpper(xLocalCount*yLocalCount))
-  allocate(gRecvZLower(xLocalCount*yLocalCount), gRecvZUpper(xLocalCount*yLocalCount))
+  ! g: D3Q7 没有对角方向，不需要角点传播，但同样交换每个面的全部 7 个分布函数方向。
+  allocate(gSendXLower(qt*yLocalCount*zLocalCount), gSendXUpper(qt*yLocalCount*zLocalCount))
+  allocate(gRecvXLower(qt*yLocalCount*zLocalCount), gRecvXUpper(qt*yLocalCount*zLocalCount))
+  allocate(gSendYLower(qt*xLocalCount*zLocalCount), gSendYUpper(qt*xLocalCount*zLocalCount))
+  allocate(gRecvYLower(qt*xLocalCount*zLocalCount), gRecvYUpper(qt*xLocalCount*zLocalCount))
+  allocate(gSendZLower(qt*xLocalCount*yLocalCount), gSendZUpper(qt*xLocalCount*yLocalCount))
+  allocate(gRecvZLower(qt*xLocalCount*yLocalCount), gRecvZUpper(qt*xLocalCount*yLocalCount))
 
-  !$acc enter data create(...) 的作用：
+  ! OpenACC enter data create(...) 的作用：
   !   1) 在 GPU 上给这些 halo buffer 创建对应设备端内存；
   !   2) 不从 CPU 复制初值，因为 buffer 每次通信前都会在 GPU kernel 中重新 pack；
   !   3) 后续 host_data use_device(...) 可以把 GPU 地址直接交给支持 GPU-aware 的 MPI_SENDRECV。
@@ -1054,7 +1134,7 @@ subroutine deallocate_halo_buffers_3d_openacc_mpi()
 
   if(.not.associated(fSendXLower)) return
 
-  !$acc exit data delete(...) 的作用：
+  ! OpenACC exit data delete(...) 的作用：
   !   1) 删除这些 halo buffer 在 GPU 上的设备端副本；
   !   2) 不把设备端内容拷回 CPU，因为通信 buffer 只是临时中转数据；
   !   3) 防止后面 CPU deallocate 后 GPU 端仍保留无效映射。
@@ -1351,6 +1431,11 @@ subroutine initial()
   !-----------------------------------------------------------------------------------------------
   call init_lattice_constants()  !速度集和权重
   call build_islbm_streaming_stencils_3d()
+  if(isRoot) then
+    write(00,*) 'ISLBM MPI streaming fallback stencil entries:', streamStencilFallbackGlobal
+    write(00,*) 'Internal rank interfaces use one-layer halo values for ISLBM Lagrange streaming.'
+    write(00,*) 'Fallback entries should remain zero for the intended non-coarse MPI decompositions.'
+  endif
 
   rho = 1.0d0
   f = 0.0d0
@@ -1671,12 +1756,14 @@ end subroutine build_islbm_quadrature_3d
 ! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===========================================================================================================================
 subroutine build_islbm_streaming_stencils_3d()
+  use mpi
   use commondata3dOpenaccMpi
   implicit none
 
-  integer(kind=4) :: i, alpha, globalIndex, idxGlobal(3), idxLocal(3)
-  real(kind=8) :: target, ww(3)
-  logical :: ok
+  integer(kind=4) :: i, alpha, globalIndex
+  integer(kind=4) :: stencilIndexGlobal(3), stencilIndexLocal(3)
+  real(kind=8) :: target, stencilWeight(3)
+  logical :: stencilValid
 
   if(allocated(streamInterpIndexX)) deallocate(streamInterpIndexX, streamInterpIndexY, &
        streamInterpIndexZ, streamInterpWeightX, streamInterpWeightY, streamInterpWeightZ, &
@@ -1691,6 +1778,8 @@ subroutine build_islbm_streaming_stencils_3d()
   streamInterpIndexX = 1; streamInterpIndexY = 1; streamInterpIndexZ = 1
   streamInterpWeightX = 0.0d0; streamInterpWeightY = 0.0d0; streamInterpWeightZ = 0.0d0
   streamInterpValidX = .false.; streamInterpValidY = .false.; streamInterpValidZ = .false.
+  streamStencilFallbackLocal = 0
+  streamStencilFallbackGlobal = 0
 
   do alpha = 0, qf-1
     do i = 1, xLocalCount
@@ -1701,12 +1790,16 @@ subroutine build_islbm_streaming_stencils_3d()
       else
         globalIndex = xStartGlobal + i - 1
         target = xp(globalIndex) - dble(ex(alpha))*ISLBM_LatticeUnit
-        call build_streaming_stencil_1d(nx, xp(1:nx), globalIndex, target, idxGlobal, ww, ok)
-        idxLocal = idxGlobal - xStartGlobal + 1
-        streamInterpValidX(alpha,i) = ok .AND. all(idxLocal.GE.0) .AND. all(idxLocal.LE.xLocalCount+1)
-        if(streamInterpValidX(alpha,i)) then
-          streamInterpIndexX(alpha,i,:) = idxLocal
-          streamInterpWeightX(alpha,i,:) = ww
+        call build_streaming_stencil_1d(nx, xp(1:nx), globalIndex, target, &
+             stencilIndexGlobal, stencilWeight, stencilValid)
+        stencilIndexLocal = stencilIndexGlobal - xStartGlobal + 1
+        ! all(...) 要求三点模板全部落在当前 rank 的 owned 区或一层 halo 内。
+        if(stencilValid .AND. all(stencilIndexLocal.GE.0) .AND. all(stencilIndexLocal.LE.xLocalCount+1)) then
+          streamInterpValidX(alpha,i) = .true.
+          streamInterpIndexX(alpha,i,:) = stencilIndexLocal
+          streamInterpWeightX(alpha,i,:) = stencilWeight
+        elseif(stencilValid) then
+          streamStencilFallbackLocal = streamStencilFallbackLocal + 1
         endif
       endif
     enddo
@@ -1718,12 +1811,16 @@ subroutine build_islbm_streaming_stencils_3d()
       else
         globalIndex = yStartGlobal + i - 1
         target = yp(globalIndex) - dble(ey(alpha))*ISLBM_LatticeUnit
-        call build_streaming_stencil_1d(ny, yp(1:ny), globalIndex, target, idxGlobal, ww, ok)
-        idxLocal = idxGlobal - yStartGlobal + 1
-        streamInterpValidY(alpha,i) = ok .AND. all(idxLocal.GE.0) .AND. all(idxLocal.LE.yLocalCount+1)
-        if(streamInterpValidY(alpha,i)) then
-          streamInterpIndexY(alpha,i,:) = idxLocal
-          streamInterpWeightY(alpha,i,:) = ww
+        call build_streaming_stencil_1d(ny, yp(1:ny), globalIndex, target, &
+             stencilIndexGlobal, stencilWeight, stencilValid)
+        stencilIndexLocal = stencilIndexGlobal - yStartGlobal + 1
+        ! all(...) 要求三点模板全部落在当前 rank 的 owned 区或一层 halo 内。
+        if(stencilValid .AND. all(stencilIndexLocal.GE.0) .AND. all(stencilIndexLocal.LE.yLocalCount+1)) then
+          streamInterpValidY(alpha,i) = .true.
+          streamInterpIndexY(alpha,i,:) = stencilIndexLocal
+          streamInterpWeightY(alpha,i,:) = stencilWeight
+        elseif(stencilValid) then
+          streamStencilFallbackLocal = streamStencilFallbackLocal + 1
         endif
       endif
     enddo
@@ -1735,18 +1832,24 @@ subroutine build_islbm_streaming_stencils_3d()
       else
         globalIndex = zStartGlobal + i - 1
         target = zp(globalIndex) - dble(ez(alpha))*ISLBM_LatticeUnit
-        call build_streaming_stencil_1d(nz, zp(1:nz), globalIndex, target, idxGlobal, ww, ok)
-        idxLocal = idxGlobal - zStartGlobal + 1
-        streamInterpValidZ(alpha,i) = ok .AND. all(idxLocal.GE.0) .AND. all(idxLocal.LE.zLocalCount+1)
-        if(streamInterpValidZ(alpha,i)) then
-          streamInterpIndexZ(alpha,i,:) = idxLocal
-          streamInterpWeightZ(alpha,i,:) = ww
+        call build_streaming_stencil_1d(nz, zp(1:nz), globalIndex, target, &
+             stencilIndexGlobal, stencilWeight, stencilValid)
+        stencilIndexLocal = stencilIndexGlobal - zStartGlobal + 1
+        ! all(...) 要求三点模板全部落在当前 rank 的 owned 区或一层 halo 内。
+        if(stencilValid .AND. all(stencilIndexLocal.GE.0) .AND. all(stencilIndexLocal.LE.zLocalCount+1)) then
+          streamInterpValidZ(alpha,i) = .true.
+          streamInterpIndexZ(alpha,i,:) = stencilIndexLocal
+          streamInterpWeightZ(alpha,i,:) = stencilWeight
+        elseif(stencilValid) then
+          streamStencilFallbackLocal = streamStencilFallbackLocal + 1
         endif
       endif
     enddo
   enddo
 
   ! exT/eyT/ezT 与 ex/ey/ez 的前 qt 个方向一致, 因此温度场直接复用上面的模板。
+  call MPI_ALLREDUCE(streamStencilFallbackLocal, streamStencilFallbackGlobal, 1, &
+       MPI_INTEGER, MPI_SUM, COMM3D, IERR)
 
   return
 end subroutine build_islbm_streaming_stencils_3d
@@ -1760,39 +1863,39 @@ end subroutine build_islbm_streaming_stencils_3d
 ! 作用: 执行本子程序对应的初始化、迁移、碰撞、边界、通信或后处理步骤。
 ! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===========================================================================================================================
-subroutine build_streaming_stencil_1d(n, xnodes, nodeIndex, target, idx, ww, ok)
+subroutine build_streaming_stencil_1d(n, xnodes, nodeIndex, target, stencilIndex, stencilWeight, stencilValid)
   implicit none
 
   integer(kind=4), intent(in) :: n, nodeIndex
   real(kind=8), intent(in) :: xnodes(1:n), target
-  integer(kind=4), intent(out) :: idx(3)
-  real(kind=8), intent(out) :: ww(3)
-  logical, intent(out) :: ok
+  integer(kind=4), intent(out) :: stencilIndex(3)
+  real(kind=8), intent(out) :: stencilWeight(3)
+  logical, intent(out) :: stencilValid
   real(kind=8) :: xloc(3)
   real(kind=8), parameter :: tol=1.0d-12
 
   ! 迁移专用模板按到达节点中心选取:
   ! 内部点用(nodeIndex-1,nodeIndex,nodeIndex+1), 边界附近用单边三点。
   ! target越过内部流体节点范围时保持无效, 交由后续边界条件补齐。
-  ok = .false.
-  idx = 1
-  ww = 0.0d0
+  stencilValid = .false.
+  stencilIndex = (/1, 1, 1/)
+  stencilWeight = 0.0d0
   if(n.LT.3) return
   if((target.LT.xnodes(1)-tol) .OR. (target.GT.xnodes(n)+tol)) return
 
   if(nodeIndex.LE.1) then
-    idx = (/1, 2, 3/)
+    stencilIndex = (/1, 2, 3/)
   elseif(nodeIndex.GE.n) then
-    idx = (/n-2, n-1, n/)
+    stencilIndex = (/n-2, n-1, n/)
   else
-    idx = (/nodeIndex-1, nodeIndex, nodeIndex+1/)
+    stencilIndex = (/nodeIndex-1, nodeIndex, nodeIndex+1/)
   endif
 
-  xloc(1) = xnodes(idx(1))
-  xloc(2) = xnodes(idx(2))
-  xloc(3) = xnodes(idx(3))
-  call lagrange_weights_3(xloc, target, ww)
-  ok = .true.
+  xloc(1) = xnodes(stencilIndex(1))
+  xloc(2) = xnodes(stencilIndex(2))
+  xloc(3) = xnodes(stencilIndex(3))
+  call build_lagrange_weights_3(xloc, target, stencilWeight)
+  stencilValid = .true.
 
   return
 end subroutine build_streaming_stencil_1d
@@ -1802,23 +1905,86 @@ end subroutine build_streaming_stencil_1d
 
 
 !===========================================================================================================================
-! 子程序: lagrange_weights_3
-! 作用: 执行本子程序对应的初始化、迁移、碰撞、边界、通信或后处理步骤。
+! 子程序: build_lagrange_weights_3
+! 作用: 计算三点二次 Lagrange 插值权重。
 ! 用途: 由主程序、时间推进或后处理流程按需调用，保持与参考 ISLBM 代码的接口风格一致。
 !===========================================================================================================================
-subroutine lagrange_weights_3(xnode, x0, ww)
+subroutine build_lagrange_weights_3(xnode, x0, stencilWeight)
   implicit none
 
   real(kind=8), intent(in) :: xnode(3), x0
-  real(kind=8), intent(out) :: ww(3)
+  real(kind=8), intent(out) :: stencilWeight(3)
 
-  ww(1) = (x0-xnode(2))*(x0-xnode(3))/((xnode(1)-xnode(2))*(xnode(1)-xnode(3)))
-  ww(2) = (x0-xnode(1))*(x0-xnode(3))/((xnode(2)-xnode(1))*(xnode(2)-xnode(3)))
-  ww(3) = (x0-xnode(1))*(x0-xnode(2))/((xnode(3)-xnode(1))*(xnode(3)-xnode(2)))
+  stencilWeight(1) = (x0-xnode(2))*(x0-xnode(3))/((xnode(1)-xnode(2))*(xnode(1)-xnode(3)))
+  stencilWeight(2) = (x0-xnode(1))*(x0-xnode(3))/((xnode(2)-xnode(1))*(xnode(2)-xnode(3)))
+  stencilWeight(3) = (x0-xnode(1))*(x0-xnode(2))/((xnode(3)-xnode(1))*(xnode(3)-xnode(2)))
 
-end subroutine lagrange_weights_3
+end subroutine build_lagrange_weights_3
 !===========================================================================================================================
-! lagrange_weights_3 结束: 已完成本子程序对应的计算或数据处理步骤。
+! build_lagrange_weights_3 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
+
+
+!===========================================================================================================================
+! 子程序: build_lagrange_stencil_1d
+! 作用: 为后处理中任意目标坐标选择三点 Lagrange 插值节点并计算权重。
+!===========================================================================================================================
+subroutine build_lagrange_stencil_1d(n, xnodes, target, stencilIndex, stencilWeight, stencilValid)
+  implicit none
+  integer(kind=4), intent(in) :: n
+  real(kind=8), intent(in) :: xnodes(n), target
+  integer(kind=4), intent(out) :: stencilIndex(3)
+  real(kind=8), intent(out) :: stencilWeight(3)
+  logical, intent(out) :: stencilValid
+  integer(kind=4) :: mid
+  real(kind=8) :: xloc(3)
+  real(kind=8), parameter :: tol=1.0d-12
+
+  stencilIndex = (/1, 1, 1/)
+  stencilWeight = 0.0d0
+  stencilValid = .false.
+  if(n.LT.3) return
+  if((target.LT.xnodes(1)-tol).OR.(target.GT.xnodes(n)+tol)) return
+  if(target.LE.xnodes(2)) then
+    stencilIndex = (/1, 2, 3/)
+  elseif(target.GE.xnodes(n-1)) then
+    stencilIndex = (/n-2, n-1, n/)
+  else
+    mid = 2
+    do while((mid.LT.n-1).AND.(xnodes(mid+1).LT.target))
+      mid = mid + 1
+    enddo
+    stencilIndex = (/mid-1, mid, mid+1/)
+  endif
+  xloc = (/xnodes(stencilIndex(1)), xnodes(stencilIndex(2)), xnodes(stencilIndex(3))/)
+  call build_lagrange_weights_3(xloc, target, stencilWeight)
+  stencilValid = .true.
+
+  return
+end subroutine build_lagrange_stencil_1d
+!===========================================================================================================================
+! build_lagrange_stencil_1d 结束: 已完成本子程序对应的计算或数据处理步骤。
+!===========================================================================================================================
+
+
+!===========================================================================================================================
+! 子程序: lagrange_derivative_3
+! 作用: 用三点 Lagrange 多项式在目标坐标处计算一阶导数。
+!===========================================================================================================================
+subroutine lagrange_derivative_3(xnode, fnode, x0, derivativeValue)
+  implicit none
+  real(kind=8), intent(in) :: xnode(3), fnode(3), x0
+  real(kind=8), intent(out) :: derivativeValue
+
+  derivativeValue = &
+      fnode(1)*(2.0d0*x0-xnode(2)-xnode(3))/((xnode(1)-xnode(2))*(xnode(1)-xnode(3))) + &
+      fnode(2)*(2.0d0*x0-xnode(1)-xnode(3))/((xnode(2)-xnode(1))*(xnode(2)-xnode(3))) + &
+      fnode(3)*(2.0d0*x0-xnode(1)-xnode(2))/((xnode(3)-xnode(1))*(xnode(3)-xnode(2)))
+
+  return
+end subroutine lagrange_derivative_3
+!===========================================================================================================================
+! lagrange_derivative_3 结束: 已完成本子程序对应的计算或数据处理步骤。
 !===========================================================================================================================
 
 
@@ -2144,27 +2310,19 @@ subroutine exchange_f_post_halo_mpi()
   use mpi
   use commondata3dOpenaccMpi
   implicit none
-  ! 下面六组方向是“会跨过对应边界迁移”的 D3Q19 分量。
-  ! pull streaming 中 f(i,j,k,alpha) 从 f_post(i-ex,j-ey,k-ez,alpha) 读取；
-  ! 因此 ghost 层只需要从相邻分区流入 owned 区域的向内分量，不需要整张 qf=19 的面。
-  integer(kind=4), parameter :: sendBackDirs(5)  = (/2, 8, 10, 12, 14/)
-  integer(kind=4), parameter :: sendFrontDirs(5) = (/1, 7,  9, 11, 13/)
-  integer(kind=4), parameter :: sendLeftDirs(5)  = (/4, 9, 10, 16, 18/)
-  integer(kind=4), parameter :: sendRightDirs(5) = (/3, 7,  8, 15, 17/)
-  integer(kind=4), parameter :: sendDownDirs(5)  = (/6, 13, 14, 17, 18/)
-  integer(kind=4), parameter :: sendTopDirs(5)   = (/5, 11, 12, 15, 16/)
-  integer(kind=4) :: i, j, k, dir, idx, nBuf
+  integer(kind=4) :: i, j, k, alpha, idx, nBuf
   integer :: status(MPI_STATUS_SIZE)
 
+  ! ISLBM 接口旁的三点模板可能读取 ghost 面上的任意 alpha，因此 D3Q19 必须整面全方向交换。
   ! 第一步：x/i 方向先交换 owned 面。此时还没有 y/z halo 可传播，所以只遍历 j=1:nyloc, k=1:nzloc。
   nBuf = size(fSendXLower)
   !$acc parallel loop gang vector collapse(3) present(f_post,fSendXLower,fSendXUpper) private(idx)
   do k = 1, zLocalCount
     do j = 1, yLocalCount
-      do dir = 1, 5
-        idx = ((k-1)*yLocalCount + (j-1))*5 + dir
-        fSendXLower(idx) = f_post(1,j,k,sendBackDirs(dir))
-        fSendXUpper(idx) = f_post(xLocalCount,j,k,sendFrontDirs(dir))
+      do alpha = 0, qf-1
+        idx = ((k-1)*yLocalCount + (j-1))*qf + alpha + 1
+        fSendXLower(idx) = f_post(1,j,k,alpha)
+        fSendXUpper(idx) = f_post(xLocalCount,j,k,alpha)
       enddo
     enddo
   enddo
@@ -2180,9 +2338,9 @@ subroutine exchange_f_post_halo_mpi()
     !$acc parallel loop gang vector collapse(3) present(f_post,fRecvXLower) private(idx)
     do k = 1, zLocalCount
       do j = 1, yLocalCount
-        do dir = 1, 5
-          idx = ((k-1)*yLocalCount + (j-1))*5 + dir
-          f_post(0,j,k,sendFrontDirs(dir)) = fRecvXLower(idx)
+        do alpha = 0, qf-1
+          idx = ((k-1)*yLocalCount + (j-1))*qf + alpha + 1
+          f_post(0,j,k,alpha) = fRecvXLower(idx)
         enddo
       enddo
     enddo
@@ -2191,9 +2349,9 @@ subroutine exchange_f_post_halo_mpi()
     !$acc parallel loop gang vector collapse(3) present(f_post,fRecvXUpper) private(idx)
     do k = 1, zLocalCount
       do j = 1, yLocalCount
-        do dir = 1, 5
-          idx = ((k-1)*yLocalCount + (j-1))*5 + dir
-          f_post(xLocalCount+1,j,k,sendBackDirs(dir)) = fRecvXUpper(idx)
+        do alpha = 0, qf-1
+          idx = ((k-1)*yLocalCount + (j-1))*qf + alpha + 1
+          f_post(xLocalCount+1,j,k,alpha) = fRecvXUpper(idx)
         enddo
       enddo
     enddo
@@ -2205,10 +2363,10 @@ subroutine exchange_f_post_halo_mpi()
   !$acc parallel loop gang vector collapse(3) present(f_post,fSendYLower,fSendYUpper) private(idx)
   do k = 1, zLocalCount
     do i = 0, xLocalCount+1
-      do dir = 1, 5
-        idx = ((k-1)*(xLocalCount+2) + i)*5 + dir
-        fSendYLower(idx) = f_post(i,1,k,sendLeftDirs(dir))
-        fSendYUpper(idx) = f_post(i,yLocalCount,k,sendRightDirs(dir))
+      do alpha = 0, qf-1
+        idx = ((k-1)*(xLocalCount+2) + i)*qf + alpha + 1
+        fSendYLower(idx) = f_post(i,1,k,alpha)
+        fSendYUpper(idx) = f_post(i,yLocalCount,k,alpha)
       enddo
     enddo
   enddo
@@ -2222,9 +2380,9 @@ subroutine exchange_f_post_halo_mpi()
     !$acc parallel loop gang vector collapse(3) present(f_post,fRecvYLower) private(idx)
     do k = 1, zLocalCount
       do i = 0, xLocalCount+1
-        do dir = 1, 5
-          idx = ((k-1)*(xLocalCount+2) + i)*5 + dir
-          f_post(i,0,k,sendRightDirs(dir)) = fRecvYLower(idx)
+        do alpha = 0, qf-1
+          idx = ((k-1)*(xLocalCount+2) + i)*qf + alpha + 1
+          f_post(i,0,k,alpha) = fRecvYLower(idx)
         enddo
       enddo
     enddo
@@ -2233,24 +2391,23 @@ subroutine exchange_f_post_halo_mpi()
     !$acc parallel loop gang vector collapse(3) present(f_post,fRecvYUpper) private(idx)
     do k = 1, zLocalCount
       do i = 0, xLocalCount+1
-        do dir = 1, 5
-          idx = ((k-1)*(xLocalCount+2) + i)*5 + dir
-          f_post(i,yLocalCount+1,k,sendLeftDirs(dir)) = fRecvYUpper(idx)
+        do alpha = 0, qf-1
+          idx = ((k-1)*(xLocalCount+2) + i)*qf + alpha + 1
+          f_post(i,yLocalCount+1,k,alpha) = fRecvYUpper(idx)
         enddo
       enddo
     enddo
   endif
 
-  ! 第三步：z/k 方向包含 i/y halo。D3Q19 没有三方向同时非零的速度，
-  ! 所以这里已经足以补齐 x-z 与 y-z 边线需要的 ghost 分量；角点不需要 19 个方向全有效。
+  ! 第三步：z/k 方向包含 x/y halo，最终补齐边线和角点 ghost。
   nBuf = size(fSendZLower)
   !$acc parallel loop gang vector collapse(3) present(f_post,fSendZLower,fSendZUpper) private(idx)
   do j = 0, yLocalCount+1
     do i = 0, xLocalCount+1
-      do dir = 1, 5
-        idx = (j*(xLocalCount+2) + i)*5 + dir
-        fSendZLower(idx) = f_post(i,j,1,sendDownDirs(dir))
-        fSendZUpper(idx) = f_post(i,j,zLocalCount,sendTopDirs(dir))
+      do alpha = 0, qf-1
+        idx = (j*(xLocalCount+2) + i)*qf + alpha + 1
+        fSendZLower(idx) = f_post(i,j,1,alpha)
+        fSendZUpper(idx) = f_post(i,j,zLocalCount,alpha)
       enddo
     enddo
   enddo
@@ -2264,9 +2421,9 @@ subroutine exchange_f_post_halo_mpi()
     !$acc parallel loop gang vector collapse(3) present(f_post,fRecvZLower) private(idx)
     do j = 0, yLocalCount+1
       do i = 0, xLocalCount+1
-        do dir = 1, 5
-          idx = (j*(xLocalCount+2) + i)*5 + dir
-          f_post(i,j,0,sendTopDirs(dir)) = fRecvZLower(idx)
+        do alpha = 0, qf-1
+          idx = (j*(xLocalCount+2) + i)*qf + alpha + 1
+          f_post(i,j,0,alpha) = fRecvZLower(idx)
         enddo
       enddo
     enddo
@@ -2275,9 +2432,9 @@ subroutine exchange_f_post_halo_mpi()
     !$acc parallel loop gang vector collapse(3) present(f_post,fRecvZUpper) private(idx)
     do j = 0, yLocalCount+1
       do i = 0, xLocalCount+1
-        do dir = 1, 5
-          idx = (j*(xLocalCount+2) + i)*5 + dir
-          f_post(i,j,zLocalCount+1,sendDownDirs(dir)) = fRecvZUpper(idx)
+        do alpha = 0, qf-1
+          idx = (j*(xLocalCount+2) + i)*qf + alpha + 1
+          f_post(i,j,zLocalCount+1,alpha) = fRecvZUpper(idx)
         enddo
       enddo
     enddo
@@ -2298,18 +2455,19 @@ subroutine exchange_g_post_halo_mpi()
   use mpi
   use commondata3dOpenaccMpi
   implicit none
-  integer(kind=4) :: i, j, k, idx, nBuf
+  integer(kind=4) :: i, j, k, alpha, idx, nBuf
   integer :: status(MPI_STATUS_SIZE)
 
-  ! D3Q7 温度场只有 6 个坐标轴方向；跨 x/y/z 面时各自只需要一个向内分量。
-  ! 不存在斜向速度，因此不需要像 D3Q19 那样通过后续方向传播边线 ghost。
+  ! ISLBM 接口旁的三点模板可能读取 ghost 面上的任意 alpha，因此 D3Q7 也交换全部方向。
   nBuf = size(gSendXLower)
-  !$acc parallel loop gang vector collapse(2) present(g_post,gSendXLower,gSendXUpper) private(idx)
+  !$acc parallel loop gang vector collapse(3) present(g_post,gSendXLower,gSendXUpper) private(idx)
   do k = 1, zLocalCount
     do j = 1, yLocalCount
-      idx = (k-1)*yLocalCount + j
-      gSendXLower(idx) = g_post(1,j,k,2)
-      gSendXUpper(idx) = g_post(xLocalCount,j,k,1)
+      do alpha = 0, qt-1
+        idx = ((k-1)*yLocalCount + (j-1))*qt + alpha + 1
+        gSendXLower(idx) = g_post(1,j,k,alpha)
+        gSendXUpper(idx) = g_post(xLocalCount,j,k,alpha)
+      enddo
     enddo
   enddo
   !$acc host_data use_device(gSendXLower,gRecvXUpper,gSendXUpper,gRecvXLower)
@@ -2319,31 +2477,37 @@ subroutine exchange_g_post_halo_mpi()
        gRecvXLower, nBuf, MPI_DOUBLE_PRECISION, back, 202, COMM3D, status, IERR)
   !$acc end host_data
   if(back.NE.MPI_PROC_NULL) then
-    !$acc parallel loop gang vector collapse(2) present(g_post,gRecvXLower) private(idx)
+    !$acc parallel loop gang vector collapse(3) present(g_post,gRecvXLower) private(idx)
     do k = 1, zLocalCount
       do j = 1, yLocalCount
-        idx = (k-1)*yLocalCount + j
-        g_post(0,j,k,1) = gRecvXLower(idx)
+        do alpha = 0, qt-1
+          idx = ((k-1)*yLocalCount + (j-1))*qt + alpha + 1
+          g_post(0,j,k,alpha) = gRecvXLower(idx)
+        enddo
       enddo
     enddo
   endif
   if(front.NE.MPI_PROC_NULL) then
-    !$acc parallel loop gang vector collapse(2) present(g_post,gRecvXUpper) private(idx)
+    !$acc parallel loop gang vector collapse(3) present(g_post,gRecvXUpper) private(idx)
     do k = 1, zLocalCount
       do j = 1, yLocalCount
-        idx = (k-1)*yLocalCount + j
-        g_post(xLocalCount+1,j,k,2) = gRecvXUpper(idx)
+        do alpha = 0, qt-1
+          idx = ((k-1)*yLocalCount + (j-1))*qt + alpha + 1
+          g_post(xLocalCount+1,j,k,alpha) = gRecvXUpper(idx)
+        enddo
       enddo
     enddo
   endif
 
   nBuf = size(gSendYLower)
-  !$acc parallel loop gang vector collapse(2) present(g_post,gSendYLower,gSendYUpper) private(idx)
+  !$acc parallel loop gang vector collapse(3) present(g_post,gSendYLower,gSendYUpper) private(idx)
   do k = 1, zLocalCount
     do i = 1, xLocalCount
-      idx = (k-1)*xLocalCount + i
-      gSendYLower(idx) = g_post(i,1,k,4)
-      gSendYUpper(idx) = g_post(i,yLocalCount,k,3)
+      do alpha = 0, qt-1
+        idx = ((k-1)*xLocalCount + (i-1))*qt + alpha + 1
+        gSendYLower(idx) = g_post(i,1,k,alpha)
+        gSendYUpper(idx) = g_post(i,yLocalCount,k,alpha)
+      enddo
     enddo
   enddo
   !$acc host_data use_device(gSendYLower,gRecvYUpper,gSendYUpper,gRecvYLower)
@@ -2353,31 +2517,37 @@ subroutine exchange_g_post_halo_mpi()
        gRecvYLower, nBuf, MPI_DOUBLE_PRECISION, left, 212, COMM3D, status, IERR)
   !$acc end host_data
   if(left.NE.MPI_PROC_NULL) then
-    !$acc parallel loop gang vector collapse(2) present(g_post,gRecvYLower) private(idx)
+    !$acc parallel loop gang vector collapse(3) present(g_post,gRecvYLower) private(idx)
     do k = 1, zLocalCount
       do i = 1, xLocalCount
-        idx = (k-1)*xLocalCount + i
-        g_post(i,0,k,3) = gRecvYLower(idx)
+        do alpha = 0, qt-1
+          idx = ((k-1)*xLocalCount + (i-1))*qt + alpha + 1
+          g_post(i,0,k,alpha) = gRecvYLower(idx)
+        enddo
       enddo
     enddo
   endif
   if(right.NE.MPI_PROC_NULL) then
-    !$acc parallel loop gang vector collapse(2) present(g_post,gRecvYUpper) private(idx)
+    !$acc parallel loop gang vector collapse(3) present(g_post,gRecvYUpper) private(idx)
     do k = 1, zLocalCount
       do i = 1, xLocalCount
-        idx = (k-1)*xLocalCount + i
-        g_post(i,yLocalCount+1,k,4) = gRecvYUpper(idx)
+        do alpha = 0, qt-1
+          idx = ((k-1)*xLocalCount + (i-1))*qt + alpha + 1
+          g_post(i,yLocalCount+1,k,alpha) = gRecvYUpper(idx)
+        enddo
       enddo
     enddo
   endif
 
   nBuf = size(gSendZLower)
-  !$acc parallel loop gang vector collapse(2) present(g_post,gSendZLower,gSendZUpper) private(idx)
+  !$acc parallel loop gang vector collapse(3) present(g_post,gSendZLower,gSendZUpper) private(idx)
   do j = 1, yLocalCount
     do i = 1, xLocalCount
-      idx = (j-1)*xLocalCount + i
-      gSendZLower(idx) = g_post(i,j,1,6)
-      gSendZUpper(idx) = g_post(i,j,zLocalCount,5)
+      do alpha = 0, qt-1
+        idx = ((j-1)*xLocalCount + (i-1))*qt + alpha + 1
+        gSendZLower(idx) = g_post(i,j,1,alpha)
+        gSendZUpper(idx) = g_post(i,j,zLocalCount,alpha)
+      enddo
     enddo
   enddo
   !$acc host_data use_device(gSendZLower,gRecvZUpper,gSendZUpper,gRecvZLower)
@@ -2387,20 +2557,24 @@ subroutine exchange_g_post_halo_mpi()
        gRecvZLower, nBuf, MPI_DOUBLE_PRECISION, down, 222, COMM3D, status, IERR)
   !$acc end host_data
   if(down.NE.MPI_PROC_NULL) then
-    !$acc parallel loop gang vector collapse(2) present(g_post,gRecvZLower) private(idx)
+    !$acc parallel loop gang vector collapse(3) present(g_post,gRecvZLower) private(idx)
     do j = 1, yLocalCount
       do i = 1, xLocalCount
-        idx = (j-1)*xLocalCount + i
-        g_post(i,j,0,5) = gRecvZLower(idx)
+        do alpha = 0, qt-1
+          idx = ((j-1)*xLocalCount + (i-1))*qt + alpha + 1
+          g_post(i,j,0,alpha) = gRecvZLower(idx)
+        enddo
       enddo
     enddo
   endif
   if(top.NE.MPI_PROC_NULL) then
-    !$acc parallel loop gang vector collapse(2) present(g_post,gRecvZUpper) private(idx)
+    !$acc parallel loop gang vector collapse(3) present(g_post,gRecvZUpper) private(idx)
     do j = 1, yLocalCount
       do i = 1, xLocalCount
-        idx = (j-1)*xLocalCount + i
-        g_post(i,j,zLocalCount+1,6) = gRecvZUpper(idx)
+        do alpha = 0, qt-1
+          idx = ((j-1)*xLocalCount + (i-1))*qt + alpha + 1
+          g_post(i,j,zLocalCount+1,alpha) = gRecvZUpper(idx)
+        enddo
       enddo
     enddo
   endif
@@ -2420,16 +2594,16 @@ subroutine streaming()
   use commondata3dOpenaccMpi
   implicit none
 
-  integer(kind=4) :: i, j, k, ip, jp, kp, alpha, ii, jj, kk
+  integer(kind=4) :: i, j, k, alpha, ii, jj, kk
   real(kind=8) :: value
 
   ! ISLBM pull streaming：内部rank界面允许使用一层halo做二次Lagrange插值；
-  ! 只有物理边界越过内部流体节点范围时才退回一层pull并交给边界条件修正。
+  ! 若模板无效, 该方向先置零, 后续物理边界条件会重新给出边界分布函数。
   !$acc parallel loop gang vector collapse(3) if(accDataResident) &
   !$acc& present(f,f_post,ex,ey,ez,streamInterpValidX,streamInterpValidY,streamInterpValidZ) &
   !$acc& present(streamInterpIndexX,streamInterpIndexY,streamInterpIndexZ) &
   !$acc& present(streamInterpWeightX,streamInterpWeightY,streamInterpWeightZ) &
-  !$acc& private(alpha,ip,jp,kp,ii,jj,kk,value)
+  !$acc& private(alpha,ii,jj,kk,value)
   do k = 1, zLocalCount
     do j = 1, yLocalCount
       do i = 1, xLocalCount
@@ -2446,10 +2620,7 @@ subroutine streaming()
             enddo
             f(i,j,k,alpha) = value
           else
-            ip = i - ex(alpha)
-            jp = j - ey(alpha)
-            kp = k - ez(alpha)
-            f(i,j,k,alpha) = f_post(ip,jp,kp,alpha)
+            f(i,j,k,alpha) = 0.0d0
           endif
         enddo
       enddo
@@ -2609,11 +2780,14 @@ subroutine collisionT()
   integer(kind=4) :: i, j, k
   real(kind=8) :: n(0:qt-1), neq(0:qt-1), q(0:qt-1), n_post(0:qt-1)
   real(kind=8) :: Bx, By, Bz, dBx, dBy, dBz
-  real(kind=8), parameter :: SG = 1.0d0 - 0.5d0 * Qk
+  real(kind=8) :: SG
+
+  SG = 1.0d0 - 0.5d0 * Qk
 
   ! 温度场采用 D3Q7 MRT
   !$acc parallel loop gang vector collapse(3) if(accDataResident) &
   !$acc& present(g,g_post,u,v,w,T,Bx_prev,By_prev,Bz_prev) &
+  !$acc& copyin(Qk,Qnu,thermalGeqCoeff,paraA,SG) &
   !$acc& private(n,neq,q,n_post,Bx,By,Bz,dBx,dBy,dBz)
   do k = 1, zLocalCount
     do j = 1, yLocalCount
@@ -2709,15 +2883,15 @@ subroutine streamingT()
   use commondata3dOpenaccMpi
   implicit none
 
-  integer(kind=4) :: i, j, k, ip, jp, kp, alpha, ii, jj, kk
+  integer(kind=4) :: i, j, k, alpha, ii, jj, kk
   real(kind=8) :: value
 
-  ! 温度场同样允许内部rank界面使用一层halo；物理边界越界时回退并由边界条件修正。
+  ! 温度场同样允许内部rank界面使用一层halo；无效模板先置零, 后续温度边界条件接管。
   !$acc parallel loop gang vector collapse(3) if(accDataResident) &
   !$acc& present(g,g_post,exT,eyT,ezT,streamInterpValidX,streamInterpValidY,streamInterpValidZ) &
   !$acc& present(streamInterpIndexX,streamInterpIndexY,streamInterpIndexZ) &
   !$acc& present(streamInterpWeightX,streamInterpWeightY,streamInterpWeightZ) &
-  !$acc& private(alpha,ip,jp,kp,ii,jj,kk,value)
+  !$acc& private(alpha,ii,jj,kk,value)
   do k = 1, zLocalCount
     do j = 1, yLocalCount
       do i = 1, xLocalCount
@@ -2734,10 +2908,7 @@ subroutine streamingT()
             enddo
             g(i,j,k,alpha) = value
           else
-            ip = i - exT(alpha)
-            jp = j - eyT(alpha)
-            kp = k - ezT(alpha)
-            g(i,j,k,alpha) = g_post(ip,jp,kp,alpha)
+            g(i,j,k,alpha) = 0.0d0
           endif
         enddo
       enddo
@@ -4096,7 +4267,7 @@ subroutine calNuRe()
         globalJ = yStartGlobal + j - 1
         globalK = zStartGlobal + k - 1
         volumeWeight = quadWidthX(globalI)*quadWidthY(globalJ)*quadWidthZ(globalK)
-        ReVolAvg_temp = ReVolAvg_temp + volumeWeight*dsqrt(u(i,j,k)*u(i,j,k)+v(i,j,k)*v(i,j,k)+w(i,j,k)*w(i,j,k))
+        ReVolAvg_temp = ReVolAvg_temp + volumeWeight*(u(i,j,k)*u(i,j,k)+v(i,j,k)*v(i,j,k)+w(i,j,k)*w(i,j,k))
       enddo
     enddo
   enddo
@@ -4105,7 +4276,7 @@ subroutine calNuRe()
   NuReLocal = (/ NuVolAvg_temp, ReVolAvg_temp /)
   call MPI_ALLREDUCE(NuReLocal, NuReGlobal, 2, MPI_DOUBLE_PRECISION, MPI_SUM, COMM3D, IERR)
   NuVolAvg(dimensionlessTime) = NuReGlobal(1) / quadSumVolume * lengthUnit / diffusivity + 1.0d0
-  ReVolAvg(dimensionlessTime) = NuReGlobal(2) / quadSumVolume * lengthUnit / viscosity
+  ReVolAvg(dimensionlessTime) = dsqrt(NuReGlobal(2) / quadSumVolume) * lengthUnit / viscosity
 
   if(isRoot) then
     if ((first_nure_write) .AND. (loadInitField .EQ. 0)) then
@@ -4347,10 +4518,10 @@ subroutine SideHeatedcalc_Nu_global()
   use commondata3dOpenaccMpi
   implicit none
   integer(kind=4) :: i, j, k
-  real(kind=8) :: dy, dTdy, qy, sum_qy, volumeWeight
+  real(kind=8) :: dTdy, qy, sum_qy, volumeWeight
+  real(kind=8) :: ynode(3), fnode(3)
   real(kind=8) :: deltaT, coef
 
-  dy = 1.0d0 / lengthUnit
   deltaT = Thot - Tcold
   coef = velocityScaleCompare
   sum_qy = 0.0d0
@@ -4358,15 +4529,19 @@ subroutine SideHeatedcalc_Nu_global()
   do k = 1, nz
     do j = 1, ny
       do i = 1, nx
-        if (j .EQ. 1) then
-          dTdy = (-3.0d0*T_all(i,1,k) - T_all(i,2,k) + 4.0d0*Thot) / (3.0d0*dy)
-        elseif (j .EQ. ny) then
-          dTdy = (-4.0d0*Tcold + 3.0d0*T_all(i,ny,k) + T_all(i,ny-1,k)) / (3.0d0*dy)
+        if(j.EQ.1) then
+          ynode = (/ yp(1), yp(2), yp(3) /)
+          fnode = (/ T_all(i,1,k), T_all(i,2,k), T_all(i,3,k) /)
+        elseif(j.EQ.ny) then
+          ynode = (/ yp(ny-2), yp(ny-1), yp(ny) /)
+          fnode = (/ T_all(i,ny-2,k), T_all(i,ny-1,k), T_all(i,ny,k) /)
         else
-          dTdy = (T_all(i,j-1,k) - T_all(i,j+1,k)) / (2.0d0*dy)
+          ynode = (/ yp(j-1), yp(j), yp(j+1) /)
+          fnode = (/ T_all(i,j-1,k), T_all(i,j,k), T_all(i,j+1,k) /)
         endif
+        call lagrange_derivative_3(ynode, fnode, yp(j), dTdy)
 
-        qy = coef * v_all(i,j,k) * (T_all(i,j,k) - Tref) + dTdy
+        qy = coef * v_all(i,j,k) * (T_all(i,j,k) - Tref) - dTdy
         volumeWeight = quadWidthX(i)*quadWidthY(j)*quadWidthZ(k)
         sum_qy = sum_qy + volumeWeight*qy
       enddo
@@ -4448,53 +4623,77 @@ end subroutine RBcalc_Nu_global
 subroutine SideHeatedcalc_Nu_wall_avg()
   use commondata3dOpenaccMpi
   implicit none
-  integer(kind=4) :: i, imax, imin, jL, jR, jMid, k, m
-  integer(kind=4) :: ii(5)
-  real(kind=8) :: dy, deltaT, coef
+  integer(kind=4) :: i, imax, imin, k, m
+  integer(kind=4) :: ii(5), midIndex(3)
+  real(kind=8) :: deltaT, coef
   real(kind=8) :: qy_wall, sum_hot, sum_cold, sum_mid
-  real(kind=8) :: T_wf, T_wb
+  real(kind=8) :: T_wf1, T_wf2, T_wb1, T_wb2
   real(kind=8) :: xfit(4), Tfit(4)
   real(kind=8) :: xk(5), fk(5), fstar, xstar
-  real(kind=8) :: Nu_hot_line(1:nx), Nu_hot_ext(0:nx+1), T_hot_avg(1:nx)
+  real(kind=8) :: Nu_hot_line(1:nx), Nu_hot_ext(0:nx+1)
+  real(kind=8) :: T_hot_avg1(1:nx), T_hot_avg2(1:nx)
+  real(kind=8) :: ynode(3), fnode(3), ymidNode(3), ymidWeight(3)
+  real(kind=8) :: v_mid, T_mid, dTdy_mid, areaWeight
+  logical :: midStencilValid
 
-  dy = 1.0d0 / lengthUnit
   deltaT = Thot - Tcold
   coef = velocityScaleCompare
 
   do i = 1, nx
-    T_hot_avg(i) = 0.0d0
+    T_hot_avg1(i) = 0.0d0
+    T_hot_avg2(i) = 0.0d0
     do k = 1, nz
-      T_hot_avg(i) = T_hot_avg(i) + T_all(i,1,k)
+      T_hot_avg1(i) = T_hot_avg1(i) + quadWidthZ(k)*T_all(i,1,k)
+      T_hot_avg2(i) = T_hot_avg2(i) + quadWidthZ(k)*T_all(i,2,k)
     enddo
-    T_hot_avg(i) = T_hot_avg(i) / dble(nz)
+    T_hot_avg1(i) = T_hot_avg1(i) / quadSumZ
+    T_hot_avg2(i) = T_hot_avg2(i) / quadSumZ
   enddo
 
   sum_hot = 0.0d0
   do i = 1, nx
     Nu_hot_line(i) = 0.0d0
     do k = 1, nz
-      qy_wall = (8.0d0*Thot - 9.0d0*T_all(i,1,k) + T_all(i,2,k)) / (3.0d0*dy)
-      Nu_hot_line(i) = Nu_hot_line(i) + qy_wall / deltaT
+      ynode = (/ 0.0d0, yp(1), yp(2) /)
+      fnode = (/ Thot, T_all(i,1,k), T_all(i,2,k) /)
+      call lagrange_derivative_3(ynode, fnode, 0.0d0, qy_wall)
+      qy_wall = -qy_wall
+      Nu_hot_line(i) = Nu_hot_line(i) + quadWidthZ(k)*qy_wall / deltaT
     enddo
-    Nu_hot_line(i) = Nu_hot_line(i) / dble(nz)
-    sum_hot = sum_hot + Nu_hot_line(i)
+    Nu_hot_line(i) = Nu_hot_line(i) / quadSumZ
+    sum_hot = sum_hot + Nu_hot_line(i)*quadWidthX(i)
   enddo
-  Nu_hot = sum_hot / dble(nx)
+  Nu_hot = sum_hot / quadSumX
 
   Nu_hot_ext(1:nx) = Nu_hot_line(1:nx)
-  xfit(1) = xp(1);  Tfit(1) = T_hot_avg(1)
-  xfit(2) = xp(2);  Tfit(2) = T_hot_avg(2)
-  xfit(3) = xp(3);  Tfit(3) = T_hot_avg(3)
-  xfit(4) = xp(4);  Tfit(4) = T_hot_avg(4)
-  call fit_adiabatic_wall_T4(0.0d0, xfit, Tfit, T_wf)
-  Nu_hot_ext(0) = (2.0d0 * (Thot - T_wf) / dy) / deltaT
+  xfit(1) = xp(1);  Tfit(1) = T_hot_avg1(1)
+  xfit(2) = xp(2);  Tfit(2) = T_hot_avg1(2)
+  xfit(3) = xp(3);  Tfit(3) = T_hot_avg1(3)
+  xfit(4) = xp(4);  Tfit(4) = T_hot_avg1(4)
+  call fit_adiabatic_wall_T4(0.0d0, xfit, Tfit, T_wf1)
+  Tfit(1) = T_hot_avg2(1)
+  Tfit(2) = T_hot_avg2(2)
+  Tfit(3) = T_hot_avg2(3)
+  Tfit(4) = T_hot_avg2(4)
+  call fit_adiabatic_wall_T4(0.0d0, xfit, Tfit, T_wf2)
+  ynode = (/ 0.0d0, yp(1), yp(2) /)
+  fnode = (/ Thot, T_wf1, T_wf2 /)
+  call lagrange_derivative_3(ynode, fnode, 0.0d0, qy_wall)
+  Nu_hot_ext(0) = -qy_wall / deltaT
 
-  xfit(1) = xp(nx-3);  Tfit(1) = T_hot_avg(nx-3)
-  xfit(2) = xp(nx-2);  Tfit(2) = T_hot_avg(nx-2)
-  xfit(3) = xp(nx-1);  Tfit(3) = T_hot_avg(nx-1)
-  xfit(4) = xp(nx  );  Tfit(4) = T_hot_avg(nx  )
-  call fit_adiabatic_wall_T4(xp(nx+1), xfit, Tfit, T_wb)
-  Nu_hot_ext(nx+1) = (2.0d0 * (Thot - T_wb) / dy) / deltaT
+  xfit(1) = xp(nx-3);  Tfit(1) = T_hot_avg1(nx-3)
+  xfit(2) = xp(nx-2);  Tfit(2) = T_hot_avg1(nx-2)
+  xfit(3) = xp(nx-1);  Tfit(3) = T_hot_avg1(nx-1)
+  xfit(4) = xp(nx  );  Tfit(4) = T_hot_avg1(nx  )
+  call fit_adiabatic_wall_T4(xp(nx+1), xfit, Tfit, T_wb1)
+  Tfit(1) = T_hot_avg2(nx-3)
+  Tfit(2) = T_hot_avg2(nx-2)
+  Tfit(3) = T_hot_avg2(nx-1)
+  Tfit(4) = T_hot_avg2(nx  )
+  call fit_adiabatic_wall_T4(xp(nx+1), xfit, Tfit, T_wb2)
+  fnode = (/ Thot, T_wb1, T_wb2 /)
+  call lagrange_derivative_3(ynode, fnode, 0.0d0, qy_wall)
+  Nu_hot_ext(nx+1) = -qy_wall / deltaT
 
   imax = 0
   imin = 0
@@ -4544,32 +4743,37 @@ subroutine SideHeatedcalc_Nu_wall_avg()
   sum_cold = 0.0d0
   do k = 1, nz
     do i = 1, nx
-      qy_wall = (-8.0d0*Tcold + 9.0d0*T_all(i,ny,k) - T_all(i,ny-1,k)) / (3.0d0*dy)
-      sum_cold = sum_cold + qy_wall / deltaT
+      ynode = (/ yp(ny-1), yp(ny), 1.0d0 /)
+      fnode = (/ T_all(i,ny-1,k), T_all(i,ny,k), Tcold /)
+      call lagrange_derivative_3(ynode, fnode, 1.0d0, qy_wall)
+      qy_wall = -qy_wall
+      areaWeight = quadWidthX(i)*quadWidthZ(k)
+      sum_cold = sum_cold + areaWeight*qy_wall / deltaT
     enddo
   enddo
-  Nu_cold = sum_cold / dble(nx * nz)
+  Nu_cold = sum_cold / (quadSumX*quadSumZ)
 
   sum_mid = 0.0d0
-  if (mod(ny,2) .EQ. 1) then
-    jMid = (ny + 1) / 2
-    do k = 1, nz
-      do i = 1, nx
-        sum_mid = sum_mid + (coef * v_all(i,jMid,k) * (T_all(i,jMid,k) - Tref) + &
-             (T_all(i,jMid-1,k) - T_all(i,jMid+1,k)) / (2.0d0*dy)) / deltaT
-      enddo
-    enddo
-  else
-    jL = ny / 2
-    jR = jL + 1
-    do k = 1, nz
-      do i = 1, nx
-        sum_mid = sum_mid + (coef * 0.5d0 * (v_all(i,jL,k) * (T_all(i,jL,k) - Tref) + &
-             v_all(i,jR,k) * (T_all(i,jR,k) - Tref)) + (T_all(i,jL,k) - T_all(i,jR,k)) / dy) / deltaT
-      enddo
-    enddo
+  call build_lagrange_stencil_1d(ny, yp(1:ny), 0.5d0, midIndex, ymidWeight, midStencilValid)
+  if(.not.midStencilValid) then
+    write(*,*) 'Error: y=0.5 is outside ISLBM y nodes in SideHeatedcalc_Nu_wall_avg'
+    stop
   endif
-  Nu_middle = sum_mid / dble(nx * nz)
+  ymidNode = (/ yp(midIndex(1)), yp(midIndex(2)), yp(midIndex(3)) /)
+
+  do k = 1, nz
+    do i = 1, nx
+      v_mid = ymidWeight(1)*v_all(i,midIndex(1),k) + ymidWeight(2)*v_all(i,midIndex(2),k) + &
+        ymidWeight(3)*v_all(i,midIndex(3),k)
+      T_mid = ymidWeight(1)*T_all(i,midIndex(1),k) + ymidWeight(2)*T_all(i,midIndex(2),k) + &
+        ymidWeight(3)*T_all(i,midIndex(3),k)
+      fnode = (/ T_all(i,midIndex(1),k), T_all(i,midIndex(2),k), T_all(i,midIndex(3),k) /)
+      call lagrange_derivative_3(ymidNode, fnode, 0.5d0, dTdy_mid)
+      areaWeight = quadWidthX(i)*quadWidthZ(k)
+      sum_mid = sum_mid + areaWeight*(coef*v_mid*(T_mid-Tref) - dTdy_mid)/deltaT
+    enddo
+  enddo
+  Nu_middle = sum_mid / (quadSumX*quadSumZ)
 
   write(*,'(a,1x,ES24.16E3)') 'Nu_hot(left)  =', Nu_hot
   write(*,'(a,1x,ES24.16E3)') 'Nu_cold(right)=', Nu_cold
@@ -4603,14 +4807,14 @@ subroutine SideHeatedcalc_Nu_zmid_wall_mean()
   implicit none
   integer(kind=4) :: i, kL, kR
   real(kind=8) :: targetZ, weight
-  real(kind=8) :: dy, deltaT
+  real(kind=8) :: deltaT
   real(kind=8) :: Tleft1, Tleft2, Tright1, Tright2
   real(kind=8) :: qy_hot, qy_cold, Nu_left_mean, Nu_right_mean
+  real(kind=8) :: ynode(3), fnode(3)
 
   targetZ = 0.5d0 * zp(nz+1)
   call find_bracketing_index(zp, nz, targetZ, kL, kR, weight)
 
-  dy = 1.0d0 / lengthUnit
   deltaT = Thot - Tcold
   Nu_left_mean = 0.0d0
   Nu_right_mean = 0.0d0
@@ -4621,15 +4825,22 @@ subroutine SideHeatedcalc_Nu_zmid_wall_mean()
     call interp_scalar_z(kL, kR, weight, i, ny,   T_all, Tright1)
     call interp_scalar_z(kL, kR, weight, i, ny-1, T_all, Tright2)
 
-    qy_hot  = ( 8.0d0 * Thot  - 9.0d0 * Tleft1  + Tleft2 ) / (3.0d0 * dy)
-    qy_cold = (-8.0d0 * Tcold + 9.0d0 * Tright1 - Tright2) / (3.0d0 * dy)
+    ynode = (/ 0.0d0, yp(1), yp(2) /)
+    fnode = (/ Thot, Tleft1, Tleft2 /)
+    call lagrange_derivative_3(ynode, fnode, 0.0d0, qy_hot)
+    qy_hot = -qy_hot
 
-    Nu_left_mean  = Nu_left_mean  + qy_hot  / deltaT
-    Nu_right_mean = Nu_right_mean + qy_cold / deltaT
+    ynode = (/ yp(ny-1), yp(ny), 1.0d0 /)
+    fnode = (/ Tright2, Tright1, Tcold /)
+    call lagrange_derivative_3(ynode, fnode, 1.0d0, qy_cold)
+    qy_cold = -qy_cold
+
+    Nu_left_mean  = Nu_left_mean  + quadWidthX(i)*qy_hot  / deltaT
+    Nu_right_mean = Nu_right_mean + quadWidthX(i)*qy_cold / deltaT
   enddo
 
-  Nu_left_mean  = Nu_left_mean  / dble(nx)
-  Nu_right_mean = Nu_right_mean / dble(nx)
+  Nu_left_mean  = Nu_left_mean  / quadSumX
+  Nu_right_mean = Nu_right_mean / quadSumX
   write(*,'(a,1x,ES24.16E3)') 'Nu_zmid_left   =', Nu_left_mean
   write(*,'(a,1x,ES24.16E3)') 'Nu_zmid_right  =', Nu_right_mean
   write(*,'(a,1x,ES24.16E3)') 'z_mid          =', targetZ
