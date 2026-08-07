@@ -33,7 +33,12 @@ working inside the matching folder instead of adding new top-level source files.
   material unless a task explicitly asks to adopt one as the main framework.
 
 - `pdf/`
-  Papers, extracted text, literature notes, and supporting research material.
+  The currently retained source papers used by the project.
+
+- `文档/`
+  Chinese research reports, derivations, literature evidence, validation
+  boundaries, and the merged `最终成果/` deliverables. Start with
+  `文档/README.md` for a short guide.
 
 - `tools/`
   Local checking and helper scripts.
@@ -64,8 +69,16 @@ explicitly targets another method family:
 - ISLBM 3D MPI + GPU: `ISLBM/3DRBOpenaccMpiISLBM.F90`
 - STLBM 2D CPU: `STLBM/2DRBOpenmpSTLBM.F90`
 - STLBM 2D GPU: `STLBM/2DRBOpenaccSTLBM.F90`
-- LBM-CDE with `chi`: `Xs/2DRBOpenmpLBMCDE.F90`
-- LBM-CDE with `chi`, GPU port: `Xs/2DRBOpenaccLBMCDE.F90`
+- Flow D2Q9 TRT + thermal D2Q9 BGK LBM-CDE (OpenACC):
+  `Xs/D2Q9TRT_D2Q9BGK/2DRBOpenaccLBMCDE_D2Q9TRT_D2Q9BGK.F90`
+- Flow D2Q9 TRT + fixed-rate thermal D2Q9 TRT LBM-CDE (OpenACC):
+  `Xs/D2Q9TRT_D2Q9TRT/2DRBOpenaccLBMCDE_D2Q9TRT_D2Q9TRT.F90`
+- Flow D2Q9 TRT + thermal D2Q5 Luo/Wang TRT (OpenACC):
+  `Xs/D2Q9TRT_D2Q5LuoTRT/2DRBOpenaccLBMCDE_D2Q9TRT_D2Q5LuoTRT.F90`
+
+All `Xs` solvers use the `chi_s`-corrected effective flow collision scale:
+`(1-chi_s)(tau_even-0.5)(tau_odd-0.5)=3/16`. The former raw/base magic branch
+is no longer supported, and no flow-magic compile switch is required.
 
 ## Build Helper
 

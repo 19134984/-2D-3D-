@@ -118,8 +118,8 @@
 #endif
 
 !   OpenACC GPU 分配宏：单节点测试按全局 NPROC 检查；多节点集群按 NodeCount 检查
-!#define AccGpuSingleNode
-#define AccGpuMultiNode
+#define AccGpuSingleNode
+!#define AccGpuMultiNode
 
 #if defined(AccGpuSingleNode) && defined(AccGpuMultiNode)
 #error "Choose only one OpenACC GPU mode: AccGpuSingleNode or AccGpuMultiNode"
@@ -181,7 +181,7 @@ module commondata3dOpenaccMpi
 
   !===============================================================================================
   ! MPI+OpenACC 并行配置
-  integer(kind=4), parameter :: NodeCount=2                  ! 参与当前算例的节点数；当前默认 node05/node07 两个 P100 节点
+  integer(kind=4), parameter :: NodeCount=1                  ! 单节点单 P100 算例
   integer(kind=4), parameter :: GPUS_PER_NODE=1              ! 每个节点分配给本程序的 GPU 数；当前版本按一 GPU 一 MPI rank 运行
 
   integer(kind=4) :: MYID, NPROC
@@ -4191,7 +4191,9 @@ subroutine calNuRe()
   real(kind=8) :: NuVolAvg_temp, ReVolAvg_temp, volumeWeight
   real(kind=8) :: NuReLocal(2), NuReGlobal(2)
   real(kind=8) :: sampleTime
+#ifdef unsteadyFlow
   logical :: exNu, exRe
+#endif
   logical, save :: first_nure_write = .true.
 
   ! 这里记录的是时间序列版本的体平均 Nu / Re：
@@ -4212,6 +4214,8 @@ subroutine calNuRe()
   sampleTime = reloadDimensionlessTime + real(dimensionlessTime,kind=8)*outputSnapshotInterval
 #endif
 
+#ifdef unsteadyFlow
+  ! 非稳态续算必须保留完整历史；稳态这里只输出收敛后的最终值，可以新建结果文件。
   if ((first_nure_write) .AND. (loadInitField .EQ. 1)) then
     inquire(file='Nu_VolAvg_3DOpenaccMpi.dat', exist=exNu)
     inquire(file='Re_VolAvg_3DOpenaccMpi.dat', exist=exRe)
@@ -4225,6 +4229,7 @@ subroutine calNuRe()
       stop
     endif
   endif
+#endif
 
   NuVolAvg_temp = 0.0d0
 #ifdef SideHeatedCell
