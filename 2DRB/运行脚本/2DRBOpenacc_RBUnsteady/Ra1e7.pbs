@@ -1,0 +1,55 @@
+#!/bin/bash
+#PBS -N RBMRT7
+#PBS -q batch
+#PBS -l nodes=node05:ppn=1
+#PBS -l walltime=240:00:00
+#PBS -o /data2/XLLi/LBMCDE/2DRBOpenacc_RBUnsteady/Ra1e7/results/pbs.stdout.log
+#PBS -e /data2/XLLi/LBMCDE/2DRBOpenacc_RBUnsteady/Ra1e7/results/pbs.stderr.log
+
+set -u
+
+CASE_ROOT=/data2/XLLi/LBMCDE/2DRBOpenacc_RBUnsteady/Ra1e7
+SOURCE_FILE="$CASE_ROOT/source/2DRBOpenacc.F90"
+BUILD_DIR="$CASE_ROOT/build"
+RESULT_DIR="$CASE_ROOT/results"
+EXE_FILE="$BUILD_DIR/solver.exe"
+
+export NVHPC_ROOT=/opt/nvidia/hpc_sdk/Linux_x86_64/24.3
+export PATH="$NVHPC_ROOT/compilers/bin:$PATH"
+export LD_LIBRARY_PATH="$NVHPC_ROOT/compilers/lib:${LD_LIBRARY_PATH:-}"
+export CUDA_VISIBLE_DEVICES=0
+export OMP_NUM_THREADS=1
+
+mkdir -p "$BUILD_DIR" "$RESULT_DIR"
+cd "$BUILD_DIR" || exit 90
+
+date -Is > "$RESULT_DIR/job.start"
+hostname > "$RESULT_DIR/hostname.txt"
+nvidia-smi --query-gpu=name,memory.total,memory.used --format=csv,noheader > "$RESULT_DIR/gpu.start.txt" 2>&1
+nvfortran --version > "$RESULT_DIR/compiler.version.txt" 2>&1
+sha256sum "$SOURCE_FILE" > "$RESULT_DIR/source.sha256"
+
+nvfortran -cpp -acc -gpu=cc60 -O3 -Minfo=accel -Mextend \
+  -module "$BUILD_DIR" -I"$BUILD_DIR" \
+  -DNX_OVERRIDE=256 -DNY_OVERRIDE=256 -DRAYLEIGH_OVERRIDE=10000000 \
+  "$SOURCE_FILE" -o "$EXE_FILE" > "$RESULT_DIR/compile.stdout.log" 2> "$RESULT_DIR/compile.stderr.log"
+compile_status=$?
+echo "$compile_status" > "$RESULT_DIR/compile.status"
+if [ "$compile_status" -ne 0 ]; then
+  echo "$compile_status" > "$RESULT_DIR/run.status"
+  touch "$RESULT_DIR/FAILED"
+  exit "$compile_status"
+fi
+
+cd "$RESULT_DIR" || exit 91
+/usr/bin/time -v -o resource_usage.txt "$EXE_FILE" > solver.stdout.log 2> solver.stderr.log
+run_status=$?
+echo "$run_status" > run.status
+date -Is > job.end
+nvidia-smi --query-gpu=name,memory.total,memory.used --format=csv,noheader > gpu.end.txt 2>&1
+if [ "$run_status" -eq 0 ]; then
+  touch COMPLETED
+else
+  touch FAILED
+fi
+exit "$run_status"

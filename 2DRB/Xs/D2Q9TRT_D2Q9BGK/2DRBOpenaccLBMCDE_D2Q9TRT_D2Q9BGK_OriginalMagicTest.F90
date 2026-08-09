@@ -7,7 +7,7 @@
 !!! pdf/Statistics of kinetic and thermal energy dissipation rates in two-dimensional turbulent
 !!! Rayleigh-Benard convection.pdf。
 !!! 离散模型：流场 D2Q9-TRT；温度场严格采用原 LBM-CDE 的 D2Q9-BGK。
-!!! 流场奇模态可按原始或 chi_s 修正后的有效偶松弛尺度满足 magic 3/16。
+!!! 原始 magic 对照试验：流场奇模态按基准偶松弛尺度 (tau_fL-0.5) 满足 magic 3/16。
 !!! 主要论文对应：
 !!!   1) 流场平衡态与源项：式 (4)、式 (26)，有效运动黏度见式 (27)；
 !!!   2) 温度平衡态与源项：式 (16)、式 (28)，有效扩散率见式 (29)；
@@ -89,11 +89,8 @@
 #ifndef MACH_OVERRIDE
 #define MACH_OVERRIDE 0.1d0
 #endif
-#if defined(BASE_TAUF_OVERRIDE)
-#error "Flow tau_0 is derived from chi_nu; use CHI_NU_OVERRIDE instead of BASE_TAUF_OVERRIDE"
-#endif
-#if defined(CHI_NU_OVERRIDE) && defined(CHI_S_OVERRIDE)
-#error "Choose only one flow correction input: CHI_NU_OVERRIDE or legacy CHI_S_OVERRIDE"
+#ifndef BASE_TAUF_OVERRIDE
+#define BASE_TAUF_OVERRIDE 0.64d0
 #endif
 #ifndef CHI_B_OVERRIDE
 #define CHI_B_OVERRIDE 0.0d0
@@ -105,14 +102,11 @@
 #error "Temperature is fixed to the original D2Q9-BGK LBM-CDE; D2Q5/Xu/Luo branches are disabled"
 #endif
 #define ThermalD2Q9
-#if defined(FLOW_ODD_ORIGINAL_MAGIC) && defined(FLOW_ODD_EFFECTIVE_MAGIC)
-#error "Choose only one flow odd magic policy"
-#endif
-#if !defined(FLOW_ODD_ORIGINAL_MAGIC) && !defined(FLOW_ODD_EFFECTIVE_MAGIC)
-#define FLOW_ODD_ORIGINAL_MAGIC
+#ifndef FLOW_ODD_BASE_MAGIC_TEST
+#define FLOW_ODD_BASE_MAGIC_TEST
 #endif
 #if defined(FLOW_ODD_UNIT) || defined(FLOW_BGK) || defined(FLOW_ODD_RATE_OVERRIDE)
-#error "Direct odd-rate/BGK branches are disabled; choose a magic policy instead"
+#error "Direct odd-rate/BGK branches are disabled; this test fixes the original/base flow magic policy"
 #endif
 #ifndef FLOW_MAGIC_PARAMETER_OVERRIDE
 #define FLOW_MAGIC_PARAMETER_OVERRIDE (3.0d0/16.0d0)
@@ -193,18 +187,13 @@
         ! base tau=0.64 稳定化策略，再由目标 nu/kappa 自动反算 chi；这不是手工指定物理输运系数。
         ! 若需复现论文的固定-chi 扫描，可用 -DCHI_S_OVERRIDE=.../-DCHI_KAPPA_OVERRIDE=...，
         ! 此时相应 tau 由物理输运系数自动反算。
-        ! Flow control is chi_nu first.  tau_0/taufL is always derived so the target nu is unchanged.
-        ! The no-override default reproduces the former tau_0=0.64 setting for backward-compatible runs.
-        real(kind=8), parameter :: tau0CompatibilityReference=0.64d0
-#ifdef CHI_NU_OVERRIDE
-        real(kind=8), parameter :: chi_nu=CHI_NU_OVERRIDE
-#elif defined(CHI_S_OVERRIDE)
-        real(kind=8), parameter :: chi_nu=CHI_S_OVERRIDE
+#ifdef CHI_S_OVERRIDE
+        real(kind=8), parameter :: chi_s=CHI_S_OVERRIDE
+        real(kind=8), parameter :: taufL=0.5d0+viscosity/(cs2*(1.0d0-chi_s))
 #else
-        real(kind=8), parameter :: chi_nu=1.0d0-viscosity/(cs2*(tau0CompatibilityReference-0.5d0))
+        real(kind=8), parameter :: taufL=BASE_TAUF_OVERRIDE
+        real(kind=8), parameter :: chi_s=1.0d0-viscosity/(cs2*(taufL-0.5d0))
 #endif
-        real(kind=8), parameter :: chi_s=chi_nu ! chi_s is retained as the paper/source-term symbol.
-        real(kind=8), parameter :: taufL=0.5d0+viscosity/(cs2*(1.0d0-chi_nu))
 #ifdef CHI_KAPPA_OVERRIDE
         real(kind=8), parameter :: chi_kappa=CHI_KAPPA_OVERRIDE
         real(kind=8), parameter :: taugL=0.5d0+diffusivity/(cT2*(1.0d0-chi_kappa))
@@ -221,17 +210,11 @@
         real(kind=8), parameter :: sigmaFlowEffective=viscosity/cs2
         real(kind=8), parameter :: sigmaFlowBase=taufL-0.5d0
         real(kind=8), parameter :: flowMagicParameter=FLOW_MAGIC_PARAMETER_OVERRIDE
-#ifdef FLOW_ODD_ORIGINAL_MAGIC
-        real(kind=8), parameter :: sigmaFlowMagicScale=sigmaFlowBase
-#else
-        real(kind=8), parameter :: sigmaFlowMagicScale=sigmaFlowEffective
-#endif
-        real(kind=8), parameter :: omegaFOdd=1.0d0/(0.5d0+flowMagicParameter/sigmaFlowMagicScale)
+        real(kind=8), parameter :: omegaFOdd=1.0d0/(0.5d0+flowMagicParameter/sigmaFlowBase)
         real(kind=8), parameter :: taufOdd=1.0d0/omegaFOdd
         real(kind=8), parameter :: sigmaFlowOdd=1.0d0/omegaFOdd-0.5d0
         real(kind=8), parameter :: magicProductBase=sigmaFlowBase*sigmaFlowOdd
         real(kind=8), parameter :: magicProductEffective=sigmaFlowEffective*sigmaFlowOdd
-        real(kind=8), parameter :: magicProductSelected=sigmaFlowMagicScale*sigmaFlowOdd
         real(kind=8), parameter :: sigmaThermalEffective=diffusivity/cT2
 
         !-------------------------------------------------------------------------------------------
@@ -644,12 +627,8 @@
         if((Rayleigh.LE.0.0d0).OR.(Prandtl.LE.0.0d0).OR.(Mach.LE.0.0d0)) then
             error stop "Ra, Pr and Mach must all be positive"
         endif
-        if((chi_nu.GE.1.0d0).OR.(chi_b.GE.1.0d0).OR.(chi_kappa.GE.1.0d0)) then
-            error stop "chi_nu, chi_b and chi_kappa must be smaller than one"
-        endif
-        if(abs((1.0d0-chi_nu)*cs2*(taufL-0.5d0)-viscosity).GT. &
-            1.0d-12*max(1.0d0,abs(viscosity))) then
-            error stop "The chi_nu-to-tau_0 mapping does not reproduce target viscosity"
+        if((chi_s.GE.1.0d0).OR.(chi_b.GE.1.0d0).OR.(chi_kappa.GE.1.0d0)) then
+            error stop "chi_s, chi_b and chi_kappa must be smaller than one"
         endif
         if((taufL.LE.0.5d0).OR.(taugL.LE.0.5d0)) then
             error stop "The mapped shear/thermal relaxation times must be larger than 0.5"
@@ -658,13 +637,10 @@
             error stop "The TRT odd relaxation rate must lie strictly between zero and two"
         endif
         if(sigmaFlowBase.LE.0.0d0) then
-            error stop "The original/base flow Hénon shift must be positive"
+            error stop "The original/base flow Henon shift must be positive"
         endif
         if(sigmaFlowEffective.LE.0.0d0) then
             error stop "The chi_s-corrected effective flow Hénon shift must be positive"
-        endif
-        if(sigmaFlowMagicScale.LE.0.0d0) then
-            error stop "The selected flow magic Hénon shift must be positive"
         endif
         if(flowMagicParameter.LE.0.0d0) then
             error stop "The TRT magic parameter must be positive"
@@ -788,22 +764,16 @@
         write(00,*) "Turbulence treatment = time-resolved LBM without an SGS/RANS closure"
 #endif
         write(00,*) "Flow lattice = D2Q9 TRT with LBM-CDE even stress source"
-#ifdef FLOW_ODD_ORIGINAL_MAGIC
         write(00,*) "Flow odd policy = original magic parameter on base (tau_fL-0.5) even scale"
-#else
-        write(00,*) "Flow odd policy = magic parameter on chi_s-corrected effective even scale"
-#endif
         write(00,*) "Temperature lattice = D2Q9 BGK LBM-CDE"
         write(00,*) "Temperature cT2 =", real(cT2,kind=8)
         write(00,*) "Rayleigh =", real(Rayleigh,kind=8), "Prandtl =", real(Prandtl,kind=8)
         write(00,*) "Mach =", real(Mach,kind=8), "Length unit =", real(lengthUnit,kind=8)
-        write(00,*) "chi_nu (=chi_s) =", real(chi_nu,kind=8), "chi_kappa =", real(chi_kappa,kind=8), "chi_b =", real(chi_b,kind=8)
-#ifdef CHI_NU_OVERRIDE
-        write(00,*) "Flow mapping policy = explicit chi_nu; tau_0/tau_fL derived automatically"
-#elif defined(CHI_S_OVERRIDE)
-        write(00,*) "Flow mapping policy = legacy explicit chi_s; tau_0/tau_fL derived automatically"
+        write(00,*) "chi_s =", real(chi_s,kind=8), "chi_kappa =", real(chi_kappa,kind=8), "chi_b =", real(chi_b,kind=8)
+#ifdef CHI_S_OVERRIDE
+        write(00,*) "Flow mapping policy = explicit chi_s; tau_fL derived automatically"
 #else
-        write(00,*) "Flow mapping policy = compatibility chi_nu from tau_0=0.64 reference; tau_0/tau_fL derived automatically"
+        write(00,*) "Flow mapping policy = base tau_fL target; chi_s derived automatically"
 #endif
 #ifdef CHI_KAPPA_OVERRIDE
         write(00,*) "Thermal mapping policy = explicit chi_kappa; tau_gL derived automatically"
@@ -811,15 +781,15 @@
         write(00,*) "Thermal mapping policy = base tau_gL target; chi_kappa derived automatically"
 #endif
         write(00,*) "viscosity =", real(viscosity,kind=8), "diffusivity =", real(diffusivity,kind=8)
-        write(00,*) "tau_0/taufL =", real(taufL,kind=8), "taugL =", real(taugL,kind=8)
+        write(00,*) "taufL =", real(taufL,kind=8), "taugL =", real(taugL,kind=8)
         write(00,*) "tau margins from 0.5 =", real(taufL-0.5d0,kind=8), real(taugL-0.5d0,kind=8)
         write(00,*) "tau flow even/odd nominal =", real(taufL,kind=8), real(taufOdd,kind=8)
         write(00,*) "omega flow even/odd =", real(omegaF,kind=8), real(omegaFOdd,kind=8)
-        write(00,*) "sigma flow base/effective/selected/odd =", real(sigmaFlowBase,kind=8), &
-            real(sigmaFlowEffective,kind=8), real(sigmaFlowMagicScale,kind=8), real(sigmaFlowOdd,kind=8)
-        write(00,*) "TRT selected magic target/actual =", real(flowMagicParameter,kind=8), &
-            real(magicProductSelected,kind=8)
-        write(00,*) "TRT base/effective products (diagnostic) =", real(magicProductBase,kind=8), &
+        write(00,*) "sigma flow base/effective/odd =", real(sigmaFlowBase,kind=8), &
+            real(sigmaFlowEffective,kind=8), real(sigmaFlowOdd,kind=8)
+        write(00,*) "TRT original/base magic target/actual =", real(flowMagicParameter,kind=8), &
+            real(magicProductBase,kind=8)
+        write(00,*) "TRT chi_s-corrected effective product (diagnostic only) =", &
             real(magicProductEffective,kind=8)
         write(00,*) "thermal effective sigma =", real(sigmaThermalEffective,kind=8)
         write(00,*) "gBeta =", real(gBeta,kind=8)
@@ -832,7 +802,7 @@
         write(00,*) "Pressure convention: p = cs2*(rho-rho0), i.e. the weakly compressible pressure fluctuation."
         write(00,*) "Boundary warning: the selected collision with halfway BB/ABB needs independent wall-accuracy checks."
         write(00,*) "Reference DNS target: 2-D RB, Pr=0.7, Ra=1e10, 2049^2 boundary-including grid points."
-        write(00,*) "nu/kappa/gBeta are derived from Ra/Pr/Ma/H_LB; chi_nu input determines derived tau_0."
+        write(00,*) "nu/kappa/gBeta are derived from Ra/Pr/Ma/H_LB; the selected base-tau policy determines chi."
 #ifdef RayleighBenardCell
         write(00,*) "RB initial perturbation amplitude / DeltaT =", real(rbPerturbation,kind=8)
         write(00,*) "RB pressure initialization = hydrostatic balance of the conductive profile"

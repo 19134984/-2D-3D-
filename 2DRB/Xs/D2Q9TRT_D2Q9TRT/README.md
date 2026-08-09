@@ -1,34 +1,29 @@
-# D2Q9 TRT + D2Q9 TRT LBM-CDE
+# D2Q9-TRT + D2Q9-TRT LBM-CDE
 
 主程序：`2DRBOpenaccLBMCDE_D2Q9TRT_D2Q9TRT.F90`
 
-- 流场：D2Q9 TRT，保留 LBM-CDE 的 `chi_s/chi_b` 偶应力修正。
-- 流场奇模态：固定按 `chi_s` 修正后的有效偶尺度满足
-  `H_even,eff*H_odd=3/16`；无需额外编译开关。
-- 温度场：保留原 LBM-CDE D2Q9 平衡态、`chi_kappa`、压力/力/梯度源项、
-  局部温度梯度闭合和 D2Q9 BB/ABB 边界。
-- 温度碰撞：由 BGK 改为速度反演奇偶 TRT；每一部分分别使用
-  `(1-s_even/2)` 和 `(1-s_odd/2)` 源项前因子。
-- 固定名义温度率：
+- 程序框架来自当前二维 OpenACC 基线，流场与温度场均采用 D2Q9。
+- 流场使用 TRT LBM-CDE：手动设置 `chi_nu`，由目标运动黏度换算基础松弛时间 `tauf`。
+- 流场奇模态可在源码顶部切换 original/effective 两种 magic 尺度，默认使用 original magic。
+- 温度场使用 D2Q9-TRT LBM-CDE，固定松弛率为：
 
   ```text
-  sigma_odd  = 1/sqrt(12),  s_odd  = 3-sqrt(3)
-  sigma_even = 1/sqrt(3),   s_even = 4*sqrt(3)-6
+  Qk  = 3-sqrt(3)       ! 奇模态/温度通量
+  Qnu = 4*sqrt(3)-6     ! 偶模态
   ```
 
-  它们满足冻结、无源、`p=0` 的 D2Q9 体相四阶完全消除条件。目标热扩散率
-  通过
+- 目标热扩散率通过下式直接换算 `paraA` 和 `ce`：
 
   ```text
-  kappa = (1-chi_kappa)*cT2*sigma_odd
+  ce          = (4+paraA)/10
+  diffusivity = ce*(1/Qk-1/2)
   ```
 
-  自动反算 `chi_kappa`，因此该变体禁止 `CHI_KAPPA_OVERRIDE` 和
-  `BASE_TAUG_OVERRIDE`。
+  因此不再使用额外的热扩散修正参数或重复的映射检查量。
+- 温度梯度由 D2Q9 分布的局部非平衡一阶矩重构，用于温度源项和热耗散统计。
+- 恒温壁采用包含动态压力平衡项的 anti-bounce-back，绝热壁采用 bounce-back；D2Q9 对角方向和角点均显式处理。
+- 非稳态输出包含 Nu/Re、原始动能与热耗散、RB 精确耗散关系、前后半统计窗口比较、温度 RMS 边界层和网格/时间分辨率指标。
 
-## 适用边界
+## 验证边界
 
-固定名义率的四阶结论不能外推为完整高 Rayleigh 数自然对流的全局四阶精度。
-加入 `chi_kappa` 局部反馈、空间变化压力、浮力、非稳态项以及 halfway BB/ABB
-后，体相和壁面仍需分别验证。该文件是一个明确的数值对照分支，不是已经完成
-网格收敛或 GPU 基准验证的生产结论。
+固定 TRT 松弛率只对应特定体相误差条件，不能自动推出包含压力、浮力、非稳态反馈和 halfway BB/ABB 后的全局高阶精度。正式使用仍需进行 OpenACC 编译、同参数数值对照、耗散关系检查和网格收敛验证。

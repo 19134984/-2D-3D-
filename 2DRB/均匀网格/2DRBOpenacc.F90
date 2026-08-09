@@ -94,7 +94,13 @@
 
         !===============================================================================================
         ! 无量纲参数
-        integer(kind=4), parameter :: nx=1024, ny=1024     !格子网格
+#ifndef NX_OVERRIDE
+#define NX_OVERRIDE 1024
+#endif
+#ifndef NY_OVERRIDE
+#define NY_OVERRIDE 1024
+#endif
+        integer(kind=4), parameter :: nx=NX_OVERRIDE, ny=NY_OVERRIDE     !格子网格
 #ifdef SideHeatedCell
         real(kind=8), parameter :: lengthUnit=dble(nx)     !侧壁差温：特征长度取 x 方向长度
 #else
@@ -102,8 +108,11 @@
 #endif
         real(kind=8), parameter :: pi = acos(-1.0d0)
 
-        real(kind=8), parameter :: Rayleigh=1.0d7        
-        real(kind=8), parameter :: Prandtl=0.7d0       
+#ifndef RAYLEIGH_OVERRIDE
+#define RAYLEIGH_OVERRIDE 10000000
+#endif
+        real(kind=8), parameter :: Rayleigh=dble(RAYLEIGH_OVERRIDE)
+        real(kind=8), parameter :: Prandtl=0.7d0
         real(kind=8), parameter :: Mach=0.1d0
         real(kind=8), parameter :: Thot=0.5d0, Tcold=-0.5d0
         real(kind=8), parameter :: Tref=0.5d0*(Thot+Tcold)
@@ -712,19 +721,17 @@
         enddo
     enddo
 #ifdef RayleighBenardCell
-    if (Rayleigh.LT.1.0d4) then
-        xLen = xp(nx+1)
-        yLen = yp(ny+1)
-        rbInitPerturbAmp = 1.0d-3*(Thot-Tcold)
-        do i = 1, nx
-            do j = 1, ny
-                T(i,j) = T(i,j) + rbInitPerturbAmp * dsin(2.0d0*pi*xp(i)/xLen) * dsin(pi*yp(j)/yLen)
-            enddo
+    ! 非稳态 RB 从完全对称的导热态启动时需要一个确定性小扰动来触发对流。
+    ! 扰动幅值和模态与同组 LBMCDE Rayleigh-Benard 非稳态算例保持一致。
+    xLen = xp(nx+1)
+    yLen = yp(ny+1)
+    rbInitPerturbAmp = 1.0d-3*(Thot-Tcold)
+    do i = 1, nx
+        do j = 1, ny
+            T(i,j) = T(i,j) + rbInitPerturbAmp * dsin(2.0d0*pi*xp(i)/xLen) * dsin(pi*yp(j)/yLen)
         enddo
-        write(00,'(a,1x,es12.4)') "RB initial T perturbation amplitude =", rbInitPerturbAmp
-    else
-        write(00,*) "RB initial T perturbation skipped because Rayleigh > 1.0d4"
-    endif
+    enddo
+    write(00,'(a,1x,es12.4)') "RB initial T perturbation amplitude =", rbInitPerturbAmp
 #endif
     write(00,*) "Temperature B.C. for horizontal walls are:===Hot/cold wall==="
 #endif
