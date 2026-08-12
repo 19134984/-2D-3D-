@@ -1,331 +1,297 @@
-!===================================================================================================
-!!! 二维高 Rayleigh 数自然对流：LBM-CDE（OpenACC 单 GPU）
-!!!
-!!! 默认工况：Rayleigh-Benard，Ra=1.0e10，Pr=0.7，论文等效 2049x2049 网格点，非稳态统计。
-!!! 可选工况：侧壁加热方腔；可选推进：稳态收敛或非稳态定时统计。
-!!! 算法来源：pdf/LBM-CDE.pdf；目标 RB 工况来源：
-!!! pdf/Statistics of kinetic and thermal energy dissipation rates in two-dimensional turbulent
-!!! Rayleigh-Benard convection.pdf。
-!!! 离散模型：流场 D2Q9-TRT；温度场严格采用原 LBM-CDE 的 D2Q9-BGK。
-!!! 流场奇模态可按原始或 chi_s 修正后的有效偶松弛尺度满足 magic 3/16。
-!!! 主要论文对应：
-!!!   1) 流场平衡态与源项：式 (4)、式 (26)，有效运动黏度见式 (27)；
-!!!   2) 温度平衡态与源项：式 (16)、式 (28)，有效扩散率见式 (29)；
-!!!   3) 局部应变率和温度梯度：式 (31)-(35)；
-!!!   4) 无滑移、恒温和绝热边界：式 (36)、式 (38)、式 (39)；
-!!!   5) 侧热方腔算例及 Nu 定义：式 (50)-(52)；RB 的主热流方向改为 y。
-!!!
-!!! 重要网格口径：目标 DNS 的 2049^2 是包含两端物理边界的节点数，故 Delta/H=1/(2049-1)。
-!!! 本程序采用 halfway 壁面与 2048^2 个流体中心节点，同样有 Delta/H=1/2048；两者空间步长等效。
-!!! D2Q9 的 halfway BB/ABB 与 BGK 内点并非严格二阶全局一致，正式计算仍需独立检查边界层
-!!! 分辨率、耗散尺度和网格收敛，不能仅凭点数相同宣称复现 DNS。
-!===================================================================================================
+!=============================================================
+!!!    注释区，代码描述
+!!!    二维浮力驱动自然对流 OpenACC 并行版本
+!!!    流场：D2Q9-TRT LBM-CDE；温度场：原始 LBM-CDE D2Q9-BGK
+!=============================================================
 
 
-!===================================================================================================
-! 算例开关
-! steadyFlow：达到 errorU/errorT 阈值后停止；unsteadyFlow：按自由落体时间采样统计。
-! 未从编译命令指定时，默认选择高 Ra 所需的 unsteadyFlow。
-! 这里的“湍流”是按网格直接解析的非稳态 LBM，不含额外 LES/RANS/SGS 黏度模型。
-#if !defined(steadyFlow) && !defined(unsteadyFlow)
+!=============================================================
+!   自定义宏，一些选项的开关
+!#define steadyFlow
 #define unsteadyFlow
-#endif
 
+!   流动模式宏的选择，两个都开、两个都关都会报错；只有二选一才通过。
 #if defined(steadyFlow) && defined(unsteadyFlow)
 #error "Choose only one flow mode: steadyFlow or unsteadyFlow"
 #endif
-! 本程序固定为封闭方腔：四壁速度均采用 halfway bounce-back 无滑移边界。
-#define HorizontalWallsNoslip
-#define VerticalWallsNoslip
-
-! 未从编译命令指定时，默认选择 Rayleigh-Benard：底热、顶冷、左右绝热。
-! 侧热方腔可用 -DSideHeatedCell 选择：左热、右冷、上下绝热。
-#if !defined(RayleighBenardCell) && !defined(SideHeatedCell)
-#define RayleighBenardCell
-#endif
-#if defined(RayleighBenardCell) && defined(SideHeatedCell)
-#error "Choose only one thermal case: RayleighBenardCell or SideHeatedCell"
-#endif
-#ifdef RayleighBenardCell
-#define HorizontalWallsConstT
-#define VerticalWallsAdiabatic
-#endif
-#ifdef SideHeatedCell
-#define HorizontalWallsAdiabatic
-#define VerticalWallsConstT
+#if !defined(steadyFlow) && !defined(unsteadyFlow)
+#error "Define one flow mode: steadyFlow or unsteadyFlow"
 #endif
 
-! 下面的检查用于防止以后改宏时得到一个“能编译但边界不完整”的程序。
-#if !defined(HorizontalWallsNoslip) || !defined(VerticalWallsNoslip)
-#error "This test requires no-slip velocity boundaries on all four walls"
-#endif
-#if defined(RayleighBenardCell) && (!defined(HorizontalWallsConstT) || !defined(VerticalWallsAdiabatic))
-#error "RayleighBenardCell requires horizontal constant-T and vertical adiabatic walls"
-#endif
-#if defined(SideHeatedCell) && (!defined(HorizontalWallsAdiabatic) || !defined(VerticalWallsConstT))
-#error "SideHeatedCell requires horizontal adiabatic and vertical constant-T walls"
-#endif
+!   流场 TRT 奇模态 magic 尺度（二选一）
+#define FLOW_ODD_ORIGINAL_MAGIC
+!#define FLOW_ODD_EFFECTIVE_MAGIC
 
-! 目标 DNS 使用 2049^2 个含边界节点；halfway LBM 用 2048^2 个流体中心节点得到相同 Delta/H。
-! 可用 -DNX_OVERRIDE=... -DNY_OVERRIDE=... 覆盖流体节点数以做网格筛查。
-#ifndef NX_OVERRIDE
-#define NX_OVERRIDE 2048
-#endif
-#ifndef NY_OVERRIDE
-#define NY_OVERRIDE 2048
-#endif
-#if NX_OVERRIDE != NY_OVERRIDE
-#error "The current cavity cases require NX_OVERRIDE == NY_OVERRIDE"
-#endif
-#ifndef ITC_MAX_OVERRIDE
-#define ITC_MAX_OVERRIDE -1
-#endif
-#ifndef RAYLEIGH_OVERRIDE
-#define RAYLEIGH_OVERRIDE 1.0d10
-#endif
-#ifndef PRANDTL_OVERRIDE
-#define PRANDTL_OVERRIDE 0.7d0
-#endif
-#ifndef MACH_OVERRIDE
-#define MACH_OVERRIDE 0.1d0
-#endif
-#if defined(BASE_TAUF_OVERRIDE)
-#error "Flow tau_0 is derived from chi_nu; use CHI_NU_OVERRIDE instead of BASE_TAUF_OVERRIDE"
-#endif
-#if defined(CHI_NU_OVERRIDE) && defined(CHI_S_OVERRIDE)
-#error "Choose only one flow correction input: CHI_NU_OVERRIDE or legacy CHI_S_OVERRIDE"
-#endif
-#ifndef CHI_B_OVERRIDE
-#define CHI_B_OVERRIDE 0.0d0
-#endif
-#ifndef BASE_TAUG_OVERRIDE
-#define BASE_TAUG_OVERRIDE 0.64d0
-#endif
-#if defined(ThermalD2Q5) || defined(D2Q5_QUARTIC_RATES)
-#error "Temperature is fixed to the original D2Q9-BGK LBM-CDE; D2Q5/Xu/Luo branches are disabled"
-#endif
-#define ThermalD2Q9
 #if defined(FLOW_ODD_ORIGINAL_MAGIC) && defined(FLOW_ODD_EFFECTIVE_MAGIC)
 #error "Choose only one flow odd magic policy"
 #endif
 #if !defined(FLOW_ODD_ORIGINAL_MAGIC) && !defined(FLOW_ODD_EFFECTIVE_MAGIC)
-#define FLOW_ODD_ORIGINAL_MAGIC
+#error "Define one flow odd magic policy"
 #endif
-#if defined(FLOW_ODD_UNIT) || defined(FLOW_BGK) || defined(FLOW_ODD_RATE_OVERRIDE)
-#error "Direct odd-rate/BGK branches are disabled; choose a magic policy instead"
+
+!   速度边界，包括水平垂直边界无滑移，还有垂直边界速度周期
+#define HorizontalWallsNoslip
+#define VerticalWallsNoslip
+!#define VerticalWallsPeriodicalU
+
+!   垂直速度边界宏的选择
+#if defined(VerticalWallsNoslip) && defined(VerticalWallsPeriodicalU)
+#error "Choose only one vertical velocity BC: VerticalWallsNoslip or VerticalWallsPeriodicalU"
 #endif
-#ifndef FLOW_MAGIC_PARAMETER_OVERRIDE
-#define FLOW_MAGIC_PARAMETER_OVERRIDE (3.0d0/16.0d0)
+#if !defined(VerticalWallsNoslip) && !defined(VerticalWallsPeriodicalU)
+#error "Define one vertical velocity BC: VerticalWallsNoslip or VerticalWallsPeriodicalU"
 #endif
-#ifndef RB_PERTURBATION_OVERRIDE
-#define RB_PERTURBATION_OVERRIDE 1.0d-3
-#endif
-#ifndef CHECK_INTERVAL_OVERRIDE
-#define CHECK_INTERVAL_OVERRIDE 1000
-#endif
-#ifndef UNSTEADY_TRANSIENT_TF_OVERRIDE
-#define UNSTEADY_TRANSIENT_TF_OVERRIDE 500.0d0
-#endif
-#ifndef UNSTEADY_AVERAGE_TF_OVERRIDE
-#define UNSTEADY_AVERAGE_TF_OVERRIDE 500.0d0
-#endif
-#ifndef UNSTEADY_SAMPLE_TF_OVERRIDE
-#define UNSTEADY_SAMPLE_TF_OVERRIDE 5.0d0
-#endif
-#ifndef UNSTEADY_MONITOR_TF_OVERRIDE
-#define UNSTEADY_MONITOR_TF_OVERRIDE 5.0d0
-#endif
-#ifndef UNSTEADY_SNAPSHOT_TF_OVERRIDE
-#define UNSTEADY_SNAPSHOT_TF_OVERRIDE 100.0d0
-#endif
-#ifndef UNSTEADY_TECPLOT_TF_OVERRIDE
-#define UNSTEADY_TECPLOT_TF_OVERRIDE 100.0d0
-#endif
-#ifndef UNSTEADY_OUTPUT_SNAPSHOT_OVERRIDE
-#define UNSTEADY_OUTPUT_SNAPSHOT_OVERRIDE 1
-#endif
-#ifndef UNSTEADY_OUTPUT_TECPLOT_OVERRIDE
-#define UNSTEADY_OUTPUT_TECPLOT_OVERRIDE 1
-#endif
-!===================================================================================================
+
+!   温度边界(for Rayleigh Benard Cell)，包括水平边界恒温，垂直边界温度不可穿透以及周期
+#define RayleighBenardCell
+#define HorizontalWallsConstT
+#define VerticalWallsAdiabatic
+!#define VerticalWallsPeriodicalT
 
 
-!===================================================================================================
-! 全局数据模块
+
+!   温度边界(for Side Heated Cell)，包括水平边界温度不可穿透，垂直边界恒温,侧壁加热加磁场
+!#define SideHeatedCell
+!#define HorizontalWallsAdiabatic
+!#define VerticalWallsConstT
+!#define SideHeatedHa
+!~~temperature B.C.~~
+
+!   对流算例宏的选择
+#if defined(RayleighBenardCell) && defined(SideHeatedCell)
+#error "Choose only one convection case: RayleighBenardCell or SideHeatedCell"
+#endif
+#if !defined(RayleighBenardCell) && !defined(SideHeatedCell)
+#error "Define one convection case: RayleighBenardCell or SideHeatedCell"
+#endif
+
+
+!   自定义宏结束
+!=============================================================
+
+
+!=============================================================
+!   全局模块
     module commondata
         implicit none
+        !===============================================================================================
+        ! 是否在计算前从旧算例重启
+        integer(kind=4), parameter :: loadInitField=0   ! 0: 不重启；1: 按 latest .meta 自动续算
 
-        !-------------------------------------------------------------------------------------------
-        ! 网格与格子常量
-        integer(kind=4), parameter :: nx=NX_OVERRIDE, ny=NY_OVERRIDE ! 流体节点数；壁面位于首末节点外半格
-        real(kind=8), parameter :: rho0=1.0d0                        ! 弱可压缩模型的参考密度
-        real(kind=8), parameter :: cs2=1.0d0/3.0d0                   ! D2Q9 格子声速平方
-        integer(kind=4), parameter :: thermalQ=8
-        real(kind=8), parameter :: cT2=cs2
+        ! 正常断电续算只需要设置 loadInitField=1；
+        ! 代码只读取 <reloadFilePrefix>-latest.meta，并从里面找到最新的 .bin。
+        ! 正常续算不用改 reloadFileNum；只有 latest .meta 缺失时，
+        ! 才手动设置 reloadFileNum 作为保守推断编号。重启文件的编号
+        integer(kind=4) :: reloadFileNum=0              ! latest .meta 存在时会被覆盖；meta 缺失时作为手工兜底编号
+        !===============================================================================================
+        real(kind=8) :: reloadDimensionlessTime=0.0d0   ! 续算前已累计的 t_ff；优先从 latest .meta 读取，meta 缺失时由代码推断
+        integer(kind=4) :: restartItcOffset=0           ! 续算前已累计的格子步数；优先从 latest .meta 读取，meta 缺失时由代码推断
+        logical :: reloadMetadataLoaded=.false.         ! 标记是否成功读取 reload 元数据文件
+        !===============================================================================================
 
+        !===============================================================================================
+        ! 无量纲参数
+        integer(kind=4), parameter :: nx=2048, ny=2048     !流体节点数，可直接在这里修改
+        real(kind=8), parameter :: rho0=1.0d0              !弱可压缩模型参考密度
+        real(kind=8), parameter :: cs2=1.0d0/3.0d0         !D2Q9 格子声速平方
+        real(kind=8), parameter :: cT2=cs2                 !D2Q9 温度格子的声速平方
 #ifdef SideHeatedCell
-        real(kind=8), parameter :: lengthUnit=dble(nx)               ! 侧热方腔的特征长度 L
+        real(kind=8), parameter :: lengthUnit=dble(nx)     !侧壁差温：特征长度取 x 方向长度
 #else
-        real(kind=8), parameter :: lengthUnit=dble(ny)
+        real(kind=8), parameter :: lengthUnit=dble(ny)     !上下差温：特征长度取 y 方向长度
 #endif
+        real(kind=8), parameter :: pi = acos(-1.0d0)
 
-        !-------------------------------------------------------------------------------------------
-        ! 无量纲工况参数
-        real(kind=8), parameter :: Rayleigh=RAYLEIGH_OVERRIDE        ! Ra，论文式 (51)
-        real(kind=8), parameter :: Prandtl=PRANDTL_OVERRIDE          ! 用户指定默认 Pr=0.7
-        real(kind=8), parameter :: Mach=MACH_OVERRIDE                ! 低 Mach 渐近假设；默认 0.1
-        real(kind=8), parameter :: Thot=0.5d0, Tcold=-0.5d0          ! 热壁/冷壁温度
-        real(kind=8), parameter :: Tref=0.5d0*(Thot+Tcold)           ! Boussinesq 参考温度 T0
-        real(kind=8), parameter :: deltaT=Thot-Tcold                 ! 温差 DeltaT
-
-        !-------------------------------------------------------------------------------------------
-        ! 格子单位下的目标输运系数
-        ! 物理映射不把 nu/kappa/gBeta 当作独立手调输入：由 Ra、Pr、Ma、H_LB 自动确定。
+        real(kind=8), parameter :: Rayleigh=1.0d10
+        real(kind=8), parameter :: Prandtl=0.7d0
+        real(kind=8), parameter :: Mach=0.1d0
+        real(kind=8), parameter :: Thot=0.5d0, Tcold=-0.5d0
+        real(kind=8), parameter :: Tref=0.5d0*(Thot+Tcold)
+        real(kind=8), parameter :: deltaT=Thot-Tcold
         real(kind=8), parameter :: viscosity=Mach*lengthUnit*dsqrt(Prandtl/(3.0d0*Rayleigh))
         real(kind=8), parameter :: diffusivity=viscosity/Prandtl
+        real(kind=8), parameter :: chi_nu=0.5d0          !手动设置的流场剪切修正参数
+        real(kind=8), parameter :: chi_b=0.0d0           !手动设置的流场体黏度修正参数
+        real(kind=8), parameter :: tauf=0.5d0+viscosity/(cs2*(1.0d0-chi_nu)) !基础 tau_0
+        real(kind=8), parameter :: bulkViscosity=(tauf-0.5d0)*(1.0d0-chi_b)*cs2
+        real(kind=8), parameter :: rbPerturbation=1.0d-3 !RB 初始温度扰动幅值/DeltaT
 
-        !-------------------------------------------------------------------------------------------
-        ! LBM-CDE 数值自由度与自动映射
-        ! 论文式 (27)/(29)，dt=1：
-        !   nu    = (tau_fL-0.5)*(1-chi_s)*cs2
-        !   kappa = (tau_gL-0.5)*(1-chi_kappa)*cT2
-        ! Ra/Pr/Ma/H_LB 只能确定 nu/kappa，不能同时唯一确定 tau 与 chi。默认采用论文讨论的
-        ! base tau=0.64 稳定化策略，再由目标 nu/kappa 自动反算 chi；这不是手工指定物理输运系数。
-        ! 若需复现论文的固定-chi 扫描，可用 -DCHI_S_OVERRIDE=.../-DCHI_KAPPA_OVERRIDE=...，
-        ! 此时相应 tau 由物理输运系数自动反算。
-        ! Flow control is chi_nu first.  tau_0/taufL is always derived so the target nu is unchanged.
-        ! The no-override default reproduces the former tau_0=0.64 setting for backward-compatible runs.
-        real(kind=8), parameter :: tau0CompatibilityReference=0.64d0
-#ifdef CHI_NU_OVERRIDE
-        real(kind=8), parameter :: chi_nu=CHI_NU_OVERRIDE
-#elif defined(CHI_S_OVERRIDE)
-        real(kind=8), parameter :: chi_nu=CHI_S_OVERRIDE
-#else
-        real(kind=8), parameter :: chi_nu=1.0d0-viscosity/(cs2*(tau0CompatibilityReference-0.5d0))
+
+        ! velocityScaleCompare is used only in velocity-related post-processing to convert lattice velocity
+        ! to the nondimensional velocity scale adopted by the reference paper being compared.
+        ! 默认采用热扩散标度 UL/kappa；若按自由落体标度比较，可改为 1.0d0/velocityUnit。
+        real(kind=8), parameter :: velocityScaleCompare=lengthUnit/diffusivity
+
+        integer(kind=4), parameter :: nxHalf=(nx-1)/2+1, nyHalf=(ny-1)/2+1
+
+
+#ifdef  SideHeatedHa
+        real(kind=8), parameter :: Ha=20.0d0                           !磁场强度
+        real(kind=8), parameter :: phi=(0.0d0)*(pi/180.0d0)            !磁场角度，以水平向右为0，修改0.0d0即可
+        real(kind=8), parameter :: B2sigemarho=(Ha**2*viscosity)/(lengthUnit*lengthUnit)  !动量方程上的源项系数
 #endif
-        real(kind=8), parameter :: chi_s=chi_nu ! chi_s is retained as the paper/source-term symbol.
-        real(kind=8), parameter :: taufL=0.5d0+viscosity/(cs2*(1.0d0-chi_nu))
-#ifdef CHI_KAPPA_OVERRIDE
-        real(kind=8), parameter :: chi_kappa=CHI_KAPPA_OVERRIDE
-        real(kind=8), parameter :: taugL=0.5d0+diffusivity/(cT2*(1.0d0-chi_kappa))
-#else
-        real(kind=8), parameter :: taugL=BASE_TAUG_OVERRIDE
-        real(kind=8), parameter :: chi_kappa=1.0d0-diffusivity/(cT2*(taugL-0.5d0))
-#endif
-        real(kind=8), parameter :: chi_b=CHI_B_OVERRIDE
-        real(kind=8), parameter :: rbPerturbation=RB_PERTURBATION_OVERRIDE
-        real(kind=8), parameter :: heatSourceQ=0.0d0                  ! 方腔无体热源；保留 Q 以实现完整式 (28)/(35)
-        real(kind=8), parameter :: bulkViscosity=(taufL-0.5d0)*(1.0d0-chi_b)*cs2 ! D=2 时的 nu_B
-        real(kind=8), parameter :: omegaF=1.0d0/taufL
-        real(kind=8), parameter :: omegaG=1.0d0/taugL
-        real(kind=8), parameter :: sigmaFlowEffective=viscosity/cs2
-        real(kind=8), parameter :: sigmaFlowBase=taufL-0.5d0
-        real(kind=8), parameter :: flowMagicParameter=FLOW_MAGIC_PARAMETER_OVERRIDE
+
+        ! D2Q9-BGK 温度参数：taug 是可直接修改的基础松弛时间。
+        ! 原 LBM-CDE 的有效热扩散率为
+        !   kappa=(taug-0.5)*(1-chi_kappa)*cT2。
+        ! 因此 chi_kappa 不是额外物性参数，而是由目标 diffusivity 和手动给定的 taug 自动换算；
+        ! 它只属于本 D2Q9-BGK 温度模型，不能沿用到 Luo D2Q5 分支。
+        real(kind=8), parameter :: taug=0.64d0             !手动设置的温度基础松弛时间 tau_gL
+        real(kind=8), parameter :: chi_kappa=1.0d0- &
+            diffusivity/(cT2*(taug-0.5d0))                 !由目标热扩散率自动得到的热扩散修正参数
+        real(kind=8), parameter :: Sg=1.0d0/taug           !D2Q9-BGK 温度松弛率
+
+
+
+        ! 浮力项参数
+        real(kind=8), parameter :: gBeta=Rayleigh*viscosity*diffusivity/(deltaT*lengthUnit**3) !g*beta
+
+        real(kind=8), parameter :: timeUnit=dsqrt(lengthUnit/(gBeta*deltaT)) !一个自由落体时间对应的格子步数
+        real(kind=8), parameter :: velocityUnit=dsqrt(gBeta*deltaT*lengthUnit) !自由落体速度
+
+        real(kind=8), parameter :: Snu=1.0d0/tauf
+        real(kind=8), parameter :: flowMagicParameter=3.0d0/16.0d0
 #ifdef FLOW_ODD_ORIGINAL_MAGIC
-        real(kind=8), parameter :: sigmaFlowMagicScale=sigmaFlowBase
-#else
-        real(kind=8), parameter :: sigmaFlowMagicScale=sigmaFlowEffective
+        real(kind=8), parameter :: Sq=1.0d0/(0.5d0+flowMagicParameter/(tauf-0.5d0))
 #endif
-        real(kind=8), parameter :: omegaFOdd=1.0d0/(0.5d0+flowMagicParameter/sigmaFlowMagicScale)
-        real(kind=8), parameter :: taufOdd=1.0d0/omegaFOdd
-        real(kind=8), parameter :: sigmaFlowOdd=1.0d0/omegaFOdd-0.5d0
-        real(kind=8), parameter :: magicProductBase=sigmaFlowBase*sigmaFlowOdd
-        real(kind=8), parameter :: magicProductEffective=sigmaFlowEffective*sigmaFlowOdd
-        real(kind=8), parameter :: magicProductSelected=sigmaFlowMagicScale*sigmaFlowOdd
-        real(kind=8), parameter :: sigmaThermalEffective=diffusivity/cT2
+#ifdef FLOW_ODD_EFFECTIVE_MAGIC
+        real(kind=8), parameter :: Sq=1.0d0/(0.5d0+flowMagicParameter/(viscosity/cs2))
+#endif
 
-        !-------------------------------------------------------------------------------------------
-        ! Boussinesq 浮力与自由落体标度，见论文式 (50)/(51)。压力 p 始终指
-        ! 弱可压缩压力扰动 p'=cs2*(rho-rho0)，而不是包含常数热力学基准压的绝对压力。
-        ! Fy>0 表示热流体向 +y 上升；gBeta 在这里代表 g*beta。
-        real(kind=8), parameter :: gBeta=Rayleigh*viscosity*diffusivity/(deltaT*lengthUnit**3)
-        real(kind=8), parameter :: timeUnit=dsqrt(lengthUnit/(gBeta*deltaT))
-        real(kind=8), parameter :: velocityUnit=dsqrt(gBeta*deltaT*lengthUnit)
+        !===============================================================================================
 
-        !-------------------------------------------------------------------------------------------
-        ! 推进与收敛设置。误差定义见 check()，它不是论文模型的一部分。
+        !===============================================================================================
+        ! 输出/备份相关设置（以自由落体时间 t_ff 为单位）
+        real(kind=8), parameter :: epsU=1.0d-7, epsT=1.0d-7    ! 稳态收敛阈值
+
 #ifdef steadyFlow
-        real(kind=8), parameter :: epsU=1.0d-7, epsT=1.0d-7
-        integer(kind=4), parameter :: itc_max=merge(ITC_MAX_OVERRIDE,20000000,ITC_MAX_OVERRIDE.GT.0)
-        integer(kind=4), parameter :: checkInterval=max(1,CHECK_INTERVAL_OVERRIDE)
+        real(kind=8), parameter :: outputSnapshotInterval=10.0d0   ! 快照和 Nu/Re 时间序列采样间隔（单位：t_ff）
+        real(kind=8), parameter :: reloadFileInterval=100.0d0  ! f/g 重启文件输出间隔（单位：t_ff）
+        real(kind=8), parameter :: outputPltFileInterval=100.0d0  ! Tecplot 文件输出间隔（单位：t_ff）
+        integer(kind=4), parameter :: dimensionlessTimeMax=int(12000.0d0/outputSnapshotInterval)
+        integer(kind=4), parameter :: outputSnapshotFile=1   ! 是否输出后处理快照文件：0=不输出，1=输出
+        integer(kind=4), parameter :: outputPltFile=1   ! 是否输出 plt 文件：0=不输出，1=输出
+        integer(kind=4), parameter :: outputReloadFile=1 ! 是否周期输出 f/g 重启文件：0=不输出，1=输出
+        integer(kind=4), parameter :: itc_max=20000000  ! 稳态：最大格子步，实际仍由 errorU/errorT 提前停止
 #endif
+
 #ifdef unsteadyFlow
-        real(kind=8), parameter :: transientTimeTf=UNSTEADY_TRANSIENT_TF_OVERRIDE
-        real(kind=8), parameter :: averagingTimeTf=UNSTEADY_AVERAGE_TF_OVERRIDE
-        real(kind=8), parameter :: sampleTimeTf=UNSTEADY_SAMPLE_TF_OVERRIDE
-        real(kind=8), parameter :: monitorTimeTf=UNSTEADY_MONITOR_TF_OVERRIDE
-        real(kind=8), parameter :: snapshotTimeTf=UNSTEADY_SNAPSHOT_TF_OVERRIDE
-        real(kind=8), parameter :: tecplotTimeTf=UNSTEADY_TECPLOT_TF_OVERRIDE
-        integer(kind=4), parameter :: outputSnapshotFile=UNSTEADY_OUTPUT_SNAPSHOT_OVERRIDE
-        integer(kind=4), parameter :: outputTecplotFile=UNSTEADY_OUTPUT_TECPLOT_OVERRIDE
-        real(kind=8), parameter :: sampleTimeForParameters=merge(sampleTimeTf,1.0d0,sampleTimeTf.GT.0.0d0)
-        real(kind=8), parameter :: monitorTimeForParameters=merge(monitorTimeTf,1.0d0,monitorTimeTf.GT.0.0d0)
-        integer(kind=4), parameter :: averageStartItc=max(0,nint(transientTimeTf*timeUnit))
-        integer(kind=4), parameter :: sampleIntervalItc=max(1,nint(sampleTimeForParameters*timeUnit))
-        integer(kind=4), parameter :: targetStatisticSamples=max(1,nint(max(averagingTimeTf,0.0d0)/sampleTimeForParameters))
-        integer(kind=4), parameter :: targetSnapshotFiles=max(0, &
-            int(max(averagingTimeTf,0.0d0)/max(snapshotTimeTf,1.0d-12)+1.0d-12))
-        integer(kind=4), parameter :: targetTecplotFiles=max(0, &
-            int(max(averagingTimeTf,0.0d0)/max(tecplotTimeTf,1.0d-12)+1.0d-12))
-        integer(kind=4), parameter :: defaultUnsteadyMaxItc=averageStartItc+targetStatisticSamples*sampleIntervalItc
-        integer(kind=4), parameter :: itc_max=merge(ITC_MAX_OVERRIDE,defaultUnsteadyMaxItc,ITC_MAX_OVERRIDE.GT.0)
-        integer(kind=4), parameter :: checkInterval=max(1,nint(monitorTimeForParameters*timeUnit))
+        real(kind=8), parameter :: statisticSampleInterval=1.0d0 ! Nu/Re、耗散和温度剖面统计间隔（单位：t_ff）
+        real(kind=8), parameter :: outputSnapshotInterval=20.0d0 ! uvTrho 全场快照输出间隔（单位：t_ff）
+        real(kind=8), parameter :: reloadFileInterval=100.0d0  ! f/g 重启文件输出间隔（单位：t_ff）
+        real(kind=8), parameter :: outputPltFileInterval=100.0d0  ! Tecplot 文件周期输出间隔（单位：t_ff）
+        real(kind=8), parameter :: unsteadyRunDuration=1000.0d0  ! 非稳态总目标时长，续算时只补足到该 t_ff
+        ! 以下三个参数控制非稳态统计平均窗口，不改变推进时长或采样频率。
+        ! 时间以整个算例的绝对 t_ff 计；续算会重读 Nu/Re、耗散和温度剖面历史，恢复完整窗口累计量。
+        real(kind=8), parameter :: unsteadyAverageStartTf=0.5d0*unsteadyRunDuration  ! 平均窗口起点
+        real(kind=8), parameter :: unsteadyAverageEndTf=unsteadyRunDuration          ! 平均窗口终点
+        real(kind=8), parameter :: unsteadyAverageMidTf=0.5d0*(unsteadyAverageStartTf+unsteadyAverageEndTf) ! 前/后半分界
+        ! Nu/Re、耗散、可压缩性和温度剖面只在统计窗口内采样；快照/plt/reload 仍从计算开始输出。
+        ! 采样时刻为整数倍 statisticSampleInterval，并保留统计区间的两个端点（若端点落在采样时刻上）。
+        integer(kind=4), parameter :: firstStatisticSampleIndex= &
+            max(1,ceiling(unsteadyAverageStartTf/statisticSampleInterval))
+        integer(kind=4), parameter :: lastStatisticSampleIndex= &
+            min(floor(unsteadyRunDuration/statisticSampleInterval), &
+                floor(unsteadyAverageEndTf/statisticSampleInterval))
+        integer(kind=4), parameter :: expectedStatisticSampleCount= &
+            max(0,lastStatisticSampleIndex-firstStatisticSampleIndex+1)
+        integer(kind=4), parameter :: dimensionlessTimeMax=max(1,expectedStatisticSampleCount)
+        integer(kind=4), parameter :: outputSnapshotFile=1   ! 是否独立输出 uvTrho 快照：0=不输出，1=输出
+        integer(kind=4), parameter :: outputPltFile=1   ! 是否输出 plt 文件：0=不输出，1=输出
+        integer(kind=4), parameter :: outputReloadFile=1 ! 是否周期输出 f/g 重启文件：0=不输出，1=输出
+        integer(kind=4), parameter :: itc_max=max(1, int(unsteadyRunDuration*timeUnit+0.5d0)) ! 非稳态：由总 t_ff 自动换算格子步
 #endif
 
-        !-------------------------------------------------------------------------------------------
-        ! 宏观场和论文式 (31)-(35) 所需的局部辅助量
-        real(kind=8), allocatable :: u(:,:), v(:,:), T(:,:), rho(:,:), pressure(:,:)
-        real(kind=8), allocatable :: up(:,:), vp(:,:), Tp(:,:)       ! 上一次检查时的宏观场，只在 CPU 端使用
-        real(kind=8), allocatable :: Fx(:,:), Fy(:,:)                ! 力密度 F
-        real(kind=8), allocatable :: gradTx(:,:), gradTy(:,:)        ! 由非平衡矩直接得到的温度梯度
-        real(kind=8), allocatable :: Sxx(:,:), Sxy(:,:), Syy(:,:), Sdiv(:,:) ! 应变率与速度散度
-        real(kind=8), allocatable :: f(:,:,:), f_post(:,:,:)         ! 流场迁移后/碰撞后分布函数
-        real(kind=8), allocatable :: g(:,:,:), g_post(:,:,:)         ! 温度场迁移后/碰撞后分布函数
-        real(kind=8) :: xp(0:nx+1), yp(0:ny+1)                       ! 归一化坐标，含物理壁面位置
+        integer(kind=4) :: snapshotFileNum, pltFileNum  ! 快照/plt 输出文件的计数器
+        ! 每次调用对应输出子程序时递增（用于文件名编号）
 
-        !-------------------------------------------------------------------------------------------
-        ! 收敛量和后处理量
+        integer(kind=4) :: dimensionlessTime
+        integer(kind=4) :: restartStatisticSampleOffset ! 续算前已完成的统计采样数；不等同于快照数或格子步数
+        integer(kind=4) :: statisticSampleIntervalItc, outputSnapshotIntervalItc
+        integer(kind=4) :: reloadFileIntervalItc, outputPltFileIntervalItc
+        ! dimensionlessTime 只表示本次进程完成的统计采样数，与快照编号 snapshotFileNum 相互独立。
+        ! 非稳态每调用一次 calculate_unsteady_sample() 就令 dimensionlessTime 加一；稳态最终 calNuRe() 同理。
+        ! 非稳态统计时间轴从 firstStatisticSampleIndex*statisticSampleInterval 开始。
+
+        real(kind=8) :: NuVolAvg(0:dimensionlessTimeMax), ReVolAvg(0:dimensionlessTimeMax)
+        ! NuVolAvg：当前采样时刻由体平均对流热通量得到的 Nu。
+        ! ReVolAvg：当前采样时刻的空间 RMS Re。
+
+        character(len=100) :: snapshotFilePrefix="buoyancyCavity2DOpenaccLBMCDE_D2Q9BGKSnapshot"
+        ! 快照输出文件前缀（实际文件名形如：<snapshotFilePrefix>-<编号>.bin）
+
+        character(len=100) :: pltFolderPrefix="buoyancyCavity2DOpenaccLBMCDE_D2Q9BGKTecplot"
+        ! plt 输出文件前缀（实际文件名形如：<pltFolderPrefix>-<编号>.plt）
+
+        character(len=100) :: reloadFilePrefix="reloadFile2DOpenaccLBMCDE_D2Q9BGK"
+        ! 重启读取文件的前缀；latest meta 模式实际读取 meta 中记录的 <reloadFilePrefix>-<编号>.bin
+
+        character(len=100) :: settingsFile="SimulationSettings2DOpenaccLBMCDE_D2Q9BGK.txt"
+        !===============================================================================================
+
+        !===============================================================================================
+        !计算中需要的相关参数
         real(kind=8) :: errorU, errorT
-        real(kind=8) :: Nu_global, Nu_hot, Nu_cold, Nu_middle
-        real(kind=8) :: Nu_hot_halfway, Nu_cold_halfway, Nu_middleFD
-        real(kind=8) :: ReVolAvg, speedSquaredVol, umax_mid, vmax_mid, Numax_mid
-        real(kind=8) :: epsKineticVol, epsThermalVol, NuKineticDiss, NuThermalDiss
-        real(kind=8) :: kineticDissExactRatio, thermalDissExactRatio
-        real(kind=8) :: maxMachLocal, minTemperature, maxTemperature, maxDensityDeviation
-        real(kind=8) :: pos_umax_mid, pos_vmax_mid, pos_Numax_mid
-        real(kind=8) :: sumNuGlobal, sumNuGlobal2, sumNuHot, sumNuHot2
-        real(kind=8) :: sumNuCold, sumNuCold2, sumNuMiddle, sumNuMiddle2
-        real(kind=8) :: sumSpeedSquaredVol, sumSpeedSquaredVol2
-        real(kind=8) :: sumNuKineticDiss, sumNuKineticDiss2
-        real(kind=8) :: sumNuThermalDiss, sumNuThermalDiss2
-        real(kind=8) :: sumNuGlobalFirstHalf, sumNuGlobalSecondHalf
-        real(kind=8) :: sumSpeedSquaredFirstHalf, sumSpeedSquaredSecondHalf
-        real(kind=8) :: maxStatisticCFL
-        real(kind=8), allocatable :: sumTemperatureProfile(:), sumTemperatureSquaredProfile(:)
-        integer(kind=4) :: statisticSamples, firstHalfSamples, secondHalfSamples
-        integer(kind=4) :: firstStatisticItc, lastStatisticItc
-        integer(kind=4) :: itc, lastCheckItc
-#ifdef unsteadyFlow
-        integer(kind=4) :: snapshotFileNum, tecplotFileNum, lastSnapshotItc, lastTecplotItc
+
+        real(kind=8) :: xp(0:nx+1), yp(0:ny+1)      !无量纲的坐标数组，包括边界
+        real(kind=8), allocatable :: u(:,:), v(:,:), T(:,:), rho(:,:)
+
+#ifdef steadyFlow
+        real(kind=8), allocatable :: up(:,:), vp(:,:), Tp(:,:)   !存储之前的数据，用来算收敛判据
+#endif
+        real(kind=8), allocatable :: f(:,:,:), f_post(:,:,:)
+        real(kind=8), allocatable :: g(:,:,:), g_post(:,:,:)
+        real(kind=8), allocatable :: Fx(:,:), Fy(:,:)
+        real(kind=8), allocatable :: Sxx(:,:), Sxy(:,:), Syy(:,:), Sdiv(:,:) !LBM-CDE 局部应变率
+
+        integer(kind=4) :: itc
+#ifdef steadyFlow
+        real(kind=8) :: Nu_global, Nu_hot, Nu_cold, Nu_middle    !平均Nu，全场，侧壁以及中线
+        real(kind=8) :: Nu_hot_max, Nu_hot_min, Nu_hot_max_position, Nu_hot_min_position    !左侧壁面的最大最小Nu，以及对应的位置
 #endif
 
-        character(len=100) :: settingsFile="SimulationSettings2DOpenaccLBMCDE.txt"
-        character(len=100) :: pltFile="buoyancyCavity2DOpenaccLBMCDE.plt"
-        character(len=100) :: historyFile="NuRe_2DOpenaccLBMCDE.dat"
-        character(len=100) :: statisticsFile="NuReStatistics_2DOpenaccLBMCDE.dat"
+
+        !格子离散速度和权重
+        integer(kind=4) :: ex(0:8), ey(0:8)
+        data ex/0, 1, 0, -1,  0, 1, -1, -1,  1/
+        data ey/0, 0, 1,  0, -1, 1,  1, -1, -1/
+        real(kind=8) :: omega(0:8)
+
 #ifdef unsteadyFlow
-        character(len=100) :: snapshotFilePrefix="buoyancyCavity2DOpenaccLBMCDESnapshot"
-        character(len=100) :: snapshotIndexFile="buoyancyCavity2DOpenaccLBMCDESnapshot-index.dat"
-        character(len=100) :: tecplotFilePrefix="buoyancyCavity2DOpenaccLBMCDETecplot"
+        ! 命名约定：xxxVol 是当前时刻的空间求和；xxxVolAvg 是除以 nx*ny 后的瞬时体平均。
+        !             sumXxxVolAvg 是瞬时体平均量的时间求和；xxxVolTimeAvg 是最终空间-时间平均。
+        real(kind=8) :: speedSquaredVolAvg        ! <u^2+v^2>_V；最终 Re=sqrt(<u^2+v^2>_V,t)*H/nu
+        real(kind=8) :: epsKineticVolAvg          ! <epsilon_u>_V；由 LBM-CDE 非平衡应变率计算的动能耗散
+        real(kind=8) :: epsThermalVolAvg          ! <epsilon_T>_V；由温度梯度计算的热耗散
+        real(kind=8) :: densityFluctuationSquaredVolAvg ! <(rho-rho0)^2>_V；开平方后才是瞬时 RMS
+        real(kind=8) :: velocityDivergenceSquaredVolAvg ! <(div u)^2>_V；开平方后才是瞬时 RMS
+        real(kind=8) :: maxMachLocal, minTemperature, maxTemperature ! 数值稳定性辅助诊断
+
+        ! 统计窗口累计量：用于最终空间-时间平均、耗散精确关系和 Xu 可压缩性检查。
+        real(kind=8) :: sumNuVolAvg                  ! sum Nu_vol_avg(t)，瞬时体平均 Nu 的时间求和
+        real(kind=8) :: sumSpeedSquaredVolAvg        ! sum <u^2+v^2>_V，用于文献定义的空间-时间 RMS Re
+        real(kind=8) :: sumEpsKineticVolAvg, sumEpsThermalVolAvg ! 两类瞬时体平均耗散的时间求和
+        real(kind=8) :: sumDensityFluctuationSquaredVolAvg ! sum <(rho-rho0)^2>_V，用于空间-时间 RMS
+        real(kind=8) :: sumVelocityDivergenceSquaredVolAvg ! sum <(div u)^2>_V，用于空间-时间 RMS
+        real(kind=8) :: maxStatisticCFL              ! 统计窗口采样点中的最大格子 CFL=max|u|
+        ! 以下两个剖面累计量保留温度 RMS 边界层诊断；Table 1 的 N_BL 改由 H/(2*Nu) 估计。
+        real(kind=8), allocatable :: sumTemperatureXAvgProfile(:), sumTemperatureSquaredXAvgProfile(:)
+        integer(kind=4) :: statisticSamples ! 完整统计窗口内的采样数
+        integer(kind=4) :: firstStatisticItc, lastStatisticItc ! 统计窗口首、末采样点的绝对格子步
+        character(len=100) :: dissipationHistoryFile="DissipationHistory_2DOpenaccLBMCDE.dat" ! 瞬时原始量历史
+        character(len=100) :: temperatureProfileHistoryFile= &
+            "TemperatureProfileHistory_2DOpenaccLBMCDE.bin" ! 每个统计采样的水平平均 T(y) 与 T^2(y)，供续算恢复
+        character(len=100) :: temperatureRmsProfileFile= &
+            "TemperatureRmsProfile_2DOpenaccLBMCDE_D2Q9BGK.dat" ! 最终 z/H 与 theta_rms(z) 剖面
+        character(len=100) :: statisticsFile="NuReDissStatistics_2DOpenaccLBMCDE.dat" ! 最终统计结果
 #endif
+        !===============================================================================================
 
     contains
 
-        !-------------------------------------------------------------------------------------------
-        ! OpenACC 设备端 D2Q9 查询函数
-        !
-        ! 这里不在 GPU 核函数中直接引用模块 parameter 数组，而使用顺序设备函数返回 e_i、omega_i、lambda_i。
-        ! 这样可避免不同 OpenACC 编译器对模块常量数组设备可见性处理不一致；修改速度编号时必须同步修改下列函数。
+        !-----------------------------------------------------------------------------------------------
+        ! 下面的顺序函数供 OpenACC 设备端温度碰撞和边界直接查询 D2Q9 常数，
+        ! 避免不同编译器对模块常量数组设备可见性的处理差异。
         pure integer(kind=4) function qex(alpha)
             !$acc routine seq
             implicit none
@@ -356,7 +322,6 @@
             end select
         end function qey
 
-        ! D2Q9 权重：静止方向 4/9，轴向 1/9，对角方向 1/36。
         pure real(kind=8) function qomega(alpha)
             !$acc routine seq
             implicit none
@@ -372,17 +337,7 @@
             end select
         end function qomega
 
-        ! 温度格子严格使用 LBM-CDE 原文 D2Q9 权重，与流场 D2Q9 权重相同。
-        pure real(kind=8) function tomega(alpha)
-            !$acc routine seq
-            implicit none
-            integer(kind=4), intent(in) :: alpha
-
-            tomega = qomega(alpha)
-        end function tomega
-
-        ! 论文式 (16) 的 lambda_i：非零方向等于 omega_i，仅把零速度权重改为 -5/9。
-        ! 因此 sum(lambda_i)=0、一阶矩为 0、二阶矩为 cs2*delta_ab，压力只进入二阶矩。
+        ! 论文式 (16) 的 lambda_i：非零方向等于 D2Q9 权重，静止方向为 -5/9。
         pure real(kind=8) function qlambdaT(alpha)
             !$acc routine seq
             implicit none
@@ -398,26 +353,7 @@
             end select
         end function qlambdaT
 
-        !-------------------------------------------------------------------------------------------
-        ! 流场平衡分布函数，离散形式对应论文式 (4)。
-        ! f 的零阶矩是密度扰动 deltaRho=rho-rho0，所以平衡态首项不是完整 rho。
-        pure real(kind=8) function calc_feq(alpha, rhoLoc, uLoc, vLoc)
-            !$acc routine seq
-            implicit none
-            integer(kind=4), intent(in) :: alpha
-            real(kind=8), intent(in) :: rhoLoc, uLoc, vLoc
-            real(kind=8) :: eu, uu, deltaRhoLoc
-
-            eu = dble(qex(alpha))*uLoc+dble(qey(alpha))*vLoc
-            uu = uLoc*uLoc+vLoc*vLoc
-            deltaRhoLoc = rhoLoc-rho0
-            calc_feq = qomega(alpha)*(deltaRhoLoc + &
-                rho0*(eu/cs2+0.5d0*eu*eu/(cs2*cs2)-0.5d0*uu/cs2))
-        end function calc_feq
-
-        !-------------------------------------------------------------------------------------------
-        ! 温度平衡分布函数，对应论文式 (16)。
-        ! 压力项为 lambda_i*T*p/(rho0*cs2)，保持零/一阶压力矩为零、二阶压力矩为 T*p/rho0。
+        ! 原 LBM-CDE D2Q9 温度平衡态：压力只进入二阶矩，不改变温度的零阶和一阶矩。
         pure real(kind=8) function calc_geq(alpha, TLoc, uLoc, vLoc, rhoLoc)
             !$acc routine seq
             implicit none
@@ -428,1716 +364,4512 @@
             eu = dble(qex(alpha))*uLoc+dble(qey(alpha))*vLoc
             uu = uLoc*uLoc+vLoc*vLoc
             pressureLoc = cs2*(rhoLoc-rho0)
-            calc_geq = qomega(alpha)*TLoc*(1.0d0+eu/cs2+0.5d0*eu*eu/(cs2*cs2)-0.5d0*uu/cs2) + &
-                qlambdaT(alpha)*TLoc*pressureLoc/(rho0*cs2)
+            calc_geq = qomega(alpha)*TLoc* &
+                (1.0d0+eu/cT2+0.5d0*eu*eu/(cT2*cT2)-0.5d0*uu/cT2) + &
+                qlambdaT(alpha)*TLoc*pressureLoc/(rho0*cT2)
         end function calc_geq
 
     end module commondata
-!===================================================================================================
+
+!   全局模块结束
+!=============================================================
 
 
-!===================================================================================================
-! 主程序：保持“流场一步 -> 温度场一步 -> 定期同步和诊断”的推进顺序。
+!=============================================================
+
     program main
-        use openacc
-        use commondata
-        implicit none
-        real(kind=8) :: timeStart, timeEnd, wallSeconds
-        integer(kind=8) :: wallClockStart, wallClockEnd, wallClockRate
-        integer(kind=4) :: numAccDevices
+
+    use openacc
+    use commondata
+    implicit none
+    real(kind=8) :: timeStart, timeEnd
+    real(kind=8) :: timeStart2, timeEnd2
+    character(len=24) :: ctime, string
+    INTEGER(kind=4) :: time
+    integer(kind=4) :: numAccDevices
 #ifdef unsteadyFlow
-        integer(kind=4) :: nextSnapshotItc, nextTecplotItc
-        logical :: monitorDue, statisticDue, snapshotDue, tecplotDue
+    integer(kind=4) :: nextSampleItc
+    integer(kind=4) :: nextSampleAbsItc
+    integer(kind=4) :: nextStatisticSampleIndex
+    integer(kind=4) :: unsteadyItcRemaining
+#endif
+    integer(kind=8) :: wallClockStart, wallClockEnd, wallClockRate
+
+
+    !===============================================================================================
+    ! 初始化 OpenACC 设备
+    if(loadInitField.EQ.1) then
+        open(unit=00,file=trim(settingsFile),status='unknown',position='append')
+        write(00,*) " "
+        write(00,*) "================ Restart continuation begins ================"
+    else
+        open(unit=00,file=trim(settingsFile),status='replace')
+    endif
+    string = ctime( time() )                      !ctime把 time() 返回的时间戳转换成可读的字符串
+    write(00,*) 'Start: ', string                 !什么时候开始计算
+    write(00,*) "Starting OpenACC >>>>>>"
+    call acc_init(acc_device_default)
+    numAccDevices = acc_get_num_devices(acc_device_default)
+    write(00,*) "Visible OpenACC devices:", numAccDevices
+    close(00)
+    !===============================================================================================
+
+
+    !===============================================================================================
+    ! Initialization
+    call initial()
+    call enter_data_2d_openacc()
+#ifdef unsteadyFlow
+    ! 非稳态的 itc_max 是整个算例的总目标步数；
+    ! 续算时 restartItcOffset 是旧算例已经完成的步数，本次只推进剩余步数。
+    unsteadyItcRemaining = max(0, itc_max - restartItcOffset)
 #endif
 
-        ! 初始化当前 OpenACC 默认设备。实际设备由编译器和 ACC_DEVICE_TYPE/ACC_DEVICE_NUM 等环境设置决定。
-        call acc_init(acc_device_default)
-        numAccDevices = acc_get_num_devices(acc_device_default)
-        call initial(numAccDevices)
+    !===============================================================================================
 
-        ! 设备数据只在这里建立一次，并在整个时间推进期间常驻，避免每个格子步重复传输大数组。
-        call enter_data_2d_openacc()
+    call CPU_TIME(timeStart)         !当前进程累计消耗的 CPU 时间,包括并行
+    ! system_clock 返回墙钟计数器和每秒计数率；
+    ! 下面用 counter/rate 把它换算成实际经过的秒数。
+    call system_clock(wallClockStart, wallClockRate)
+    timeStart2 = dble(wallClockStart) / dble(max(wallClockRate,1_8))
+#ifdef steadyFlow
+    do while( ((errorU.GT.epsU).OR.(errorT.GT.epsT)).AND.(itc.LE.itc_max) )
+#endif
+#ifdef unsteadyFlow
+    do while( itc.LT.unsteadyItcRemaining )   !非稳态：续算时只推进到 unsteadyRunDuration 对应的总格子步
+#endif
 
-        call cpu_time(timeStart)
-        call system_clock(wallClockStart, wallClockRate)
+        itc = itc+1
+
+        call collision()
+
+        call streaming()
+
+        call bounceback()
+
+        call macro()
+
+        call collisionT()
+
+        call streamingT()
+
+        call bouncebackT()
+
+        call macroT()
 
 #ifdef steadyFlow
-        do while(((errorU.GT.epsU).OR.(errorT.GT.epsT)).AND.(itc.LT.itc_max))
+        ! 周期输出按累计格子步判断；否则从 1050tf 续算会在 1150tf 才输出，
+        ! 而不是接回不断电运行应有的 1100tf、1200tf、...
+        if(MOD(restartItcOffset+itc,2000).EQ.0) call check()
+        if( (outputPltFile.EQ.1).AND.(MOD(restartItcOffset+itc, outputPltFileIntervalItc).EQ.0) ) then
+            call update_host_tecplot_2d_openacc()
+            call output_Tecplot()  !稳态模式下的可选周期 Tecplot 输出
+        endif
+        if( (outputSnapshotFile.EQ.1).AND.(MOD(restartItcOffset+itc, outputSnapshotIntervalItc).EQ.0) ) then
+            call update_host_snapshot_2d_openacc()
+            call output_SnapshotFile()  !稳态模式下的可选周期 uvTrho 快照输出
+        endif
+        if( (outputReloadFile.EQ.1).AND.(MOD(restartItcOffset+itc, reloadFileIntervalItc).EQ.0) ) then
+            call update_host_reload_2d_openacc()
+            call output_ReloadFile()      !稳态模式下的可选周期 f/g 重启文件输出
+        endif
 #endif
+
 #ifdef unsteadyFlow
-        do while(itc.LT.itc_max)
-#endif
-            itc = itc+1
-
-            !---------------------------------------------------------------------------------------
-            ! 流场推进：F/p -> 局部应变率 -> 碰撞 -> 拉式迁移 -> 无滑移边界 -> 宏观量。
-            ! 应变率必须在碰撞前更新，因为论文式 (26) 的 chi_s/chi_b 修正项显式依赖 S_ab。
-            call compute_force()
-            call compute_strain_rate()
-            call collision()
-            call streaming()
-            call bounceback()
-            call macro()
-
-            !---------------------------------------------------------------------------------------
-            ! 温度场推进：先用新流场重算 F/p 和 grad(T)，再执行温度碰撞、迁移、边界和宏观量。
-            ! 论文式 (28) 同时依赖压力、力和温度梯度，所以这些量不能沿用更早的旧值。
-            call compute_force()
-            call compute_temperature_gradient()
-            call collisionT()
-            call streamingT()
-            call bouncebackT()
-            call macroT()
-
-#ifdef steadyFlow
-            if(mod(itc, checkInterval).EQ.0) then
-                ! 先在设备端刷新诊断量，再只同步 CPU 后处理所需的宏观数组。
-                call compute_force()
-                call compute_strain_rate()
-                call compute_temperature_gradient()
-                call update_host_monitor_2d_openacc()
-                call check()
-                call calNuRe()
-                call append_history()
-            endif
-#endif
-#ifdef unsteadyFlow
-            ! 标量统计、二进制瞬时场和 Tecplot 使用彼此独立的自由落体时间间隔。
-            ! 瞬时场只在统计窗口内保存；目标时刻由绝对 t_ff 逐次换算，避免整数步间隔累积漂移。
-            monitorDue = mod(itc,checkInterval).EQ.0
-            statisticDue = (itc.GT.averageStartItc).AND. &
-                (mod(itc-averageStartItc,sampleIntervalItc).EQ.0)
-            snapshotDue = .false.
-            if((outputSnapshotFile.EQ.1).AND.(snapshotFileNum.LT.targetSnapshotFiles)) then
-                nextSnapshotItc = max(1,nint((transientTimeTf+ &
-                    dble(snapshotFileNum+1)*snapshotTimeTf)*timeUnit))
-                snapshotDue = itc.GE.nextSnapshotItc
-            endif
-            tecplotDue = .false.
-            if((outputTecplotFile.EQ.1).AND.(tecplotFileNum.LT.targetTecplotFiles)) then
-                nextTecplotItc = max(1,nint((transientTimeTf+ &
-                    dble(tecplotFileNum+1)*tecplotTimeTf)*timeUnit))
-                tecplotDue = itc.GE.nextTecplotItc
-            endif
-
-            ! Tecplot 与标量诊断都需要温度梯度；重合时只做一次设备到主机同步。
-            if(monitorDue.OR.statisticDue.OR.tecplotDue) then
-                call compute_force()
-                call compute_strain_rate()
-                call compute_temperature_gradient()
-                call update_host_monitor_2d_openacc()
-                if(monitorDue.OR.statisticDue) then
-                    call check()
-                    call calNuRe()
-                    if(statisticDue) call accumulate_statistics()
-                    call append_history()
-                endif
-                if(snapshotDue) call output_SnapshotFile()
-                if(tecplotDue) call output_periodic_Tecplot()
-            elseif(snapshotDue) then
-                call update_host_snapshot_2d_openacc()
-                call output_SnapshotFile()
-            endif
-#endif
+        ! 统计采样和全场快照使用独立频率：本循环只处理统计窗口内的 Nu/Re、耗散和温度剖面。
+        do while((restartStatisticSampleOffset+dimensionlessTime).LT.expectedStatisticSampleCount)
+            ! 每个目标采样时刻都按绝对 t_ff 换算到本次运行段的 itc，续算时不会重复旧样本。
+            nextStatisticSampleIndex = firstStatisticSampleIndex+ &
+                restartStatisticSampleOffset+dimensionlessTime
+            nextSampleAbsItc = max(1, int(real(nextStatisticSampleIndex,kind=8)* &
+                statisticSampleInterval*timeUnit+0.5d0)) !下一个统计采样点对应的绝对格子步
+            nextSampleItc = max(1, nextSampleAbsItc - restartItcOffset) !换成本次续算运行里的局部步数
+            if(itc.LT.nextSampleItc) exit !还没到下一个固定采样步时，继续推进 LBM
+            ! 一次全场遍历同时计算 Nu、Re、两类耗散和 Xu 可压缩性指标，避免重复计算速度平方。
+            call calculate_unsteady_sample()
+            !$acc update self(T)
+            call accumulate_dissipation_statistics() !所有调度到的样本都位于统计窗口内
         enddo
-
-        call compute_force()
-        call compute_strain_rate()
-        call compute_temperature_gradient()
-        call update_host_monitor_2d_openacc()
-        if(lastCheckItc.NE.itc) call check()
-        call calNuRe()
-#ifdef unsteadyFlow
-        ! 无论最后一个格子步是否恰好命中周期，都保留最终瞬时场；避免只留下较早的周期快照。
-        if((outputSnapshotFile.EQ.1).AND.(lastSnapshotItc.NE.itc)) call output_SnapshotFile()
-        call write_statistics()
+        ! 快照只服务于全场后处理，独立按 outputSnapshotInterval 输出，不再跟随每个统计采样点。
+        if( (outputSnapshotFile.EQ.1).AND. &
+            (MOD(restartItcOffset+itc,outputSnapshotIntervalItc).EQ.0) ) then
+            call update_host_snapshot_2d_openacc()
+            call output_SnapshotFile()
+        endif
+        if( (outputPltFile.EQ.1).AND.(MOD(restartItcOffset+itc, outputPltFileIntervalItc).EQ.0) ) then
+            call update_host_tecplot_2d_openacc()
+            call output_Tecplot()  !非稳态模式下的可选周期 Tecplot 输出
+        endif
+        if( (outputReloadFile.EQ.1).AND.(MOD(restartItcOffset+itc, reloadFileIntervalItc).EQ.0) ) then
+            call update_host_reload_2d_openacc()
+            call output_ReloadFile()      !非稳态模式下的可选周期 f/g 重启文件输出
+        endif
 #endif
-        call output_Tecplot(pltFile)
+     enddo
 
-        call cpu_time(timeEnd)
-        call system_clock(wallClockEnd)
-        wallSeconds = dble(wallClockEnd-wallClockStart)/dble(max(wallClockRate,1_8))
-        call final_log(timeEnd-timeStart, wallSeconds)
+    !$acc wait(1)
+    call CPU_TIME(timeEnd)         !当前进程累计消耗的 CPU 时间,包括并行
+    ! 取墙钟结束计数器，用于后面输出 OpenACC 实际耗时。
+    call system_clock(wallClockEnd, wallClockRate)
+    timeEnd2 = dble(wallClockEnd) / dble(max(wallClockRate,1_8))
+    call update_host_snapshot_2d_openacc()
 
-        ! 所有主机输出结束后，再释放设备端和主机端数组。
-        call exit_data_2d_openacc()
-        call finalize_arrays()
+#ifdef steadyFlow
+    call output_Tecplot()          !输出最后一步的plt结果
+    call output_SnapshotFile()              !输出最后一步的uvTrho数据
+#endif
+
+#ifdef unsteadyFlow
+    call output_unsteady_NuRe_postprocess()
+    call write_dissipation_statistics()
+#endif
+
+    !===============================================================================================
+
+
+
+    !===============================================================================================
+
+
+#ifdef steadyFlow
+! 稳态最终标量诊断：
+! 1) 只在 steadyFlow 收敛后调用
+! 2) SideHeatedCell 的主热流方向为 x，用 u 和 dT/dx；RayleighBenardCell 的主热流方向为 y，用 v 和 dT/dy。
+! 3) 壁面 Nu 和角点扩展默认采用半步长边界：流体节点距离物理边界 dx/2 或 dy/2。
+! 4) Nu 极值、中心线速度极值使用五点最小二乘抛物线插值；中心线在偶数网格时用两侧流体节点线性插值。
+! 5) 如果后续改成周期速度/温度边界，或改变半步长边界布置，这里和各后处理子程序都需要重新检查。
+#ifdef SideHeatedCell
+    call SideHeatedcalc_Nu_global()          ! 全场平均Nu
+    call SideHeatedcalc_Nu_wall_avg()  ! 热/冷壁, 中线平均Nu,以及热壁最大Numax和Numin以及位置，都采用五点最小二乘法插值出来
+
+    call SideHeatedcalc_umid_max()     !中心线上的最大速度及其位置，也是用五点最小二乘法插值出来
+    call SideHeatedcalc_vmid_max()
+#endif
+
+#ifdef RayleighBenardCell
+    call RBcalc_Nu_global()          ! 全场平均Nu
+    call RBcalc_Nu_wall_avg()  ! 热/冷壁, 中线平均Nu,以及热壁最大Numax和Numin以及位置，都采用五点最小二乘法插值出来
+
+    call RBcalc_umid_max()     !中心线上的最大速度及其位置，也是用五点最小二乘法插值出来
+    call RBcalc_vmid_max()
+#endif
+#endif
+
+
+#ifdef VerticalWallsNoslip
+    ! psi/vort 后处理默认封闭腔体：四周无滑移，psi 在物理边界取同一常数。
+    ! 若垂直边界改为周期速度边界，流函数边界补点和涡量单边差分需要另写周期版本。
+    call calc_psi_vort_and_output()  ! 输出中心abs(psi), max(abs(psi))及位置；max位置用细网格样条插值
+#endif
+
+#ifdef steadyFlow
+    call calNuRe()
+#endif
+
+
+
+
+
+
+    open(unit=00,file=trim(settingsFile),status='unknown',position='append')        !在这个txt文件后面继续写（追加模式）
+    write(00,*) "======================================================================"
+    write(00,*) "Time (CPU) = ", real(timeEnd-timeStart,kind=8), "s"                             !当前进程累计消耗的 CPU 时间,包括并行
+    write(00,*) "MLUPS = ", real( dble(nx)*dble(ny)*dble(itc)/(timeEnd-timeStart)/1.0d6,kind=8 )   !百万格点更新/秒
+    write(00,*) "Time (ACC) = ", real(timeEnd2-timeStart2,kind=8), "s"                           !墙钟时间
+    write(00,*) "MLUPS (ACC) = ", real( dble(nx)*dble(ny)*dble(itc)/(timeEnd2-timeStart2)/1.0d6,kind=8 )   !百万格点更新/秒
+#ifdef steadyFlow
+    write(00,'(a,1x,ES24.16E3)') "Nu_global =", real(Nu_global,kind=8)
+    write(00,'(a,1x,ES24.16E3)') "Nu_hot    =", real(Nu_hot,kind=8)
+    write(00,'(a,1x,ES24.16E3)') "Nu_cold   =", real(Nu_cold,kind=8)
+#endif
+    write(00,*) "Dellocate Array......"
+    call exit_data_2d_openacc()
+    deallocate(f)
+    deallocate(g)
+    deallocate(f_post)
+    deallocate(g_post)
+    deallocate(u)
+    deallocate(v)
+    deallocate(T)
+#ifdef steadyFlow
+    deallocate(up)
+    deallocate(vp)
+    deallocate(Tp)
+#endif
+    deallocate(rho)
+    deallocate(Fx)
+    deallocate(Fy)
+    deallocate(Sxx)
+    deallocate(Sxy)
+    deallocate(Syy)
+    deallocate(Sdiv)
+#ifdef unsteadyFlow
+    deallocate(sumTemperatureXAvgProfile)
+    deallocate(sumTemperatureSquaredXAvgProfile)
+#endif
+    write(00,*) "    "
+
+    write(00,*) "Successfully: DNS completed!"
+
+    string = ctime( time() )
+    write(00,*) 'End:   ', string           !什么时候算完
+    close(00)
+
+
     end program main
-!===================================================================================================
+
+!===========================================================================================================================
 
 
 !===================================================================================================
 ! 子程序: initial
-! 作用: 分配数组，建立半格点均匀网格，以静止导热解初始化宏观场和两个平衡分布函数。
-! 说明: f_post/g_post 在设备端用 create 建立，第一次碰撞会先清零，因此无须主机初始化。
-!===================================================================================================
-    subroutine initial(numAccDevices)
-        use commondata
-        implicit none
-        integer(kind=4), intent(in) :: numAccDevices
-        integer(kind=4) :: i, j, alpha
-        real(kind=8) :: piValue
+! 作用: 初始化网格坐标、场变量、分布函数、输出文件和重启信息。
+!===========================================================================================================================
+  subroutine initial()
+    use commondata
+    implicit none
+    integer(kind=4) :: i, j
+    integer(kind=4) :: alpha
+    real(kind=8) :: un(0:8)
+    real(kind=8) :: us2
+    real(kind=8) :: xLen, yLen, rbInitPerturbAmp
+    character(len=100) :: reloadFileName
+
+
+    itc = 0
+    errorU = 100.0d0
+    errorT = 100.0d0
+    snapshotFileNum = 0
+    pltFileNum = 0
+    restartItcOffset = 0
+    reloadMetadataLoaded = .false.
+    outputSnapshotIntervalItc = max(1, int(outputSnapshotInterval*timeUnit+0.5d0))
+#ifdef unsteadyFlow
+    statisticSampleIntervalItc = max(1, int(statisticSampleInterval*timeUnit+0.5d0))
+#endif
+    reloadFileIntervalItc = max(1, int(reloadFileInterval*timeUnit+0.5d0))
+    outputPltFileIntervalItc = max(1, int(outputPltFileInterval*timeUnit+0.5d0))
+
+
+    !-----------------------------------------------------------------------------------------------
+    !记录各种信息在日志文件中
+    open(unit=00,file=trim(settingsFile),status='unknown',position='append')  !在这个txt文件后面继续写（追加模式）
+
+    if(outputSnapshotFile.EQ.1) then
+        open(unit=01,file=trim(snapshotFilePrefix)//"-"//"readme",status="unknown")    !trim去掉字符串尾部空格，换了存储路径，可自己更改
+        write(01,*) "snapshot file prefix exists!"
+        close(01)
+        write(00,*) "Snapshot data will be stored in ", snapshotFilePrefix
+    endif
+    if(outputPltFile.EQ.1) then
+        open(unit=01,file=trim(pltFolderPrefix)//"-"//"readme",status="unknown")     !读取路径pltFolderPrefix="../pltFile/buoyancyCavity
+        write(01,*) "pltFile folder exist!"
+        close(01)
+        write(00,*) "Data will be stored in ", pltFolderPrefix
+    endif
+    if(outputReloadFile.EQ.1) then
+        open(unit=01,file=trim(reloadFilePrefix)//"-"//"readme",status="unknown")
+        write(01,*) "reloadFile prefix exists!"
+        close(01)
+        write(00,*) "Reload data will be stored in ", reloadFilePrefix
+    endif
+
+    if((chi_nu.GE.1.0d0).OR.(chi_b.GT.1.0d0).OR.(chi_kappa.GE.1.0d0)) then
+        write(00,*) "Error: chi_nu/chi_kappa must be smaller than one and chi_b must not exceed one"
+        stop
+    endif
+    if((Snu.LE.0.0d0).OR.(Snu.GE.2.0d0).OR.(Sq.LE.0.0d0).OR.(Sq.GE.2.0d0)) then
+        write(00,*) "Error: flow TRT relaxation rates must lie strictly between zero and two"
+        stop
+    endif
+    if((taug.LE.0.5d0).OR.(Sg.LE.0.0d0).OR.(Sg.GE.2.0d0)) then
+        write(00,*) "Error: D2Q9-BGK taug must exceed 0.5 and Sg must lie strictly between zero and two"
+        stop
+    endif
+    if(abs((taug-0.5d0)*(1.0d0-chi_kappa)*cT2-diffusivity).GT. &
+        1.0d-12*max(1.0d0,abs(diffusivity))) then
+        write(00,*) "Error: taug/chi_kappa mapping does not reproduce the target diffusivity"
+        stop
+    endif
+
+    write(00,*)"-------------------------------------------------------------------------------"
+    write(00,*) 'Mesh:',nx,ny
+    write(00,*) 'Rayleigh=',real(Rayleigh,kind=8), '; Prandtl =',real(Prandtl,kind=8), '; Mach =',real(Mach,kind=8)
+    write(00,*) "Length unit: L0 =", real(lengthUnit,kind=8)
+    write(00,*) "Time unit: Sqrt(L0/(gBeta*DeltaT)) =", real(timeUnit,kind=8)
+    write(00,*) "Velocity unit: Sqrt(gBeta*L0*DeltaT) =", real(velocityUnit,kind=8)
+    write(00,*) "   "
+    write(00,*) 'chi_nu=',real(chi_nu,kind=8), '; chi_b=',real(chi_b,kind=8)
+    write(00,*) 'tau_0/tauf=',real(tauf,kind=8), '; Snu=',real(Snu,kind=8), '; Sq=',real(Sq,kind=8)
+#ifdef FLOW_ODD_ORIGINAL_MAGIC
+    write(00,*) "Flow odd magic policy = original tau_0 scale"
+#endif
+#ifdef FLOW_ODD_EFFECTIVE_MAGIC
+    write(00,*) "Flow odd magic policy = chi_nu-corrected effective scale"
+#endif
+    write(00,*) "thermalScheme = original LBM-CDE D2Q9-BGK"
+    write(00,*) 'taug=',real(taug,kind=8), '; Sg=',real(Sg,kind=8), &
+        '; chi_kappa=',real(chi_kappa,kind=8)
+    write(00,*) "viscosity =",real(viscosity,kind=8), "; diffusivity =",real(diffusivity,kind=8)
+    write(00,*) "outputSnapshotFile =", outputSnapshotFile
+    write(00,*) "outputSnapshotInterval =", real(outputSnapshotInterval,kind=8), "free-fall time units"
+    write(00,*) "outputSnapshotIntervalItc =", outputSnapshotIntervalItc, "in itc units"
+    write(00,*) "outputPltFile =", outputPltFile
+    write(00,*) "outputPltFileInterval =", real(outputPltFileInterval,kind=8), "free-fall time units"
+    write(00,*) "outputPltFileIntervalItc =", outputPltFileIntervalItc, "in itc units"
+    write(00,*) "outputReloadFile =", outputReloadFile
+    write(00,*) "reloadFileInterval =", real(reloadFileInterval,kind=8), "free-fall time units"
+    write(00,*) "reloadFileIntervalItc =", reloadFileIntervalItc, "in itc units"
+#ifdef unsteadyFlow
+    write(00,*) "statisticSampleInterval =", real(statisticSampleInterval,kind=8), &
+        "free-fall time units"
+    write(00,*) "statisticSampleIntervalItc =", statisticSampleIntervalItc, "in itc units"
+    write(00,*) "unsteadyRunDuration =", real(unsteadyRunDuration,kind=8), "free-fall time units"
+    write(00,*) "expectedStatisticSampleCount =", expectedStatisticSampleCount
+    write(00,*) "first/last statistic sample time_tf =", &
+        dble(firstStatisticSampleIndex)*statisticSampleInterval, &
+        dble(lastStatisticSampleIndex)*statisticSampleInterval
+    write(00,*) "Statistics histories cover only the averaging window; time axis uses prescribed t/t_ff"
+    write(00,*) "dissipationHistoryFile =", trim(dissipationHistoryFile)
+    write(00,*) "temperatureProfileHistoryFile =", trim(temperatureProfileHistoryFile)
+#endif
+#ifdef steadyFlow
+    write(00,*) "Steady convergence/Nu-Re history axis = cumulative lattice itc"
+#endif
+    if(loadInitField.EQ.1) then
+        write(00,*) "Restart offsets will be read from reload metadata when available."
+    endif
+    write(00,*) "itc_max =",itc_max
+    write(00,*) "default epsU =", real(epsU,kind=8),"; epsT =", real(epsT,kind=8)
+    write(00,*) "    "
+
 #ifdef RayleighBenardCell
-        real(kind=8) :: yNormalized
+    write(00,*) "I am Rayleigh Benard Cell"
+#endif
+#ifdef SideHeatedCell
+    write(00,*) "I am Side Heated Cell"
 #endif
 
-        itc = 0
-        lastCheckItc = -1
-        errorU = 100.0d0
-        errorT = 100.0d0
-        Nu_global = 0.0d0
-        Nu_hot = 0.0d0
-        Nu_cold = 0.0d0
-        Nu_middle = 0.0d0
-        Nu_hot_halfway = 0.0d0
-        Nu_cold_halfway = 0.0d0
-        Nu_middleFD = 0.0d0
-        ReVolAvg = 0.0d0
-        speedSquaredVol = 0.0d0
-        epsKineticVol = 0.0d0
-        epsThermalVol = 0.0d0
-        NuKineticDiss = 0.0d0
-        NuThermalDiss = 0.0d0
-        kineticDissExactRatio = 0.0d0
-        thermalDissExactRatio = 0.0d0
-        maxMachLocal = 0.0d0
-        minTemperature = 0.0d0
-        maxTemperature = 0.0d0
-        maxDensityDeviation = 0.0d0
-        umax_mid = 0.0d0
-        vmax_mid = 0.0d0
-        Numax_mid = 0.0d0
-        pos_umax_mid = 0.0d0
-        pos_vmax_mid = 0.0d0
-        pos_Numax_mid = 0.0d0
-        sumNuGlobal = 0.0d0
-        sumNuGlobal2 = 0.0d0
-        sumNuHot = 0.0d0
-        sumNuHot2 = 0.0d0
-        sumNuCold = 0.0d0
-        sumNuCold2 = 0.0d0
-        sumNuMiddle = 0.0d0
-        sumNuMiddle2 = 0.0d0
-        sumSpeedSquaredVol = 0.0d0
-        sumSpeedSquaredVol2 = 0.0d0
-        sumNuKineticDiss = 0.0d0
-        sumNuKineticDiss2 = 0.0d0
-        sumNuThermalDiss = 0.0d0
-        sumNuThermalDiss2 = 0.0d0
-        sumNuGlobalFirstHalf = 0.0d0
-        sumNuGlobalSecondHalf = 0.0d0
-        sumSpeedSquaredFirstHalf = 0.0d0
-        sumSpeedSquaredSecondHalf = 0.0d0
-        maxStatisticCFL = 0.0d0
-        statisticSamples = 0
-        firstHalfSamples = 0
-        secondHalfSamples = 0
-        firstStatisticItc = -1
-        lastStatisticItc = -1
+#ifdef steadyFlow
+    write(00,*) "I am steadyFlow"
+#endif
 #ifdef unsteadyFlow
-        snapshotFileNum = 0
-        tecplotFileNum = 0
-        lastSnapshotItc = -1
-        lastTecplotItc = -1
+    write(00,*) "I am unsteadyFlow"
+#endif
+    write(00,*) "OpenACC GPU version; final wall-fit and psi/vorticity diagnostics stay on host"
+    !-----------------------------------------------------------------------------------------------
+
+
+
+    !-----------------------------------------------------------------------------------------------
+    !节点坐标数组
+    xp(0) = 0.0d0
+    xp(nx+1) = dble(nx)
+    do i=1,nx
+        xp(i) = dble(i)-0.5d0
+    enddo
+    xp = xp / lengthUnit
+
+    yp(0) = 0.0d0
+    yp(ny+1) = dble(ny)
+    do j=1,ny
+        yp(j) = dble(j)-0.5d0
+    enddo
+    yp = yp / lengthUnit
+
+    allocate (u(nx,ny))
+    allocate (v(nx,ny))
+    allocate (T(nx,ny))
+    allocate (rho(nx,ny))
+
+#ifdef steadyFlow
+    allocate (up(nx,ny))
+    allocate (vp(nx,ny))
+    allocate (Tp(nx,ny))
 #endif
 
-        if((Rayleigh.LE.0.0d0).OR.(Prandtl.LE.0.0d0).OR.(Mach.LE.0.0d0)) then
-            error stop "Ra, Pr and Mach must all be positive"
-        endif
-        if((chi_nu.GE.1.0d0).OR.(chi_b.GE.1.0d0).OR.(chi_kappa.GE.1.0d0)) then
-            error stop "chi_nu, chi_b and chi_kappa must be smaller than one"
-        endif
-        if(abs((1.0d0-chi_nu)*cs2*(taufL-0.5d0)-viscosity).GT. &
-            1.0d-12*max(1.0d0,abs(viscosity))) then
-            error stop "The chi_nu-to-tau_0 mapping does not reproduce target viscosity"
-        endif
-        if((taufL.LE.0.5d0).OR.(taugL.LE.0.5d0)) then
-            error stop "The mapped shear/thermal relaxation times must be larger than 0.5"
-        endif
-        if((omegaFOdd.LE.0.0d0).OR.(omegaFOdd.GE.2.0d0)) then
-            error stop "The TRT odd relaxation rate must lie strictly between zero and two"
-        endif
-        if(sigmaFlowBase.LE.0.0d0) then
-            error stop "The original/base flow Hénon shift must be positive"
-        endif
-        if(sigmaFlowEffective.LE.0.0d0) then
-            error stop "The chi_s-corrected effective flow Hénon shift must be positive"
-        endif
-        if(sigmaFlowMagicScale.LE.0.0d0) then
-            error stop "The selected flow magic Hénon shift must be positive"
-        endif
-        if(flowMagicParameter.LE.0.0d0) then
-            error stop "The TRT magic parameter must be positive"
-        endif
+    allocate (f(nx,ny,0:8))
+    allocate (f_post(0:nx+1,0:ny+1,0:8))
+    allocate (g(nx,ny,0:8))
+    allocate (g_post(0:nx+1,0:ny+1,0:8))
+
+    allocate (Fx(nx,ny))
+    allocate (Fy(nx,ny))
+    allocate (Sxx(nx,ny), Sxy(nx,ny), Syy(nx,ny), Sdiv(nx,ny))
+
 #ifdef unsteadyFlow
-        if((transientTimeTf.LT.0.0d0).OR.(averagingTimeTf.LE.0.0d0).OR. &
-            (sampleTimeTf.LE.0.0d0).OR.(monitorTimeTf.LE.0.0d0)) then
-            error stop "Unsteady transient/average/sample/monitor times are invalid"
-        endif
-        if((outputSnapshotFile.EQ.1).AND.(snapshotTimeTf.LE.0.0d0)) then
-            error stop "The unsteady snapshot interval must be positive when snapshot output is enabled"
-        endif
-        if((outputTecplotFile.EQ.1).AND.(tecplotTimeTf.LE.0.0d0)) then
-            error stop "The unsteady Tecplot interval must be positive when Tecplot output is enabled"
-        endif
-        if((outputSnapshotFile.NE.0).AND.(outputSnapshotFile.NE.1)) then
-            error stop "UNSTEADY_OUTPUT_SNAPSHOT_OVERRIDE must be zero or one"
-        endif
-        if((outputTecplotFile.NE.0).AND.(outputTecplotFile.NE.1)) then
-            error stop "UNSTEADY_OUTPUT_TECPLOT_OVERRIDE must be zero or one"
-        endif
+    allocate (sumTemperatureXAvgProfile(ny), sumTemperatureSquaredXAvgProfile(ny))
 #endif
 
-        allocate(u(nx,ny), v(nx,ny), T(nx,ny), rho(nx,ny), pressure(nx,ny))
-        allocate(up(nx,ny), vp(nx,ny), Tp(nx,ny))
-        allocate(Fx(nx,ny), Fy(nx,ny))
-        allocate(gradTx(nx,ny), gradTy(nx,ny))
-        allocate(Sxx(nx,ny), Sxy(nx,ny), Syy(nx,ny), Sdiv(nx,ny))
-        allocate(f(0:8,nx,ny), f_post(0:8,0:nx+1,0:ny+1))
-        ! 温度分布严格按原 LBM-CDE 的 D2Q9 方向 0:8 分配。
-        allocate(g(0:thermalQ,nx,ny), g_post(0:thermalQ,0:nx+1,0:ny+1))
-        allocate(sumTemperatureProfile(ny), sumTemperatureSquaredProfile(ny))
-        sumTemperatureProfile = 0.0d0
-        sumTemperatureSquaredProfile = 0.0d0
+    !-----------------------------------------------------------------------------------------------
 
-        ! 流体节点位于 (i-1/2,j-1/2)，物理壁面位于 x/y=0 和 x/y=L；
-        ! 这与后面的 halfway bounce-back / anti-bounce-back 边界位置一致。
-        do i = 0, nx+1
-            xp(i) = dble(i)-0.5d0
-        enddo
-        xp(0) = 0.0d0
-        xp(nx+1) = dble(nx)
-        xp = xp/lengthUnit
 
-        do j = 0, ny+1
-            yp(j) = dble(j)-0.5d0
-        enddo
-        yp(0) = 0.0d0
-        yp(ny+1) = dble(ny)
-        yp = yp/lengthUnit
 
-        rho = rho0
+    !-----------------------------------------------------------------------------------------------
+    !初始化
+    rho = 1.0d0                                     !密度rho=1
+
+    omega(0) = 4.0d0/9.0d0
+    do alpha=1,4
+        omega(alpha) = 1.0d0/9.0d0
+    enddo
+    do alpha=5,8
+        omega(alpha) = 1.0d0/36.0d0
+    enddo
+
+    if(loadInitField.EQ.0) then                    !在不加载文件的情况下，都是零场为初值
+
         u = 0.0d0
         v = 0.0d0
-        pressure = 0.0d0
+        T = 0.0d0
         Fx = 0.0d0
         Fy = 0.0d0
-        gradTx = 0.0d0
-        gradTy = 0.0d0
         Sxx = 0.0d0
         Sxy = 0.0d0
         Syy = 0.0d0
         Sdiv = 0.0d0
 
-        ! 初始温度取相应方向的纯导热线性分布。RB 额外加入确定性、零均值的小扰动，
-        ! 以打破精确导热态的离散对称性；扰动在四条物理壁面处解析为零。
-        piValue = dacos(-1.0d0)
-        do j = 1, ny
-            do i = 1, nx
-#ifdef RayleighBenardCell
-                T(i,j) = Thot + (yp(j)-yp(0))/(yp(ny+1)-yp(0))*(Tcold-Thot) + &
-                    rbPerturbation*deltaT*dsin(2.0d0*piValue*xp(i))*dsin(piValue*yp(j))
-                ! 纯导热基态满足 dp/dy=rho0*gBeta*(T_cond-Tref)。取体平均压力为零，
-                ! 可避免从均匀密度启动时产生与碰撞参数混杂的全域静水调整瞬态。
-                yNormalized = (yp(j)-yp(0))/(yp(ny+1)-yp(0))
-                pressure(i,j) = rho0*gBeta*lengthUnit* &
-                    (0.5d0*yNormalized-0.5d0*yNormalized*yNormalized-1.0d0/12.0d0)
-                rho(i,j) = rho0+pressure(i,j)/cs2
+        write(00,*) "Initial field is set exactly"
+        if(reloadDimensionlessTime.NE.0.0d0) then        !在不加载文件的情况下，reloadDimensionlessTime必须是零
+            write(00,*) "Error: since loadInitField.EQ.0, reloadDimensionlessTime should also be 0"
+            stop
+        endif
+
+#ifdef VerticalWallsNoslip
+        write(00,*) "Velocity B.C. for vertical walls are: ===No-slip wall==="
 #endif
-#ifdef SideHeatedCell
-                T(i,j) = Thot + (xp(i)-xp(0))/(xp(nx+1)-xp(0))*(Tcold-Thot)
+#ifdef VerticalWallsPeriodicalU
+        write(00,*) "Velocity B.C. for vertical walls are: ===Periodical==="
 #endif
-            enddo
+#ifdef HorizontalWallsNoslip
+        write(00,*) "Velocity B.C. for horizontal walls are: ===No-slip wall==="
+#endif
+
+#ifdef VerticalWallsConstT
+    do j = 1, ny                                   !在不加载文件的情况下，初始化温度是分层的，xp(0)和xp(nx+1)分别是左侧和右侧边界的坐标，xp(i)是内部节点的坐标，线性插值出每个节点的初始温度
+        do i = 1, nx
+            T(i,j) = Thot + (xp(i)-xp(0)) / (xp(nx+1)-xp(0)) * (Tcold-Thot)
         enddo
+    enddo
+    write(00,*) "Temperature B.C. for vertical walls are:===Hot/cold wall==="
+#endif
+
+#ifdef HorizontalWallsConstT
+    do i = 1, nx
+        do j = 1, ny
+            T(i,j) = Thot + (yp(j)-yp(0)) / (yp(ny+1)-yp(0)) * (Tcold-Thot)
+        enddo
+    enddo
+#ifdef RayleighBenardCell
+    ! 非稳态 RB 从完全对称的导热态启动时需要一个确定性小扰动来触发对流。
+    ! 扰动幅值和模态与同组 LBMCDE Rayleigh-Benard 非稳态算例保持一致。
+    xLen = xp(nx+1)
+    yLen = yp(ny+1)
+    rbInitPerturbAmp = rbPerturbation*deltaT
+    do i = 1, nx
+        do j = 1, ny
+            T(i,j) = T(i,j) + rbInitPerturbAmp * dsin(2.0d0*pi*xp(i)/xLen) * dsin(pi*yp(j)/yLen)
+        enddo
+    enddo
+    write(00,'(a,1x,es12.4)') "RB initial T perturbation amplitude =", rbInitPerturbAmp
+#endif
+    write(00,*) "Temperature B.C. for horizontal walls are:===Hot/cold wall==="
+#endif
+
+#ifdef VerticalWallsAdiabatic
+    write(00,*) "Temperature B.C. for vertical walls are:===Adiabatic wall==="
+#endif
+
+#ifdef HorizontalWallsAdiabatic
+    write(00,*) "Temperature B.C. for horizontal walls are:===Adiabatic wall==="
+#endif
 
         f = 0.0d0
         g = 0.0d0
-        ! 由初始宏观量建立平衡分布，避免第一步人为引入额外非平衡扰动。
-        do j = 1, ny
-            do i = 1, nx
+        do j = 1,ny
+            do i = 1,nx
+                us2 = u(i,j)*u(i,j)+v(i,j)*v(i,j)
                 do alpha = 0, 8
-                    f(alpha,i,j) = calc_feq(alpha, rho(i,j), u(i,j), v(i,j))
+                    un(alpha) = u(i,j)*ex(alpha)+v(i,j)*ey(alpha)
+                    f(i,j,alpha) = omega(alpha)*((rho(i,j)-rho0) + &
+                        rho0*(un(alpha)/cs2+0.5d0*un(alpha)*un(alpha)/(cs2*cs2)-0.5d0*us2/cs2))
                 enddo
-                do alpha = 0, thermalQ
-                    g(alpha,i,j) = calc_geq(alpha, T(i,j), u(i,j), v(i,j), rho(i,j))
+                do alpha = 0, 8
+                    g(i,j,alpha) = calc_geq(alpha,T(i,j),u(i,j),v(i,j),rho(i,j))
                 enddo
             enddo
         enddo
+    elseif(loadInitField.EQ.1) then                               !续算分支：从旧的严格重启文件恢复 f/g 和输出计数
+    ! 正常断电续算时，先读取 <reloadFilePrefix>-latest.meta；
+    ! meta 会告诉代码实际要读哪个 <reloadFilePrefix>-*.bin，以及旧算例已经累计到哪里。
+    !这里可以让 reloadDimensionlessTime 等于0，反正最后都可以通过meta文件读取到新的 reloadDimensionlessTime
+        write(00,*) "Read reload metadata before choosing the restart .bin file."
+        write(reloadFileName,'(i12.12)') reloadFileNum             !latest .meta 缺失时才依赖这个手工编号
+        reloadFileName = adjustl(reloadFileName)                  !adjustl把字符串左对齐，把前导空格移到字符串末尾
+        !latest .meta 存在时：精确读取账本并更新 reloadFileName；不存在时保守推断。
+        call read_reload_metadata(reloadFileName)
+        write(00,*) "Load initial field from previous simulation: ", &
+            trim(reloadFilePrefix), "-", trim(reloadFileName), ".bin"
+        if(.not.reloadMetadataLoaded) then
+            write(00,*) "WARNING: no reload metadata file found; restart offsets were inferred."
+            write(00,*) "         For exact continuation, use reload files written after this patch."
+        endif
+        open(unit=01,file=trim(reloadFilePrefix)//"-"//trim(reloadFileName)//".bin",form="unformatted", &
+        access="sequential",status='old')  !unformatted是二进制,sequential：按记录顺序读写
+            ! 严格重启文件只保存完整的 f、g 分布函数。
+            write(00,*) "Reloading f and g from file"
+            read(01) (((f(i,j,alpha), i=1,nx), j=1,ny), alpha=0,8)      !先 i，再 j，再 alpha
+            read(01) (((g(i,j,alpha), i=1,nx), j=1,ny), alpha=0,8)
+        close(01)
+        call reconstruct_macro_from_fg()
+        write(00,*) "Raw data is loaded from the file: ", trim(reloadFilePrefix), "-", trim(reloadFileName), ".bin"
+        write(00,*) "Restart offset itc =", restartItcOffset
+        write(00,*) "Restart offset time_tf =", real(reloadDimensionlessTime,kind=8)
+        write(00,*) "Continue output counters: snapshot/plt/reload =", snapshotFileNum, pltFileNum, reloadFileNum
+    else
+        write(00,*) "Error: initial field is not properly set"  !如果 loadInitField 不是 0/1 或逻辑不一致，直接停止
+        stop
+    endif
 
+    write(00,*)"-------------------------------------------------------------------------------"
+close(00)
+
+    f_post = 0.0d0
+    g_post = 0.0d0
+
+    if(loadInitField.EQ.0) then
+        snapshotFileNum = 0
+        pltFileNum = 0
+        reloadFileNum = 0
+        restartItcOffset = 0
+        reloadDimensionlessTime = 0.0d0
+#ifdef steadyFlow
+        ! 新算例第一段收敛误差应从初始场开始比较。
         up = u
         vp = v
         Tp = T
-
-        open(unit=00, file=trim(settingsFile), status='replace', action='write')
-        write(00,*) "2D OpenACC high-Ra LBM-CDE"
-        write(00,*) "Halfway-LBM fluid-node mesh =", nx, ny
-        write(00,*) "Equivalent boundary-node resolution =", nx+1, ny+1
-        write(00,*) "Device model = OpenACC single GPU"
-        write(00,*) "Visible OpenACC default devices =", numAccDevices
-#ifdef RayleighBenardCell
-        write(00,*) "Case = RayleighBenardCell (bottom hot, top cold, sidewalls adiabatic)"
 #endif
-#ifdef SideHeatedCell
-        write(00,*) "Case = SideHeatedCell"
-#endif
+    else
 #ifdef steadyFlow
-        write(00,*) "Flow mode = steadyFlow"
+        ! 重启后第一段收敛误差应从载入场继续比较。
+        up = u
+        vp = v
+        Tp = T
 #endif
+    endif
+    dimensionlessTime = 0
+    ! 新算例先清零；续算也先清零，随后从耗散与温度剖面历史恢复到重启时刻。
+    NuVolAvg = 0.0d0
+    ReVolAvg = 0.0d0
 #ifdef unsteadyFlow
-        write(00,*) "Flow mode = unsteadyFlow"
-        write(00,*) "Turbulence treatment = time-resolved LBM without an SGS/RANS closure"
+    ! 元数据中的 reloadDimensionlessTime 是实际重启格子步对应的时间，可能与固定采样时刻略有偏差。
+    ! 加半个格子时间步后向下取整，得到重启前已经完成的采样点数。
+    restartStatisticSampleOffset = max(0,min(expectedStatisticSampleCount, &
+        int((reloadDimensionlessTime+0.5d0/timeUnit+1.0d-12)/statisticSampleInterval)- &
+        firstStatisticSampleIndex+1))
+    speedSquaredVolAvg = 0.0d0
+    epsKineticVolAvg = 0.0d0
+    epsThermalVolAvg = 0.0d0
+    densityFluctuationSquaredVolAvg = 0.0d0
+    velocityDivergenceSquaredVolAvg = 0.0d0
+    maxMachLocal = 0.0d0
+    minTemperature = 0.0d0
+    maxTemperature = 0.0d0
+    sumNuVolAvg = 0.0d0
+    sumSpeedSquaredVolAvg = 0.0d0
+    sumEpsKineticVolAvg = 0.0d0
+    sumEpsThermalVolAvg = 0.0d0
+    sumDensityFluctuationSquaredVolAvg = 0.0d0
+    sumVelocityDivergenceSquaredVolAvg = 0.0d0
+    maxStatisticCFL = 0.0d0
+    sumTemperatureXAvgProfile = 0.0d0
+    sumTemperatureSquaredXAvgProfile = 0.0d0
+    statisticSamples = 0
+    firstStatisticItc = -1
+    lastStatisticItc = -1
+    if(loadInitField.EQ.1) call restore_dissipation_statistics()
 #endif
-        write(00,*) "Flow lattice = D2Q9 TRT with LBM-CDE even stress source"
-#ifdef FLOW_ODD_ORIGINAL_MAGIC
-        write(00,*) "Flow odd policy = original magic parameter on base (tau_fL-0.5) even scale"
-#else
-        write(00,*) "Flow odd policy = magic parameter on chi_s-corrected effective even scale"
-#endif
-        write(00,*) "Temperature lattice = D2Q9 BGK LBM-CDE"
-        write(00,*) "Temperature cT2 =", real(cT2,kind=8)
-        write(00,*) "Rayleigh =", real(Rayleigh,kind=8), "Prandtl =", real(Prandtl,kind=8)
-        write(00,*) "Mach =", real(Mach,kind=8), "Length unit =", real(lengthUnit,kind=8)
-        write(00,*) "chi_nu (=chi_s) =", real(chi_nu,kind=8), "chi_kappa =", real(chi_kappa,kind=8), "chi_b =", real(chi_b,kind=8)
-#ifdef CHI_NU_OVERRIDE
-        write(00,*) "Flow mapping policy = explicit chi_nu; tau_0/tau_fL derived automatically"
-#elif defined(CHI_S_OVERRIDE)
-        write(00,*) "Flow mapping policy = legacy explicit chi_s; tau_0/tau_fL derived automatically"
-#else
-        write(00,*) "Flow mapping policy = compatibility chi_nu from tau_0=0.64 reference; tau_0/tau_fL derived automatically"
-#endif
-#ifdef CHI_KAPPA_OVERRIDE
-        write(00,*) "Thermal mapping policy = explicit chi_kappa; tau_gL derived automatically"
-#else
-        write(00,*) "Thermal mapping policy = base tau_gL target; chi_kappa derived automatically"
-#endif
-        write(00,*) "viscosity =", real(viscosity,kind=8), "diffusivity =", real(diffusivity,kind=8)
-        write(00,*) "tau_0/taufL =", real(taufL,kind=8), "taugL =", real(taugL,kind=8)
-        write(00,*) "tau margins from 0.5 =", real(taufL-0.5d0,kind=8), real(taugL-0.5d0,kind=8)
-        write(00,*) "tau flow even/odd nominal =", real(taufL,kind=8), real(taufOdd,kind=8)
-        write(00,*) "omega flow even/odd =", real(omegaF,kind=8), real(omegaFOdd,kind=8)
-        write(00,*) "sigma flow base/effective/selected/odd =", real(sigmaFlowBase,kind=8), &
-            real(sigmaFlowEffective,kind=8), real(sigmaFlowMagicScale,kind=8), real(sigmaFlowOdd,kind=8)
-        write(00,*) "TRT selected magic target/actual =", real(flowMagicParameter,kind=8), &
-            real(magicProductSelected,kind=8)
-        write(00,*) "TRT base/effective products (diagnostic) =", real(magicProductBase,kind=8), &
-            real(magicProductEffective,kind=8)
-        write(00,*) "thermal effective sigma =", real(sigmaThermalEffective,kind=8)
-        write(00,*) "gBeta =", real(gBeta,kind=8)
-        write(00,*) "timeUnit =", real(timeUnit,kind=8), "velocityUnit =", real(velocityUnit,kind=8)
-        write(00,*) "Automatic mapping check: Ra =", &
-            real(gBeta*deltaT*lengthUnit**3/(viscosity*diffusivity),kind=8)
-        write(00,*) "Automatic mapping check: Pr =", real(viscosity/diffusivity,kind=8), &
-            "Mach =", real(velocityUnit/dsqrt(cs2),kind=8)
-        write(00,*) "itc_max =", itc_max, "checkInterval =", checkInterval
-        write(00,*) "Pressure convention: p = cs2*(rho-rho0), i.e. the weakly compressible pressure fluctuation."
-        write(00,*) "Boundary warning: the selected collision with halfway BB/ABB needs independent wall-accuracy checks."
-        write(00,*) "Reference DNS target: 2-D RB, Pr=0.7, Ra=1e10, 2049^2 boundary-including grid points."
-        write(00,*) "nu/kappa/gBeta are derived from Ra/Pr/Ma/H_LB; chi_nu input determines derived tau_0."
-#ifdef RayleighBenardCell
-        write(00,*) "RB initial perturbation amplitude / DeltaT =", real(rbPerturbation,kind=8)
-        write(00,*) "RB pressure initialization = hydrostatic balance of the conductive profile"
-#endif
-#ifdef unsteadyFlow
-        write(00,*) "Transient/free-fall time =", real(transientTimeTf,kind=8)
-        write(00,*) "Averaging/free-fall time =", real(averagingTimeTf,kind=8)
-        write(00,*) "Sample interval/free-fall time =", real(sampleTimeTf,kind=8)
-        write(00,*) "Average start itc =", averageStartItc, "sample interval itc =", sampleIntervalItc
-        write(00,*) "Target statistic samples =", targetStatisticSamples
-        write(00,*) "Snapshot output enabled =", outputSnapshotFile
-        write(00,*) "Snapshot interval/free-fall time =", real(snapshotTimeTf,kind=8)
-        write(00,*) "Target snapshot files in statistics window =", targetSnapshotFiles
-        write(00,*) "Tecplot output enabled =", outputTecplotFile
-        write(00,*) "Tecplot interval/free-fall time =", real(tecplotTimeTf,kind=8)
-        write(00,*) "Target periodic Tecplot files in statistics window =", targetTecplotFiles
-#endif
-        close(00)
 
-        open(unit=01, file=trim(historyFile), status='replace', action='write')
-        write(01,'(A)') "# itc time_ff errorU errorT Nu_global Nu_hot Nu_cold Nu_middle " // &
-            "Nu_hot_halfway Nu_cold_halfway Nu_middle_fd ReVolAvg " // &
-            "Nu_eps_u Nu_eps_T eps_u_exact_ratio eps_T_exact_ratio maxMach minT maxT maxAbsRhoDeviation samples"
-        close(01)
-#ifdef unsteadyFlow
-        if(outputSnapshotFile.EQ.1) then
-            open(unit=01, file=trim(snapshotFilePrefix)//"-readme", status='replace', action='write')
-            write(01,'(A)') "Fortran sequential unformatted float64 records: u/U_ff, v/U_ff, T, rho."
-            write(01,'(A,I0,A,I0)') "Each record contains a field with I=", nx, ", J=", ny
-            write(01,'(A)') "Files are numbered by output order; see the index file for itc and t/t_ff."
-            write(01,'(A)') "These snapshots are for post-processing, not strict f/g restart."
-            close(01)
-            open(unit=01, file=trim(snapshotIndexFile), status='replace', action='write')
-            write(01,'(A)') "# snapshot_id itc time_ff filename"
-            close(01)
-        endif
-#endif
-    end subroutine initial
+    return
+  end subroutine initial
 !===================================================================================================
 
 
 !===================================================================================================
 ! 子程序: enter_data_2d_openacc
-! 作用: 建立一次性的设备数据生命周期。
-! 说明: 初值已存在的数组用 copyin；每一步都会完整覆盖的碰撞后数组用 create，避免无意义传输。
+! 作用: 在主时间推进前把主要数组和常量映射到 OpenACC 设备端。
 !===================================================================================================
-    subroutine enter_data_2d_openacc()
-        use commondata
-        implicit none
+  subroutine enter_data_2d_openacc()
+    use openacc
+    use commondata
+    implicit none
 
-        !$acc enter data copyin(u,v,T,rho,pressure,Fx,Fy,gradTx,gradTy)
-        !$acc enter data copyin(Sxx,Sxy,Syy,Sdiv,f,g)
-        !$acc enter data create(f_post,g_post)
-    end subroutine enter_data_2d_openacc
+    !$acc enter data copyin(xp,yp,ex,ey,omega)
+    !$acc enter data copyin(u,v,T,rho,f,g,Fx,Fy,Sxx,Sxy,Syy,Sdiv)
+    !$acc enter data create(f_post,g_post)
+#ifdef steadyFlow
+    !$acc enter data copyin(up,vp,Tp)
+#endif
+  end subroutine enter_data_2d_openacc
 !===================================================================================================
-
-
-!===================================================================================================
-! 子程序: update_host_monitor_2d_openacc
-! 作用: 把收敛判断、Nu/Re 和 Tecplot 输出需要的宏观量从设备同步到主机。
-! 说明: f/g、应变率和力不参与当前 CPU 后处理，所以不传回，减少检查时的数据流量。
-!===================================================================================================
-    subroutine update_host_monitor_2d_openacc()
-        use commondata
-        implicit none
-
-        !$acc update self(u,v,T,rho,pressure,gradTx,gradTy,Sxx,Sxy,Syy)
-    end subroutine update_host_monitor_2d_openacc
-!===================================================================================================
-
 
 !===================================================================================================
 ! 子程序: update_host_snapshot_2d_openacc
-! 作用: 只同步二进制瞬时场需要的 u/v/T/rho，避免每 0.5 t_ff 传回应变率和梯度等额外数组。
+! 作用: 在主机端输出 uvTrho 快照或做 CPU 后处理前，同步宏观场。
 !===================================================================================================
-    subroutine update_host_snapshot_2d_openacc()
-        use commondata
-        implicit none
+  subroutine update_host_snapshot_2d_openacc()
+    use commondata
+    implicit none
 
-        !$acc update self(u,v,T,rho)
-    end subroutine update_host_snapshot_2d_openacc
+    !$acc wait(1)
+    !$acc update self(u,v,T,rho)
+  end subroutine update_host_snapshot_2d_openacc
 !===================================================================================================
 
+!===================================================================================================
+! 子程序: update_host_tecplot_2d_openacc
+! 作用: Tecplot 主场输出只需要 u、v、T。
+!===================================================================================================
+  subroutine update_host_tecplot_2d_openacc()
+    use commondata
+    implicit none
+
+    !$acc wait(1)
+    !$acc update self(u,v,T)
+  end subroutine update_host_tecplot_2d_openacc
+!===================================================================================================
+
+!===================================================================================================
+! 子程序: update_host_reload_2d_openacc
+! 作用: 严格重启文件输出前，把完整的 f、g 分布函数同步回主机。
+!===================================================================================================
+  subroutine update_host_reload_2d_openacc()
+    use commondata
+    implicit none
+
+    !$acc wait(1)
+    !$acc update self(f,g)
+  end subroutine update_host_reload_2d_openacc
+!===================================================================================================
 
 !===================================================================================================
 ! 子程序: exit_data_2d_openacc
-! 作用: 计算和最终主机输出完成后，释放本程序建立的全部设备数据。
+! 作用: 在计算结束后释放设备端常驻数据。
 !===================================================================================================
-    subroutine exit_data_2d_openacc()
-        use commondata
-        implicit none
+  subroutine exit_data_2d_openacc()
+    use commondata
+    implicit none
 
-        !$acc exit data delete(u,v,T,rho,pressure,Fx,Fy,gradTx,gradTy)
-        !$acc exit data delete(Sxx,Sxy,Syy,Sdiv,f,f_post,g,g_post)
-    end subroutine exit_data_2d_openacc
-!===================================================================================================
-
-
-!===================================================================================================
-! 子程序: compute_force
-! 作用: 由当前 rho/T 计算弱可压缩压力 p 和 Boussinesq 力 F，供两个分布函数共同使用。
-! 论文对应: p=cs2*(rho-rho0)，Fy=rho0*g*beta*(T-Tref)，见式 (50)。
-! 这里的 p 是压力扰动 p'，不是绝对热力学压力；这也统一了 geq、Psi 和 ABB 中压力项的含义。
-!===================================================================================================
-    subroutine compute_force()
-        use commondata
-        implicit none
-        integer(kind=4) :: i, j
-
-        !$acc parallel loop collapse(2) present(Fx,Fy,T,rho,pressure) private(i,j)
-        do j = 1, ny
-            do i = 1, nx
-                pressure(i,j) = cs2*(rho(i,j)-rho0)       ! LBM-CDE 使用的弱可压缩压力扰动 p'
-                Fx(i,j) = 0.0d0                           ! 本算例没有水平方向体力
-                Fy(i,j) = rho0*gBeta*(T(i,j)-Tref)        ! 热流体向 +y 方向上升
-            enddo
-        enddo
-    end subroutine compute_force
+#ifdef steadyFlow
+    !$acc exit data delete(up,vp,Tp)
+#endif
+    !$acc exit data delete(f_post,g_post,u,v,T,rho,f,g,Fx,Fy,Sxx,Sxy,Syy,Sdiv)
+    !$acc exit data delete(xp,yp,ex,ey,omega)
+  end subroutine exit_data_2d_openacc
 !===================================================================================================
 
-
-!===================================================================================================
-! 子程序: compute_strain_rate
-! 作用: 由流场局部非平衡二阶矩 f-feq 计算 Sxx、Sxy、Syy 和 Sdiv，不使用有限差分。
-! 论文对应: 非对角分量用式 (31)，速度散度用式 (32)，对角分量用式 (33)，本程序 D=2、dt=1。
-! 审稿勘误: 已发表式 (33) 的迹/散度项前误印为负号；由式 (30) 回代后应为正号。
-! 说明: 论文式中使用动力黏度 mu=rho0*nu，本程序显式换算后再构造各分母。
-!===================================================================================================
-    subroutine compute_strain_rate()
-        use commondata
-        implicit none
-        integer(kind=4) :: i, j, alpha
-        real(kind=8) :: feqLoc, neqxx, neqxy, neqyy
-        real(kind=8) :: muShear, muBulk, denomDiag, denomShear, denomDiv, coeffTrace
-
-        ! 下列分母分别来自式 (33)、式 (31) 和式 (32)。
-        muShear = rho0*viscosity
-        muBulk = rho0*bulkViscosity
-        denomDiag = 2.0d0*muShear + rho0*cs2
-        denomShear = 4.0d0*muShear + 2.0d0*rho0*cs2
-        denomDiv = 2.0d0*muBulk + rho0*cs2
-        coeffTrace = (2.0d0*muShear-2.0d0*muBulk)/(2.0d0*denomDiag)
-
-        !$acc parallel loop collapse(2) present(f,rho,u,v,Fx,Fy,Sxx,Sxy,Syy,Sdiv) &
-        !$acc& private(i,j,alpha,feqLoc,neqxx,neqxy,neqyy)
-        do j = 1, ny
-            do i = 1, nx
-                neqxx = 0.0d0
-                neqxy = 0.0d0
-                neqyy = 0.0d0
-                do alpha = 0, 8
-                    feqLoc = calc_feq(alpha, rho(i,j), u(i,j), v(i,j))
-                    ! neq_ab = sum_i e_ia*e_ib*(f_i-feq_i)
-                    neqxx = neqxx + dble(qex(alpha)*qex(alpha))*(f(alpha,i,j)-feqLoc)
-                    neqxy = neqxy + dble(qex(alpha)*qey(alpha))*(f(alpha,i,j)-feqLoc)
-                    neqyy = neqyy + dble(qey(alpha)*qey(alpha))*(f(alpha,i,j)-feqLoc)
-                enddo
-                Sdiv(i,j) = -(neqxx+neqyy+u(i,j)*Fx(i,j)+v(i,j)*Fy(i,j))/denomDiv
-                Sxx(i,j) = -(neqxx+u(i,j)*Fx(i,j))/denomDiag + coeffTrace*Sdiv(i,j)
-                Syy(i,j) = -(neqyy+v(i,j)*Fy(i,j))/denomDiag + coeffTrace*Sdiv(i,j)
-                Sxy(i,j) = -(2.0d0*neqxy+u(i,j)*Fy(i,j)+v(i,j)*Fx(i,j))/denomShear
-            enddo
-        enddo
-    end subroutine compute_strain_rate
-!===================================================================================================
-
-
-!===================================================================================================
-! 子程序: compute_temperature_gradient
-! 作用: 由温度分布函数的局部非平衡一阶矩 g-geq 直接得到 grad(T)，避免非局部有限差分。
-! 论文对应: 式 (35)，本程序 dt=1；分子必须同时保留 T*F/rho0 和 u*Q 两个修正项。
-!===================================================================================================
-    subroutine compute_temperature_gradient()
-        use commondata
-        implicit none
-        integer(kind=4) :: i, j, alpha
-        real(kind=8) :: geqLoc, neqx, neqy, denom
-
-        !$acc parallel loop collapse(2) present(g,T,u,v,rho,pressure,Fx,Fy,gradTx,gradTy) &
-        !$acc& private(i,j,alpha,geqLoc,neqx,neqy,denom)
-        do j = 1, ny
-            do i = 1, nx
-                neqx = 0.0d0
-                neqy = 0.0d0
-                do alpha = 0, thermalQ
-                    geqLoc = calc_geq(alpha, T(i,j), u(i,j), v(i,j), rho(i,j))
-                    neqx = neqx + dble(qex(alpha))*(g(alpha,i,j)-geqLoc)
-                    neqy = neqy + dble(qey(alpha))*(g(alpha,i,j)-geqLoc)
-                enddo
-                ! 式 (35) 的分母。pressure/rho0 很小时仍保留，以保持与论文的压力耦合一致。
-                denom = cT2*(2.0d0*taugL*(1.0d0-chi_kappa)+chi_kappa) + pressure(i,j)/rho0
-                ! 防止极端非物理解使分母恰好为零；正常低 Mach 方腔不会触发这一保护。
-                denom = sign(max(abs(denom), tiny(1.0d0)), denom)
-                gradTx(i,j) = -(2.0d0*neqx + T(i,j)*Fx(i,j)/rho0 + u(i,j)*heatSourceQ)/denom
-                gradTy(i,j) = -(2.0d0*neqy + T(i,j)*Fy(i,j)/rho0 + v(i,j)*heatSourceQ)/denom
-            enddo
-        enddo
-    end subroutine compute_temperature_gradient
-!===================================================================================================
 
 
 !===================================================================================================
 ! 子程序: collision
-! 作用: 执行流场 TRT 碰撞，并加入论文式 (26) 的 Guo 力项和 chi_s/chi_b 应变率修正项。
-! 每一对反向速度分别采用偶/奇松弛率；原始源 R 也先分解成 R+/R-，再分别乘
-! (1-s_even/2) 与 (1-s_odd/2)。应力修正是偶源，浮力项同时含偶、奇部分。
+! 作用: 在一个格点循环中计算力、非平衡应变率，并完成矩空间 D2Q9 TRT LBM-CDE 碰撞。
+! 说明: m0/m3/m5 是密度和动量守恒矩，松弛率为零；其余偶矩使用 Snu，奇矩使用 Sq。
+!       A_ab=chi_nu*S_ab+(chi_b-chi_nu)*Sdiv*delta_ab/2，并作为矩空间源项的一部分加入。
+! 动力黏度为 mu=rho0*nu。
 !===================================================================================================
-    subroutine collision()
-        use commondata
-        implicit none
-        integer(kind=4) :: i, j, alpha, beta, pair
-        real(kind=8) :: euA, euB, eFA, eFB, uF, feqA, feqB
-        real(kind=8) :: Axx, Axy, Ayy, hermiteA, hermiteB
-        real(kind=8) :: rawA, rawB, dEven, dOdd, rEven, rOdd
-        real(kind=8), parameter :: sourcePrefEven=1.0d0-0.5d0*omegaF
-        real(kind=8), parameter :: sourcePrefOdd=1.0d0-0.5d0*omegaFOdd
+  subroutine collision()
+    use commondata
+    implicit none
+    integer(kind=4) :: i, j, alpha
+    real(kind=8) :: m(0:8), meq(0:8), s(0:8), mSource(0:8), m_post(0:8)
+    real(kind=8) :: densityFluctuation, uu, uF
+    real(kind=8) :: neqTrace, neqxx, neqxy, neqyy
+    real(kind=8) :: Axx, Axy, Ayy
+    real(kind=8), parameter :: muShear=rho0*viscosity
+    real(kind=8), parameter :: muBulk=rho0*bulkViscosity
+    real(kind=8), parameter :: denomDiag=2.0d0*muShear+rho0*cs2
+    real(kind=8), parameter :: denomShear=4.0d0*muShear+2.0d0*rho0*cs2
+    real(kind=8), parameter :: denomDiv=2.0d0*muBulk+rho0*cs2
+    real(kind=8), parameter :: coeffTrace=(2.0d0*muShear-2.0d0*muBulk)/(2.0d0*denomDiag)
 
-        ! f_post 含一层 ghost。每步先清零可保证拉式迁移不会读到上一步遗留的 ghost 数据；
-        ! 真实入射分布随后由 bounceback()/bouncebackT() 覆盖。这里优先保证测试代码清楚可靠。
-        !$acc parallel loop collapse(3) present(f_post) private(i,j,alpha)
-        do j = 0, ny+1
-            do i = 0, nx+1
-                do alpha = 0, 8
-                    f_post(alpha,i,j) = 0.0d0
-                enddo
+    !$acc parallel loop gang vector collapse(2) default(none) &
+    !$acc& present(f,f_post,rho,u,v,T,Fx,Fy,Sxx,Sxy,Syy,Sdiv) async(1) &
+    !$acc& private(alpha,m,meq,s,mSource,m_post,densityFluctuation,uu,uF, &
+    !$acc& neqTrace,neqxx,neqxy,neqyy,Axx,Axy,Ayy)
+    do j = 1, ny
+        do i = 1, nx
+            ! Boussinesq 力使用参考密度 rho0；磁场分支沿用原方腔定义。
+            Fx(i,j) = 0.0d0
+            Fy(i,j) = rho0*gBeta*(T(i,j)-Tref)
+#ifdef SideHeatedHa
+            Fx(i,j) = rho0*B2sigemarho*(v(i,j)*sin(phi)*cos(phi)-u(i,j)*sin(phi)*sin(phi))
+            Fy(i,j) = Fy(i,j)+rho0*B2sigemarho*(u(i,j)*sin(phi)*cos(phi)-v(i,j)*cos(phi)*cos(phi))
+#endif
+
+            ! D2Q9 分布函数变换到矩空间；矩排列与原 2DRB MRT 代码保持一致。
+            m(0) = f(i,j,0)+f(i,j,1)+f(i,j,2)+f(i,j,3)+f(i,j,4)+ &
+                f(i,j,5)+f(i,j,6)+f(i,j,7)+f(i,j,8)
+            m(1) = -4.0d0*f(i,j,0)-f(i,j,1)-f(i,j,2)-f(i,j,3)-f(i,j,4)+ &
+                2.0d0*(f(i,j,5)+f(i,j,6)+f(i,j,7)+f(i,j,8))
+            m(2) = 4.0d0*f(i,j,0)-2.0d0*(f(i,j,1)+f(i,j,2)+f(i,j,3)+f(i,j,4))+ &
+                f(i,j,5)+f(i,j,6)+f(i,j,7)+f(i,j,8)
+            m(3) = f(i,j,1)-f(i,j,3)+f(i,j,5)-f(i,j,6)-f(i,j,7)+f(i,j,8)
+            m(4) = -2.0d0*f(i,j,1)+2.0d0*f(i,j,3)+f(i,j,5)-f(i,j,6)-f(i,j,7)+f(i,j,8)
+            m(5) = f(i,j,2)-f(i,j,4)+f(i,j,5)+f(i,j,6)-f(i,j,7)-f(i,j,8)
+            m(6) = -2.0d0*f(i,j,2)+2.0d0*f(i,j,4)+f(i,j,5)+f(i,j,6)-f(i,j,7)-f(i,j,8)
+            m(7) = f(i,j,1)-f(i,j,2)+f(i,j,3)-f(i,j,4)
+            m(8) = f(i,j,5)-f(i,j,6)+f(i,j,7)-f(i,j,8)
+
+            densityFluctuation = rho(i,j)-rho0
+            uu = u(i,j)*u(i,j)+v(i,j)*v(i,j)
+            meq(0) = densityFluctuation
+            meq(1) = -2.0d0*densityFluctuation+3.0d0*rho0*uu
+            meq(2) = densityFluctuation-3.0d0*rho0*uu
+            meq(3) = rho0*u(i,j)
+            meq(4) = -rho0*u(i,j)
+            meq(5) = rho0*v(i,j)
+            meq(6) = -rho0*v(i,j)
+            meq(7) = rho0*(u(i,j)*u(i,j)-v(i,j)*v(i,j))
+            meq(8) = rho0*u(i,j)*v(i,j)
+
+            ! 二阶非平衡矩：trace=(m1+4*m0)/3，m7=Pi_xx-Pi_yy，m8=Pi_xy。
+            neqTrace = ((m(1)-meq(1))+4.0d0*(m(0)-meq(0)))/3.0d0
+            neqxx = 0.5d0*(neqTrace+m(7)-meq(7))
+            neqyy = 0.5d0*(neqTrace-m(7)+meq(7))
+            neqxy = m(8)-meq(8)
+
+            uF = u(i,j)*Fx(i,j)+v(i,j)*Fy(i,j)
+            Sdiv(i,j) = -(neqxx+neqyy+uF)/denomDiv
+            Sxx(i,j) = -(neqxx+u(i,j)*Fx(i,j))/denomDiag+coeffTrace*Sdiv(i,j)
+            Syy(i,j) = -(neqyy+v(i,j)*Fy(i,j))/denomDiag+coeffTrace*Sdiv(i,j)
+            Sxy(i,j) = -(2.0d0*neqxy+u(i,j)*Fy(i,j)+v(i,j)*Fx(i,j))/denomShear
+
+            Axx = chi_nu*Sxx(i,j)+0.5d0*(chi_b-chi_nu)*Sdiv(i,j)
+            Ayy = chi_nu*Syy(i,j)+0.5d0*(chi_b-chi_nu)*Sdiv(i,j)
+            Axy = chi_nu*Sxy(i,j)
+
+            ! 原始矩源项 = Guo 力项 + LBM-CDE 二阶 Hermite 应力修正。
+            mSource(0) = 0.0d0
+            mSource(1) = 6.0d0*uF+2.0d0*rho0*(Axx+Ayy)
+            mSource(2) = -6.0d0*uF-2.0d0*rho0*(Axx+Ayy)
+            mSource(3) = Fx(i,j)
+            mSource(4) = -Fx(i,j)
+            mSource(5) = Fy(i,j)
+            mSource(6) = -Fy(i,j)
+            mSource(7) = 2.0d0*(u(i,j)*Fx(i,j)-v(i,j)*Fy(i,j))+ &
+                2.0d0/3.0d0*rho0*(Axx-Ayy)
+            mSource(8) = u(i,j)*Fy(i,j)+v(i,j)*Fx(i,j)+2.0d0/3.0d0*rho0*Axy
+
+            ! m0/m3/m5 为守恒矩；其余偶矩用 Snu，非守恒奇矩 m4/m6 用 Sq。
+            s(0) = 0.0d0
+            s(1) = Snu
+            s(2) = Snu
+            s(3) = 0.0d0
+            s(4) = Sq
+            s(5) = 0.0d0
+            s(6) = Sq
+            s(7) = Snu
+            s(8) = Snu
+
+            do alpha = 0, 8
+                m_post(alpha) = m(alpha)-s(alpha)*(m(alpha)-meq(alpha))+ &
+                    (1.0d0-0.5d0*s(alpha))*mSource(alpha)
             enddo
+
+            ! 乘 M^{-1} 回到速度空间。
+            f_post(i,j,0) = m_post(0)/9.0d0-m_post(1)/9.0d0+m_post(2)/9.0d0
+            f_post(i,j,1) = m_post(0)/9.0d0-m_post(1)/36.0d0-m_post(2)/18.0d0+ &
+                m_post(3)/6.0d0-m_post(4)/6.0d0+m_post(7)/4.0d0
+            f_post(i,j,2) = m_post(0)/9.0d0-m_post(1)/36.0d0-m_post(2)/18.0d0+ &
+                m_post(5)/6.0d0-m_post(6)/6.0d0-m_post(7)/4.0d0
+            f_post(i,j,3) = m_post(0)/9.0d0-m_post(1)/36.0d0-m_post(2)/18.0d0- &
+                m_post(3)/6.0d0+m_post(4)/6.0d0+m_post(7)/4.0d0
+            f_post(i,j,4) = m_post(0)/9.0d0-m_post(1)/36.0d0-m_post(2)/18.0d0- &
+                m_post(5)/6.0d0+m_post(6)/6.0d0-m_post(7)/4.0d0
+            f_post(i,j,5) = m_post(0)/9.0d0+m_post(1)/18.0d0+m_post(2)/36.0d0+ &
+                m_post(3)/6.0d0+m_post(4)/12.0d0+m_post(5)/6.0d0+m_post(6)/12.0d0+m_post(8)/4.0d0
+            f_post(i,j,6) = m_post(0)/9.0d0+m_post(1)/18.0d0+m_post(2)/36.0d0- &
+                m_post(3)/6.0d0-m_post(4)/12.0d0+m_post(5)/6.0d0+m_post(6)/12.0d0-m_post(8)/4.0d0
+            f_post(i,j,7) = m_post(0)/9.0d0+m_post(1)/18.0d0+m_post(2)/36.0d0- &
+                m_post(3)/6.0d0-m_post(4)/12.0d0-m_post(5)/6.0d0-m_post(6)/12.0d0+m_post(8)/4.0d0
+            f_post(i,j,8) = m_post(0)/9.0d0+m_post(1)/18.0d0+m_post(2)/36.0d0+ &
+                m_post(3)/6.0d0+m_post(4)/12.0d0-m_post(5)/6.0d0-m_post(6)/12.0d0-m_post(8)/4.0d0
         enddo
-
-        !$acc parallel loop collapse(2) present(f,f_post,rho,u,v,Fx,Fy,Sxx,Sxy,Syy,Sdiv) &
-        !$acc& private(i,j,alpha,beta,pair,euA,euB,eFA,eFB,uF,feqA,feqB,Axx,Axy,Ayy, &
-        !$acc& hermiteA,hermiteB,rawA,rawB,dEven,dOdd,rEven,rOdd)
-        do j = 1, ny
-            do i = 1, nx
-                uF = u(i,j)*Fx(i,j)+v(i,j)*Fy(i,j)
-                ! A_ab = chi_s*S_ab + (chi_b-chi_s)*Sdiv*delta_ab/D，二维 D=2。
-                ! 审稿勘误说明：连续式 (12) 的体黏度 Hermite 系数应含 1/2；这里采用最终式 (26)
-                ! 的 A_ab，并由 D2Q9 二阶矩对称收缩产生正确系数，不能再额外乘或除一个 2。
-                Axx = chi_s*Sxx(i,j)+0.5d0*(chi_b-chi_s)*Sdiv(i,j)
-                Ayy = chi_s*Syy(i,j)+0.5d0*(chi_b-chi_s)*Sdiv(i,j)
-                Axy = chi_s*Sxy(i,j)
-                ! 静止方向只含偶模。
-                alpha = 0
-                feqA = calc_feq(alpha, rho(i,j), u(i,j), v(i,j))
-                hermiteA = -Axx-Ayy
-                rawA = qomega(alpha)*(-uF/cs2+rho0*hermiteA)
-                f_post(alpha,i,j) = f(alpha,i,j)-omegaF*(f(alpha,i,j)-feqA)+sourcePrefEven*rawA
-
-                ! 四对反向速度：(1,3)、(2,4)、(5,7)、(6,8)。
-                do pair = 1, 4
-                    select case(pair)
-                    case(1)
-                        alpha = 1
-                        beta = 3
-                    case(2)
-                        alpha = 2
-                        beta = 4
-                    case(3)
-                        alpha = 5
-                        beta = 7
-                    case default
-                        alpha = 6
-                        beta = 8
-                    end select
-
-                    euA = dble(qex(alpha))*u(i,j)+dble(qey(alpha))*v(i,j)
-                    euB = dble(qex(beta))*u(i,j)+dble(qey(beta))*v(i,j)
-                    eFA = dble(qex(alpha))*Fx(i,j)+dble(qey(alpha))*Fy(i,j)
-                    eFB = dble(qex(beta))*Fx(i,j)+dble(qey(beta))*Fy(i,j)
-                    feqA = calc_feq(alpha, rho(i,j), u(i,j), v(i,j))
-                    feqB = calc_feq(beta, rho(i,j), u(i,j), v(i,j))
-                    hermiteA = (dble(qex(alpha)*qex(alpha))/cs2-1.0d0)*Axx + &
-                        (dble(qey(alpha)*qey(alpha))/cs2-1.0d0)*Ayy + &
-                        2.0d0*dble(qex(alpha)*qey(alpha))/cs2*Axy
-                    hermiteB = (dble(qex(beta)*qex(beta))/cs2-1.0d0)*Axx + &
-                        (dble(qey(beta)*qey(beta))/cs2-1.0d0)*Ayy + &
-                        2.0d0*dble(qex(beta)*qey(beta))/cs2*Axy
-                    rawA = qomega(alpha)*(eFA/cs2+euA*eFA/(cs2*cs2)-uF/cs2+rho0*hermiteA)
-                    rawB = qomega(beta)*(eFB/cs2+euB*eFB/(cs2*cs2)-uF/cs2+rho0*hermiteB)
-
-                    dEven = 0.5d0*((f(alpha,i,j)-feqA)+(f(beta,i,j)-feqB))
-                    dOdd = 0.5d0*((f(alpha,i,j)-feqA)-(f(beta,i,j)-feqB))
-                    rEven = 0.5d0*(rawA+rawB)
-                    rOdd = 0.5d0*(rawA-rawB)
-                    f_post(alpha,i,j) = f(alpha,i,j)-omegaF*dEven-omegaFOdd*dOdd + &
-                        sourcePrefEven*rEven+sourcePrefOdd*rOdd
-                    f_post(beta,i,j) = f(beta,i,j)-omegaF*dEven+omegaFOdd*dOdd + &
-                        sourcePrefEven*rEven-sourcePrefOdd*rOdd
-                enddo
-            enddo
-        enddo
-    end subroutine collision
-!===================================================================================================
-
-
-!===================================================================================================
-! 子程序: collisionT
-! 作用: 严格执行原 LBM-CDE 的 D2Q9-BGK 温度碰撞，保留式 (28) 的
-! Q、p*grad(T)+T*F 与 chi_kappa*grad(T) 三部分，不混入 Xu/Luo 或 D2Q5-MRT 分支。
-!===================================================================================================
-    subroutine collisionT()
-        use commondata
-        implicit none
-        integer(kind=4) :: i, j, alpha
-        real(kind=8) :: geqLoc, scalarSource, psi, eu
-        real(kind=8), parameter :: sourcePref=1.0d0-0.5d0*omegaG
-
-        !$acc parallel loop collapse(3) present(g_post) private(i,j,alpha)
-        do j = 0, ny+1
-            do i = 0, nx+1
-                do alpha = 0, thermalQ
-                    g_post(alpha,i,j) = 0.0d0
-                enddo
-            enddo
-        enddo
-
-        !$acc parallel loop collapse(2) present(g,g_post,T,u,v,rho,pressure,Fx,Fy,gradTx,gradTy) &
-        !$acc& private(i,j,alpha,geqLoc,scalarSource,psi,eu)
-        do j = 1, ny
-            do i = 1, nx
-                do alpha = 0, 8
-                    geqLoc = calc_geq(alpha, T(i,j), u(i,j), v(i,j), rho(i,j))
-                    eu = dble(qex(alpha))*u(i,j)+dble(qey(alpha))*v(i,j)
-                    ! 大括号内逐项对应论文式 (28)，外层温度权重与梯形前因子在下一行乘入。
-                    scalarSource = heatSourceQ*(1.0d0+eu/cT2) + &
-                        (dble(qex(alpha))*(pressure(i,j)*gradTx(i,j)+T(i,j)*Fx(i,j)) + &
-                        dble(qey(alpha))*(pressure(i,j)*gradTy(i,j)+T(i,j)*Fy(i,j)))/(rho0*cT2) + &
-                        chi_kappa*(dble(qex(alpha))*gradTx(i,j)+dble(qey(alpha))*gradTy(i,j))
-                    psi = sourcePref*tomega(alpha)*scalarSource
-                    g_post(alpha,i,j) = g(alpha,i,j)-omegaG*(g(alpha,i,j)-geqLoc)+psi
-                enddo
-            enddo
-        enddo
-    end subroutine collisionT
+    enddo
+    return
+  end subroutine collision
 !===================================================================================================
 
 
 !===================================================================================================
 ! 子程序: streaming
-! 作用: 对流场执行拉式迁移：当前格点沿 alpha 方向的分布来自上游 (i-ex,j-ey) 的碰撞后分布。
-! 说明: 拉式写法使每个线程只写自己的 f(:,i,j)，适合 GPU，且边界入射方向可在随后统一覆盖。
+! 作用: 完成流场分布函数 f 的迁移，把碰撞后的信息传播到相邻格点。
+! 用途: 在主程序时间推进循环中调用，位于 collision 之后、bounceback 之前。
 !===================================================================================================
-    subroutine streaming()
-        use commondata
-        implicit none
-        integer(kind=4) :: i, j, alpha, ip, jp
+  subroutine streaming()                                    !先迁移，再边界处理
+    use commondata                                            !迁移步骤：pull streaming，把碰撞后的 f_post 拉取到当前格点
+    implicit none
+    integer(kind=4) :: i, j
+    integer(kind=4) :: ip, jp
+    integer(kind=4) :: alpha
 
-        !$acc parallel loop collapse(2) present(f,f_post) private(i,j,alpha,ip,jp)
-        do j = 1, ny
-            do i = 1, nx
-                do alpha = 0, 8
-                    ip = i-qex(alpha)
-                    jp = j-qey(alpha)
-                    f(alpha,i,j) = f_post(alpha,ip,jp)
-                enddo
+    !$acc parallel loop gang vector collapse(2) default(none) present(f,f_post,ex,ey) async(1) private(alpha,ip,jp)
+    do j = 1, ny
+        do i = 1, nx
+            do alpha = 0, 8                        !上游格点索引：fα(i,j) <- f_postα(i-exα, j-eyα)
+                ip = i-ex(alpha)                   !边界附近 (ip/jp 可能为 0 或 nx+1/ny+1)，需在 bounceback/周期边界处理中覆盖修正边界分布
+                jp = j-ey(alpha)                   !ghost 层在初始化中为 0，保证不会出现未初始化垃圾值
+
+                f(i,j,alpha) = f_post(ip,jp,alpha)
             enddo
         enddo
-    end subroutine streaming
+    enddo
+    return
+  end subroutine streaming
+!===================================================================================================
+! streaming 结束: 完成流场分布函数 f 的迁移，把碰撞后的信息传播到相邻格点。
 !===================================================================================================
 
 
-!===================================================================================================
-! 子程序: streamingT
-! 作用: 温度 D2Q9 分布函数执行拉式迁移。
-!===================================================================================================
-    subroutine streamingT()
-        use commondata
-        implicit none
-        integer(kind=4) :: i, j, alpha, ip, jp
-
-        !$acc parallel loop collapse(2) present(g,g_post) private(i,j,alpha,ip,jp)
-        do j = 1, ny
-            do i = 1, nx
-                do alpha = 0, thermalQ
-                    ip = i-qex(alpha)
-                    jp = j-qey(alpha)
-                    g(alpha,i,j) = g_post(alpha,ip,jp)
-                enddo
-            enddo
-        enddo
-    end subroutine streamingT
-!===================================================================================================
 
 
 !===================================================================================================
 ! 子程序: bounceback
-! 作用: 对四个静止壁面施加标准 halfway bounce-back，对应论文式 (36) 在 uw=0 时的形式。
-! 方向编号: 1/3 为东/西，2/4 为北/南，5/7 和 6/8 为两对反向对角速度。
+! 作用: 处理流场边界条件，包括无滑移壁面和相关反弹格式。
+! 用途: 在主程序时间推进循环中调用，位于 streaming 之后、macro 之前。
 !===================================================================================================
-    subroutine bounceback()
-        use commondata
-        implicit none
-        integer(kind=4) :: i, j
+  subroutine bounceback()
+    use commondata
+    implicit none
+    integer(kind=4) :: i, j
+    ! integer(kind=4) :: alpha
+
+#ifdef VerticalWallsPeriodicalU
+    !$acc parallel loop gang vector default(none) present(f,f_post) async(1)
+    do j = 1, ny                                                  !速度边界垂直边界周期，直接方向相同，跨边界的入射分布
+        !Left side (i=1)
+        f(1,j,1) = f_post(nx,j,1)
+        f(1,j,5) = f_post(nx,j,5)
+        f(1,j,8) = f_post(nx,j,8)
+
+        !Right side (i=nx)
+        f(nx,j,3) = f_post(1,j,3)
+        f(nx,j,6) = f_post(1,j,6)
+        f(nx,j,7) = f_post(1,j,7)
+    enddo
+#endif
 
 #ifdef VerticalWallsNoslip
-        ! 左壁补入向东的 1/5/8，右壁补入向西的 3/6/7。
-        !$acc parallel loop present(f,f_post) private(j)
-        do j = 1, ny
-            f(1,1,j) = f_post(3,1,j)
-            f(5,1,j) = f_post(7,1,j)
-            f(8,1,j) = f_post(6,1,j)
+    !$acc parallel loop gang vector default(none) present(f,f_post) async(1)
+    do j = 1, ny                                                 !速度边界垂直边界静止壁无滑移，直接反弹，方向相反
+        !Left side (i=1)
+        f(1,j,1) = f_post(1,j,3)
+        f(1,j,5) = f_post(1,j,7)
+        f(1,j,8) = f_post(1,j,6)
 
-            f(3,nx,j) = f_post(1,nx,j)
-            f(6,nx,j) = f_post(8,nx,j)
-            f(7,nx,j) = f_post(5,nx,j)
-        enddo
+        !Right side (i=nx)
+        f(nx,j,3) = f_post(nx,j,1)
+        f(nx,j,6) = f_post(nx,j,8)
+        f(nx,j,7) = f_post(nx,j,5)
+    enddo
 #endif
 
 #ifdef HorizontalWallsNoslip
-        ! 下壁补入向北的 2/5/6，上壁补入向南的 4/7/8。
-        !$acc parallel loop present(f,f_post) private(i)
-        do i = 1, nx
-            f(2,i,1) = f_post(4,i,1)
-            f(5,i,1) = f_post(7,i,1)
-            f(6,i,1) = f_post(8,i,1)
+    !$acc parallel loop gang vector default(none) present(f,f_post) async(1)
+    do i = 1, nx                                                  !速度边界水平边界无滑移，直接反弹，方向相反
+        !Bottom side (j=1)
+        f(i,1,2) = f_post(i,1,4)
+        f(i,1,5) = f_post(i,1,7)
+        f(i,1,6) = f_post(i,1,8)
 
-            f(4,i,ny) = f_post(2,i,ny)
-            f(7,i,ny) = f_post(5,i,ny)
-            f(8,i,ny) = f_post(6,i,ny)
-        enddo
+        !Top side (j=ny)
+        f(i,ny,4) = f_post(i,ny,2)
+        f(i,ny,7) = f_post(i,ny,5)
+        f(i,ny,8) = f_post(i,ny,6)
+    enddo
 #endif
-    end subroutine bounceback
+
+    return
+  end subroutine bounceback
 !===================================================================================================
+! bounceback 结束: 处理流场边界条件，包括无滑移壁面和相关反弹格式。
+!===================================================================================================
+
+
+
+!===================================================================================================
+
+!===================================================================================================
+! 子程序: macro
+! 作用: 由流场分布函数恢复 rho、u、v，并加入半步力项速度修正。
+!===================================================================================================
+  subroutine macro()
+    use commondata
+    implicit none
+    integer(kind=4) :: i, j
+
+    !$acc parallel loop gang vector collapse(2) default(none) present(f,rho,u,v,Fx,Fy) async(1)
+    do j = 1, ny
+        do i = 1, nx
+            rho(i,j) = rho0+f(i,j,0)+f(i,j,1)+f(i,j,2)+f(i,j,3)+f(i,j,4)+ &
+                f(i,j,5)+f(i,j,6)+f(i,j,7)+f(i,j,8)
+            u(i,j) = (f(i,j,1)-f(i,j,3)+f(i,j,5)-f(i,j,6)-f(i,j,7)+f(i,j,8) + &
+                0.5d0*Fx(i,j))/rho0
+            v(i,j) = (f(i,j,2)-f(i,j,4)+f(i,j,5)+f(i,j,6)-f(i,j,7)-f(i,j,8) + &
+                0.5d0*Fy(i,j))/rho0
+        enddo
+    enddo
+    return
+  end subroutine macro
+!===================================================================================================
+
+!===================================================================================================
+
+
+
+!===================================================================================================
+! 子程序: collisionT
+! 作用: 在矩空间执行原 LBM-CDE 的 D2Q9-BGK 温度碰撞，并在同一格点循环中计算式 (35) 的温度梯度。
+! 论文对应: 平衡态见式 (16)，温度源项见式 (28)，有效扩散率见式 (29)。
+! 说明: 当前方腔没有体热源，因此式 (28) 中 Q 相关项为零；压力梯度、温度浮力和
+!       chi_kappa*grad(T) 三部分仍完整保留。这样不需要单独的 compute_temperature_gradient。
+!       nT(0)=T 为守恒矩，不执行松弛；nT(1:8) 均使用相同的 Sg，因此仍严格属于 BGK。
+!       把速度空间源项一并变换到矩空间，并统一乘 (1-Sg/2)，与原速度空间 BGK 完全等价。
+!===================================================================================================
+    subroutine collisionT()
+    use commondata
+    implicit none
+    integer(kind=4) :: i, j
+    integer(kind=4) :: alpha
+    real(kind=8) :: geq(0:8), sourceDirection(0:8)
+    real(kind=8) :: nT(0:8), nTeq(0:8), nTSource(0:8), nTPost(0:8)
+    real(kind=8) :: gradTx, gradTy
+    real(kind=8) :: neqx, neqy, gradDenom
+    real(kind=8) :: pressureLoc, scalarSource
+    real(kind=8), parameter :: sourcePref=1.0d0-0.5d0*Sg
+
+    !$acc parallel loop gang vector collapse(2) default(none) &
+    !$acc& present(g,g_post,u,v,T,rho,Fx,Fy) async(1) &
+    !$acc& private(alpha,geq,sourceDirection,nT,nTeq,nTSource,nTPost, &
+    !$acc& gradTx,gradTy,neqx,neqy,gradDenom,pressureLoc,scalarSource)
+    do j = 1, ny
+        do i = 1, nx
+            ! 流场 macro 已更新 rho/u/v；这里同步刷新温度碰撞所需的 Boussinesq 力。
+            Fx(i,j) = 0.0d0
+            Fy(i,j) = rho0*gBeta*(T(i,j)-Tref)
+#ifdef SideHeatedHa
+            Fx(i,j) = rho0*B2sigemarho*(v(i,j)*sin(phi)*cos(phi)-u(i,j)*sin(phi)*sin(phi))
+            Fy(i,j) = rho0*gBeta*(T(i,j)-Tref)+rho0*B2sigemarho* &
+                (u(i,j)*sin(phi)*cos(phi)-v(i,j)*cos(phi)*cos(phi))
+#endif
+            pressureLoc = cs2*(rho(i,j)-rho0)
+            neqx = 0.0d0
+            neqy = 0.0d0
+            do alpha = 0, 8
+                geq(alpha) = calc_geq(alpha,T(i,j),u(i,j),v(i,j),rho(i,j))
+                neqx = neqx+dble(qex(alpha))*(g(i,j,alpha)-geq(alpha))
+                neqy = neqy+dble(qey(alpha))*(g(i,j,alpha)-geq(alpha))
+            enddo
+
+            ! 式 (35)，Q=0。分母包含压力扰动耦合；正常低 Mach 计算中不会接近零。
+            gradDenom = cT2*(2.0d0*taug*(1.0d0-chi_kappa)+chi_kappa)+pressureLoc/rho0
+            gradDenom = sign(max(abs(gradDenom),tiny(1.0d0)),gradDenom)
+            gradTx = -(2.0d0*neqx+T(i,j)*Fx(i,j)/rho0)/gradDenom
+            gradTy = -(2.0d0*neqy+T(i,j)*Fy(i,j)/rho0)/gradDenom
+
+            do alpha = 0, 8
+                scalarSource = &
+                    (dble(qex(alpha))*(pressureLoc*gradTx+T(i,j)*Fx(i,j)) + &
+                    dble(qey(alpha))*(pressureLoc*gradTy+T(i,j)*Fy(i,j)))/(rho0*cT2) + &
+                    chi_kappa*(dble(qex(alpha))*gradTx+dble(qey(alpha))*gradTy)
+                sourceDirection(alpha) = qomega(alpha)*scalarSource
+            enddo
+
+            ! 温度分布、平衡态和源项使用与流场一致的 D2Q9 正交矩阵 M。
+            nT(0) = g(i,j,0)+g(i,j,1)+g(i,j,2)+g(i,j,3)+g(i,j,4)+ &
+                g(i,j,5)+g(i,j,6)+g(i,j,7)+g(i,j,8)
+            nT(1) = -4.0d0*g(i,j,0)-g(i,j,1)-g(i,j,2)-g(i,j,3)-g(i,j,4)+ &
+                2.0d0*(g(i,j,5)+g(i,j,6)+g(i,j,7)+g(i,j,8))
+            nT(2) = 4.0d0*g(i,j,0)-2.0d0*(g(i,j,1)+g(i,j,2)+g(i,j,3)+g(i,j,4))+ &
+                g(i,j,5)+g(i,j,6)+g(i,j,7)+g(i,j,8)
+            nT(3) = g(i,j,1)-g(i,j,3)+g(i,j,5)-g(i,j,6)-g(i,j,7)+g(i,j,8)
+            nT(4) = -2.0d0*g(i,j,1)+2.0d0*g(i,j,3)+g(i,j,5)-g(i,j,6)-g(i,j,7)+g(i,j,8)
+            nT(5) = g(i,j,2)-g(i,j,4)+g(i,j,5)+g(i,j,6)-g(i,j,7)-g(i,j,8)
+            nT(6) = -2.0d0*g(i,j,2)+2.0d0*g(i,j,4)+g(i,j,5)+g(i,j,6)-g(i,j,7)-g(i,j,8)
+            nT(7) = g(i,j,1)-g(i,j,2)+g(i,j,3)-g(i,j,4)
+            nT(8) = g(i,j,5)-g(i,j,6)+g(i,j,7)-g(i,j,8)
+
+            nTeq(0) = geq(0)+geq(1)+geq(2)+geq(3)+geq(4)+geq(5)+geq(6)+geq(7)+geq(8)
+            nTeq(1) = -4.0d0*geq(0)-geq(1)-geq(2)-geq(3)-geq(4)+ &
+                2.0d0*(geq(5)+geq(6)+geq(7)+geq(8))
+            nTeq(2) = 4.0d0*geq(0)-2.0d0*(geq(1)+geq(2)+geq(3)+geq(4))+ &
+                geq(5)+geq(6)+geq(7)+geq(8)
+            nTeq(3) = geq(1)-geq(3)+geq(5)-geq(6)-geq(7)+geq(8)
+            nTeq(4) = -2.0d0*geq(1)+2.0d0*geq(3)+geq(5)-geq(6)-geq(7)+geq(8)
+            nTeq(5) = geq(2)-geq(4)+geq(5)+geq(6)-geq(7)-geq(8)
+            nTeq(6) = -2.0d0*geq(2)+2.0d0*geq(4)+geq(5)+geq(6)-geq(7)-geq(8)
+            nTeq(7) = geq(1)-geq(2)+geq(3)-geq(4)
+            nTeq(8) = geq(5)-geq(6)+geq(7)-geq(8)
+
+            nTSource(0) = sourceDirection(0)+sourceDirection(1)+sourceDirection(2)+ &
+                sourceDirection(3)+sourceDirection(4)+sourceDirection(5)+sourceDirection(6)+ &
+                sourceDirection(7)+sourceDirection(8)
+            nTSource(1) = -4.0d0*sourceDirection(0)-sourceDirection(1)-sourceDirection(2)- &
+                sourceDirection(3)-sourceDirection(4)+2.0d0*(sourceDirection(5)+ &
+                sourceDirection(6)+sourceDirection(7)+sourceDirection(8))
+            nTSource(2) = 4.0d0*sourceDirection(0)-2.0d0*(sourceDirection(1)+ &
+                sourceDirection(2)+sourceDirection(3)+sourceDirection(4))+sourceDirection(5)+ &
+                sourceDirection(6)+sourceDirection(7)+sourceDirection(8)
+            nTSource(3) = sourceDirection(1)-sourceDirection(3)+sourceDirection(5)- &
+                sourceDirection(6)-sourceDirection(7)+sourceDirection(8)
+            nTSource(4) = -2.0d0*sourceDirection(1)+2.0d0*sourceDirection(3)+ &
+                sourceDirection(5)-sourceDirection(6)-sourceDirection(7)+sourceDirection(8)
+            nTSource(5) = sourceDirection(2)-sourceDirection(4)+sourceDirection(5)+ &
+                sourceDirection(6)-sourceDirection(7)-sourceDirection(8)
+            nTSource(6) = -2.0d0*sourceDirection(2)+2.0d0*sourceDirection(4)+ &
+                sourceDirection(5)+sourceDirection(6)-sourceDirection(7)-sourceDirection(8)
+            nTSource(7) = sourceDirection(1)-sourceDirection(2)+sourceDirection(3)-sourceDirection(4)
+            nTSource(8) = sourceDirection(5)-sourceDirection(6)+sourceDirection(7)-sourceDirection(8)
+
+            ! nT(0) 是温度守恒矩；其余非守恒矩使用同一个 Sg，即矩空间 BGK。
+            nTPost(0) = nT(0)+sourcePref*nTSource(0)
+            do alpha = 1, 8
+                nTPost(alpha) = nT(alpha)-Sg*(nT(alpha)-nTeq(alpha))+ &
+                    sourcePref*nTSource(alpha)
+            enddo
+
+            ! 乘 M^{-1} 回到速度空间，再由 streamingT 完成迁移。
+            g_post(i,j,0) = nTPost(0)/9.0d0-nTPost(1)/9.0d0+nTPost(2)/9.0d0
+            g_post(i,j,1) = nTPost(0)/9.0d0-nTPost(1)/36.0d0-nTPost(2)/18.0d0+ &
+                nTPost(3)/6.0d0-nTPost(4)/6.0d0+nTPost(7)/4.0d0
+            g_post(i,j,2) = nTPost(0)/9.0d0-nTPost(1)/36.0d0-nTPost(2)/18.0d0+ &
+                nTPost(5)/6.0d0-nTPost(6)/6.0d0-nTPost(7)/4.0d0
+            g_post(i,j,3) = nTPost(0)/9.0d0-nTPost(1)/36.0d0-nTPost(2)/18.0d0- &
+                nTPost(3)/6.0d0+nTPost(4)/6.0d0+nTPost(7)/4.0d0
+            g_post(i,j,4) = nTPost(0)/9.0d0-nTPost(1)/36.0d0-nTPost(2)/18.0d0- &
+                nTPost(5)/6.0d0+nTPost(6)/6.0d0-nTPost(7)/4.0d0
+            g_post(i,j,5) = nTPost(0)/9.0d0+nTPost(1)/18.0d0+nTPost(2)/36.0d0+ &
+                nTPost(3)/6.0d0+nTPost(4)/12.0d0+nTPost(5)/6.0d0+nTPost(6)/12.0d0+nTPost(8)/4.0d0
+            g_post(i,j,6) = nTPost(0)/9.0d0+nTPost(1)/18.0d0+nTPost(2)/36.0d0- &
+                nTPost(3)/6.0d0-nTPost(4)/12.0d0+nTPost(5)/6.0d0+nTPost(6)/12.0d0-nTPost(8)/4.0d0
+            g_post(i,j,7) = nTPost(0)/9.0d0+nTPost(1)/18.0d0+nTPost(2)/36.0d0- &
+                nTPost(3)/6.0d0-nTPost(4)/12.0d0-nTPost(5)/6.0d0-nTPost(6)/12.0d0+nTPost(8)/4.0d0
+            g_post(i,j,8) = nTPost(0)/9.0d0+nTPost(1)/18.0d0+nTPost(2)/36.0d0+ &
+                nTPost(3)/6.0d0+nTPost(4)/12.0d0-nTPost(5)/6.0d0-nTPost(6)/12.0d0-nTPost(8)/4.0d0
+        enddo
+    enddo
+    return
+    end subroutine collisionT
+!===================================================================================================
+! collisionT 结束: 完成原 LBM-CDE D2Q9-BGK 的矩空间温度碰撞更新。
+!===================================================================================================
+
+
+
+
+!===================================================================================================
+! 子程序: streamingT
+! 作用: 完成温度分布函数 g 的迁移，把碰撞后的温度信息传播到相邻格点。
+! 用途: 在主程序时间推进循环中调用，位于 collisionT 之后、bouncebackT 之前。
+!===================================================================================================
+    subroutine streamingT()
+    use commondata
+    implicit none
+    integer(kind=4) :: i, j
+    integer(kind=4) :: ip, jp
+    integer(kind=4) :: alpha
+
+    !$acc parallel loop gang vector collapse(2) default(none) present(g,g_post,ex,ey) async(1) private(alpha,ip,jp)
+    do j = 1, ny
+        do i = 1, nx
+            do alpha = 0, 8
+                ip = i-ex(alpha)
+                jp = j-ey(alpha)
+
+                g(i,j,alpha) = g_post(ip,jp,alpha)
+            enddo
+        enddo
+    enddo
+    return
+    end subroutine streamingT
+!===================================================================================================
+! streamingT 结束: 完成温度分布函数 g 的迁移，把碰撞后的温度信息传播到相邻格点。
+!===================================================================================================
+
 
 
 !===================================================================================================
 ! 子程序: bouncebackT
-! 作用: 恒温壁采用 anti-bounce-back（论文式 (38)），绝热壁采用 bounce-back（式 (39)）。
-! 关键点: 式 (38) 不只有 2*omega_i*Twall，还必须保留压力平衡项；分母为 rho0*cs2。
-! 边界精度: 这些规则反射的是含完整源项的碰撞后分布；但 BGK 内点与 halfway BB/ABB 在壁面
-! 仍有隐藏截断误差，因此本实现只保证边界语义和质量/热流方向一致，不宣称全局二阶精度。
+! 作用: 对 D2Q9 温度分布施加周期、恒温 anti-bounce-back 或绝热 bounce-back 边界。
+! 用途: 在主程序时间推进循环中调用，位于 streamingT 之后、macroT 之前。
+! 论文对应: 恒温边界为式 (38)，必须同时保留温度权重项和压力平衡项；绝热边界为式 (39)。
 !===================================================================================================
     subroutine bouncebackT()
-        use commondata
-        implicit none
-        integer(kind=4) :: i, j
+    use commondata
+    implicit none
+    integer(kind=4) :: i, j
+
+#ifdef VerticalWallsPeriodicalT
+    !$acc parallel loop gang vector default(none) present(g,g_post) async(1)
+    do j = 1, ny
+        g(1,j,1) = g_post(nx,j,1)
+        g(1,j,5) = g_post(nx,j,5)
+        g(1,j,8) = g_post(nx,j,8)
+        g(nx,j,3) = g_post(1,j,3)
+        g(nx,j,6) = g_post(1,j,6)
+        g(nx,j,7) = g_post(1,j,7)
+    enddo
+#endif
 
 #ifdef VerticalWallsConstT
-        ! 左热壁 Thot；右冷壁 Tcold。每个赋值只更新从壁面进入流体的未知分布。
-        !$acc parallel loop present(g,g_post,pressure) private(j)
-        do j = 1, ny
-            g(1,1,j) = -g_post(3,1,j)+2.0d0*tomega(1)*Thot + &
-                2.0d0*qlambdaT(1)*Thot*pressure(1,j)/(rho0*cT2)
-#ifdef ThermalD2Q9
-            g(5,1,j) = -g_post(7,1,j)+2.0d0*tomega(5)*Thot + &
-                2.0d0*qlambdaT(5)*Thot*pressure(1,j)/(rho0*cT2)
-            g(8,1,j) = -g_post(6,1,j)+2.0d0*tomega(8)*Thot + &
-                2.0d0*qlambdaT(8)*Thot*pressure(1,j)/(rho0*cT2)
-#endif
+    !$acc parallel loop gang vector default(none) present(g,g_post,rho) async(1)
+    do j = 1, ny
+        g(1,j,1) = -g_post(1,j,3)+2.0d0*qomega(1)*Thot + &
+            2.0d0*qlambdaT(1)*Thot*cs2*(rho(1,j)-rho0)/(rho0*cT2)
+        g(1,j,5) = -g_post(1,j,7)+2.0d0*qomega(5)*Thot + &
+            2.0d0*qlambdaT(5)*Thot*cs2*(rho(1,j)-rho0)/(rho0*cT2)
+        g(1,j,8) = -g_post(1,j,6)+2.0d0*qomega(8)*Thot + &
+            2.0d0*qlambdaT(8)*Thot*cs2*(rho(1,j)-rho0)/(rho0*cT2)
 
-            g(3,nx,j) = -g_post(1,nx,j)+2.0d0*tomega(3)*Tcold + &
-                2.0d0*qlambdaT(3)*Tcold*pressure(nx,j)/(rho0*cT2)
-#ifdef ThermalD2Q9
-            g(6,nx,j) = -g_post(8,nx,j)+2.0d0*tomega(6)*Tcold + &
-                2.0d0*qlambdaT(6)*Tcold*pressure(nx,j)/(rho0*cT2)
-            g(7,nx,j) = -g_post(5,nx,j)+2.0d0*tomega(7)*Tcold + &
-                2.0d0*qlambdaT(7)*Tcold*pressure(nx,j)/(rho0*cT2)
-#endif
-        enddo
+        g(nx,j,3) = -g_post(nx,j,1)+2.0d0*qomega(3)*Tcold + &
+            2.0d0*qlambdaT(3)*Tcold*cs2*(rho(nx,j)-rho0)/(rho0*cT2)
+        g(nx,j,6) = -g_post(nx,j,8)+2.0d0*qomega(6)*Tcold + &
+            2.0d0*qlambdaT(6)*Tcold*cs2*(rho(nx,j)-rho0)/(rho0*cT2)
+        g(nx,j,7) = -g_post(nx,j,5)+2.0d0*qomega(7)*Tcold + &
+            2.0d0*qlambdaT(7)*Tcold*cs2*(rho(nx,j)-rho0)/(rho0*cT2)
+    enddo
 #endif
 
 #ifdef VerticalWallsAdiabatic
-        ! RB 左右绝热壁：零法向热通量。
-        !$acc parallel loop present(g,g_post) private(j)
-        do j = 1, ny
-            g(1,1,j) = g_post(3,1,j)
-#ifdef ThermalD2Q9
-            g(5,1,j) = g_post(7,1,j)
-            g(8,1,j) = g_post(6,1,j)
-#endif
-
-            g(3,nx,j) = g_post(1,nx,j)
-#ifdef ThermalD2Q9
-            g(6,nx,j) = g_post(8,nx,j)
-            g(7,nx,j) = g_post(5,nx,j)
-#endif
-        enddo
-#endif
-
-#ifdef HorizontalWallsConstT
-        ! RB 下热壁 Thot；上冷壁 Tcold。
-        !$acc parallel loop present(g,g_post,pressure) private(i)
-        do i = 1, nx
-            g(2,i,1) = -g_post(4,i,1)+2.0d0*tomega(2)*Thot + &
-                2.0d0*qlambdaT(2)*Thot*pressure(i,1)/(rho0*cT2)
-#ifdef ThermalD2Q9
-            g(5,i,1) = -g_post(7,i,1)+2.0d0*tomega(5)*Thot + &
-                2.0d0*qlambdaT(5)*Thot*pressure(i,1)/(rho0*cT2)
-            g(6,i,1) = -g_post(8,i,1)+2.0d0*tomega(6)*Thot + &
-                2.0d0*qlambdaT(6)*Thot*pressure(i,1)/(rho0*cT2)
-#endif
-
-            g(4,i,ny) = -g_post(2,i,ny)+2.0d0*tomega(4)*Tcold + &
-                2.0d0*qlambdaT(4)*Tcold*pressure(i,ny)/(rho0*cT2)
-#ifdef ThermalD2Q9
-            g(7,i,ny) = -g_post(5,i,ny)+2.0d0*tomega(7)*Tcold + &
-                2.0d0*qlambdaT(7)*Tcold*pressure(i,ny)/(rho0*cT2)
-            g(8,i,ny) = -g_post(6,i,ny)+2.0d0*tomega(8)*Tcold + &
-                2.0d0*qlambdaT(8)*Tcold*pressure(i,ny)/(rho0*cT2)
-#endif
-        enddo
+    !$acc parallel loop gang vector default(none) present(g,g_post) async(1)
+    do j = 1, ny
+        g(1,j,1) = g_post(1,j,3)
+        g(1,j,5) = g_post(1,j,7)
+        g(1,j,8) = g_post(1,j,6)
+        g(nx,j,3) = g_post(nx,j,1)
+        g(nx,j,6) = g_post(nx,j,8)
+        g(nx,j,7) = g_post(nx,j,5)
+    enddo
 #endif
 
 #ifdef HorizontalWallsAdiabatic
-        ! 零法向热通量：把撞向壁面的分布原值反弹，不添加恒温修正。
-        !$acc parallel loop present(g,g_post) private(i)
-        do i = 1, nx
-            g(2,i,1) = g_post(4,i,1)
-#ifdef ThermalD2Q9
-            g(5,i,1) = g_post(7,i,1)
-            g(6,i,1) = g_post(8,i,1)
+    !$acc parallel loop gang vector default(none) present(g,g_post) async(1)
+    do i = 1, nx
+        g(i,1,2) = g_post(i,1,4)
+        g(i,1,5) = g_post(i,1,7)
+        g(i,1,6) = g_post(i,1,8)
+        g(i,ny,4) = g_post(i,ny,2)
+        g(i,ny,7) = g_post(i,ny,5)
+        g(i,ny,8) = g_post(i,ny,6)
+    enddo
 #endif
 
-            g(4,i,ny) = g_post(2,i,ny)
-#ifdef ThermalD2Q9
-            g(7,i,ny) = g_post(5,i,ny)
-            g(8,i,ny) = g_post(6,i,ny)
-#endif
-        enddo
+#ifdef HorizontalWallsConstT
+    !$acc parallel loop gang vector default(none) present(g,g_post,rho) async(1)
+    do i = 1, nx
+        g(i,1,2) = -g_post(i,1,4)+2.0d0*qomega(2)*Thot + &
+            2.0d0*qlambdaT(2)*Thot*cs2*(rho(i,1)-rho0)/(rho0*cT2)
+        g(i,1,5) = -g_post(i,1,7)+2.0d0*qomega(5)*Thot + &
+            2.0d0*qlambdaT(5)*Thot*cs2*(rho(i,1)-rho0)/(rho0*cT2)
+        g(i,1,6) = -g_post(i,1,8)+2.0d0*qomega(6)*Thot + &
+            2.0d0*qlambdaT(6)*Thot*cs2*(rho(i,1)-rho0)/(rho0*cT2)
+
+        g(i,ny,4) = -g_post(i,ny,2)+2.0d0*qomega(4)*Tcold + &
+            2.0d0*qlambdaT(4)*Tcold*cs2*(rho(i,ny)-rho0)/(rho0*cT2)
+        g(i,ny,7) = -g_post(i,ny,5)+2.0d0*qomega(7)*Tcold + &
+            2.0d0*qlambdaT(7)*Tcold*cs2*(rho(i,ny)-rho0)/(rho0*cT2)
+        g(i,ny,8) = -g_post(i,ny,6)+2.0d0*qomega(8)*Tcold + &
+            2.0d0*qlambdaT(8)*Tcold*cs2*(rho(i,ny)-rho0)/(rho0*cT2)
+    enddo
 #endif
 
-#if defined(VerticalWallsConstT) && defined(HorizontalWallsAdiabatic) && defined(ThermalD2Q9)
-        ! 四个角点的对角分布同时属于恒温侧壁和绝热水平壁。
-        ! 上面的水平壁循环会覆盖侧壁先写入的对角分布，因此这里最后再写一次，使恒温 Dirichlet 条件优先。
-        ! 角点只有 4 个标量赋值，使用 serial 比额外启动并行 kernel 更直接。
-        !$acc serial present(g,g_post,pressure)
-        g(5,1,1) = -g_post(7,1,1)+2.0d0*tomega(5)*Thot + &
-            2.0d0*qlambdaT(5)*Thot*pressure(1,1)/(rho0*cT2)
-        g(8,1,ny) = -g_post(6,1,ny)+2.0d0*tomega(8)*Thot + &
-            2.0d0*qlambdaT(8)*Thot*pressure(1,ny)/(rho0*cT2)
-        g(6,nx,1) = -g_post(8,nx,1)+2.0d0*tomega(6)*Tcold + &
-            2.0d0*qlambdaT(6)*Tcold*pressure(nx,1)/(rho0*cT2)
-        g(7,nx,ny) = -g_post(5,nx,ny)+2.0d0*tomega(7)*Tcold + &
-            2.0d0*qlambdaT(7)*Tcold*pressure(nx,ny)/(rho0*cT2)
-        !$acc end serial
+#if defined(VerticalWallsConstT) && defined(HorizontalWallsAdiabatic)
+    ! 侧热方腔角点同时属于恒温侧壁和绝热水平壁；最后重写对角入射分布，使恒温条件优先。
+    !$acc serial present(g,g_post,rho) async(1)
+    g(1,1,5) = -g_post(1,1,7)+2.0d0*qomega(5)*Thot + &
+        2.0d0*qlambdaT(5)*Thot*cs2*(rho(1,1)-rho0)/(rho0*cT2)
+    g(1,ny,8) = -g_post(1,ny,6)+2.0d0*qomega(8)*Thot + &
+        2.0d0*qlambdaT(8)*Thot*cs2*(rho(1,ny)-rho0)/(rho0*cT2)
+    g(nx,1,6) = -g_post(nx,1,8)+2.0d0*qomega(6)*Tcold + &
+        2.0d0*qlambdaT(6)*Tcold*cs2*(rho(nx,1)-rho0)/(rho0*cT2)
+    g(nx,ny,7) = -g_post(nx,ny,5)+2.0d0*qomega(7)*Tcold + &
+        2.0d0*qlambdaT(7)*Tcold*cs2*(rho(nx,ny)-rho0)/(rho0*cT2)
+    !$acc end serial
 #endif
 
-#if defined(HorizontalWallsConstT) && defined(VerticalWallsAdiabatic) && defined(ThermalD2Q9)
-        ! RB 角点同时属于恒温水平壁和绝热侧壁；最后重写对角入射分布，使 Dirichlet 条件优先。
-        !$acc serial present(g,g_post,pressure)
-        g(5,1,1) = -g_post(7,1,1)+2.0d0*tomega(5)*Thot + &
-            2.0d0*qlambdaT(5)*Thot*pressure(1,1)/(rho0*cT2)
-        g(6,nx,1) = -g_post(8,nx,1)+2.0d0*tomega(6)*Thot + &
-            2.0d0*qlambdaT(6)*Thot*pressure(nx,1)/(rho0*cT2)
-        g(8,1,ny) = -g_post(6,1,ny)+2.0d0*tomega(8)*Tcold + &
-            2.0d0*qlambdaT(8)*Tcold*pressure(1,ny)/(rho0*cT2)
-        g(7,nx,ny) = -g_post(5,nx,ny)+2.0d0*tomega(7)*Tcold + &
-            2.0d0*qlambdaT(7)*Tcold*pressure(nx,ny)/(rho0*cT2)
-        !$acc end serial
+#if defined(HorizontalWallsConstT) && defined(VerticalWallsAdiabatic)
+    ! RB 角点同时属于恒温水平壁和绝热侧壁；同样让上下壁 Dirichlet 条件优先。
+    !$acc serial present(g,g_post,rho) async(1)
+    g(1,1,5) = -g_post(1,1,7)+2.0d0*qomega(5)*Thot + &
+        2.0d0*qlambdaT(5)*Thot*cs2*(rho(1,1)-rho0)/(rho0*cT2)
+    g(nx,1,6) = -g_post(nx,1,8)+2.0d0*qomega(6)*Thot + &
+        2.0d0*qlambdaT(6)*Thot*cs2*(rho(nx,1)-rho0)/(rho0*cT2)
+    g(1,ny,8) = -g_post(1,ny,6)+2.0d0*qomega(8)*Tcold + &
+        2.0d0*qlambdaT(8)*Tcold*cs2*(rho(1,ny)-rho0)/(rho0*cT2)
+    g(nx,ny,7) = -g_post(nx,ny,5)+2.0d0*qomega(7)*Tcold + &
+        2.0d0*qlambdaT(7)*Tcold*cs2*(rho(nx,ny)-rho0)/(rho0*cT2)
+    !$acc end serial
 #endif
+
+    return
     end subroutine bouncebackT
 !===================================================================================================
+! bouncebackT 结束: 处理温度边界条件，包括恒温、绝热和周期边界。
+!===================================================================================================
 
 
-!===================================================================================================
-! 子程序: macro
-! 作用: 由迁移和边界处理后的 f 重构 rho/u/v。
-! 论文对应: sum(f_i)=deltaRho，rho0*u=sum(e_i*f_i)+F/2；半力修正来自梯形离散变换。
-!===================================================================================================
-    subroutine macro()
-        use commondata
-        implicit none
-        integer(kind=4) :: i, j
-        real(kind=8) :: momx, momy
-
-        !$acc parallel loop collapse(2) present(f,rho,u,v,Fx,Fy) private(i,j,momx,momy)
-        do j = 1, ny
-            do i = 1, nx
-                rho(i,j) = rho0 + f(0,i,j)+f(1,i,j)+f(2,i,j)+f(3,i,j)+f(4,i,j)+ &
-                    f(5,i,j)+f(6,i,j)+f(7,i,j)+f(8,i,j)
-                momx = f(1,i,j)-f(3,i,j)+f(5,i,j)-f(6,i,j)-f(7,i,j)+f(8,i,j)
-                momy = f(2,i,j)-f(4,i,j)+f(5,i,j)+f(6,i,j)-f(7,i,j)-f(8,i,j)
-                u(i,j) = (momx+0.5d0*Fx(i,j))/rho0
-                v(i,j) = (momy+0.5d0*Fy(i,j))/rho0
-            enddo
-        enddo
-    end subroutine macro
-!===================================================================================================
 
 
 !===================================================================================================
 ! 子程序: macroT
-! 作用: 由 g 的零阶矩重构温度；存在体热源时必须加 Q/2，本方腔 Q=0。
+! 作用: 由温度分布函数恢复宏观温度场 T。
+! 用途: 在主程序时间推进循环中调用，作为温度更新链条的最后一步。
 !===================================================================================================
     subroutine macroT()
-        use commondata
-        implicit none
-        integer(kind=4) :: i, j, alpha
-        real(kind=8) :: temperatureSum
+    use commondata
+    implicit none
+    integer(kind=4) :: i, j
 
-        !$acc parallel loop collapse(2) present(g,T) private(i,j,alpha,temperatureSum)
-        do j = 1, ny
-            do i = 1, nx
-                temperatureSum = 0.0d0
-                do alpha = 0, thermalQ
-                    temperatureSum = temperatureSum+g(alpha,i,j)
-                enddo
-                T(i,j) = temperatureSum+0.5d0*heatSourceQ
-            enddo
+    !$acc parallel loop gang vector collapse(2) default(none) present(g,T) async(1)
+    do j = 1, ny
+        do i = 1, nx
+            T(i,j) = g(i,j,0)+g(i,j,1)+g(i,j,2)+g(i,j,3)+g(i,j,4)+ &
+                g(i,j,5)+g(i,j,6)+g(i,j,7)+g(i,j,8)
         enddo
+    enddo
+    return
     end subroutine macroT
 !===================================================================================================
+! macroT 结束: 由温度分布函数恢复宏观温度场 T。
+!===================================================================================================
 
 
+
+!===================================================================================================
+! 子程序: reconstruct_macro_from_fg
+! 作用: 从重启读回的 f/g 重新恢复 rho、u、v 和 T。
+!===================================================================================================
+    subroutine reconstruct_macro_from_fg()
+    use commondata
+    implicit none
+    integer(kind=4) :: i, j, iter
+    real(kind=8) :: momx, momy
+    logical :: rho_bad
+
+    rho_bad = .false.
+    do j = 1, ny
+        do i = 1, nx
+            T(i,j) = g(i,j,0)+g(i,j,1)+g(i,j,2)+g(i,j,3)+g(i,j,4)+ &
+                g(i,j,5)+g(i,j,6)+g(i,j,7)+g(i,j,8)
+            rho(i,j) = rho0+f(i,j,0)+f(i,j,1)+f(i,j,2)+f(i,j,3)+f(i,j,4)+ &
+                f(i,j,5)+f(i,j,6)+f(i,j,7)+f(i,j,8)
+            momx = f(i,j,1)-f(i,j,3)+f(i,j,5)-f(i,j,6)-f(i,j,7)+f(i,j,8)
+            momy = f(i,j,2)-f(i,j,4)+f(i,j,5)+f(i,j,6)-f(i,j,7)-f(i,j,8)
+
+            if (rho(i,j).GT.0.0d0) then
+                u(i,j) = momx/rho0
+                v(i,j) = momy/rho0
+
+                do iter = 1, 3
+                    Fx(i,j) = 0.0d0
+                    Fy(i,j) = rho0*gBeta*(T(i,j)-Tref)
+
+#ifdef    SideHeatedHa
+                    Fx(i,j) = rho0*B2sigemarho*(v(i,j)*sin(phi)*cos(phi)-u(i,j)*sin(phi)*sin(phi))
+                    Fy(i,j) = rho0*gBeta*(T(i,j)-Tref)+rho0*B2sigemarho*(u(i,j)*sin(phi)*cos(phi)&
+                    -v(i,j)*cos(phi)*cos(phi))
+#endif
+
+                    u(i,j) = (momx + 0.5d0*Fx(i,j))/rho0
+                    v(i,j) = (momy + 0.5d0*Fy(i,j))/rho0
+                enddo
+            else
+                rho_bad = .true.
+                Fx(i,j) = 0.0d0
+                Fy(i,j) = 0.0d0
+                u(i,j) = 0.0d0
+                v(i,j) = 0.0d0
+            endif
+        enddo
+    enddo
+
+    if (rho_bad) then
+        write(*,*) "Warning: non-positive rho found during restart reconstruction."
+        stop
+    endif
+
+    return
+    end subroutine reconstruct_macro_from_fg
+!===================================================================================================
+! reconstruct_macro_from_fg end: 重新恢复 rho、u、v 和 T
+!===================================================================================================
+
+
+
+#ifdef steadyFlow
 !===================================================================================================
 ! 子程序: check
-! 作用: 在 CPU 端计算相邻两个检查时刻之间的速度/温度相对 L2 变化量，并更新参考场。
-! 说明: 这是本测试程序的稳态停止判据，不是论文 LBM-CDE 方程的一部分；检查间隔为 checkInterval。
+! 作用: 计算稳态收敛误差并写出收敛历史。
+! 用途: 在 steadyFlow 模式下由主程序定期调用。
 !===================================================================================================
     subroutine check()
-        use commondata
-        use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
-        implicit none
-        integer(kind=4) :: i, j, badI, badJ
-        real(kind=8) :: errUSum, refUSum, errTSum, refTSum
-        logical :: badState
+    use commondata
+    implicit none
+    integer(kind=4) :: i, j
+    real(kind=8) :: error1, error2, error5, error6
+    character(len=64) :: caseTag
 
-        errUSum = 0.0d0
-        refUSum = 0.0d0
-        errTSum = 0.0d0
-        refTSum = 0.0d0
-        badState = .false.
-        badI = -1
-        badJ = -1
-        do j = 1, ny
-            do i = 1, nx
-                if((.NOT.ieee_is_finite(u(i,j))).OR.(.NOT.ieee_is_finite(v(i,j))).OR. &
-                    (.NOT.ieee_is_finite(T(i,j))).OR.(.NOT.ieee_is_finite(rho(i,j))).OR. &
-                    (.NOT.ieee_is_finite(gradTx(i,j))).OR.(.NOT.ieee_is_finite(gradTy(i,j)))) then
-                    if(.NOT.badState) then
-                        badState = .true.
-                        badI = i
-                        badJ = j
-                    endif
-                    cycle
-                endif
-                errUSum = errUSum+(u(i,j)-up(i,j))**2+(v(i,j)-vp(i,j))**2
-                refUSum = refUSum+u(i,j)**2+v(i,j)**2
-                errTSum = errTSum+(T(i,j)-Tp(i,j))**2
-                refTSum = refTSum+T(i,j)**2
-            enddo
+
+
+    !$acc wait(1)
+    error1 = 0.0d0
+    error2 = 0.0d0
+
+    error5 = 0.0d0
+    error6 = 0.0d0
+
+    !$acc parallel loop collapse(2) default(none) present(u,up,v,vp,T,Tp) reduction(+:error1,error2,error5,error6)
+    do j = 1, ny
+        do i = 1, nx
+            error1 = error1+(u(i,j)-up(i,j))*(u(i,j)-up(i,j))+(v(i,j)-vp(i,j))*(v(i,j)-vp(i,j))
+            error2 = error2+u(i,j)*u(i,j)+v(i,j)*v(i,j)
+
+            error5 = error5+dABS( T(i,j)-Tp(i,j) )
+            error6 = error6+dABS( T(i,j) )
+
+            up(i,j) = u(i,j)
+            vp(i,j) = v(i,j)
+            Tp(i,j) = T(i,j)
         enddo
-        if(badState) then
-            open(unit=00, file=trim(settingsFile), status='old', position='append', action='write')
-            write(00,*) "NONFINITE state detected: itc/i/j =", itc, badI, badJ
-            write(00,*) "u/v/T/rho/gradTx/gradTy =", u(badI,badJ), v(badI,badJ), T(badI,badJ), &
-                rho(badI,badJ), gradTx(badI,badJ), gradTy(badI,badJ)
-            close(00)
-            error stop "Nonfinite LBM state; see SimulationSettings2DOpenaccLBMCDE.txt"
-        endif
-        errorU = dsqrt(errUSum/max(refUSum,tiny(1.0d0)))
-        errorT = dsqrt(errTSum/max(refTSum,tiny(1.0d0)))
-        up = u
-        vp = v
-        Tp = T
-        lastCheckItc = itc
+    enddo
+    if (error2 .GT. 1.0d-30) then
+        errorU = dsqrt(error1)/dsqrt(error2)                 !速度场相对L2误差：||u^n-u^{n-1}||_2 / ||u^n||_2
+    else
+        errorU = dsqrt(error1)
+    endif
+    if (error6 .GT. 1.0d-30) then
+        errorT = error5/error6                               !温度场相对L1误差：||T^n-T^{n-1}||_1 / ||T^n||_1
+    else
+        errorT = error5
+    endif
 
-        write(*,'(A,I10,2(A,ES14.6))') "itc=", itc, " errorU=", errorU, " errorT=", errorT
+
+
+    call append_convergence_tecplot('convergence2DOpenacc.plt', restartItcOffset+itc, errorU, errorT)
+
+
+    write(caseTag,'("Ra=",ES24.16E3,",nx=",I0,",ny=",I0,",thermal=D2Q9BGK")') &
+        Rayleigh, nx, ny  !输出收敛曲线的对比
+    call append_convergence_master_tecplot('convergence_all_2DOpenacc.plt', caseTag, restartItcOffset+itc, errorU, errorT)
+
+    write(*,'(I12,1X,ES24.16E3,1X,ES24.16E3)') restartItcOffset+itc, errorU, errorT
+
+
+    return
     end subroutine check
 !===================================================================================================
+! check 结束: 计算稳态收敛误差并写出收敛历史。
+!===================================================================================================
+#endif
+
 
 
 !===================================================================================================
-! 子程序: calNuRe
-! 作用: 在 CPU 端计算热/冷壁 Nu、中心截面总热流、体平均 Nu/rms Re、耗散恒等式诊断。
-! 侧热工况主热流方向为 x；RB 主热流方向为 y。Numax_mid 仍只用导热梯度，便于与论文表 2 对照；
-! Nu_middle 则包含对流和导热两部分，用于截面热流守恒检查。
-! 注意: 偶数网格的中心线位于两条流体节点线之间，因此对相邻两条节点线做线性插值。
-! 壁面 Nu 同时给出局部非平衡梯度值与半格壁面温差值，便于交叉检查梯度重构。
+! 子程序: append_convergence_tecplot
+! 作用: 向单个 Tecplot 收敛文件追加一条误差记录。
+! 用途: 在 check 中调用，用于输出当前算例的收敛曲线。
 !===================================================================================================
-    subroutine calNuRe()
-        use commondata
-        implicit none
-        integer(kind=4) :: i, j, imidLeft, imidRight, jmidBottom, jmidTop
-        real(kind=8) :: sumHot, sumCold, sumMiddle, sumRe, sumGlobal
-        real(kind=8) :: sumHotHalfway, sumColdHalfway, sumMiddleFD
-        real(kind=8) :: sumEpsKinetic, sumEpsThermal, cellCount, speedSquared
-        real(kind=8) :: localNu, centerGradNormal, centerGradNormalFD, centerU, centerV, centerT
+subroutine append_convergence_tecplot(filename, itc, errorU, errorT)
+  use commondata, only: loadInitField
+  implicit none
+  character(len=*), intent(in) :: filename
+  integer(kind=4), intent(in)  :: itc
+  real(kind=8),    intent(in)  :: errorU, errorT
 
-        if(mod(nx,2).EQ.0) then
-            imidLeft = nx/2
-            imidRight = nx/2+1
-        else
-            imidLeft = nint(0.5d0*dble(nx))
-            imidRight = imidLeft
-        endif
-        if(mod(ny,2).EQ.0) then
-            jmidBottom = ny/2
-            jmidTop = ny/2+1
-        else
-            jmidBottom = nint(0.5d0*dble(ny))
-            jmidTop = jmidBottom
-        endif
+  integer :: u
+  logical :: ex
+  logical, save :: first_write = .true.      !这个局部变量在子程序返回后不会被销毁，下一次再进这个子程序时还保留上一次的值
 
-        sumHot = 0.0d0
-        sumCold = 0.0d0
-        sumMiddle = 0.0d0
-        sumHotHalfway = 0.0d0
-        sumColdHalfway = 0.0d0
-        sumMiddleFD = 0.0d0
-        sumRe = 0.0d0
-        sumGlobal = 0.0d0
-        sumEpsKinetic = 0.0d0
-        sumEpsThermal = 0.0d0
-        cellCount = dble(nx)*dble(ny)
-        maxMachLocal = 0.0d0
-        minTemperature = huge(1.0d0)
-        maxTemperature = -huge(1.0d0)
-        maxDensityDeviation = 0.0d0
-        umax_mid = -huge(1.0d0)
-        vmax_mid = -huge(1.0d0)
-        Numax_mid = -huge(1.0d0)
-        pos_umax_mid = 0.0d0
-        pos_vmax_mid = 0.0d0
-        pos_Numax_mid = 0.0d0
+  if (first_write) then
+    inquire(file=trim(filename), exist=ex)
+    if ((loadInitField.EQ.1).AND.ex) then
+      ! 续算：旧收敛曲线继续追加，横坐标已经传入累计 itc。
+      open(newunit=u, file=trim(filename), status='old', position='append', action='write', form='formatted')
+    elseif(loadInitField.EQ.1) then
+      ! 续算要求旧收敛文件必须存在；否则会丢掉断电前的收敛历史。
+      write(*,*) 'Error: restart requested but convergence file is missing: ', trim(filename)
+      stop
+    else
+      ! 新算例：清掉旧历史，避免不同算例的数据混在一起。
+      open(newunit=u, file=trim(filename), status='replace', action='write', form='formatted')
+      write(u,'(A)') 'VARIABLES = "itc" "errorU" "errorT"'
+      write(u,'(A)') 'ZONE T="conv", F=POINT'
+    endif
+    write(u,'(I12,1X,ES24.16E3,1X,ES24.16E3)') itc, errorU, errorT
+    close(u)
 
-#ifdef SideHeatedCell
-        do j = 1, ny
-            ! gradTx 由论文式 (35) 在局部节点直接得到；壁面值用相邻的第一/最后一层流体节点代表。
-            localNu = -lengthUnit*gradTx(1,j)/deltaT
-            sumHot = sumHot + localNu
-            localNu = -lengthUnit*gradTx(nx,j)/deltaT
-            sumCold = sumCold + localNu
-            sumHotHalfway = sumHotHalfway+2.0d0*lengthUnit*(Thot-T(1,j))/deltaT
-            sumColdHalfway = sumColdHalfway+2.0d0*lengthUnit*(T(nx,j)-Tcold)/deltaT
+    first_write = .false.
+  else
+    ! 同一次运行的后续调用：追加数据行
+    open(newunit=u, file=trim(filename), status='old', position='append', action='write', form='formatted')
+    write(u,'(I12,1X,ES24.16E3,1X,ES24.16E3)') itc, errorU, errorT
+    close(u)
+  end if
 
-            ! x=0.5L 中心线：偶数网格平均中心左右两列，奇数网格两个下标相同，公式自动退化为单列值。
-            centerGradNormal = 0.5d0*(gradTx(imidLeft,j)+gradTx(imidRight,j))
-            if(imidLeft.NE.imidRight) then
-                centerGradNormalFD = T(imidRight,j)-T(imidLeft,j)
-            else
-                centerGradNormalFD = 0.5d0*(T(imidLeft+1,j)-T(imidLeft-1,j))
-            endif
-            centerU = 0.5d0*(u(imidLeft,j)+u(imidRight,j))
-            centerT = 0.5d0*(T(imidLeft,j)+T(imidRight,j))
-            localNu = -lengthUnit*centerGradNormal/deltaT
-            sumMiddle = sumMiddle + lengthUnit*(centerU*(centerT-Tref)-diffusivity*centerGradNormal)/ &
-                (diffusivity*deltaT)
-            sumMiddleFD = sumMiddleFD + lengthUnit*(centerU*(centerT-Tref)-diffusivity*centerGradNormalFD)/ &
-                (diffusivity*deltaT)
-            if(localNu.GT.Numax_mid) then
-                Numax_mid = localNu
-                pos_Numax_mid = yp(j)
-            endif
-            ! 论文表 2 的 umax 是“最大正值”，不是绝对值最大的带符号速度。
-            if(centerU.GT.umax_mid) then
-                umax_mid = centerU
-                pos_umax_mid = yp(j)
-            endif
-        enddo
-
-        do i = 1, nx
-            ! y=0.5H 中心线同理在上下两行之间插值。
-            centerV = 0.5d0*(v(i,jmidBottom)+v(i,jmidTop))
-            ! 论文表 2 的 vmax 同样取最大正值；其位置应落在靠近左侧热壁的一侧。
-            if(centerV.GT.vmax_mid) then
-                vmax_mid = centerV
-                pos_vmax_mid = xp(i)
-            endif
-        enddo
-#endif
-
-#ifdef RayleighBenardCell
-        do i = 1, nx
-            ! RB 底热/顶冷壁的无量纲法向导热通量；两处梯度均为负，因此 Nu 取正值。
-            localNu = -lengthUnit*gradTy(i,1)/deltaT
-            sumHot = sumHot + localNu
-            localNu = -lengthUnit*gradTy(i,ny)/deltaT
-            sumCold = sumCold + localNu
-            sumHotHalfway = sumHotHalfway+2.0d0*lengthUnit*(Thot-T(i,1))/deltaT
-            sumColdHalfway = sumColdHalfway+2.0d0*lengthUnit*(T(i,ny)-Tcold)/deltaT
-
-            ! y=0.5H 截面总热流；Numax_mid 只记录其中的导热梯度局部最大值。
-            centerGradNormal = 0.5d0*(gradTy(i,jmidBottom)+gradTy(i,jmidTop))
-            if(jmidBottom.NE.jmidTop) then
-                centerGradNormalFD = T(i,jmidTop)-T(i,jmidBottom)
-            else
-                centerGradNormalFD = 0.5d0*(T(i,jmidBottom+1)-T(i,jmidBottom-1))
-            endif
-            centerV = 0.5d0*(v(i,jmidBottom)+v(i,jmidTop))
-            centerU = 0.5d0*(u(i,jmidBottom)+u(i,jmidTop))
-            centerT = 0.5d0*(T(i,jmidBottom)+T(i,jmidTop))
-            localNu = -lengthUnit*centerGradNormal/deltaT
-            sumMiddle = sumMiddle + lengthUnit*(centerV*(centerT-Tref)-diffusivity*centerGradNormal)/ &
-                (diffusivity*deltaT)
-            sumMiddleFD = sumMiddleFD + lengthUnit*(centerV*(centerT-Tref)-diffusivity*centerGradNormalFD)/ &
-                (diffusivity*deltaT)
-            if(localNu.GT.Numax_mid) then
-                Numax_mid = localNu
-                pos_Numax_mid = xp(i)
-            endif
-            if(centerU.GT.umax_mid) then
-                umax_mid = centerU
-                pos_umax_mid = xp(i)
-            endif
-        enddo
-
-        do j = 1, ny
-            centerV = 0.5d0*(v(imidLeft,j)+v(imidRight,j))
-            if(centerV.GT.vmax_mid) then
-                vmax_mid = centerV
-                pos_vmax_mid = yp(j)
-            endif
-        enddo
-#endif
-
-        do j = 1, ny
-            do i = 1, nx
-                speedSquared = u(i,j)*u(i,j)+v(i,j)*v(i,j)
-                sumRe = sumRe+speedSquared
-                maxMachLocal = max(maxMachLocal,dsqrt(speedSquared/cs2))
-                minTemperature = min(minTemperature,T(i,j))
-                maxTemperature = max(maxTemperature,T(i,j))
-                maxDensityDeviation = max(maxDensityDeviation,abs(rho(i,j)-rho0))
-                sumEpsKinetic = sumEpsKinetic+2.0d0*viscosity* &
-                    (Sxx(i,j)*Sxx(i,j)+Syy(i,j)*Syy(i,j)+2.0d0*Sxy(i,j)*Sxy(i,j))
-                sumEpsThermal = sumEpsThermal+diffusivity* &
-                    (gradTx(i,j)*gradTx(i,j)+gradTy(i,j)*gradTy(i,j))
-#ifdef SideHeatedCell
-                sumGlobal = sumGlobal + u(i,j)*(T(i,j)-Tref)
-#endif
-#ifdef RayleighBenardCell
-                sumGlobal = sumGlobal + v(i,j)*(T(i,j)-Tref)
-#endif
-            enddo
-        enddo
-
-#ifdef SideHeatedCell
-        Nu_hot = sumHot/dble(ny)
-        Nu_cold = sumCold/dble(ny)
-        Nu_middle = sumMiddle/dble(ny)
-        Nu_hot_halfway = sumHotHalfway/dble(ny)
-        Nu_cold_halfway = sumColdHalfway/dble(ny)
-        Nu_middleFD = sumMiddleFD/dble(ny)
-#endif
-#ifdef RayleighBenardCell
-        Nu_hot = sumHot/dble(nx)
-        Nu_cold = sumCold/dble(nx)
-        Nu_middle = sumMiddle/dble(nx)
-        Nu_hot_halfway = sumHotHalfway/dble(nx)
-        Nu_cold_halfway = sumColdHalfway/dble(nx)
-        Nu_middleFD = sumMiddleFD/dble(nx)
-#endif
-        ! 在线性导热基准上加入体平均对流热通量；主速度分量由工况分支在上面选择。
-        Nu_global = 1.0d0+sumGlobal/cellCount*lengthUnit/(diffusivity*deltaT)
-        speedSquaredVol = sumRe/cellCount
-        ReVolAvg = dsqrt(speedSquaredVol)*lengthUnit/viscosity
-        epsKineticVol = sumEpsKinetic/cellCount
-        epsThermalVol = sumEpsThermal/cellCount
-#ifdef RayleighBenardCell
-        ! 2-D RB 的精确全局耗散关系：eps_T=kappa*DeltaT^2/H^2*Nu，
-        ! eps_u=nu^3/H^4*(Nu-1)*Ra/Pr^2。偏差同时反映统计不足、边界和离散误差。
-        NuThermalDiss = epsThermalVol*lengthUnit**2/(diffusivity*deltaT**2)
-        NuKineticDiss = 1.0d0+epsKineticVol*lengthUnit**4*Prandtl**2/ &
-            (viscosity**3*Rayleigh)
-        if(abs(Nu_global-1.0d0).GT.1.0d-12) then
-            kineticDissExactRatio = (NuKineticDiss-1.0d0)/(Nu_global-1.0d0)
-        else
-            kineticDissExactRatio = 0.0d0
-        endif
-        if(abs(Nu_global).GT.1.0d-12) then
-            thermalDissExactRatio = NuThermalDiss/Nu_global
-        else
-            thermalDissExactRatio = 0.0d0
-        endif
-#endif
-#ifdef SideHeatedCell
-        ! 上述精确耗散关系只适用于底热顶冷 RB；侧热方腔不伪造对应的等效 Nu 或比值。
-        NuKineticDiss = 0.0d0
-        NuThermalDiss = 0.0d0
-        kineticDissExactRatio = 0.0d0
-        thermalDissExactRatio = 0.0d0
-#endif
-        ! 速度极值采用自由落体速度 u0 归一化；Re 使用 rms 全速度和黏性标度。
-        umax_mid = umax_mid/velocityUnit
-        vmax_mid = vmax_mid/velocityUnit
-    end subroutine calNuRe
+end subroutine append_convergence_tecplot
+!===================================================================================================
+! append_convergence_tecplot 结束: 向单个 Tecplot 收敛文件追加一条误差记录。
 !===================================================================================================
 
 
-!===================================================================================================
-! 子程序: append_history
-! 作用: 每次检查后追加收敛误差和主要 Nu/Re；时间列采用自由落体时间 t/t0=itc/timeUnit。
-!===================================================================================================
-    subroutine append_history()
-        use commondata
-        implicit none
-
-        open(unit=11, file=trim(historyFile), status='old', position='append', action='write')
-        write(11,'(I12,1X,19(ES24.16E3,1X),I10)') itc, dble(itc)/timeUnit, errorU, errorT, &
-            Nu_global, Nu_hot, Nu_cold, Nu_middle, Nu_hot_halfway, Nu_cold_halfway, Nu_middleFD, &
-            ReVolAvg, NuKineticDiss, NuThermalDiss, &
-            kineticDissExactRatio, thermalDissExactRatio, maxMachLocal, minTemperature, &
-            maxTemperature, maxDensityDeviation, statisticSamples
-        close(11)
-
-        open(unit=00, file=trim(settingsFile), status='old', position='append', action='write')
-        write(00,'(A,I12,2(A,ES16.8))') "itc=", itc, " errorU=", errorU, " errorT=", errorT
-        write(00,'(5(A,ES16.8),A,I8)') " Nu_global=", Nu_global, " Nu_hot=", Nu_hot, &
-            " Nu_cold=", Nu_cold, " Nu_middle=", Nu_middle, " Re=", ReVolAvg, &
-            " samples=", statisticSamples
-        write(00,'(3(A,ES16.8))') " Nu_hot_halfway=", Nu_hot_halfway, &
-            " Nu_cold_halfway=", Nu_cold_halfway, " Nu_middle_fd=", Nu_middleFD
-        write(00,'(6(A,ES16.8))') " Nu_eps_u=", NuKineticDiss, " Nu_eps_T=", NuThermalDiss, &
-            " maxMach=", maxMachLocal, " minT=", minTemperature, " maxT=", maxTemperature, &
-            " maxAbsRhoDeviation=", maxDensityDeviation
-        write(00,'(2(A,ES16.8))') " eps_u/exact=", kineticDissExactRatio, &
-            " eps_T/exact=", thermalDissExactRatio
-        close(00)
-    end subroutine append_history
-!===================================================================================================
-
 
 !===================================================================================================
-! 子程序: accumulate_statistics
-! 作用: 对高 Ra 非稳态阶段的瞬时 Nu、体积均方速度、耗散量和水平温度剖面做在线累积。
-! Re 必须最后由 <u^2+v^2>_(V,t) 开方，不能先对每个时刻的 Re 开方再做时间平均。
+! 子程序: append_convergence_master_tecplot
+! 作用: 向总收敛文件追加一条带算例标签的记录。
+! 用途: 预留给 check 调用，用于汇总多组算例的收敛信息。
 !===================================================================================================
-    subroutine accumulate_statistics()
-        use commondata
-        implicit none
-        integer(kind=4) :: i, j
-        real(kind=8) :: temperatureLineSum, temperatureSquaredLineSum
+subroutine append_convergence_master_tecplot(filename, zoneName, itc, errorU, errorT)
+  use commondata, only: loadInitField
+  implicit none
+  character(len=*), intent(in) :: filename, zoneName
+  integer(kind=4), intent(in)  :: itc
+  real(kind=8),    intent(in)  :: errorU, errorT
 
-        statisticSamples = statisticSamples+1
-        if(firstStatisticItc.LT.0) firstStatisticItc = itc
-        lastStatisticItc = itc
-        sumNuGlobal = sumNuGlobal+Nu_global
-        sumNuGlobal2 = sumNuGlobal2+Nu_global*Nu_global
-        sumNuHot = sumNuHot+Nu_hot
-        sumNuHot2 = sumNuHot2+Nu_hot*Nu_hot
-        sumNuCold = sumNuCold+Nu_cold
-        sumNuCold2 = sumNuCold2+Nu_cold*Nu_cold
-        sumNuMiddle = sumNuMiddle+Nu_middle
-        sumNuMiddle2 = sumNuMiddle2+Nu_middle*Nu_middle
-        sumSpeedSquaredVol = sumSpeedSquaredVol+speedSquaredVol
-        sumSpeedSquaredVol2 = sumSpeedSquaredVol2+speedSquaredVol*speedSquaredVol
-        sumNuKineticDiss = sumNuKineticDiss+NuKineticDiss
-        sumNuKineticDiss2 = sumNuKineticDiss2+NuKineticDiss*NuKineticDiss
-        sumNuThermalDiss = sumNuThermalDiss+NuThermalDiss
-        sumNuThermalDiss2 = sumNuThermalDiss2+NuThermalDiss*NuThermalDiss
-        maxStatisticCFL = max(maxStatisticCFL,maxMachLocal*dsqrt(cs2))
+  logical :: ex
+  integer :: u
+  logical, save :: zone_started = .false.
 
-#ifdef unsteadyFlow
-        if(statisticSamples.LE.max(1,targetStatisticSamples/2)) then
-            firstHalfSamples = firstHalfSamples+1
-            sumNuGlobalFirstHalf = sumNuGlobalFirstHalf+Nu_global
-            sumSpeedSquaredFirstHalf = sumSpeedSquaredFirstHalf+speedSquaredVol
-        else
-            secondHalfSamples = secondHalfSamples+1
-            sumNuGlobalSecondHalf = sumNuGlobalSecondHalf+Nu_global
-            sumSpeedSquaredSecondHalf = sumSpeedSquaredSecondHalf+speedSquaredVol
-        endif
-#endif
+  ! 本次运行第一次写：新算例写入新 ZONE；续算则接到旧 ZONE 后面
+  if (.not. zone_started) then
+    inquire(file=trim(filename), exist=ex)
 
-        ! 论文用温度 rms 峰值到壁面的距离定义热边界层厚度 delta_theta_rms。
-        do j = 1, ny
-            temperatureLineSum = 0.0d0
-            temperatureSquaredLineSum = 0.0d0
-            do i = 1, nx
-                temperatureLineSum = temperatureLineSum+T(i,j)
-                temperatureSquaredLineSum = temperatureSquaredLineSum+T(i,j)*T(i,j)
-            enddo
-            sumTemperatureProfile(j) = sumTemperatureProfile(j)+temperatureLineSum/dble(nx)
-            sumTemperatureSquaredProfile(j) = sumTemperatureSquaredProfile(j)+ &
-                temperatureSquaredLineSum/dble(nx)
-        enddo
-    end subroutine accumulate_statistics
+    if (.not. ex) then
+      if(loadInitField.EQ.1) then
+        write(*,*) 'Error: restart requested but master convergence file is missing: ', trim(filename)
+        stop
+      endif
+      open(newunit=u, file=trim(filename), status='new', action='write', form='formatted')
+      write(u,'(A)') 'TITLE = "Convergence comparison"'
+      write(u,'(A)') 'VARIABLES = "itc" "errorU" "errorT"'
+      close(u)
+    end if
+
+    if(loadInitField.EQ.0) then
+      open(newunit=u, file=trim(filename), status='old', position='append', action='write', form='formatted')
+      write(u,'(A)') 'ZONE T="'//trim(zoneName)//'", F=POINT'
+      close(u)
+    endif
+
+    zone_started = .true.
+  end if
+
+  ! 追加一个数据点
+  open(newunit=u, file=trim(filename), status='old', position='append', action='write', form='formatted')
+  write(u,'(I12,1X,ES24.16E3,1X,ES24.16E3)') itc, errorU, errorT
+  close(u)
+end subroutine append_convergence_master_tecplot
+!===================================================================================================
+! append_convergence_master_tecplot 结束: 向总收敛文件追加一条带算例标签的记录。
 !===================================================================================================
 
 
-!===================================================================================================
-! 子程序: write_statistics
-! 作用: 输出非稳态样本的时间平均和总体标准差；无样本时明确写出原因，不伪造平均量。
-!===================================================================================================
-    subroutine write_statistics()
-        use commondata
-        implicit none
-        real(kind=8) :: invN, meanGlobal, meanHot, meanCold, meanMiddle, meanRe
-        real(kind=8) :: meanSpeedSquared, stdSpeedSquared
-        real(kind=8) :: meanNuKineticDiss, meanNuThermalDiss
-        real(kind=8) :: stdGlobal, stdHot, stdCold, stdMiddle
-        real(kind=8) :: stdNuKineticDiss, stdNuThermalDiss
-        real(kind=8) :: firstHalfNu, secondHalfNu, firstHalfRe, secondHalfRe
-        real(kind=8) :: halfWindowNuRelativeDifference, halfWindowReRelativeDifference
-#ifdef RayleighBenardCell
-        integer(kind=4) :: j, lowerPeakIndex, upperPeakIndex, thermalBLGridPoints
-        real(kind=8) :: rmsTemperature, lowerRmsMaximum, upperRmsMaximum
-        real(kind=8) :: thermalBLThickness, kineticExactRatioMean, thermalExactRatioMean
-        real(kind=8) :: meanEpsKinetic, meanEpsThermal, exactEpsKinetic, exactEpsThermal
-        real(kind=8) :: kolmogorovScaleOverH, batchelorScaleOverH
-        real(kind=8) :: gridOverKolmogorov, gridOverBatchelor, timeStepOverKolmogorovTime
-#endif
 
-        open(unit=21, file=trim(statisticsFile), status='replace', action='write')
-        write(21,'(A)') "# Time statistics from the configured post-transient sampling window"
-        write(21,'(A,I0)') "# samples ", statisticSamples
-        write(21,'(A,2(1X,I0))') "# first_last_sample_itc", firstStatisticItc, lastStatisticItc
-        write(21,'(A,2(1X,I0))') "# first_second_half_samples", firstHalfSamples, secondHalfSamples
-        if(statisticSamples.GT.0) then
-            invN = 1.0d0/dble(statisticSamples)
-            meanGlobal = sumNuGlobal*invN
-            meanHot = sumNuHot*invN
-            meanCold = sumNuCold*invN
-            meanMiddle = sumNuMiddle*invN
-            meanSpeedSquared = sumSpeedSquaredVol*invN
-            meanRe = dsqrt(max(0.0d0,meanSpeedSquared))*lengthUnit/viscosity
-            meanNuKineticDiss = sumNuKineticDiss*invN
-            meanNuThermalDiss = sumNuThermalDiss*invN
-            stdGlobal = dsqrt(max(0.0d0,sumNuGlobal2*invN-meanGlobal*meanGlobal))
-            stdHot = dsqrt(max(0.0d0,sumNuHot2*invN-meanHot*meanHot))
-            stdCold = dsqrt(max(0.0d0,sumNuCold2*invN-meanCold*meanCold))
-            stdMiddle = dsqrt(max(0.0d0,sumNuMiddle2*invN-meanMiddle*meanMiddle))
-            stdSpeedSquared = dsqrt(max(0.0d0,sumSpeedSquaredVol2*invN-meanSpeedSquared*meanSpeedSquared))
-            stdNuKineticDiss = dsqrt(max(0.0d0, &
-                sumNuKineticDiss2*invN-meanNuKineticDiss*meanNuKineticDiss))
-            stdNuThermalDiss = dsqrt(max(0.0d0, &
-                sumNuThermalDiss2*invN-meanNuThermalDiss*meanNuThermalDiss))
-
-            write(21,'(A)') "# metric mean population_std"
-            write(21,'(A,2(1X,ES24.16E3))') "Nu_global", meanGlobal, stdGlobal
-            write(21,'(A,2(1X,ES24.16E3))') "Nu_hot", meanHot, stdHot
-            write(21,'(A,2(1X,ES24.16E3))') "Nu_cold", meanCold, stdCold
-            write(21,'(A,2(1X,ES24.16E3))') "Nu_middle", meanMiddle, stdMiddle
-            write(21,'(A,1X,ES24.16E3)') "Re_Table1_sqrt_volume_time_mean", meanRe
-            write(21,'(A,2(1X,ES24.16E3))') "speed_squared_volume", meanSpeedSquared, stdSpeedSquared
-            if((firstHalfSamples.GT.0).AND.(secondHalfSamples.GT.0)) then
-                firstHalfNu = sumNuGlobalFirstHalf/dble(firstHalfSamples)
-                secondHalfNu = sumNuGlobalSecondHalf/dble(secondHalfSamples)
-                firstHalfRe = dsqrt(max(0.0d0,sumSpeedSquaredFirstHalf/dble(firstHalfSamples)))* &
-                    lengthUnit/viscosity
-                secondHalfRe = dsqrt(max(0.0d0,sumSpeedSquaredSecondHalf/dble(secondHalfSamples)))* &
-                    lengthUnit/viscosity
-                halfWindowNuRelativeDifference = abs(firstHalfNu-secondHalfNu)/ &
-                    max(0.5d0*(abs(firstHalfNu)+abs(secondHalfNu)),tiny(1.0d0))
-                halfWindowReRelativeDifference = abs(firstHalfRe-secondHalfRe)/ &
-                    max(0.5d0*(abs(firstHalfRe)+abs(secondHalfRe)),tiny(1.0d0))
-                write(21,'(A,2(1X,ES24.16E3))') "Nu_first_second_half", firstHalfNu, secondHalfNu
-                write(21,'(A,2(1X,ES24.16E3))') "Re_first_second_half", firstHalfRe, secondHalfRe
-                write(21,'(A,2(1X,ES24.16E3))') "half_window_relative_difference_Nu_Re", &
-                    halfWindowNuRelativeDifference, halfWindowReRelativeDifference
-            endif
-#ifdef RayleighBenardCell
-            write(21,'(A,2(1X,ES24.16E3))') "Nu_eps_u", meanNuKineticDiss, stdNuKineticDiss
-            write(21,'(A,2(1X,ES24.16E3))') "Nu_eps_T", meanNuThermalDiss, stdNuThermalDiss
-
-            if(meanGlobal.GT.1.0d0) then
-                meanEpsKinetic = (meanNuKineticDiss-1.0d0)*viscosity**3*Rayleigh/ &
-                    (lengthUnit**4*Prandtl**2)
-                meanEpsThermal = meanNuThermalDiss*diffusivity*deltaT**2/lengthUnit**2
-                exactEpsKinetic = viscosity**3/lengthUnit**4*(meanGlobal-1.0d0)*Rayleigh/Prandtl**2
-                exactEpsThermal = diffusivity*deltaT**2/lengthUnit**2*meanGlobal
-                kineticExactRatioMean = (meanNuKineticDiss-1.0d0)/(meanGlobal-1.0d0)
-                thermalExactRatioMean = meanNuThermalDiss/meanGlobal
-                kolmogorovScaleOverH = dsqrt(Prandtl)/(Rayleigh*(meanGlobal-1.0d0))**0.25d0
-                batchelorScaleOverH = kolmogorovScaleOverH/dsqrt(Prandtl)
-                gridOverKolmogorov = (1.0d0/lengthUnit)/kolmogorovScaleOverH
-                gridOverBatchelor = (1.0d0/lengthUnit)/batchelorScaleOverH
-                timeStepOverKolmogorovTime = (1.0d0/timeUnit)/dsqrt(Prandtl/(meanGlobal-1.0d0))
-            else
-                meanEpsKinetic = 0.0d0
-                meanEpsThermal = 0.0d0
-                exactEpsKinetic = 0.0d0
-                exactEpsThermal = 0.0d0
-                kineticExactRatioMean = 0.0d0
-                thermalExactRatioMean = 0.0d0
-                kolmogorovScaleOverH = huge(1.0d0)
-                batchelorScaleOverH = huge(1.0d0)
-                gridOverKolmogorov = 0.0d0
-                gridOverBatchelor = 0.0d0
-                timeStepOverKolmogorovTime = 0.0d0
-            endif
-
-            ! 论文第 3.3 节：delta_theta_rms 是温度 rms 剖面峰值到最近水平壁面的距离。
-            lowerPeakIndex = 1
-            upperPeakIndex = ny
-            lowerRmsMaximum = -1.0d0
-            upperRmsMaximum = -1.0d0
-            do j = 1, max(1,ny/2)
-                rmsTemperature = dsqrt(max(0.0d0,sumTemperatureSquaredProfile(j)*invN - &
-                    (sumTemperatureProfile(j)*invN)**2))
-                if(rmsTemperature.GT.lowerRmsMaximum) then
-                    lowerRmsMaximum = rmsTemperature
-                    lowerPeakIndex = j
-                endif
-            enddo
-            do j = min(ny,ny/2+1), ny
-                rmsTemperature = dsqrt(max(0.0d0,sumTemperatureSquaredProfile(j)*invN - &
-                    (sumTemperatureProfile(j)*invN)**2))
-                if(rmsTemperature.GT.upperRmsMaximum) then
-                    upperRmsMaximum = rmsTemperature
-                    upperPeakIndex = j
-                endif
-            enddo
-            thermalBLThickness = 0.5d0*((dble(lowerPeakIndex)-0.5d0) + &
-                (dble(ny-upperPeakIndex)+0.5d0))/lengthUnit
-            thermalBLGridPoints = max(1,ceiling(thermalBLThickness*lengthUnit))
-
-            write(21,'(A)') "# Zhang et al. JFM 814 (2017), Table 1 compatible columns"
-            write(21,'(A)') "# Pr Ra Nx Nz Nu Re eps_u_over_exact eps_T_over_exact NBL dg_over_eta dg_over_etaB dt_over_tau_eta"
-            write(21,'(2(ES24.16E3,1X),2(I8,1X),4(ES24.16E3,1X),I8,3(1X,ES24.16E3))') &
-                Prandtl, Rayleigh, nx+1, ny+1, meanGlobal, meanRe, kineticExactRatioMean, &
-                thermalExactRatioMean, thermalBLGridPoints, gridOverKolmogorov, &
-                gridOverBatchelor, timeStepOverKolmogorovTime
-            write(21,'(A,1X,ES24.16E3)') "# delta_theta_rms_over_H", thermalBLThickness
-            write(21,'(A,2(1X,ES24.16E3))') "# eps_u_direct_exact", meanEpsKinetic, exactEpsKinetic
-            write(21,'(A,2(1X,ES24.16E3))') "# eps_T_direct_exact", meanEpsThermal, exactEpsThermal
-            write(21,'(A,1X,ES24.16E3)') "# eta_over_H", kolmogorovScaleOverH
-            write(21,'(A,1X,ES24.16E3)') "# etaB_over_H", batchelorScaleOverH
-            write(21,'(A,1X,ES24.16E3)') "# maximum_lattice_CFL", maxStatisticCFL
-#endif
-        else
-            write(21,'(A)') "# no samples: the run ended before the configured averaging window/sample time"
-        endif
-        close(21)
-
-        open(unit=00, file=trim(settingsFile), status='old', position='append', action='write')
-        write(00,*) "Statistic samples =", statisticSamples
-        if(statisticSamples.GT.0) then
-            write(00,*) "Time-averaged Nu_global =", real(meanGlobal,kind=8), "std =", real(stdGlobal,kind=8)
-            write(00,*) "Time-averaged Nu_hot =", real(meanHot,kind=8), "std =", real(stdHot,kind=8)
-            write(00,*) "Time-averaged Nu_cold =", real(meanCold,kind=8), "std =", real(stdCold,kind=8)
-            write(00,*) "Time-averaged Nu_middle =", real(meanMiddle,kind=8), "std =", real(stdMiddle,kind=8)
-            write(00,*) "Table-1 Re=sqrt(<u2+v2>V,t)*H/nu =", real(meanRe,kind=8)
-            write(00,*) "Time-averaged <u2+v2>V =", real(meanSpeedSquared,kind=8), &
-                "std =", real(stdSpeedSquared,kind=8)
-            if((firstHalfSamples.GT.0).AND.(secondHalfSamples.GT.0)) then
-                write(00,*) "First/second-half Nu =", real(firstHalfNu,kind=8), real(secondHalfNu,kind=8), &
-                    "relative difference =", real(halfWindowNuRelativeDifference,kind=8)
-                write(00,*) "First/second-half Re =", real(firstHalfRe,kind=8), real(secondHalfRe,kind=8), &
-                    "relative difference =", real(halfWindowReRelativeDifference,kind=8)
-            endif
-#ifdef RayleighBenardCell
-            write(00,*) "Time-averaged Nu_eps_u =", real(meanNuKineticDiss,kind=8), &
-                "std =", real(stdNuKineticDiss,kind=8)
-            write(00,*) "Time-averaged Nu_eps_T =", real(meanNuThermalDiss,kind=8), &
-                "std =", real(stdNuThermalDiss,kind=8)
-            write(00,*) "Table-1 eps_u/exact =", real(kineticExactRatioMean,kind=8), &
-                "eps_T/exact =", real(thermalExactRatioMean,kind=8)
-            write(00,*) "Mean/direct and exact eps_u =", real(meanEpsKinetic,kind=8), &
-                real(exactEpsKinetic,kind=8)
-            write(00,*) "Mean/direct and exact eps_T =", real(meanEpsThermal,kind=8), &
-                real(exactEpsThermal,kind=8)
-            write(00,*) "Table-1 NBL/dg_eta/dg_etaB/dt_tauEta =", thermalBLGridPoints, &
-                real(gridOverKolmogorov,kind=8), real(gridOverBatchelor,kind=8), &
-                real(timeStepOverKolmogorovTime,kind=8)
-            write(00,*) "Maximum lattice CFL in statistics window =", real(maxStatisticCFL,kind=8)
-#endif
-        endif
-        close(00)
-    end subroutine write_statistics
-!===================================================================================================
 
 
 !===================================================================================================
 ! 子程序: output_SnapshotFile
-! 作用: 保存统计窗口内的无量纲瞬时 u/v、温度和密度，供耗散 PDF、剖面和流场后处理使用。
-! 说明: 仅保存宏观场，不包含 f/g，因此不能替代严格的重启文件。
+! 作用: 输出 u、v、T、rho 的二进制快照文件，供后处理分析使用。
 !===================================================================================================
-#ifdef unsteadyFlow
-    subroutine output_SnapshotFile()
-        use commondata
-        implicit none
-        integer(kind=4) :: i, j
-        character(len=12) :: fileNumber
-        character(len=100) :: outputFile
+  subroutine output_SnapshotFile()                                   !输出 uvTrho 二进制快照
+    use commondata                                                   !用于后处理快照
+    implicit none
+    integer(kind=4) :: i, j
+    character(len=100) :: filename
+    ! This snapshot is for post-processing only; u/v are written after nondimensionalization.
+    ! For strict restart, keep using output_ReloadFile(), which preserves the lattice-state variables.
 
-        snapshotFileNum = snapshotFileNum+1
-        write(fileNumber,'(I12.12)') snapshotFileNum
-        outputFile = trim(snapshotFilePrefix)//"-"//fileNumber//".bin"
-
-        open(unit=43, file=trim(outputFile), status='replace', action='write', &
-            form='unformatted', access='sequential')
-        write(43) ((real(u(i,j)/velocityUnit,kind=8),i=1,nx),j=1,ny)
-        write(43) ((real(v(i,j)/velocityUnit,kind=8),i=1,nx),j=1,ny)
-        write(43) ((real(T(i,j),kind=8),i=1,nx),j=1,ny)
-        write(43) ((real(rho(i,j),kind=8),i=1,nx),j=1,ny)
-        close(43)
-
-        open(unit=44, file=trim(snapshotIndexFile), status='old', position='append', action='write')
-        write(44,'(I8,1X,I12,1X,ES24.16E3,1X,A)') snapshotFileNum, itc, &
-            dble(itc)/timeUnit, trim(outputFile)
-        close(44)
-        lastSnapshotItc = itc
-    end subroutine output_SnapshotFile
-!===================================================================================================
-
-
-!===================================================================================================
-! 子程序: output_periodic_Tecplot
-! 作用: 为非稳态统计窗口生成带编号的 Tecplot 瞬时场，避免覆盖先前时刻。
-!===================================================================================================
-    subroutine output_periodic_Tecplot()
-        use commondata
-        implicit none
-        character(len=12) :: fileNumber
-        character(len=100) :: outputFile
-
-        tecplotFileNum = tecplotFileNum+1
-        write(fileNumber,'(I12.12)') tecplotFileNum
-        outputFile = trim(tecplotFilePrefix)//"-"//fileNumber//".plt"
-        call output_Tecplot(outputFile)
-        lastTecplotItc = itc
-    end subroutine output_periodic_Tecplot
+#ifdef steadyFlow
+    write(filename,'(i12.12)') restartItcOffset+itc                  !steadyFlow：续算时使用累计格子步编号
 #endif
+
+#ifdef unsteadyFlow
+    snapshotFileNum = snapshotFileNum+1
+    write(filename,'(i12.12)') snapshotFileNum                       !unsteadyFlow：快照文件按调用次数编号，与 reloadFileNum 分离
+#endif
+
+    filename = adjustl(filename)
+
+    open(unit=03,file=trim(snapshotFilePrefix)//"-"//trim(filename)//'.bin',form="unformatted",access="sequential")    !二进制
+    ! Post-processing snapshot only: write nondimensionalized u/v together with T and rho.
+    ! Do not use this file for strict restart; output_ReloadFile() keeps lattice velocities for that purpose.
+    write(03) ((real(velocityScaleCompare*u(i,j),kind=8),i=1,nx),j=1,ny)
+    write(03) ((real(velocityScaleCompare*v(i,j),kind=8),i=1,nx),j=1,ny)
+    write(03) ((real(T(i,j),kind=8),i=1,nx),j=1,ny)
+    write(03) ((real(rho(i,j),kind=8), i=1,nx), j=1,ny)
+    close(03)
+
+    return
+  end subroutine output_SnapshotFile
 !===================================================================================================
+! output_SnapshotFile 结束: 输出 u、v、T、rho 的二进制快照文件。
+!===================================================================================================
+
+
+
+
+!===================================================================================================
+! 子程序: output_ReloadFile
+! 作用: 输出包含 f、g 的严格重启备份文件；rho/u/v/T 在读取后由 f/g 重建。
+! 用途: 在运行过程中定期调用，也在程序结束前调用。
+!===================================================================================================
+  subroutine output_ReloadFile()                                  !输出fg，存储在当前路径，名字由 reloadFilePrefix 控制
+    use commondata                                                !用于重启，包含 f,g；读入后调用 reconstruct_macro_from_fg() 重建宏观量
+    implicit none
+    integer(kind=4) :: i, j, alpha
+    character(len=100) :: filename
+
+#ifdef steadyFlow
+    reloadFileNum = restartItcOffset+itc
+    write(filename,'(i12.12)') reloadFileNum                 !steadyFlow：重启文件名使用累计格子步
+#endif
+
+#ifdef unsteadyFlow
+    reloadFileNum = reloadFileNum + 1
+    write(filename,'(i12.12)') reloadFileNum                !unsteadyFlow：reload 文件使用独立编号，不依赖快照输出是否开启
+#endif
+
+    filename = adjustl(filename)
+
+    open(unit=05,file=trim(reloadFilePrefix)//"-"//trim(filename)//'.bin',form="unformatted",access="sequential")   !二进制
+    ! 严格重启快照保存完整的 f、g 分布函数。
+    write(05) (((real(f(i,j,alpha),kind=8), i=1,nx), j=1,ny), alpha=0,8)
+    write(05) (((real(g(i,j,alpha),kind=8), i=1,nx), j=1,ny), alpha=0,8)
+    close(05)
+    call write_reload_metadata(trim(filename))
+
+    open(unit=00,file=trim(settingsFile),status='unknown',position='append')
+    write(00,*) "Backup f/g restart state to: ", trim(reloadFilePrefix), "-", trim(filename),".bin"
+    write(00,*) "Backup restart metadata to: ", trim(reloadFilePrefix), "-latest.meta"
+    close(00)
+
+    return
+  end subroutine output_ReloadFile
+!===================================================================================================
+! output_ReloadFile 结束: 输出包含 f、g 的严格重启备份文件。
+!===================================================================================================
+
+
+!===================================================================================================
+! 子程序: write_reload_metadata
+! 作用: 覆盖写出最新 reload 续算账本，恢复累计步数、t_ff、输出编号和最新 .bin 文件名。
+!===================================================================================================
+  subroutine write_reload_metadata(filename)
+    use commondata
+    implicit none
+    character(len=*), intent(in) :: filename
+    integer(kind=4) :: metaUnit, totalItc
+    real(kind=8) :: totalTf
+
+    totalItc = restartItcOffset + itc
+    totalTf = real(totalItc,kind=8) / timeUnit
+
+    open(newunit=metaUnit, file=trim(reloadFilePrefix)//'-latest.meta', &
+         status='replace', action='write', form='formatted')
+    write(metaUnit,'(A,1X,I0)') 'reload_meta_version', 3
+#ifdef steadyFlow
+    write(metaUnit,'(A,1X,A)') 'flowMode', 'steadyFlow'
+#endif
+#ifdef unsteadyFlow
+    write(metaUnit,'(A,1X,A)') 'flowMode', 'unsteadyFlow'
+#endif
+    write(metaUnit,'(A,1X,I0)') 'nx', nx
+    write(metaUnit,'(A,1X,I0)') 'ny', ny
+    write(metaUnit,'(A,1X,A)') 'reloadFileName', trim(filename)
+    write(metaUnit,'(A,1X,I0)') 'itc_total', totalItc
+    write(metaUnit,'(A,1X,ES24.16E3)') 'time_tf', totalTf
+    write(metaUnit,'(A,1X,I0)') 'snapshotFileNum', snapshotFileNum
+    write(metaUnit,'(A,1X,I0)') 'pltFileNum', pltFileNum
+    write(metaUnit,'(A,1X,I0)') 'reloadFileNum', reloadFileNum
+    close(metaUnit)
+
+    return
+  end subroutine write_reload_metadata
+!===================================================================================================
+
+
+!===================================================================================================
+! 子程序: read_reload_metadata
+! 作用: 优先读取 latest .meta；若没有，则根据手工编号做保守推断。
+!===================================================================================================
+  subroutine read_reload_metadata(reloadFileName)
+    use commondata
+    implicit none
+    character(len=*), intent(inout) :: reloadFileName
+    character(len=64) :: label
+    character(len=32) :: metaFlowMode, currentFlowMode
+    character(len=100) :: metaReloadFileName
+    character(len=256) :: metaFile
+    integer(kind=4) :: metaUnit, ios
+    integer(kind=4) :: metaVersion, metaNx, metaNy
+    integer(kind=4) :: metaItc, metaSnapshotFileNum, metaPltFileNum, metaReloadFileNum
+    real(kind=8) :: metaTf
+    logical :: metaExists
+
+    reloadMetadataLoaded = .false.
+    metaFile = trim(reloadFilePrefix)//'-latest.meta'
+    inquire(file=trim(metaFile), exist=metaExists)                 !优先检查最新账本
+
+    if(.not.metaExists) then                                       !latest meta 不存在时，只能保守推断
+        call infer_reload_offsets_without_metadata()
+        return                                                     !退出当前这个子程序
+    endif
+
+    open(newunit=metaUnit, file=trim(metaFile), status='old', action='read', &
+         form='formatted', iostat=ios)                             !ios == 0表示读写成功,不等于0，则代表失败
+    if(ios.NE.0) then
+        write(*,*) 'Error: failed to open reload metadata: ', trim(metaFile)
+        stop
+    endif
+
+    read(metaUnit,*,iostat=ios) label, metaVersion
+    if((ios.NE.0).OR.(trim(label).NE.'reload_meta_version').OR.(metaVersion.NE.3)) then
+        write(*,*) 'Error: invalid reload metadata version in ', trim(metaFile)
+        stop    !如果读取失败，或者标签不是 reload_meta_version，或者版本号不是 3，就说明文件格式不对，停止。
+    endif
+
+    read(metaUnit,*,iostat=ios) label, metaFlowMode
+    if((ios.NE.0).OR.(trim(label).NE.'flowMode')) then
+        write(*,*) 'Error: invalid flowMode entry in ', trim(metaFile)
+        stop
+    endif
+
+    read(metaUnit,*,iostat=ios) label, metaNx
+    if((ios.NE.0).OR.(trim(label).NE.'nx')) then
+        write(*,*) 'Error: invalid nx entry in ', trim(metaFile)
+        stop
+    endif
+
+    read(metaUnit,*,iostat=ios) label, metaNy
+    if((ios.NE.0).OR.(trim(label).NE.'ny')) then
+        write(*,*) 'Error: invalid ny entry in ', trim(metaFile)
+        stop
+    endif
+
+    read(metaUnit,*,iostat=ios) label, metaReloadFileName
+    if((ios.NE.0).OR.(trim(label).NE.'reloadFileName')) then
+        write(*,*) 'Error: invalid reloadFileName entry in ', trim(metaFile)
+        stop
+    endif
+    metaReloadFileName = adjustl(metaReloadFileName)   ! 处理左边空格，把内容左对齐
+
+    read(metaUnit,*,iostat=ios) label, metaItc
+    if((ios.NE.0).OR.(trim(label).NE.'itc_total')) then
+        write(*,*) 'Error: invalid itc_total entry in ', trim(metaFile)
+        stop
+    endif
+
+    read(metaUnit,*,iostat=ios) label, metaTf
+    if((ios.NE.0).OR.(trim(label).NE.'time_tf')) then
+        write(*,*) 'Error: invalid time_tf entry in ', trim(metaFile)
+        stop
+    endif
+
+    read(metaUnit,*,iostat=ios) label, metaSnapshotFileNum
+    if((ios.NE.0).OR.(trim(label).NE.'snapshotFileNum')) then
+        write(*,*) 'Error: invalid snapshotFileNum entry in ', trim(metaFile)
+        stop
+    endif
+
+    read(metaUnit,*,iostat=ios) label, metaPltFileNum
+    if((ios.NE.0).OR.(trim(label).NE.'pltFileNum')) then
+        write(*,*) 'Error: invalid pltFileNum entry in ', trim(metaFile)
+        stop
+    endif
+
+    read(metaUnit,*,iostat=ios) label, metaReloadFileNum
+    if((ios.NE.0).OR.(trim(label).NE.'reloadFileNum')) then
+        write(*,*) 'Error: invalid reloadFileNum entry in ', trim(metaFile)
+        stop
+    endif
+    close(metaUnit)
+
+    currentFlowMode = 'unknown'
+#ifdef steadyFlow
+    currentFlowMode = 'steadyFlow'
+#endif
+#ifdef unsteadyFlow
+    currentFlowMode = 'unsteadyFlow'
+#endif
+
+    if(trim(metaFlowMode).NE.trim(currentFlowMode)) then
+        write(*,*) 'Error: reload metadata flowMode differs: ', trim(metaFlowMode), trim(currentFlowMode)
+        stop
+    endif
+    if((metaNx.NE.nx).OR.(metaNy.NE.ny)) then
+        write(*,*) 'Error: reload metadata mesh mismatch: ', metaNx, metaNy, nx, ny
+        stop
+    endif
+
+    restartItcOffset = metaItc
+    reloadDimensionlessTime = metaTf
+    snapshotFileNum = metaSnapshotFileNum
+    pltFileNum = metaPltFileNum
+    ! reloadFileNum 是整数计数器，给后续 output_ReloadFile() 继续编号，避免覆盖旧 reload 文件。
+    ! reloadFileName 是字符串文件名，本次续算马上用它打开 <reloadFilePrefix>-<reloadFileName>.bin。
+    reloadFileNum = metaReloadFileNum
+    reloadFileName = trim(metaReloadFileName)     ! 处理右边空格，删掉尾部空格
+    reloadMetadataLoaded = .true.
+
+    return
+  end subroutine read_reload_metadata
+!===================================================================================================
+
+
+!===================================================================================================
+! 子程序: infer_reload_offsets_without_metadata
+! 作用: 没有 latest .meta 时，只能根据文件编号和当前手工参数推断。
+! 根据文件名编号和当前参数“猜一个合理值”，保证续算的时间/步数是连续的。
+!===================================================================================================
+  subroutine infer_reload_offsets_without_metadata()
+    use commondata
+    implicit none
+
+    restartItcOffset = 0
+#ifdef steadyFlow
+    restartItcOffset = max(0, reloadFileNum)  !稳态的 reload 文件名本来就是用 itc 写的
+    if(reloadDimensionlessTime.EQ.0.0d0) then !如果没有手工给 reloadDimensionlessTime,计算一下
+        reloadDimensionlessTime = real(restartItcOffset,kind=8) / timeUnit
+    endif
+#endif
+#ifdef unsteadyFlow
+    if(reloadDimensionlessTime.EQ.0.0d0) then   !非稳态的 reload 文件名不是 itc，而是第几个 reload 文件
+        reloadDimensionlessTime = real(max(0,reloadFileNum),kind=8) * reloadFileInterval
+    endif
+    restartItcOffset = max(0, int(reloadDimensionlessTime*timeUnit+0.5d0))  !再反推格子步
+    snapshotFileNum = max(0, int(reloadDimensionlessTime/outputSnapshotInterval+0.5d0)) !推断输出编号
+    pltFileNum = max(0, int(reloadDimensionlessTime/outputPltFileInterval+0.5d0))
+#endif
+
+    return
+  end subroutine infer_reload_offsets_without_metadata
+!===================================================================================================
+
+
 
 
 !===================================================================================================
 ! 子程序: output_Tecplot
-! 作用: 输出当前宏观场和由论文式 (35) 得到的温度梯度，便于检查边界层和局部 Nu。
-! 说明: 调用前必须先执行 update_host_monitor_2d_openacc()，文件 I/O 始终在主机端进行。
+! 作用: 输出主场变量到 Tecplot 文件，便于后处理和可视化。
+! 用途: 在运行过程中按需调用，也在程序结束时调用。
 !===================================================================================================
-    subroutine output_Tecplot(outputFile)
-        use commondata
-        implicit none
-        integer(kind=4) :: i, j
-        character(len=*), intent(in) :: outputFile
-
-        open(unit=41, file=trim(outputFile), status='replace', action='write', form='formatted')
-#ifdef RayleighBenardCell
-        write(41,'(A)') 'TITLE = "2D OpenACC LBM-CDE Rayleigh-Benard cell"'
+  subroutine output_Tecplot()                        !输出二进制文件
+    use commondata
+    implicit none
+    ! Here u and v are exported as nondimensional post-processing velocities using velocityScaleCompare.
+    ! Restart files should still come from output_ReloadFile(), which preserves the lattice-state information.
+    integer(kind=4) :: i, j, k
+    REAL(kind=4) :: zoneMarker, eohMarker   !Tecplot 二进制格式里用的两个“标记值”（299 和 357），用于告诉 Tecplot：这里开始是 zone 描述 / header 结束。
+    character(len=40) :: title              !文件 Title 字符串
+    character(len=40) :: V1,V2,V3,V4,V5     !变量名字符串（X,Y,U,V,T）
+    integer(kind=4), parameter :: kmax=1    !二维数据也按 3D 的 IJK 写，K=1
+    character(len=40) :: zoneName           !zone 名称
+    character(len=100) :: filename          !输出文件名字符串
+#ifdef steadyFlow
+    write(filename,'(i12.12)') restartItcOffset+itc
 #endif
-#ifdef SideHeatedCell
-        write(41,'(A)') 'TITLE = "2D OpenACC LBM-CDE side-heated cavity"'
-#endif
-        write(41,'(A)') 'VARIABLES = "X" "Y" "U" "V" "T" "RHO" "GradTx" "GradTy"'
-        write(41,'(A,I0,A,I0,A)') 'ZONE I=', nx, ', J=', ny, ', F=POINT'
-        do j = 1, ny
-            do i = 1, nx
-                write(41,'(8(ES24.16E3,1X))') xp(i), yp(j), u(i,j), v(i,j), T(i,j), &
-                    rho(i,j), gradTx(i,j), gradTy(i,j)
-            enddo
-        enddo
-        close(41)
-    end subroutine output_Tecplot
-!===================================================================================================
 
-
-!===================================================================================================
-! 子程序: final_log
-! 作用: 把最终收敛量、论文表 2 相关诊断和 CPU/墙钟时间写到终端及设置文件。
-!===================================================================================================
-    subroutine final_log(cpuSeconds, wallSeconds)
-        use commondata
-        implicit none
-        real(kind=8), intent(in) :: cpuSeconds, wallSeconds
-
-        write(*,'(A,I12)') "Final itc =", itc
-        write(*,'(A,ES16.8,A,ES16.8)') "Final errorU/errorT =", errorU, " / ", errorT
-        write(*,'(A,ES16.8,A,ES16.8)') "Nu hot/cold =", Nu_hot, " / ", Nu_cold
-        write(*,'(A,ES16.8,A,ES16.8)') "Nu global/middle =", Nu_global, " / ", Nu_middle
-        write(*,'(A,ES16.8,A,ES16.8,A,ES16.8)') "Nu halfway hot/cold =", Nu_hot_halfway, &
-            " / ", Nu_cold_halfway, " middle FD =", Nu_middleFD
-        write(*,'(A,ES16.8,A,ES16.8)') "Nu eps_u/eps_T =", NuKineticDiss, " / ", NuThermalDiss
-        write(*,'(A,ES16.8,A,ES16.8)') "umax/vmax mid =", umax_mid, " / ", vmax_mid
 #ifdef unsteadyFlow
-        write(*,'(A,I8)') "Statistic samples =", statisticSamples
-        write(*,'(A,I8,A,I8)') "Snapshot/Tecplot files =", snapshotFileNum, " / ", tecplotFileNum
+    pltFileNum = pltFileNum+1               !Tecplot 文件使用独立输出编号
+    write(filename,'(i12.12)') pltFileNum
 #endif
 
-        open(unit=00, file=trim(settingsFile), status='old', position='append', action='write')
-        write(00,*) "Final itc =", itc
-        write(00,*) "Final errorU =", real(errorU,kind=8), "errorT =", real(errorT,kind=8)
-        write(00,*) "Nu_hot =", real(Nu_hot,kind=8), "Nu_cold =", real(Nu_cold,kind=8)
-        write(00,*) "Nu_middle =", real(Nu_middle,kind=8), "Nu_global =", real(Nu_global,kind=8)
-        write(00,*) "Nu_hot_halfway =", real(Nu_hot_halfway,kind=8), &
-            "Nu_cold_halfway =", real(Nu_cold_halfway,kind=8), "Nu_middle_fd =", real(Nu_middleFD,kind=8)
-        write(00,*) "ReVolAvg =", real(ReVolAvg,kind=8)
-        write(00,*) "epsKineticVol =", real(epsKineticVol,kind=8), &
-            "epsThermalVol =", real(epsThermalVol,kind=8)
-        write(00,*) "Nu_eps_u =", real(NuKineticDiss,kind=8), &
-            "Nu_eps_T =", real(NuThermalDiss,kind=8)
-        write(00,*) "eps_u/exact =", real(kineticDissExactRatio,kind=8), &
-            "eps_T/exact =", real(thermalDissExactRatio,kind=8)
-        write(00,*) "maxMach/minT/maxT/maxAbsRhoDeviation =", real(maxMachLocal,kind=8), &
-            real(minTemperature,kind=8), real(maxTemperature,kind=8), real(maxDensityDeviation,kind=8)
-        write(00,*) "umax_mid/u0 =", real(umax_mid,kind=8), "position along line =", real(pos_umax_mid,kind=8)
-        write(00,*) "vmax_mid/u0 =", real(vmax_mid,kind=8), "position along line =", real(pos_vmax_mid,kind=8)
-        write(00,*) "Numax_mid(conductive) =", real(Numax_mid,kind=8), &
-            "position along line =", real(pos_Numax_mid,kind=8)
-#ifdef unsteadyFlow
-        write(00,*) "Snapshot files written =", snapshotFileNum, "last snapshot itc =", lastSnapshotItc
-        write(00,*) "Periodic Tecplot files written =", tecplotFileNum, "last Tecplot itc =", lastTecplotItc
-#endif
-        write(00,*) "CPU seconds =", real(cpuSeconds,kind=8)
-        write(00,*) "Wall seconds =", real(wallSeconds,kind=8)
+    filename = adjustl(filename)            !存储路径 pltFolderPrefix="./pltFile/buoyancyCavity000000000034.plt
+
+    open(41,file=trim(pltFolderPrefix)//"-"//trim(filename)//'.plt', access='stream', form='unformatted')    !stream：字节流
+
+    !---------------------------------------------
+    zoneMarker= 299.0                                     !固定的，不需要修改
+    eohMarker = 357.0
+
+    !I. HEAD SECTION--------------------------------------
+    !c--Magic number, Version number
+    write(41) "#!TDV101"                                  !Tecplot 识别二进制 .plt 的“魔数/版本号”字符串,不需要修改
+
+    !c--Integer value of 1
+    write(41) 1                                           !Tecplot 规范里紧跟着一个整型值（通常表示字节序/文件类型版本等控制字段）,不需要修改
+
+    Title="MyFirst"                                       !Tecplot 的二进制格式里字符串不是直接 write，而是逐字符写 ASCII 码，再以 0 结尾
+    call dumpstring(title)                                !dumpstring() 就是干这个的
+
+    !c-- Number of variables in this data file
+    write(41) 5                                           !有 5 个变量：X, Y, U, V, T,如果需要修改，这个有变化需要修改
+
+    !c-- Variable names.                                  !变量名依次写入,有变化需要修改
+    V1='X'
+    call dumpstring(V1)
+    V2='Y'
+    call dumpstring(V2)
+    V3='U_nd'
+    call dumpstring(V3)
+    V4='V_nd'
+    call dumpstring(V4)
+    V5='T'
+    call dumpstring(V5)
+
+    !c-----Zones-----------------------------
+
+    !c--------Zone marker. Value = 299.0                   !写入 float 299.0，告诉 Tecplot：一个 zone 的描述开始了。
+    write(41) zoneMarker
+
+    !--------Zone name.
+    zoneName="ZONE 001"
+    call dumpstring(zoneName)                              !zone 名称，显示在 Tecplot 里（比如 Zones 面板里）
+
+    !---------Zone Color                                   !-1 表示使用默认配色
+    write(41) -1
+
+    !---------ZoneType                                     !0 通常表示 ORDERED（结构网格 IJK）
+    write(41) 0
+
+    !---------DataPacking 0=Block, 1=Point                 !0 = Block（先把整个 X 写完，再写整个 Y…）,1 = Point（每个点依次写 X,Y,U,V,T）
+
+    write(41) 1
+
+    !---------Specify Var Location. 0 = Do not specify, all data    !0：不指定，默认所有变量都在节点上（nodal）,1：会跟着一串变量位置列表（cell-centered/nodal）
+    !---------is located at the nodes. 1 = Specify
+    write(41) 0
+
+    !---------Number of user defined face neighbor connections   !自定义邻接连接数；结构网格一般不需要，写 0
+    ! (value >= 0)
+    write(41) 0
+
+    !---------IMax,JMax,KMax                          !结构网格尺寸：I=nx, J=ny, K=1, 有变化需要修改
+    write(41) nx
+    write(41) ny
+    write(41) kmax
+
+    !-----------1=Auxiliary name/value pair to follow          !0：没有辅助信息（Aux data）,然后写 357.0，告诉 Tecplot：头部结束，接下来是数据区描述/数据
+    !-----------0=No more Auxiliar name/value pairs.
+    write(41) 0
+    write(41) eohMarker
+
+    ! 再写一次 299.0：Tecplot 规范中，zone header 后的数据描述块以 zone marker 开始。
+    write(41) zoneMarker
+
+    !--------variable data format, 1=Float, 2=Double, 3=LongInt,4=ShortInt, 5=Byte, 6=Bit  !每个变量的数据格式（这里都是 float）,双精度就是2
+    write(41) 2
+    write(41) 2
+    write(41) 2
+    write(41) 2
+    write(41) 2
+
+    !--------Has variable sharing 0 = no, 1 = yes.            !0：不共享（每个变量都在这个文件里独立存）,1：共享（例如多个 zone 共享同一份 X,Y 坐标）
+    write(41) 0
+
+    !----------Zone number to share connectivity list with (-1 = no    !-1：不共享连接表（对 ordered zone 一般无连接表）
+    ! sharing).
+    write(41) -1
+
+    !---------------------------------------------------------------------   !真正写数据（按 Point packing）
+    do k=1,kmax
+        do j=1,ny
+            do i=1,nx
+                write(41) real(xp(i),kind=8)
+                write(41) real(yp(j),kind=8)
+                write(41) real(velocityScaleCompare*u(i,j),kind=8)
+                write(41) real(velocityScaleCompare*v(i,j),kind=8)
+                write(41) real(T(i,j),kind=8)
+            end do
+        end do
+    enddo
+    close(41)
+    !---------------------------------------------------------------------
+
+    return
+  end subroutine output_Tecplot
+!===================================================================================================
+! output_Tecplot 结束: 输出主场变量到 Tecplot 文件，便于后处理和可视化。
+!===================================================================================================
+
+
+
+
+!===================================================================================================
+! 子程序: dumpstring
+! 作用: 把字符串按 Tecplot 二进制格式写入文件。
+! 用途: 在 output_Tecplot 和 output_Tecplot_psi_vort 中作为辅助写出工具调用。
+!===================================================================================================
+  subroutine dumpstring(instring)
+    implicit none
+    character(len=40) instring
+    integer(kind=4) :: stringLength   !有效长度（去掉尾部空格）
+    integer(kind=4) :: ii             !字符索引
+    integer(kind=4) :: I              !字符的 ASCII 码整数
+
+    stringLength=LEN_TRIM(instring)   !LEN_TRIM: 得到去掉尾部空格后的长度
+    do ii=1,stringLength
+        I=ICHAR(instring(ii:ii))      !ICHAR 把字符转成 ASCII 编码整数
+        write(41) I                   !把这个整数写入文件（Tecplot 要求以整数序列写字符串）
+    end do
+    write(41) 0                       !最后写一个 0 作为字符串结束符
+
+    return
+  end subroutine dumpstring
+!===================================================================================================
+! dumpstring 结束: 把字符串按 Tecplot 二进制格式写入文件。
+!===================================================================================================
+
+
+
+!===================================================================================================
+#ifdef steadyFlow
+! 子程序: calNuRe
+! 作用: 稳态计算结束时计算一次体平均 Nu/Re，并以累计格子步 itc 作为第一列。
+! 说明: 非稳态采样由 calculate_unsteady_sample 完成，第一列改用无量纲自由落体时间 t/t_ff。
+!===================================================================================================
+  subroutine calNuRe()
+    use commondata
+    implicit none
+    integer(kind=4) :: i, j
+    real(kind=8) :: NuVolAvg_temp    !体平均 Nu
+    real(kind=8) :: ReVolAvg_temp    !体平均 Re
+    integer(kind=4) :: sampleItc
+    logical :: exNu, exRe
+    logical, save :: first_nure_write = .true.
+
+
+    !$acc wait(1)
+    if (dimensionlessTime.GE.dimensionlessTimeMax) then
+        write(*,*) "Error: dimensionlessTime exceeds dimensionlessTimeMax, please enlarge dimensionlessTimeMax"
+        open(unit=00,file=trim(settingsFile),status="unknown",position="append")
+        write(00,*) "Error: dimensionlessTime exceeds dimensionlessTimeMax, please enlarge dimensionlessTimeMax"
         close(00)
-    end subroutine final_log
+        stop
+    endif
+
+    dimensionlessTime = dimensionlessTime+1   !稳态结束时只调用一次，用第 1 个数组位置保存最终值
+    sampleItc = restartItcOffset+itc           !稳态横坐标使用包含续算偏移的累计格子步
+
+    if((first_nure_write).AND.(loadInitField.EQ.1)) then
+        inquire(file="Nu_VolAvg_2DOpenaccLBMCDE_D2Q9BGK.dat", exist=exNu)
+        inquire(file="Re_VolAvg_2DOpenaccLBMCDE_D2Q9BGK.dat", exist=exRe)
+        if((.not.exNu).OR.(.not.exRe)) then
+            write(*,*) "Error: restart requested but old Nu/Re time-series files are missing."
+            open(unit=00,file=trim(settingsFile),status="unknown",position="append")
+            write(00,*) "Error: restart requested but old Nu/Re time-series files are missing."
+            write(00,*) "Nu_VolAvg_2DOpenaccLBMCDE_D2Q9BGK.dat exists =", exNu
+            write(00,*) "Re_VolAvg_2DOpenaccLBMCDE_D2Q9BGK.dat exists =", exRe
+            close(00)
+            stop
+        endif
+    endif
+
+
+
+    NuVolAvg_temp = 0.0d0
+#ifdef SideHeatedCell
+    !$acc parallel loop collapse(2) default(none) present(u,T) reduction(+:NuVolAvg_temp)
+    do j = 1, ny
+        do i = 1, nx
+            NuVolAvg_temp = NuVolAvg_temp+u(i,j)*(T(i,j)-Tref)     !对流热通量
+        enddo
+    enddo
+#endif
+
+#ifdef RayleighBenardCell
+    !$acc parallel loop collapse(2) default(none) present(v,T) reduction(+:NuVolAvg_temp)
+    do j = 1, ny
+        do i = 1, nx
+            NuVolAvg_temp = NuVolAvg_temp+v(i,j)*(T(i,j)-Tref)     !对流热通量
+        enddo
+    enddo
+#endif
+
+
+    NuVolAvg(dimensionlessTime) = NuVolAvg_temp/dble(nx*ny)*lengthUnit/diffusivity+1.0d0    !!体平均 Nusselt 数 = 1 + (常数系数) × 体平均对流热通量
+
+    if((first_nure_write).AND.(loadInitField.EQ.0)) then
+        open(unit=01,file="Nu_VolAvg_2DOpenaccLBMCDE_D2Q9BGK.dat",status='replace',action='write')
+        write(01,'(A)') '# itc Nu_volume'
+    else
+        open(unit=01,file="Nu_VolAvg_2DOpenaccLBMCDE_D2Q9BGK.dat",status='unknown',position='append',action='write')
+    endif
+    write(01,'(I12,1X,ES24.16E3)') sampleItc, &
+        real(NuVolAvg(dimensionlessTime),kind=8)
+    close(01)
+
+    ReVolAvg_temp = 0.0d0
+    !$acc parallel loop collapse(2) default(none) present(u,v) reduction(+:ReVolAvg_temp)
+    do j = 1, ny
+        do i = 1, nx
+            ReVolAvg_temp = ReVolAvg_temp+(u(i,j)*u(i,j)+v(i,j)*v(i,j))
+        enddo
+    enddo
+    ReVolAvg(dimensionlessTime) = dsqrt(ReVolAvg_temp/dble(nx*ny))*lengthUnit/viscosity    !全域体平均 RMS-Reynolds 数
+
+
+    if((first_nure_write).AND.(loadInitField.EQ.0)) then
+        open(unit=02,file="Re_VolAvg_2DOpenaccLBMCDE_D2Q9BGK.dat",status='replace',action='write')
+        write(02,'(A)') '# itc Re_spatial_rms'
+    else
+        open(unit=02,file="Re_VolAvg_2DOpenaccLBMCDE_D2Q9BGK.dat",status='unknown',position='append',action='write')
+    endif
+    write(02,'(I12,1X,ES24.16E3)') sampleItc, &
+        real(ReVolAvg(dimensionlessTime),kind=8)
+    close(02)
+    first_nure_write = .false.
+    write(*,'(a,1x,ES24.16E3)') "NuVolAvg =", real(NuVolAvg(dimensionlessTime),kind=8)
+    write(*,'(a,1x,ES24.16E3)') "ReVolAvg =", real(ReVolAvg(dimensionlessTime),kind=8)
+    return
+  end subroutine calNuRe
+!===================================================================================================
+! calNuRe 结束: 稳态计算结束时输出一次体平均 Nu 和空间 RMS Re。
+!===================================================================================================
+#endif
+
+
+#ifdef unsteadyFlow
+!===================================================================================================
+! 子程序: restore_dissipation_statistics
+! 作用: 续算时从完整耗散历史和温度剖面历史恢复统计窗口的全部在线累计量。
+! 说明: 耗散历史恢复标量统计；二进制温度剖面历史恢复每个高度上的 <T>_x 和 <T^2>_x。
+!       两套历史必须都与重启时刻一致，防止从较旧流场续算时重复累计较新的后处理样本。
+!===================================================================================================
+  subroutine restore_dissipation_statistics()
+    use commondata
+    implicit none
+    integer(kind=4) :: ios, dissipationUnit, profileUnit
+    integer(kind=4) :: historyRows, profileSamples
+    real(kind=8) :: sampleTime, nuVolAvgHistory, reVolRmsHistory
+    real(kind=8) :: epsKineticVolAvgHistory, epsThermalVolAvgHistory
+    real(kind=8) :: densityFluctuationVolRmsHistory, velocityDivergenceVolRmsHistory
+    real(kind=8) :: maxMachHistory, minTemperatureHistory, maxTemperatureHistory
+    real(kind=8) :: expectedLastSampleTime, lastDissipationTime
+    real(kind=8) :: lastStatisticTime, profileTime, lastProfileTime
+    real(kind=8) :: lastProfileRecordTime, timeTolerance
+    real(kind=8) :: temperatureXAvgProfileSample(ny), temperatureSquaredXAvgProfileSample(ny)
+    character(len=512) :: historyHeader
+    logical :: dissipationHistoryExists, profileHistoryExists
+
+    timeTolerance = 1.0d-10*max(1.0d0,abs(reloadDimensionlessTime),abs(statisticSampleInterval))
+    ! 重启时刻早于统计窗口首个采样点时，统计历史尚未建立，这是合法情况。
+    if(restartStatisticSampleOffset.LE.0) return
+    expectedLastSampleTime = dble(firstStatisticSampleIndex+restartStatisticSampleOffset-1)* &
+        statisticSampleInterval
+
+    inquire(file=trim(dissipationHistoryFile),exist=dissipationHistoryExists)
+    if(.not.dissipationHistoryExists) then
+        write(*,*) 'Error: dissipation history is missing for restart statistics restoration.'
+        open(unit=00,file=trim(settingsFile),status='unknown',position='append')
+        write(00,*) 'Error: missing ', trim(dissipationHistoryFile)
+        close(00)
+        error stop 1
+    endif
+
+    open(newunit=dissipationUnit,file=trim(dissipationHistoryFile),status='old', &
+        action='read',form='formatted')
+    read(dissipationUnit,'(A)',iostat=ios) historyHeader
+    ! 重命名只改变表头，不改变十列数据顺序；续算时同时兼容旧表头和当前表头。
+    if((ios.NE.0).OR.((index(historyHeader, &
+        'rho_fluctuation_vol_rms div_u_vol_rms maxMach minT maxT').EQ.0).AND. &
+        (index(historyHeader,'rho_fluctuation_rms div_u_rms maxMach minT maxT').EQ.0))) then
+        close(dissipationUnit)
+        write(*,*) 'Error: dissipation history format is incompatible with restart restoration.'
+        error stop 1
+    endif
+
+    historyRows = 0
+    lastDissipationTime = -huge(1.0d0)
+    lastStatisticTime = -huge(1.0d0)
+    do
+        read(dissipationUnit,*,iostat=ios) sampleTime, nuVolAvgHistory, reVolRmsHistory, &
+            epsKineticVolAvgHistory, epsThermalVolAvgHistory, densityFluctuationVolRmsHistory, &
+            velocityDivergenceVolRmsHistory, maxMachHistory, minTemperatureHistory, maxTemperatureHistory
+        if(ios.LT.0) exit
+        if(ios.GT.0) then
+            close(dissipationUnit)
+            write(*,*) 'Error: invalid row in dissipation history during restart restoration.'
+            error stop 1
+        endif
+        if((historyRows.GT.0).AND.(sampleTime.LE.lastDissipationTime+timeTolerance)) then
+            close(dissipationUnit)
+            write(*,*) 'Error: dissipation history times are not strictly increasing.'
+            error stop 1
+        endif
+        if(sampleTime.GT.reloadDimensionlessTime+timeTolerance) then
+            close(dissipationUnit)
+            write(*,*) 'Error: dissipation history is newer than the selected restart field.'
+            error stop 1
+        endif
+        historyRows = historyRows+1
+        lastDissipationTime = sampleTime
+
+        if((sampleTime.GE.unsteadyAverageStartTf-timeTolerance).AND. &
+           (sampleTime.LE.unsteadyAverageEndTf+timeTolerance)) then
+            statisticSamples = statisticSamples+1
+            if(firstStatisticItc.LT.0) firstStatisticItc = int(sampleTime*timeUnit+0.5d0)
+            lastStatisticItc = int(sampleTime*timeUnit+0.5d0)
+            lastStatisticTime = sampleTime
+            sumNuVolAvg = sumNuVolAvg+nuVolAvgHistory
+            sumSpeedSquaredVolAvg = sumSpeedSquaredVolAvg+ &
+                (reVolRmsHistory*viscosity/lengthUnit)*(reVolRmsHistory*viscosity/lengthUnit)
+            sumEpsKineticVolAvg = sumEpsKineticVolAvg+epsKineticVolAvgHistory
+            sumEpsThermalVolAvg = sumEpsThermalVolAvg+epsThermalVolAvgHistory
+            sumDensityFluctuationSquaredVolAvg = sumDensityFluctuationSquaredVolAvg+ &
+                densityFluctuationVolRmsHistory*densityFluctuationVolRmsHistory
+            sumVelocityDivergenceSquaredVolAvg = sumVelocityDivergenceSquaredVolAvg+ &
+                velocityDivergenceVolRmsHistory*velocityDivergenceVolRmsHistory
+            maxStatisticCFL = max(maxStatisticCFL,maxMachHistory*dsqrt(cs2))
+        endif
+    enddo
+    close(dissipationUnit)
+
+    if((historyRows.NE.restartStatisticSampleOffset).OR. &
+       (abs(lastDissipationTime-expectedLastSampleTime).GT.timeTolerance)) then
+        write(*,*) 'Error: dissipation history does not match the selected restart statistics.'
+        error stop 1
+    endif
+
+    ! 平均窗口尚未开始时，耗散历史只用于时间一致性检查，不要求温度剖面文件存在。
+    if(statisticSamples.LE.0) return
+    inquire(file=trim(temperatureProfileHistoryFile),exist=profileHistoryExists)
+    if(.not.profileHistoryExists) then
+        write(*,*) 'Error: temperature-profile history is missing for restart statistics restoration.'
+        open(unit=00,file=trim(settingsFile),status='unknown',position='append')
+        write(00,*) 'Error: missing ', trim(temperatureProfileHistoryFile)
+        close(00)
+        error stop 1
+    endif
+
+    profileSamples = 0
+    lastProfileTime = -huge(1.0d0)
+    lastProfileRecordTime = -huge(1.0d0)
+    open(newunit=profileUnit,file=trim(temperatureProfileHistoryFile),status='old', &
+        action='read',form='unformatted',access='stream')
+    do
+        read(profileUnit,iostat=ios) profileTime
+        if(ios.LT.0) exit
+        if(ios.GT.0) then
+            close(profileUnit)
+            write(*,*) 'Error: invalid time record in temperature-profile history.'
+            error stop 1
+        endif
+        read(profileUnit,iostat=ios) temperatureXAvgProfileSample, temperatureSquaredXAvgProfileSample
+        if(ios.NE.0) then
+            close(profileUnit)
+            write(*,*) 'Error: incomplete record in temperature-profile history.'
+            error stop 1
+        endif
+        if(profileTime.LE.lastProfileRecordTime+timeTolerance) then
+            close(profileUnit)
+            write(*,*) 'Error: temperature-profile history times are not strictly increasing.'
+            error stop 1
+        endif
+        lastProfileRecordTime = profileTime
+        if(profileTime.GT.reloadDimensionlessTime+timeTolerance) then
+            close(profileUnit)
+            write(*,*) 'Error: temperature-profile history is newer than the selected restart field.'
+            error stop 1
+        endif
+        if((profileTime.GE.unsteadyAverageStartTf-timeTolerance).AND. &
+           (profileTime.LE.unsteadyAverageEndTf+timeTolerance)) then
+            profileSamples = profileSamples+1
+            lastProfileTime = profileTime
+            sumTemperatureXAvgProfile = sumTemperatureXAvgProfile+temperatureXAvgProfileSample
+            sumTemperatureSquaredXAvgProfile = &
+                sumTemperatureSquaredXAvgProfile+temperatureSquaredXAvgProfileSample
+        endif
+    enddo
+    close(profileUnit)
+
+    if((profileSamples.NE.statisticSamples).OR. &
+       (abs(lastProfileTime-lastStatisticTime).GT.timeTolerance)) then
+        write(*,*) 'Error: dissipation and temperature-profile restart statistics do not match.'
+        error stop 1
+    endif
+
+    open(unit=00,file=trim(settingsFile),status='unknown',position='append')
+    write(00,*) 'Restored dissipation/temperature-profile samples =', statisticSamples
+    write(00,*) 'Restored statistics through time_tf =', lastStatisticTime
+    close(00)
+  end subroutine restore_dissipation_statistics
 !===================================================================================================
 
 
 !===================================================================================================
-! 子程序: finalize_arrays
-! 作用: 在设备数据已经删除后，释放全部主机 allocatable 数组。
+! 子程序: calculate_unsteady_sample
+! 作用: 一次全场遍历同时计算非稳态瞬时 Nu、Re、两类耗散及 Xu 可压缩性指标。
+! 调用: 只在配置的统计窗口内按 statisticSampleInterval 调用；快照、plt 和 reload 不调用本程序。
+! 时间轴: 给定 t/t_ff 后，用 itc=nint((t/t_ff)*timeUnit) 选择最近格子步；写文件仍以给定 t/t_ff 为横坐标。
+! 说明: 此处只记录原始瞬时量，不在每个采样点反算耗散 Nu 或检查精确关系。
+!       Xu/Zhang 所需的耗散 Nu 和精确关系比值在统计窗口结束后由空间-时间平均量统一计算。
+!       速度耗散使用 LBM-CDE 局部应变率；温度梯度使用二阶中心/单边有限差分。
 !===================================================================================================
-    subroutine finalize_arrays()
-        use commondata
-        implicit none
+  subroutine calculate_unsteady_sample()
+    use commondata
+    implicit none
+    integer(kind=4) :: i, j, alpha, absoluteStatisticSampleIndex
+    real(kind=8) :: gradX, gradY, speedSquared, eu, uu, feq
+    real(kind=8) :: neqxx, neqxy, neqyy
+    ! xxxVol 是当前采样时刻对全部格点的空间求和，尚未除以 nx*ny。
+    real(kind=8) :: nuConvectiveFluxVol, speedSquaredVol
+    real(kind=8) :: epsKineticVol, epsThermalVol
+    real(kind=8) :: densityFluctuationSquaredVol
+    real(kind=8) :: velocityDivergenceSquaredVol
+    real(kind=8) :: maxMachWork, minTemperatureWork, maxTemperatureWork
+    real(kind=8) :: sampleTime
+    logical :: exNu, exRe
+    logical, save :: firstUnsteadyHistoryWrite = .true.
+    real(kind=8), parameter :: muShear=rho0*viscosity
+    real(kind=8), parameter :: muBulk=rho0*bulkViscosity
+    real(kind=8), parameter :: denomDiag=2.0d0*muShear+rho0*cs2
+    real(kind=8), parameter :: denomShear=4.0d0*muShear+2.0d0*rho0*cs2
+    real(kind=8), parameter :: denomDiv=2.0d0*muBulk+rho0*cs2
+    real(kind=8), parameter :: coeffTrace=(2.0d0*muShear-2.0d0*muBulk)/(2.0d0*denomDiag)
 
-        deallocate(u, v, T, rho, pressure)
-        deallocate(up, vp, Tp)
-        deallocate(Fx, Fy)
-        deallocate(gradTx, gradTy)
-        deallocate(Sxx, Sxy, Syy, Sdiv)
-        deallocate(f, f_post, g, g_post)
-        deallocate(sumTemperatureProfile, sumTemperatureSquaredProfile)
-    end subroutine finalize_arrays
+    !$acc wait(1)
+    if (dimensionlessTime.GE.dimensionlessTimeMax) then
+        write(*,*) "Error: dimensionlessTime exceeds dimensionlessTimeMax, please enlarge dimensionlessTimeMax"
+        open(unit=00,file=trim(settingsFile),status="unknown",position="append")
+        write(00,*) "Error: dimensionlessTime exceeds dimensionlessTimeMax, please enlarge dimensionlessTimeMax"
+        close(00)
+        stop
+    endif
+
+    dimensionlessTime = dimensionlessTime+1
+    absoluteStatisticSampleIndex = firstStatisticSampleIndex+ &
+        restartStatisticSampleOffset+dimensionlessTime-1
+    sampleTime = real(absoluteStatisticSampleIndex,kind=8)*statisticSampleInterval
+
+    ! 只有重启时刻已经越过统计窗口首个样本，续算才必须接在旧 Nu/Re 历史之后。
+    ! 若在统计窗口开始前重启，restartStatisticSampleOffset=0，首个统计样本会新建历史文件。
+    if((firstUnsteadyHistoryWrite).AND.(restartStatisticSampleOffset.GT.0)) then
+        inquire(file="Nu_VolAvg_2DOpenaccLBMCDE_D2Q9BGK.dat", exist=exNu)
+        inquire(file="Re_VolAvg_2DOpenaccLBMCDE_D2Q9BGK.dat", exist=exRe)
+        if((.not.exNu).OR.(.not.exRe)) then
+            write(*,*) "Error: restart requested but old Nu/Re time-series files are missing."
+            open(unit=00,file=trim(settingsFile),status="unknown",position="append")
+            write(00,*) "Error: restart requested but old Nu/Re time-series files are missing."
+            write(00,*) "Nu history exists =", exNu
+            write(00,*) "Re history exists =", exRe
+            close(00)
+            stop
+        endif
+    endif
+
+    nuConvectiveFluxVol = 0.0d0
+    speedSquaredVol = 0.0d0
+    epsKineticVol = 0.0d0
+    epsThermalVol = 0.0d0
+    densityFluctuationSquaredVol = 0.0d0
+    velocityDivergenceSquaredVol = 0.0d0
+    maxMachWork = 0.0d0
+    minTemperatureWork = huge(1.0d0)
+    maxTemperatureWork = -huge(1.0d0)
+
+    !$acc parallel loop gang vector collapse(2) default(none) &
+    !$acc& present(f,u,v,T,rho,Fx,Fy,Sxx,Sxy,Syy,Sdiv,ex,ey,omega) &
+    !$acc& reduction(+:nuConvectiveFluxVol,speedSquaredVol) &
+    !$acc& reduction(+:epsKineticVol,epsThermalVol) &
+    !$acc& reduction(+:densityFluctuationSquaredVol,velocityDivergenceSquaredVol) &
+    !$acc& reduction(max:maxMachWork,maxTemperatureWork) &
+    !$acc& reduction(min:minTemperatureWork) &
+    !$acc& private(alpha,gradX,gradY,speedSquared,eu,uu,feq,neqxx,neqxy,neqyy)
+    do j = 1, ny
+        do i = 1, nx
+            ! 温度在本步 macroT 后已经更新，因此这里同步刷新采样时刻的力和应变率。
+            Fx(i,j) = 0.0d0
+            Fy(i,j) = rho0*gBeta*(T(i,j)-Tref)
+#ifdef SideHeatedHa
+            Fx(i,j) = rho0*B2sigemarho*(v(i,j)*sin(phi)*cos(phi)-u(i,j)*sin(phi)*sin(phi))
+            Fy(i,j) = Fy(i,j)+rho0*B2sigemarho*(u(i,j)*sin(phi)*cos(phi)-v(i,j)*cos(phi)*cos(phi))
+#endif
+
+            neqxx = 0.0d0
+            neqxy = 0.0d0
+            neqyy = 0.0d0
+            uu = u(i,j)*u(i,j)+v(i,j)*v(i,j)
+            do alpha = 0, 8
+                eu = dble(ex(alpha))*u(i,j)+dble(ey(alpha))*v(i,j)
+                feq = omega(alpha)*((rho(i,j)-rho0)+rho0*(eu/cs2 + &
+                    0.5d0*eu*eu/(cs2*cs2)-0.5d0*uu/cs2))
+                neqxx = neqxx+dble(ex(alpha)*ex(alpha))*(f(i,j,alpha)-feq)
+                neqxy = neqxy+dble(ex(alpha)*ey(alpha))*(f(i,j,alpha)-feq)
+                neqyy = neqyy+dble(ey(alpha)*ey(alpha))*(f(i,j,alpha)-feq)
+            enddo
+            Sdiv(i,j) = -(neqxx+neqyy+u(i,j)*Fx(i,j)+v(i,j)*Fy(i,j))/denomDiv
+            Sxx(i,j) = -(neqxx+u(i,j)*Fx(i,j))/denomDiag+coeffTrace*Sdiv(i,j)
+            Syy(i,j) = -(neqyy+v(i,j)*Fy(i,j))/denomDiag+coeffTrace*Sdiv(i,j)
+            Sxy(i,j) = -(2.0d0*neqxy+u(i,j)*Fy(i,j)+v(i,j)*Fx(i,j))/denomShear
+
+            if(i.EQ.1) then
+                gradX = 0.5d0*(-3.0d0*T(1,j)+4.0d0*T(2,j)-T(3,j))
+            elseif(i.EQ.nx) then
+                gradX = 0.5d0*(3.0d0*T(nx,j)-4.0d0*T(nx-1,j)+T(nx-2,j))
+            else
+                gradX = 0.5d0*(T(i+1,j)-T(i-1,j))
+            endif
+            if(j.EQ.1) then
+                gradY = 0.5d0*(-3.0d0*T(i,1)+4.0d0*T(i,2)-T(i,3))
+            elseif(j.EQ.ny) then
+                gradY = 0.5d0*(3.0d0*T(i,ny)-4.0d0*T(i,ny-1)+T(i,ny-2))
+            else
+                gradY = 0.5d0*(T(i,j+1)-T(i,j-1))
+            endif
+
+            speedSquared = u(i,j)*u(i,j)+v(i,j)*v(i,j)
+#ifdef SideHeatedCell
+            ! 侧壁差温方腔的主热流方向为 x，因此使用 u(T-Tref)。
+            nuConvectiveFluxVol = nuConvectiveFluxVol+u(i,j)*(T(i,j)-Tref)
+#endif
+#ifdef RayleighBenardCell
+            ! Rayleigh-Benard 的主热流方向为 y，因此使用 v(T-Tref)。
+            nuConvectiveFluxVol = nuConvectiveFluxVol+v(i,j)*(T(i,j)-Tref)
+#endif
+            speedSquaredVol = speedSquaredVol+speedSquared
+            epsKineticVol = epsKineticVol+2.0d0*viscosity* &
+                (Sxx(i,j)*Sxx(i,j)+Syy(i,j)*Syy(i,j)+2.0d0*Sxy(i,j)*Sxy(i,j))
+            epsThermalVol = epsThermalVol+ &
+                diffusivity*(gradX*gradX+gradY*gradY)
+            ! Xu 可压缩性指标的空间平方平均；最后在全场归一化并开平方。
+            densityFluctuationSquaredVol = densityFluctuationSquaredVol+ &
+                (rho(i,j)-rho0)*(rho(i,j)-rho0)
+            velocityDivergenceSquaredVol = velocityDivergenceSquaredVol+ &
+                Sdiv(i,j)*Sdiv(i,j)
+            maxMachWork = max(maxMachWork,dsqrt(speedSquared/cs2))
+            minTemperatureWork = min(minTemperatureWork,T(i,j))
+            maxTemperatureWork = max(maxTemperatureWork,T(i,j))
+        enddo
+    enddo
+
+    ! 前面是累加，现在是空间平均。
+    NuVolAvg(dimensionlessTime) = 1.0d0+nuConvectiveFluxVol/dble(nx*ny)*lengthUnit/diffusivity
+    speedSquaredVolAvg = speedSquaredVol/dble(nx*ny)
+    ReVolAvg(dimensionlessTime) = dsqrt(max(0.0d0,speedSquaredVolAvg))*lengthUnit/viscosity
+    epsKineticVolAvg = epsKineticVol/dble(nx*ny)
+    epsThermalVolAvg = epsThermalVol/dble(nx*ny)
+    densityFluctuationSquaredVolAvg = densityFluctuationSquaredVol/dble(nx*ny)
+    velocityDivergenceSquaredVolAvg = velocityDivergenceSquaredVol/dble(nx*ny)
+    maxMachLocal = maxMachWork
+    minTemperature = minTemperatureWork
+    maxTemperature = maxTemperatureWork
+
+    if((firstUnsteadyHistoryWrite).AND.(restartStatisticSampleOffset.EQ.0)) then
+        open(unit=01,file="Nu_VolAvg_2DOpenaccLBMCDE_D2Q9BGK.dat",status='replace',action='write')
+        open(unit=02,file="Re_VolAvg_2DOpenaccLBMCDE_D2Q9BGK.dat",status='replace',action='write')
+    else
+        open(unit=01,file="Nu_VolAvg_2DOpenaccLBMCDE_D2Q9BGK.dat",status='unknown',position='append',action='write')
+        open(unit=02,file="Re_VolAvg_2DOpenaccLBMCDE_D2Q9BGK.dat",status='unknown',position='append',action='write')
+    endif
+    write(01,'(ES24.16E3,1X,ES24.16E3)') sampleTime, NuVolAvg(dimensionlessTime)
+    write(02,'(ES24.16E3,1X,ES24.16E3)') sampleTime, ReVolAvg(dimensionlessTime)
+    close(01)
+    close(02)
+
+    if((firstUnsteadyHistoryWrite).AND.(restartStatisticSampleOffset.EQ.0)) then
+        open(unit=12,file=trim(dissipationHistoryFile),status='replace',action='write')
+        write(12,'(A)') '# time_over_tff Nu_vol_avg Re_vol_rms eps_u_vol_avg eps_T_vol_avg ' // &
+            'rho_fluctuation_vol_rms div_u_vol_rms maxMach minT maxT'
+    else
+        open(unit=12,file=trim(dissipationHistoryFile),status='unknown',position='append',action='write')
+    endif
+    ! 历史文件需要瞬时空间 RMS；这里直接由瞬时空间均方量开平方，不再保存重复中间变量。
+    write(12,'(10(ES24.16E3,1X))') sampleTime, NuVolAvg(dimensionlessTime), &
+        ReVolAvg(dimensionlessTime), epsKineticVolAvg, epsThermalVolAvg, &
+        dsqrt(max(0.0d0,densityFluctuationSquaredVolAvg)), &
+        dsqrt(max(0.0d0,velocityDivergenceSquaredVolAvg)), &
+        maxMachLocal, minTemperature, maxTemperature
+    close(12)
+    firstUnsteadyHistoryWrite = .false.
+    write(*,'(A,1X,ES24.16E3)') 'Nu_volume_instantaneous =', NuVolAvg(dimensionlessTime)
+    write(*,'(A,1X,ES24.16E3)') 'Re_instantaneous_rms =', ReVolAvg(dimensionlessTime)
+  end subroutine calculate_unsteady_sample
+!===================================================================================================
+
+
+!===================================================================================================
+! 子程序: accumulate_dissipation_statistics
+! 作用: 对统计窗口内的 Nu、速度平方、两类耗散、Xu 可压缩性指标和温度剖面做在线累加。
+! 调用: calculate_unsteady_sample 已经完成当前采样时刻的空间求和与体平均；
+!       主程序只在 unsteadyAverageStartTf 至 unsteadyAverageEndTf 的统计窗口内调用本程序。
+! 说明: 速度平方必须保留，因为文献 Re 的定义是 sqrt(<u^2+v^2>_V,t)*H/nu。
+!       前后半段 Nu/Re 统一由 output_unsteady_NuRe_postprocess 重读完整历史后计算，
+!       本程序不再维护一套重复的前后半段累计量。
+!       温度的一、二阶矩继续保留，用于以后分析 T_rms(y) 峰值定义的边界层厚度；
+!       当前 Table 1 的 N_BL 在 write_dissipation_statistics 中由 H/(2*Nu) 直接估计。
+!       每个统计采样的水平温度剖面同时追加到二进制历史，供后续进程恢复完整累计量。
+!       本程序只做等时间间隔样本的时间求和；除以样本数及精确关系检查在
+!       write_dissipation_statistics 中统一完成。
+!===================================================================================================
+  subroutine accumulate_dissipation_statistics()
+    use commondata
+    implicit none
+    integer(kind=4) :: i, j, profileUnit ! i/j 为温度剖面空间循环；profileUnit 为二进制历史文件单元号
+    integer(kind=4) :: absoluteStatisticSampleIndex ! 当前样本在整个统计时间轴上的绝对编号
+    real(kind=8) :: sampleTime           ! 当前统计样本对应的自由落体时间 t/t_ff
+    real(kind=8) :: currentNuVolAvg      ! 当前采样时刻已经完成空间平均的 Nu
+    real(kind=8) :: temperatureXSum, temperatureSquaredXSum ! 固定高度上 T 和 T^2 的水平格点求和
+    real(kind=8) :: temperatureXAvgProfileSample(ny)        ! 当前时刻的水平平均温度 <T>_x(y)
+    real(kind=8) :: temperatureSquaredXAvgProfileSample(ny) ! 当前时刻的水平平均温度平方 <T^2>_x(y)
+    logical, save :: firstProfileHistoryWrite = .true.      ! 标记本次进程是否第一次写温度剖面历史
+
+    ! 恢复续算前的累计采样编号后，重新得到当前样本的绝对自由落体时间。
+    absoluteStatisticSampleIndex = firstStatisticSampleIndex+ &
+        restartStatisticSampleOffset+dimensionlessTime-1
+    sampleTime = real(absoluteStatisticSampleIndex,kind=8)*statisticSampleInterval
+    currentNuVolAvg = NuVolAvg(dimensionlessTime)
+
+    ! 记录统计样本数和累计格子步范围；firstStatisticItc 只在第一个样本时赋值。
+    statisticSamples = statisticSamples+1
+    if(firstStatisticItc.LT.0) firstStatisticItc = restartItcOffset+itc  !第一个统计样本对应的累计格子步。
+    lastStatisticItc = restartItcOffset+itc  !最后一个统计样本对应的累计格子步。
+
+    ! 对已经完成空间平均的瞬时量做时间求和。
+    ! 固定采样间隔下，最终除以 statisticSamples 即为离散时间平均。
+    sumNuVolAvg = sumNuVolAvg+currentNuVolAvg
+    ! 文献 Re 需要先对 <u^2+v^2>_V 做时间平均，最后统一开平方，不能直接平均瞬时 Re。
+    sumSpeedSquaredVolAvg = sumSpeedSquaredVolAvg+speedSquaredVolAvg
+    ! 两类耗散先累计瞬时体平均量，统计结束后得到 <epsilon_u>_V,t 和 <epsilon_T>_V,t。
+    sumEpsKineticVolAvg = sumEpsKineticVolAvg+epsKineticVolAvg
+    sumEpsThermalVolAvg = sumEpsThermalVolAvg+epsThermalVolAvg
+    ! Xu 的弱可压缩性指标采用空间-时间 RMS，因此累计均方量而不是瞬时 RMS。
+    sumDensityFluctuationSquaredVolAvg = &
+        sumDensityFluctuationSquaredVolAvg+densityFluctuationSquaredVolAvg
+    sumVelocityDivergenceSquaredVolAvg = &
+        sumVelocityDivergenceSquaredVolAvg+velocityDivergenceSquaredVolAvg
+    ! maxMachLocal*cs 恢复为最大格子速度；在 dx=dt=1 时也就是格子 CFL。
+    maxStatisticCFL = max(maxStatisticCFL,maxMachLocal*dsqrt(cs2))
+
+    ! 对每个高度 y_j 做水平平均：
+    ! temperatureXAvgProfileSample(j)        = <T>_x(y_j,t)
+    ! temperatureSquaredXAvgProfileSample(j) = <T^2>_x(y_j,t)
+    ! 两者再做时间求和，最终使用 T_rms(y)=sqrt(<T^2>_x,t-<T>_x,t^2)。
+    do j = 1, ny
+        temperatureXSum = 0.0d0
+        temperatureSquaredXSum = 0.0d0
+        do i = 1, nx
+            temperatureXSum = temperatureXSum+T(i,j)
+            temperatureSquaredXSum = temperatureSquaredXSum+T(i,j)*T(i,j)
+        enddo
+        temperatureXAvgProfileSample(j) = temperatureXSum/dble(nx)
+        temperatureSquaredXAvgProfileSample(j) = temperatureSquaredXSum/dble(nx)
+        sumTemperatureXAvgProfile(j) = &
+            sumTemperatureXAvgProfile(j)+temperatureXAvgProfileSample(j)
+        sumTemperatureSquaredXAvgProfile(j) = &
+            sumTemperatureSquaredXAvgProfile(j)+temperatureSquaredXAvgProfileSample(j)
+    enddo
+
+    ! 温度剖面不在标量耗散历史中，因此单独保存为无格式流二进制文件。
+    ! 没有旧统计样本时，首个统计样本覆盖旧文件；恢复过旧统计样本时则继续追加。
+    ! 每个样本依次保存 sampleTime、<T>_x(:) 和 <T^2>_x(:)，供续算恢复完整时间累计量。
+    if(firstProfileHistoryWrite.AND.(restartStatisticSampleOffset.EQ.0)) then
+        open(newunit=profileUnit,file=trim(temperatureProfileHistoryFile),status='replace', &
+            action='write',form='unformatted',access='stream')
+    else
+        open(newunit=profileUnit,file=trim(temperatureProfileHistoryFile),status='unknown', &
+            action='write',form='unformatted',access='stream',position='append')
+    endif
+    write(profileUnit) sampleTime
+    write(profileUnit) temperatureXAvgProfileSample, temperatureSquaredXAvgProfileSample
+    close(profileUnit)
+    ! save 变量在本次进程后续调用中保持为 .false.，避免再次覆盖刚写入的历史文件。
+    firstProfileHistoryWrite = .false.
+  end subroutine accumulate_dissipation_statistics
+!===================================================================================================
+
+
+!===================================================================================================
+! 子程序: write_dissipation_statistics
+! 作用: 在统计窗口结束后，用空间-时间平均量统一生成 Xu 与 Zhang 两套文献对照结果。
+! 调用: 非稳态计算结束时调用一次；本程序不推进流场，也不重新遍历二维瞬时流场。
+! 输入: accumulate_dissipation_statistics 在线累计的标量和温度剖面；续算时这些累计量已经
+!       由 restore_dissipation_statistics 恢复，所以最终结果覆盖完整统计窗口。
+! Xu 输出: 对流通量 Nu、壁面 Nu、两种耗散反算 Nu、后三者相对 Nu_vol 的差异，
+!          以及 RMS Re、RMS 密度波动和 RMS 速度散度。
+! Zhang 输出: 直接计算耗散、Nu 精确关系给出的耗散、两者比值，以及 N_BL 和分辨率指标。
+!             N_BL 采用 H/(2*Nu) 的整体估计，同时保留温度 RMS 峰值边界层诊断。
+! 文件: statisticsFile 保存汇总量；temperatureRmsProfileFile 保存 z/H-theta_rms(z) 剖面；
+!       settingsFile 只追加一份便于运行结束后快速查看的摘要。
+! 说明: 所有文献比较都先完成空间-时间平均，再计算比值或反算 Nu；不平均瞬时比值。
+!===================================================================================================
+  subroutine write_dissipation_statistics()
+    use commondata
+    implicit none
+    integer(kind=4) :: j                         ! 壁法向网格索引
+    integer(kind=4) :: lowerPeakIndex, upperPeakIndex ! 下、上半区 theta_rms 峰值索引
+    integer(kind=4) :: profileUnit               ! 温度 RMS 剖面输出文件单元号
+    integer(kind=4) :: thermalBLGridPointsGlobalEstimate ! H/(2*Nu) 对应的 N_BL
+    integer(kind=4) :: thermalBLGridPointsRms    ! theta_rms 峰值厚度对应的 N_BL
+    real(kind=8) :: invN                         ! 统计样本数的倒数，用于时间平均
+    real(kind=8) :: nuVolTimeAvg                 ! 对流热通量 Nu 的时间平均
+    real(kind=8) :: speedSquaredVolTimeAvg       ! <u^2+v^2>_V,t
+    real(kind=8) :: reVolTimeRms                 ! sqrt(<u^2+v^2>_V,t)*H/nu
+    real(kind=8) :: epsKineticVolTimeAvg, epsThermalVolTimeAvg ! 两类空间-时间平均耗散率
+    real(kind=8) :: densityFluctuationSquaredVolTimeAvg ! <(rho-rho0)^2>_V,t
+    real(kind=8) :: velocityDivergenceSquaredVolTimeAvg ! <(div u)^2>_V,t
+    real(kind=8) :: densityFluctuationVolTimeRms, velocityDivergenceVolTimeRms ! 开平方后的 RMS
+    real(kind=8) :: wallNormalSpacing            ! 无量纲壁法向网格间距 Delta_g/H
+    real(kind=8) :: nuBottomWallTimeAvg, nuTopWallTimeAvg, nuWallTimeAvg ! 上下壁及两壁平均 Nu
+    real(kind=8) :: nuFromKineticDissipation, nuFromThermalDissipation ! 两个耗散反算 Nu
+    real(kind=8) :: kineticDissipationExact, thermalDissipationExact ! Nu 精确关系给出的耗散
+    real(kind=8) :: kineticDissipationRatio, thermalDissipationRatio ! 直接耗散/精确关系耗散
+    real(kind=8) :: wallNuDifferencePercent      ! Nu_wall 相对 Nu_vol 的百分差
+    real(kind=8) :: kineticNuDifferencePercent   ! Nu_kin 相对 Nu_vol 的百分差
+    real(kind=8) :: thermalNuDifferencePercent   ! Nu_th 相对 Nu_vol 的百分差
+    real(kind=8) :: rmsTemperature               ! 当前高度的 theta_rms
+    real(kind=8) :: lowerRmsMaximum, upperRmsMaximum ! 下、上半区 theta_rms 最大值
+    real(kind=8) :: thermalBLThicknessGlobalEstimate ! delta_theta/H=1/(2*Nu)
+    real(kind=8) :: thermalBLThicknessRms        ! 上下 theta_rms 峰值距离的平均值
+    real(kind=8) :: thermalBLThicknessRelativeDifferencePercent ! 两种厚度的百分差
+    real(kind=8) :: thermalBLGridPointsRelativeDifferencePercent ! 两种 N_BL 的百分差
+    real(kind=8) :: zOverH                       ! 流体节点中心的无量纲高度
+    real(kind=8) :: etaOverH, etaBOverH           ! Kolmogorov、Batchelor 长度相对 H
+    real(kind=8) :: gridOverEta, gridOverEtaB, timeStepOverEta ! Zhang 表一分辨率指标
+
+    !-----------------------------------------------------------------------------------------------
+    ! 第一部分：建立最终统计文件，并检查统计窗口内是否确实存在样本。
+    ! 即使没有样本也输出说明，避免留下一个看似正常但内容无效的结果文件。
+    open(unit=22,file=trim(statisticsFile),status='replace',action='write')
+    write(22,'(A)') '# Xu/Zhang benchmark statistics over the configured window, including restored restart history'
+    write(22,'(A)') '# unsteady time axis: t/t_ff; lattice itc is retained only as restart provenance'
+    write(22,'(A,I0)') '# expected_statistics_samples ', expectedStatisticSampleCount
+    write(22,'(A,I0)') '# actual_statistics_samples ', statisticSamples
+    write(22,'(A,2(1X,I0))') '# first_last_sample_itc', firstStatisticItc, lastStatisticItc
+    if(statisticSamples.LE.0) then
+        write(22,'(A)') '# no samples: run ended before the averaging window'
+        close(22)
+        return
+    endif
+    if(statisticSamples.NE.expectedStatisticSampleCount) then
+        write(22,'(A)') '# error: actual statistics samples do not match the configured averaging window'
+        close(22)
+        write(*,*) 'Error: statistics sample count does not match the configured averaging window.'
+        error stop 1
+    endif
+
+    !-----------------------------------------------------------------------------------------------
+    ! 第二部分：把 accumulate_dissipation_statistics 保存的时间求和量除以样本数。
+    ! 采样间隔固定，因此算术平均就是当前统计窗口上的离散时间平均。
+    invN = 1.0d0/dble(statisticSamples)
+    nuVolTimeAvg = sumNuVolAvg*invN
+    speedSquaredVolTimeAvg = sumSpeedSquaredVolAvg*invN
+    ! Xu 与 Zhang 均使用 Re=sqrt(<u^2+v^2>_V,t)*H/nu，而不是 <Re_instant>_t。
+    reVolTimeRms = dsqrt(max(0.0d0,speedSquaredVolTimeAvg))*lengthUnit/viscosity
+    epsKineticVolTimeAvg = sumEpsKineticVolAvg*invN
+    epsThermalVolTimeAvg = sumEpsThermalVolAvg*invN
+    ! Xu 的两个整体可压缩性指标采用空间-时间 RMS，先平均平方再统一开平方。
+    densityFluctuationSquaredVolTimeAvg = sumDensityFluctuationSquaredVolAvg*invN
+    velocityDivergenceSquaredVolTimeAvg = sumVelocityDivergenceSquaredVolAvg*invN
+    densityFluctuationVolTimeRms = dsqrt(max(0.0d0,densityFluctuationSquaredVolTimeAvg))
+    velocityDivergenceVolTimeRms = dsqrt(max(0.0d0,velocityDivergenceSquaredVolTimeAvg))
+
+    !-----------------------------------------------------------------------------------------------
+    ! 第三部分：先初始化只对 RB 对流有意义的壁面 Nu、耗散 Nu 和精确关系结果。
+    ! 侧壁加热分支不会进入下面的 RayleighBenardCell 计算，因而保持这些安全初值。
+    wallNormalSpacing = 1.0d0/lengthUnit
+    nuBottomWallTimeAvg = 0.0d0
+    nuTopWallTimeAvg = 0.0d0
+    nuWallTimeAvg = 0.0d0
+    nuFromKineticDissipation = 0.0d0
+    nuFromThermalDissipation = 0.0d0
+    kineticDissipationExact = 0.0d0
+    thermalDissipationExact = 0.0d0
+    kineticDissipationRatio = 0.0d0
+    thermalDissipationRatio = 0.0d0
+    wallNuDifferencePercent = 0.0d0
+    kineticNuDifferencePercent = 0.0d0
+    thermalNuDifferencePercent = 0.0d0
+#ifdef RayleighBenardCell
+    !-----------------------------------------------------------------------------------------------
+    ! 第四部分（Xu 表四）：从平均壁面梯度和两类平均耗散率得到三套独立 Nu，
+    ! 并统一以体积对流热通量得到的 nuVolTimeAvg 为基准计算百分差。
+    ! Xu 表 4 的 Nu_wall：先对上下壁面及时间平均，再取两壁平均。
+    ! 恒温壁位于首/末流体节点外半个网格处，因此沿用 RBcalc_Nu_wall_avg 的
+    ! 二阶半格点壁面梯度；温度梯度是线性的，可直接使用已经累计的 <T>_x,t 剖面。
+    nuBottomWallTimeAvg = (8.0d0*Thot-9.0d0*sumTemperatureXAvgProfile(1)*invN+ &
+        sumTemperatureXAvgProfile(2)*invN)/(3.0d0*wallNormalSpacing*deltaT)
+    nuTopWallTimeAvg = (-8.0d0*Tcold+9.0d0*sumTemperatureXAvgProfile(ny)*invN- &
+        sumTemperatureXAvgProfile(ny-1)*invN)/(3.0d0*wallNormalSpacing*deltaT)
+    nuWallTimeAvg = 0.5d0*(nuBottomWallTimeAvg+nuTopWallTimeAvg)
+
+    ! Xu 表 4 的 Nu_kin 和 Nu_th：把空间-时间平均耗散率反算为两个等效 Nusselt 数。
+    nuFromKineticDissipation = 1.0d0+ &
+        epsKineticVolTimeAvg*lengthUnit**4*Prandtl**2/(viscosity**3*Rayleigh)
+    nuFromThermalDissipation = &
+        epsThermalVolTimeAvg*lengthUnit**2/(diffusivity*deltaT**2)
+    if(abs(nuVolTimeAvg).GT.1.0d-12) then
+        wallNuDifferencePercent = &
+            100.0d0*abs(nuWallTimeAvg-nuVolTimeAvg)/abs(nuVolTimeAvg)
+        kineticNuDifferencePercent = &
+            100.0d0*abs(nuFromKineticDissipation-nuVolTimeAvg)/abs(nuVolTimeAvg)
+        thermalNuDifferencePercent = &
+            100.0d0*abs(nuFromThermalDissipation-nuVolTimeAvg)/abs(nuVolTimeAvg)
+    endif
+
+    ! Zhang 风格：直接计算“应变率/温度梯度耗散”与“Nu 精确关系耗散”的比值。
+    ! 分子是代码直接得到的空间-时间平均耗散；分母由同一个 nuVolTimeAvg 代入精确关系得到。
+    kineticDissipationExact = viscosity**3/lengthUnit**4* &
+        (nuVolTimeAvg-1.0d0)*Rayleigh/(Prandtl**2)
+    thermalDissipationExact = diffusivity*deltaT**2/lengthUnit**2*nuVolTimeAvg
+    if(abs(kineticDissipationExact).GT.1.0d-30) &
+        kineticDissipationRatio = epsKineticVolTimeAvg/kineticDissipationExact
+    if(abs(thermalDissipationExact).GT.1.0d-30) &
+        thermalDissipationRatio = epsThermalVolTimeAvg/thermalDissipationExact
+#endif
+
+    !-----------------------------------------------------------------------------------------------
+    ! 第五部分：初始化 Zhang 表一的热边界层和最小尺度分辨率指标。
+    ! 这些量只适用于上下壁恒温的 Rayleigh-BenardCell。
+    thermalBLThicknessGlobalEstimate = 0.0d0
+    thermalBLThicknessRms = 0.0d0
+    thermalBLThicknessRelativeDifferencePercent = 0.0d0
+    thermalBLGridPointsRelativeDifferencePercent = 0.0d0
+    thermalBLGridPointsGlobalEstimate = 0
+    thermalBLGridPointsRms = 0
+    etaOverH = 0.0d0
+    etaBOverH = 0.0d0
+    gridOverEta = 0.0d0
+    gridOverEtaB = 0.0d0
+    timeStepOverEta = 0.0d0
+#ifdef RayleighBenardCell
+    ! 在下半区和上半区分别搜索 theta_rms 最大值，避免把上下两个边界层峰值混在一起。
+    ! theta_rms(j)=sqrt(<T^2>_x,t-<T>_x,t^2)，max 用于抑制舍入误差造成的微小负数。
+    lowerPeakIndex = 1
+    upperPeakIndex = ny
+    lowerRmsMaximum = -1.0d0
+    upperRmsMaximum = -1.0d0
+    do j = 1, max(1,ny/2)
+        rmsTemperature = dsqrt(max(0.0d0,sumTemperatureSquaredXAvgProfile(j)*invN - &
+            (sumTemperatureXAvgProfile(j)*invN)**2))
+        if(rmsTemperature.GT.lowerRmsMaximum) then
+            lowerRmsMaximum = rmsTemperature
+            lowerPeakIndex = j
+        endif
+    enddo
+    do j = min(ny,ny/2+1), ny
+        rmsTemperature = dsqrt(max(0.0d0,sumTemperatureSquaredXAvgProfile(j)*invN - &
+            (sumTemperatureXAvgProfile(j)*invN)**2))
+        if(rmsTemperature.GT.upperRmsMaximum) then
+            upperRmsMaximum = rmsTemperature
+            upperPeakIndex = j
+        endif
+    enddo
+    ! 保留 Zhang 后文的温度 RMS 峰值定义，便于以后分析边界层结构；
+    ! 当前与 Table 1 对照使用的 N_BL 则采用更直接的整体估计 delta_theta/H=1/(2*Nu)。
+    thermalBLThicknessRms = 0.5d0*((dble(lowerPeakIndex)-0.5d0) + &
+        (dble(ny-upperPeakIndex)+0.5d0))/lengthUnit
+    ! ceiling(x) 返回不小于 x 的最小整数，例如 ceiling(10.2)=11；
+    ! 这里向上取整可避免把边界层覆盖的非整数网格数向下截断，从而低估边界层分辨率。
+    thermalBLGridPointsRms = max(1,ceiling(thermalBLThicknessRms*lengthUnit))
+    if(nuVolTimeAvg.GT.0.0d0) then
+        ! 整体估计是当前 Table 1 的 N_BL 基准：delta_theta/H=1/(2*Nu)，
+        ! 再除以 Delta_g/H=1/lengthUnit，并同样用 ceiling 向上取整为完整网格点数。
+        thermalBLThicknessGlobalEstimate = 1.0d0/(2.0d0*nuVolTimeAvg)
+        thermalBLGridPointsGlobalEstimate = &
+            max(1,ceiling(thermalBLThicknessGlobalEstimate*lengthUnit))
+        thermalBLThicknessRelativeDifferencePercent = 100.0d0* &
+            abs(thermalBLThicknessRms-thermalBLThicknessGlobalEstimate)/ &
+            thermalBLThicknessGlobalEstimate
+        thermalBLGridPointsRelativeDifferencePercent = 100.0d0* &
+            abs(dble(thermalBLGridPointsRms-thermalBLGridPointsGlobalEstimate))/ &
+            dble(thermalBLGridPointsGlobalEstimate)
+    endif
+
+    ! 输出完整温度 RMS 剖面。z/H 取流体节点中心位置，首末节点距物理壁面均为半格。
+    open(newunit=profileUnit,file=trim(temperatureRmsProfileFile),status='replace',action='write')
+    write(profileUnit,'(A)') '# z_over_H theta_rms'
+    write(profileUnit,'(A,1X,ES24.16E3)') '# delta_theta_global_estimate_over_H', &
+        thermalBLThicknessGlobalEstimate
+    write(profileUnit,'(A,1X,ES24.16E3)') '# delta_theta_rms_over_H', thermalBLThicknessRms
+    write(profileUnit,'(A,1X,I0)') '# N_BL_global_estimate', thermalBLGridPointsGlobalEstimate
+    write(profileUnit,'(A,1X,I0)') '# N_BL_from_temperature_rms_peak', thermalBLGridPointsRms
+    write(profileUnit,'(A,1X,ES24.16E3)') '# delta_theta_relative_difference_percent', &
+        thermalBLThicknessRelativeDifferencePercent
+    write(profileUnit,'(A,1X,ES24.16E3)') '# N_BL_relative_difference_percent', &
+        thermalBLGridPointsRelativeDifferencePercent
+    do j = 1, ny
+        zOverH = (dble(j)-0.5d0)/lengthUnit
+        rmsTemperature = dsqrt(max(0.0d0,sumTemperatureSquaredXAvgProfile(j)*invN - &
+            (sumTemperatureXAvgProfile(j)*invN)**2))
+        write(profileUnit,'(2(ES24.16E3,1X))') zOverH, rmsTemperature
+    enddo
+    close(profileUnit)
+
+    ! Zhang 表一的三个分辨率指标：Delta_g/eta、Delta_g/eta_B 和 Delta_t/tau_eta。
+    ! eta、eta_B、tau_eta 均由时间平均 Nu 的 RB 精确关系得到；只有 Nu>1 时公式有效。
+    ! 本代码采用 Delta_g/H=1/lengthUnit、Delta_t/t_ff=1/timeUnit。
+    etaOverH = huge(1.0d0)
+    etaBOverH = huge(1.0d0)
+    gridOverEta = 0.0d0
+    gridOverEtaB = 0.0d0
+    timeStepOverEta = 0.0d0
+    if(nuVolTimeAvg.GT.1.0d0) then
+        etaOverH = dsqrt(Prandtl)/(Rayleigh*(nuVolTimeAvg-1.0d0))**0.25d0
+        etaBOverH = etaOverH/dsqrt(Prandtl)
+        gridOverEta = (1.0d0/lengthUnit)/etaOverH
+        gridOverEtaB = (1.0d0/lengthUnit)/etaBOverH
+        timeStepOverEta = (1.0d0/timeUnit)/dsqrt(Prandtl/(nuVolTimeAvg-1.0d0))
+    endif
+#endif
+
+    !-----------------------------------------------------------------------------------------------
+    ! 第六部分：把完整文献对照量写入 statisticsFile。
+    ! 英文键名保持稳定，便于后续脚本按名称读取；中文物理解释保留在本程序注释中。
+    write(22,'(A)') '# Xu et al. Table 4: Nu_volume is the reference for all relative differences'
+    write(22,'(A,1X,ES24.16E3)') 'Nu_volume_from_heat_flux', nuVolTimeAvg
+    write(22,'(A,1X,ES24.16E3)') 'Re_rms_space_time', reVolTimeRms
+    write(22,'(A,1X,ES24.16E3)') 'rho_fluctuation_rms_space_time', densityFluctuationVolTimeRms
+    write(22,'(A,1X,ES24.16E3)') 'velocity_divergence_rms_space_time', velocityDivergenceVolTimeRms
+#ifdef RayleighBenardCell
+    write(22,'(A,1X,ES24.16E3)') 'Nu_wall_from_mean_wall_gradient', nuWallTimeAvg
+    write(22,'(A,1X,ES24.16E3)') 'Nu_wall_relative_difference_percent', wallNuDifferencePercent
+    write(22,'(A,1X,ES24.16E3)') 'Nu_kinetic_from_mean_dissipation', nuFromKineticDissipation
+    write(22,'(A,1X,ES24.16E3)') 'Nu_kinetic_relative_difference_percent', kineticNuDifferencePercent
+    write(22,'(A,1X,ES24.16E3)') 'Nu_thermal_from_mean_dissipation', nuFromThermalDissipation
+    write(22,'(A,1X,ES24.16E3)') 'Nu_thermal_relative_difference_percent', thermalNuDifferencePercent
+
+    write(22,'(A)') '# Zhang et al.: directly calculated dissipation over exact-relation dissipation'
+    write(22,'(A,1X,ES24.16E3)') 'eps_u_calculated_space_time_mean', epsKineticVolTimeAvg
+    write(22,'(A,1X,ES24.16E3)') 'eps_u_exact_from_Nu', kineticDissipationExact
+    write(22,'(A,1X,ES24.16E3)') 'R_u_calculated_over_exact', kineticDissipationRatio
+    write(22,'(A,1X,ES24.16E3)') 'eps_T_calculated_space_time_mean', epsThermalVolTimeAvg
+    write(22,'(A,1X,ES24.16E3)') 'eps_T_exact_from_Nu', thermalDissipationExact
+    write(22,'(A,1X,ES24.16E3)') 'R_T_calculated_over_exact', thermalDissipationRatio
+#else
+    write(22,'(A)') '# RB-only dissipation Nu and exact-relation ratios are not output for side-heated flow'
+    write(22,'(A,1X,ES24.16E3)') 'eps_u_calculated_space_time_mean', epsKineticVolTimeAvg
+    write(22,'(A,1X,ES24.16E3)') 'eps_T_calculated_space_time_mean', epsThermalVolTimeAvg
+#endif
+    write(22,'(A)') '# Nu/Re half-window convergence is rebuilt once from the complete Nu/Re history'
+    write(22,'(A)') '# See NuRe_TimeAverage_2DOpenaccLBMCDE_D2Q9BGK.txt for first/second-half results'
+#ifdef RayleighBenardCell
+    write(22,'(A)') '# Zhang Table 1: N_BL uses the global estimate delta_theta/H=1/(2*Nu_volume)'
+    write(22,'(A,1X,ES24.16E3)') 'delta_theta_global_estimate_over_H', &
+        thermalBLThicknessGlobalEstimate
+    write(22,'(A,1X,I0)') 'N_BL_global_estimate', thermalBLGridPointsGlobalEstimate
+    write(22,'(A)') '# Retained diagnostic: thermal boundary layer from the T_rms peak position'
+    write(22,'(A,1X,ES24.16E3)') 'delta_theta_rms_over_H', thermalBLThicknessRms
+    write(22,'(A,1X,I0)') 'N_BL_from_temperature_rms_peak', thermalBLGridPointsRms
+    write(22,'(A,1X,ES24.16E3)') 'delta_theta_relative_difference_percent', &
+        thermalBLThicknessRelativeDifferencePercent
+    write(22,'(A,1X,ES24.16E3)') 'N_BL_relative_difference_percent', &
+        thermalBLGridPointsRelativeDifferencePercent
+    write(22,'(A,1X,A)') 'temperature_rms_profile_file', trim(temperatureRmsProfileFile)
+    write(22,'(A,3(1X,ES24.16E3))') 'grid_over_eta_grid_over_etaB_dt_over_tauEta', &
+        gridOverEta, gridOverEtaB, timeStepOverEta
+#endif
+    write(22,'(A,1X,ES24.16E3)') 'maximum_lattice_CFL', maxStatisticCFL
+    close(22)
+
+    !-----------------------------------------------------------------------------------------------
+    ! 第七部分：在 settingsFile 末尾追加精简摘要，便于不打开详细统计文件时快速核对结果。
+    open(unit=00,file=trim(settingsFile),status='unknown',position='append',action='write')
+    write(00,*) 'Dissipation/statistics samples expected/actual =', &
+        expectedStatisticSampleCount, statisticSamples
+    write(00,*) 'Mean Nu_flux/Re_rms =', nuVolTimeAvg, reVolTimeRms
+    write(00,*) 'RMS density fluctuation/divergence =', &
+        densityFluctuationVolTimeRms, velocityDivergenceVolTimeRms
+    write(00,*) 'Mean eps_u/eps_T =', epsKineticVolTimeAvg, epsThermalVolTimeAvg
+#ifdef RayleighBenardCell
+    write(00,*) 'Xu Nu_vol/Nu_wall/Nu_kin/Nu_th =', &
+        nuVolTimeAvg, nuWallTimeAvg, nuFromKineticDissipation, nuFromThermalDissipation
+    write(00,*) 'Xu relative differences wall/kin/th (%) =', &
+        wallNuDifferencePercent, kineticNuDifferencePercent, thermalNuDifferencePercent
+    write(00,*) 'Zhang R_u/R_T =', kineticDissipationRatio, thermalDissipationRatio
+#endif
+#ifdef RayleighBenardCell
+    write(00,*) 'Zhang N_BL from H/(2*Nu) =', thermalBLGridPointsGlobalEstimate
+    write(00,*) 'Temperature-rms BL grid points (retained) =', thermalBLGridPointsRms
+    write(00,*) 'N_BL relative difference to global estimate (%) =', &
+        thermalBLGridPointsRelativeDifferencePercent
+    write(00,*) 'Temperature-rms profile file =', trim(temperatureRmsProfileFile)
+#endif
+    close(00)
+  end subroutine write_dissipation_statistics
+!===================================================================================================
+! write_dissipation_statistics 结束：只生成最终统计和剖面文件，不改变任何流场变量。
+!===================================================================================================
+
+
+!===================================================================================================
+! 子程序: output_unsteady_NuRe_postprocess
+! 作用: 从完整统计窗口历史重建瞬时 Nu/Re 曲线、运行平均和前后半段收敛结果。
+! 横坐标: 所有非稳态曲线均使用无量纲自由落体时间 t/t_ff，不直接输出格子步 itc。
+! 说明: Re_instant(t)=sqrt(<u^2+v^2>_V)*H/nu，只表示当前采样时刻的空间 RMS。
+!       文献 Re_rms=sqrt(<u^2+v^2>_V,t)*H/nu，因此运行值必须计算 sqrt(<Re_instant^2>_t)，
+!       不能再对 Re_instant 做普通算术平均。运行统计从 unsteadyAverageStartTf 开始，不含初始过渡段。
+!===================================================================================================
+  subroutine output_unsteady_NuRe_postprocess()
+    use commondata
+    implicit none
+
+    integer(kind=4) :: k, history_count, running_count
+    integer(kind=4) :: whole_count, first_count, second_count
+    integer(kind=4) :: iosNu, iosRe
+    integer(kind=4) :: nuUnit, reUnit, seriesUnit, runningUnit
+    real(kind=8) :: timeLoc, timeNu, timeRe, NuVal, ReVal
+    real(kind=8) :: Nu_RunningSum, ReSquared_RunningSum
+    real(kind=8) :: startTf, midTf, endTf
+    real(kind=8) :: Nu_WholeSum, ReSquared_WholeSum
+    real(kind=8) :: Nu_FirstSum, ReSquared_FirstSum, Nu_SecondSum, ReSquared_SecondSum
+    real(kind=8) :: Nu_WholeAvg, Re_WholeAvg, Nu_FirstAvg, Re_FirstAvg, Nu_SecondAvg, Re_SecondAvg
+    real(kind=8) :: Nu_FirstRelErr, Re_FirstRelErr, Nu_SecondRelErr, Re_SecondRelErr
+    logical :: exNu, exRe
+
+    inquire(file='Nu_VolAvg_2DOpenaccLBMCDE_D2Q9BGK.dat', exist=exNu)
+    inquire(file='Re_VolAvg_2DOpenaccLBMCDE_D2Q9BGK.dat', exist=exRe)
+    if((.not.exNu).or.(.not.exRe)) then
+        write(*,'(A)') 'Error: Nu/Re history files are missing before postprocessing.'
+        open(unit=00,file=trim(settingsFile),status='unknown',position='append')
+        write(00,'(A)') 'Error: Nu/Re history files are missing before postprocessing.'
+        close(00)
+        error stop 1
+    endif
+
+    open(newunit=nuUnit, file='Nu_VolAvg_2DOpenaccLBMCDE_D2Q9BGK.dat', status='old', action='read', form='formatted')
+    open(newunit=reUnit, file='Re_VolAvg_2DOpenaccLBMCDE_D2Q9BGK.dat', status='old', action='read', form='formatted')
+
+    ! These files are derived views of the full .dat history, so rebuild one continuous ZONE.
+    open(newunit=seriesUnit, file='NuRe_VolAvg_2DOpenaccLBMCDE_D2Q9BGK.plt', &
+        status='replace', action='write', form='formatted')
+    write(seriesUnit,'(A)') 'TITLE = "2D OpenACC instantaneous Nu/Re in statistics window"'
+    write(seriesUnit,'(A)') 'VARIABLES = "time_over_tff" "NuVolumeInstantaneous" "ReInstantaneousRms"'
+    write(seriesUnit,'(A)') 'ZONE T="NuReInstantaneous", F=POINT'
+
+    open(newunit=runningUnit, file='NuRe_RunningStatistics_2DOpenaccLBMCDE_D2Q9BGK.plt', &
+        status='replace', action='write', form='formatted')
+    write(runningUnit,'(A)') 'TITLE = "2D OpenACC running statistics in averaging window"'
+    write(runningUnit,'(A)') 'VARIABLES = "time_over_tff" "NuVolumeRunningMean" "ReRunningRms"'
+    write(runningUnit,'(A)') 'ZONE T="NuReRunningStatistics", F=POINT'
+
+    startTf = unsteadyAverageStartTf
+    midTf = unsteadyAverageMidTf
+    endTf = unsteadyAverageEndTf
+
+    Nu_RunningSum = 0.0d0
+    ReSquared_RunningSum = 0.0d0
+    Nu_WholeSum = 0.0d0
+    ReSquared_WholeSum = 0.0d0
+    Nu_FirstSum = 0.0d0
+    ReSquared_FirstSum = 0.0d0
+    Nu_SecondSum = 0.0d0
+    ReSquared_SecondSum = 0.0d0
+    whole_count = 0
+    first_count = 0
+    second_count = 0
+    history_count = 0
+    running_count = 0
+
+    do k = 1, expectedStatisticSampleCount
+        read(nuUnit,*,iostat=iosNu) timeNu, NuVal
+        read(reUnit,*,iostat=iosRe) timeRe, ReVal
+        ! iostat: 0=成功读到一行；小于0=到达文件末尾；大于0=格式或读入错误。
+        ! 循环内只要不是 0，就说明统计历史短于 expectedStatisticSampleCount，或者某一行格式坏了。
+        if((iosNu.NE.0).OR.(iosRe.NE.0)) then
+            write(*,'(A)') 'Error: Nu/Re histories are shorter than expectedStatisticSampleCount or contain invalid rows.'
+            open(unit=00,file=trim(settingsFile),status='unknown',position='append')
+            write(00,'(A)') 'Error: Nu/Re histories are shorter than expectedStatisticSampleCount or contain invalid rows.'
+            close(00)
+            error stop 1
+        endif
+        if(abs(timeNu-timeRe).GT.1.0d-10*max(1.0d0,abs(timeNu))) then     !确保 Nu 和 Re 是同一个时间采样点的数据，不是错行配对的数据
+            write(*,'(A)') 'Error: Nu/Re history time columns do not match.'
+            open(unit=00,file=trim(settingsFile),status='unknown',position='append')
+            write(00,'(A)') 'Error: Nu/Re history time columns do not match.'
+            close(00)
+            error stop 1
+        endif
+
+        timeLoc = timeNu
+        history_count = k
+        write(seriesUnit,'(ES24.16E3,1X,ES24.16E3,1X,ES24.16E3)') timeLoc, NuVal, ReVal
+
+        if ((timeLoc >= startTf) .and. (timeLoc <= endTf)) then
+            ! Nu 对热通量是线性的，使用普通运行平均；Re 必须先累计 Re_instant^2 再开平方。
+            running_count = running_count+1
+            Nu_RunningSum = Nu_RunningSum+NuVal
+            ReSquared_RunningSum = ReSquared_RunningSum+ReVal*ReVal
+            write(runningUnit,'(ES24.16E3,1X,ES24.16E3,1X,ES24.16E3)') &
+                timeLoc, Nu_RunningSum/dble(running_count), &
+                dsqrt(max(0.0d0,ReSquared_RunningSum/dble(running_count)))
+            Nu_WholeSum = Nu_WholeSum + NuVal
+            ReSquared_WholeSum = ReSquared_WholeSum + ReVal*ReVal
+            whole_count = whole_count + 1
+        endif
+
+        if ((timeLoc >= startTf) .and. (timeLoc < midTf)) then
+            Nu_FirstSum = Nu_FirstSum + NuVal
+            ReSquared_FirstSum = ReSquared_FirstSum + ReVal*ReVal
+            first_count = first_count + 1
+        endif
+        if ((timeLoc >= midTf) .and. (timeLoc <= endTf)) then
+            Nu_SecondSum = Nu_SecondSum + NuVal
+            ReSquared_SecondSum = ReSquared_SecondSum + ReVal*ReVal
+            second_count = second_count + 1
+        endif
+    enddo
+
+    ! 上面的循环已经读完预期的 expectedStatisticSampleCount 行；这里再试读一行，
+    ! 不是为了继续计算，而是确认 Nu/Re 两个历史文件后面没有多余数据。
+    read(nuUnit,*,iostat=iosNu) timeNu, NuVal
+    read(reUnit,*,iostat=iosRe) timeRe, ReVal
+    ! 任意一个 iostat 等于 0，都表示至少一个文件还成功读到了额外一行。
+    ! 如果放过这种情况，后处理会静默丢掉超过 expectedStatisticSampleCount 的尾部样本。
+    if((iosNu.EQ.0).OR.(iosRe.EQ.0)) then
+        write(*,'(A)') 'Error: Nu/Re history files contain more rows than expectedStatisticSampleCount.'
+        open(unit=00,file=trim(settingsFile),status='unknown',position='append')
+        write(00,'(A)') 'Error: Nu/Re history files contain more rows than expectedStatisticSampleCount.'
+        close(00)
+        error stop 1
+    endif
+    ! 正常结尾必须是两个文件都到达 EOF，也就是两个 iostat 都小于 0。
+    ! 其他组合说明一个文件尾部异常，或 Nu/Re 文件长度不一致。
+    if(.not.((iosNu.LT.0).AND.(iosRe.LT.0))) then
+        write(*,'(A)') 'Error: Nu/Re history files have inconsistent trailing rows.'
+        open(unit=00,file=trim(settingsFile),status='unknown',position='append')
+        write(00,'(A)') 'Error: Nu/Re history files have inconsistent trailing rows.'
+        close(00)
+        error stop 1
+    endif
+    close(nuUnit)
+    close(reUnit)
+    close(seriesUnit)
+    close(runningUnit)
+
+    if (history_count <= 0) then
+        write(*,'(A)') 'Error: no Nu/Re history samples were found before postprocessing.'
+        open(unit=00,file=trim(settingsFile),status='unknown',position='append')
+        write(00,'(A)') 'Error: no Nu/Re history samples were found before postprocessing.'
+        close(00)
+        error stop 1
+    endif
+
+    if ((whole_count <= 0) .or. (first_count <= 0) .or. (second_count <= 0)) then
+        write(*,'(A)') 'Error: no complete unsteady average window was found for Nu/Re postprocessing.'
+        open(unit=00,file=trim(settingsFile),status='unknown',position='append')
+        write(00,'(A)') 'Error: no complete unsteady average window was found for Nu/Re postprocessing.'
+        close(00)
+        error stop 1
+    endif
+
+    Nu_WholeAvg = Nu_WholeSum / dble(whole_count)
+    Re_WholeAvg = dsqrt(max(0.0d0,ReSquared_WholeSum/dble(whole_count)))
+    Nu_FirstAvg = Nu_FirstSum / dble(first_count)
+    Re_FirstAvg = dsqrt(max(0.0d0,ReSquared_FirstSum/dble(first_count)))
+    Nu_SecondAvg = Nu_SecondSum / dble(second_count)
+    Re_SecondAvg = dsqrt(max(0.0d0,ReSquared_SecondSum/dble(second_count)))
+    ! tiny(1.0d0) 是双精度最小正规正数；这里用 max 避免整体平均值为 0 时相对误差除以 0。
+    Nu_FirstRelErr = abs(Nu_FirstAvg - Nu_WholeAvg) / max(abs(Nu_WholeAvg), tiny(1.0d0))
+    Re_FirstRelErr = abs(Re_FirstAvg - Re_WholeAvg) / max(abs(Re_WholeAvg), tiny(1.0d0))
+    Nu_SecondRelErr = abs(Nu_SecondAvg - Nu_WholeAvg) / max(abs(Nu_WholeAvg), tiny(1.0d0))
+    Re_SecondRelErr = abs(Re_SecondAvg - Re_WholeAvg) / max(abs(Re_WholeAvg), tiny(1.0d0))
+
+    open(unit=33, file='NuRe_TimeAverage_2DOpenaccLBMCDE_D2Q9BGK.txt', &
+        status='replace', action='write', form='formatted')
+    write(33,'(A)') '# 2D OpenACC Nu mean and literature-defined RMS Re in the averaging window'
+    write(33,'(A)') '# start_tf mid_tf end_tf whole_count first_count second_count ' // &
+        'Nu_mean_whole Re_rms_whole Nu_mean_first Re_rms_first Nu_mean_second Re_rms_second ' // &
+        'Nu_first_relerr Re_first_relerr Nu_second_relerr Re_second_relerr'
+    write(33,'(ES24.16E3,1X,ES24.16E3,1X,ES24.16E3,1X,I0,1X,I0,1X,I0,1X,' // &
+        'ES24.16E3,1X,ES24.16E3,1X,ES24.16E3,1X,ES24.16E3,1X,ES24.16E3,1X,ES24.16E3,1X,' // &
+        'ES24.16E3,1X,ES24.16E3,1X,ES24.16E3,1X,ES24.16E3)') &
+        startTf, midTf, endTf, whole_count, first_count, second_count, &
+        Nu_WholeAvg, Re_WholeAvg, Nu_FirstAvg, Re_FirstAvg, Nu_SecondAvg, Re_SecondAvg, &
+        Nu_FirstRelErr, Re_FirstRelErr, Nu_SecondRelErr, Re_SecondRelErr
+    close(33)
+
+    write(*,'(A)') 'Unsteady Nu/Re statistical postprocessing:'
+    write(*,'(A,1X,ES16.8,1X,A,1X,ES16.8)') 'Average window t/t_ff:', startTf, 'to', endTf
+    write(*,'(A,1X,I0,1X,A,1X,I0,1X,A,1X,I0)') &
+        'Samples whole/first/second:', whole_count, '/', first_count, '/', second_count
+    write(*,'(A,1X,ES16.8,1X,A,1X,ES16.8)') 'Whole Nu mean/Re rms:', Nu_WholeAvg, '/', Re_WholeAvg
+    write(*,'(A,1X,ES16.8,1X,A,1X,ES16.8)') 'First-half Nu mean/Re rms:', Nu_FirstAvg, '/', Re_FirstAvg
+    write(*,'(A,1X,ES16.8,1X,A,1X,ES16.8)') 'Second-half Nu mean/Re rms:', Nu_SecondAvg, '/', Re_SecondAvg
+    write(*,'(A,1X,ES16.8,1X,A,1X,ES16.8)') 'First-half Nu/Re relative error:', Nu_FirstRelErr, '/', Re_FirstRelErr
+    write(*,'(A,1X,ES16.8,1X,A,1X,ES16.8)') 'Second-half Nu/Re relative error:', Nu_SecondRelErr, '/', Re_SecondRelErr
+
+  end subroutine output_unsteady_NuRe_postprocess
+!===================================================================================================
+! output_unsteady_NuRe_postprocess 结束: 输出瞬时曲线和按文献定义累计得到的运行 Nu/Re。
+!===================================================================================================
+#endif
+
+
+!===================================================================================================
+#ifdef steadyFlow
+! 子程序: SideHeatedcalc_Nu_global
+! 作用: 计算侧壁差温工况下的全场平均 Nusselt 数。
+! 用途: 在 SideHeatedCell 工况结束后的后处理中调用。
+!===================================================================================================
+  subroutine SideHeatedcalc_Nu_global()
+    use commondata
+    implicit none
+    integer(kind=4) :: i, j
+    real(kind=8) :: dx, dT, qx, sum_qx
+    real(kind=8) :: temperatureDifference, coef
+
+    ! 网格间距
+    dx = 1.0d0 / lengthUnit
+    temperatureDifference = Thot - Tcold
+    coef   = velocityScaleCompare
+
+    sum_qx = 0.0d0
+
+    !$acc parallel loop collapse(2) default(none) present(u,T) reduction(+:sum_qx) private(dT,qx)
+    do j = 1, ny
+      do i = 1, nx
+
+        if (i == 1) then
+          ! i=1: 节点位于 x=dx/2，利用 (wall, i=1, i=2) 二次插值给出 dT/dx在x=dx/2 的二阶近似（边界特别处理）
+          dT = (-3.0d0*T(1,j) - T(2,j) + 4.0d0*Thot ) / (3.0d0*dx)
+        elseif (i == nx) then
+          ! i=nx: 节点位于 x=L-dx/2，利用 (i=nx-1, i=nx, wall) 二次插值给出 dT/dx在x=L-dx/2 的二阶近似（边界特别处理）
+          dT = ( -4.0d0*Tcold + 3.0d0*T(nx,j) + T(nx-1,j) ) / (3.0d0*dx)
+        else
+          ! 1<i<nx: 中心差分
+          dT = ( T(i-1,j) - T(i+1,j) ) / (2.0d0*dx)
+        endif
+
+        qx = coef*u(i,j)*(T(i,j)-Tref) + dT
+        sum_qx = sum_qx + qx
+
+      enddo
+    enddo
+    Nu_global = (sum_qx / dble(nx*ny)) / temperatureDifference
+
+    ! 屏幕输出
+    write(*,'(a,1x,ES24.16E3)') "Nu_global =", real(Nu_global,kind=8)
+
+
+    ! 同步写入日志
+    open(unit=00,file=trim(settingsFile),status="unknown",position="append")
+    write(00,'(a,1x,ES24.16E3)') "Nu_global =", real(Nu_global,kind=8)
+    close(00)
+
+    return
+  end subroutine SideHeatedcalc_Nu_global
+!===================================================================================================
+! SideHeatedcalc_Nu_global 结束: 计算侧壁差温工况下的全场平均 Nusselt 数。
+!===================================================================================================
+
+
+
+!===================================================================================================
+! 子程序: SideHeatedcalc_Nu_wall_avg
+! 作用: 计算侧壁差温工况下热壁、冷壁和中线的 Nusselt 数及其极值。
+! 用途: 在 SideHeatedCell 工况结束后的后处理中调用。
+!===================================================================================================
+  subroutine SideHeatedcalc_Nu_wall_avg()
+    use commondata
+    implicit none
+    integer(kind=4) :: j, iMid
+    integer(kind=4) :: jmax, jmin
+    real(kind=8) :: dx, dy, temperatureDifference, coef
+    real(kind=8) :: qx_wall, sum_hot, sum_cold, sum_mid
+    real(kind=8) :: denom
+    real(kind=8) :: Nu_left(1:ny)
+    real(kind=8) :: f_m2,f_m1,f_0,f_p1,f_p2
+    !------------------------------------------------------------
+    ! 5-point least-squares parabola fit (general, can be one-sided)
+    !------------------------------------------------------------
+    integer(kind=4) :: k,iL,iR
+    integer(kind=4) :: jj(5)
+    real(kind=8) :: xk(5), fk(5), yk(5)
+    real(kind=8) :: S0, S1, S2, S3, S4
+    real(kind=8) :: F0, F1, F2
+    real(kind=8) :: D, Da, Db, Dc
+    real(kind=8) :: a, b, c
+    real(kind=8) :: delta, fstar, ystar
+    real(kind=8) :: xmin, xmax
+    real(kind=8), parameter :: epsD = 1.0d-20, epsA = 1.0d-14
+    real(kind=8) :: Nu_left_ext(0:ny+1)
+    real(kind=8) :: T_wb, T_wt     ! wall temperature at y=0 and y=1 on i=1 vertical line
+    real(kind=8) :: yfit(4), Tfit(4)
+
+
+    dx = 1.0d0 / lengthUnit
+    dy = 1.0d0 / lengthUnit
+    temperatureDifference = Thot - Tcold
+    coef   = velocityScaleCompare
+
+
+
+    !-----------------------------
+    ! (1) 左侧热壁平均 Nu_hot，同时记录 Numax/Numin 及其 y 位置
+    sum_hot = 0.0d0
+    do j = 1, ny
+      ! 壁面导热通量：qx(x=0,j)
+      qx_wall = (8.0d0*Thot - 9.0d0*T(1,j) + T(2,j)) / (3.0d0*dx)
+      Nu_left(j)= qx_wall / temperatureDifference
+      sum_hot   = sum_hot + Nu_left(j)
+    enddo
+    Nu_hot = sum_hot / dble(ny)
+
+    ! 计算左壁面上下两个角点的热通量
+    ! 先把中间 j=1..ny 的值复制过来
+    Nu_left_ext(1:ny) = Nu_left(1:ny)
+
+    ! ---------- 左下角：在 i=1 这条竖线上，用 j=1..4 拟合得到 y=0 的温度 ----------
+    yfit(1) = yp(1);  Tfit(1) = T(1,1)
+    yfit(2) = yp(2);  Tfit(2) = T(1,2)
+    yfit(3) = yp(3);  Tfit(3) = T(1,3)
+    yfit(4) = yp(4);  Tfit(4) = T(1,4)
+
+    call fit_adiabatic_wall_T4(0.0d0, yfit, Tfit, T_wb)   ! 得到 T(y=0) = T_wb,拟合绝热壁面温度，用4个点
+
+    Nu_left_ext(0) = (2.0d0*(Thot-T_wb)/dx)/temperatureDifference   ! 角点局部 Nu
+
+    ! ---------- 左上角：在 i=1 这条竖线上，用 j=ny-3..ny 拟合得到 y=1 的温度 ----------
+    yfit(1) = yp(ny-3);  Tfit(1) = T(1,ny-3)
+    yfit(2) = yp(ny-2);  Tfit(2) = T(1,ny-2)
+    yfit(3) = yp(ny-1);  Tfit(3) = T(1,ny-1)
+    yfit(4) = yp(ny  );  Tfit(4) = T(1,ny  )
+
+    call fit_adiabatic_wall_T4(yp(ny+1), yfit, Tfit, T_wt)   ! 得到顶壁温度 T(y=yp(ny+1))
+
+    Nu_left_ext(ny+1) = (2.0d0*(Thot-T_wt)/dx)/temperatureDifference  ! 角点局部 Nu
+
+
+
+
+
+    ! 网格上先找最大/最小
+    jmax = 0
+    jmin = 0
+    Nu_hot_max = Nu_left_ext(0)
+    Nu_hot_min = Nu_left_ext(0)
+
+    do j = 1, ny+1
+      if (Nu_left_ext(j) > Nu_hot_max) then
+        Nu_hot_max = Nu_left_ext(j)
+        jmax = j
+      endif
+      if (Nu_left_ext(j) < Nu_hot_min) then
+        Nu_hot_min = Nu_left_ext(j)
+        jmin = j
+      endif
+    enddo
+
+
+    !==========================
+    ! 五点插值 least-squares parabola fit, else one-sided 5pts
+    !==========================
+        ! ----------- 选 Numax 的 5 个点 -----------
+    if (jmax <= 2) then
+      jj = (/ 0, 1, 2, 3, 4 /)
+    elseif (jmax >= ny-1) then
+      jj = (/ ny-3, ny-2, ny-1, ny, ny+1 /)
+    else
+      jj = (/ jmax-2, jmax-1, jmax, jmax+1, jmax+2 /)
+    endif
+
+    do k = 1, 5
+      yk(k) = yp(jj(k))            ! yp(0)=0, yp(ny+1)=ny/lengthUnit 已经存在
+      fk(k) = Nu_left_ext(jj(k))
+    enddo
+
+    call fit_parabola_ls5(yk, fk, +1, fstar, ystar)  !最小二乘法，用抛物线，拟合五个点
+
+    Nu_hot_max = fstar
+    Nu_hot_max_position = ystar
+
+
+
+    ! ----------- 选 Numin 的 5 个点：单侧（before the minimum）-----------
+    if (jmin >= 4) then
+      jj = (/ jmin-4, jmin-3, jmin-2, jmin-1, jmin /)
+    else
+      jj = (/ 0, 1, 2, 3, 4 /)
+    endif
+
+    do k = 1, 5
+      yk(k) = yp(jj(k))
+      fk(k) = Nu_left_ext(jj(k))
+    enddo
+
+    call fit_parabola_ls5(yk, fk, -1, fstar, ystar)
+
+    Nu_hot_min = fstar
+    Nu_hot_min_position = ystar
+
+
+    !-----------------------------
+    ! (2) 右侧冷壁平均 Nu_cold
+    sum_cold = 0.0d0
+    do j = 1, ny
+      qx_wall = (-8.0d0*Tcold + 9.0d0*T(nx,j) - T(nx-1,j)) / (3.0d0*dx)
+      sum_cold = sum_cold+qx_wall/temperatureDifference
+    enddo
+    Nu_cold = (sum_cold / dble(ny))
+
+    !-----------------------------
+    ! (3) 竖直中线 x=1/2 的平均 Nu_middle
+    sum_mid = 0.0d0
+
+    if (mod(nx,2) == 1) then
+      iMid = (nx + 1)/2
+
+      do j = 1, ny
+        sum_mid = sum_mid+(coef*u(iMid,j)*(T(iMid,j)-Tref) + &
+            (T(iMid-1,j)-T(iMid+1,j))/(2.0d0*dx))/temperatureDifference
+      enddo
+
+    else
+      iL = nx/2
+      iR = iL + 1
+
+      do j = 1, ny
+        sum_mid = sum_mid + (coef*( 0.5d0*( u(iL,j)*(T(iL,j)-Tref) + u(iR,j)*(T(iR,j)-Tref) )) &
+        + (T(iL,j)-T(iR,j))/dx)/temperatureDifference
+      enddo
+    endif
+
+    Nu_middle = (sum_mid / dble(ny))
+
+    !-----------------------------
+    ! 输出：屏幕 + 日志
+    write(*,'(a,1x,ES24.16E3)') "Nu_hot    =", real(Nu_hot,kind=8)
+    write(*,'(a,1x,ES24.16E3)') "Nu_cold   =", real(Nu_cold,kind=8)
+    write(*,'(a,1x,ES24.16E3)') "Nu_middle =", real(Nu_middle,kind=8)
+    write(*,'(a,1x,ES24.16E3,2x,a,1x,ES24.16E3)') &
+        "Nu_hot_max =", real(Nu_hot_max,kind=8), "y_max =", real(Nu_hot_max_position,kind=8)
+    write(*,'(a,1x,ES24.16E3,2x,a,1x,ES24.16E3)') &
+        "Nu_hot_min =", real(Nu_hot_min,kind=8), "y_min =", real(Nu_hot_min_position,kind=8)
+
+
+
+    open(unit=00,file=trim(settingsFile),status="unknown",position="append")
+    write(00,'(a,1x,ES24.16E3)') "Nu_hot    =", real(Nu_hot,kind=8)
+    write(00,'(a,1x,ES24.16E3)') "Nu_cold   =", real(Nu_cold,kind=8)
+    write(00,'(a,1x,ES24.16E3)') "Nu_middle =", real(Nu_middle,kind=8)
+    write(00,'(a,1x,ES24.16E3,2x,a,1x,ES24.16E3)') &
+        "Nu_hot_max =", real(Nu_hot_max,kind=8), "y_max =", real(Nu_hot_max_position,kind=8)
+    write(00,'(a,1x,ES24.16E3,2x,a,1x,ES24.16E3)') &
+        "Nu_hot_min =", real(Nu_hot_min,kind=8), "y_min =", real(Nu_hot_min_position,kind=8)
+    close(00)
+
+    return
+  end subroutine SideHeatedcalc_Nu_wall_avg
+!===================================================================================================
+! SideHeatedcalc_Nu_wall_avg 结束: 计算侧壁差温工况下热壁、冷壁和中线的 Nusselt 数及其极值。
+!===================================================================================================
+#endif
+
+
+
+!===================================================================================================
+! 子程序: fit_adiabatic_wall_T4
+! 作用: 用四点拟合估计绝热壁面的壁温。
+! 用途: 在 SideHeated 和 RB 壁面 Nusselt 后处理中调用。
+!===================================================================================================
+  subroutine fit_adiabatic_wall_T4(y0, y, tt, T_wall)
+    implicit none
+    real(kind=8), intent(in)  :: y0
+    real(kind=8), intent(in)  :: y(4), tt(4)
+    real(kind=8), intent(out) :: T_wall
+    real(kind=8) :: s(4)
+    real(kind=8) :: S0, S1, S2, B0, B1, D
+    integer(kind=4) :: k
+
+    do k = 1, 4
+      s(k) = (y(k) - y0)*(y(k) - y0)
+    enddo
+
+    S0 = 4.0d0
+    S1 = 0.0d0
+    S2 = 0.0d0
+    B0 = 0.0d0
+    B1 = 0.0d0
+    do k = 1, 4
+      S1 = S1 + s(k)
+      S2 = S2 + s(k)*s(k)
+      B0 = B0 + tt(k)
+      B1 = B1 + tt(k)*s(k)
+    enddo
+
+    D = S0*S2 - S1*S1
+
+    ! T_wall = c0
+    T_wall = (B0*S2 - B1*S1) / D
+
+    return
+  end subroutine fit_adiabatic_wall_T4
+!===================================================================================================
+! fit_adiabatic_wall_T4 结束: 用四点拟合估计绝热壁面的壁温。
+!===================================================================================================
+
+
+!===================================================================================================
+! 子程序: fit_parabola_ls5
+! 作用: 用五点最小二乘抛物线拟合局部极值和对应位置。
+! 用途: 在 Nu 极值和中心线速度极值的后处理中重复调用。
+!===================================================================================================
+  subroutine fit_parabola_ls5(y, f, mode, fstar, ystar)
+    implicit none
+    real(kind=8), intent(in)  :: y(5), f(5)
+    real(kind=8), intent(out) :: fstar, ystar
+    real(kind=8) :: S0, S1, S2, S3, S4
+    real(kind=8) :: F0, F1, F2
+    real(kind=8) :: D, DA, DB, DC
+    real(kind=8) :: A, B, C
+    real(kind=8) :: ymin, ymax
+    integer(kind=4) :: k, kbest
+    real(kind=8), parameter :: epsD=1.0d-20, epsA=1.0d-14
+    integer(kind=4), intent(in) :: mode   ! +1 => max, -1 => min
+
+
+  ! ----- fallback: pick max/min among the 5 samples -----
+  kbest = 1
+  do k = 2, 5
+    if (mode == 1) then
+      if (f(k) > f(kbest)) kbest = k
+    else
+      if (f(k) < f(kbest)) kbest = k
+    endif
+  enddo
+
+    S0=0.0d0; S1=0.0d0; S2=0.0d0; S3=0.0d0; S4=0.0d0
+    F0=0.0d0; F1=0.0d0; F2=0.0d0
+    do k = 1, 5
+      S0 = S0 + 1.0d0
+      S1 = S1 + y(k)
+      S2 = S2 + y(k)*y(k)
+      S3 = S3 + y(k)*y(k)*y(k)
+      S4 = S4 + y(k)*y(k)*y(k)*y(k)
+
+      F0 = F0 + f(k)
+      F1 = F1 + y(k)*f(k)
+      F2 = F2 + y(k)*y(k)*f(k)
+    enddo
+
+    ! Solve:
+    ! [S4 S3 S2][A] = [F2]
+    ! [S3 S2 S1][B]   [F1]
+    ! [S2 S1 S0][C]   [F0]
+    D  =  S4*(S2*S0 - S1*S1) - S3*(S3*S0 - S1*S2) + S2*(S3*S1 - S2*S2)
+    DA =  F2*(S2*S0 - S1*S1) - S3*(F1*S0 - S1*F0) + S2*(F1*S1 - S2*F0)
+    DB =  S4*(F1*S0 - S1*F0) - F2*(S3*S0 - S1*S2) + S2*(S3*F0 - F1*S2)
+    DC =  S4*(S2*F0 - F1*S1) - S3*(S3*F0 - F1*S2) + F2*(S3*S1 - S2*S2)
+
+    if (dabs(D) > epsD) then
+      A = DA / D
+      B = DB / D
+      C = DC / D
+
+      if (dabs(A) > epsA) then
+        ystar = -B / (2.0d0*A)
+        ymin = minval(y);  ymax = maxval(y)
+
+        if (ystar >= ymin .and. ystar <= ymax) then
+          fstar = C - B*B/(4.0d0*A)
+        else
+          ! 顶点落在拟合区间外：退回到 5 点中最大的/最小的那个并不严格，
+          ! 这里为了保持简单，通常会先选极值点
+          ystar = y(kbest)
+          fstar = f(kbest)
+        endif
+      else
+        ystar = y(kbest)
+        fstar = f(kbest)
+      endif
+    else
+      ystar = y(kbest)
+      fstar = f(kbest)
+    endif
+
+    return
+  end subroutine fit_parabola_ls5
+!===================================================================================================
+! fit_parabola_ls5 结束: 用五点最小二乘抛物线拟合局部极值和对应位置。
+!===================================================================================================
+
+
+
+!===================================================================================================
+! 子程序: SideHeatedcalc_umid_max
+! 作用: 计算侧壁差温工况下中心线水平速度的最大值及位置。
+! 用途: 在 SideHeatedCell 工况结束后的后处理中调用。
+!===================================================================================================
+  subroutine SideHeatedcalc_umid_max()
+    use commondata
+    implicit none
+    integer(kind=4) :: j, k
+    integer(kind=4) :: iMid, iL, iR
+    integer(kind=4) :: j0
+    integer(kind=4) :: jj(5)
+    real(kind=8) :: uline(1:ny)
+    real(kind=8) :: s(5), fu(5)
+    real(kind=8) :: umax_grid, umax_fit, y_fit
+    real(kind=8) :: xmid
+    character(len=24) :: ctime, string
+    integer(kind=4) :: time
+    real(kind=8) :: coef
+
+    coef = velocityScaleCompare
+
+    ! ---- (1) 构造中线剖面 u(x=1/2, y_j) ----
+    if (mod(nx,2) == 1) then
+      iMid = (nx + 1)/2
+      xmid = xp(iMid)
+      do j = 1, ny
+        uline(j) = u(iMid,j)
+      enddo
+    else
+      iL = nx/2
+      iR = iL + 1
+      xmid = 0.5d0*(xp(iL) + xp(iR))
+      do j = 1, ny
+        uline(j) = 0.5d0*(u(iL,j) + u(iR,j))
+      enddo
+    endif
+
+    ! ---- (2) 先找网格最大值点 j0 ----
+    j0 = 1
+    umax_grid = uline(1)
+    do j = 2, ny
+      if (uline(j) > umax_grid) then
+        umax_grid = uline(j)
+        j0 = j
+      endif
+    enddo
+
+    ! ---- (3) 取 5 点（尽量对称；靠近端点时偏侧） ----
+    if (j0 <= 2) then
+      jj = (/ 1, 2, 3, 4, 5 /)
+    elseif (j0 >= ny-1) then
+      jj = (/ ny-4, ny-3, ny-2, ny-1, ny /)
+    else
+      jj = (/ j0-2, j0-1, j0, j0+1, j0+2 /)
+    endif
+
+    do k = 1, 5
+      s(k) = yp(jj(k))       ! 自变量：y
+     fu(k) = uline(jj(k))    ! 拟合量：u
+    enddo
+
+    call fit_parabola_ls5(s, fu, +1, umax_fit, y_fit)
+
+    ! ---- 输出 ----
+    write(*,'(A,1X,ES24.16E3,1X,A,1X,ES24.16E3,1X,A,1X,ES24.16E3)') &
+         'u_mid_max =', umax_fit*coef, 'at y =', y_fit, 'on x_mid =', xmid
+
+
+    open(unit=00,file=trim(settingsFile),status='unknown',position='append')
+    string = ctime( time() )
+    write(00,*) '--- calc_umid_max --- ', string
+    write(00,'(A,1X,ES24.16E3)') 'x_mid =', real(xmid,kind=8)
+    write(00,'(A,1X,ES24.16E3,1X,A,1X,ES24.16E3,1X,A,I0,A)') &
+        'u_mid_max =', real(umax_fit*coef,kind=8), 'y_pos =', real(y_fit,kind=8), ' (grid j0=', j0, ')'
+    close(00)
+
+    return
+  end subroutine SideHeatedcalc_umid_max
+!===================================================================================================
+! SideHeatedcalc_umid_max 结束: 计算侧壁差温工况下中心线水平速度的最大值及位置。
+!===================================================================================================
+
+
+
+
+!===================================================================================================
+! 子程序: SideHeatedcalc_vmid_max
+! 作用: 计算侧壁差温工况下中心线竖直速度的最大值及位置。
+! 用途: 在 SideHeatedCell 工况结束后的后处理中调用。
+!===================================================================================================
+  subroutine SideHeatedcalc_vmid_max()
+    use commondata
+    implicit none
+    integer(kind=4) :: i, k
+    integer(kind=4) :: jMid, jB, jT
+    integer(kind=4) :: i0
+    integer(kind=4) :: ii(5)
+    real(kind=8) :: vline(1:nx)
+    real(kind=8) :: s(5), fv(5)
+    real(kind=8) :: vmax_grid, vmax_fit, x_fit
+    real(kind=8) :: ymid
+    character(len=24) :: ctime, string
+    integer(kind=4) :: time
+    real(kind=8) :: coef
+
+    coef = velocityScaleCompare
+
+    ! ---- (1) 构造中线剖面 v(x_i, y=1/2) ----
+    if (mod(ny,2) == 1) then
+      jMid = (ny + 1)/2
+      ymid = yp(jMid)
+      do i = 1, nx
+        vline(i) = v(i,jMid)
+      enddo
+    else
+      jB = ny/2
+      jT = jB + 1
+      ymid = 0.5d0*(yp(jB) + yp(jT))
+      do i = 1, nx
+        vline(i) = 0.5d0*(v(i,jB) + v(i,jT))
+      enddo
+    endif
+
+    ! ---- (2) 先找网格最大值点 i0 ----
+    i0 = 1
+    vmax_grid = vline(1)
+    do i = 2, nx
+      if (vline(i) > vmax_grid) then
+        vmax_grid = vline(i)
+        i0 = i
+      endif
+    enddo
+
+    ! ---- (3) 取 5 点（尽量对称；靠近端点时偏侧） ----
+    if (i0 <= 2) then
+      ii = (/ 1, 2, 3, 4, 5 /)
+    elseif (i0 >= nx-1) then
+      ii = (/ nx-4, nx-3, nx-2, nx-1, nx /)
+    else
+      ii = (/ i0-2, i0-1, i0, i0+1, i0+2 /)
+    endif
+
+    do k = 1, 5
+      s(k) = xp(ii(k))       ! 自变量：x
+     fv(k) = vline(ii(k))    ! 拟合量：v
+    enddo
+
+    call fit_parabola_ls5(s, fv, +1, vmax_fit, x_fit)
+
+    ! ---- 输出 ----
+    write(*,'(A,1X,ES24.16E3,1X,A,1X,ES24.16E3,1X,A,1X,ES24.16E3)') &
+         'v_mid_max =', vmax_fit*coef, 'at x =', x_fit, 'on y_mid =', ymid
+
+
+    open(unit=00,file=trim(settingsFile),status='unknown',position='append')
+    string = ctime( time() )
+    write(00,*) '--- calc_vmid_max --- ', string
+    write(00,'(A,1X,ES24.16E3)') 'y_mid =', real(ymid,kind=8)
+    write(00,'(A,1X,ES24.16E3,1X,A,1X,ES24.16E3,1X,A,I0,A)') &
+        'v_mid_max =', real(vmax_fit*coef,kind=8), 'x_pos =', real(x_fit,kind=8), ' (grid i0=', i0, ')'
+    close(00)
+
+    return
+  end subroutine SideHeatedcalc_vmid_max
+!===================================================================================================
+! SideHeatedcalc_vmid_max 结束: 计算侧壁差温工况下中心线竖直速度的最大值及位置。
+!===================================================================================================
+
+
+
+
+!===================================================================================================
+#ifdef steadyFlow
+! 子程序: RBcalc_Nu_global
+! 作用: 计算 Rayleigh-Benard 工况下的全场平均 Nusselt 数。
+! 用途: 在 RayleighBenardCell 工况结束后的后处理中调用。
+!===================================================================================================
+subroutine RBcalc_Nu_global()
+  use commondata
+  implicit none
+  integer(kind=4) :: i, j
+  real(kind=8) :: dy, dTdy, qy, sum_qy
+  real(kind=8) :: temperatureDifference, coef
+
+  dy     = 1.0d0 / lengthUnit
+  temperatureDifference = Thot - Tcold
+  coef   = velocityScaleCompare
+
+  sum_qy = 0.0d0
+
+  !$acc parallel loop collapse(2) default(none) present(v,T) reduction(+:sum_qy) private(dTdy,qy)
+  do j = 1, ny
+    do i = 1, nx
+
+      if (j == 1) then
+        ! y=dy/2：用 (wall, j=1, j=2) 二次插值给 dT/dy 的二阶近似
+        dTdy = ( 3.0d0*T(i,1) + T(i,2) - 4.0d0*Thot ) / (3.0d0*dy)
+
+      elseif (j == ny) then
+        ! y=1-dy/2：用 (j=ny-1, j=ny, wall)
+        dTdy = ( 4.0d0*Tcold - 3.0d0*T(i,ny) - T(i,ny-1) ) / (3.0d0*dy)
+
+      else
+        dTdy = ( T(i,j+1) - T(i,j-1) ) / (2.0d0*dy)
+      endif
+
+      qy = coef * v(i,j) * (T(i,j) - Tref) - dTdy
+      sum_qy = sum_qy + qy
+
+    enddo
+  enddo
+  Nu_global = (sum_qy / dble(nx*ny)) / temperatureDifference
+
+  write(*,'(a,1x,ES24.16E3)') "Nu_global =", real(Nu_global,kind=8)
+  open(unit=00,file=trim(settingsFile),status="unknown",position="append")
+  write(00,'(a,1x,ES24.16E3)') "Nu_global =", real(Nu_global,kind=8)
+  close(00)
+
+  return
+end subroutine RBcalc_Nu_global
+!===================================================================================================
+! RBcalc_Nu_global 结束: 计算 Rayleigh-Benard 工况下的全场平均 Nusselt 数。
+!===================================================================================================
+
+
+!===================================================================================================
+! 子程序: RBcalc_Nu_wall_avg
+! 作用: 计算 Rayleigh-Benard 工况下热壁、冷壁和中线的 Nusselt 数及其极值。
+! 用途: 在 RayleighBenardCell 工况结束后的后处理中调用。
+!===================================================================================================
+subroutine RBcalc_Nu_wall_avg()
+  use commondata
+  implicit none
+  integer(kind=4) :: i, k
+  integer(kind=4) :: imax, imin
+  integer(kind=4) :: jMid, jB, jT
+  integer(kind=4) :: ii(5)
+  real(kind=8) :: dx, dy, temperatureDifference
+  real(kind=8) :: qy_wall, sum_hot, sum_cold, sum_mid, coef
+  real(kind=8), dimension(1:nx) :: Nu_bot
+  real(kind=8), dimension(0:nx+1) :: Nu_bot_ext
+  real(kind=8) :: xfit(4), Tfit(4), T_wl, T_wr
+  real(kind=8) :: xk(5), fk(5)
+  real(kind=8) :: fstar, xstar
+
+
+  dx     = 1.0d0 / lengthUnit
+  dy     = 1.0d0 / lengthUnit
+  temperatureDifference = Thot - Tcold
+  coef   = velocityScaleCompare
+
+  !-----------------------------
+  ! (1) 底部热壁平均 Nu_hot（不含角点）
+  sum_hot = 0.0d0
+  do i = 1, nx
+    qy_wall   = (8.0d0*Thot - 9.0d0*T(i,1) + T(i,2)) / (3.0d0*dy)
+    Nu_bot(i)= qy_wall / temperatureDifference
+    sum_hot  = sum_hot + Nu_bot(i)
+  enddo
+  Nu_hot = sum_hot / dble(nx)
+
+  !-----------------------------
+  ! (1.1) 角点扩展：用侧壁绝热（Neumann）4点拟合得到 x=0 与 x=1 处 y=dy/2 的温度
+  ! 左下角附近：i=1..4, j=1
+  xfit(1)=xp(1);  Tfit(1)=T(1,1)
+  xfit(2)=xp(2);  Tfit(2)=T(2,1)
+  xfit(3)=xp(3);  Tfit(3)=T(3,1)
+  xfit(4)=xp(4);  Tfit(4)=T(4,1)
+  call fit_adiabatic_wall_T4(0.0d0, xfit, Tfit, T_wl)   ! 估计 T(x=0, y=dy/2)
+
+  ! 右下角附近：i=nx-3..nx, j=1
+  xfit(1)=xp(nx-3);  Tfit(1)=T(nx-3,1)
+  xfit(2)=xp(nx-2);  Tfit(2)=T(nx-2,1)
+  xfit(3)=xp(nx-1);  Tfit(3)=T(nx-1,1)
+  xfit(4)=xp(nx  );  Tfit(4)=T(nx  ,1)
+  call fit_adiabatic_wall_T4(xp(nx+1), xfit, Tfit, T_wr)   ! 估计 T(x=xp(nx+1), y=dy/2)
+
+  ! 组装扩展数组：角点只用于找 max/min 与拟合
+  Nu_bot_ext(1:nx) = Nu_bot(1:nx)
+  Nu_bot_ext(0)    = (2.0d0*(Thot-T_wl)/dy)/temperatureDifference
+  Nu_bot_ext(nx+1) = (2.0d0*(Thot-T_wr)/dy)/temperatureDifference
+
+  !-----------------------------
+  ! (1.2) 网格上找 Numax/Numin（含角点 0 与 nx+1）
+  imax = 0
+  imin = 0
+  Nu_hot_max = Nu_bot_ext(0)
+  Nu_hot_min = Nu_bot_ext(0)
+
+  do i = 1, nx+1
+    if (Nu_bot_ext(i) > Nu_hot_max) then
+      Nu_hot_max = Nu_bot_ext(i)
+      imax = i
+    endif
+    if (Nu_bot_ext(i) < Nu_hot_min) then
+      Nu_hot_min = Nu_bot_ext(i)
+      imin = i
+    endif
+  enddo
+
+  !-----------------------------
+  ! (1.3) 对 Numax：取 5 点（尽量对称；靠近端点时单侧）并做 LS 抛物线拟合
+  if (imax <= 2) then
+    ii = (/ 0, 1, 2, 3, 4 /)
+  elseif (imax >= nx-1) then
+    ii = (/ nx-3, nx-2, nx-1, nx, nx+1 /)
+  else
+    ii = (/ imax-2, imax-1, imax, imax+1, imax+2 /)
+  endif
+
+  do k = 1, 5
+    xk(k) = xp(ii(k))            ! xp(0)=0, xp(nx+1)=nx/lengthUnit
+    fk(k) = Nu_bot_ext(ii(k))
+  enddo
+
+  call fit_parabola_ls5(xk, fk, +1, fstar, xstar)
+  Nu_hot_max = fstar
+  Nu_hot_max_position = xstar     ! RB: 这里是 x 位置
+
+  !-----------------------------
+  ! (1.4) 对 Numin：同样取 5 点并拟合
+  if (imin <= 2) then
+    ii = (/ 0, 1, 2, 3, 4 /)
+  elseif (imin >= nx-1) then
+    ii = (/ nx-3, nx-2, nx-1, nx, nx+1 /)
+  else
+    ii = (/ imin-2, imin-1, imin, imin+1, imin+2 /)
+  endif
+
+  do k = 1, 5
+    xk(k) = xp(ii(k))
+    fk(k) = Nu_bot_ext(ii(k))
+  enddo
+
+  call fit_parabola_ls5(xk, fk, -1, fstar, xstar)
+  Nu_hot_min = fstar
+  Nu_hot_min_position = xstar     ! RB: 这里是 x 位置
+
+  !-----------------------------
+  ! (2) 顶部冷壁平均 Nu_cold（不含角点）
+  sum_cold = 0.0d0
+  do i = 1, nx
+    qy_wall = (-8.0d0*Tcold + 9.0d0*T(i,ny) - T(i,ny-1)) / (3.0d0*dy)
+    sum_cold = sum_cold+qy_wall/temperatureDifference
+  enddo
+  Nu_cold = sum_cold / dble(nx)
+
+  !-----------------------------
+  ! 中线的 Nusselt 数
+  sum_mid = 0.0d0
+
+  if (mod(ny,2) == 1) then
+    jMid = (ny + 1)/2
+
+    do i = 1, nx
+      sum_mid = sum_mid+(coef*v(i,jMid)*(T(i,jMid)-Tref) - &
+          (T(i,jMid+1)-T(i,jMid-1))/(2.0d0*dy))/temperatureDifference
+    enddo
+
+  else
+    jB = ny/2
+    jT = jB + 1
+
+    do i = 1, nx
+      sum_mid = sum_mid + (coef*( 0.5d0*( v(i,jB)*(T(i,jB)-Tref) + v(i,jT)*(T(i,jT)-Tref) )) &
+      + (T(i,jB)-T(i,jT))/dy)/temperatureDifference
+    enddo
+  endif
+
+  Nu_middle = sum_mid / dble(nx)
+
+  !-----------------------------
+  ! 输出：屏幕 + 日志
+  write(*,'(a,1x,ES24.16E3)') "Nu_hot(bottom) =", real(Nu_hot,kind=8)
+  write(*,'(a,1x,ES24.16E3)') "Nu_cold(top)   =", real(Nu_cold,kind=8)
+  write(*,'(a,1x,ES24.16E3)') "Nu_middle      =", real(Nu_middle,kind=8)
+  write(*,'(a,1x,ES24.16E3,2x,a,1x,ES24.16E3)') &
+      "Nu_hot_max =", real(Nu_hot_max,kind=8), "x_max =", real(Nu_hot_max_position,kind=8)
+  write(*,'(a,1x,ES24.16E3,2x,a,1x,ES24.16E3)') &
+      "Nu_hot_min =", real(Nu_hot_min,kind=8), "x_min =", real(Nu_hot_min_position,kind=8)
+
+  open(unit=00,file=trim(settingsFile),status="unknown",position="append")
+  write(00,'(a,1x,ES24.16E3)') "Nu_hot(bottom) =", real(Nu_hot,kind=8)
+  write(00,'(a,1x,ES24.16E3)') "Nu_cold(top)   =", real(Nu_cold,kind=8)
+  write(00,'(a,1x,ES24.16E3)') "Nu_middle      =", real(Nu_middle,kind=8)
+  write(00,'(a,1x,ES24.16E3,2x,a,1x,ES24.16E3)') &
+      "Nu_hot_max =", real(Nu_hot_max,kind=8), "x_max =", real(Nu_hot_max_position,kind=8)
+  write(00,'(a,1x,ES24.16E3,2x,a,1x,ES24.16E3)') &
+      "Nu_hot_min =", real(Nu_hot_min,kind=8), "x_min =", real(Nu_hot_min_position,kind=8)
+  close(00)
+
+  return
+end subroutine RBcalc_Nu_wall_avg
+!===================================================================================================
+! RBcalc_Nu_wall_avg 结束: 计算 Rayleigh-Benard 工况下热壁、冷壁和中线的 Nusselt 数及其极值。
+!===================================================================================================
+#endif
+
+
+!===================================================================================================
+! 子程序: RBcalc_umid_max
+! 作用: 计算 Rayleigh-Benard 工况下 x=1/2 处最大水平速度 umax 及其 y 位置。
+! 用途: 在 RayleighBenardCell 工况结束后的后处理中调用。
+!===================================================================================================
+subroutine RBcalc_umid_max()
+  use commondata
+  implicit none
+  integer(kind=4) :: j, k
+  integer(kind=4) :: iMid, iL, iR
+  integer(kind=4) :: j0
+  integer(kind=4) :: jj(5)
+  real(kind=8) :: uline(1:ny)
+  real(kind=8) :: yk(5), fk(5)
+  real(kind=8) :: umax_fit, y_fit
+  real(kind=8) :: coef, xmid, targetX, w
+  real(kind=8) :: umax_grid, yLen
+
+  coef = velocityScaleCompare
+
+  ! ---- (1) 取论文定义的 x=1/2 竖线剖面 u(x=0.5, y_j) ----
+  targetX = 0.5d0
+  xmid = targetX
+
+  iL = 1
+  do while (iL < nx .and. xp(iL+1) < targetX)
+    iL = iL + 1
+  enddo
+  iR = min(iL + 1, nx)
+
+  if (dabs(xp(iL) - targetX) <= 1.0d-14) then
+    do j = 1, ny
+      uline(j) = u(iL,j)
+    enddo
+  elseif (iR == iL) then
+    do j = 1, ny
+      uline(j) = u(iL,j)
+    enddo
+  else
+    w = (targetX - xp(iL)) / (xp(iR) - xp(iL))
+    do j = 1, ny
+      uline(j) = (1.0d0 - w) * u(iL,j) + w * u(iR,j)
+    enddo
+  endif
+
+  ! ---- (2) 找峰值所在网格点 j0 ----
+  j0 = 1
+  umax_grid = uline(1)
+  do j = 2, ny
+    if (uline(j) > umax_grid) then
+      umax_grid = uline(j)
+      j0 = j
+    endif
+  enddo
+
+  ! ---- (3) 取 5 点（尽量对称；靠近端点时偏侧）----
+  if (j0 <= 2) then
+    jj = (/ 1, 2, 3, 4, 5 /)
+  elseif (j0 >= ny-1) then
+    jj = (/ ny-4, ny-3, ny-2, ny-1, ny /)
+  else
+    jj = (/ j0-2, j0-1, j0, j0+1, j0+2 /)
+  endif
+
+  do k = 1, 5
+    yk(k) = yp(jj(k))
+    fk(k) = uline(jj(k))
+  enddo
+
+  call fit_parabola_ls5(yk, fk, +1, umax_fit, y_fit)
+
+  ! 对称支路下，上下半区的 y 位置等价；统一折回下半区便于与 benchmark 对照。
+  yLen = yp(ny+1)
+  if (y_fit > 0.5d0*yLen) y_fit = yLen - y_fit
+
+
+  write(*,'(A,1X,ES24.16E3,2X,A,1X,ES24.16E3,2X,A,1X,ES24.16E3)') &
+       'u_mid_max* =', umax_fit*coef, 'y =', y_fit, 'x_mid =', xmid
+
+  open(unit=00,file=trim(settingsFile),status="unknown",position="append")
+  write(00,'(A,1X,ES24.16E3,2X,A,1X,ES24.16E3,2X,A,1X,ES24.16E3)') &
+       'u_mid_max* =', umax_fit*coef, 'y =', y_fit, 'x_mid =', xmid
+  close(00)
+
+  return
+end subroutine RBcalc_umid_max
+!===================================================================================================
+! RBcalc_umid_max 结束: 计算 Rayleigh-Benard 工况下 x=1/2 处最大水平速度及其位置。
+!===================================================================================================
+
+
+!===================================================================================================
+! 子程序: RBcalc_vmid_max
+! 作用: 计算 Rayleigh-Benard 工况下 y=1/2 处最大垂直速度 vmax 及其 x 位置。
+! 用途: 在 RayleighBenardCell 工况结束后的后处理中调用。
+!===================================================================================================
+subroutine RBcalc_vmid_max()
+  use commondata
+  implicit none
+  integer(kind=4) :: i, k
+  integer(kind=4) :: jMid, jB, jT
+  integer(kind=4) :: i0
+  integer(kind=4) :: ii(5)
+  real(kind=8) :: vline(1:nx)
+  real(kind=8) :: xk(5), fk(5)
+  real(kind=8) :: vmax_fit, x_fit
+  real(kind=8) :: coef, ymid
+  real(kind=8) :: vmax_grid
+
+  coef = velocityScaleCompare
+
+  ! ---- (1) 取 y=1/2 中线剖面 v(x_i, y=1/2) ----
+  if (mod(ny,2) == 1) then
+    jMid = (ny + 1)/2
+    ymid = yp(jMid)
+    do i = 1, nx
+      vline(i) = v(i,jMid)
+    enddo
+  else
+    jB = ny/2
+    jT = jB + 1
+    ymid = 0.5d0*(yp(jB) + yp(jT))
+    do i = 1, nx
+      vline(i) = 0.5d0*(v(i,jB) + v(i,jT))
+    enddo
+  endif
+
+  ! ---- (2) 找峰值所在网格点 i0 ----
+  i0 = 1
+  vmax_grid = vline(1)
+  do i = 2, nx
+    if (vline(i) > vmax_grid) then
+      vmax_grid = vline(i)
+      i0 = i
+    endif
+  enddo
+
+
+  ! ---- (3) 取 5 点并拟合 ----
+  if (i0 <= 2) then
+    ii = (/ 1, 2, 3, 4, 5 /)
+  elseif (i0 >= nx-1) then
+    ii = (/ nx-4, nx-3, nx-2, nx-1, nx /)
+  else
+    ii = (/ i0-2, i0-1, i0, i0+1, i0+2 /)
+  endif
+
+  do k = 1, 5
+    xk(k) = xp(ii(k))
+    fk(k) = vline(ii(k))
+  enddo
+
+  call fit_parabola_ls5(xk, fk, +1, vmax_fit, x_fit)
+
+  write(*,'(A,1X,ES24.16E3,2X,A,1X,ES24.16E3,2X,A,1X,ES24.16E3)') &
+       'v_mid_max* =', vmax_fit*coef, 'x =', x_fit, 'y_mid =', ymid
+
+  open(unit=00,file=trim(settingsFile),status="unknown",position="append")
+  write(00,'(A,1X,ES24.16E3,2X,A,1X,ES24.16E3,2X,A,1X,ES24.16E3)') &
+       'v_mid_max* =', vmax_fit*coef, 'x =', x_fit, 'y_mid =', ymid
+  close(00)
+
+  return
+end subroutine RBcalc_vmid_max
+!===================================================================================================
+
+
+
+
+
+
+
+!===================================================================================================
+! 子程序: calc_psi_vort_and_output
+! 作用: 计算流函数、涡量，并输出相关诊断量。
+! 用途: 在主程序结束阶段调用，作为统一后处理的一部分。
+!===================================================================================================
+subroutine calc_psi_vort_and_output()
+  use commondata
+  implicit none
+
+  integer(kind=4) :: i, j, m
+  real(kind=8) :: dx, dy, coef
+  real(kind=8) :: u1, u2, u_mid, inc
+  real(kind=8) :: dv_dx, du_dy
+  real(kind=8) :: psi(nx,ny), vort(nx,ny)
+
+
+  ! for fine-grid max(|psi|)  10001*10001
+  real(kind=8) :: psi_abs_max, x_at_max, y_at_max, psi_center_abs_fine
+
+
+  dx   = 1.0d0 / lengthUnit
+  dy   = 1.0d0 / lengthUnit
+  coef = velocityScaleCompare
+
+  !=========================================================
+  ! (A) 计算流函数 psi：  psi(x,y)=∫_0^y u(x,mu)dmu
+  !     积分用“累积 Simpson”，中点 u(y=整点) 用二阶多项式插值
+  !=========================================================
+
+  do i = 1, nx
+
+    ! ---- (A1) 第一个半格点 y=dy/2 的积分：用二次多项式并强制壁面 u=0（no-slip）
+    ! 这里第一小段 [0,dy/2] 单独处理，整体阶数由它控制
+    u1 = u(i,1) * coef
+    u2 = u(i,2) * coef
+    psi(i,1) = dy * (21.0d0*u1 - u2) / 72.0d0   !第一个点的psi
+
+    ! ---- (A2) 从 y=(j-1/2)dy 到 y=(j+1/2)dy 的每一段长度为 dy，用 Simpson：
+    ! ∫_{y_{j-1/2}}^{y_{j+1/2}} u dy ≈ dy/6 * [ u_{j-1/2} + 4 u_{j} + u_{j+1/2} ]
+    do j = 2, ny
+      m = j - 1   ! 这一段的中点在 y = m*dy（整点）
+
+      ! ---- (A2.1) 计算中点速度 u(y=m*dy)：
+      ! 用二阶 Lagrange 插值（三点），把半格点值插到整点
+      !
+      ! 对 m>=2：用 (m-1/2, m+1/2) 及更下方的 (m-3/2) 三点 => 系数(-1/8, 3/4, 3/8)
+      ! 对 m=1（靠近底壁）：只能用最靠近底部的三点 => 系数( 3/8, 3/4,-1/8)
+      if (m == 1) then
+        u_mid = ( 3.0d0/8.0d0*u(i,1) + 3.0d0/4.0d0*u(i,2) - 1.0d0/8.0d0*u(i,3) ) * coef
+      else
+        u_mid = ( -1.0d0/8.0d0*u(i,m-1) + 3.0d0/4.0d0*u(i,m) + 3.0d0/8.0d0*u(i,m+1) ) * coef
+      end if
+
+      inc = dy/6.0d0 * ( (u(i,j-1)*coef) + 4.0d0*u_mid + (u(i,j)*coef) )
+      psi(i,j) = psi(i,j-1) + inc
+    end do
+
+  end do
+
+
+  call output_psi_center_abs(psi)     ! 基于粗网格局部四点插值得到中心点处的 abs(psi)
+
+  !=========================================================
+  ! (B) 计算涡量 vort = dv/dx - du/dy（2D）
+  !     内部用中心差分；边界节点用“壁在半格距”假设下的二阶单边公式
+  !=========================================================
+
+  do j = 1, ny
+    do i = 1, nx
+
+      ! ---- dv/dx
+      if (i == 1) then
+        ! 在 x=dx/2 处，用 (wall, i=1, i=2) 二次拟合得到二阶近似
+        dv_dx = ( 3.0d0*v(1,j) + v(2,j) - 4.0d0*0.0d0 ) / (3.0d0*dx)
+      elseif (i == nx) then
+        dv_dx = ( -3.0d0*v(nx,j) - v(nx-1,j) + 4.0d0*0.0d0 ) / (3.0d0*dx)
+      else
+        dv_dx = ( v(i+1,j) - v(i-1,j) ) / (2.0d0*dx)
+      end if
+
+      ! ---- du/dy
+      if (j == 1) then
+        du_dy = ( 3.0d0*u(i,1) + u(i,2) - 4.0d0*0.0d0 ) / (3.0d0*dy)
+      elseif (j == ny) then
+        du_dy = ( -3.0d0*u(i,ny) - u(i,ny-1) + 4.0d0*0.0d0 ) / (3.0d0*dy)
+      else
+        du_dy = ( u(i,j+1) - u(i,j-1) ) / (2.0d0*dy)
+      end if
+
+      ! psi 用了L/kappa；vort 也应在同一标度下
+      ! vort = d(v*coef)/dx - d(u*coef)/dy = coef*(dv/dx - du/dy)
+      vort(i,j) = coef * (dv_dx - du_dy)
+
+    end do
+  end do
+
+  !=========================================================
+  ! (C) 输出 Tecplot：X,Y,psi,vort
+  !=========================================================
+  call output_Tecplot_psi_vort(psi, vort)
+
+  !=========================================================
+  ! (D) 细网格 10001×10001：用三次样条插值寻找 max(|psi|)
+  !=========================================================
+  call calc_psi_absmax_fine_spline(psi, psi_abs_max, x_at_max, y_at_max, psi_center_abs_fine)
+
+  write(*,'(a,1x,ES24.16E3)') "abs(psi_center_fine) =", real(psi_center_abs_fine,kind=8)
+
+  write(*,'(a,1x,ES24.16E3,2x,a,1x,ES24.16E3,2x,a,1x,ES24.16E3)') &
+       "max(|psi|) =", real(psi_abs_max,kind=8), "x* =", real(x_at_max,kind=8), &
+       "y* =", real(y_at_max,kind=8)
+
+  open(unit=00,file=trim(settingsFile),status="unknown",position="append")
+  write(00,'(a,1x,ES24.16E3)') "abs(psi_center_fine) =", real(psi_center_abs_fine,kind=8)
+  write(00,'(a,1x,ES24.16E3,2x,a,1x,ES24.16E3,2x,a,1x,ES24.16E3)') &
+       "max(|psi|) =", real(psi_abs_max,kind=8), "x* =", real(x_at_max,kind=8), &
+       "y* =", real(y_at_max,kind=8)
+  close(00)
+
+  return
+end subroutine calc_psi_vort_and_output
+!===================================================================================================
+! calc_psi_vort_and_output 结束: 计算流函数、涡量，并输出相关诊断量。
+!===================================================================================================
+
+
+
+!===================================================================================================
+! 子程序: output_Tecplot_psi_vort
+! 作用: 把流函数和涡量场写出为 Tecplot 文件。
+! 用途: 在 calc_psi_vort_and_output 中调用。
+!===================================================================================================
+subroutine output_Tecplot_psi_vort(psi, vort)
+  use commondata
+  implicit none
+  real(kind=8), intent(in) :: psi(nx,ny), vort(nx,ny)
+
+  integer(kind=4) :: i, j, k
+  real(kind=4) :: zoneMarker, eohMarker
+  character(len=40) :: title
+  character(len=40) :: V1,V2,V3,V4
+  integer(kind=4), parameter :: kmax=1
+  character(len=40) :: zoneName
+  character(len=100) :: filename
+
+#ifdef steadyFlow
+  write(filename,'(i12.12)') restartItcOffset+itc
+#endif
+#ifdef unsteadyFlow
+  pltFileNum = pltFileNum+1
+  write(filename,'(i12.12)') pltFileNum
+#endif
+  filename = adjustl(filename)
+
+  open(41,file=trim(pltFolderPrefix)//"-psiVort-"//trim(filename)//'.plt', access='stream', form='unformatted')
+
+  zoneMarker= 299.0
+  eohMarker = 357.0
+
+  write(41) "#!TDV101"
+  write(41) 1
+
+  title="psi-vort"
+  call dumpstring(title)
+
+  write(41) 4
+  V1='X';     call dumpstring(V1)
+  V2='Y';     call dumpstring(V2)
+  V3='PSI';   call dumpstring(V3)
+  V4='VORT';  call dumpstring(V4)
+
+  write(41) zoneMarker
+  zoneName="ZONE 001"
+  call dumpstring(zoneName)
+
+  write(41) -1
+  write(41) 0
+  write(41) 1
+  write(41) 0
+  write(41) 0
+
+  write(41) nx
+  write(41) ny
+  write(41) kmax
+
+  write(41) 0
+  write(41) eohMarker
+
+  write(41) zoneMarker
+
+  ! 2 = Double
+  write(41) 2
+  write(41) 2
+  write(41) 2
+  write(41) 2
+
+  write(41) 0
+  write(41) -1
+
+  do k=1,kmax
+    do j=1,ny
+      do i=1,nx
+        write(41) real(xp(i),kind=8)
+        write(41) real(yp(j),kind=8)
+        write(41) real(psi(i,j),kind=8)
+        write(41) real(vort(i,j),kind=8)
+      end do
+    end do
+  end do
+
+  close(41)
+  return
+end subroutine output_Tecplot_psi_vort
+!===================================================================================================
+! output_Tecplot_psi_vort 结束: 把流函数和涡量场写出为 Tecplot 文件。
+!===================================================================================================
+
+
+!===================================================================================================
+! 子程序: calc_psi_absmax_fine_spline
+! 作用: 用细网格样条插值搜索 abs(psi) 的最大值及位置。
+! 用途: 在 calc_psi_vort_and_output 中调用。
+!===================================================================================================
+subroutine calc_psi_absmax_fine_spline(psi, psi_abs_max, x_at_max, y_at_max, psi_center_abs_fine)
+  use commondata
+  implicit none
+
+  real(kind=8), intent(in)  :: psi(nx,ny)
+  real(kind=8), intent(out) :: psi_abs_max, x_at_max, y_at_max, psi_center_abs_fine
+
+  integer(kind=4), parameter :: nFinePerUnit = 10000
+  integer(kind=4) :: i, j, k, l
+  integer(kind=4) :: nFineX, nFineY
+  integer(kind=4) :: nXExt, nYExt
+
+  real(kind=8), allocatable :: xFine(:), yFine(:)
+  real(kind=8), allocatable :: xExt(:), yExt(:)
+  real(kind=8), allocatable :: row(:), y2row(:)
+  real(kind=8), allocatable :: col(:), y2col(:)
+  real(kind=8), allocatable :: psi_center_x(:)
+  real(kind=8), allocatable :: psi_xfine(:,:)
+
+  real(kind=8) :: val, xq, yq
+  real(kind=8) :: xLen, yLen, xCenter, yCenter
+
+  ! ---- 细网格坐标：0..1 等距
+  ! Use the actual nondimensional domain size so the fine mesh also works for non-square cavities.
+  xLen = xp(nx+1)
+  yLen = yp(ny+1)
+  xCenter = 0.5d0 * xLen
+  yCenter = 0.5d0 * yLen
+  nFineX = max(2, nint(xLen * dble(nFinePerUnit)) + 1)
+  nFineY = max(2, nint(yLen * dble(nFinePerUnit)) + 1)
+
+  allocate(xFine(nFineX), yFine(nFineY))
+  do k = 1, nFineX
+    xFine(k) = xLen * dble(k-1) / dble(nFineX-1)
+  end do
+  do l = 1, nFineY
+    yFine(l) = yLen * dble(l-1) / dble(nFineY-1)
+  end do
+
+  ! ---- 为了能在 x=0/1 与 y=0/1 上插值，物理边界 psi=常数（可取0）补两个端点
+  nXExt = nx + 2
+  nYExt = ny + 2
+
+  allocate(xExt(nXExt), yExt(nYExt))
+  xExt(1)    = 0.0d0
+  xExt(nXExt)= xp(nx+1)
+  do i = 1, nx
+    xExt(i+1) = xp(i)         !xExt = [0, xp(1),...,xp(nx), xLen]
+  end do
+
+  yExt(1)    = 0.0d0
+  yExt(nYExt)= yp(ny+1)
+  do j = 1, ny
+    yExt(j+1) = yp(j)        !yExt = [0, yp(1),...,yp(ny), yLen]
+  end do
+
+  allocate(row(nXExt), y2row(nXExt))
+  allocate(psi_center_x(ny))
+  allocate(psi_xfine(nFineX, ny))
+
+  ! ---- (1) 先对每个固定 y=yp(j) 的剖面做 x 方向三次样条，得到 psi(xFine, yp(j))
+  do j = 1, ny
+    row(1)  = 0.0d0
+    row(nXExt) = 0.0d0
+    do i = 1, nx
+      row(i+1) = psi(i,j)     !row=[0, psi(1),...,psi(ny), 0]
+    end do
+
+    call spline_natural(nXExt, xExt, row, y2row)   !在row各节点处的二阶导
+
+    call splint(nXExt, xExt, row, y2row, xCenter, psi_center_x(j))
+    do k = 1, nFineX
+      xq = xFine(k)
+      call splint(nXExt, xExt, row, y2row, xq, val)   !在 10001 个细网格 x 点上采样
+      psi_xfine(k,j) = val                            !在每个粗 y 层上，psi已经沿 x 被细化到 10001 个点。
+    end do
+  end do
+
+  ! ---- (2) 再对每个固定 x=xFine(k) 的剖面做 y 方向三次样条，在 10001 个 yFine 上扫 max(|psi|)
+  allocate(col(nYExt), y2col(nYExt))
+  psi_abs_max = -1.0d0
+  x_at_max    = 0.0d0
+  y_at_max    = 0.0d0
+
+  col(1)  = 0.0d0
+  col(nYExt) = 0.0d0
+  do j = 1, ny
+    col(j+1) = psi_center_x(j)
+  end do
+  call spline_natural(nYExt, yExt, col, y2col)
+  call splint(nYExt, yExt, col, y2col, yCenter, val)
+  psi_center_abs_fine = dabs(val)
+
+  do k = 1, nFineX
+    col(1)  = 0.0d0
+    col(nYExt) = 0.0d0
+    do j = 1, ny
+      col(j+1) = psi_xfine(k,j)        !对每一个固定的细网格 x=xFine(k)，有一条沿 y 的离散剖面数据 col
+    end do
+
+    call spline_natural(nYExt, yExt, col, y2col)
+
+    do l = 1, nFineY
+      yq = yFine(l)
+      call splint(nYExt, yExt, col, y2col, yq, val)
+
+      if (dabs(val) > psi_abs_max) then     !寻找最大的abs(psi)以及位置
+        psi_abs_max = dabs(val)
+        x_at_max = xFine(k)
+        y_at_max = yFine(l)
+      end if
+    end do
+  end do
+
+  deallocate(xFine, yFine, xExt, yExt, row, y2row, col, y2col, psi_center_x, psi_xfine)
+  return
+end subroutine calc_psi_absmax_fine_spline
+!===================================================================================================
+! calc_psi_absmax_fine_spline 结束: 用细网格样条插值搜索 abs(psi) 的最大值及位置。
+!===================================================================================================
+
+
+!===================================================================================================
+! 子程序: spline_natural
+! 作用: 构造自然三次样条所需的二阶导数。
+! 用途: 在 calc_psi_absmax_fine_spline 中作为样条预处理调用。
+!===================================================================================================
+subroutine spline_natural(n, x, y, y2)
+  implicit none
+  integer(kind=4), intent(in) :: n
+  real(kind=8), intent(in)    :: x(*), y(*)
+  real(kind=8), intent(out)   :: y2(*)
+
+  integer(kind=4) :: i, k
+  real(kind=8), allocatable :: u(:)
+  real(kind=8) :: sig, p
+
+  allocate(u(n))
+
+  ! natural spline: y2(1)=0, y2(n)=0
+  y2(1) = 0.0d0
+  u(1)  = 0.0d0
+
+  do i = 2, n-1
+    sig = (x(i) - x(i-1)) / (x(i+1) - x(i-1))
+    p = sig*y2(i-1) + 2.0d0
+    y2(i) = (sig - 1.0d0) / p
+    u(i) = ( 6.0d0*((y(i+1)-y(i))/(x(i+1)-x(i)) - (y(i)-y(i-1))/(x(i)-x(i-1))) / (x(i+1)-x(i-1)) - sig*u(i-1) ) / p
+  end do
+
+  y2(n) = 0.0d0
+
+  do k = n-1, 1, -1
+    y2(k) = y2(k)*y2(k+1) + u(k)
+  end do
+
+  deallocate(u)
+  return
+end subroutine spline_natural
+!===================================================================================================
+! spline_natural 结束: 构造自然三次样条所需的二阶导数。
+!===================================================================================================
+
+
+!===================================================================================================
+! 子程序: splint
+! 作用: 根据样条系数在查询点上进行插值。
+! 用途: 在 calc_psi_absmax_fine_spline 中重复调用。
+!===================================================================================================
+subroutine splint(n, xa, ya, y2a, x, y)
+  implicit none
+  integer(kind=4), intent(in) :: n
+  real(kind=8), intent(in)    :: xa(*), ya(*), y2a(*), x
+  real(kind=8), intent(out)   :: y
+
+  integer(kind=4) :: klo, khi, k
+  real(kind=8) :: h, a, b
+
+  klo = 1
+  khi = n
+
+  do while (khi - klo > 1)
+    k = (khi + klo)/2
+    if (xa(k) > x) then
+      khi = k
+    else
+      klo = k
+    end if
+  end do
+
+  h = xa(khi) - xa(klo)
+  if (h == 0.0d0) then
+    y = ya(klo)
+    return
+  end if
+
+  a = (xa(khi) - x)/h
+  b = (x - xa(klo))/h
+
+  y = a*ya(klo) + b*ya(khi) + ( (a*a*a - a)*y2a(klo) + (b*b*b - b)*y2a(khi) ) * (h*h)/6.0d0
+  return
+end subroutine splint
+!===================================================================================================
+! splint 结束: 根据样条系数在查询点上进行插值。
+!===================================================================================================
+
+
+!===================================================================================================
+! 子程序: output_psi_center_abs
+! 作用: 输出腔体中心位置的 abs(psi) 诊断结果。
+! 用途: 在 calc_psi_vort_and_output 中调用。
+!===================================================================================================
+subroutine output_psi_center_abs(psi)
+  use commondata
+  implicit none
+  real(kind=8), intent(in) :: psi(nx,ny)
+
+  integer(kind=4) :: i0, j0, p, q
+  integer(kind=4) :: ii(4), jj(4)
+  real(kind=8) :: x0, y0, psi_center, psi_center_abs
+  real(kind=8) :: x4(4), y4(4), f4(4), gx(4)
+
+  x0 = 0.5d0 * xp(nx+1)
+  y0 = 0.5d0 * yp(ny+1)
+
+  if (nx < 4 .or. ny < 4) then
+    psi_center = psi((nx+1)/2, (ny+1)/2)
+  else
+    i0 = 1
+    do while (i0 < nx .and. xp(i0+1) <= x0)
+      i0 = i0 + 1
+    end do
+    i0 = max(1, min(i0-1, nx-3))
+    do p = 1, 4
+      ii(p) = i0 + p - 1
+      x4(p) = xp(ii(p))
+    end do
+
+    j0 = 1
+    do while (j0 < ny .and. yp(j0+1) <= y0)
+      j0 = j0 + 1
+    end do
+    j0 = max(1, min(j0-1, ny-3))
+    do q = 1, 4
+      jj(q) = j0 + q - 1
+      y4(q) = yp(jj(q))
+    end do
+
+    do q = 1, 4
+      do p = 1, 4
+        f4(p) = psi(ii(p), jj(q))
+      end do
+      call interp_lagrange_4(x0, x4, f4, gx(q))
+    end do
+
+    call interp_lagrange_4(y0, y4, gx, psi_center)
+  endif
+
+  psi_center_abs = dabs(psi_center)
+
+  ! Screen output
+  write(*,'(a,1x,ES24.16E3)') "abs(psi_center_coarse) =", real(psi_center_abs,kind=8)
+
+  ! Log output
+  open(unit=00,file=trim(settingsFile),status="unknown",position="append")
+  write(00,'(a,1x,ES24.16E3)') "abs(psi_center_coarse) =", real(psi_center_abs,kind=8)
+  close(00)
+
+  return
+contains
+  ! 子程序: interp_lagrange_4
+  ! 作用: 对给定的四个节点执行四点 Lagrange 插值。
+  subroutine interp_lagrange_4(xq, xk, fk, fq)
+    implicit none
+    real(kind=8), intent(in)  :: xq
+    real(kind=8), intent(in)  :: xk(4), fk(4)
+    real(kind=8), intent(out) :: fq
+    integer(kind=4) :: a, b
+    real(kind=8) :: basis
+
+    fq = 0.0d0
+    do a = 1, 4
+      basis = 1.0d0
+      do b = 1, 4
+        if (b /= a) basis = basis * (xq - xk(b)) / (xk(a) - xk(b))
+      end do
+      fq = fq + fk(a) * basis
+    end do
+  end subroutine interp_lagrange_4
+end subroutine output_psi_center_abs
+!===================================================================================================
+! output_psi_center_abs 结束: 输出腔体中心位置的 abs(psi) 诊断结果。
 !===================================================================================================

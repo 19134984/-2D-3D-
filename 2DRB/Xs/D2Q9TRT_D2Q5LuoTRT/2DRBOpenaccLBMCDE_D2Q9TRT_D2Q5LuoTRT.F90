@@ -21,6 +21,7 @@
 !   流场 TRT 奇模态 magic 尺度（二选一）
 #define FLOW_ODD_ORIGINAL_MAGIC
 !#define FLOW_ODD_EFFECTIVE_MAGIC
+
 #if defined(FLOW_ODD_ORIGINAL_MAGIC) && defined(FLOW_ODD_EFFECTIVE_MAGIC)
 #error "Choose only one flow odd magic policy"
 #endif
@@ -64,8 +65,6 @@
 #error "Define one convection case: RayleighBenardCell or SideHeatedCell"
 #endif
 
-!   温度场算法已由文件名固定为 Luo D2Q5-TRT，不再使用宏切换。
-!   本版本不包含相邻时刻 T*u/T*v 修正项。
 
 !   自定义宏结束
 !=============================================================
@@ -173,20 +172,27 @@
 #endif
 
 #ifdef unsteadyFlow
-        real(kind=8), parameter :: outputSnapshotInterval=0.5d0   ! uvTrho 快照和 Nu/Re 时间序列采样间隔（单位：t_ff）
+        real(kind=8), parameter :: statisticSampleInterval=1.0d0 ! Nu/Re、耗散和温度剖面统计间隔（单位：t_ff）
+        real(kind=8), parameter :: outputSnapshotInterval=20.0d0 ! uvTrho 全场快照输出间隔（单位：t_ff）
         real(kind=8), parameter :: reloadFileInterval=100.0d0  ! f/g 重启文件输出间隔（单位：t_ff）
         real(kind=8), parameter :: outputPltFileInterval=100.0d0  ! Tecplot 文件周期输出间隔（单位：t_ff）
         real(kind=8), parameter :: unsteadyRunDuration=1000.0d0  ! 非稳态总目标时长，续算时只补足到该 t_ff
-        ! 以下三个参数只控制非稳态结束后的 Nu/Re 统计平均窗口，不改变推进时长或采样频率。
-        ! 时间以整个非稳态算例的绝对 t_ff 计，续算统计会包含旧文件中已有的历史数据。
+        ! 以下三个参数控制非稳态统计平均窗口，不改变推进时长或采样频率。
+        ! 时间以整个算例的绝对 t_ff 计；续算会重读 Nu/Re、耗散和温度剖面历史，恢复完整窗口累计量。
         real(kind=8), parameter :: unsteadyAverageStartTf=0.5d0*unsteadyRunDuration  ! 平均窗口起点
         real(kind=8), parameter :: unsteadyAverageEndTf=unsteadyRunDuration          ! 平均窗口终点
         real(kind=8), parameter :: unsteadyAverageMidTf=0.5d0*(unsteadyAverageStartTf+unsteadyAverageEndTf) ! 前/后半分界
-        ! 非稳态运行期间理论上需要记录的采样点数。
-        integer(kind=4), parameter :: unsteadySampleCount= &
-            max(1, int(unsteadyRunDuration/outputSnapshotInterval+0.5d0))
-        integer(kind=4), parameter :: dimensionlessTimeMax=unsteadySampleCount
-        integer(kind=4), parameter :: outputSnapshotFile=1   ! 是否输出后处理快照文件：0=不输出，1=输出
+        ! Nu/Re、耗散、可压缩性和温度剖面只在统计窗口内采样；快照/plt/reload 仍从计算开始输出。
+        ! 采样时刻为整数倍 statisticSampleInterval，并保留统计区间的两个端点（若端点落在采样时刻上）。
+        integer(kind=4), parameter :: firstStatisticSampleIndex= &
+            max(1,ceiling(unsteadyAverageStartTf/statisticSampleInterval))
+        integer(kind=4), parameter :: lastStatisticSampleIndex= &
+            min(floor(unsteadyRunDuration/statisticSampleInterval), &
+                floor(unsteadyAverageEndTf/statisticSampleInterval))
+        integer(kind=4), parameter :: expectedStatisticSampleCount= &
+            max(0,lastStatisticSampleIndex-firstStatisticSampleIndex+1)
+        integer(kind=4), parameter :: dimensionlessTimeMax=max(1,expectedStatisticSampleCount)
+        integer(kind=4), parameter :: outputSnapshotFile=1   ! 是否独立输出 uvTrho 快照：0=不输出，1=输出
         integer(kind=4), parameter :: outputPltFile=1   ! 是否输出 plt 文件：0=不输出，1=输出
         integer(kind=4), parameter :: outputReloadFile=1 ! 是否周期输出 f/g 重启文件：0=不输出，1=输出
         integer(kind=4), parameter :: itc_max=max(1, int(unsteadyRunDuration*timeUnit+0.5d0)) ! 非稳态：由总 t_ff 自动换算格子步
@@ -196,15 +202,16 @@
         ! 每次调用对应输出子程序时递增（用于文件名编号）
 
         integer(kind=4) :: dimensionlessTime
-        integer(kind=4) :: outputSnapshotIntervalItc
+        integer(kind=4) :: restartStatisticSampleOffset ! 续算前已完成的统计采样数；不等同于快照数或格子步数
+        integer(kind=4) :: statisticSampleIntervalItc, outputSnapshotIntervalItc
         integer(kind=4) :: reloadFileIntervalItc, outputPltFileIntervalItc
-        ! 统计/输出时间点编号（与 outputSnapshotInterval 对应）：
-        ! 每调用一次 calNuRe() 就 dimensionlessTime = dimensionlessTime + 1
-        ! 用于索引 NuVolAvg/ReVolAvg 数组，并用于输出的时间轴：t = reloadDimensionlessTime + dimensionlessTime*outputSnapshotInterval（单位：t_ff）
+        ! dimensionlessTime 只表示本次进程完成的统计采样数，与快照编号 snapshotFileNum 相互独立。
+        ! 非稳态每调用一次 calculate_unsteady_sample() 就令 dimensionlessTime 加一；稳态最终 calNuRe() 同理。
+        ! 非稳态统计时间轴从 firstStatisticSampleIndex*statisticSampleInterval 开始。
 
         real(kind=8) :: NuVolAvg(0:dimensionlessTimeMax), ReVolAvg(0:dimensionlessTimeMax)
-        ! 体平均 Nu 和 Re 的时间序列缓存
-        ! 只有在启用并调用 calNuRe() 的情况下这些数组才会被真正填充
+        ! NuVolAvg：当前采样时刻由体平均对流热通量得到的 Nu。
+        ! ReVolAvg：当前采样时刻的空间 RMS Re。
 
         character(len=100) :: snapshotFilePrefix="buoyancyCavity2DOpenaccLBMCDE_D2Q5Snapshot"
         ! 快照输出文件前缀（实际文件名形如：<snapshotFilePrefix>-<编号>.bin）
@@ -247,23 +254,32 @@
         real(kind=8) :: omega(0:8), omegaT(0:4)
 
 #ifdef unsteadyFlow
-        ! 非稳态新增诊断：耗散量、稳定性范围和统计窗口在线累加。
-        real(kind=8) :: speedSquaredVol, epsKineticVol, epsThermalVol
-        real(kind=8) :: NuKineticDiss, NuThermalDiss
-        real(kind=8) :: kineticDissExactRatio, thermalDissExactRatio
-        real(kind=8) :: maxMachLocal, minTemperature, maxTemperature, maxDensityDeviation
-        real(kind=8) :: sumNuGlobal, sumNuGlobal2, sumSpeedSquaredVol, sumSpeedSquaredVol2
-        real(kind=8) :: sumEpsKinetic, sumEpsKinetic2, sumEpsThermal, sumEpsThermal2
-        real(kind=8) :: sumNuKineticDiss, sumNuKineticDiss2
-        real(kind=8) :: sumNuThermalDiss, sumNuThermalDiss2
-        real(kind=8) :: sumNuFirstHalf, sumNuSecondHalf
-        real(kind=8) :: sumSpeedSquaredFirstHalf, sumSpeedSquaredSecondHalf
-        real(kind=8) :: maxStatisticCFL
-        real(kind=8), allocatable :: sumTemperatureProfile(:), sumTemperatureSquaredProfile(:)
-        integer(kind=4) :: statisticSamples, firstHalfSamples, secondHalfSamples
-        integer(kind=4) :: firstStatisticItc, lastStatisticItc
-        character(len=100) :: dissipationHistoryFile="DissipationHistory_2DOpenaccLBMCDE.dat"
-        character(len=100) :: statisticsFile="NuReDissStatistics_2DOpenaccLBMCDE.dat"
+        ! 命名约定：xxxVol 是当前时刻的空间求和；xxxVolAvg 是除以 nx*ny 后的瞬时体平均。
+        !             sumXxxVolAvg 是瞬时体平均量的时间求和；xxxVolTimeAvg 是最终空间-时间平均。
+        real(kind=8) :: speedSquaredVolAvg        ! <u^2+v^2>_V；最终 Re=sqrt(<u^2+v^2>_V,t)*H/nu
+        real(kind=8) :: epsKineticVolAvg          ! <epsilon_u>_V；由 LBM-CDE 非平衡应变率计算的动能耗散
+        real(kind=8) :: epsThermalVolAvg          ! <epsilon_T>_V；由温度梯度计算的热耗散
+        real(kind=8) :: densityFluctuationSquaredVolAvg ! <(rho-rho0)^2>_V；开平方后才是瞬时 RMS
+        real(kind=8) :: velocityDivergenceSquaredVolAvg ! <(div u)^2>_V；开平方后才是瞬时 RMS
+        real(kind=8) :: maxMachLocal, minTemperature, maxTemperature ! 数值稳定性辅助诊断
+
+        ! 统计窗口累计量：用于最终空间-时间平均、耗散精确关系和 Xu 可压缩性检查。
+        real(kind=8) :: sumNuVolAvg                  ! sum Nu_vol_avg(t)，瞬时体平均 Nu 的时间求和
+        real(kind=8) :: sumSpeedSquaredVolAvg        ! sum <u^2+v^2>_V，用于文献定义的空间-时间 RMS Re
+        real(kind=8) :: sumEpsKineticVolAvg, sumEpsThermalVolAvg ! 两类瞬时体平均耗散的时间求和
+        real(kind=8) :: sumDensityFluctuationSquaredVolAvg ! sum <(rho-rho0)^2>_V，用于空间-时间 RMS
+        real(kind=8) :: sumVelocityDivergenceSquaredVolAvg ! sum <(div u)^2>_V，用于空间-时间 RMS
+        real(kind=8) :: maxStatisticCFL              ! 统计窗口采样点中的最大格子 CFL=max|u|
+        ! 以下两个剖面累计量保留温度 RMS 边界层诊断；Table 1 的 N_BL 改由 H/(2*Nu) 估计。
+        real(kind=8), allocatable :: sumTemperatureXAvgProfile(:), sumTemperatureSquaredXAvgProfile(:)
+        integer(kind=4) :: statisticSamples ! 完整统计窗口内的采样数
+        integer(kind=4) :: firstStatisticItc, lastStatisticItc ! 统计窗口首、末采样点的绝对格子步
+        character(len=100) :: dissipationHistoryFile="DissipationHistory_2DOpenaccLBMCDE.dat" ! 瞬时原始量历史
+        character(len=100) :: temperatureProfileHistoryFile= &
+            "TemperatureProfileHistory_2DOpenaccLBMCDE.bin" ! 每个统计采样的水平平均 T(y) 与 T^2(y)，供续算恢复
+        character(len=100) :: temperatureRmsProfileFile= &
+            "TemperatureRmsProfile_2DOpenaccLBMCDE_D2Q5.dat" ! 最终 z/H 与 theta_rms(z) 剖面
+        character(len=100) :: statisticsFile="NuReDissStatistics_2DOpenaccLBMCDE.dat" ! 最终统计结果
 #endif
         !===============================================================================================
 
@@ -288,6 +304,7 @@
 #ifdef unsteadyFlow
     integer(kind=4) :: nextSampleItc
     integer(kind=4) :: nextSampleAbsItc
+    integer(kind=4) :: nextStatisticSampleIndex
     integer(kind=4) :: unsteadyItcRemaining
 #endif
     integer(kind=8) :: wallClockStart, wallClockEnd, wallClockRate
@@ -338,10 +355,6 @@
 
         itc = itc+1
 
-        call compute_force()
-
-        call compute_strain_rate()
-
         call collision()
 
         call streaming()
@@ -377,30 +390,26 @@
 #endif
 
 #ifdef unsteadyFlow
-        do while( (reloadDimensionlessTime + real(dimensionlessTime,kind=8)*outputSnapshotInterval) &
-            .LT. unsteadyRunDuration )   !判断本次还要不要继续采样
+        ! 统计采样和全场快照使用独立频率：本循环只处理统计窗口内的 Nu/Re、耗散和温度剖面。
+        do while((restartStatisticSampleOffset+dimensionlessTime).LT.expectedStatisticSampleCount)
             ! 每个目标采样时刻都按绝对 t_ff 换算到本次运行段的 itc，续算时不会重复旧样本。
-            nextSampleAbsItc = max(1, int((reloadDimensionlessTime + &
-                real(dimensionlessTime+1,kind=8)*outputSnapshotInterval)*timeUnit+0.5d0)) !算下一个采样点对应的绝对格子步
+            nextStatisticSampleIndex = firstStatisticSampleIndex+ &
+                restartStatisticSampleOffset+dimensionlessTime
+            nextSampleAbsItc = max(1, int(real(nextStatisticSampleIndex,kind=8)* &
+                statisticSampleInterval*timeUnit+0.5d0)) !下一个统计采样点对应的绝对格子步
             nextSampleItc = max(1, nextSampleAbsItc - restartItcOffset) !换成本次续算运行里的局部步数
-            if(itc.LT.nextSampleItc) exit !如果本次运行还没走到这个采样步，就先退出采样循环，继续推进 LBM；走到了就调用 calNuRe()
-            ! 采样时用当前宏观场刷新应变率，再计算 Nu/Re 与新增耗散诊断。
-            call compute_force()
-            call compute_strain_rate()
-            call calNuRe()
-            call calculate_dissipation()
-#ifdef unsteadyFlow
-            if((reloadDimensionlessTime+real(dimensionlessTime,kind=8)*outputSnapshotInterval) &
-                .GE.unsteadyAverageStartTf) then
-                !$acc update self(T)
-                call accumulate_dissipation_statistics()
-            endif
-#endif
-            if(outputSnapshotFile.EQ.1) then
-                call update_host_snapshot_2d_openacc()
-                call output_SnapshotFile()          !每 0.5 t_ff 输出一次后处理 uvTrho 快照
-            endif
+            if(itc.LT.nextSampleItc) exit !还没到下一个固定采样步时，继续推进 LBM
+            ! 一次全场遍历同时计算 Nu、Re、两类耗散和 Xu 可压缩性指标，避免重复计算速度平方。
+            call calculate_unsteady_sample()
+            !$acc update self(T)
+            call accumulate_dissipation_statistics() !所有调度到的样本都位于统计窗口内
         enddo
+        ! 快照只服务于全场后处理，独立按 outputSnapshotInterval 输出，不再跟随每个统计采样点。
+        if( (outputSnapshotFile.EQ.1).AND. &
+            (MOD(restartItcOffset+itc,outputSnapshotIntervalItc).EQ.0) ) then
+            call update_host_snapshot_2d_openacc()
+            call output_SnapshotFile()
+        endif
         if( (outputPltFile.EQ.1).AND.(MOD(restartItcOffset+itc, outputPltFileIntervalItc).EQ.0) ) then
             call update_host_tecplot_2d_openacc()
             call output_Tecplot()  !非稳态模式下的可选周期 Tecplot 输出
@@ -509,8 +518,8 @@
     deallocate(Syy)
     deallocate(Sdiv)
 #ifdef unsteadyFlow
-    deallocate(sumTemperatureProfile)
-    deallocate(sumTemperatureSquaredProfile)
+    deallocate(sumTemperatureXAvgProfile)
+    deallocate(sumTemperatureSquaredXAvgProfile)
 #endif
     write(00,*) "    "
 
@@ -549,6 +558,9 @@
     restartItcOffset = 0
     reloadMetadataLoaded = .false.
     outputSnapshotIntervalItc = max(1, int(outputSnapshotInterval*timeUnit+0.5d0))
+#ifdef unsteadyFlow
+    statisticSampleIntervalItc = max(1, int(statisticSampleInterval*timeUnit+0.5d0))
+#endif
     reloadFileIntervalItc = max(1, int(reloadFileInterval*timeUnit+0.5d0))
     outputPltFileIntervalItc = max(1, int(outputPltFileInterval*timeUnit+0.5d0))
 
@@ -585,8 +597,8 @@
         write(00,*) "----------------------------------"
         stop
     endif
-    if((chi_nu.GE.1.0d0).OR.(chi_b.GE.1.0d0)) then
-        write(00,*) "Error: chi_nu and chi_b must be smaller than one"
+    if((chi_nu.GE.1.0d0).OR.(chi_b.GT.1.0d0)) then
+        write(00,*) "Error: chi_nu must be smaller than one and chi_b must not exceed one"
         stop
     endif
     if((Snu.LE.0.0d0).OR.(Snu.GE.2.0d0).OR.(Sq.LE.0.0d0).OR.(Sq.GE.2.0d0)) then
@@ -614,7 +626,7 @@
 #ifdef FLOW_ODD_EFFECTIVE_MAGIC
     write(00,*) "Flow odd magic policy = chi_nu-corrected effective scale"
 #endif
-    write(00,*) "thermalScheme = Luo D2Q5-TRT without T*u/T*v time-difference correction"
+    write(00,*) "thermalScheme = Luo D2Q5-TRT  time-difference correction"
     write(00,*) 'Qk=',real(Qk,kind=8), '; Qe=',real(Qe,kind=8), &
         '; Qnu=',real(Qnu,kind=8), '; paraA=',real(paraA,kind=8)
     write(00,*) "viscosity =",real(viscosity,kind=8), "; diffusivity =",real(diffusivity,kind=8)
@@ -628,8 +640,20 @@
     write(00,*) "reloadFileInterval =", real(reloadFileInterval,kind=8), "free-fall time units"
     write(00,*) "reloadFileIntervalItc =", reloadFileIntervalItc, "in itc units"
 #ifdef unsteadyFlow
+    write(00,*) "statisticSampleInterval =", real(statisticSampleInterval,kind=8), &
+        "free-fall time units"
+    write(00,*) "statisticSampleIntervalItc =", statisticSampleIntervalItc, "in itc units"
     write(00,*) "unsteadyRunDuration =", real(unsteadyRunDuration,kind=8), "free-fall time units"
-    write(00,*) "unsteadySampleCount =", unsteadySampleCount
+    write(00,*) "expectedStatisticSampleCount =", expectedStatisticSampleCount
+    write(00,*) "first/last statistic sample time_tf =", &
+        dble(firstStatisticSampleIndex)*statisticSampleInterval, &
+        dble(lastStatisticSampleIndex)*statisticSampleInterval
+    write(00,*) "Statistics histories cover only the averaging window; time axis uses prescribed t/t_ff"
+    write(00,*) "dissipationHistoryFile =", trim(dissipationHistoryFile)
+    write(00,*) "temperatureProfileHistoryFile =", trim(temperatureProfileHistoryFile)
+#endif
+#ifdef steadyFlow
+    write(00,*) "Steady convergence/Nu-Re history axis = cumulative lattice itc"
 #endif
     if(loadInitField.EQ.1) then
         write(00,*) "Restart offsets will be read from reload metadata when available."
@@ -693,7 +717,7 @@
     allocate (Sxx(nx,ny), Sxy(nx,ny), Syy(nx,ny), Sdiv(nx,ny))
 
 #ifdef unsteadyFlow
-    allocate (sumTemperatureProfile(ny), sumTemperatureSquaredProfile(ny))
+    allocate (sumTemperatureXAvgProfile(ny), sumTemperatureSquaredXAvgProfile(ny))
 #endif
 
     !-----------------------------------------------------------------------------------------------
@@ -859,46 +883,36 @@ close(00)
 #endif
     endif
     dimensionlessTime = 0
-    !新算例：清零，开始记录新历史。
-    !续算：也清零，但不是丢旧历史；旧历史在 .dat 文件里，新数组只记录本次续算段。
+    ! 新算例先清零；续算也先清零，随后从耗散与温度剖面历史恢复到重启时刻。
     NuVolAvg = 0.0d0
     ReVolAvg = 0.0d0
 #ifdef unsteadyFlow
-    speedSquaredVol = 0.0d0
-    epsKineticVol = 0.0d0
-    epsThermalVol = 0.0d0
-    NuKineticDiss = 0.0d0
-    NuThermalDiss = 0.0d0
-    kineticDissExactRatio = 0.0d0
-    thermalDissExactRatio = 0.0d0
+    ! 元数据中的 reloadDimensionlessTime 是实际重启格子步对应的时间，可能与固定采样时刻略有偏差。
+    ! 加半个格子时间步后向下取整，得到重启前已经完成的采样点数。
+    restartStatisticSampleOffset = max(0,min(expectedStatisticSampleCount, &
+        int((reloadDimensionlessTime+0.5d0/timeUnit+1.0d-12)/statisticSampleInterval)- &
+        firstStatisticSampleIndex+1))
+    speedSquaredVolAvg = 0.0d0
+    epsKineticVolAvg = 0.0d0
+    epsThermalVolAvg = 0.0d0
+    densityFluctuationSquaredVolAvg = 0.0d0
+    velocityDivergenceSquaredVolAvg = 0.0d0
     maxMachLocal = 0.0d0
     minTemperature = 0.0d0
     maxTemperature = 0.0d0
-    maxDensityDeviation = 0.0d0
-    sumNuGlobal = 0.0d0
-    sumNuGlobal2 = 0.0d0
-    sumSpeedSquaredVol = 0.0d0
-    sumSpeedSquaredVol2 = 0.0d0
-    sumEpsKinetic = 0.0d0
-    sumEpsKinetic2 = 0.0d0
-    sumEpsThermal = 0.0d0
-    sumEpsThermal2 = 0.0d0
-    sumNuKineticDiss = 0.0d0
-    sumNuKineticDiss2 = 0.0d0
-    sumNuThermalDiss = 0.0d0
-    sumNuThermalDiss2 = 0.0d0
-    sumNuFirstHalf = 0.0d0
-    sumNuSecondHalf = 0.0d0
-    sumSpeedSquaredFirstHalf = 0.0d0
-    sumSpeedSquaredSecondHalf = 0.0d0
+    sumNuVolAvg = 0.0d0
+    sumSpeedSquaredVolAvg = 0.0d0
+    sumEpsKineticVolAvg = 0.0d0
+    sumEpsThermalVolAvg = 0.0d0
+    sumDensityFluctuationSquaredVolAvg = 0.0d0
+    sumVelocityDivergenceSquaredVolAvg = 0.0d0
     maxStatisticCFL = 0.0d0
-    sumTemperatureProfile = 0.0d0
-    sumTemperatureSquaredProfile = 0.0d0
+    sumTemperatureXAvgProfile = 0.0d0
+    sumTemperatureSquaredXAvgProfile = 0.0d0
     statisticSamples = 0
-    firstHalfSamples = 0
-    secondHalfSamples = 0
     firstStatisticItc = -1
     lastStatisticItc = -1
+    if(loadInitField.EQ.1) call restore_dissipation_statistics()
 #endif
 
     return
@@ -982,150 +996,132 @@ close(00)
 
 
 !===================================================================================================
-! 子程序: compute_force
-! 作用: 由当前温度计算 Boussinesq 力；LBM-CDE 使用参考密度 rho0，而不是局部 rho。
+! 子程序: collision
+! 作用: 在一个格点循环中计算力、非平衡应变率，并完成矩空间 D2Q9 TRT LBM-CDE 碰撞。
+! 说明: m0/m3/m5 是密度和动量守恒矩，松弛率为零；其余偶矩使用 Snu，奇矩使用 Sq。
+!       A_ab=chi_nu*S_ab+(chi_b-chi_nu)*Sdiv*delta_ab/2，并作为矩空间源项的一部分加入。
+! 动力黏度为 mu=rho0*nu。
 !===================================================================================================
-  subroutine compute_force()
+  subroutine collision()
     use commondata
     implicit none
-    integer(kind=4) :: i, j
+    integer(kind=4) :: i, j, alpha
+    real(kind=8) :: m(0:8), meq(0:8), s(0:8), mSource(0:8), m_post(0:8)
+    real(kind=8) :: densityFluctuation, uu, uF
+    real(kind=8) :: neqTrace, neqxx, neqxy, neqyy
+    real(kind=8) :: Axx, Axy, Ayy
+    real(kind=8), parameter :: muShear=rho0*viscosity
+    real(kind=8), parameter :: muBulk=rho0*bulkViscosity
+    real(kind=8), parameter :: denomDiag=2.0d0*muShear+rho0*cs2
+    real(kind=8), parameter :: denomShear=4.0d0*muShear+2.0d0*rho0*cs2
+    real(kind=8), parameter :: denomDiv=2.0d0*muBulk+rho0*cs2
+    real(kind=8), parameter :: coeffTrace=(2.0d0*muShear-2.0d0*muBulk)/(2.0d0*denomDiag)
 
-    !$acc parallel loop gang vector collapse(2) default(none) present(Fx,Fy,T,u,v) async(1)
+    !$acc parallel loop gang vector collapse(2) default(none) &
+    !$acc& present(f,f_post,rho,u,v,T,Fx,Fy,Sxx,Sxy,Syy,Sdiv) async(1) &
+    !$acc& private(alpha,m,meq,s,mSource,m_post,densityFluctuation,uu,uF, &
+    !$acc& neqTrace,neqxx,neqxy,neqyy,Axx,Axy,Ayy)
     do j = 1, ny
         do i = 1, nx
+            ! Boussinesq 力使用参考密度 rho0；磁场分支沿用原方腔定义。
             Fx(i,j) = 0.0d0
             Fy(i,j) = rho0*gBeta*(T(i,j)-Tref)
 #ifdef SideHeatedHa
             Fx(i,j) = rho0*B2sigemarho*(v(i,j)*sin(phi)*cos(phi)-u(i,j)*sin(phi)*sin(phi))
             Fy(i,j) = Fy(i,j)+rho0*B2sigemarho*(u(i,j)*sin(phi)*cos(phi)-v(i,j)*cos(phi)*cos(phi))
 #endif
-        enddo
-    enddo
-  end subroutine compute_force
-!===================================================================================================
 
+            ! D2Q9 分布函数变换到矩空间；矩排列与原 2DRB MRT 代码保持一致。
+            m(0) = f(i,j,0)+f(i,j,1)+f(i,j,2)+f(i,j,3)+f(i,j,4)+ &
+                f(i,j,5)+f(i,j,6)+f(i,j,7)+f(i,j,8)
+            m(1) = -4.0d0*f(i,j,0)-f(i,j,1)-f(i,j,2)-f(i,j,3)-f(i,j,4)+ &
+                2.0d0*(f(i,j,5)+f(i,j,6)+f(i,j,7)+f(i,j,8))
+            m(2) = 4.0d0*f(i,j,0)-2.0d0*(f(i,j,1)+f(i,j,2)+f(i,j,3)+f(i,j,4))+ &
+                f(i,j,5)+f(i,j,6)+f(i,j,7)+f(i,j,8)
+            m(3) = f(i,j,1)-f(i,j,3)+f(i,j,5)-f(i,j,6)-f(i,j,7)+f(i,j,8)
+            m(4) = -2.0d0*f(i,j,1)+2.0d0*f(i,j,3)+f(i,j,5)-f(i,j,6)-f(i,j,7)+f(i,j,8)
+            m(5) = f(i,j,2)-f(i,j,4)+f(i,j,5)+f(i,j,6)-f(i,j,7)-f(i,j,8)
+            m(6) = -2.0d0*f(i,j,2)+2.0d0*f(i,j,4)+f(i,j,5)+f(i,j,6)-f(i,j,7)-f(i,j,8)
+            m(7) = f(i,j,1)-f(i,j,2)+f(i,j,3)-f(i,j,4)
+            m(8) = f(i,j,5)-f(i,j,6)+f(i,j,7)-f(i,j,8)
 
-!===================================================================================================
-! 子程序: compute_strain_rate
-! 作用: 由 f-feq 的局部非平衡二阶矩计算 Sxx、Sxy、Syy 和速度散度 Sdiv。
-! 说明: 对应 LBM-CDE 式 (31)-(33)，D=2、dt=1；不使用速度有限差分。
-! 注意: 已发表式 (33) 的迹/散度项符号存在勘误；这里采用由式 (30) 回代得到的正号。
-!       论文中的动力黏度按 mu=rho0*nu 显式换算后再构造三个分母。
-!===================================================================================================
-  subroutine compute_strain_rate()
-    use commondata
-    implicit none
-    integer(kind=4) :: i, j, alpha
-    real(kind=8) :: eu, uu, feq, neqxx, neqxy, neqyy
-    real(kind=8) :: muShear, muBulk, denomDiag, denomShear, denomDiv, coeffTrace
-
-    muShear = rho0*viscosity
-    muBulk = rho0*bulkViscosity
-    denomDiag = 2.0d0*muShear+rho0*cs2
-    denomShear = 4.0d0*muShear+2.0d0*rho0*cs2
-    denomDiv = 2.0d0*muBulk+rho0*cs2
-    coeffTrace = (2.0d0*muShear-2.0d0*muBulk)/(2.0d0*denomDiag)
-
-    !$acc parallel loop gang vector collapse(2) default(none) &
-    !$acc& present(f,rho,u,v,Fx,Fy,Sxx,Sxy,Syy,Sdiv,ex,ey,omega) async(1) &
-    !$acc& private(alpha,eu,uu,feq,neqxx,neqxy,neqyy)
-    do j = 1, ny
-        do i = 1, nx
-            neqxx = 0.0d0
-            neqxy = 0.0d0
-            neqyy = 0.0d0
+            densityFluctuation = rho(i,j)-rho0
             uu = u(i,j)*u(i,j)+v(i,j)*v(i,j)
-            do alpha = 0, 8
-                eu = dble(ex(alpha))*u(i,j)+dble(ey(alpha))*v(i,j)
-                feq = omega(alpha)*((rho(i,j)-rho0)+rho0*(eu/cs2 + &
-                    0.5d0*eu*eu/(cs2*cs2)-0.5d0*uu/cs2))
-                neqxx = neqxx+dble(ex(alpha)*ex(alpha))*(f(i,j,alpha)-feq)
-                neqxy = neqxy+dble(ex(alpha)*ey(alpha))*(f(i,j,alpha)-feq)
-                neqyy = neqyy+dble(ey(alpha)*ey(alpha))*(f(i,j,alpha)-feq)
-            enddo
-            Sdiv(i,j) = -(neqxx+neqyy+u(i,j)*Fx(i,j)+v(i,j)*Fy(i,j))/denomDiv
+            meq(0) = densityFluctuation
+            meq(1) = -2.0d0*densityFluctuation+3.0d0*rho0*uu
+            meq(2) = densityFluctuation-3.0d0*rho0*uu
+            meq(3) = rho0*u(i,j)
+            meq(4) = -rho0*u(i,j)
+            meq(5) = rho0*v(i,j)
+            meq(6) = -rho0*v(i,j)
+            meq(7) = rho0*(u(i,j)*u(i,j)-v(i,j)*v(i,j))
+            meq(8) = rho0*u(i,j)*v(i,j)
+
+            ! 二阶非平衡矩：trace=(m1+4*m0)/3，m7=Pi_xx-Pi_yy，m8=Pi_xy。
+            neqTrace = ((m(1)-meq(1))+4.0d0*(m(0)-meq(0)))/3.0d0
+            neqxx = 0.5d0*(neqTrace+m(7)-meq(7))
+            neqyy = 0.5d0*(neqTrace-m(7)+meq(7))
+            neqxy = m(8)-meq(8)
+
+            uF = u(i,j)*Fx(i,j)+v(i,j)*Fy(i,j)
+            Sdiv(i,j) = -(neqxx+neqyy+uF)/denomDiv
             Sxx(i,j) = -(neqxx+u(i,j)*Fx(i,j))/denomDiag+coeffTrace*Sdiv(i,j)
             Syy(i,j) = -(neqyy+v(i,j)*Fy(i,j))/denomDiag+coeffTrace*Sdiv(i,j)
             Sxy(i,j) = -(2.0d0*neqxy+u(i,j)*Fy(i,j)+v(i,j)*Fx(i,j))/denomShear
-        enddo
-    enddo
-  end subroutine compute_strain_rate
-!===================================================================================================
 
-
-!===================================================================================================
-! 子程序: collision
-! 作用: 执行 D2Q9 TRT LBM-CDE 流场碰撞，并加入力项与 chi_nu/chi_b 应变率修正项。
-! 说明: A_ab=chi_nu*S_ab+(chi_b-chi_nu)*Sdiv*delta_ab/2；
-!       D2Q9 二阶 Hermite 对称收缩已给出正确系数，不再额外乘除 2。
-!===================================================================================================
-  subroutine collision()
-    use commondata
-    implicit none
-    integer(kind=4) :: i, j, alpha, beta, pair
-    real(kind=8) :: euA, euB, eFA, eFB, uF, uu, feqA, feqB
-    real(kind=8) :: Axx, Axy, Ayy, hermiteA, hermiteB
-    real(kind=8) :: rawA, rawB, dEven, dOdd, rEven, rOdd
-    real(kind=8), parameter :: sourcePrefEven=1.0d0-0.5d0*Snu
-    real(kind=8), parameter :: sourcePrefOdd=1.0d0-0.5d0*Sq
-
-    !$acc parallel loop gang vector collapse(2) default(none) &
-    !$acc& present(f,f_post,rho,u,v,Fx,Fy,Sxx,Sxy,Syy,Sdiv,ex,ey,omega) async(1) &
-    !$acc& private(alpha,beta,pair,euA,euB,eFA,eFB,uF,uu,feqA,feqB,Axx,Axy,Ayy, &
-    !$acc& hermiteA,hermiteB,rawA,rawB,dEven,dOdd,rEven,rOdd)
-    do j = 1, ny
-        do i = 1, nx
-            uu = u(i,j)*u(i,j)+v(i,j)*v(i,j)
-            uF = u(i,j)*Fx(i,j)+v(i,j)*Fy(i,j)
             Axx = chi_nu*Sxx(i,j)+0.5d0*(chi_b-chi_nu)*Sdiv(i,j)
             Ayy = chi_nu*Syy(i,j)+0.5d0*(chi_b-chi_nu)*Sdiv(i,j)
             Axy = chi_nu*Sxy(i,j)
 
-            alpha = 0
-            feqA = omega(alpha)*(rho(i,j)-rho0-0.5d0*rho0*uu/cs2)
-            hermiteA = -Axx-Ayy
-            rawA = omega(alpha)*(-uF/cs2+rho0*hermiteA)
-            f_post(i,j,alpha) = f(i,j,alpha)-Snu*(f(i,j,alpha)-feqA)+sourcePrefEven*rawA
+            ! 原始矩源项 = Guo 力项 + LBM-CDE 二阶 Hermite 应力修正。
+            mSource(0) = 0.0d0
+            mSource(1) = 6.0d0*uF+2.0d0*rho0*(Axx+Ayy)
+            mSource(2) = -6.0d0*uF-2.0d0*rho0*(Axx+Ayy)
+            mSource(3) = Fx(i,j)
+            mSource(4) = -Fx(i,j)
+            mSource(5) = Fy(i,j)
+            mSource(6) = -Fy(i,j)
+            mSource(7) = 2.0d0*(u(i,j)*Fx(i,j)-v(i,j)*Fy(i,j))+ &
+                2.0d0/3.0d0*rho0*(Axx-Ayy)
+            mSource(8) = u(i,j)*Fy(i,j)+v(i,j)*Fx(i,j)+2.0d0/3.0d0*rho0*Axy
 
-            do pair = 1, 4
-                select case(pair)
-                case(1)
-                    alpha = 1; beta = 3
-                case(2)
-                    alpha = 2; beta = 4
-                case(3)
-                    alpha = 5; beta = 7
-                case default
-                    alpha = 6; beta = 8
-                end select
+            ! m0/m3/m5 为守恒矩；其余偶矩用 Snu，非守恒奇矩 m4/m6 用 Sq。
+            s(0) = 0.0d0
+            s(1) = Snu
+            s(2) = Snu
+            s(3) = 0.0d0
+            s(4) = Sq
+            s(5) = 0.0d0
+            s(6) = Sq
+            s(7) = Snu
+            s(8) = Snu
 
-                euA = dble(ex(alpha))*u(i,j)+dble(ey(alpha))*v(i,j)
-                euB = dble(ex(beta))*u(i,j)+dble(ey(beta))*v(i,j)
-                eFA = dble(ex(alpha))*Fx(i,j)+dble(ey(alpha))*Fy(i,j)
-                eFB = dble(ex(beta))*Fx(i,j)+dble(ey(beta))*Fy(i,j)
-                feqA = omega(alpha)*((rho(i,j)-rho0)+rho0*(euA/cs2 + &
-                    0.5d0*euA*euA/(cs2*cs2)-0.5d0*uu/cs2))
-                feqB = omega(beta)*((rho(i,j)-rho0)+rho0*(euB/cs2 + &
-                    0.5d0*euB*euB/(cs2*cs2)-0.5d0*uu/cs2))
-                hermiteA = (dble(ex(alpha)*ex(alpha))/cs2-1.0d0)*Axx + &
-                    (dble(ey(alpha)*ey(alpha))/cs2-1.0d0)*Ayy + &
-                    2.0d0*dble(ex(alpha)*ey(alpha))/cs2*Axy
-                hermiteB = (dble(ex(beta)*ex(beta))/cs2-1.0d0)*Axx + &
-                    (dble(ey(beta)*ey(beta))/cs2-1.0d0)*Ayy + &
-                    2.0d0*dble(ex(beta)*ey(beta))/cs2*Axy
-                rawA = omega(alpha)*(eFA/cs2+euA*eFA/(cs2*cs2)-uF/cs2+rho0*hermiteA)
-                rawB = omega(beta)*(eFB/cs2+euB*eFB/(cs2*cs2)-uF/cs2+rho0*hermiteB)
-                dEven = 0.5d0*((f(i,j,alpha)-feqA)+(f(i,j,beta)-feqB))
-                dOdd = 0.5d0*((f(i,j,alpha)-feqA)-(f(i,j,beta)-feqB))
-                rEven = 0.5d0*(rawA+rawB)
-                rOdd = 0.5d0*(rawA-rawB)
-                f_post(i,j,alpha) = f(i,j,alpha)-Snu*dEven-Sq*dOdd + &
-                    sourcePrefEven*rEven+sourcePrefOdd*rOdd
-                f_post(i,j,beta) = f(i,j,beta)-Snu*dEven+Sq*dOdd + &
-                    sourcePrefEven*rEven-sourcePrefOdd*rOdd
+            do alpha = 0, 8
+                m_post(alpha) = m(alpha)-s(alpha)*(m(alpha)-meq(alpha))+ &
+                    (1.0d0-0.5d0*s(alpha))*mSource(alpha)
             enddo
+
+            ! 乘 M^{-1} 回到速度空间。
+            f_post(i,j,0) = m_post(0)/9.0d0-m_post(1)/9.0d0+m_post(2)/9.0d0
+            f_post(i,j,1) = m_post(0)/9.0d0-m_post(1)/36.0d0-m_post(2)/18.0d0+ &
+                m_post(3)/6.0d0-m_post(4)/6.0d0+m_post(7)/4.0d0
+            f_post(i,j,2) = m_post(0)/9.0d0-m_post(1)/36.0d0-m_post(2)/18.0d0+ &
+                m_post(5)/6.0d0-m_post(6)/6.0d0-m_post(7)/4.0d0
+            f_post(i,j,3) = m_post(0)/9.0d0-m_post(1)/36.0d0-m_post(2)/18.0d0- &
+                m_post(3)/6.0d0+m_post(4)/6.0d0+m_post(7)/4.0d0
+            f_post(i,j,4) = m_post(0)/9.0d0-m_post(1)/36.0d0-m_post(2)/18.0d0- &
+                m_post(5)/6.0d0+m_post(6)/6.0d0-m_post(7)/4.0d0
+            f_post(i,j,5) = m_post(0)/9.0d0+m_post(1)/18.0d0+m_post(2)/36.0d0+ &
+                m_post(3)/6.0d0+m_post(4)/12.0d0+m_post(5)/6.0d0+m_post(6)/12.0d0+m_post(8)/4.0d0
+            f_post(i,j,6) = m_post(0)/9.0d0+m_post(1)/18.0d0+m_post(2)/36.0d0- &
+                m_post(3)/6.0d0-m_post(4)/12.0d0+m_post(5)/6.0d0+m_post(6)/12.0d0-m_post(8)/4.0d0
+            f_post(i,j,7) = m_post(0)/9.0d0+m_post(1)/18.0d0+m_post(2)/36.0d0- &
+                m_post(3)/6.0d0-m_post(4)/12.0d0-m_post(5)/6.0d0-m_post(6)/12.0d0+m_post(8)/4.0d0
+            f_post(i,j,8) = m_post(0)/9.0d0+m_post(1)/18.0d0+m_post(2)/36.0d0+ &
+                m_post(3)/6.0d0+m_post(4)/12.0d0-m_post(5)/6.0d0-m_post(6)/12.0d0-m_post(8)/4.0d0
         enddo
     enddo
+    return
   end subroutine collision
 !===================================================================================================
 
@@ -2122,8 +2118,10 @@ end subroutine append_convergence_master_tecplot
 
 
 !===================================================================================================
+#ifdef steadyFlow
 ! 子程序: calNuRe
-! 作用: 计算体平均 Nu / Re，并把时间序列缓存到数组中。
+! 作用: 稳态计算结束时计算一次体平均 Nu/Re，并以累计格子步 itc 作为第一列。
+! 说明: 非稳态采样由 calculate_unsteady_sample 完成，第一列改用无量纲自由落体时间 t/t_ff。
 !===================================================================================================
   subroutine calNuRe()
     use commondata
@@ -2131,7 +2129,7 @@ end subroutine append_convergence_master_tecplot
     integer(kind=4) :: i, j
     real(kind=8) :: NuVolAvg_temp    !体平均 Nu
     real(kind=8) :: ReVolAvg_temp    !体平均 Re
-    real(kind=8) :: sampleTime
+    integer(kind=4) :: sampleItc
     logical :: exNu, exRe
     logical, save :: first_nure_write = .true.
 
@@ -2145,13 +2143,8 @@ end subroutine append_convergence_master_tecplot
         stop
     endif
 
-    dimensionlessTime = dimensionlessTime+1   !每隔 outputSnapshotInterval 个自由落体时间调用一次calNuRe
-#ifdef steadyFlow
-    sampleTime = real(restartItcOffset+itc,kind=8)
-#endif
-#ifdef unsteadyFlow
-    sampleTime = reloadDimensionlessTime + real(dimensionlessTime,kind=8)*outputSnapshotInterval
-#endif
+    dimensionlessTime = dimensionlessTime+1   !稳态结束时只调用一次，用第 1 个数组位置保存最终值
+    sampleItc = restartItcOffset+itc           !稳态横坐标使用包含续算偏移的累计格子步
 
     if((first_nure_write).AND.(loadInitField.EQ.1)) then
         inquire(file="Nu_VolAvg_2DOpenaccLBMCDE_D2Q5.dat", exist=exNu)
@@ -2193,12 +2186,12 @@ end subroutine append_convergence_master_tecplot
 
     if((first_nure_write).AND.(loadInitField.EQ.0)) then
         open(unit=01,file="Nu_VolAvg_2DOpenaccLBMCDE_D2Q5.dat",status='replace',action='write')
+        write(01,'(A)') '# itc Nu_volume'
     else
         open(unit=01,file="Nu_VolAvg_2DOpenaccLBMCDE_D2Q5.dat",status='unknown',position='append',action='write')
     endif
-    write(01,'(ES24.16E3,1X,ES24.16E3)') &
-        real(sampleTime,kind=8), &
-        real(NuVolAvg(dimensionlessTime),kind=8)   !以格子步数或者自由落体时间来写入
+    write(01,'(I12,1X,ES24.16E3)') sampleItc, &
+        real(NuVolAvg(dimensionlessTime),kind=8)
     close(01)
 
     ReVolAvg_temp = 0.0d0
@@ -2213,11 +2206,11 @@ end subroutine append_convergence_master_tecplot
 
     if((first_nure_write).AND.(loadInitField.EQ.0)) then
         open(unit=02,file="Re_VolAvg_2DOpenaccLBMCDE_D2Q5.dat",status='replace',action='write')
+        write(02,'(A)') '# itc Re_spatial_rms'
     else
         open(unit=02,file="Re_VolAvg_2DOpenaccLBMCDE_D2Q5.dat",status='unknown',position='append',action='write')
     endif
-    write(02,'(ES24.16E3,1X,ES24.16E3)') &
-        real(sampleTime,kind=8), &
+    write(02,'(I12,1X,ES24.16E3)') sampleItc, &
         real(ReVolAvg(dimensionlessTime),kind=8)
     close(02)
     first_nure_write = .false.
@@ -2226,40 +2219,285 @@ end subroutine append_convergence_master_tecplot
     return
   end subroutine calNuRe
 !===================================================================================================
-! calNuRe 结束: 计算体平均 Nu 和 Re 的时间历程统计量。
+! calNuRe 结束: 稳态计算结束时输出一次体平均 Nu 和空间 RMS Re。
 !===================================================================================================
+#endif
 
 
 #ifdef unsteadyFlow
 !===================================================================================================
-! 子程序: calculate_dissipation
-! 作用: 计算瞬时体平均动能耗散、热耗散及其对应的等效 Nu，并记录稳定性范围。
-! 说明: 速度耗散使用 LBM-CDE 局部应变率；温度梯度使用二阶中心/单边有限差分。
+! 子程序: restore_dissipation_statistics
+! 作用: 续算时从完整耗散历史和温度剖面历史恢复统计窗口的全部在线累计量。
+! 说明: 耗散历史恢复标量统计；二进制温度剖面历史恢复每个高度上的 <T>_x 和 <T^2>_x。
+!       两套历史必须都与重启时刻一致，防止从较旧流场续算时重复累计较新的后处理样本。
 !===================================================================================================
-  subroutine calculate_dissipation()
+  subroutine restore_dissipation_statistics()
     use commondata
     implicit none
-    integer(kind=4) :: i, j
-    real(kind=8) :: gradX, gradY, speedSquared
-    real(kind=8) :: instantaneousSpeedSquaredSum
-    real(kind=8) :: instantaneousEpsKineticSum, instantaneousEpsThermalSum
-    real(kind=8) :: maxMachWork, minTemperatureWork, maxTemperatureWork, maxDensityDeviationWork
-    real(kind=8) :: sampleTime, currentNu
+    integer(kind=4) :: ios, dissipationUnit, profileUnit
+    integer(kind=4) :: historyRows, profileSamples
+    real(kind=8) :: sampleTime, nuVolAvgHistory, reVolRmsHistory
+    real(kind=8) :: epsKineticVolAvgHistory, epsThermalVolAvgHistory
+    real(kind=8) :: densityFluctuationVolRmsHistory, velocityDivergenceVolRmsHistory
+    real(kind=8) :: maxMachHistory, minTemperatureHistory, maxTemperatureHistory
+    real(kind=8) :: expectedLastSampleTime, lastDissipationTime
+    real(kind=8) :: lastStatisticTime, profileTime, lastProfileTime
+    real(kind=8) :: lastProfileRecordTime, timeTolerance
+    real(kind=8) :: temperatureXAvgProfileSample(ny), temperatureSquaredXAvgProfileSample(ny)
+    character(len=512) :: historyHeader
+    logical :: dissipationHistoryExists, profileHistoryExists
 
-    instantaneousSpeedSquaredSum = 0.0d0
-    instantaneousEpsKineticSum = 0.0d0
-    instantaneousEpsThermalSum = 0.0d0
+    timeTolerance = 1.0d-10*max(1.0d0,abs(reloadDimensionlessTime),abs(statisticSampleInterval))
+    ! 重启时刻早于统计窗口首个采样点时，统计历史尚未建立，这是合法情况。
+    if(restartStatisticSampleOffset.LE.0) return
+    expectedLastSampleTime = dble(firstStatisticSampleIndex+restartStatisticSampleOffset-1)* &
+        statisticSampleInterval
+
+    inquire(file=trim(dissipationHistoryFile),exist=dissipationHistoryExists)
+    if(.not.dissipationHistoryExists) then
+        write(*,*) 'Error: dissipation history is missing for restart statistics restoration.'
+        open(unit=00,file=trim(settingsFile),status='unknown',position='append')
+        write(00,*) 'Error: missing ', trim(dissipationHistoryFile)
+        close(00)
+        error stop 1
+    endif
+
+    open(newunit=dissipationUnit,file=trim(dissipationHistoryFile),status='old', &
+        action='read',form='formatted')
+    read(dissipationUnit,'(A)',iostat=ios) historyHeader
+    ! 重命名只改变表头，不改变十列数据顺序；续算时同时兼容旧表头和当前表头。
+    if((ios.NE.0).OR.((index(historyHeader, &
+        'rho_fluctuation_vol_rms div_u_vol_rms maxMach minT maxT').EQ.0).AND. &
+        (index(historyHeader,'rho_fluctuation_rms div_u_rms maxMach minT maxT').EQ.0))) then
+        close(dissipationUnit)
+        write(*,*) 'Error: dissipation history format is incompatible with restart restoration.'
+        error stop 1
+    endif
+
+    historyRows = 0
+    lastDissipationTime = -huge(1.0d0)
+    lastStatisticTime = -huge(1.0d0)
+    do
+        read(dissipationUnit,*,iostat=ios) sampleTime, nuVolAvgHistory, reVolRmsHistory, &
+            epsKineticVolAvgHistory, epsThermalVolAvgHistory, densityFluctuationVolRmsHistory, &
+            velocityDivergenceVolRmsHistory, maxMachHistory, minTemperatureHistory, maxTemperatureHistory
+        if(ios.LT.0) exit
+        if(ios.GT.0) then
+            close(dissipationUnit)
+            write(*,*) 'Error: invalid row in dissipation history during restart restoration.'
+            error stop 1
+        endif
+        if((historyRows.GT.0).AND.(sampleTime.LE.lastDissipationTime+timeTolerance)) then
+            close(dissipationUnit)
+            write(*,*) 'Error: dissipation history times are not strictly increasing.'
+            error stop 1
+        endif
+        if(sampleTime.GT.reloadDimensionlessTime+timeTolerance) then
+            close(dissipationUnit)
+            write(*,*) 'Error: dissipation history is newer than the selected restart field.'
+            error stop 1
+        endif
+        historyRows = historyRows+1
+        lastDissipationTime = sampleTime
+
+        if((sampleTime.GE.unsteadyAverageStartTf-timeTolerance).AND. &
+           (sampleTime.LE.unsteadyAverageEndTf+timeTolerance)) then
+            statisticSamples = statisticSamples+1
+            if(firstStatisticItc.LT.0) firstStatisticItc = int(sampleTime*timeUnit+0.5d0)
+            lastStatisticItc = int(sampleTime*timeUnit+0.5d0)
+            lastStatisticTime = sampleTime
+            sumNuVolAvg = sumNuVolAvg+nuVolAvgHistory
+            sumSpeedSquaredVolAvg = sumSpeedSquaredVolAvg+ &
+                (reVolRmsHistory*viscosity/lengthUnit)*(reVolRmsHistory*viscosity/lengthUnit)
+            sumEpsKineticVolAvg = sumEpsKineticVolAvg+epsKineticVolAvgHistory
+            sumEpsThermalVolAvg = sumEpsThermalVolAvg+epsThermalVolAvgHistory
+            sumDensityFluctuationSquaredVolAvg = sumDensityFluctuationSquaredVolAvg+ &
+                densityFluctuationVolRmsHistory*densityFluctuationVolRmsHistory
+            sumVelocityDivergenceSquaredVolAvg = sumVelocityDivergenceSquaredVolAvg+ &
+                velocityDivergenceVolRmsHistory*velocityDivergenceVolRmsHistory
+            maxStatisticCFL = max(maxStatisticCFL,maxMachHistory*dsqrt(cs2))
+        endif
+    enddo
+    close(dissipationUnit)
+
+    if((historyRows.NE.restartStatisticSampleOffset).OR. &
+       (abs(lastDissipationTime-expectedLastSampleTime).GT.timeTolerance)) then
+        write(*,*) 'Error: dissipation history does not match the selected restart statistics.'
+        error stop 1
+    endif
+
+    ! 平均窗口尚未开始时，耗散历史只用于时间一致性检查，不要求温度剖面文件存在。
+    if(statisticSamples.LE.0) return
+    inquire(file=trim(temperatureProfileHistoryFile),exist=profileHistoryExists)
+    if(.not.profileHistoryExists) then
+        write(*,*) 'Error: temperature-profile history is missing for restart statistics restoration.'
+        open(unit=00,file=trim(settingsFile),status='unknown',position='append')
+        write(00,*) 'Error: missing ', trim(temperatureProfileHistoryFile)
+        close(00)
+        error stop 1
+    endif
+
+    profileSamples = 0
+    lastProfileTime = -huge(1.0d0)
+    lastProfileRecordTime = -huge(1.0d0)
+    open(newunit=profileUnit,file=trim(temperatureProfileHistoryFile),status='old', &
+        action='read',form='unformatted',access='stream')
+    do
+        read(profileUnit,iostat=ios) profileTime
+        if(ios.LT.0) exit
+        if(ios.GT.0) then
+            close(profileUnit)
+            write(*,*) 'Error: invalid time record in temperature-profile history.'
+            error stop 1
+        endif
+        read(profileUnit,iostat=ios) temperatureXAvgProfileSample, temperatureSquaredXAvgProfileSample
+        if(ios.NE.0) then
+            close(profileUnit)
+            write(*,*) 'Error: incomplete record in temperature-profile history.'
+            error stop 1
+        endif
+        if(profileTime.LE.lastProfileRecordTime+timeTolerance) then
+            close(profileUnit)
+            write(*,*) 'Error: temperature-profile history times are not strictly increasing.'
+            error stop 1
+        endif
+        lastProfileRecordTime = profileTime
+        if(profileTime.GT.reloadDimensionlessTime+timeTolerance) then
+            close(profileUnit)
+            write(*,*) 'Error: temperature-profile history is newer than the selected restart field.'
+            error stop 1
+        endif
+        if((profileTime.GE.unsteadyAverageStartTf-timeTolerance).AND. &
+           (profileTime.LE.unsteadyAverageEndTf+timeTolerance)) then
+            profileSamples = profileSamples+1
+            lastProfileTime = profileTime
+            sumTemperatureXAvgProfile = sumTemperatureXAvgProfile+temperatureXAvgProfileSample
+            sumTemperatureSquaredXAvgProfile = &
+                sumTemperatureSquaredXAvgProfile+temperatureSquaredXAvgProfileSample
+        endif
+    enddo
+    close(profileUnit)
+
+    if((profileSamples.NE.statisticSamples).OR. &
+       (abs(lastProfileTime-lastStatisticTime).GT.timeTolerance)) then
+        write(*,*) 'Error: dissipation and temperature-profile restart statistics do not match.'
+        error stop 1
+    endif
+
+    open(unit=00,file=trim(settingsFile),status='unknown',position='append')
+    write(00,*) 'Restored dissipation/temperature-profile samples =', statisticSamples
+    write(00,*) 'Restored statistics through time_tf =', lastStatisticTime
+    close(00)
+  end subroutine restore_dissipation_statistics
+!===================================================================================================
+
+
+!===================================================================================================
+! 子程序: calculate_unsteady_sample
+! 作用: 一次全场遍历同时计算非稳态瞬时 Nu、Re、两类耗散及 Xu 可压缩性指标。
+! 调用: 只在配置的统计窗口内按 statisticSampleInterval 调用；快照、plt 和 reload 不调用本程序。
+! 时间轴: 给定 t/t_ff 后，用 itc=nint((t/t_ff)*timeUnit) 选择最近格子步；写文件仍以给定 t/t_ff 为横坐标。
+! 说明: 此处只记录原始瞬时量，不在每个采样点反算耗散 Nu 或检查精确关系。
+!       Xu/Zhang 所需的耗散 Nu 和精确关系比值在统计窗口结束后由空间-时间平均量统一计算。
+!       速度耗散使用 LBM-CDE 局部应变率；温度梯度使用二阶中心/单边有限差分。
+!===================================================================================================
+  subroutine calculate_unsteady_sample()
+    use commondata
+    implicit none
+    integer(kind=4) :: i, j, alpha, absoluteStatisticSampleIndex
+    real(kind=8) :: gradX, gradY, speedSquared, eu, uu, feq
+    real(kind=8) :: neqxx, neqxy, neqyy
+    ! xxxVol 是当前采样时刻对全部格点的空间求和，尚未除以 nx*ny。
+    real(kind=8) :: nuConvectiveFluxVol, speedSquaredVol
+    real(kind=8) :: epsKineticVol, epsThermalVol
+    real(kind=8) :: densityFluctuationSquaredVol
+    real(kind=8) :: velocityDivergenceSquaredVol
+    real(kind=8) :: maxMachWork, minTemperatureWork, maxTemperatureWork
+    real(kind=8) :: sampleTime
+    logical :: exNu, exRe
+    logical, save :: firstUnsteadyHistoryWrite = .true.
+    real(kind=8), parameter :: muShear=rho0*viscosity
+    real(kind=8), parameter :: muBulk=rho0*bulkViscosity
+    real(kind=8), parameter :: denomDiag=2.0d0*muShear+rho0*cs2
+    real(kind=8), parameter :: denomShear=4.0d0*muShear+2.0d0*rho0*cs2
+    real(kind=8), parameter :: denomDiv=2.0d0*muBulk+rho0*cs2
+    real(kind=8), parameter :: coeffTrace=(2.0d0*muShear-2.0d0*muBulk)/(2.0d0*denomDiag)
+
+    !$acc wait(1)
+    if (dimensionlessTime.GE.dimensionlessTimeMax) then
+        write(*,*) "Error: dimensionlessTime exceeds dimensionlessTimeMax, please enlarge dimensionlessTimeMax"
+        open(unit=00,file=trim(settingsFile),status="unknown",position="append")
+        write(00,*) "Error: dimensionlessTime exceeds dimensionlessTimeMax, please enlarge dimensionlessTimeMax"
+        close(00)
+        stop
+    endif
+
+    dimensionlessTime = dimensionlessTime+1
+    absoluteStatisticSampleIndex = firstStatisticSampleIndex+ &
+        restartStatisticSampleOffset+dimensionlessTime-1
+    sampleTime = real(absoluteStatisticSampleIndex,kind=8)*statisticSampleInterval
+
+    ! 只有重启时刻已经越过统计窗口首个样本，续算才必须接在旧 Nu/Re 历史之后。
+    ! 若在统计窗口开始前重启，restartStatisticSampleOffset=0，首个统计样本会新建历史文件。
+    if((firstUnsteadyHistoryWrite).AND.(restartStatisticSampleOffset.GT.0)) then
+        inquire(file="Nu_VolAvg_2DOpenaccLBMCDE_D2Q5.dat", exist=exNu)
+        inquire(file="Re_VolAvg_2DOpenaccLBMCDE_D2Q5.dat", exist=exRe)
+        if((.not.exNu).OR.(.not.exRe)) then
+            write(*,*) "Error: restart requested but old Nu/Re time-series files are missing."
+            open(unit=00,file=trim(settingsFile),status="unknown",position="append")
+            write(00,*) "Error: restart requested but old Nu/Re time-series files are missing."
+            write(00,*) "Nu history exists =", exNu
+            write(00,*) "Re history exists =", exRe
+            close(00)
+            stop
+        endif
+    endif
+
+    nuConvectiveFluxVol = 0.0d0
+    speedSquaredVol = 0.0d0
+    epsKineticVol = 0.0d0
+    epsThermalVol = 0.0d0
+    densityFluctuationSquaredVol = 0.0d0
+    velocityDivergenceSquaredVol = 0.0d0
     maxMachWork = 0.0d0
     minTemperatureWork = huge(1.0d0)
     maxTemperatureWork = -huge(1.0d0)
-    maxDensityDeviationWork = 0.0d0
 
-    !$acc parallel loop gang vector collapse(2) default(none) present(u,v,T,rho,Sxx,Sxy,Syy) &
-    !$acc& reduction(+:instantaneousSpeedSquaredSum,instantaneousEpsKineticSum,instantaneousEpsThermalSum) &
-    !$acc& reduction(max:maxMachWork,maxTemperatureWork,maxDensityDeviationWork) &
-    !$acc& reduction(min:minTemperatureWork) private(gradX,gradY,speedSquared)
+    !$acc parallel loop gang vector collapse(2) default(none) &
+    !$acc& present(f,u,v,T,rho,Fx,Fy,Sxx,Sxy,Syy,Sdiv,ex,ey,omega) &
+    !$acc& reduction(+:nuConvectiveFluxVol,speedSquaredVol) &
+    !$acc& reduction(+:epsKineticVol,epsThermalVol) &
+    !$acc& reduction(+:densityFluctuationSquaredVol,velocityDivergenceSquaredVol) &
+    !$acc& reduction(max:maxMachWork,maxTemperatureWork) &
+    !$acc& reduction(min:minTemperatureWork) &
+    !$acc& private(alpha,gradX,gradY,speedSquared,eu,uu,feq,neqxx,neqxy,neqyy)
     do j = 1, ny
         do i = 1, nx
+            ! 温度在本步 macroT 后已经更新，因此这里同步刷新采样时刻的力和应变率。
+            Fx(i,j) = 0.0d0
+            Fy(i,j) = rho0*gBeta*(T(i,j)-Tref)
+#ifdef SideHeatedHa
+            Fx(i,j) = rho0*B2sigemarho*(v(i,j)*sin(phi)*cos(phi)-u(i,j)*sin(phi)*sin(phi))
+            Fy(i,j) = Fy(i,j)+rho0*B2sigemarho*(u(i,j)*sin(phi)*cos(phi)-v(i,j)*cos(phi)*cos(phi))
+#endif
+
+            neqxx = 0.0d0
+            neqxy = 0.0d0
+            neqyy = 0.0d0
+            uu = u(i,j)*u(i,j)+v(i,j)*v(i,j)
+            do alpha = 0, 8
+                eu = dble(ex(alpha))*u(i,j)+dble(ey(alpha))*v(i,j)
+                feq = omega(alpha)*((rho(i,j)-rho0)+rho0*(eu/cs2 + &
+                    0.5d0*eu*eu/(cs2*cs2)-0.5d0*uu/cs2))
+                neqxx = neqxx+dble(ex(alpha)*ex(alpha))*(f(i,j,alpha)-feq)
+                neqxy = neqxy+dble(ex(alpha)*ey(alpha))*(f(i,j,alpha)-feq)
+                neqyy = neqyy+dble(ey(alpha)*ey(alpha))*(f(i,j,alpha)-feq)
+            enddo
+            Sdiv(i,j) = -(neqxx+neqyy+u(i,j)*Fx(i,j)+v(i,j)*Fy(i,j))/denomDiv
+            Sxx(i,j) = -(neqxx+u(i,j)*Fx(i,j))/denomDiag+coeffTrace*Sdiv(i,j)
+            Syy(i,j) = -(neqyy+v(i,j)*Fy(i,j))/denomDiag+coeffTrace*Sdiv(i,j)
+            Sxy(i,j) = -(2.0d0*neqxy+u(i,j)*Fy(i,j)+v(i,j)*Fx(i,j))/denomShear
+
             if(i.EQ.1) then
                 gradX = 0.5d0*(-3.0d0*T(1,j)+4.0d0*T(2,j)-T(3,j))
             elseif(i.EQ.nx) then
@@ -2276,281 +2514,500 @@ end subroutine append_convergence_master_tecplot
             endif
 
             speedSquared = u(i,j)*u(i,j)+v(i,j)*v(i,j)
-            instantaneousSpeedSquaredSum = instantaneousSpeedSquaredSum+speedSquared
-            instantaneousEpsKineticSum = instantaneousEpsKineticSum+2.0d0*viscosity* &
+#ifdef SideHeatedCell
+            ! 侧壁差温方腔的主热流方向为 x，因此使用 u(T-Tref)。
+            nuConvectiveFluxVol = nuConvectiveFluxVol+u(i,j)*(T(i,j)-Tref)
+#endif
+#ifdef RayleighBenardCell
+            ! Rayleigh-Benard 的主热流方向为 y，因此使用 v(T-Tref)。
+            nuConvectiveFluxVol = nuConvectiveFluxVol+v(i,j)*(T(i,j)-Tref)
+#endif
+            speedSquaredVol = speedSquaredVol+speedSquared
+            epsKineticVol = epsKineticVol+2.0d0*viscosity* &
                 (Sxx(i,j)*Sxx(i,j)+Syy(i,j)*Syy(i,j)+2.0d0*Sxy(i,j)*Sxy(i,j))
-            instantaneousEpsThermalSum = instantaneousEpsThermalSum+ &
+            epsThermalVol = epsThermalVol+ &
                 diffusivity*(gradX*gradX+gradY*gradY)
+            ! Xu 可压缩性指标的空间平方平均；最后在全场归一化并开平方。
+            densityFluctuationSquaredVol = densityFluctuationSquaredVol+ &
+                (rho(i,j)-rho0)*(rho(i,j)-rho0)
+            velocityDivergenceSquaredVol = velocityDivergenceSquaredVol+ &
+                Sdiv(i,j)*Sdiv(i,j)
             maxMachWork = max(maxMachWork,dsqrt(speedSquared/cs2))
             minTemperatureWork = min(minTemperatureWork,T(i,j))
             maxTemperatureWork = max(maxTemperatureWork,T(i,j))
-            maxDensityDeviationWork = max(maxDensityDeviationWork,abs(rho(i,j)-rho0))
         enddo
     enddo
 
-    speedSquaredVol = instantaneousSpeedSquaredSum/dble(nx*ny)
-    epsKineticVol = instantaneousEpsKineticSum/dble(nx*ny)
-    epsThermalVol = instantaneousEpsThermalSum/dble(nx*ny)
-#ifdef RayleighBenardCell
-    ! RB 精确全局关系：eps_u=nu^3/H^4*(Nu-1)*Ra/Pr^2，
-    !                  eps_T=kappa*DeltaT^2/H^2*Nu。
-    ! 换算后的 Nu_eps 与对流热通量 Nu 的偏差可反映统计不足、边界误差和离散误差。
-    NuKineticDiss = 1.0d0+epsKineticVol*lengthUnit**4*Prandtl**2/(viscosity**3*Rayleigh)
-    NuThermalDiss = epsThermalVol*lengthUnit**2/(diffusivity*deltaT**2)
-#else
-    ! RB 的精确耗散-Nu 关系不适用于侧热方腔；侧热工况只保留原始体平均耗散率。
-    NuKineticDiss = 0.0d0
-    NuThermalDiss = 0.0d0
-#endif
+    ! 前面是累加，现在是空间平均。
+    NuVolAvg(dimensionlessTime) = 1.0d0+nuConvectiveFluxVol/dble(nx*ny)*lengthUnit/diffusivity
+    speedSquaredVolAvg = speedSquaredVol/dble(nx*ny)
+    ReVolAvg(dimensionlessTime) = dsqrt(max(0.0d0,speedSquaredVolAvg))*lengthUnit/viscosity
+    epsKineticVolAvg = epsKineticVol/dble(nx*ny)
+    epsThermalVolAvg = epsThermalVol/dble(nx*ny)
+    densityFluctuationSquaredVolAvg = densityFluctuationSquaredVol/dble(nx*ny)
+    velocityDivergenceSquaredVolAvg = velocityDivergenceSquaredVol/dble(nx*ny)
     maxMachLocal = maxMachWork
     minTemperature = minTemperatureWork
     maxTemperature = maxTemperatureWork
-    maxDensityDeviation = maxDensityDeviationWork
 
-    currentNu = NuVolAvg(dimensionlessTime)
-#ifdef RayleighBenardCell
-    if(abs(currentNu-1.0d0).GT.1.0d-12) then
-        kineticDissExactRatio = (NuKineticDiss-1.0d0)/(currentNu-1.0d0)
+    if((firstUnsteadyHistoryWrite).AND.(restartStatisticSampleOffset.EQ.0)) then
+        open(unit=01,file="Nu_VolAvg_2DOpenaccLBMCDE_D2Q5.dat",status='replace',action='write')
+        open(unit=02,file="Re_VolAvg_2DOpenaccLBMCDE_D2Q5.dat",status='replace',action='write')
     else
-        kineticDissExactRatio = 0.0d0
+        open(unit=01,file="Nu_VolAvg_2DOpenaccLBMCDE_D2Q5.dat",status='unknown',position='append',action='write')
+        open(unit=02,file="Re_VolAvg_2DOpenaccLBMCDE_D2Q5.dat",status='unknown',position='append',action='write')
     endif
-    if(abs(currentNu).GT.1.0d-12) then
-        thermalDissExactRatio = NuThermalDiss/currentNu
-    else
-        thermalDissExactRatio = 0.0d0
-    endif
-#else
-    kineticDissExactRatio = 0.0d0
-    thermalDissExactRatio = 0.0d0
-#endif
+    write(01,'(ES24.16E3,1X,ES24.16E3)') sampleTime, NuVolAvg(dimensionlessTime)
+    write(02,'(ES24.16E3,1X,ES24.16E3)') sampleTime, ReVolAvg(dimensionlessTime)
+    close(01)
+    close(02)
 
-    sampleTime = reloadDimensionlessTime+real(dimensionlessTime,kind=8)*outputSnapshotInterval
-    if((dimensionlessTime.EQ.1).AND.(loadInitField.EQ.0)) then
+    if((firstUnsteadyHistoryWrite).AND.(restartStatisticSampleOffset.EQ.0)) then
         open(unit=12,file=trim(dissipationHistoryFile),status='replace',action='write')
-        write(12,'(A)') '# time_ff Nu Re eps_u eps_T Nu_eps_u Nu_eps_T eps_u_ratio eps_T_ratio maxMach minT maxT maxAbsRho'
+        write(12,'(A)') '# time_over_tff Nu_vol_avg Re_vol_rms eps_u_vol_avg eps_T_vol_avg ' // &
+            'rho_fluctuation_vol_rms div_u_vol_rms maxMach minT maxT'
     else
         open(unit=12,file=trim(dissipationHistoryFile),status='unknown',position='append',action='write')
     endif
-    write(12,'(13(ES24.16E3,1X))') sampleTime, currentNu, ReVolAvg(dimensionlessTime), &
-        epsKineticVol, epsThermalVol, NuKineticDiss, NuThermalDiss, &
-        kineticDissExactRatio, thermalDissExactRatio, &
-        maxMachLocal, minTemperature, maxTemperature, maxDensityDeviation
+    ! 历史文件需要瞬时空间 RMS；这里直接由瞬时空间均方量开平方，不再保存重复中间变量。
+    write(12,'(10(ES24.16E3,1X))') sampleTime, NuVolAvg(dimensionlessTime), &
+        ReVolAvg(dimensionlessTime), epsKineticVolAvg, epsThermalVolAvg, &
+        dsqrt(max(0.0d0,densityFluctuationSquaredVolAvg)), &
+        dsqrt(max(0.0d0,velocityDivergenceSquaredVolAvg)), &
+        maxMachLocal, minTemperature, maxTemperature
     close(12)
-  end subroutine calculate_dissipation
+    firstUnsteadyHistoryWrite = .false.
+    write(*,'(A,1X,ES24.16E3)') 'Nu_volume_instantaneous =', NuVolAvg(dimensionlessTime)
+    write(*,'(A,1X,ES24.16E3)') 'Re_instantaneous_rms =', ReVolAvg(dimensionlessTime)
+  end subroutine calculate_unsteady_sample
 !===================================================================================================
 
 
 !===================================================================================================
 ! 子程序: accumulate_dissipation_statistics
-! 作用: 对统计窗口内的 Nu、rms 速度、两类耗散和水平温度剖面做在线累加。
+! 作用: 对统计窗口内的 Nu、速度平方、两类耗散、Xu 可压缩性指标和温度剖面做在线累加。
+! 调用: calculate_unsteady_sample 已经完成当前采样时刻的空间求和与体平均；
+!       主程序只在 unsteadyAverageStartTf 至 unsteadyAverageEndTf 的统计窗口内调用本程序。
+! 说明: 速度平方必须保留，因为文献 Re 的定义是 sqrt(<u^2+v^2>_V,t)*H/nu。
+!       前后半段 Nu/Re 统一由 output_unsteady_NuRe_postprocess 重读完整历史后计算，
+!       本程序不再维护一套重复的前后半段累计量。
+!       温度的一、二阶矩继续保留，用于以后分析 T_rms(y) 峰值定义的边界层厚度；
+!       当前 Table 1 的 N_BL 在 write_dissipation_statistics 中由 H/(2*Nu) 直接估计。
+!       每个统计采样的水平温度剖面同时追加到二进制历史，供后续进程恢复完整累计量。
+!       本程序只做等时间间隔样本的时间求和；除以样本数及精确关系检查在
+!       write_dissipation_statistics 中统一完成。
 !===================================================================================================
   subroutine accumulate_dissipation_statistics()
     use commondata
     implicit none
-    integer(kind=4) :: i, j
-    real(kind=8) :: sampleTime, currentNu, lineMean, lineSquareMean
+    integer(kind=4) :: i, j, profileUnit ! i/j 为温度剖面空间循环；profileUnit 为二进制历史文件单元号
+    integer(kind=4) :: absoluteStatisticSampleIndex ! 当前样本在整个统计时间轴上的绝对编号
+    real(kind=8) :: sampleTime           ! 当前统计样本对应的自由落体时间 t/t_ff
+    real(kind=8) :: currentNuVolAvg      ! 当前采样时刻已经完成空间平均的 Nu
+    real(kind=8) :: temperatureXSum, temperatureSquaredXSum ! 固定高度上 T 和 T^2 的水平格点求和
+    real(kind=8) :: temperatureXAvgProfileSample(ny)        ! 当前时刻的水平平均温度 <T>_x(y)
+    real(kind=8) :: temperatureSquaredXAvgProfileSample(ny) ! 当前时刻的水平平均温度平方 <T^2>_x(y)
+    logical, save :: firstProfileHistoryWrite = .true.      ! 标记本次进程是否第一次写温度剖面历史
 
-    sampleTime = reloadDimensionlessTime+real(dimensionlessTime,kind=8)*outputSnapshotInterval
-    currentNu = NuVolAvg(dimensionlessTime)
+    ! 恢复续算前的累计采样编号后，重新得到当前样本的绝对自由落体时间。
+    absoluteStatisticSampleIndex = firstStatisticSampleIndex+ &
+        restartStatisticSampleOffset+dimensionlessTime-1
+    sampleTime = real(absoluteStatisticSampleIndex,kind=8)*statisticSampleInterval
+    currentNuVolAvg = NuVolAvg(dimensionlessTime)
+
+    ! 记录统计样本数和累计格子步范围；firstStatisticItc 只在第一个样本时赋值。
     statisticSamples = statisticSamples+1
-    if(firstStatisticItc.LT.0) firstStatisticItc = restartItcOffset+itc
-    lastStatisticItc = restartItcOffset+itc
-    sumNuGlobal = sumNuGlobal+currentNu
-    sumNuGlobal2 = sumNuGlobal2+currentNu*currentNu
-    sumSpeedSquaredVol = sumSpeedSquaredVol+speedSquaredVol
-    sumSpeedSquaredVol2 = sumSpeedSquaredVol2+speedSquaredVol*speedSquaredVol
-    sumEpsKinetic = sumEpsKinetic+epsKineticVol
-    sumEpsKinetic2 = sumEpsKinetic2+epsKineticVol*epsKineticVol
-    sumEpsThermal = sumEpsThermal+epsThermalVol
-    sumEpsThermal2 = sumEpsThermal2+epsThermalVol*epsThermalVol
-    sumNuKineticDiss = sumNuKineticDiss+NuKineticDiss
-    sumNuKineticDiss2 = sumNuKineticDiss2+NuKineticDiss*NuKineticDiss
-    sumNuThermalDiss = sumNuThermalDiss+NuThermalDiss
-    sumNuThermalDiss2 = sumNuThermalDiss2+NuThermalDiss*NuThermalDiss
+    if(firstStatisticItc.LT.0) firstStatisticItc = restartItcOffset+itc  !第一个统计样本对应的累计格子步。
+    lastStatisticItc = restartItcOffset+itc  !最后一个统计样本对应的累计格子步。
+
+    ! 对已经完成空间平均的瞬时量做时间求和。
+    ! 固定采样间隔下，最终除以 statisticSamples 即为离散时间平均。
+    sumNuVolAvg = sumNuVolAvg+currentNuVolAvg
+    ! 文献 Re 需要先对 <u^2+v^2>_V 做时间平均，最后统一开平方，不能直接平均瞬时 Re。
+    sumSpeedSquaredVolAvg = sumSpeedSquaredVolAvg+speedSquaredVolAvg
+    ! 两类耗散先累计瞬时体平均量，统计结束后得到 <epsilon_u>_V,t 和 <epsilon_T>_V,t。
+    sumEpsKineticVolAvg = sumEpsKineticVolAvg+epsKineticVolAvg
+    sumEpsThermalVolAvg = sumEpsThermalVolAvg+epsThermalVolAvg
+    ! Xu 的弱可压缩性指标采用空间-时间 RMS，因此累计均方量而不是瞬时 RMS。
+    sumDensityFluctuationSquaredVolAvg = &
+        sumDensityFluctuationSquaredVolAvg+densityFluctuationSquaredVolAvg
+    sumVelocityDivergenceSquaredVolAvg = &
+        sumVelocityDivergenceSquaredVolAvg+velocityDivergenceSquaredVolAvg
+    ! maxMachLocal*cs 恢复为最大格子速度；在 dx=dt=1 时也就是格子 CFL。
     maxStatisticCFL = max(maxStatisticCFL,maxMachLocal*dsqrt(cs2))
 
-    if(sampleTime.LT.unsteadyAverageMidTf) then
-        firstHalfSamples = firstHalfSamples+1
-        sumNuFirstHalf = sumNuFirstHalf+currentNu
-        sumSpeedSquaredFirstHalf = sumSpeedSquaredFirstHalf+speedSquaredVol
-    else
-        secondHalfSamples = secondHalfSamples+1
-        sumNuSecondHalf = sumNuSecondHalf+currentNu
-        sumSpeedSquaredSecondHalf = sumSpeedSquaredSecondHalf+speedSquaredVol
-    endif
-
+    ! 对每个高度 y_j 做水平平均：
+    ! temperatureXAvgProfileSample(j)        = <T>_x(y_j,t)
+    ! temperatureSquaredXAvgProfileSample(j) = <T^2>_x(y_j,t)
+    ! 两者再做时间求和，最终使用 T_rms(y)=sqrt(<T^2>_x,t-<T>_x,t^2)。
     do j = 1, ny
-        lineMean = 0.0d0
-        lineSquareMean = 0.0d0
+        temperatureXSum = 0.0d0
+        temperatureSquaredXSum = 0.0d0
         do i = 1, nx
-            lineMean = lineMean+T(i,j)
-            lineSquareMean = lineSquareMean+T(i,j)*T(i,j)
+            temperatureXSum = temperatureXSum+T(i,j)
+            temperatureSquaredXSum = temperatureSquaredXSum+T(i,j)*T(i,j)
         enddo
-        sumTemperatureProfile(j) = sumTemperatureProfile(j)+lineMean/dble(nx)
-        sumTemperatureSquaredProfile(j) = sumTemperatureSquaredProfile(j)+lineSquareMean/dble(nx)
+        temperatureXAvgProfileSample(j) = temperatureXSum/dble(nx)
+        temperatureSquaredXAvgProfileSample(j) = temperatureSquaredXSum/dble(nx)
+        sumTemperatureXAvgProfile(j) = &
+            sumTemperatureXAvgProfile(j)+temperatureXAvgProfileSample(j)
+        sumTemperatureSquaredXAvgProfile(j) = &
+            sumTemperatureSquaredXAvgProfile(j)+temperatureSquaredXAvgProfileSample(j)
     enddo
+
+    ! 温度剖面不在标量耗散历史中，因此单独保存为无格式流二进制文件。
+    ! 没有旧统计样本时，首个统计样本覆盖旧文件；恢复过旧统计样本时则继续追加。
+    ! 每个样本依次保存 sampleTime、<T>_x(:) 和 <T^2>_x(:)，供续算恢复完整时间累计量。
+    if(firstProfileHistoryWrite.AND.(restartStatisticSampleOffset.EQ.0)) then
+        open(newunit=profileUnit,file=trim(temperatureProfileHistoryFile),status='replace', &
+            action='write',form='unformatted',access='stream')
+    else
+        open(newunit=profileUnit,file=trim(temperatureProfileHistoryFile),status='unknown', &
+            action='write',form='unformatted',access='stream',position='append')
+    endif
+    write(profileUnit) sampleTime
+    write(profileUnit) temperatureXAvgProfileSample, temperatureSquaredXAvgProfileSample
+    close(profileUnit)
+    ! save 变量在本次进程后续调用中保持为 .false.，避免再次覆盖刚写入的历史文件。
+    firstProfileHistoryWrite = .false.
   end subroutine accumulate_dissipation_statistics
 !===================================================================================================
 
 
 !===================================================================================================
 ! 子程序: write_dissipation_statistics
-! 作用: 输出统计窗口的 Nu/Re、热耗散、动能耗散、前后半窗口差异和温度 RMS 边界层指标。
+! 作用: 在统计窗口结束后，用空间-时间平均量统一生成 Xu 与 Zhang 两套文献对照结果。
+! 调用: 非稳态计算结束时调用一次；本程序不推进流场，也不重新遍历二维瞬时流场。
+! 输入: accumulate_dissipation_statistics 在线累计的标量和温度剖面；续算时这些累计量已经
+!       由 restore_dissipation_statistics 恢复，所以最终结果覆盖完整统计窗口。
+! Xu 输出: 对流通量 Nu、壁面 Nu、两种耗散反算 Nu、后三者相对 Nu_vol 的差异，
+!          以及 RMS Re、RMS 密度波动和 RMS 速度散度。
+! Zhang 输出: 直接计算耗散、Nu 精确关系给出的耗散、两者比值，以及 N_BL 和分辨率指标。
+!             N_BL 采用 H/(2*Nu) 的整体估计，同时保留温度 RMS 峰值边界层诊断。
+! 文件: statisticsFile 保存汇总量；temperatureRmsProfileFile 保存 z/H-theta_rms(z) 剖面；
+!       settingsFile 只追加一份便于运行结束后快速查看的摘要。
+! 说明: 所有文献比较都先完成空间-时间平均，再计算比值或反算 Nu；不平均瞬时比值。
 !===================================================================================================
   subroutine write_dissipation_statistics()
     use commondata
     implicit none
-    integer(kind=4) :: j, lowerPeakIndex, upperPeakIndex, thermalBLGridPoints
-    real(kind=8) :: invN, meanNu, stdNu, meanSpeedSquared, stdSpeedSquared, meanRe
-    real(kind=8) :: meanEpsKinetic, stdEpsKinetic, meanEpsThermal, stdEpsThermal
-    real(kind=8) :: meanNuKinetic, stdNuKinetic, meanNuThermal, stdNuThermal
-    real(kind=8) :: firstNu, secondNu, firstRe, secondRe
-    real(kind=8) :: rmsTemperature, lowerRmsMaximum, upperRmsMaximum, thermalBLThickness
-    real(kind=8) :: kineticRatioMean, thermalRatioMean
-    real(kind=8) :: etaOverH, etaBOverH, gridOverEta, gridOverEtaB, timeStepOverEta
+    integer(kind=4) :: j                         ! 壁法向网格索引
+    integer(kind=4) :: lowerPeakIndex, upperPeakIndex ! 下、上半区 theta_rms 峰值索引
+    integer(kind=4) :: profileUnit               ! 温度 RMS 剖面输出文件单元号
+    integer(kind=4) :: thermalBLGridPointsGlobalEstimate ! H/(2*Nu) 对应的 N_BL
+    integer(kind=4) :: thermalBLGridPointsRms    ! theta_rms 峰值厚度对应的 N_BL
+    real(kind=8) :: invN                         ! 统计样本数的倒数，用于时间平均
+    real(kind=8) :: nuVolTimeAvg                 ! 对流热通量 Nu 的时间平均
+    real(kind=8) :: speedSquaredVolTimeAvg       ! <u^2+v^2>_V,t
+    real(kind=8) :: reVolTimeRms                 ! sqrt(<u^2+v^2>_V,t)*H/nu
+    real(kind=8) :: epsKineticVolTimeAvg, epsThermalVolTimeAvg ! 两类空间-时间平均耗散率
+    real(kind=8) :: densityFluctuationSquaredVolTimeAvg ! <(rho-rho0)^2>_V,t
+    real(kind=8) :: velocityDivergenceSquaredVolTimeAvg ! <(div u)^2>_V,t
+    real(kind=8) :: densityFluctuationVolTimeRms, velocityDivergenceVolTimeRms ! 开平方后的 RMS
+    real(kind=8) :: wallNormalSpacing            ! 无量纲壁法向网格间距 Delta_g/H
+    real(kind=8) :: nuBottomWallTimeAvg, nuTopWallTimeAvg, nuWallTimeAvg ! 上下壁及两壁平均 Nu
+    real(kind=8) :: nuFromKineticDissipation, nuFromThermalDissipation ! 两个耗散反算 Nu
+    real(kind=8) :: kineticDissipationExact, thermalDissipationExact ! Nu 精确关系给出的耗散
+    real(kind=8) :: kineticDissipationRatio, thermalDissipationRatio ! 直接耗散/精确关系耗散
+    real(kind=8) :: wallNuDifferencePercent      ! Nu_wall 相对 Nu_vol 的百分差
+    real(kind=8) :: kineticNuDifferencePercent   ! Nu_kin 相对 Nu_vol 的百分差
+    real(kind=8) :: thermalNuDifferencePercent   ! Nu_th 相对 Nu_vol 的百分差
+    real(kind=8) :: rmsTemperature               ! 当前高度的 theta_rms
+    real(kind=8) :: lowerRmsMaximum, upperRmsMaximum ! 下、上半区 theta_rms 最大值
+    real(kind=8) :: thermalBLThicknessGlobalEstimate ! delta_theta/H=1/(2*Nu)
+    real(kind=8) :: thermalBLThicknessRms        ! 上下 theta_rms 峰值距离的平均值
+    real(kind=8) :: thermalBLThicknessRelativeDifferencePercent ! 两种厚度的百分差
+    real(kind=8) :: thermalBLGridPointsRelativeDifferencePercent ! 两种 N_BL 的百分差
+    real(kind=8) :: zOverH                       ! 流体节点中心的无量纲高度
+    real(kind=8) :: etaOverH, etaBOverH           ! Kolmogorov、Batchelor 长度相对 H
+    real(kind=8) :: gridOverEta, gridOverEtaB, timeStepOverEta ! Zhang 表一分辨率指标
 
+    !-----------------------------------------------------------------------------------------------
+    ! 第一部分：建立最终统计文件，并检查统计窗口内是否确实存在样本。
+    ! 即使没有样本也输出说明，避免留下一个看似正常但内容无效的结果文件。
     open(unit=22,file=trim(statisticsFile),status='replace',action='write')
-    write(22,'(A)') '# Online statistics for the current run segment inside the configured averaging window'
-    write(22,'(A,I0)') '# samples ', statisticSamples
+    write(22,'(A)') '# Xu/Zhang benchmark statistics over the configured window, including restored restart history'
+    write(22,'(A)') '# unsteady time axis: t/t_ff; lattice itc is retained only as restart provenance'
+    write(22,'(A,I0)') '# expected_statistics_samples ', expectedStatisticSampleCount
+    write(22,'(A,I0)') '# actual_statistics_samples ', statisticSamples
     write(22,'(A,2(1X,I0))') '# first_last_sample_itc', firstStatisticItc, lastStatisticItc
-    write(22,'(A,2(1X,I0))') '# first_second_half_samples', firstHalfSamples, secondHalfSamples
     if(statisticSamples.LE.0) then
         write(22,'(A)') '# no samples: run ended before the averaging window'
         close(22)
         return
     endif
+    if(statisticSamples.NE.expectedStatisticSampleCount) then
+        write(22,'(A)') '# error: actual statistics samples do not match the configured averaging window'
+        close(22)
+        write(*,*) 'Error: statistics sample count does not match the configured averaging window.'
+        error stop 1
+    endif
 
+    !-----------------------------------------------------------------------------------------------
+    ! 第二部分：把 accumulate_dissipation_statistics 保存的时间求和量除以样本数。
+    ! 采样间隔固定，因此算术平均就是当前统计窗口上的离散时间平均。
     invN = 1.0d0/dble(statisticSamples)
-    meanNu = sumNuGlobal*invN
-    stdNu = dsqrt(max(0.0d0,sumNuGlobal2*invN-meanNu*meanNu))
-    meanSpeedSquared = sumSpeedSquaredVol*invN
-    stdSpeedSquared = dsqrt(max(0.0d0,sumSpeedSquaredVol2*invN-meanSpeedSquared*meanSpeedSquared))
-    meanRe = dsqrt(max(0.0d0,meanSpeedSquared))*lengthUnit/viscosity
-    meanEpsKinetic = sumEpsKinetic*invN
-    stdEpsKinetic = dsqrt(max(0.0d0,sumEpsKinetic2*invN-meanEpsKinetic*meanEpsKinetic))
-    meanEpsThermal = sumEpsThermal*invN
-    stdEpsThermal = dsqrt(max(0.0d0,sumEpsThermal2*invN-meanEpsThermal*meanEpsThermal))
-    meanNuKinetic = sumNuKineticDiss*invN
-    stdNuKinetic = dsqrt(max(0.0d0,sumNuKineticDiss2*invN-meanNuKinetic*meanNuKinetic))
-    meanNuThermal = sumNuThermalDiss*invN
-    stdNuThermal = dsqrt(max(0.0d0,sumNuThermalDiss2*invN-meanNuThermal*meanNuThermal))
+    nuVolTimeAvg = sumNuVolAvg*invN
+    speedSquaredVolTimeAvg = sumSpeedSquaredVolAvg*invN
+    ! Xu 与 Zhang 均使用 Re=sqrt(<u^2+v^2>_V,t)*H/nu，而不是 <Re_instant>_t。
+    reVolTimeRms = dsqrt(max(0.0d0,speedSquaredVolTimeAvg))*lengthUnit/viscosity
+    epsKineticVolTimeAvg = sumEpsKineticVolAvg*invN
+    epsThermalVolTimeAvg = sumEpsThermalVolAvg*invN
+    ! Xu 的两个整体可压缩性指标采用空间-时间 RMS，先平均平方再统一开平方。
+    densityFluctuationSquaredVolTimeAvg = sumDensityFluctuationSquaredVolAvg*invN
+    velocityDivergenceSquaredVolTimeAvg = sumVelocityDivergenceSquaredVolAvg*invN
+    densityFluctuationVolTimeRms = dsqrt(max(0.0d0,densityFluctuationSquaredVolTimeAvg))
+    velocityDivergenceVolTimeRms = dsqrt(max(0.0d0,velocityDivergenceSquaredVolTimeAvg))
 
-    kineticRatioMean = 0.0d0
+    !-----------------------------------------------------------------------------------------------
+    ! 第三部分：先初始化只对 RB 对流有意义的壁面 Nu、耗散 Nu 和精确关系结果。
+    ! 侧壁加热分支不会进入下面的 RayleighBenardCell 计算，因而保持这些安全初值。
+    wallNormalSpacing = 1.0d0/lengthUnit
+    nuBottomWallTimeAvg = 0.0d0
+    nuTopWallTimeAvg = 0.0d0
+    nuWallTimeAvg = 0.0d0
+    nuFromKineticDissipation = 0.0d0
+    nuFromThermalDissipation = 0.0d0
+    kineticDissipationExact = 0.0d0
+    thermalDissipationExact = 0.0d0
+    kineticDissipationRatio = 0.0d0
+    thermalDissipationRatio = 0.0d0
+    wallNuDifferencePercent = 0.0d0
+    kineticNuDifferencePercent = 0.0d0
+    thermalNuDifferencePercent = 0.0d0
 #ifdef RayleighBenardCell
-    if(abs(meanNu-1.0d0).GT.1.0d-12) kineticRatioMean = (meanNuKinetic-1.0d0)/(meanNu-1.0d0)
-#endif
-    thermalRatioMean = 0.0d0
-#ifdef RayleighBenardCell
-    if(abs(meanNu).GT.1.0d-12) thermalRatioMean = meanNuThermal/meanNu
+    !-----------------------------------------------------------------------------------------------
+    ! 第四部分（Xu 表四）：从平均壁面梯度和两类平均耗散率得到三套独立 Nu，
+    ! 并统一以体积对流热通量得到的 nuVolTimeAvg 为基准计算百分差。
+    ! Xu 表 4 的 Nu_wall：先对上下壁面及时间平均，再取两壁平均。
+    ! 恒温壁位于首/末流体节点外半个网格处，因此沿用 RBcalc_Nu_wall_avg 的
+    ! 二阶半格点壁面梯度；温度梯度是线性的，可直接使用已经累计的 <T>_x,t 剖面。
+    nuBottomWallTimeAvg = (8.0d0*Thot-9.0d0*sumTemperatureXAvgProfile(1)*invN+ &
+        sumTemperatureXAvgProfile(2)*invN)/(3.0d0*wallNormalSpacing*deltaT)
+    nuTopWallTimeAvg = (-8.0d0*Tcold+9.0d0*sumTemperatureXAvgProfile(ny)*invN- &
+        sumTemperatureXAvgProfile(ny-1)*invN)/(3.0d0*wallNormalSpacing*deltaT)
+    nuWallTimeAvg = 0.5d0*(nuBottomWallTimeAvg+nuTopWallTimeAvg)
+
+    ! Xu 表 4 的 Nu_kin 和 Nu_th：把空间-时间平均耗散率反算为两个等效 Nusselt 数。
+    nuFromKineticDissipation = 1.0d0+ &
+        epsKineticVolTimeAvg*lengthUnit**4*Prandtl**2/(viscosity**3*Rayleigh)
+    nuFromThermalDissipation = &
+        epsThermalVolTimeAvg*lengthUnit**2/(diffusivity*deltaT**2)
+    if(abs(nuVolTimeAvg).GT.1.0d-12) then
+        wallNuDifferencePercent = &
+            100.0d0*abs(nuWallTimeAvg-nuVolTimeAvg)/abs(nuVolTimeAvg)
+        kineticNuDifferencePercent = &
+            100.0d0*abs(nuFromKineticDissipation-nuVolTimeAvg)/abs(nuVolTimeAvg)
+        thermalNuDifferencePercent = &
+            100.0d0*abs(nuFromThermalDissipation-nuVolTimeAvg)/abs(nuVolTimeAvg)
+    endif
+
+    ! Zhang 风格：直接计算“应变率/温度梯度耗散”与“Nu 精确关系耗散”的比值。
+    ! 分子是代码直接得到的空间-时间平均耗散；分母由同一个 nuVolTimeAvg 代入精确关系得到。
+    kineticDissipationExact = viscosity**3/lengthUnit**4* &
+        (nuVolTimeAvg-1.0d0)*Rayleigh/(Prandtl**2)
+    thermalDissipationExact = diffusivity*deltaT**2/lengthUnit**2*nuVolTimeAvg
+    if(abs(kineticDissipationExact).GT.1.0d-30) &
+        kineticDissipationRatio = epsKineticVolTimeAvg/kineticDissipationExact
+    if(abs(thermalDissipationExact).GT.1.0d-30) &
+        thermalDissipationRatio = epsThermalVolTimeAvg/thermalDissipationExact
 #endif
 
-    thermalBLThickness = 0.0d0
-    thermalBLGridPoints = 0
+    !-----------------------------------------------------------------------------------------------
+    ! 第五部分：初始化 Zhang 表一的热边界层和最小尺度分辨率指标。
+    ! 这些量只适用于上下壁恒温的 Rayleigh-BenardCell。
+    thermalBLThicknessGlobalEstimate = 0.0d0
+    thermalBLThicknessRms = 0.0d0
+    thermalBLThicknessRelativeDifferencePercent = 0.0d0
+    thermalBLGridPointsRelativeDifferencePercent = 0.0d0
+    thermalBLGridPointsGlobalEstimate = 0
+    thermalBLGridPointsRms = 0
     etaOverH = 0.0d0
     etaBOverH = 0.0d0
     gridOverEta = 0.0d0
     gridOverEtaB = 0.0d0
     timeStepOverEta = 0.0d0
 #ifdef RayleighBenardCell
+    ! 在下半区和上半区分别搜索 theta_rms 最大值，避免把上下两个边界层峰值混在一起。
+    ! theta_rms(j)=sqrt(<T^2>_x,t-<T>_x,t^2)，max 用于抑制舍入误差造成的微小负数。
     lowerPeakIndex = 1
     upperPeakIndex = ny
     lowerRmsMaximum = -1.0d0
     upperRmsMaximum = -1.0d0
     do j = 1, max(1,ny/2)
-        rmsTemperature = dsqrt(max(0.0d0,sumTemperatureSquaredProfile(j)*invN - &
-            (sumTemperatureProfile(j)*invN)**2))
+        rmsTemperature = dsqrt(max(0.0d0,sumTemperatureSquaredXAvgProfile(j)*invN - &
+            (sumTemperatureXAvgProfile(j)*invN)**2))
         if(rmsTemperature.GT.lowerRmsMaximum) then
             lowerRmsMaximum = rmsTemperature
             lowerPeakIndex = j
         endif
     enddo
     do j = min(ny,ny/2+1), ny
-        rmsTemperature = dsqrt(max(0.0d0,sumTemperatureSquaredProfile(j)*invN - &
-            (sumTemperatureProfile(j)*invN)**2))
+        rmsTemperature = dsqrt(max(0.0d0,sumTemperatureSquaredXAvgProfile(j)*invN - &
+            (sumTemperatureXAvgProfile(j)*invN)**2))
         if(rmsTemperature.GT.upperRmsMaximum) then
             upperRmsMaximum = rmsTemperature
             upperPeakIndex = j
         endif
     enddo
-    thermalBLThickness = 0.5d0*((dble(lowerPeakIndex)-0.5d0) + &
+    ! 保留 Zhang 后文的温度 RMS 峰值定义，便于以后分析边界层结构；
+    ! 当前与 Table 1 对照使用的 N_BL 则采用更直接的整体估计 delta_theta/H=1/(2*Nu)。
+    thermalBLThicknessRms = 0.5d0*((dble(lowerPeakIndex)-0.5d0) + &
         (dble(ny-upperPeakIndex)+0.5d0))/lengthUnit
-    thermalBLGridPoints = max(1,ceiling(thermalBLThickness*lengthUnit))
+    ! ceiling(x) 返回不小于 x 的最小整数，例如 ceiling(10.2)=11；
+    ! 这里向上取整可避免把边界层覆盖的非整数网格数向下截断，从而低估边界层分辨率。
+    thermalBLGridPointsRms = max(1,ceiling(thermalBLThicknessRms*lengthUnit))
+    if(nuVolTimeAvg.GT.0.0d0) then
+        ! 整体估计是当前 Table 1 的 N_BL 基准：delta_theta/H=1/(2*Nu)，
+        ! 再除以 Delta_g/H=1/lengthUnit，并同样用 ceiling 向上取整为完整网格点数。
+        thermalBLThicknessGlobalEstimate = 1.0d0/(2.0d0*nuVolTimeAvg)
+        thermalBLGridPointsGlobalEstimate = &
+            max(1,ceiling(thermalBLThicknessGlobalEstimate*lengthUnit))
+        thermalBLThicknessRelativeDifferencePercent = 100.0d0* &
+            abs(thermalBLThicknessRms-thermalBLThicknessGlobalEstimate)/ &
+            thermalBLThicknessGlobalEstimate
+        thermalBLGridPointsRelativeDifferencePercent = 100.0d0* &
+            abs(dble(thermalBLGridPointsRms-thermalBLGridPointsGlobalEstimate))/ &
+            dble(thermalBLGridPointsGlobalEstimate)
+    endif
 
+    ! 输出完整温度 RMS 剖面。z/H 取流体节点中心位置，首末节点距物理壁面均为半格。
+    open(newunit=profileUnit,file=trim(temperatureRmsProfileFile),status='replace',action='write')
+    write(profileUnit,'(A)') '# z_over_H theta_rms'
+    write(profileUnit,'(A,1X,ES24.16E3)') '# delta_theta_global_estimate_over_H', &
+        thermalBLThicknessGlobalEstimate
+    write(profileUnit,'(A,1X,ES24.16E3)') '# delta_theta_rms_over_H', thermalBLThicknessRms
+    write(profileUnit,'(A,1X,I0)') '# N_BL_global_estimate', thermalBLGridPointsGlobalEstimate
+    write(profileUnit,'(A,1X,I0)') '# N_BL_from_temperature_rms_peak', thermalBLGridPointsRms
+    write(profileUnit,'(A,1X,ES24.16E3)') '# delta_theta_relative_difference_percent', &
+        thermalBLThicknessRelativeDifferencePercent
+    write(profileUnit,'(A,1X,ES24.16E3)') '# N_BL_relative_difference_percent', &
+        thermalBLGridPointsRelativeDifferencePercent
+    do j = 1, ny
+        zOverH = (dble(j)-0.5d0)/lengthUnit
+        rmsTemperature = dsqrt(max(0.0d0,sumTemperatureSquaredXAvgProfile(j)*invN - &
+            (sumTemperatureXAvgProfile(j)*invN)**2))
+        write(profileUnit,'(2(ES24.16E3,1X))') zOverH, rmsTemperature
+    enddo
+    close(profileUnit)
+
+    ! Zhang 表一的三个分辨率指标：Delta_g/eta、Delta_g/eta_B 和 Delta_t/tau_eta。
+    ! eta、eta_B、tau_eta 均由时间平均 Nu 的 RB 精确关系得到；只有 Nu>1 时公式有效。
+    ! 本代码采用 Delta_g/H=1/lengthUnit、Delta_t/t_ff=1/timeUnit。
     etaOverH = huge(1.0d0)
     etaBOverH = huge(1.0d0)
     gridOverEta = 0.0d0
     gridOverEtaB = 0.0d0
     timeStepOverEta = 0.0d0
-    if(meanNu.GT.1.0d0) then
-        etaOverH = dsqrt(Prandtl)/(Rayleigh*(meanNu-1.0d0))**0.25d0
+    if(nuVolTimeAvg.GT.1.0d0) then
+        etaOverH = dsqrt(Prandtl)/(Rayleigh*(nuVolTimeAvg-1.0d0))**0.25d0
         etaBOverH = etaOverH/dsqrt(Prandtl)
         gridOverEta = (1.0d0/lengthUnit)/etaOverH
         gridOverEtaB = (1.0d0/lengthUnit)/etaBOverH
-        timeStepOverEta = (1.0d0/timeUnit)/dsqrt(Prandtl/(meanNu-1.0d0))
+        timeStepOverEta = (1.0d0/timeUnit)/dsqrt(Prandtl/(nuVolTimeAvg-1.0d0))
     endif
 #endif
 
-    write(22,'(A)') '# metric mean population_std'
-    write(22,'(A,2(1X,ES24.16E3))') 'Nu_global', meanNu, stdNu
-    write(22,'(A,1X,ES24.16E3)') 'Re_sqrt_volume_time_mean', meanRe
-    write(22,'(A,2(1X,ES24.16E3))') 'speed_squared_volume', meanSpeedSquared, stdSpeedSquared
-    write(22,'(A,2(1X,ES24.16E3))') 'eps_u', meanEpsKinetic, stdEpsKinetic
-    write(22,'(A,2(1X,ES24.16E3))') 'eps_T', meanEpsThermal, stdEpsThermal
+    !-----------------------------------------------------------------------------------------------
+    ! 第六部分：把完整文献对照量写入 statisticsFile。
+    ! 英文键名保持稳定，便于后续脚本按名称读取；中文物理解释保留在本程序注释中。
+    write(22,'(A)') '# Xu et al. Table 4: Nu_volume is the reference for all relative differences'
+    write(22,'(A,1X,ES24.16E3)') 'Nu_volume_from_heat_flux', nuVolTimeAvg
+    write(22,'(A,1X,ES24.16E3)') 'Re_rms_space_time', reVolTimeRms
+    write(22,'(A,1X,ES24.16E3)') 'rho_fluctuation_rms_space_time', densityFluctuationVolTimeRms
+    write(22,'(A,1X,ES24.16E3)') 'velocity_divergence_rms_space_time', velocityDivergenceVolTimeRms
 #ifdef RayleighBenardCell
-    write(22,'(A,2(1X,ES24.16E3))') 'Nu_eps_u', meanNuKinetic, stdNuKinetic
-    write(22,'(A,2(1X,ES24.16E3))') 'Nu_eps_T', meanNuThermal, stdNuThermal
-    write(22,'(A,2(1X,ES24.16E3))') 'eps_u_eps_T_over_exact', kineticRatioMean, thermalRatioMean
+    write(22,'(A,1X,ES24.16E3)') 'Nu_wall_from_mean_wall_gradient', nuWallTimeAvg
+    write(22,'(A,1X,ES24.16E3)') 'Nu_wall_relative_difference_percent', wallNuDifferencePercent
+    write(22,'(A,1X,ES24.16E3)') 'Nu_kinetic_from_mean_dissipation', nuFromKineticDissipation
+    write(22,'(A,1X,ES24.16E3)') 'Nu_kinetic_relative_difference_percent', kineticNuDifferencePercent
+    write(22,'(A,1X,ES24.16E3)') 'Nu_thermal_from_mean_dissipation', nuFromThermalDissipation
+    write(22,'(A,1X,ES24.16E3)') 'Nu_thermal_relative_difference_percent', thermalNuDifferencePercent
+
+    write(22,'(A)') '# Zhang et al.: directly calculated dissipation over exact-relation dissipation'
+    write(22,'(A,1X,ES24.16E3)') 'eps_u_calculated_space_time_mean', epsKineticVolTimeAvg
+    write(22,'(A,1X,ES24.16E3)') 'eps_u_exact_from_Nu', kineticDissipationExact
+    write(22,'(A,1X,ES24.16E3)') 'R_u_calculated_over_exact', kineticDissipationRatio
+    write(22,'(A,1X,ES24.16E3)') 'eps_T_calculated_space_time_mean', epsThermalVolTimeAvg
+    write(22,'(A,1X,ES24.16E3)') 'eps_T_exact_from_Nu', thermalDissipationExact
+    write(22,'(A,1X,ES24.16E3)') 'R_T_calculated_over_exact', thermalDissipationRatio
 #else
-    write(22,'(A)') '# Nu_eps_u, Nu_eps_T and exact-relation ratios apply only to Rayleigh-Benard flow'
+    write(22,'(A)') '# RB-only dissipation Nu and exact-relation ratios are not output for side-heated flow'
+    write(22,'(A,1X,ES24.16E3)') 'eps_u_calculated_space_time_mean', epsKineticVolTimeAvg
+    write(22,'(A,1X,ES24.16E3)') 'eps_T_calculated_space_time_mean', epsThermalVolTimeAvg
 #endif
-    if((firstHalfSamples.GT.0).AND.(secondHalfSamples.GT.0)) then
-        firstNu = sumNuFirstHalf/dble(firstHalfSamples)
-        secondNu = sumNuSecondHalf/dble(secondHalfSamples)
-        firstRe = dsqrt(max(0.0d0,sumSpeedSquaredFirstHalf/dble(firstHalfSamples)))*lengthUnit/viscosity
-        secondRe = dsqrt(max(0.0d0,sumSpeedSquaredSecondHalf/dble(secondHalfSamples)))*lengthUnit/viscosity
-        write(22,'(A,2(1X,ES24.16E3))') 'Nu_first_second_half', firstNu, secondNu
-        write(22,'(A,2(1X,ES24.16E3))') 'Re_first_second_half', firstRe, secondRe
-    endif
+    write(22,'(A)') '# Nu/Re half-window convergence is rebuilt once from the complete Nu/Re history'
+    write(22,'(A)') '# See NuRe_TimeAverage_2DOpenaccLBMCDE_D2Q5.txt for first/second-half results'
 #ifdef RayleighBenardCell
-    write(22,'(A,1X,ES24.16E3)') 'delta_theta_rms_over_H', thermalBLThickness
-    write(22,'(A,1X,I0)') 'thermal_boundary_layer_grid_points', thermalBLGridPoints
+    write(22,'(A)') '# Zhang Table 1: N_BL uses the global estimate delta_theta/H=1/(2*Nu_volume)'
+    write(22,'(A,1X,ES24.16E3)') 'delta_theta_global_estimate_over_H', &
+        thermalBLThicknessGlobalEstimate
+    write(22,'(A,1X,I0)') 'N_BL_global_estimate', thermalBLGridPointsGlobalEstimate
+    write(22,'(A)') '# Retained diagnostic: thermal boundary layer from the T_rms peak position'
+    write(22,'(A,1X,ES24.16E3)') 'delta_theta_rms_over_H', thermalBLThicknessRms
+    write(22,'(A,1X,I0)') 'N_BL_from_temperature_rms_peak', thermalBLGridPointsRms
+    write(22,'(A,1X,ES24.16E3)') 'delta_theta_relative_difference_percent', &
+        thermalBLThicknessRelativeDifferencePercent
+    write(22,'(A,1X,ES24.16E3)') 'N_BL_relative_difference_percent', &
+        thermalBLGridPointsRelativeDifferencePercent
+    write(22,'(A,1X,A)') 'temperature_rms_profile_file', trim(temperatureRmsProfileFile)
     write(22,'(A,3(1X,ES24.16E3))') 'grid_over_eta_grid_over_etaB_dt_over_tauEta', &
         gridOverEta, gridOverEtaB, timeStepOverEta
 #endif
     write(22,'(A,1X,ES24.16E3)') 'maximum_lattice_CFL', maxStatisticCFL
     close(22)
 
+    !-----------------------------------------------------------------------------------------------
+    ! 第七部分：在 settingsFile 末尾追加精简摘要，便于不打开详细统计文件时快速核对结果。
     open(unit=00,file=trim(settingsFile),status='unknown',position='append',action='write')
-    write(00,*) 'Dissipation/statistics samples =', statisticSamples
-    write(00,*) 'Mean Nu/Re =', meanNu, meanRe
-    write(00,*) 'Mean eps_u/eps_T =', meanEpsKinetic, meanEpsThermal
+    write(00,*) 'Dissipation/statistics samples expected/actual =', &
+        expectedStatisticSampleCount, statisticSamples
+    write(00,*) 'Mean Nu_flux/Re_rms =', nuVolTimeAvg, reVolTimeRms
+    write(00,*) 'RMS density fluctuation/divergence =', &
+        densityFluctuationVolTimeRms, velocityDivergenceVolTimeRms
+    write(00,*) 'Mean eps_u/eps_T =', epsKineticVolTimeAvg, epsThermalVolTimeAvg
 #ifdef RayleighBenardCell
-    write(00,*) 'Mean Nu_eps_u/Nu_eps_T =', meanNuKinetic, meanNuThermal
-    write(00,*) 'Mean eps_u/exact and eps_T/exact =', kineticRatioMean, thermalRatioMean
+    write(00,*) 'Xu Nu_vol/Nu_wall/Nu_kin/Nu_th =', &
+        nuVolTimeAvg, nuWallTimeAvg, nuFromKineticDissipation, nuFromThermalDissipation
+    write(00,*) 'Xu relative differences wall/kin/th (%) =', &
+        wallNuDifferencePercent, kineticNuDifferencePercent, thermalNuDifferencePercent
+    write(00,*) 'Zhang R_u/R_T =', kineticDissipationRatio, thermalDissipationRatio
 #endif
 #ifdef RayleighBenardCell
-    write(00,*) 'Temperature-rms BL grid points =', thermalBLGridPoints
+    write(00,*) 'Zhang N_BL from H/(2*Nu) =', thermalBLGridPointsGlobalEstimate
+    write(00,*) 'Temperature-rms BL grid points (retained) =', thermalBLGridPointsRms
+    write(00,*) 'N_BL relative difference to global estimate (%) =', &
+        thermalBLGridPointsRelativeDifferencePercent
+    write(00,*) 'Temperature-rms profile file =', trim(temperatureRmsProfileFile)
 #endif
     close(00)
   end subroutine write_dissipation_statistics
 !===================================================================================================
+! write_dissipation_statistics 结束：只生成最终统计和剖面文件，不改变任何流场变量。
+!===================================================================================================
 
 
 !===================================================================================================
-! Subroutine: output_unsteady_NuRe_postprocess
-! Purpose: rebuild unsteady Nu/Re series, running means, and window averages from full .dat history.
+! 子程序: output_unsteady_NuRe_postprocess
+! 作用: 从完整统计窗口历史重建瞬时 Nu/Re 曲线、运行平均和前后半段收敛结果。
+! 横坐标: 所有非稳态曲线均使用无量纲自由落体时间 t/t_ff，不直接输出格子步 itc。
+! 说明: Re_instant(t)=sqrt(<u^2+v^2>_V)*H/nu，只表示当前采样时刻的空间 RMS。
+!       文献 Re_rms=sqrt(<u^2+v^2>_V,t)*H/nu，因此运行值必须计算 sqrt(<Re_instant^2>_t)，
+!       不能再对 Re_instant 做普通算术平均。运行统计从 unsteadyAverageStartTf 开始，不含初始过渡段。
 !===================================================================================================
   subroutine output_unsteady_NuRe_postprocess()
     use commondata
     implicit none
 
-    integer(kind=4) :: k, history_count
+    integer(kind=4) :: k, history_count, running_count
     integer(kind=4) :: whole_count, first_count, second_count
     integer(kind=4) :: iosNu, iosRe
     integer(kind=4) :: nuUnit, reUnit, seriesUnit, runningUnit
-    real(kind=8) :: timeLoc, timeNu, timeRe, NuVal, ReVal, Nu_Accum, Re_Accum
+    real(kind=8) :: timeLoc, timeNu, timeRe, NuVal, ReVal
+    real(kind=8) :: Nu_RunningSum, ReSquared_RunningSum
     real(kind=8) :: startTf, midTf, endTf
-    real(kind=8) :: Nu_WholeSum, Re_WholeSum, Nu_FirstSum, Re_FirstSum, Nu_SecondSum, Re_SecondSum
+    real(kind=8) :: Nu_WholeSum, ReSquared_WholeSum
+    real(kind=8) :: Nu_FirstSum, ReSquared_FirstSum, Nu_SecondSum, ReSquared_SecondSum
     real(kind=8) :: Nu_WholeAvg, Re_WholeAvg, Nu_FirstAvg, Re_FirstAvg, Nu_SecondAvg, Re_SecondAvg
     real(kind=8) :: Nu_FirstRelErr, Re_FirstRelErr, Nu_SecondRelErr, Re_SecondRelErr
     logical :: exNu, exRe
@@ -2571,42 +3028,43 @@ end subroutine append_convergence_master_tecplot
     ! These files are derived views of the full .dat history, so rebuild one continuous ZONE.
     open(newunit=seriesUnit, file='NuRe_VolAvg_2DOpenaccLBMCDE_D2Q5.plt', &
         status='replace', action='write', form='formatted')
-    write(seriesUnit,'(A)') 'TITLE = "2D OpenACC Nu/Re volume averages"'
-    write(seriesUnit,'(A)') 'VARIABLES = "time" "NuVolAvg" "ReVolAvg"'
-    write(seriesUnit,'(A)') 'ZONE T="NuReVolAvg", F=POINT'
+    write(seriesUnit,'(A)') 'TITLE = "2D OpenACC instantaneous Nu/Re in statistics window"'
+    write(seriesUnit,'(A)') 'VARIABLES = "time_over_tff" "NuVolumeInstantaneous" "ReInstantaneousRms"'
+    write(seriesUnit,'(A)') 'ZONE T="NuReInstantaneous", F=POINT'
 
-    open(newunit=runningUnit, file='NuRe_VolAvg_runningMean_2DOpenaccLBMCDE_D2Q5.plt', &
+    open(newunit=runningUnit, file='NuRe_RunningStatistics_2DOpenaccLBMCDE_D2Q5.plt', &
         status='replace', action='write', form='formatted')
-    write(runningUnit,'(A)') 'TITLE = "2D OpenACC Nu/Re running means"'
-    write(runningUnit,'(A)') 'VARIABLES = "time" "NuVolAvgMean" "ReVolAvgMean"'
-    write(runningUnit,'(A)') 'ZONE T="NuReRunningMean", F=POINT'
+    write(runningUnit,'(A)') 'TITLE = "2D OpenACC running statistics in averaging window"'
+    write(runningUnit,'(A)') 'VARIABLES = "time_over_tff" "NuVolumeRunningMean" "ReRunningRms"'
+    write(runningUnit,'(A)') 'ZONE T="NuReRunningStatistics", F=POINT'
 
     startTf = unsteadyAverageStartTf
     midTf = unsteadyAverageMidTf
     endTf = unsteadyAverageEndTf
 
-    Nu_Accum = 0.0d0
-    Re_Accum = 0.0d0
+    Nu_RunningSum = 0.0d0
+    ReSquared_RunningSum = 0.0d0
     Nu_WholeSum = 0.0d0
-    Re_WholeSum = 0.0d0
+    ReSquared_WholeSum = 0.0d0
     Nu_FirstSum = 0.0d0
-    Re_FirstSum = 0.0d0
+    ReSquared_FirstSum = 0.0d0
     Nu_SecondSum = 0.0d0
-    Re_SecondSum = 0.0d0
+    ReSquared_SecondSum = 0.0d0
     whole_count = 0
     first_count = 0
     second_count = 0
     history_count = 0
+    running_count = 0
 
-    do k = 1, unsteadySampleCount
+    do k = 1, expectedStatisticSampleCount
         read(nuUnit,*,iostat=iosNu) timeNu, NuVal
         read(reUnit,*,iostat=iosRe) timeRe, ReVal
         ! iostat: 0=成功读到一行；小于0=到达文件末尾；大于0=格式或读入错误。
-        ! 循环内只要不是 0，就说明文件短于 unsteadySampleCount，或者某一行格式坏了。
+        ! 循环内只要不是 0，就说明统计历史短于 expectedStatisticSampleCount，或者某一行格式坏了。
         if((iosNu.NE.0).OR.(iosRe.NE.0)) then
-            write(*,'(A)') 'Error: Nu/Re history files are shorter than unsteadySampleCount or contain invalid rows.'
+            write(*,'(A)') 'Error: Nu/Re histories are shorter than expectedStatisticSampleCount or contain invalid rows.'
             open(unit=00,file=trim(settingsFile),status='unknown',position='append')
-            write(00,'(A)') 'Error: Nu/Re history files are shorter than unsteadySampleCount or contain invalid rows.'
+            write(00,'(A)') 'Error: Nu/Re histories are shorter than expectedStatisticSampleCount or contain invalid rows.'
             close(00)
             error stop 1
         endif
@@ -2620,39 +3078,43 @@ end subroutine append_convergence_master_tecplot
 
         timeLoc = timeNu
         history_count = k
-        Nu_Accum = Nu_Accum + NuVal
-        Re_Accum = Re_Accum + ReVal
         write(seriesUnit,'(ES24.16E3,1X,ES24.16E3,1X,ES24.16E3)') timeLoc, NuVal, ReVal
-        write(runningUnit,'(ES24.16E3,1X,ES24.16E3,1X,ES24.16E3)') &
-            timeLoc, Nu_Accum/dble(history_count), Re_Accum/dble(history_count)
 
         if ((timeLoc >= startTf) .and. (timeLoc <= endTf)) then
+            ! Nu 对热通量是线性的，使用普通运行平均；Re 必须先累计 Re_instant^2 再开平方。
+            running_count = running_count+1
+            Nu_RunningSum = Nu_RunningSum+NuVal
+            ReSquared_RunningSum = ReSquared_RunningSum+ReVal*ReVal
+            write(runningUnit,'(ES24.16E3,1X,ES24.16E3,1X,ES24.16E3)') &
+                timeLoc, Nu_RunningSum/dble(running_count), &
+                dsqrt(max(0.0d0,ReSquared_RunningSum/dble(running_count)))
             Nu_WholeSum = Nu_WholeSum + NuVal
-            Re_WholeSum = Re_WholeSum + ReVal
+            ReSquared_WholeSum = ReSquared_WholeSum + ReVal*ReVal
             whole_count = whole_count + 1
         endif
+
         if ((timeLoc >= startTf) .and. (timeLoc < midTf)) then
             Nu_FirstSum = Nu_FirstSum + NuVal
-            Re_FirstSum = Re_FirstSum + ReVal
+            ReSquared_FirstSum = ReSquared_FirstSum + ReVal*ReVal
             first_count = first_count + 1
         endif
         if ((timeLoc >= midTf) .and. (timeLoc <= endTf)) then
             Nu_SecondSum = Nu_SecondSum + NuVal
-            Re_SecondSum = Re_SecondSum + ReVal
+            ReSquared_SecondSum = ReSquared_SecondSum + ReVal*ReVal
             second_count = second_count + 1
         endif
     enddo
 
-    ! 上面的循环已经读完预期的 unsteadySampleCount 行；这里再试读一行，
+    ! 上面的循环已经读完预期的 expectedStatisticSampleCount 行；这里再试读一行，
     ! 不是为了继续计算，而是确认 Nu/Re 两个历史文件后面没有多余数据。
     read(nuUnit,*,iostat=iosNu) timeNu, NuVal
     read(reUnit,*,iostat=iosRe) timeRe, ReVal
     ! 任意一个 iostat 等于 0，都表示至少一个文件还成功读到了额外一行。
-    ! 如果放过这种情况，后处理会静默丢掉超过 unsteadySampleCount 的尾部样本。
+    ! 如果放过这种情况，后处理会静默丢掉超过 expectedStatisticSampleCount 的尾部样本。
     if((iosNu.EQ.0).OR.(iosRe.EQ.0)) then
-        write(*,'(A)') 'Error: Nu/Re history files contain more rows than unsteadySampleCount.'
+        write(*,'(A)') 'Error: Nu/Re history files contain more rows than expectedStatisticSampleCount.'
         open(unit=00,file=trim(settingsFile),status='unknown',position='append')
-        write(00,'(A)') 'Error: Nu/Re history files contain more rows than unsteadySampleCount.'
+        write(00,'(A)') 'Error: Nu/Re history files contain more rows than expectedStatisticSampleCount.'
         close(00)
         error stop 1
     endif
@@ -2687,11 +3149,11 @@ end subroutine append_convergence_master_tecplot
     endif
 
     Nu_WholeAvg = Nu_WholeSum / dble(whole_count)
-    Re_WholeAvg = Re_WholeSum / dble(whole_count)
+    Re_WholeAvg = dsqrt(max(0.0d0,ReSquared_WholeSum/dble(whole_count)))
     Nu_FirstAvg = Nu_FirstSum / dble(first_count)
-    Re_FirstAvg = Re_FirstSum / dble(first_count)
+    Re_FirstAvg = dsqrt(max(0.0d0,ReSquared_FirstSum/dble(first_count)))
     Nu_SecondAvg = Nu_SecondSum / dble(second_count)
-    Re_SecondAvg = Re_SecondSum / dble(second_count)
+    Re_SecondAvg = dsqrt(max(0.0d0,ReSquared_SecondSum/dble(second_count)))
     ! tiny(1.0d0) 是双精度最小正规正数；这里用 max 避免整体平均值为 0 时相对误差除以 0。
     Nu_FirstRelErr = abs(Nu_FirstAvg - Nu_WholeAvg) / max(abs(Nu_WholeAvg), tiny(1.0d0))
     Re_FirstRelErr = abs(Re_FirstAvg - Re_WholeAvg) / max(abs(Re_WholeAvg), tiny(1.0d0))
@@ -2700,9 +3162,9 @@ end subroutine append_convergence_master_tecplot
 
     open(unit=33, file='NuRe_TimeAverage_2DOpenaccLBMCDE_D2Q5.txt', &
         status='replace', action='write', form='formatted')
-    write(33,'(A)') '# 2D OpenACC Nu/Re statistical-convergence window averages'
+    write(33,'(A)') '# 2D OpenACC Nu mean and literature-defined RMS Re in the averaging window'
     write(33,'(A)') '# start_tf mid_tf end_tf whole_count first_count second_count ' // &
-        'Nu_whole Re_whole Nu_first Re_first Nu_second Re_second ' // &
+        'Nu_mean_whole Re_rms_whole Nu_mean_first Re_rms_first Nu_mean_second Re_rms_second ' // &
         'Nu_first_relerr Re_first_relerr Nu_second_relerr Re_second_relerr'
     write(33,'(ES24.16E3,1X,ES24.16E3,1X,ES24.16E3,1X,I0,1X,I0,1X,I0,1X,' // &
         'ES24.16E3,1X,ES24.16E3,1X,ES24.16E3,1X,ES24.16E3,1X,ES24.16E3,1X,ES24.16E3,1X,' // &
@@ -2713,16 +3175,18 @@ end subroutine append_convergence_master_tecplot
     close(33)
 
     write(*,'(A)') 'Unsteady Nu/Re statistical postprocessing:'
-    write(*,'(A,1X,ES16.8,1X,A,1X,ES16.8)') 'Average window:', startTf, 'to', endTf
+    write(*,'(A,1X,ES16.8,1X,A,1X,ES16.8)') 'Average window t/t_ff:', startTf, 'to', endTf
     write(*,'(A,1X,I0,1X,A,1X,I0,1X,A,1X,I0)') &
         'Samples whole/first/second:', whole_count, '/', first_count, '/', second_count
-    write(*,'(A,1X,ES16.8,1X,A,1X,ES16.8)') 'Whole Nu/Re average:', Nu_WholeAvg, '/', Re_WholeAvg
-    write(*,'(A,1X,ES16.8,1X,A,1X,ES16.8)') 'First-half Nu/Re average:', Nu_FirstAvg, '/', Re_FirstAvg
-    write(*,'(A,1X,ES16.8,1X,A,1X,ES16.8)') 'Second-half Nu/Re average:', Nu_SecondAvg, '/', Re_SecondAvg
+    write(*,'(A,1X,ES16.8,1X,A,1X,ES16.8)') 'Whole Nu mean/Re rms:', Nu_WholeAvg, '/', Re_WholeAvg
+    write(*,'(A,1X,ES16.8,1X,A,1X,ES16.8)') 'First-half Nu mean/Re rms:', Nu_FirstAvg, '/', Re_FirstAvg
+    write(*,'(A,1X,ES16.8,1X,A,1X,ES16.8)') 'Second-half Nu mean/Re rms:', Nu_SecondAvg, '/', Re_SecondAvg
     write(*,'(A,1X,ES16.8,1X,A,1X,ES16.8)') 'First-half Nu/Re relative error:', Nu_FirstRelErr, '/', Re_FirstRelErr
     write(*,'(A,1X,ES16.8,1X,A,1X,ES16.8)') 'Second-half Nu/Re relative error:', Nu_SecondRelErr, '/', Re_SecondRelErr
 
   end subroutine output_unsteady_NuRe_postprocess
+!===================================================================================================
+! output_unsteady_NuRe_postprocess 结束: 输出瞬时曲线和按文献定义累计得到的运行 Nu/Re。
 !===================================================================================================
 #endif
 
