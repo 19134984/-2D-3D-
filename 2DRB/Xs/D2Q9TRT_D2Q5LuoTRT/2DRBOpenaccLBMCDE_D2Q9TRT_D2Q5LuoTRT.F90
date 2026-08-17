@@ -18,15 +18,32 @@
 #error "Define one flow mode: steadyFlow or unsteadyFlow"
 #endif
 
-!   流场 TRT 奇模态 magic 尺度（二选一）
+!   流场碰撞策略（四选一）：三种 TRT 奇模态策略，或速度场 BGK 对照。
 #define FLOW_ODD_ORIGINAL_MAGIC
 !#define FLOW_ODD_EFFECTIVE_MAGIC
+!#define FLOW_ODD_FIXED_SQ
+!#define FLOW_BGK
 
 #if defined(FLOW_ODD_ORIGINAL_MAGIC) && defined(FLOW_ODD_EFFECTIVE_MAGIC)
 #error "Choose only one flow odd magic policy"
 #endif
-#if !defined(FLOW_ODD_ORIGINAL_MAGIC) && !defined(FLOW_ODD_EFFECTIVE_MAGIC)
-#error "Define one flow odd magic policy"
+#if defined(FLOW_ODD_ORIGINAL_MAGIC) && defined(FLOW_ODD_FIXED_SQ)
+#error "Choose only one flow odd magic policy"
+#endif
+#if defined(FLOW_ODD_EFFECTIVE_MAGIC) && defined(FLOW_ODD_FIXED_SQ)
+#error "Choose only one flow odd magic policy"
+#endif
+#if defined(FLOW_ODD_ORIGINAL_MAGIC) && defined(FLOW_BGK)
+#error "Choose only one flow collision policy"
+#endif
+#if defined(FLOW_ODD_EFFECTIVE_MAGIC) && defined(FLOW_BGK)
+#error "Choose only one flow collision policy"
+#endif
+#if defined(FLOW_ODD_FIXED_SQ) && defined(FLOW_BGK)
+#error "Choose only one flow collision policy"
+#endif
+#if !defined(FLOW_ODD_ORIGINAL_MAGIC) && !defined(FLOW_ODD_EFFECTIVE_MAGIC) && !defined(FLOW_ODD_FIXED_SQ) && !defined(FLOW_BGK)
+#error "Define one flow collision policy"
 #endif
 
 !   速度边界，包括水平垂直边界无滑移，还有垂直边界速度周期
@@ -113,7 +130,6 @@
         real(kind=8), parameter :: chi_b=0.0d0           !手动设置的流场体黏度修正参数
         real(kind=8), parameter :: tauf=0.5d0+viscosity/(cs2*(1.0d0-chi_nu)) !基础 tau_0
         real(kind=8), parameter :: bulkViscosity=(tauf-0.5d0)*(1.0d0-chi_b)*cs2
-        real(kind=8), parameter :: rbPerturbation=1.0d-3 !RB 初始温度扰动幅值/DeltaT
 
 
         ! velocityScaleCompare is used only in velocity-related post-processing to convert lattice velocity
@@ -149,6 +165,12 @@
 #endif
 #ifdef FLOW_ODD_EFFECTIVE_MAGIC
         real(kind=8), parameter :: Sq=1.0d0/(0.5d0+flowMagicParameter/(viscosity/cs2))
+#endif
+#ifdef FLOW_ODD_FIXED_SQ
+        real(kind=8), parameter :: Sq=1.0d0 ! 固定奇模态松弛率对照：tau_q=1
+#endif
+#ifdef FLOW_BGK
+        real(kind=8), parameter :: Sq=Snu ! 速度场 BGK：所有非守恒矩均使用 tau_0
 #endif
 
 
@@ -535,7 +557,6 @@
     integer(kind=4) :: alpha
     real(kind=8) :: un(0:8)
     real(kind=8) :: us2
-    real(kind=8) :: xLen, yLen, rbInitPerturbAmp
     character(len=100) :: reloadFileName
 
 
@@ -623,6 +644,12 @@
 #endif
 #ifdef FLOW_ODD_EFFECTIVE_MAGIC
     write(00,*) "Flow odd magic policy = chi_nu-corrected effective scale"
+#endif
+#ifdef FLOW_ODD_FIXED_SQ
+    write(00,*) "Flow odd magic policy = fixed Sq = 1 control"
+#endif
+#ifdef FLOW_BGK
+    write(00,*) "Flow collision policy = BGK (Sq = Snu; no flow magic parameter)"
 #endif
     write(00,*) "thermalScheme = Luo D2Q5-TRT  time-difference correction"
     write(00,*) 'Qk=',real(Qk,kind=8), '; Qe=',real(Qe,kind=8), &
@@ -785,20 +812,6 @@
             T(i,j) = Thot + (yp(j)-yp(0)) / (yp(ny+1)-yp(0)) * (Tcold-Thot)
         enddo
     enddo
-#ifdef unsteadyFlow
-#ifdef RayleighBenardCell
-    ! 非稳态 RB 从完全对称的导热态启动时需要一个确定性小扰动来触发对流。
-    xLen = xp(nx+1)
-    yLen = yp(ny+1)
-    rbInitPerturbAmp = rbPerturbation*deltaT
-    do i = 1, nx
-        do j = 1, ny
-            T(i,j) = T(i,j) + rbInitPerturbAmp * dsin(2.0d0*pi*xp(i)/xLen) * dsin(pi*yp(j)/yLen)
-        enddo
-    enddo
-    write(00,'(a,1x,es12.4)') "RB initial T perturbation amplitude =", rbInitPerturbAmp
-#endif
-#endif
     write(00,*) "Temperature B.C. for horizontal walls are:===Hot/cold wall==="
 #endif
 
@@ -996,7 +1009,8 @@ close(00)
 !===================================================================================================
 ! 子程序: collision
 ! 作用: 在一个格点循环中计算力、非平衡应变率，并完成矩空间 D2Q9 TRT LBM-CDE 碰撞。
-! 说明: m0/m3/m5 是密度和动量守恒矩，松弛率为零；其余偶矩使用 Snu，奇矩使用 Sq。
+! 说明: m0/m3/m5 是密度和动量守恒矩，松弛率为零；TRT 时其余偶矩使用 Snu、奇矩使用 Sq；
+!       FLOW_BGK 时 Sq=Snu，因此全部非守恒矩使用同一 tau_0。
 !       A_ab=chi_nu*S_ab+(chi_b-chi_nu)*Sdiv*delta_ab/2，并作为矩空间源项的一部分加入。
 ! 动力黏度为 mu=rho0*nu。
 !===================================================================================================
@@ -1083,7 +1097,7 @@ close(00)
                 2.0d0/3.0d0*rho0*(Axx-Ayy)
             mSource(8) = u(i,j)*Fy(i,j)+v(i,j)*Fx(i,j)+2.0d0/3.0d0*rho0*Axy
 
-            ! m0/m3/m5 为守恒矩；其余偶矩用 Snu，非守恒奇矩 m4/m6 用 Sq。
+            ! m0/m3/m5 为守恒矩；TRT 时非守恒奇矩 m4/m6 用 Sq；FLOW_BGK 时 Sq=Snu。
             s(0) = 0.0d0
             s(1) = Snu
             s(2) = Snu

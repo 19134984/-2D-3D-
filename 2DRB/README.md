@@ -71,7 +71,7 @@ explicitly targets another method family:
 - STLBM 2D GPU: `STLBM/2DRBOpenaccSTLBM.F90`
 - Flow D2Q9 TRT + thermal D2Q9 BGK LBM-CDE (OpenACC):
   `Xs/D2Q9TRT_D2Q9BGK/2DRBOpenaccLBMCDE_D2Q9TRT_D2Q9BGK.F90`
-- Flow D2Q9 TRT + fixed-rate thermal D2Q9 TRT LBM-CDE (OpenACC):
+- Flow D2Q9 TRT + fixed-rate thermal D2Q9 TRT-a-chi_kappa LBM-CDE (OpenACC):
   `Xs/D2Q9TRT_D2Q9TRT/2DRBOpenaccLBMCDE_D2Q9TRT_D2Q9TRT.F90`
 - Flow D2Q9 TRT + thermal D2Q5 Luo/Wang TRT (OpenACC):
   `Xs/D2Q9TRT_D2Q5LuoTRT/2DRBOpenaccLBMCDE_D2Q9TRT_D2Q5LuoTRT.F90`
