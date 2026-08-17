@@ -209,6 +209,7 @@
         real(kind=8), parameter :: unsteadyRunDuration=1000.0d0  ! 非稳态总目标时长，续算时只补足到该 t_ff
         ! 以下三个参数控制非稳态统计平均窗口，不改变推进时长或采样频率。
         ! 时间以整个算例的绝对 t_ff 计；续算会重读 Nu/Re、耗散和温度剖面历史，恢复完整窗口累计量。
+        ! 默认统计窗口取总时长后 1/2；Nu/Re 最终结果取该窗口后半段，即默认对应总时长最后 1/4。
         real(kind=8), parameter :: unsteadyAverageStartTf=0.5d0*unsteadyRunDuration  ! 平均窗口起点
         real(kind=8), parameter :: unsteadyAverageEndTf=unsteadyRunDuration          ! 平均窗口终点
         real(kind=8), parameter :: unsteadyAverageMidTf=0.5d0*(unsteadyAverageStartTf+unsteadyAverageEndTf) ! 前/后半分界
@@ -2862,8 +2863,8 @@ end subroutine append_convergence_master_tecplot
     write(profileUnit,'(A,1X,ES24.16E3)') '# delta_theta_rms_over_H', thermalBLThicknessRms
     write(profileUnit,'(A,1X,I0)') '# N_BL_global_estimate', thermalBLGridPointsGlobalEstimate
     write(profileUnit,'(A,1X,I0)') '# N_BL_from_temperature_rms_peak', thermalBLGridPointsRms
-    write(profileUnit,'(A,1X,ES24.16E3)') '# delta_theta_relative_difference_percent', &
-        thermalBLThicknessRelativeDifferencePercent
+    write(profileUnit,'(A,1X,ES24.16E3,A)') '# delta_theta_relative_difference_percent', &
+        thermalBLThicknessRelativeDifferencePercent, '%'
     do j = 1, ny
         zOverH = (dble(j)-0.5d0)/lengthUnit
         rmsTemperature = dsqrt(max(0.0d0,sumTemperatureSquaredXAvgProfile(j)*invN - &
@@ -2899,11 +2900,11 @@ end subroutine append_convergence_master_tecplot
     write(22,'(A,1X,ES24.16E3)') 'velocity_divergence_rms_space_time', velocityDivergenceVolTimeRms
 #ifdef RayleighBenardCell
     write(22,'(A,1X,ES24.16E3)') 'Nu_wall_from_mean_wall_gradient', nuWallTimeAvg
-    write(22,'(A,1X,ES24.16E3)') 'Nu_wall_relative_difference_percent', wallNuDifferencePercent
+    write(22,'(A,1X,ES24.16E3,A)') 'Nu_wall_relative_difference_percent', wallNuDifferencePercent, '%'
     write(22,'(A,1X,ES24.16E3)') 'Nu_kinetic_from_mean_dissipation', nuFromKineticDissipation
-    write(22,'(A,1X,ES24.16E3)') 'Nu_kinetic_relative_difference_percent', kineticNuDifferencePercent
+    write(22,'(A,1X,ES24.16E3,A)') 'Nu_kinetic_relative_difference_percent', kineticNuDifferencePercent, '%'
     write(22,'(A,1X,ES24.16E3)') 'Nu_thermal_from_mean_dissipation', nuFromThermalDissipation
-    write(22,'(A,1X,ES24.16E3)') 'Nu_thermal_relative_difference_percent', thermalNuDifferencePercent
+    write(22,'(A,1X,ES24.16E3,A)') 'Nu_thermal_relative_difference_percent', thermalNuDifferencePercent, '%'
 
     write(22,'(A)') '# Zhang et al.: directly calculated dissipation over exact-relation dissipation'
     write(22,'(A,1X,ES24.16E3)') 'eps_u_calculated_space_time_mean', epsKineticVolTimeAvg
@@ -2927,8 +2928,8 @@ end subroutine append_convergence_master_tecplot
     write(22,'(A)') '# Retained diagnostic: thermal boundary layer from the T_rms peak position'
     write(22,'(A,1X,ES24.16E3)') 'delta_theta_rms_over_H', thermalBLThicknessRms
     write(22,'(A,1X,I0)') 'N_BL_from_temperature_rms_peak', thermalBLGridPointsRms
-    write(22,'(A,1X,ES24.16E3)') 'delta_theta_relative_difference_percent', &
-        thermalBLThicknessRelativeDifferencePercent
+    write(22,'(A,1X,ES24.16E3,A)') 'delta_theta_relative_difference_percent', &
+        thermalBLThicknessRelativeDifferencePercent, '%'
     write(22,'(A,1X,A)') 'temperature_rms_profile_file', trim(temperatureRmsProfileFile)
     write(22,'(A,3(1X,ES24.16E3))') 'grid_over_eta_grid_over_etaB_dt_over_tauEta', &
         gridOverEta, gridOverEtaB, timeStepOverEta
@@ -2947,8 +2948,9 @@ end subroutine append_convergence_master_tecplot
 #ifdef RayleighBenardCell
     write(00,*) 'Xu Nu_vol/Nu_wall/Nu_kin/Nu_th =', &
         nuVolTimeAvg, nuWallTimeAvg, nuFromKineticDissipation, nuFromThermalDissipation
-    write(00,*) 'Xu relative differences wall/kin/th (%) =', &
-        wallNuDifferencePercent, kineticNuDifferencePercent, thermalNuDifferencePercent
+    write(00,'(A,1X,ES16.8,A,1X,A,1X,ES16.8,A,1X,A,1X,ES16.8,A)') &
+        'Xu relative differences wall/kin/th =', wallNuDifferencePercent, '%', '/', &
+        kineticNuDifferencePercent, '%', '/', thermalNuDifferencePercent, '%'
     write(00,*) 'Zhang R_u/R_T =', kineticDissipationRatio, thermalDissipationRatio
 #endif
 #ifdef RayleighBenardCell
@@ -2985,8 +2987,8 @@ end subroutine append_convergence_master_tecplot
     real(kind=8) :: Nu_WholeSum, ReSquared_WholeSum
     real(kind=8) :: Nu_FirstSum, ReSquared_FirstSum, Nu_SecondSum, ReSquared_SecondSum
     real(kind=8) :: Nu_WholeAvg, Re_WholeAvg, Nu_FirstAvg, Re_FirstAvg, Nu_SecondAvg, Re_SecondAvg
-    real(kind=8) :: Nu_FirstRelErr, Re_FirstRelErr, Nu_SecondRelErr, Re_SecondRelErr
-    logical :: exNu, exRe
+    real(kind=8) :: Nu_FirstVsSecondPercent, Re_FirstVsSecondPercent
+    logical :: exNu, exRe, statisticsConverged
 
     inquire(file='Nu_VolAvg_2DOpenaccLBMCDE_D2Q5.dat', exist=exNu)
     inquire(file='Re_VolAvg_2DOpenaccLBMCDE_D2Q5.dat', exist=exRe)
@@ -3125,24 +3127,33 @@ end subroutine append_convergence_master_tecplot
     Re_FirstAvg = dsqrt(max(0.0d0,ReSquared_FirstSum/dble(first_count)))
     Nu_SecondAvg = Nu_SecondSum / dble(second_count)
     Re_SecondAvg = dsqrt(max(0.0d0,ReSquared_SecondSum/dble(second_count)))
-    ! tiny(1.0d0) 是双精度最小正规正数；这里用 max 避免整体平均值为 0 时相对误差除以 0。
-    Nu_FirstRelErr = abs(Nu_FirstAvg - Nu_WholeAvg) / max(abs(Nu_WholeAvg), tiny(1.0d0))
-    Re_FirstRelErr = abs(Re_FirstAvg - Re_WholeAvg) / max(abs(Re_WholeAvg), tiny(1.0d0))
-    Nu_SecondRelErr = abs(Nu_SecondAvg - Nu_WholeAvg) / max(abs(Nu_WholeAvg), tiny(1.0d0))
-    Re_SecondRelErr = abs(Re_SecondAvg - Re_WholeAvg) / max(abs(Re_WholeAvg), tiny(1.0d0))
+    ! 按统计收敛判据，以后半窗最终结果为分母比较前后半窗；乘 100 后以百分数输出。
+    Nu_FirstVsSecondPercent = 100.0d0*abs(Nu_FirstAvg-Nu_SecondAvg) / &
+        max(abs(Nu_SecondAvg),tiny(1.0d0))
+    Re_FirstVsSecondPercent = 100.0d0*abs(Re_FirstAvg-Re_SecondAvg) / &
+        max(abs(Re_SecondAvg),tiny(1.0d0))
+    statisticsConverged = (Nu_FirstVsSecondPercent.LT.1.0d0).AND. &
+        (Re_FirstVsSecondPercent.LT.1.0d0)
+    ! 该判断只输出诊断信息，不控制程序退出或后续时间推进。
 
     open(unit=33, file='NuRe_TimeAverage_2DOpenaccLBMCDE_D2Q5.txt', &
         status='replace', action='write', form='formatted')
     write(33,'(A)') '# 2D OpenACC Nu mean and literature-defined RMS Re in the averaging window'
+    write(33,'(A)') '# final Nu/Re use the second half; relative-error columns are percentages (%), target < 1.0'
     write(33,'(A)') '# start_tf mid_tf end_tf whole_count first_count second_count ' // &
-        'Nu_mean_whole Re_rms_whole Nu_mean_first Re_rms_first Nu_mean_second Re_rms_second ' // &
-        'Nu_first_relerr Re_first_relerr Nu_second_relerr Re_second_relerr'
+        'Nu_mean_whole Re_rms_whole Nu_mean_first Re_rms_first Nu_final_second Re_final_second ' // &
+        'Nu_first_vs_final_percent Re_first_vs_final_percent'
     write(33,'(ES24.16E3,1X,ES24.16E3,1X,ES24.16E3,1X,I0,1X,I0,1X,I0,1X,' // &
         'ES24.16E3,1X,ES24.16E3,1X,ES24.16E3,1X,ES24.16E3,1X,ES24.16E3,1X,ES24.16E3,1X,' // &
-        'ES24.16E3,1X,ES24.16E3,1X,ES24.16E3,1X,ES24.16E3)') &
+        'ES24.16E3,A,1X,ES24.16E3,A)') &
         startTf, midTf, endTf, whole_count, first_count, second_count, &
         Nu_WholeAvg, Re_WholeAvg, Nu_FirstAvg, Re_FirstAvg, Nu_SecondAvg, Re_SecondAvg, &
-        Nu_FirstRelErr, Re_FirstRelErr, Nu_SecondRelErr, Re_SecondRelErr
+        Nu_FirstVsSecondPercent, '%', Re_FirstVsSecondPercent, '%'
+    if(statisticsConverged) then
+        write(33,'(A)') '# 达到统计收敛了。'
+    else
+        write(33,'(A)') '# 未达到统计收敛，当前计算时间不足，还需要继续往后算。'
+    endif
     close(33)
 
     write(*,'(A)') 'Unsteady Nu/Re statistical postprocessing:'
@@ -3151,9 +3162,15 @@ end subroutine append_convergence_master_tecplot
         'Samples whole/first/second:', whole_count, '/', first_count, '/', second_count
     write(*,'(A,1X,ES16.8,1X,A,1X,ES16.8)') 'Whole Nu mean/Re rms:', Nu_WholeAvg, '/', Re_WholeAvg
     write(*,'(A,1X,ES16.8,1X,A,1X,ES16.8)') 'First-half Nu mean/Re rms:', Nu_FirstAvg, '/', Re_FirstAvg
-    write(*,'(A,1X,ES16.8,1X,A,1X,ES16.8)') 'Second-half Nu mean/Re rms:', Nu_SecondAvg, '/', Re_SecondAvg
-    write(*,'(A,1X,ES16.8,1X,A,1X,ES16.8)') 'First-half Nu/Re relative error:', Nu_FirstRelErr, '/', Re_FirstRelErr
-    write(*,'(A,1X,ES16.8,1X,A,1X,ES16.8)') 'Second-half Nu/Re relative error:', Nu_SecondRelErr, '/', Re_SecondRelErr
+    write(*,'(A,1X,ES16.8,1X,A,1X,ES16.8)') &
+        'Final second-half Nu mean/Re rms:', Nu_SecondAvg, '/', Re_SecondAvg
+    write(*,'(A,1X,ES16.8,A,1X,A,1X,ES16.8,A)') &
+        'First-half vs final relative error:', Nu_FirstVsSecondPercent, '%', '/', Re_FirstVsSecondPercent, '%'
+    if(statisticsConverged) then
+        write(*,'(A)') '达到统计收敛了。'
+    else
+        write(*,'(A)') '未达到统计收敛，当前计算时间不足，还需要继续往后算。'
+    endif
 
   end subroutine output_unsteady_NuRe_postprocess
 !===================================================================================================
