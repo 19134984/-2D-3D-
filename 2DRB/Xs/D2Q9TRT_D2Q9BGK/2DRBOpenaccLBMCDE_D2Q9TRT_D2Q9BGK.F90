@@ -203,15 +203,16 @@
         real(kind=8), parameter :: unsteadyRunDuration=1000.0d0  ! 非稳态总目标时长，续算时只补足到该 t_ff
         ! 以下三个参数控制非稳态统计平均窗口，不改变推进时长或采样频率。
         ! 时间以整个算例的绝对 t_ff 计；续算会重读 Nu/Re、耗散和温度剖面历史，恢复完整窗口累计量。
-        ! 默认统计历史取总时长后 1/2；Nu/Re 收敛检查使用完整历史，所有最终结果统一取该窗口后半段。
+        ! 默认统计平均窗口取总时长后 1/2；原始历史保存全程，所有最终结果统一取该窗口后半段。
         real(kind=8), parameter :: unsteadyAverageStartTf=0.5d0*unsteadyRunDuration  ! 平均窗口起点
         real(kind=8), parameter :: unsteadyAverageEndTf=unsteadyRunDuration          ! 平均窗口终点
         real(kind=8), parameter :: unsteadyAverageMidTf=0.5d0*(unsteadyAverageStartTf+unsteadyAverageEndTf) ! 前/后半分界
-        ! Nu/Re、耗散、可压缩性和温度剖面在完整统计窗口内保存历史；最终统计只累计后半窗口。
-        ! 默认设置下，完整历史为 500~1000 t_ff，最终统计为 750~1000 t_ff。
+        ! Nu/Re、耗散、可压缩性和温度剖面从初始时刻保存完整历史；最终统计仍只累计平均窗口后半段。
+        ! 默认设置下，历史为 0~1000 t_ff，平均窗口为 500~1000 t_ff，最终统计为 750~1000 t_ff。
         ! 本次进程 Nu/Re 数组的容量；续算后只保存本次进程新产生的样本。
+        real(kind=8), parameter :: unsteadyHistoryStartTf=0.0d0 ! 原始统计历史从初始时刻开始保存
         integer(kind=4), parameter :: statisticSampleCountMax=max(1, &
-            nint((unsteadyAverageEndTf-unsteadyAverageStartTf)/statisticSampleInterval)+1)
+            nint((unsteadyRunDuration-unsteadyHistoryStartTf)/statisticSampleInterval)+1)
         integer(kind=4), parameter :: outputSnapshotFile=1   ! 是否独立输出 uvTrho 快照：0=不输出，1=输出
         integer(kind=4), parameter :: outputPltFile=1   ! 是否输出 plt 文件：0=不输出，1=输出
         integer(kind=4), parameter :: outputReloadFile=1 ! 是否周期输出 f/g 重启文件：0=不输出，1=输出
@@ -344,6 +345,16 @@
     call initial()
     call enter_data_2d_openacc()
 
+#ifdef unsteadyFlow
+    ! 新算例在推进前保存 t=0 初始状态；续算由历史末时刻确定下一个采样点，不重复写入。
+    if((loadInitField.EQ.0).AND.(cumulativeStatisticSampleCount.EQ.0).AND. &
+       (unsteadyHistoryStartTf.LE.0.0d0)) then
+        call calculate_unsteady_sample()
+        !$acc update self(T)
+        call accumulate_dissipation_statistics()
+    endif
+#endif
+
     !===============================================================================================
 
     call CPU_TIME(timeStart)         !当前进程累计消耗的 CPU 时间,包括并行
@@ -398,16 +409,15 @@
 #endif
 
 #ifdef unsteadyFlow
-        ! 统计采样，统计窗口内的 Nu/Re、耗散和温度剖面。
-        ! 每个目标时刻都从绝对 t/t_ff 换算为累计格子步，当前完成样本个数为 cumulativeStatisticSampleCount。
-        if((unsteadyAverageStartTf+real(cumulativeStatisticSampleCount,kind=8)* &
-            statisticSampleInterval.LE.unsteadyAverageEndTf).AND. &
-           ((restartItcOffset+itc).GE.max(1,nint((unsteadyAverageStartTf+ &
+        ! 原始历史从初始时刻连续保存；平均窗口只在后处理和最终累计时使用。
+        if((unsteadyHistoryStartTf+real(cumulativeStatisticSampleCount,kind=8)* &
+            statisticSampleInterval.LE.unsteadyRunDuration).AND. &
+           ((restartItcOffset+itc).GE.max(1,nint((unsteadyHistoryStartTf+ &
             real(cumulativeStatisticSampleCount,kind=8)*statisticSampleInterval)*timeUnit)))) then
             ! 一次全场遍历同时计算 Nu、Re、两类耗散和可压缩性指标，避免重复计算速度平方。
             call calculate_unsteady_sample()
             !$acc update self(T)
-            call accumulate_dissipation_statistics() !所有样本都位于统计窗口内
+            call accumulate_dissipation_statistics()
         endif
         ! 快照按 outputSnapshotInterval 输出。
         if( (outputSnapshotFile.EQ.1).AND. &
@@ -643,8 +653,9 @@
     write(00,*) "reloadFileInterval =", real(reloadFileInterval,kind=8), "free-fall time units"
     write(00,*) "reloadFileIntervalItc =", reloadFileIntervalItc, "in itc units"
 #ifdef unsteadyFlow
-    ! 统计时刻直接从窗口起点递增；统计时长能被采样间隔整除由用户设置参数时保证。
-    if((statisticSampleInterval.LE.0.0d0).OR.(unsteadyAverageStartTf.LT.0.0d0).OR. &
+    ! 历史采样和平均窗口相互独立；统计时长能被采样间隔整除由用户设置参数时保证。
+    if((statisticSampleInterval.LE.0.0d0).OR.(unsteadyHistoryStartTf.LT.0.0d0).OR. &
+        (unsteadyAverageStartTf.LT.unsteadyHistoryStartTf).OR. &
         (unsteadyAverageEndTf.LT.unsteadyAverageStartTf).OR. &
         (unsteadyAverageEndTf.GT.unsteadyRunDuration+1.0d-12)) then
         write(00,*) "Error: invalid unsteady statistics window or sampling interval"
@@ -657,13 +668,14 @@
         "free-fall time units"
     write(00,*) "unsteadyRunDuration =", real(unsteadyRunDuration,kind=8), "free-fall time units"
     write(00,*) "maximum samples in Nu/Re arrays =", statisticSampleCountMax
+    write(00,*) "complete history start time_tf =", unsteadyHistoryStartTf
     write(00,*) "start/mid/end statistic sample time_tf =", &
         unsteadyAverageStartTf, unsteadyAverageMidTf, unsteadyAverageEndTf
     write(00,*) "start/mid/end statistic sample itc =", &
         max(1,nint(unsteadyAverageStartTf*timeUnit)), &
         max(1,nint(unsteadyAverageMidTf*timeUnit)), &
         max(1,nint(unsteadyAverageEndTf*timeUnit))
-    write(00,*) "Statistics histories cover only the averaging window; time axis uses prescribed t/t_ff"
+    write(00,*) "Statistics histories cover the full run; default averaging window remains unchanged"
     write(00,*) "dissipationHistoryFile =", trim(dissipationHistoryFile)
     write(00,*) "temperatureProfileHistoryFile =", trim(temperatureProfileHistoryFile)
 #endif
@@ -2088,9 +2100,9 @@ end subroutine append_convergence_master_tecplot
     restartItcOffset = max(0, int(restartTfOffset*timeUnit+0.5d0))  !再反推格子步
     snapshotFileNum = max(0, int(restartTfOffset/outputSnapshotInterval+0.5d0)) !推断输出编号
     pltFileNum = max(0, int(restartTfOffset/outputPltFileInterval+0.5d0))
-    ! 没有 latest.meta 时无法可靠知道重启场对应的统计样本数；统计窗口开始后禁止猜测。
-    if(restartTfOffset.GE.unsteadyAverageStartTf) then
-        write(*,*) 'Error: unsteady restart after statistics begin requires latest metadata version 4.'
+    ! 完整历史从初始时刻开始；没有 latest.meta 时无法可靠恢复历史样本数。
+    if(restartTfOffset.GT.unsteadyHistoryStartTf) then
+        write(*,*) 'Error: unsteady restart after history output begins requires latest metadata version 4.'
         stop
     endif
 #endif
@@ -2374,6 +2386,61 @@ end subroutine append_convergence_master_tecplot
 
 #ifdef unsteadyFlow
 !===================================================================================================
+! 子程序: rollback_uncommitted_nure_histories
+! 作用: 续算时按 latest.meta 的累计样本数裁掉 Nu/Re 文本历史中较新的未提交尾部。
+! 说明: 耗散和温度剖面由 restore_dissipation_statistics 在原有恢复循环中直接截断；
+!       本程序只补上 Nu/Re 两个历史，避免重复读取耗散和温度剖面。
+!===================================================================================================
+  subroutine rollback_uncommitted_nure_histories()
+    use commondata
+    implicit none
+    integer(kind=4) :: k, iosNu, iosRe, nuUnit, reUnit
+    real(kind=8) :: nuTf, reTf, nuValue, reValue, expectedTf, tfTolerance
+    logical :: nuExists, reExists
+
+    if(cumulativeStatisticSampleCount.LE.0) return
+
+    inquire(file='Nu_VolAvg_2DOpenaccLBMCDE_D2Q9BGK.dat',exist=nuExists)
+    inquire(file='Re_VolAvg_2DOpenaccLBMCDE_D2Q9BGK.dat',exist=reExists)
+    if((.not.nuExists).OR.(.not.reExists)) then
+        write(*,*) 'Error: committed Nu/Re histories are incomplete at restart.'
+        error stop 1
+    endif
+
+    tfTolerance = 1.0d-10*max(1.0d0,abs(restartTfOffset),abs(statisticSampleInterval))
+
+    ! Nu/Re 历史没有表头；先验证前 N 条已提交记录，再在当前位置截断未提交尾部。
+    open(newunit=nuUnit,file='Nu_VolAvg_2DOpenaccLBMCDE_D2Q9BGK.dat',status='old', &
+        action='readwrite',form='formatted')
+    open(newunit=reUnit,file='Re_VolAvg_2DOpenaccLBMCDE_D2Q9BGK.dat',status='old', &
+        action='readwrite',form='formatted')
+    do k = 1, cumulativeStatisticSampleCount
+        expectedTf = unsteadyHistoryStartTf+real(k-1,kind=8)*statisticSampleInterval
+        read(nuUnit,*,iostat=iosNu) nuTf, nuValue
+        read(reUnit,*,iostat=iosRe) reTf, reValue
+        if((iosNu.NE.0).OR.(iosRe.NE.0)) then
+            close(nuUnit)
+            close(reUnit)
+            write(*,*) 'Error: Nu/Re history is shorter than the committed sample count.'
+            error stop 1
+        endif
+        if((abs(nuTf-expectedTf).GT.tfTolerance).OR.(abs(reTf-expectedTf).GT.tfTolerance)) then
+            close(nuUnit)
+            close(reUnit)
+            write(*,*) 'Error: committed Nu/Re times do not match the fixed sampling clock.'
+            error stop 1
+        endif
+    enddo
+
+    endfile(nuUnit)
+    endfile(reUnit)
+    close(nuUnit)
+    close(reUnit)
+  end subroutine rollback_uncommitted_nure_histories
+!===================================================================================================
+
+
+!===================================================================================================
 ! 子程序: restore_dissipation_statistics
 ! 作用: 续算时读取完整耗散历史和温度剖面历史，并恢复最终后半窗口的在线累计量。
 ! 说明: 完整历史仍用于 Nu/Re 前后半窗收敛检查；这里只把 t>=unsteadyAverageMidTf 的样本
@@ -2393,9 +2460,18 @@ end subroutine append_convergence_master_tecplot
     character(len=512) :: historyHeader
     logical :: dissipationHistoryExists, profileHistoryExists
 
-    ! latest.meta 已经保存了该重启场对应的累计统计样本数；为零时没有历史需要恢复。
-    if(cumulativeStatisticSampleCount.LE.0) return
     tfTolerance = 1.0d-10*max(1.0d0,abs(restartTfOffset),abs(statisticSampleInterval))
+    ! 完整历史从初始时刻开始；非零时刻续算不能缺少此前的历史记录。
+    if(cumulativeStatisticSampleCount.LE.0) then
+        if(restartTfOffset.GT.unsteadyHistoryStartTf+tfTolerance) then
+            write(*,*) 'Error: restart field has no complete statistics history.'
+            error stop 1
+        endif
+        return
+    endif
+
+    ! latest.meta 是最后一次同时拥有 f/g 和统计历史的提交点；先裁掉其后的未提交历史。
+    call rollback_uncommitted_nure_histories()
 
     inquire(file=trim(dissipationHistoryFile),exist=dissipationHistoryExists)
     if(.not.dissipationHistoryExists) then
@@ -2407,7 +2483,7 @@ end subroutine append_convergence_master_tecplot
     endif
 
     open(newunit=dissipationUnit,file=trim(dissipationHistoryFile),status='old', &
-        action='read',form='formatted')
+        action='readwrite',form='formatted')
     read(dissipationUnit,'(A)',iostat=ios) historyHeader
     ! 重命名只改变表头，不改变十列数据顺序；续算时同时兼容旧表头和当前表头。
     if((ios.NE.0).OR.((index(historyHeader, &
@@ -2454,12 +2530,9 @@ end subroutine append_convergence_master_tecplot
             finalStatisticSampleCount = finalStatisticSampleCount+1
         endif
     enddo
-    read(dissipationUnit,*,iostat=ios) currentStatisticSampleTf
+    ! 已读完 latest.meta 提交的前 N 条记录；ENDFILE 自动裁掉较新的未提交尾部。
+    endfile(dissipationUnit)
     close(dissipationUnit)
-    if(ios.GE.0) then
-        write(*,*) 'Error: dissipation history contains samples newer than the restart metadata.'
-        error stop 1
-    endif
 
     inquire(file=trim(temperatureProfileHistoryFile),exist=profileHistoryExists)
     if(.not.profileHistoryExists) then
@@ -2472,7 +2545,7 @@ end subroutine append_convergence_master_tecplot
 
     lastProfileTf = -huge(1.0d0)
     open(newunit=profileUnit,file=trim(temperatureProfileHistoryFile),status='old', &
-        action='read',form='unformatted',access='stream')
+        action='readwrite',form='unformatted',access='stream')
     do k = 1, cumulativeStatisticSampleCount            !读取之前的统计数据
         read(profileUnit,iostat=ios) profileTf
         if(ios.NE.0) then
@@ -2504,18 +2577,17 @@ end subroutine append_convergence_master_tecplot
                 sumTemperatureSquaredXAvgProfile+temperatureSquaredXAvgProfileSample
         endif
     enddo
-    read(profileUnit,iostat=ios) profileTf
+    ! 与耗散历史相同，只保留 latest.meta 已提交的前 N 个完整剖面记录。
+    endfile(profileUnit)
     close(profileUnit)
-    if(ios.GE.0) then
-        write(*,*) 'Error: temperature-profile history contains samples newer than the restart metadata.'
-        error stop 1
-    endif
     if(abs(lastProfileTf-lastDissipationTf).GT.tfTolerance) then
         write(*,*) 'Error: dissipation and temperature-profile restart statistics do not match.'
         error stop 1
     endif
 
     open(unit=00,file=trim(settingsFile),status='unknown',position='append')
+    write(00,*) 'Statistics histories rolled back to committed samples =', &
+        cumulativeStatisticSampleCount
     write(00,*) 'Restored complete-history samples =', cumulativeStatisticSampleCount
     write(00,*) 'Restored final-window samples =', finalStatisticSampleCount
     write(00,*) 'Restored statistics through time_tf =', lastDissipationTf
@@ -2527,7 +2599,7 @@ end subroutine append_convergence_master_tecplot
 !===================================================================================================
 ! 子程序: calculate_unsteady_sample
 ! 作用: 一次全场遍历同时计算非稳态瞬时 Nu、Re、两类耗散及 Xu 可压缩性指标。
-! 调用: 只在配置的统计窗口内按 statisticSampleInterval 调用；快照、plt 和 reload 不调用本程序。
+! 调用: 从 unsteadyHistoryStartTf 起按 statisticSampleInterval 调用；平均窗口不控制历史写入。
 ! 时间轴: 给定 t/t_ff 后，用 itc=nint((t/t_ff)*timeUnit) 选择最近格子步；写文件仍以给定 t/t_ff 为横坐标。
 ! 说明: 此处只记录原始瞬时量，不在每个采样点反算耗散 Nu 或检查精确关系。
 !       Xu/Zhang 所需的耗散 Nu 和精确关系比值在统计窗口结束后由空间-时间平均量统一计算。
@@ -2567,11 +2639,11 @@ end subroutine append_convergence_master_tecplot
         stop
     endif
     currentRunStatisticSampleCount = currentRunStatisticSampleCount+1
-    currentStatisticSampleTf = unsteadyAverageStartTf+ &
+    currentStatisticSampleTf = unsteadyHistoryStartTf+ &
         real(cumulativeStatisticSampleCount,kind=8)*statisticSampleInterval
 
     ! 只有重启时刻已经越过统计窗口首个样本，续算才必须接在旧 Nu/Re 历史之后。
-    ! 若在统计窗口开始前重启，cumulativeStatisticSampleCount=0，首个统计样本会新建历史文件。
+    ! 新算例 cumulativeStatisticSampleCount=0，首个历史样本会新建文件；续算则追加旧历史。
     if((firstUnsteadyHistoryWrite).AND.(cumulativeStatisticSampleCount.GT.0)) then
         inquire(file="Nu_VolAvg_2DOpenaccLBMCDE_D2Q9BGK.dat", exist=exNu)
         inquire(file="Re_VolAvg_2DOpenaccLBMCDE_D2Q9BGK.dat", exist=exRe)
@@ -2729,9 +2801,9 @@ end subroutine append_convergence_master_tecplot
 
 !===================================================================================================
 ! 子程序: accumulate_dissipation_statistics
-! 作用: 对统计窗口内的 Nu、速度平方、两类耗散、Xu 可压缩性指标和温度剖面做在线累加。
+! 作用: 保存全程原始历史，并对最终后半窗口的 Nu、耗散、可压缩性和温度剖面在线累加。
 ! 调用: calculate_unsteady_sample 已经完成当前采样时刻的空间求和与体平均；
-!       主程序只在 unsteadyAverageStartTf 至 unsteadyAverageEndTf 的统计窗口内调用本程序。
+!       主程序从 unsteadyHistoryStartTf 起按固定间隔调用本程序。
 ! 说明: 速度平方必须保留，因为文献 Re 的定义是 sqrt(<u^2+v^2>_V,t)*H/nu。
 !       前后半段 Nu/Re 统一由 output_unsteady_NuRe_postprocess 重读完整历史后计算，
 !       本程序不再维护一套重复的前后半段累计量。
@@ -2752,7 +2824,7 @@ end subroutine append_convergence_master_tecplot
     logical :: isFinalStatisticSample                       ! 当前样本是否属于最终后半窗口
     logical, save :: firstProfileHistoryWrite = .true.      ! 标记本次进程是否第一次写温度剖面历史
 
-    currentStatisticSampleTf = unsteadyAverageStartTf+ &
+    currentStatisticSampleTf = unsteadyHistoryStartTf+ &
         real(cumulativeStatisticSampleCount,kind=8)*statisticSampleInterval
     isFinalStatisticSample = (currentStatisticSampleTf.GE.unsteadyAverageMidTf).AND. &
         (currentStatisticSampleTf.LE.unsteadyAverageEndTf)
@@ -3138,6 +3210,7 @@ end subroutine append_convergence_master_tecplot
     real(kind=8) :: currentStatisticSampleTf, nuTf, reTf, NuVal, ReVal
     real(kind=8) :: Nu_RunningSum, ReSquared_RunningSum
     real(kind=8) :: startTf, midTf, endTf
+    real(kind=8) :: historyFirstTf, historyLastTf, historyTolerance
     real(kind=8) :: Nu_WholeSum, ReSquared_WholeSum
     real(kind=8) :: Nu_FirstSum, ReSquared_FirstSum, Nu_SecondSum, ReSquared_SecondSum
     real(kind=8) :: Nu_WholeAvg, Re_WholeAvg, Nu_FirstAvg, Re_FirstAvg, Nu_SecondAvg, Re_SecondAvg
@@ -3164,7 +3237,7 @@ end subroutine append_convergence_master_tecplot
     ! These files are derived views of the full .dat history, so rebuild one continuous ZONE.
     open(newunit=seriesUnit, file='NuRe_InstantaneousVolAvg_2DOpenaccLBMCDE_D2Q9BGK.plt', &
         status='replace', action='write', form='formatted')
-    write(seriesUnit,'(A)') 'TITLE = "2D OpenACC instantaneous Nu/Re in statistics window"'
+    write(seriesUnit,'(A)') 'TITLE = "2D OpenACC instantaneous Nu/Re in full stored history"'
     write(seriesUnit,'(A)') 'VARIABLES = "time_over_tff" "NuVolumeInstantaneous" "ReInstantaneousRms"'
     write(seriesUnit,'(A)') 'ZONE T="NuReInstantaneous", F=POINT'
 
@@ -3190,6 +3263,8 @@ end subroutine append_convergence_master_tecplot
     first_count = 0
     second_count = 0
     running_count = 0
+    historyFirstTf = huge(1.0d0)
+    historyLastTf = -huge(1.0d0)
 
     do k = 1, cumulativeStatisticSampleCount
         read(nuUnit,*,iostat=iosNu) nuTf, NuVal
@@ -3212,6 +3287,8 @@ end subroutine append_convergence_master_tecplot
         endif
 
         currentStatisticSampleTf = nuTf
+        if(k.EQ.1) historyFirstTf = currentStatisticSampleTf
+        historyLastTf = currentStatisticSampleTf
         write(seriesUnit,'(ES24.16E3,1X,ES24.16E3,1X,ES24.16E3)') &
             currentStatisticSampleTf, NuVal, ReVal
 
@@ -3259,6 +3336,15 @@ end subroutine append_convergence_master_tecplot
         write(*,'(A)') 'Error: Nu/Re history files have inconsistent trailing rows.'
         open(unit=00,file=trim(settingsFile),status='unknown',position='append')
         write(00,'(A)') 'Error: Nu/Re history files have inconsistent trailing rows.'
+        close(00)
+        error stop 1
+    endif
+    historyTolerance = 1.0d-10*max(1.0d0,abs(startTf),abs(endTf),abs(statisticSampleInterval))
+    if((historyFirstTf.GT.startTf+historyTolerance).OR. &
+       (historyLastTf.LT.endTf-historyTolerance)) then
+        write(*,'(A)') 'Error: stored Nu/Re history does not cover the requested averaging window.'
+        open(unit=00,file=trim(settingsFile),status='unknown',position='append')
+        write(00,'(A)') 'Error: stored Nu/Re history does not cover the requested averaging window.'
         close(00)
         error stop 1
     endif
