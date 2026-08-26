@@ -2,7 +2,7 @@
 % 网格：257 x 257；最终统计窗口：1050--1400 t_ff。
 % Zhang Table 1 基准：Nu = 11.37，Re = 968。
 % 纵轴采用绝对相对误差：100*abs(computed/reference - 1)，单位为 %。
-% 原始分支 chi_nu = 0.5、0.7 的 Re 属于另一条统计解分支，不参与误差趋势比较。
+% 原始分支 chi_nu = 0.5、0.7 的 Re 属于另一条统计解分支，在图中单独标记。
 
 clear; clc; close all;
 
@@ -38,6 +38,8 @@ reAbsErrorPct = 100.0 * abs(re ./ reZhang - 1.0);
 % 仅从原始 Re 曲线中排除另一条统计解分支的两个点；修正分支保持完整。
 rePointIncluded = true(size(reAbsErrorPct));
 rePointIncluded(1, chiNu == 0.5 | chiNu == 0.7) = false;
+reAlternativeBranch = false(size(reAbsErrorPct));
+reAlternativeBranch(1, chiNu == 0.5 | chiNu == 0.7) = true;
 
 fig = figure('Color', 'w', 'Position', [120, 100, 860, 700]);
 layout = tiledlayout(2, 1, 'TileSpacing', 'compact', 'Padding', 'compact');
@@ -66,13 +68,21 @@ for k = 1:numel(branchNames)
         'Marker', markers{k}, 'LineWidth', 1.8, 'MarkerSize', 6, ...
         'DisplayName', branchNames{k});
 end
+plot(chiNu(reAlternativeBranch(1, :)), ...
+    reAbsErrorPct(1, reAlternativeBranch(1, :)), ...
+    'Color', [0.4940, 0.1840, 0.5560], 'LineStyle', 'none', ...
+    'Marker', 'd', 'MarkerFaceColor', [0.4940, 0.1840, 0.5560], ...
+    'LineWidth', 1.8, 'MarkerSize', 7, ...
+    'HandleVisibility', 'off');
 xlim([0.0, 0.9]);
 xticks(chiNu);
 xlabel('\chi_\nu', 'Interpreter', 'tex');
 ylabel('Absolute relative error of Re (%)', 'Interpreter', 'none');
-title('Re relative to Zhang (original \chi_\nu = 0.5, 0.7 excluded)', ...
+title('Re relative to Zhang (log scale; including alternative solution branch)', ...
     'FontWeight', 'normal', 'Interpreter', 'tex');
-set(gca, 'FontName', 'Times New Roman', 'FontSize', 11, 'LineWidth', 1.0);
+legend('Location', 'northwest', 'Interpreter', 'tex');
+set(gca, 'YScale', 'log', 'FontName', 'Times New Roman', ...
+    'FontSize', 11, 'LineWidth', 1.0);
 
 title(layout, 'Ra = 10^7', ...
     'FontName', 'Times New Roman', 'FontWeight', 'normal');

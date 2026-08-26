@@ -30,6 +30,7 @@ from __future__ import print_function
 
 import argparse
 import glob
+import json
 import math
 import os
 import statistics
@@ -201,6 +202,13 @@ def _audit_case(directory):
     reporter = Reporter()
     print("CASE {}".format(os.path.abspath(directory)))
 
+    merge_manifest = None
+    merge_manifest_path = os.path.join(directory, "merge_manifest.json")
+    if os.path.isfile(merge_manifest_path):
+        with open(merge_manifest_path, "r") as handle:
+            merge_manifest = json.load(handle)
+        print("MERGE_MANIFEST {}".format(merge_manifest_path))
+
     meta_path = _first_match(directory, ["*-latest.meta"])
     meta = _parse_meta(meta_path)
     print("META file {}".format(meta_path if meta_path else "MISSING"))
@@ -268,10 +276,21 @@ def _audit_case(directory):
             reporter.error("META cumulativeStatisticSampleCount is invalid")
         else:
             row_count = len(populated[0][1])
-            tail = row_count - committed
-            print("META_COMMIT committed_samples {} common_history_rows {} tail_rows {}".format(
-                committed, row_count, tail))
-            if committed > row_count:
+            ledger_rows = row_count
+            prepended_rows = 0
+            if merge_manifest:
+                try:
+                    latest_rows = int(merge_manifest["histories"]["Nu"]["sources"][-1]["rows"])
+                    ledger_rows = latest_rows
+                    prepended_rows = row_count - latest_rows
+                except (KeyError, IndexError, TypeError, ValueError):
+                    reporter.error("merge manifest does not describe the latest Nu source rows")
+                print("META_COMMIT merged_history_rows {} latest_part_rows {} prepended_rows {}".format(
+                    row_count, ledger_rows, prepended_rows))
+            tail = ledger_rows - committed
+            print("META_COMMIT committed_samples {} ledger_history_rows {} tail_rows {}".format(
+                committed, ledger_rows, tail))
+            if committed > ledger_rows:
                 reporter.error("META claims more committed samples than the histories contain")
             elif tail == 0:
                 print("META_COMMIT_STATUS exact")
