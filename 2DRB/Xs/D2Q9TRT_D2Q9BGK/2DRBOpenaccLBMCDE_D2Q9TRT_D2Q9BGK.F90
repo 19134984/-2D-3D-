@@ -160,6 +160,10 @@
 
         real(kind=8), parameter :: timeUnit=dsqrt(lengthUnit/(gBeta*deltaT)) !一个自由落体时间对应的格子步数
         real(kind=8), parameter :: velocityUnit=dsqrt(gBeta*deltaT*lengthUnit) !自由落体速度
+        ! 数值发散保护：宏观场每 1 t_ff 检查；f/g 非平衡量随原始统计历史从 t=0 保存。
+        real(kind=8), parameter :: nonFiniteCheckIntervalTf=1.0d0
+        integer(kind=4), parameter :: nonFiniteCheckIntervalItc= &
+            max(1,nint(nonFiniteCheckIntervalTf*timeUnit))
 
         real(kind=8), parameter :: Snu=1.0d0/tauf
         real(kind=8), parameter :: flowMagicParameter=3.0d0/16.0d0
@@ -240,6 +244,8 @@
         ! 重启读取文件的前缀；latest meta 模式实际读取 meta 中记录的 <reloadFilePrefix>-<编号>.bin
 
         character(len=100) :: settingsFile="SimulationSettings2DOpenaccLBMCDE_D2Q9BGK.txt"
+        character(len=100) :: populationDiagnosticHistoryFile= &
+            "PopulationNonequilibriumHistory_2DOpenaccLBMCDE_D2Q9BGK.dat"
         !===============================================================================================
 
         !===============================================================================================
@@ -344,11 +350,14 @@
     ! Initialization
     call initial()
     call enter_data_2d_openacc()
+    call initialize_population_nonequilibrium_history()
 
 #ifdef unsteadyFlow
     ! 新算例在推进前保存 t=0 初始状态；续算由历史末时刻确定下一个采样点，不重复写入。
     if((loadInitField.EQ.0).AND.(cumulativeStatisticSampleCount.EQ.0).AND. &
        (unsteadyHistoryStartTf.LE.0.0d0)) then
+        ! f/g 非平衡诊断与 Nu/Re 原始历史使用同一个 t=0 时刻。
+        call monitor_population_nonequilibrium()
         call calculate_unsteady_sample()
         !$acc update self(T)
         call accumulate_dissipation_statistics()
@@ -391,6 +400,10 @@
         call macroT()
 
 #ifdef steadyFlow
+        if(MOD(restartItcOffset+itc,nonFiniteCheckIntervalItc).EQ.0) then
+            call monitor_population_nonequilibrium()
+            call check_nonfinite_state()
+        endif
         ! 周期输出按累计格子步判断；否则从 1050tf 续算会在 1150tf 才输出，
         ! 而不是接回不断电运行应有的 1100tf、1200tf、...
         if(MOD(restartItcOffset+itc,2000).EQ.0) call check()
@@ -415,9 +428,15 @@
            ((restartItcOffset+itc).GE.max(1,nint((unsteadyHistoryStartTf+ &
             real(cumulativeStatisticSampleCount,kind=8)*statisticSampleInterval)*timeUnit)))) then
             ! 一次全场遍历同时计算 Nu、Re、两类耗散和可压缩性指标，避免重复计算速度平方。
+            ! 在宏观统计之前先写 f/g 诊断；若本时刻已经非数，诊断文件仍能保留首个异常位置。
+            call monitor_population_nonequilibrium()
             call calculate_unsteady_sample()
             !$acc update self(T)
             call accumulate_dissipation_statistics()
+        endif
+        ! 宏观场非数检查放在历史写入之后，保证发散采样点先留下 f/g 诊断。
+        if(MOD(restartItcOffset+itc,nonFiniteCheckIntervalItc).EQ.0) then
+            call check_nonfinite_state()
         endif
         ! 快照按 outputSnapshotInterval 输出。
         if( (outputSnapshotFile.EQ.1).AND. &
@@ -449,6 +468,13 @@
 #endif
 
 #ifdef unsteadyFlow
+    ! 周期重启时钟与最终时钟分别取整，最终步不一定命中周期输出条件。
+    ! 未命中时补写最终 f/g 和 latest.meta，使重启账本与完整统计历史一致。
+    if((outputReloadFile.EQ.1).AND. &
+       (MOD(restartItcOffset+itc,reloadFileIntervalItc).NE.0)) then
+        call update_host_reload_2d_openacc()
+        call output_ReloadFile()
+    endif
     call output_unsteady_NuRe_postprocess()
     call write_dissipation_statistics()
 #endif
@@ -652,6 +678,11 @@
     write(00,*) "outputReloadFile =", outputReloadFile
     write(00,*) "reloadFileInterval =", real(reloadFileInterval,kind=8), "free-fall time units"
     write(00,*) "reloadFileIntervalItc =", reloadFileIntervalItc, "in itc units"
+    write(00,*) "nonFiniteCheckIntervalTf =", real(nonFiniteCheckIntervalTf,kind=8), &
+        "free-fall time units"
+    write(00,*) "nonFiniteCheckIntervalItc =", nonFiniteCheckIntervalItc, "in itc units"
+    write(00,*) "populationDiagnosticHistoryFile =", trim(populationDiagnosticHistoryFile)
+    write(00,*) "Population diagnostic stores max|f-feq|/max|g-geq| and (i,j,q) from t=0"
 #ifdef unsteadyFlow
     ! 历史采样和平均窗口相互独立；统计时长能被采样间隔整除由用户设置参数时保证。
     if((statisticSampleInterval.LE.0.0d0).OR.(unsteadyHistoryStartTf.LT.0.0d0).OR. &
@@ -962,6 +993,340 @@ close(00)
     !$acc update self(u,v,T,rho)
   end subroutine update_host_snapshot_2d_openacc
 !===================================================================================================
+
+!===================================================================================================
+! 子程序: initialize_population_nonequilibrium_history
+! 作用: 新算例重建 f/g 非平衡诊断历史；续算时裁掉重启场之后的未提交尾部。
+!===================================================================================================
+  subroutine initialize_population_nonequilibrium_history()
+    use commondata
+    implicit none
+    integer(kind=4) :: diagnosticUnit, ios, diagnosticItc
+    integer(kind=4) :: retainedDiagnosticCount, lastDiagnosticItc
+    real(kind=8) :: diagnosticTf
+    character(len=1024) :: diagnosticLine, headerLine
+    logical :: historyExists
+
+    ! 新算例覆盖旧诊断，保证不同参数的数据不混写。
+    ! 续算以 latest.meta 读出的 restartItcOffset 为提交边界：例如场只保存到 400 tf，
+    ! 即使历史已经写到 425 tf，也会先裁掉 400 tf 之后没有对应 f/g 重启场的记录。
+    inquire(file=trim(populationDiagnosticHistoryFile),exist=historyExists)
+    if(loadInitField.EQ.0) then
+        open(newunit=diagnosticUnit,file=trim(populationDiagnosticHistoryFile), &
+            status='replace',action='write',form='formatted')
+    elseif(.not.historyExists) then
+        open(newunit=diagnosticUnit,file=trim(populationDiagnosticHistoryFile), &
+            status='new',action='write',form='formatted')
+    else
+        open(newunit=diagnosticUnit,file=trim(populationDiagnosticHistoryFile), &
+            status='old',action='readwrite',form='formatted')
+        ! 两行表头不是数值记录；先验证其存在，避免把损坏文件当成正常历史继续追加。
+        read(diagnosticUnit,'(A)',iostat=ios) headerLine
+        if(ios.NE.0) then
+            write(*,*) 'Error: missing population diagnostic history header'
+            close(diagnosticUnit)
+            error stop 88
+        endif
+        if(index(adjustl(headerLine),'# time_tf itc').NE.1) then
+            write(*,*) 'Error: invalid population diagnostic history header'
+            close(diagnosticUnit)
+            error stop 88
+        endif
+        read(diagnosticUnit,'(A)',iostat=ios) headerLine
+        if(ios.NE.0) then
+            write(*,*) 'Error: missing population diagnostic history description'
+            close(diagnosticUnit)
+            error stop 88
+        endif
+        if(index(adjustl(headerLine),'# region:').NE.1) then
+            write(*,*) 'Error: invalid population diagnostic history description'
+            close(diagnosticUnit)
+            error stop 88
+        endif
+
+        retainedDiagnosticCount=0
+        lastDiagnosticItc=-1
+        do
+            read(diagnosticUnit,'(A)',iostat=ios) diagnosticLine
+            if(ios.LT.0) exit
+            if(ios.NE.0) then
+                write(*,*) 'Error: failed to read population diagnostic history'
+                close(diagnosticUnit)
+                error stop 88
+            endif
+            read(diagnosticLine,*,iostat=ios) diagnosticTf,diagnosticItc
+            if(ios.NE.0) then
+                write(*,*) 'Error: invalid population diagnostic history record'
+                close(diagnosticUnit)
+                error stop 88
+            endif
+            ! 超过重启场的记录属于未提交尾部；非递增记录是旧版续算留下的重复尾部。
+            if((diagnosticItc.GT.restartItcOffset).OR. &
+               ((retainedDiagnosticCount.GT.0).AND.(diagnosticItc.LE.lastDiagnosticItc))) then
+                backspace(diagnosticUnit)
+                endfile(diagnosticUnit)
+                exit
+            endif
+            retainedDiagnosticCount=retainedDiagnosticCount+1
+            lastDiagnosticItc=diagnosticItc
+        enddo
+        close(diagnosticUnit)
+        write(*,*) 'Population diagnostic history retained through itc =',lastDiagnosticItc
+        return
+    endif
+    write(diagnosticUnit,'(A)') &
+        '# time_tf itc max_fneq i_f j_f q_f x_f_H y_f_H max_gneq i_g j_g q_g x_g_H y_g_H '// &
+        'nbad_f bad_i_f bad_j_f bad_q_f region_f nbad_g bad_i_g bad_j_g bad_q_g region_g first_detected'
+    write(diagnosticUnit,'(A)') &
+        '# region: 0=interior, 1=vertical_wall, 2=horizontal_wall, 3=corner; '// &
+        'first_detected: 0=finite, 1=f_only, 2=g_only, 3=f_and_g_same_sample'
+    close(diagnosticUnit)
+  end subroutine initialize_population_nonequilibrium_history
+!===================================================================================================
+
+
+!===================================================================================================
+! 子程序: monitor_population_nonequilibrium
+! 作用: 每个原始历史采样点记录 max|f-feq|、max|g-geq| 及对应 (i,j,q)；
+!       首次检测到分布函数非数时，记录 f/g、位置和边界区域后终止当前算例。
+!===================================================================================================
+  subroutine monitor_population_nonequilibrium()
+    use commondata
+    implicit none
+    ! iMax*/jMax*/qMax*：最大非平衡量的位置；iBad*/jBad*/qBad*：首个非数位置。
+    ! 避免使用 iF 这种在 Fortran 不区分大小写时容易被看成 IF 关键字的命名。
+    integer(kind=4) :: i,j,alpha,iMaxF,jMaxF,qMaxF,iMaxG,jMaxG,qMaxG
+    integer(kind=4) :: iBadF,jBadF,qBadF,iBadG,jBadG,qBadG
+    ! nonFinite*Count 为异常分布总数；firstDetected 和 region* 是写入历史文件的诊断标志。
+    integer(kind=4) :: nonFiniteFCount,nonFiniteGCount,firstDetected,regionF,regionG,diagnosticUnit,absoluteItc
+    ! *Code 是 GPU 归约使用的一维位置编码，cellCode 用于在主机端还原 i、j、q。
+    integer(kind=8) :: code,maxFCode,maxGCode,badFCode,badGCode,cellCode
+    real(kind=8) :: populationValue,equilibriumValue,nonequilibriumValue,eu,uu,pressureLoc
+    real(kind=8) :: maxFneq,maxGneq,locationToleranceF,locationToleranceG
+    real(kind=8) :: timeTf,xFOverH,yFOverH,xGOverH,yGOverH
+    real(kind=8), parameter :: finiteLimit=huge(1.0d0)
+    integer(kind=8), parameter :: noLocation=huge(0_8)
+
+    ! 主推进核使用 async(1)，先等待碰撞、迁移、边界和宏观量恢复全部完成，
+    ! 确保本次诊断读取的是同一个物理时刻的 f、g、rho、u、v、T。
+    !$acc wait(1)
+
+    ! 第一次遍历流场 D2Q9 分布：求 max|f_i-f_i^eq|，统计 f_i 的 NaN/Inf，
+    ! 并把 (i,j,q) 编码为 q+9*((i-1)+nx*(j-1))，通过整数 min 归约记录首个异常位置。
+    maxFneq=0.0d0; nonFiniteFCount=0; badFCode=noLocation
+    !$acc parallel loop gang vector collapse(3) default(none) present(f,rho,u,v,ex,ey,omega) &
+    !$acc& private(code,populationValue,equilibriumValue,nonequilibriumValue,eu,uu) &
+    !$acc& reduction(max:maxFneq) reduction(+:nonFiniteFCount) reduction(min:badFCode)
+    do alpha=0,8
+        do j=1,ny
+            do i=1,nx
+                code=int(alpha,8)+9_8*(int(i-1,8)+int(nx,8)*int(j-1,8))
+                populationValue=f(i,j,alpha)
+                if(.not.(abs(populationValue).LE.finiteLimit)) then
+                    nonFiniteFCount=nonFiniteFCount+1; badFCode=min(badFCode,code)
+                else
+                    eu=dble(ex(alpha))*u(i,j)+dble(ey(alpha))*v(i,j)
+                    uu=u(i,j)*u(i,j)+v(i,j)*v(i,j)
+                    equilibriumValue=omega(alpha)*((rho(i,j)-rho0)+rho0*(eu/cs2+ &
+                        0.5d0*eu*eu/(cs2*cs2)-0.5d0*uu/cs2))
+                    nonequilibriumValue=abs(populationValue-equilibriumValue)
+                    if(nonequilibriumValue.LE.finiteLimit) maxFneq=max(maxFneq,nonequilibriumValue)
+                endif
+            enddo
+        enddo
+    enddo
+    !$acc end parallel loop
+
+    ! 第一次遍历温度场 D2Q9-BGK 分布。此处 g_i^eq 包含二阶速度项和压力修正项，
+    ! 与本代码 collisionT 中使用的 D2Q9-BGK 平衡态完全一致。
+    maxGneq=0.0d0; nonFiniteGCount=0; badGCode=noLocation
+    !$acc parallel loop gang vector collapse(3) default(none) present(g,T,rho,u,v,ex,ey,omega,lambdaT) &
+    !$acc& private(code,populationValue,equilibriumValue,nonequilibriumValue,eu,uu,pressureLoc) &
+    !$acc& reduction(max:maxGneq) reduction(+:nonFiniteGCount) reduction(min:badGCode)
+    do alpha=0,8
+        do j=1,ny
+            do i=1,nx
+                code=int(alpha,8)+9_8*(int(i-1,8)+int(nx,8)*int(j-1,8))
+                populationValue=g(i,j,alpha)
+                if(.not.(abs(populationValue).LE.finiteLimit)) then
+                    nonFiniteGCount=nonFiniteGCount+1; badGCode=min(badGCode,code)
+                else
+                    eu=dble(ex(alpha))*u(i,j)+dble(ey(alpha))*v(i,j)
+                    uu=u(i,j)*u(i,j)+v(i,j)*v(i,j)
+                    pressureLoc=cs2*(rho(i,j)-rho0)
+                    equilibriumValue=omega(alpha)*T(i,j)*(1.0d0+eu/cT2+ &
+                        0.5d0*eu*eu/(cT2*cT2)-0.5d0*uu/cT2)+ &
+                        lambdaT(alpha)*T(i,j)*pressureLoc/(rho0*cT2)
+                    nonequilibriumValue=abs(populationValue-equilibriumValue)
+                    if(nonequilibriumValue.LE.finiteLimit) maxGneq=max(maxGneq,nonequilibriumValue)
+                endif
+            enddo
+        enddo
+    enddo
+    !$acc end parallel loop
+
+    ! 第二次遍历流场：全局最大值已经得到，再确定 max|f_i-f_i^eq| 的具体 (i,j,q)。
+    ! 浮点容差只消除重算末位误差；若有并列最大值，则选择位置编码最小的一项。
+    locationToleranceF=max(tiny(1.0d0),64.0d0*epsilon(1.0d0)*maxFneq); maxFCode=noLocation
+    !$acc parallel loop gang vector collapse(3) default(none) present(f,rho,u,v,ex,ey,omega) &
+    !$acc& private(code,populationValue,equilibriumValue,nonequilibriumValue,eu,uu) reduction(min:maxFCode)
+    do alpha=0,8
+        do j=1,ny
+            do i=1,nx
+                populationValue=f(i,j,alpha)
+                eu=dble(ex(alpha))*u(i,j)+dble(ey(alpha))*v(i,j)
+                uu=u(i,j)*u(i,j)+v(i,j)*v(i,j)
+                equilibriumValue=omega(alpha)*((rho(i,j)-rho0)+rho0*(eu/cs2+ &
+                    0.5d0*eu*eu/(cs2*cs2)-0.5d0*uu/cs2))
+                nonequilibriumValue=abs(populationValue-equilibriumValue)
+                if((nonequilibriumValue.LE.finiteLimit).AND. &
+                   (abs(nonequilibriumValue-maxFneq).LE.locationToleranceF)) then
+                    code=int(alpha,8)+9_8*(int(i-1,8)+int(nx,8)*int(j-1,8)); maxFCode=min(maxFCode,code)
+                endif
+            enddo
+        enddo
+    enddo
+    !$acc end parallel loop
+
+    ! 第二次遍历温度场，按相同规则确定 max|g_i-g_i^eq| 的具体位置和离散方向。
+    locationToleranceG=max(tiny(1.0d0),64.0d0*epsilon(1.0d0)*maxGneq); maxGCode=noLocation
+    !$acc parallel loop gang vector collapse(3) default(none) present(g,T,rho,u,v,ex,ey,omega,lambdaT) &
+    !$acc& private(code,populationValue,equilibriumValue,nonequilibriumValue,eu,uu,pressureLoc) reduction(min:maxGCode)
+    do alpha=0,8
+        do j=1,ny
+            do i=1,nx
+                populationValue=g(i,j,alpha)
+                eu=dble(ex(alpha))*u(i,j)+dble(ey(alpha))*v(i,j)
+                uu=u(i,j)*u(i,j)+v(i,j)*v(i,j)
+                pressureLoc=cs2*(rho(i,j)-rho0)
+                equilibriumValue=omega(alpha)*T(i,j)*(1.0d0+eu/cT2+ &
+                    0.5d0*eu*eu/(cT2*cT2)-0.5d0*uu/cT2)+ &
+                    lambdaT(alpha)*T(i,j)*pressureLoc/(rho0*cT2)
+                nonequilibriumValue=abs(populationValue-equilibriumValue)
+                if((nonequilibriumValue.LE.finiteLimit).AND. &
+                   (abs(nonequilibriumValue-maxGneq).LE.locationToleranceG)) then
+                    code=int(alpha,8)+9_8*(int(i-1,8)+int(nx,8)*int(j-1,8)); maxGCode=min(maxGCode,code)
+                endif
+            enddo
+        enddo
+    enddo
+    !$acc end parallel loop
+
+    ! 将最大值位置编码还原为 q、i、j，并给出 x/H、y/H，便于与边界层和羽流位置对应。
+    if(maxFCode.NE.noLocation) then
+        qMaxF=int(mod(maxFCode,9_8),4); cellCode=maxFCode/9_8
+        iMaxF=int(mod(cellCode,int(nx,8)),4)+1; jMaxF=int(cellCode/int(nx,8),4)+1
+        xFOverH=xp(iMaxF)/lengthUnit; yFOverH=yp(jMaxF)/lengthUnit
+    else
+        iMaxF=-1; jMaxF=-1; qMaxF=-1; xFOverH=-1.0d0; yFOverH=-1.0d0
+    endif
+    ! 温度场也是 D2Q9，因此使用与流场相同的 9 个离散方向进行解码。
+    if(maxGCode.NE.noLocation) then
+        qMaxG=int(mod(maxGCode,9_8),4); cellCode=maxGCode/9_8
+        iMaxG=int(mod(cellCode,int(nx,8)),4)+1; jMaxG=int(cellCode/int(nx,8),4)+1
+        xGOverH=xp(iMaxG)/lengthUnit; yGOverH=yp(jMaxG)/lengthUnit
+    else
+        iMaxG=-1; jMaxG=-1; qMaxG=-1; xGOverH=-1.0d0; yGOverH=-1.0d0
+    endif
+
+    ! 还原首个非数 f_i，并给出区域编码：0=内部，1=垂直壁，2=水平壁，3=角点。
+    ! 对当前 RB 算例，水平壁为无滑移恒温壁，垂直壁为无滑移绝热壁。
+    iBadF=-1; jBadF=-1; qBadF=-1; regionF=-1
+    if(badFCode.NE.noLocation) then
+        qBadF=int(mod(badFCode,9_8),4); cellCode=badFCode/9_8
+        iBadF=int(mod(cellCode,int(nx,8)),4)+1; jBadF=int(cellCode/int(nx,8),4)+1; regionF=0
+        if((iBadF.EQ.1).OR.(iBadF.EQ.nx)) regionF=regionF+1
+        if((jBadF.EQ.1).OR.(jBadF.EQ.ny)) regionF=regionF+2
+    endif
+    ! 对首个非数 g_i 做同样的位置还原和区域分类。
+    iBadG=-1; jBadG=-1; qBadG=-1; regionG=-1
+    if(badGCode.NE.noLocation) then
+        qBadG=int(mod(badGCode,9_8),4); cellCode=badGCode/9_8
+        iBadG=int(mod(cellCode,int(nx,8)),4)+1; jBadG=int(cellCode/int(nx,8),4)+1; regionG=0
+        if((iBadG.EQ.1).OR.(iBadG.EQ.nx)) regionG=regionG+1
+        if((jBadG.EQ.1).OR.(jBadG.EQ.ny)) regionG=regionG+2
+    endif
+
+    ! firstDetected 是有限采样频率下的“首次检测结果”：
+    ! 0=均有限，1=仅 f 非数，2=仅 g 非数，3=f/g 在同一个采样时刻均出现非数。
+    firstDetected=0
+    if((nonFiniteFCount.GT.0).AND.(nonFiniteGCount.EQ.0)) firstDetected=1
+    if((nonFiniteFCount.EQ.0).AND.(nonFiniteGCount.GT.0)) firstDetected=2
+    if((nonFiniteFCount.GT.0).AND.(nonFiniteGCount.GT.0)) firstDetected=3
+    absoluteItc=restartItcOffset+itc; timeTf=dble(absoluteItc)/timeUnit
+    ! 历史文件每个采样时刻追加一行，保留爆炸前 max|f-feq| 与 max|g-geq| 的增长过程。
+    open(newunit=diagnosticUnit,file=trim(populationDiagnosticHistoryFile), &
+        status='old',position='append',action='write',form='formatted')
+    write(diagnosticUnit,*) timeTf,absoluteItc,maxFneq,iMaxF,jMaxF,qMaxF,xFOverH,yFOverH, &
+        maxGneq,iMaxG,jMaxG,qMaxG,xGOverH,yGOverH,nonFiniteFCount,iBadF,jBadF,qBadF,regionF, &
+        nonFiniteGCount,iBadG,jBadG,qBadG,regionG,firstDetected
+    close(diagnosticUnit)
+    ! 发现分布函数非数时先保证历史落盘，再写屏幕/设置文件并终止当前参数算例。
+    if(firstDetected.NE.0) then
+        write(*,'(A,1X,ES16.8,1X,A,1X,I0,1X,A,6(1X,I0))') &
+            'POPULATION_NONFINITE_ABORT: time_tf =',timeTf,'first_detected =',firstDetected, &
+            'bad_f(i,j,q)/bad_g(i,j,q) =',iBadF,jBadF,qBadF,iBadG,jBadG,qBadG
+        open(unit=00,file=trim(settingsFile),status='unknown',position='append')
+        write(00,'(A,1X,ES16.8,1X,A,1X,I0)') &
+            'POPULATION_NONFINITE_ABORT: time_tf =',timeTf,'first_detected =',firstDetected
+        write(00,'(A,4(1X,I0))') 'f: count/i/j/q =',nonFiniteFCount,iBadF,jBadF,qBadF
+        write(00,'(A,4(1X,I0))') 'g: count/i/j/q =',nonFiniteGCount,iBadG,jBadG,qBadG
+        close(00)
+        error stop 87
+    endif
+  end subroutine monitor_population_nonequilibrium
+!===================================================================================================
+
+
+!===================================================================================================
+! 子程序: check_nonfinite_state
+! 作用: f/g 诊断之后检查 rho/u/v/T 的 NaN/Inf，记录首个异常位置并终止当前算例。
+!===================================================================================================
+  subroutine check_nonfinite_state()
+    use commondata
+    implicit none
+    integer(kind=4) :: i,j,nonFiniteCount,badI,badJ,absoluteItc
+    real(kind=8), parameter :: finiteLimit=huge(1.0d0)
+    character(len=16) :: badVariable
+    nonFiniteCount=0
+    !$acc parallel loop gang vector collapse(2) default(none) present(rho,u,v,T) reduction(+:nonFiniteCount)
+    do j=1,ny
+        do i=1,nx
+            if(.not.(abs(rho(i,j)).LE.finiteLimit)) nonFiniteCount=nonFiniteCount+1
+            if(.not.(abs(u(i,j)).LE.finiteLimit)) nonFiniteCount=nonFiniteCount+1
+            if(.not.(abs(v(i,j)).LE.finiteLimit)) nonFiniteCount=nonFiniteCount+1
+            if(.not.(abs(T(i,j)).LE.finiteLimit)) nonFiniteCount=nonFiniteCount+1
+        enddo
+    enddo
+    !$acc end parallel loop
+    if(nonFiniteCount.EQ.0) return
+    !$acc wait(1)
+    !$acc update self(rho,u,v,T)
+    badI=-1; badJ=-1; badVariable='unknown'
+find_bad_value: do j=1,ny
+        do i=1,nx
+            if(.not.(abs(rho(i,j)).LE.finiteLimit)) then; badVariable='rho'
+            elseif(.not.(abs(u(i,j)).LE.finiteLimit)) then; badVariable='u'
+            elseif(.not.(abs(v(i,j)).LE.finiteLimit)) then; badVariable='v'
+            elseif(.not.(abs(T(i,j)).LE.finiteLimit)) then; badVariable='T'
+            else; cycle
+            endif
+            badI=i; badJ=j; exit find_bad_value
+        enddo
+    enddo find_bad_value
+    absoluteItc=restartItcOffset+itc
+    write(*,'(A,1X,I0,1X,A,1X,I0,1X,I0,1X,I0,1X,A,1X,A)') &
+        'NONFINITE_ABORT: itc/count/i/j/variable =',absoluteItc,'/',nonFiniteCount,badI,badJ,'/',trim(badVariable)
+    open(unit=00,file=trim(settingsFile),status='unknown',position='append')
+    write(00,'(A,1X,I0,1X,A,1X,I0,1X,I0,1X,I0,1X,A,1X,A)') &
+        'NONFINITE_ABORT: itc/count/i/j/variable =',absoluteItc,'/',nonFiniteCount,badI,badJ,'/',trim(badVariable)
+    if(badI.GT.0) write(00,'(A,4(1X,ES24.16E3))') 'rho/u/v/T =', &
+        rho(badI,badJ),u(badI,badJ),v(badI,badJ),T(badI,badJ)
+    close(00)
+    error stop 86
+  end subroutine check_nonfinite_state
+!===================================================================================================
+
 
 !===================================================================================================
 ! 子程序: update_host_tecplot_2d_openacc
