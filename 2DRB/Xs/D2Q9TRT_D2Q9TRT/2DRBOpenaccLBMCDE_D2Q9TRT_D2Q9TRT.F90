@@ -3001,7 +3001,9 @@ end subroutine append_convergence_master_tecplot
         error stop 1
     endif
 
-    tfTolerance = 1.0d-10*max(1.0d0,abs(restartTfOffset),abs(statisticSampleInterval))
+    ! 历史时间使用理想采样钟，而重启场只能落在整数格子步；nint 换算最多引入半个格子步误差。
+    tfTolerance = max(1.0d-10*max(1.0d0,abs(restartTfOffset),abs(statisticSampleInterval)), &
+        0.51d0/timeUnit)
 
     ! Nu/Re 历史没有表头；先验证前 N 条已提交记录，再在当前位置截断未提交尾部。
     open(newunit=nuUnit,file='Nu_VolAvg_2DOpenaccLBMCDE_D2Q9TRT.dat',status='old', &
@@ -3053,7 +3055,9 @@ end subroutine append_convergence_master_tecplot
     character(len=512) :: historyHeader
     logical :: dissipationHistoryExists, profileHistoryExists
 
-    tfTolerance = 1.0d-10*max(1.0d0,abs(restartTfOffset),abs(statisticSampleInterval))
+    ! 与 Nu/Re 历史回滚使用同一整数格子步容差，仍拒绝超过半步的时间错配。
+    tfTolerance = max(1.0d-10*max(1.0d0,abs(restartTfOffset),abs(statisticSampleInterval)), &
+        0.51d0/timeUnit)
     ! 完整历史从初始时刻开始；非零时刻续算不能缺少此前的历史记录。
     if(cumulativeStatisticSampleCount.LE.0) then
         if(restartTfOffset.GT.unsteadyHistoryStartTf+tfTolerance) then

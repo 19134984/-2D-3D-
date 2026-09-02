@@ -161,6 +161,10 @@
         real(kind=8), parameter :: nonFiniteCheckIntervalTf=1.0d0
         integer(kind=4), parameter :: nonFiniteCheckIntervalItc= &
             max(1,nint(nonFiniteCheckIntervalTf*timeUnit))
+        ! 流场奇矩诊断独立于 Nu/Re 统计采样；较密的时间记录用于观察失稳前的增长过程。
+        real(kind=8), parameter :: flowOddMomentDiagnosticIntervalTf=0.1d0
+        integer(kind=4), parameter :: flowOddMomentDiagnosticIntervalItc= &
+            max(1,nint(flowOddMomentDiagnosticIntervalTf*timeUnit))
 
         real(kind=8), parameter :: Snu=1.0d0/tauf
         real(kind=8), parameter :: flowMagicParameter=3.0d0/16.0d0
@@ -254,6 +258,8 @@
         character(len=100) :: settingsFile="SimulationSettings2DOpenaccLBMCDE_D2Q5.txt"
         character(len=100) :: populationDiagnosticHistoryFile= &
             "PopulationNonequilibriumHistory_2DOpenaccLBMCDE_D2Q5.dat"
+        character(len=100) :: flowOddMomentDiagnosticHistoryFile= &
+            "FlowOddMomentHistory_2DOpenaccLBMCDE_D2Q5.dat"
         !===============================================================================================
 
         !===============================================================================================
@@ -360,12 +366,14 @@
     call initial()
     call enter_data_2d_openacc()
     call initialize_population_nonequilibrium_history()
+    call initialize_flow_odd_moment_history()
 
 #ifdef unsteadyFlow
     ! 新算例在推进前保存 t=0 初始状态；续算由历史末时刻确定下一个采样点，不重复写入。
     if((loadInitField.EQ.0).AND.(cumulativeStatisticSampleCount.EQ.0).AND. &
        (unsteadyHistoryStartTf.LE.0.0d0)) then
         ! f/g 非平衡诊断与 Nu/Re 原始历史使用同一个 t=0 时刻。
+        call monitor_flow_odd_moments()
         call monitor_population_nonequilibrium()
         call calculate_unsteady_sample()
         !$acc update self(T)
@@ -409,6 +417,9 @@
         call macroT()
 
 #ifdef steadyFlow
+        if(MOD(restartItcOffset+itc,flowOddMomentDiagnosticIntervalItc).EQ.0) then
+            call monitor_flow_odd_moments()
+        endif
         if(MOD(restartItcOffset+itc,nonFiniteCheckIntervalItc).EQ.0) then
             call monitor_population_nonequilibrium()
             call check_nonfinite_state()
@@ -431,20 +442,24 @@
 #endif
 
 #ifdef unsteadyFlow
+        ! 奇矩诊断使用独立的较密时间间隔，不改变 Nu/Re、耗散和温度剖面的统计权重。
+        if(MOD(restartItcOffset+itc,flowOddMomentDiagnosticIntervalItc).EQ.0) then
+            call monitor_flow_odd_moments()
+        endif
         ! 原始历史从初始时刻连续保存；平均窗口只在后处理和最终累计时使用。
         if((unsteadyHistoryStartTf+real(cumulativeStatisticSampleCount,kind=8)* &
             statisticSampleInterval.LE.unsteadyRunDuration).AND. &
            ((restartItcOffset+itc).GE.max(1,nint((unsteadyHistoryStartTf+ &
             real(cumulativeStatisticSampleCount,kind=8)*statisticSampleInterval)*timeUnit)))) then
             ! 一次全场遍历同时计算 Nu、Re、两类耗散和可压缩性指标，避免重复计算速度平方。
-            ! 在宏观统计之前先写 f/g 诊断；若本时刻已经非数，诊断文件仍能保留首个异常位置。
-            call monitor_population_nonequilibrium()
             call calculate_unsteady_sample()
             !$acc update self(T)
             call accumulate_dissipation_statistics()
         endif
-        ! 宏观场非数检查放在历史写入之后，保证发散采样点先留下 f/g 诊断。
+        ! f/g 诊断与宏观场非数检查使用同一时钟，并保证先记录分布函数、后检查宏观量。
+        ! 默认每 1 t_ff 检查；失稳机理算例可在独立源快照中缩短 nonFiniteCheckIntervalTf。
         if(MOD(restartItcOffset+itc,nonFiniteCheckIntervalItc).EQ.0) then
+            call monitor_population_nonequilibrium()
             call check_nonfinite_state()
         endif
         ! 快照按 outputSnapshotInterval 输出。
@@ -709,6 +724,12 @@
     write(00,*) "nonFiniteCheckIntervalItc =", nonFiniteCheckIntervalItc, "in itc units"
     write(00,*) "populationDiagnosticHistoryFile =", trim(populationDiagnosticHistoryFile)
     write(00,*) "Population diagnostic stores max|f-feq|/max|g-geq| and (i,j,q) from t=0"
+    write(00,*) "flowOddMomentDiagnosticHistoryFile =", trim(flowOddMomentDiagnosticHistoryFile)
+    write(00,*) "flowOddMomentDiagnosticIntervalTf =", &
+        real(flowOddMomentDiagnosticIntervalTf,kind=8), "free-fall time units"
+    write(00,*) "flowOddMomentDiagnosticIntervalItc =", &
+        flowOddMomentDiagnosticIntervalItc, "in itc units"
+    write(00,*) "Flow odd diagnostic stores raw Qx/Qy nonequilibrium moments and Fy; no force subtraction"
 #ifdef unsteadyFlow
     write(00,*) "statisticSampleInterval =", real(statisticSampleInterval,kind=8), &
         "free-fall time units"
@@ -1102,8 +1123,87 @@ close(00)
 
 
 !===================================================================================================
+! 子程序: initialize_flow_odd_moment_history
+! 作用: 新算例重建流场奇矩诊断历史；续算时裁掉重启场之后的未提交尾部。
+! 说明: 旧算例没有该文件时允许从当前重启点开始新建，不要求补造此前不存在的诊断数据。
+!===================================================================================================
+  subroutine initialize_flow_odd_moment_history()
+    use commondata
+    implicit none
+    integer(kind=4) :: diagnosticUnit, ios, diagnosticItc
+    integer(kind=4) :: retainedDiagnosticCount, lastDiagnosticItc
+    real(kind=8) :: diagnosticTf
+    character(len=1024) :: diagnosticLine, headerLine
+    logical :: historyExists
+
+    inquire(file=trim(flowOddMomentDiagnosticHistoryFile),exist=historyExists)
+    if(loadInitField.EQ.0) then
+        open(newunit=diagnosticUnit,file=trim(flowOddMomentDiagnosticHistoryFile), &
+            status='replace',action='write',form='formatted')
+    elseif(.not.historyExists) then
+        open(newunit=diagnosticUnit,file=trim(flowOddMomentDiagnosticHistoryFile), &
+            status='new',action='write',form='formatted')
+        write(*,*) 'Flow odd moment history starts from this restart because no earlier file exists.'
+    else
+        open(newunit=diagnosticUnit,file=trim(flowOddMomentDiagnosticHistoryFile), &
+            status='old',action='readwrite',form='formatted')
+        read(diagnosticUnit,'(A)',iostat=ios) headerLine
+        if((ios.NE.0).OR.(index(adjustl(headerLine),'# time_tf itc Sq').NE.1)) then
+            write(*,*) 'Error: invalid flow odd moment history header'
+            close(diagnosticUnit)
+            error stop 89
+        endif
+        read(diagnosticUnit,'(A)',iostat=ios) headerLine
+        if((ios.NE.0).OR.(index(adjustl(headerLine),'# moments:').NE.1)) then
+            write(*,*) 'Error: invalid flow odd moment history description'
+            close(diagnosticUnit)
+            error stop 89
+        endif
+
+        retainedDiagnosticCount=0
+        lastDiagnosticItc=-1
+        do
+            read(diagnosticUnit,'(A)',iostat=ios) diagnosticLine
+            if(ios.LT.0) exit
+            if(ios.NE.0) then
+                write(*,*) 'Error: failed to read flow odd moment history'
+                close(diagnosticUnit)
+                error stop 89
+            endif
+            read(diagnosticLine,*,iostat=ios) diagnosticTf,diagnosticItc
+            if(ios.NE.0) then
+                write(*,*) 'Error: invalid flow odd moment history record'
+                close(diagnosticUnit)
+                error stop 89
+            endif
+            if((diagnosticItc.GT.restartItcOffset).OR. &
+               ((retainedDiagnosticCount.GT.0).AND.(diagnosticItc.LE.lastDiagnosticItc))) then
+                backspace(diagnosticUnit)
+                endfile(diagnosticUnit)
+                exit
+            endif
+            retainedDiagnosticCount=retainedDiagnosticCount+1
+            lastDiagnosticItc=diagnosticItc
+        enddo
+        close(diagnosticUnit)
+        write(*,*) 'Flow odd moment history retained through itc =',lastDiagnosticItc
+        return
+    endif
+
+    write(diagnosticUnit,'(A)') &
+        '# time_tf itc Sq qx_neq_rms qy_neq_rms q_neq_rms q_neq_max '// &
+        'i_qmax j_qmax x_qmax_H y_qmax_H fy_rms fy_abs_max'
+    write(diagnosticUnit,'(A)') &
+        '# moments: Qx_neq=m4+rho0*u; Qy_neq=m6+rho0*v; '// &
+        'Fy is recorded separately and no local-force fixed-point term is subtracted'
+    close(diagnosticUnit)
+  end subroutine initialize_flow_odd_moment_history
+!===================================================================================================
+
+
+!===================================================================================================
 ! 子程序: monitor_population_nonequilibrium
-! 作用: 在每个原始历史采样点记录 max|f-feq|、max|g-geq|、对应 (i,j,q)，
+! 作用: 按非数检查时钟记录 max|f-feq|、max|g-geq|、对应 (i,j,q)，
 !       并在首次采样检测到分布函数非数时记录 f/g、位置和边界区域后终止当前算例。
 ! 说明: 仅只读访问当前分布函数和宏观场；这里的 first_detected 指“首次被采样检测到”。
 !===================================================================================================
@@ -1194,6 +1294,7 @@ close(00)
     maxFCode = noLocation
     !$acc parallel loop gang vector collapse(3) default(none) &
     !$acc& present(f,rho,u,v,ex,ey,omega) &
+    !$acc& firstprivate(maxFneq,locationToleranceF) &
     !$acc& private(code,populationValue,equilibriumValue,nonequilibriumValue,eu,uu) &
     !$acc& reduction(min:maxFCode)
     do alpha = 0, 8
@@ -1220,6 +1321,7 @@ close(00)
     maxGCode = noLocation
     !$acc parallel loop gang vector collapse(3) default(none) &
     !$acc& present(g,T,u,v,ex,ey,omegaT) &
+    !$acc& firstprivate(maxGneq,locationToleranceG) &
     !$acc& private(code,populationValue,equilibriumValue,nonequilibriumValue,eu) &
     !$acc& reduction(min:maxGCode)
     do alpha = 0, 4
@@ -1245,8 +1347,9 @@ close(00)
         cellCode = maxFCode/9_8
         iMaxF = int(mod(cellCode,int(nx,kind=8)),kind=4)+1
         jMaxF = int(cellCode/int(nx,kind=8),kind=4)+1
-        xFOverH = xp(iMaxF)/lengthUnit
-        yFOverH = yp(jMaxF)/lengthUnit
+        ! xp/yp 在 initial() 中已经除以 lengthUnit，这里直接写出 x/H、y/H。
+        xFOverH = xp(iMaxF)
+        yFOverH = yp(jMaxF)
     else
         iMaxF=-1; jMaxF=-1; qMaxF=-1; xFOverH=-1.0d0; yFOverH=-1.0d0
     endif
@@ -1256,8 +1359,8 @@ close(00)
         cellCode = maxGCode/5_8
         iMaxG = int(mod(cellCode,int(nx,kind=8)),kind=4)+1
         jMaxG = int(cellCode/int(nx,kind=8),kind=4)+1
-        xGOverH = xp(iMaxG)/lengthUnit
-        yGOverH = yp(jMaxG)/lengthUnit
+        xGOverH = xp(iMaxG)
+        yGOverH = yp(jMaxG)
     else
         iMaxG=-1; jMaxG=-1; qMaxG=-1; xGOverH=-1.0d0; yGOverH=-1.0d0
     endif
@@ -1294,10 +1397,12 @@ close(00)
     if((nonFiniteFCount.GT.0).AND.(nonFiniteGCount.GT.0)) firstDetected=3
     absoluteItc = restartItcOffset+itc
     timeTf = dble(absoluteItc)/timeUnit
-    ! 每个采样时刻只追加一行；前两行表头给出字段顺序和标志量含义。
+    ! 使用显式格式强制每个采样时刻只占一个物理行，保证续算裁剪可以逐行解析。
     open(newunit=diagnosticUnit,file=trim(populationDiagnosticHistoryFile), &
         status='old',position='append',action='write',form='formatted')
-    write(diagnosticUnit,*) timeTf,absoluteItc,maxFneq,iMaxF,jMaxF,qMaxF,xFOverH,yFOverH, &
+    write(diagnosticUnit,'(ES24.16E3,1X,I0,1X,ES24.16E3,1X,3(I0,1X),'// &
+        '3(ES24.16E3,1X),3(I0,1X),2(ES24.16E3,1X),11(I0,1X))') &
+        timeTf,absoluteItc,maxFneq,iMaxF,jMaxF,qMaxF,xFOverH,yFOverH, &
         maxGneq,iMaxG,jMaxG,qMaxG,xGOverH,yGOverH,nonFiniteFCount,iBadF,jBadF,qBadF,regionF, &
         nonFiniteGCount,iBadG,jBadG,qBadG,regionG,firstDetected
     close(diagnosticUnit)
@@ -1317,6 +1422,109 @@ close(00)
         error stop 87
     endif
   end subroutine monitor_population_nonequilibrium
+!===================================================================================================
+
+
+!===================================================================================================
+! 子程序: monitor_flow_odd_moments
+! 作用: 记录 D2Q9 流场三阶奇矩 Qx/Qy 的原始非平衡 RMS、综合最大值和位置，并记录浮力 Fy。
+! 说明: 当前矩排列为 (rho,e,epsilon,jx,Qx,jy,Qy,pxx-pyy,pxy)，因此 Qx=m4、Qy=m6；
+!       本诊断只读 f/u/v/Fy，不修改碰撞，也不在求解器内构造带帽的浮力扣除量。
+!===================================================================================================
+  subroutine monitor_flow_odd_moments()
+    use commondata
+    implicit none
+    integer(kind=4) :: i, j, iMaxQ, jMaxQ, diagnosticUnit, absoluteItc
+    integer(kind=8) :: code, maxQCode
+    real(kind=8) :: m4, m6, qxNeq, qyNeq, qMagnitudeSquared, fyValue
+    real(kind=8) :: qxSquaredSum, qySquaredSum, fySquaredSum
+    real(kind=8) :: qMagnitudeSquaredMax, fyAbsMax, locationTolerance
+    real(kind=8) :: qxNeqRms, qyNeqRms, qNeqRms, qNeqMax, fyRms
+    real(kind=8) :: timeTf, xQOverH, yQOverH
+    real(kind=8), parameter :: inverseCellCount=1.0d0/dble(nx*ny)
+    integer(kind=8), parameter :: noLocation=huge(0_8)
+
+    ! 确保本时刻碰撞、迁移、边界和宏观量更新已经完成，再读取设备端的 f/u/v/Fy。
+    !$acc wait(1)
+
+    qxSquaredSum = 0.0d0
+    qySquaredSum = 0.0d0
+    fySquaredSum = 0.0d0
+    qMagnitudeSquaredMax = 0.0d0
+    fyAbsMax = 0.0d0
+    !$acc parallel loop gang vector collapse(2) default(none) &
+    !$acc& present(f,u,v,Fy) &
+    !$acc& private(m4,m6,qxNeq,qyNeq,qMagnitudeSquared,fyValue) &
+    !$acc& reduction(+:qxSquaredSum,qySquaredSum,fySquaredSum) &
+    !$acc& reduction(max:qMagnitudeSquaredMax,fyAbsMax)
+    do j = 1, ny
+        do i = 1, nx
+            ! 与 collision() 完全相同的 D2Q9 矩变换行；不要使用论文中另一种矩排列的编号。
+            m4 = -2.0d0*f(i,j,1)+2.0d0*f(i,j,3)+f(i,j,5)-f(i,j,6)-f(i,j,7)+f(i,j,8)
+            m6 = -2.0d0*f(i,j,2)+2.0d0*f(i,j,4)+f(i,j,5)+f(i,j,6)-f(i,j,7)-f(i,j,8)
+            qxNeq = m4+rho0*u(i,j)
+            qyNeq = m6+rho0*v(i,j)
+            qMagnitudeSquared = qxNeq*qxNeq+qyNeq*qyNeq
+            fyValue = Fy(i,j)
+            qxSquaredSum = qxSquaredSum+qxNeq*qxNeq
+            qySquaredSum = qySquaredSum+qyNeq*qyNeq
+            fySquaredSum = fySquaredSum+fyValue*fyValue
+            qMagnitudeSquaredMax = max(qMagnitudeSquaredMax,qMagnitudeSquared)
+            fyAbsMax = max(fyAbsMax,abs(fyValue))
+        enddo
+    enddo
+    !$acc end parallel loop
+
+    qxNeqRms = dsqrt(max(0.0d0,qxSquaredSum*inverseCellCount))
+    qyNeqRms = dsqrt(max(0.0d0,qySquaredSum*inverseCellCount))
+    qNeqRms = dsqrt(max(0.0d0,(qxSquaredSum+qySquaredSum)*inverseCellCount))
+    qNeqMax = dsqrt(max(0.0d0,qMagnitudeSquaredMax))
+    fyRms = dsqrt(max(0.0d0,fySquaredSum*inverseCellCount))
+
+    ! 第二次遍历只用于确定综合 Q 最大值的位置；并列时固定选择线性编码最小的格点。
+    locationTolerance = max(tiny(1.0d0), &
+        64.0d0*epsilon(1.0d0)*qMagnitudeSquaredMax)
+    maxQCode = noLocation
+    !$acc parallel loop gang vector collapse(2) default(none) &
+    !$acc& present(f,u,v) &
+    !$acc& firstprivate(qMagnitudeSquaredMax,locationTolerance) &
+    !$acc& private(code,m4,m6,qxNeq,qyNeq,qMagnitudeSquared) &
+    !$acc& reduction(min:maxQCode)
+    do j = 1, ny
+        do i = 1, nx
+            m4 = -2.0d0*f(i,j,1)+2.0d0*f(i,j,3)+f(i,j,5)-f(i,j,6)-f(i,j,7)+f(i,j,8)
+            m6 = -2.0d0*f(i,j,2)+2.0d0*f(i,j,4)+f(i,j,5)+f(i,j,6)-f(i,j,7)-f(i,j,8)
+            qxNeq = m4+rho0*u(i,j)
+            qyNeq = m6+rho0*v(i,j)
+            qMagnitudeSquared = qxNeq*qxNeq+qyNeq*qyNeq
+            if(abs(qMagnitudeSquared-qMagnitudeSquaredMax).LE.locationTolerance) then
+                code = int(i-1,kind=8)+int(nx,kind=8)*int(j-1,kind=8)
+                maxQCode = min(maxQCode,code)
+            endif
+        enddo
+    enddo
+    !$acc end parallel loop
+
+    if(maxQCode.NE.noLocation) then
+        iMaxQ = int(mod(maxQCode,int(nx,kind=8)),kind=4)+1
+        jMaxQ = int(maxQCode/int(nx,kind=8),kind=4)+1
+        ! xp/yp 已经是以 H 归一化后的坐标，不能再次除以 lengthUnit。
+        xQOverH = xp(iMaxQ)
+        yQOverH = yp(jMaxQ)
+    else
+        iMaxQ=-1; jMaxQ=-1; xQOverH=-1.0d0; yQOverH=-1.0d0
+    endif
+
+    absoluteItc = restartItcOffset+itc
+    timeTf = dble(absoluteItc)/timeUnit
+    open(newunit=diagnosticUnit,file=trim(flowOddMomentDiagnosticHistoryFile), &
+        status='old',position='append',action='write',form='formatted')
+    ! 显式单行格式与续算时的逐行裁剪逻辑保持一致，避免编译器自动折行。
+    write(diagnosticUnit,'(ES24.16E3,1X,I0,1X,5(ES24.16E3,1X),2(I0,1X),'// &
+        '4(ES24.16E3,1X))') timeTf,absoluteItc,Sq,qxNeqRms,qyNeqRms,qNeqRms,qNeqMax, &
+        iMaxQ,jMaxQ,xQOverH,yQOverH,fyRms,fyAbsMax
+    close(diagnosticUnit)
+  end subroutine monitor_flow_odd_moments
 !===================================================================================================
 
 
@@ -2696,7 +2904,12 @@ end subroutine append_convergence_master_tecplot
         error stop 1
     endif
 
-    tfTolerance = 1.0d-10*max(1.0d0,abs(restartTfOffset),abs(statisticSampleInterval))
+    ! 统计历史保存的是目标采样时刻（如 300 t_ff），重启元数据保存的是最近格子步的实际时刻。
+    ! 二者最多相差半个格子时间步；容差只用于校验/裁剪历史，不改变统计窗口或任何物理量。
+    tfTolerance = max( &
+        1.0d-10*max(1.0d0,abs(restartTfOffset),abs(statisticSampleInterval)), &
+        0.5d0/timeUnit+64.0d0*epsilon(1.0d0)* &
+        max(1.0d0,abs(restartTfOffset),abs(statisticSampleInterval)))
 
     ! Nu/Re 历史没有表头；先验证前 N 条已提交记录，再在当前位置截断未提交尾部。
     open(newunit=nuUnit,file='Nu_VolAvg_2DOpenaccLBMCDE_D2Q5.dat',status='old', &
@@ -2749,7 +2962,12 @@ end subroutine append_convergence_master_tecplot
     character(len=512) :: historyHeader
     logical :: dissipationHistoryExists, profileHistoryExists
 
-    tfTolerance = 1.0d-10*max(1.0d0,abs(restartTfOffset),abs(statisticSampleInterval))
+    ! 与 Nu/Re 历史回滚使用同一容差：目标采样时刻与最近格子步实际时刻允许相差半步。
+    ! 该容差只用于重启历史一致性检查，不改变耗散/温度剖面的统计时刻或累计值。
+    tfTolerance = max( &
+        1.0d-10*max(1.0d0,abs(restartTfOffset),abs(statisticSampleInterval)), &
+        0.5d0/timeUnit+64.0d0*epsilon(1.0d0)* &
+        max(1.0d0,abs(restartTfOffset),abs(statisticSampleInterval)))
     ! 完整历史从初始时刻开始；非零时刻续算不能缺少此前的历史记录。
     if(cumulativeStatisticSampleCount.LE.0) then
         if(restartTfOffset.GT.unsteadyHistoryStartTf+tfTolerance) then
