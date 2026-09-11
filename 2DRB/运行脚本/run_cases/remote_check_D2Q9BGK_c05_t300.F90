@@ -19,11 +19,10 @@
 #endif
 
 !   流场碰撞策略（四选一）：三种 TRT 奇模态策略，或速度场 BGK 对照。
-#define FLOW_ODD_ORIGINAL_MAGIC
+!#define FLOW_ODD_ORIGINAL_MAGIC
 !#define FLOW_ODD_EFFECTIVE_MAGIC
 !#define FLOW_ODD_FIXED_SQ
-!#define FLOW_BGK
-
+#define FLOW_BGK
 #if defined(FLOW_ODD_ORIGINAL_MAGIC) && defined(FLOW_ODD_EFFECTIVE_MAGIC)
 #error "Choose only one flow odd magic policy"
 #endif
@@ -93,7 +92,7 @@
         implicit none
         !===============================================================================================
         ! 是否在计算前从旧算例重启
-        integer(kind=4), parameter :: loadInitField=0   ! 0: 不重启；1: 按 latest .meta 自动续算
+        integer(kind=4), parameter :: loadInitField=1   ! 0: 不重启；1: 按 latest .meta 自动续算
 
         ! 正常断电续算只需要设置 loadInitField=1；
         ! 代码只读取 <reloadFilePrefix>-latest.meta，并从里面找到最新的 .bin。
@@ -108,7 +107,7 @@
 
         !===============================================================================================
         ! 无量纲参数
-        integer(kind=4), parameter :: nx=2048, ny=2048     !流体节点数，可直接在这里修改
+        integer(kind=4), parameter :: nx=2049, ny=2049     !流体节点数，可直接在这里修改
         real(kind=8), parameter :: rho0=1.0d0              !弱可压缩模型参考密度
         real(kind=8), parameter :: cs2=1.0d0/3.0d0         !D2Q9 格子声速平方
         real(kind=8), parameter :: cT2=cs2                 !D2Q9 温度格子的声速平方
@@ -204,7 +203,7 @@
         real(kind=8), parameter :: outputSnapshotInterval=20.0d0 ! uvTrho 全场快照输出间隔（单位：t_ff）
         real(kind=8), parameter :: reloadFileInterval=100.0d0  ! f/g 重启文件输出间隔（单位：t_ff）
         real(kind=8), parameter :: outputPltFileInterval=100.0d0  ! Tecplot 文件周期输出间隔（单位：t_ff）
-        real(kind=8), parameter :: unsteadyRunDuration=1000.0d0  ! 非稳态总目标时长，续算时只补足到该 t_ff
+        real(kind=8), parameter :: unsteadyRunDuration=300.0d0  ! 非稳态总目标时长，续算时只补足到该 t_ff
         ! 以下三个参数控制非稳态统计平均窗口，不改变推进时长或采样频率。
         ! 时间以整个算例的绝对 t_ff 计；续算会重读 Nu/Re、耗散和温度剖面历史，恢复完整窗口累计量。
         ! 默认统计平均窗口取总时长后 1/2；原始历史保存全程，所有最终结果统一取该窗口后半段。

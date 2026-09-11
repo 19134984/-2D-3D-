@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+#PBS -N F2B10C09G10
+#PBS -q batch
+#PBS -l nodes=node05:ppn=1
+#PBS -l walltime=96:00:00
+#PBS -o /data2/XLLi/LBMCDE/THRERMAL-D2Q9BGK-TEST/FLOW_BGK_CHI_EQUAL_SCAN/Ra1e10_restart300_latest_t1000_grid2049_historyfix/chinu0.9_chikappa0.9/results/pbs.stdout
+#PBS -e /data2/XLLi/LBMCDE/THRERMAL-D2Q9BGK-TEST/FLOW_BGK_CHI_EQUAL_SCAN/Ra1e10_restart300_latest_t1000_grid2049_historyfix/chinu0.9_chikappa0.9/results/pbs.stderr
+
+set -u
+SRC=/data2/XLLi/LBMCDE/THRERMAL-D2Q9BGK-TEST/FLOW_BGK_CHI_EQUAL_SCAN/Ra1e10_restart300_latest_t1000_grid2049_historyfix/chinu0.9_chikappa0.9/source/2DRBOpenaccLBMCDE_D2Q9TRT_D2Q9BGK.F90
+SEED_DIR=/data2/XLLi/LBMCDE/THRERMAL-D2Q9BGK-TEST/FLOW_BGK_CHI_EQUAL_SCAN/Ra1e10_restart100_latest_t300_grid2049_historyfix/chinu0.9_chikappa0.9/results
+EXPECTED_SEED_TF=300
+EXPECTED_SEED_COUNT=301
+RESULT_DIR=/data2/XLLi/LBMCDE/THRERMAL-D2Q9BGK-TEST/FLOW_BGK_CHI_EQUAL_SCAN/Ra1e10_restart300_latest_t1000_grid2049_historyfix/chinu0.9_chikappa0.9/results
+RELOAD_PREFIX=reloadFile2DOpenaccLBMCDE_D2Q9BGK
+MODEL_TAG=D2Q9BGK
+NVHPC_ROOT=/opt/nvidia/hpc_sdk/Linux_x86_64/24.3
+NVFORTRAN=${NVHPC_ROOT}/compilers/bin/nvfortran
+
+mkdir -p "${RESULT_DIR}"
+cd "${RESULT_DIR}" || exit 90
+
+if [[ ! -f "${SEED_DIR}/run.status" ]] || [[ "$(<"${SEED_DIR}/run.status")" != 0 ]]; then
+    printf 'Invalid restart seed run.status: %s\n' "${SEED_DIR}" > restart_preflight.error
+    printf '121\n' > run.status
+    exit 121
+fi
+meta=${SEED_DIR}/${RELOAD_PREFIX}-latest.meta
+if [[ ! -f "${meta}" ]]; then
+    printf 'Missing restart metadata: %s\n' "${meta}" > restart_preflight.error
+    printf '122\n' > run.status
+    exit 122
+fi
+if ! awk -v target="${EXPECTED_SEED_TF}" '$1=="time_tf" {t=$2} END {exit !(t>target-0.01 && t<target+0.01)}' "${meta}"; then
+    printf 'Unexpected restart seed time: %s\n' "${meta}" > restart_preflight.error
+    printf '122\n' > run.status
+    exit 122
+fi
+if ! grep -Fq "cumulativeStatisticSampleCount ${EXPECTED_SEED_COUNT}" "${meta}"; then
+    printf 'Unexpected restart seed sample count: %s\n' "${meta}" > restart_preflight.error
+    printf '123\n' > run.status
+    exit 123
+fi
+
+if [[ "${MODEL_TAG}" == D2Q5 ]]; then
+    required_histories=(
+        Nu_VolAvg_2DOpenaccLBMCDE_D2Q5.dat
+        Re_VolAvg_2DOpenaccLBMCDE_D2Q5.dat
+        DissipationHistory_2DOpenaccLBMCDE.dat
+        TemperatureProfileHistory_2DOpenaccLBMCDE.bin
+        PopulationNonequilibriumHistory_2DOpenaccLBMCDE_D2Q5.dat
+        FlowOddMomentHistory_2DOpenaccLBMCDE_D2Q5.dat
+    )
+    scan_files=(solver.stdout Nu_VolAvg_2DOpenaccLBMCDE_D2Q5.dat Re_VolAvg_2DOpenaccLBMCDE_D2Q5.dat DissipationHistory_2DOpenaccLBMCDE.dat PopulationNonequilibriumHistory_2DOpenaccLBMCDE_D2Q5.dat FlowOddMomentHistory_2DOpenaccLBMCDE_D2Q5.dat)
+else
+    required_histories=(
+        Nu_VolAvg_2DOpenaccLBMCDE_D2Q9BGK.dat
+        Re_VolAvg_2DOpenaccLBMCDE_D2Q9BGK.dat
+        DissipationHistory_2DOpenaccLBMCDE.dat
+        TemperatureProfileHistory_2DOpenaccLBMCDE.bin
+        PopulationNonequilibriumHistory_2DOpenaccLBMCDE_D2Q9BGK.dat
+    )
+    scan_files=(solver.stdout Nu_VolAvg_2DOpenaccLBMCDE_D2Q9BGK.dat Re_VolAvg_2DOpenaccLBMCDE_D2Q9BGK.dat DissipationHistory_2DOpenaccLBMCDE.dat PopulationNonequilibriumHistory_2DOpenaccLBMCDE_D2Q9BGK.dat)
+fi
+for required in "${required_histories[@]}"; do
+    if [[ ! -f "${SEED_DIR}/${required}" ]]; then
+        printf 'Missing restart history: %s\n' "${SEED_DIR}/${required}" > restart_preflight.error
+        printf '124\n' > run.status
+        exit 124
+    fi
+    cp -a "${SEED_DIR}/${required}" "${RESULT_DIR}/"
+done
+cp -a "${meta}" "${RESULT_DIR}/${RELOAD_PREFIX}-latest.meta"
+reload_id=$(awk '$1=="reloadFileName" {print $2}' "${meta}")
+restart_bin=${SEED_DIR}/${RELOAD_PREFIX}-${reload_id}.bin
+if [[ -z "${reload_id}" ]] || [[ ! -f "${restart_bin}" ]]; then
+    printf 'Missing referenced restart binary: %s\n' "${restart_bin}" > restart_preflight.error
+    printf '124\n' > run.status
+    exit 124
+fi
+cp -a "${restart_bin}" "${RESULT_DIR}/"
+sha256sum "${meta}" "${restart_bin}" > input_restart.sha256
+cp "${SEED_DIR}/run.status" input_seed_run.status
+if [[ -f "${SEED_DIR}/runtime_source.sha256" ]]; then
+    cp "${SEED_DIR}/runtime_source.sha256" input_seed_runtime_source.sha256
+fi
+
+export PATH="${NVHPC_ROOT}/compilers/bin:${PATH}"
+export LD_LIBRARY_PATH="${NVHPC_ROOT}/compilers/lib:${LD_LIBRARY_PATH:-}"
+export CUDA_VISIBLE_DEVICES=0
+export OMP_NUM_THREADS=1
+export ACC_DEVICE_TYPE=nvidia
+
+printf 'PBS_JOBID=%s\n' "${PBS_JOBID:-unknown}" > job_identity.txt
+printf 'HOSTNAME=%s\n' "$(hostname)" >> job_identity.txt
+date '+CASE_START %F %T %z' > timing.txt
+sha256sum "${SRC}" > runtime_source.sha256
+"${NVFORTRAN}" --version > compiler_version.txt 2>&1
+nvidia-smi > nvidia_smi_before.log 2>&1 || true
+BUILD_FLAGS=(-cpp -O3 -acc -gpu=cc60 -Minfo=accel)
+printf '%q ' "${BUILD_FLAGS[@]}" > build_flags.txt
+printf '\n' >> build_flags.txt
+"${NVFORTRAN}" "${BUILD_FLAGS[@]}" "${SRC}" -o solver.exe > compile.log 2>&1
+compile_status=$?
+printf '%s\n' "${compile_status}" > compile.status
+if [[ "${compile_status}" -ne 0 ]]; then
+    printf '125\n' > run.status
+    date '+CASE_END %F %T %z' >> timing.txt
+    exit "${compile_status}"
+fi
+set +e
+./solver.exe > solver.stdout 2>&1
+run_status=$?
+set -e
+if [[ "${run_status}" -eq 0 ]] && grep -Eq '^[[:space:]]*Error:' solver.stdout 2>/dev/null; then
+    printf 'Fatal solver preflight/runtime error found.\n' >> solver.stdout
+    run_status=87
+fi
+if [[ "${run_status}" -eq 0 ]] && grep -Eqi '(^|[^[:alpha:]])(nan|infinity|inf)([^[:alpha:]]|$)' "${scan_files[@]}" 2>/dev/null; then
+    printf 'Non-finite value found in text output/history.\n' >> solver.stdout
+    run_status=86
+fi
+printf '%s\n' "${run_status}" > run.status
+nvidia-smi > nvidia_smi_after.log 2>&1 || true
+date '+CASE_END %F %T %z' >> timing.txt
+exit "${run_status}"

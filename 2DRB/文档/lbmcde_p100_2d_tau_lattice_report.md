@@ -478,7 +478,7 @@ D2Q9 能表示完整二阶速度张量，包括 D2Q5 缺失的 $u_xu_y$ 项；�
 bounds-check 冒烟测试发现初值循环和 `g_post` 清零循环仍固定写到方向
 8；旧的超额分配掩盖了这个越界假设。两处循环已改为 `0:thermalQ`，
 D2Q9、普通 D2Q5 和四阶 D2Q5 均通过 4 步 `-fcheck=all` OpenACC-host
-回归测试；2026-08-01 使用 `tools/test_lbmcde_lattice_allocation.ps1`
+回归测试；2026-08-01 使用 `运行脚本/tools/test_lbmcde_lattice_allocation.ps1`
 重新执行三分支测试，脚本退出码仍为 0。正在运行的 P100 矩阵保留各自
 旧源快照；旧代码在多出的 D2Q5 方向只写零且后续不参与碰撞或迁移，
 所以这一修正改变存储占用，
@@ -657,7 +657,7 @@ $s_-=1,1.25,1.5$ 和 BGK 之间的选择留给长时热流/耗散闭合结果。
 
 2026-08-01 又以目标 $a=0$、$|\boldsymbol u|=0.1$、
 $\sigma_{1,eff}=0.003533135663832854$、25 个波数点和 $39\times39$ 个
-$(q_3,q_4)$ 点重新运行 `tools/derive_d2q5_cde.py`。全部符号恒等式检查
+$(q_3,q_4)$ 点重新运行 `运行脚本/tools/derive_d2q5_cde.py`。全部符号恒等式检查
 通过，并精确复现表中 506/1521 个稳定点、稳定 $q_4$ 下界 1.10，及
 $\rho(q=1)=1.0024427986$、$\rho(q=1.8)\simeq1$，未发现推导表与脚本漂移。
 
@@ -1802,7 +1802,7 @@ $2.94\times10^{-13}$，但相邻一步的完整速度场仍变化 8.269%，因�
 $Ma=0.05,32\times16$ 的 base 与 BGK 则同时通过，而且 $L_2$ 误差只相差约
 $4.74\times10^{-6}$，符合“三阶奇模不改变主导稳态解、但会改变动态稳定性”的解释。
 
-测试源为 `tools/test_lbmcde_poiseuille_full2d.f90`，同时包含 CPU/OpenMP 与
+测试源为 `运行脚本/tools/test_lbmcde_poiseuille_full2d.f90`，同时包含 CPU/OpenMP 与
 OpenACC 路径。本地 gfortran 的 OpenMP/OpenACC 语法检查均通过；P100 上使用
 nvfortran/OpenACC 编译并在 node05/node07 实际运行。受测源 SHA-256 为
 `d485239e79363cd8ee3f8b8fbee0e48c436021e5d6cfed9c2c97b09b1144c196`。
@@ -1922,9 +1922,9 @@ $Nu_{global/hot/cold/middle}$、$Re$、壁面/场极值和耗散闭合。
 - 求解器：`Xs/2DRBOpenaccLBMCDE.F90`
 - P100 阶段性工况、PBS 和原始运行附件：本地副本已于 2026-08-04 清理；
   本文中的旧路径仅用于说明当时的审计来源
-- D2Q5 符号/Von Neumann 工具：`tools/derive_d2q5_cde.py`
-- 场文件交叉检查：`tools/analyze_lbmcde_tecplot.py`
-- LBM-CDE Poiseuille 壁位主测试：`tools/test_lbmcde_poiseuille_full2d.f90`
+- D2Q5 符号/Von Neumann 工具：`运行脚本/tools/derive_d2q5_cde.py`
+- 场文件交叉检查：`运行脚本/tools/analyze_lbmcde_tecplot.py`
+- LBM-CDE Poiseuille 壁位主测试：`运行脚本/tools/test_lbmcde_poiseuille_full2d.f90`
 - 当时用于长时窗口统计、组合包络检查和有限窗动能储存校正的三个专用
   Python 判定器，已随 P100 阶段性数据于 2026-08-04 清理。本报告保留其
   判定口径和输出结果，但本地不再提供这些一次性后处理程序。
@@ -1966,7 +1966,7 @@ $Nu_{global/hot/cold/middle}$、$Re$、壁面/场极值和耗散闭合。
   同时输出全历史累计 $Ma/T/\rho$ 极值及其 $t/t_{ff}$。本地/远端
   SHA-256 为 `30aa135a...77135c58`，已通过远端 `bash -n` 与既有
   100/220 行完成案例及两个运行案例的现场输出检查。
-- D2Q5/D2Q9 数组边界回归：`tools/test_lbmcde_lattice_allocation.ps1`
+- D2Q5/D2Q9 数组边界回归：`运行脚本/tools/test_lbmcde_lattice_allocation.ps1`
 - 原文证据矩阵：`文档/lbmcde_p100_2d_literature_evidence.md`
 
 ### 9.1 源代码—最终构建一致性复核

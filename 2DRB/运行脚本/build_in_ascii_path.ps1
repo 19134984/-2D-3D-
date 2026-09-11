@@ -10,7 +10,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+$projectRoot = Split-Path -Parent $PSScriptRoot
 $sourcePath  = Join-Path $projectRoot $SourceFile
 
 if (-not (Test-Path -LiteralPath $sourcePath)) {

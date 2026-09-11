@@ -19,3 +19,12 @@ Markdown、LaTeX 和分章节源文件。这里的文件属于正式成果，不
 
 主求解器仍位于 `均匀网格/`、`ISLBM/`、`STLBM/` 和 `Xs/`；原始论文位于
 `pdf/`。
+
+## 提取资料与修改说明
+
+- `提取资料/zhang_statistics.txt`：Zhang 等论文的提取文本。
+- `提取资料/verify_zhang/`：论文表格核对截图。
+- `提取资料/numerical_test_review/`：数值测试报告的提取文本和逐页截图。
+- `D2Q9_paraA_chikappa_nonnegative_patch.md`：温度模型参数化修改说明。
+
+提取文本用于检索定位；公式和表格应以原始文档为准。

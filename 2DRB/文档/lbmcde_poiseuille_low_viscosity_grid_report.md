@@ -314,7 +314,7 @@ $R_{\Delta n}=0.84004$、$R_1=1.26072$，已经出现明确的爆发式增长；
 - 最多四个 GPU 进程并行；共享 GPU 时的墙钟时间不作性能基准；
 - 远端数据根目录：
   `/data2/XLLi/data2D/RB/LBMCDE/15_poiseuille_grid_convergence_tau062/`；
-- 本地保留的唯一求解器：`tools/test_lbmcde_poiseuille_full2d.f90`；
+- 本地保留的唯一求解器：`运行脚本/tools/test_lbmcde_poiseuille_full2d.f90`；
 - 一次性汇总器、归档器、试跑目录和日志已在 2026-08-04 清理，不再作为
   仓库内可复现资产维护。下文相关文件名与哈希只记录当时的审计状态。
 

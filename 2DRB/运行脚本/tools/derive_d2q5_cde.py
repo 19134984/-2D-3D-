@@ -14,7 +14,7 @@ It verifies:
 
 Run with the system Python that provides SymPy:
 
-    D:\\App\\python\\python.exe tools\\derive_d2q5_cde.py
+    D:\\App\\python\\python.exe 运行脚本\\tools\\derive_d2q5_cde.py
 
 Use ``--scan`` to repeat the coarse von Neumann scan documented in the
 derivation note.  The scan is illustrative, not a substitute for the target

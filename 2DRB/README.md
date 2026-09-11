@@ -26,7 +26,7 @@ working inside the matching folder instead of adding new top-level source files.
   Post-processing programs.
 
 - `运行脚本/`
-  Shell and PBS run scripts.
+  Shell/PBS run scripts, the local build helper, and tools/ checking utilities.
 
 - `references-code/`
   External or paper/reference implementations. Treat these as comparison
@@ -40,8 +40,11 @@ working inside the matching folder instead of adding new top-level source files.
   boundaries, and the merged `最终成果/` deliverables. Start with
   `文档/README.md` for a short guide.
 
-- `tools/`
+- `运行脚本/tools/`
   Local checking and helper scripts.
+
+- `运行脚本/run_cases/`
+  Case-specific source snapshots and corresponding PBS scripts, grouped by case.
 
 ## Core Baselines
 
@@ -85,8 +88,8 @@ is no longer supported, and no flow-magic compile switch is required.
 The local build helper accepts subfolder paths:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\build_in_ascii_path.ps1 -SourceFile .\均匀网格\2DRBOpenmp.F90 -SyntaxOnly
-powershell -ExecutionPolicy Bypass -File .\build_in_ascii_path.ps1 -SourceFile .\ISLBM\3DRBOpenmpISLBM.F90 -SyntaxOnly
+powershell -ExecutionPolicy Bypass -File .\运行脚本\build_in_ascii_path.ps1 -SourceFile .\均匀网格\2DRBOpenmp.F90 -SyntaxOnly
+powershell -ExecutionPolicy Bypass -File .\运行脚本\build_in_ascii_path.ps1 -SourceFile .\ISLBM\3DRBOpenmpISLBM.F90 -SyntaxOnly
 ```
 
 Use `-UseMpi` for MPI sources and override `-ParallelFlag` or `-ExtraArgs` only

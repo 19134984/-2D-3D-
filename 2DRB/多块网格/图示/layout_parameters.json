@@ -1,0 +1,134 @@
+{
+  "source_sha256": "54a0e7ae9850989adbc30ec46d5ab6f721e56d3ac922905244f5e40edeb0b9c0",
+  "nx": 1024,
+  "ny": 1024,
+  "refineRatio": 2,
+  "wallCellsX": 128,
+  "wallCellsY": 128,
+  "overlapCells": 4,
+  "extension_fine_units": 8,
+  "shared_overlap_fine_units": 16,
+  "interfaceSkin": 2,
+  "blocks": [
+    {
+      "block": "1 中心",
+      "owned_faces": [
+        128,
+        896,
+        128,
+        896
+      ],
+      "computed_faces": [
+        120,
+        904,
+        120,
+        904
+      ],
+      "h": 2,
+      "owned_nodes": [
+        384,
+        384
+      ],
+      "computed_nodes": [
+        392,
+        392
+      ]
+    },
+    {
+      "block": "2 下",
+      "owned_faces": [
+        0,
+        1024,
+        0,
+        128
+      ],
+      "computed_faces": [
+        0,
+        1024,
+        0,
+        136
+      ],
+      "h": 1,
+      "owned_nodes": [
+        1024,
+        128
+      ],
+      "computed_nodes": [
+        1024,
+        136
+      ]
+    },
+    {
+      "block": "3 上",
+      "owned_faces": [
+        0,
+        1024,
+        896,
+        1024
+      ],
+      "computed_faces": [
+        0,
+        1024,
+        888,
+        1024
+      ],
+      "h": 1,
+      "owned_nodes": [
+        1024,
+        128
+      ],
+      "computed_nodes": [
+        1024,
+        136
+      ]
+    },
+    {
+      "block": "4 左",
+      "owned_faces": [
+        0,
+        128,
+        128,
+        896
+      ],
+      "computed_faces": [
+        0,
+        136,
+        120,
+        904
+      ],
+      "h": 1,
+      "owned_nodes": [
+        128,
+        768
+      ],
+      "computed_nodes": [
+        136,
+        784
+      ]
+    },
+    {
+      "block": "5 右",
+      "owned_faces": [
+        896,
+        1024,
+        128,
+        896
+      ],
+      "computed_faces": [
+        888,
+        1024,
+        120,
+        904
+      ],
+      "h": 1,
+      "owned_nodes": [
+        128,
+        768
+      ],
+      "computed_nodes": [
+        136,
+        784
+      ]
+    }
+  ]
+}

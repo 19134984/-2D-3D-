@@ -5,7 +5,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$repoRoot = Split-Path -Parent $PSScriptRoot
+$repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $compiler = "C:\msys64\ucrt64\bin\gfortran.exe"
 
 foreach ($sourceFile in @($D2Q9SourceFile, $D2Q5SourceFile)) {

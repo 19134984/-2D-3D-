@@ -1,0 +1,56 @@
+{
+  "case": "side-heated, EnableUseG, Ra=1e4, Pr=0.7, Ma=0.1",
+  "fine_equivalent_grid": [
+    96,
+    96
+  ],
+  "fine_steps": 2000,
+  "t_ff": 1.2028130608117202,
+  "field_order": [
+    "u",
+    "v",
+    "T",
+    "rho"
+  ],
+  "field_relative_l2": [
+    0.0013514292093839675,
+    0.0013459263075431618,
+    0.0003561899602555388,
+    5.025845520377322e-07
+  ],
+  "field_max_abs": [
+    2.3668539692120114e-05,
+    2.5352535714286487e-05,
+    0.00023619010582576205,
+    1.178745847929541e-06
+  ],
+  "metric_order": [
+    "NuVolAvg",
+    "ReVolRMS",
+    "Nu_hot",
+    "Nu_cold"
+  ],
+  "uniform": [
+    1.4217922271651946,
+    15.911177588762065,
+    1.0495919215285077,
+    1.049591921528495
+  ],
+  "multiblock": [
+    1.422789680640752,
+    15.925920361337832,
+    1.0496759810922878,
+    1.0496759810922858
+  ],
+  "relative_metric_difference": [
+    0.0007015465807871322,
+    0.0009265670308512959,
+    8.008785324651554e-05,
+    8.008785325667106e-05
+  ],
+  "source_sha256": "54a0e7ae9850989adbc30ec46d5ab6f721e56d3ac922905244f5e40edeb0b9c0",
+  "parent_sha256": "68debf94f75f3a70af6bf4f7205e18afc14618d48dd227ccf1d1a8e73d8afd48",
+  "device": "OpenACC host",
+  "build_directory": "C:\\Users\\User\\AppData\\Local\\Temp\\mb2d-verify-adca9dvo",
+  "scope": "Transient comparison only; this is not a converged benchmark or GPU validation."
+}

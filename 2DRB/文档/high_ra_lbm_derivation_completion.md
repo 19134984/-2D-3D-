@@ -499,7 +499,7 @@ h=\sigma_\kappa^{(0)},
 
 上述公式严格退化为 `Towards higher order lattice Boltzmann schemes.pdf`
 式 (40)--(42)、(55)。符号脚本
-`tools/derive_d2q5_cde.py` 已逐项验证该退化。
+`运行脚本/tools/derive_d2q5_cde.py` 已逐项验证该退化。
 
 ## 31.3 小扩散率下的无解结论
 
@@ -1955,4 +1955,4 @@ e_{04}=e_{40}\big|_{u\rightarrow v}.
 \]
 
 定义。符号生成和纯扩散退化断言位于
-`tools/derive_d2q5_cde.py`。
+`运行脚本/tools/derive_d2q5_cde.py`。
