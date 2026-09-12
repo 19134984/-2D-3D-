@@ -95,7 +95,7 @@ module commondata
     integer, parameter :: wallCellsX=nx/8, wallCellsY=ny/8 ! 细网格壁面层厚度，以最细格距计
     integer, parameter :: overlapCells=4      ! 每侧重叠宽度，以粗格距计；四点插值至少取 4
     integer, parameter :: interfaceSkin=2     ! 覆盖人工边界的两层节点，隔离分裂推进中的边界污染
-    integer, parameter :: loadInitField=0     ! 1: 从本程序专用的 latest.bin 精确续算
+    integer, parameter :: loadInitField=0     ! 1: 按本程序 latest.meta 指向的编号检查点精确续算
     real(8), parameter :: Rayleigh=dble(RAYLEIGH_OVERRIDE), Prandtl=0.7d0, Mach=0.1d0
     real(8), parameter :: Thot=0.5d0, Tcold=-0.5d0, Tref=0.5d0*(Thot+Tcold)
     real(8), parameter :: pi=acos(-1.0d0)
@@ -144,7 +144,7 @@ module commondata
     character(*), parameter :: pltFolderPrefix='buoyancyCavity2DOpenaccMultiblockTecplot'
     character(*), parameter :: reloadFilePrefix='reloadFile2DOpenaccMultiblock'
     character(*), parameter :: historyFile='NuRe_2DOpenaccMultiblock.dat'
-    character(16), parameter :: restartMagic='MB2DRESTART0001', snapshotMagic='MB2DSNAPSHOT0001'
+    character(16), parameter :: restartMagic='MB2DRESTART0002', snapshotMagic='MB2DSNAPSHOT0002'
     integer, parameter :: packetSize=22, maxBlocks=5
     integer :: ex(0:8)=[0,1,0,-1,0,1,-1,-1,1], ey(0:8)=[0,0,1,0,-1,1,1,-1,-1]
     real(8) :: omega(0:8), omegaT(0:4)
@@ -155,6 +155,9 @@ module commondata
     type :: gridBlock
         integer :: ni,nj,ilo,ihi,jlo,jhi,nh
         real(8) :: h,x0,y0,sn,sq,qk,qn,gb
+        ! x0,y0 是首节点减去本块半格距的虚拟面，不再等于统计分区边界。
+        real(8) :: ownedBox(4) ! 不重叠物理积分分区：xmin,xmax,ymin,ymax
+        real(8), allocatable :: dxWeight(:),dyWeight(:) ! 节点控制区与 ownedBox 的交集长度
         logical :: wall(4) ! 左、右、下、上；仅真实物理壁面施加原来的 BB/ABB
         real(8), allocatable :: f(:,:,:),f_post(:,:,:),g(:,:,:),g_post(:,:,:)
         real(8), allocatable :: rho(:,:),u(:,:),v(:,:),T(:,:),Fx(:,:),Fy(:,:),Bx_prev(:,:),By_prev(:,:)
@@ -168,6 +171,7 @@ module commondata
     type :: blockLink
         integer :: receiver,donor,count
         integer, allocatable :: ti(:),tj(:),si(:),sj(:)
+        logical, allocatable :: coincident(:) ! 同坐标节点免除空间插值，仍作矩重标定
         real(8), allocatable :: wx(:,:),wy(:,:),values(:,:)
     end type
     type(gridBlock) :: blocks(maxBlocks)
@@ -215,7 +219,7 @@ subroutine initial()
     totalArea=0.0d0
     do b=1,nBlocks
         call initial_block(blocks(b))
-        totalArea=totalArea+dble((blocks(b)%ihi-blocks(b)%ilo+1)*(blocks(b)%jhi-blocks(b)%jlo+1))*blocks(b)%h**2
+        totalArea=totalArea+sum(blocks(b)%dxWeight)*sum(blocks(b)%dyWeight)
     enddo
     if (abs(totalArea-dble(nx)*ny)>1.0d-8) error stop 'Block ownership does not tile the physical domain'
     if (loadInitField==1) call read_restart()
@@ -229,6 +233,8 @@ subroutine initial()
     write(k,*) 'Fine viscosity, diffusivity, gBeta, timeUnit:',viscosity,diffusivity,gBeta,timeUnit
     write(k,*) 'Wall layer x,y; overlap in coarse cells:',wallCellsX,wallCellsY,overlapCells
     write(k,*) 'Owned physical area:',totalArea
+    write(k,*) 'Node alignment: fine x,y = 0.5 + integer; coarse nodes are the even-integer subset.'
+    write(k,*) 'Integration: clipped nodal control areas; shared coordinates do not duplicate physical area.'
     write(k,*) 'All nonconserved relaxation times satisfy h*(1/s-1/2)=constant.'
     write(k,*) 'Time: coarse prediction; two fine substeps; fine-to-coarse synchronization.'
     write(k,*) 'First coarse interval uses linear startup; subsequent intervals use three-time Lagrange interpolation.'
@@ -243,6 +249,11 @@ subroutine initial()
         write(k,*) 'block,ni,nj,h,x0,y0,owned ilo,ihi,jlo,jhi:',b,blocks(b)%ni,blocks(b)%nj, &
             blocks(b)%h,blocks(b)%x0,blocks(b)%y0,blocks(b)%ilo,blocks(b)%ihi,blocks(b)%jlo,blocks(b)%jhi
         write(k,*) 'Snu,Sq,Qk,Qnu,gBeta:',blocks(b)%sn,blocks(b)%sq,blocks(b)%qk,blocks(b)%qn,blocks(b)%gb
+        write(k,*) 'Owned physical rectangle:',blocks(b)%ownedBox
+    enddo
+    do b=1,nLinks
+        write(k,*) 'receiver, donor, direct nodes, interpolated nodes:',links(b)%receiver,links(b)%donor, &
+            count(links(b)%coincident),links(b)%count-count(links(b)%coincident)
     enddo
     close(k)
     if (loadInitField==0) then
@@ -260,10 +271,18 @@ subroutine make_block(b,xlo,xhi,ylo,yhi,spacing,overlap,nh)
     integer :: xb,xe,yb,ye
     xb=max(0,xlo-overlap); xe=min(nx,xhi+overlap)
     yb=max(0,ylo-overlap); ye=min(ny,yhi+overlap)
-    b%h=dble(spacing); b%x0=dble(xb); b%y0=dble(yb)
-    b%ni=(xe-xb)/spacing; b%nj=(ye-yb)/spacing; b%nh=nh
-    b%ilo=(xlo-xb)/spacing+1; b%ihi=(xhi-xb)/spacing
-    b%jlo=(ylo-yb)/spacing+1; b%jhi=(yhi-yb)/spacing
+    b%h=dble(spacing)
+    ! 统一节点相位 x=xb+0.5+(i-1)*h。h=2 时粗节点落在细节点子集上。
+    b%x0=dble(xb)+0.5d0-0.5d0*b%h; b%y0=dble(yb)+0.5d0-0.5d0*b%h
+    ! 人工边界包含 xe+0.5 / ye+0.5 节点，使细块端点列也与粗格点对齐。
+    ! 真实物理壁面仍止于 nx-0.5 / ny-0.5，原半步长 BB/ABB 不变。
+    b%ni=(xe-xb)/spacing+1; b%nj=(ye-yb)/spacing+1; b%nh=nh
+    if (xe==nx) b%ni=(xe-xb-1)/spacing+1
+    if (ye==ny) b%nj=(ye-yb-1)/spacing+1
+    b%ownedBox=dble([xlo,xhi,ylo,yhi])
+    allocate(b%dxWeight(b%ni),b%dyWeight(b%nj))
+    call integration_weights(b%ni,b%x0,b%h,dble(xlo),dble(xhi),b%dxWeight,b%ilo,b%ihi)
+    call integration_weights(b%nj,b%y0,b%h,dble(ylo),dble(yhi),b%dyWeight,b%jlo,b%jhi)
     b%wall=[xb==0,xe==nx,yb==0,ye==ny]
     ! Eq. (20): h_d*(tau_d-1/2)=h_s*(tau_s-1/2)，包括非水动力矩。
     b%sn=1.0d0/(0.5d0+(1.0d0/Snu-0.5d0)/b%h)
@@ -280,6 +299,26 @@ subroutine make_block(b,xlo,xhi,ylo,yhi,spacing,overlap,nh)
     allocate(b%up(b%ni,b%nj),b%vp(b%ni,b%nj),b%Tp(b%ni,b%nj))
 #endif
 end subroutine make_block
+
+subroutine integration_weights(n,origin,h,lo,hi,w,first,last)
+    integer, intent(in) :: n
+    real(8), intent(in) :: origin,h,lo,hi
+    real(8), intent(out) :: w(n)
+    integer, intent(out) :: first,last
+    integer :: i
+    real(8) :: firstMoment,x
+    first=n+1; last=0; firstMoment=0.0d0
+    do i=1,n
+        w(i)=max(0.0d0,min(hi,origin+dble(i)*h)-max(lo,origin+dble(i-1)*h))
+        if (w(i)<=0.0d0) cycle
+        first=min(first,i); last=i
+        x=origin+(dble(i)-0.5d0)*h
+        firstMoment=firstMoment+w(i)*x
+    enddo
+    if (abs(sum(w)-(hi-lo))>1.0d-10) error stop 'Integration weights do not cover owned interval'
+    if (abs(firstMoment-0.5d0*(hi**2-lo**2))>1.0d-9*max(1.0d0,abs(firstMoment))) &
+        error stop 'Integration weights do not integrate a linear coordinate exactly'
+end subroutine integration_weights
 
 subroutine initial_block(b)
     type(gridBlock), intent(inout) :: b
@@ -345,11 +384,11 @@ end subroutine block_device_data
 subroutine link_device_data(l,entering)
     type(blockLink), intent(inout) :: l
     logical, intent(in) :: entering
-    associate(ti=>l%ti,tj=>l%tj,si=>l%si,sj=>l%sj,wx=>l%wx,wy=>l%wy,val=>l%values)
+    associate(ti=>l%ti,tj=>l%tj,si=>l%si,sj=>l%sj,wx=>l%wx,wy=>l%wy,val=>l%values,same=>l%coincident)
         if (entering) then
-            !$acc enter data copyin(ti,tj,si,sj,wx,wy) create(val)
+            !$acc enter data copyin(ti,tj,si,sj,wx,wy,same) create(val)
         else
-            !$acc exit data delete(ti,tj,si,sj,wx,wy,val)
+            !$acc exit data delete(ti,tj,si,sj,wx,wy,same,val)
         endif
     end associate
 end subroutine link_device_data
@@ -459,11 +498,12 @@ logical function skin_node(b,i,j)
               (.not.b%wall(4) .and. j>b%nj-interfaceSkin)
 end function skin_node
 
-subroutine donor_stencil(receiver,x,y,donor,si,sj,wx,wy)
+subroutine donor_stencil(receiver,x,y,donor,si,sj,wx,wy,coincident)
     integer, intent(in) :: receiver
     real(8), intent(in) :: x,y
     integer, intent(out) :: donor,si,sj
     real(8), intent(out) :: wx(4),wy(4)
+    logical, intent(out) :: coincident
     integer :: d,il,ih,jl,jh,is,js
     real(8) :: qx,qy,score,best
     best=-huge(1.0d0); donor=0
@@ -485,8 +525,14 @@ subroutine donor_stencil(receiver,x,y,donor,si,sj,wx,wy)
         if (blocks(d)%h==blocks(receiver)%h) score=score+1.0d6
         if (score<=best) cycle
         best=score; donor=d; si=is; sj=js
-        call lagrange_weights(qx-dble(is),wx)
-        call lagrange_weights(qy-dble(js),wy)
+        coincident=abs(qx-dble(nint(qx)))<1.0d-12 .and. abs(qy-dble(nint(qy)))<1.0d-12
+        if (coincident) then
+            si=nint(qx); sj=nint(qy)
+            wx=[1.0d0,0.0d0,0.0d0,0.0d0]; wy=wx
+        else
+            call lagrange_weights(qx-dble(is),wx)
+            call lagrange_weights(qy-dble(js),wy)
+        endif
     enddo
     if (donor==0) then
         write(*,*) 'No interior four-point donor stencil:',receiver,x,y
@@ -506,9 +552,32 @@ subroutine lagrange_weights(q,w)
     enddo
 end subroutine lagrange_weights
 
+subroutine section_weights(q,n,first,w,dw)
+    real(8), intent(in) :: q
+    integer, intent(in) :: n
+    integer, intent(out) :: first
+    real(8), intent(out) :: w(4),dw(4)
+    real(8) :: z,term
+    integer :: a,k,l
+    first=max(1,min(floor(q)-1,n-3)); z=q-dble(first)
+    call lagrange_weights(z,w)
+    dw=0.0d0
+    do a=0,3
+        do k=0,3
+            if (k==a) cycle
+            term=1.0d0/dble(a-k)
+            do l=0,3
+                if (l/=a .and. l/=k) term=term*(z-dble(l))/dble(a-l)
+            enddo
+            dw(a+1)=dw(a+1)+term
+        enddo
+    enddo
+end subroutine section_weights
+
 subroutine build_links()
     integer :: b,d,i,j,l,n,si,sj,counts(maxBlocks,maxBlocks),idx(maxBlocks,maxBlocks)
     real(8) :: x,y,wx(4),wy(4)
+    logical :: coincident
     counts=0; idx=0; nLinks=0
     do b=1,nBlocks
         do j=1,blocks(b)%nj
@@ -516,7 +585,7 @@ subroutine build_links()
                 if (.not.skin_node(blocks(b),i,j)) cycle
                 x=blocks(b)%x0+(dble(i)-0.5d0)*blocks(b)%h
                 y=blocks(b)%y0+(dble(j)-0.5d0)*blocks(b)%h
-                call donor_stencil(b,x,y,d,si,sj,wx,wy)
+                call donor_stencil(b,x,y,d,si,sj,wx,wy,coincident)
                 counts(b,d)=counts(b,d)+1
             enddo
         enddo
@@ -527,6 +596,7 @@ subroutine build_links()
             nLinks=nLinks+1; l=nLinks; idx(b,d)=l; n=counts(b,d)
             links(l)%receiver=b; links(l)%donor=d; links(l)%count=n
             allocate(links(l)%ti(n),links(l)%tj(n),links(l)%si(n),links(l)%sj(n))
+            allocate(links(l)%coincident(n))
             allocate(links(l)%wx(4,n),links(l)%wy(4,n),links(l)%values(packetSize,n))
         enddo
     enddo
@@ -537,10 +607,13 @@ subroutine build_links()
                 if (.not.skin_node(blocks(b),i,j)) cycle
                 x=blocks(b)%x0+(dble(i)-0.5d0)*blocks(b)%h
                 y=blocks(b)%y0+(dble(j)-0.5d0)*blocks(b)%h
-                call donor_stencil(b,x,y,d,si,sj,wx,wy)
+                call donor_stencil(b,x,y,d,si,sj,wx,wy,coincident)
                 counts(b,d)=counts(b,d)+1; n=counts(b,d); l=idx(b,d)
                 links(l)%ti(n)=i; links(l)%tj(n)=j; links(l)%si(n)=si; links(l)%sj(n)=sj
                 links(l)%wx(:,n)=wx; links(l)%wy(:,n)=wy
+                links(l)%coincident(n)=coincident
+                if (blocks(b)%h>blocks(d)%h .and. .not.coincident) &
+                    error stop 'Coarse interface node is not aligned with a fine node'
             enddo
         enddo
     enddo
@@ -621,7 +694,7 @@ subroutine exchange_interfaces(coarse_receiver,wt)
         b=links(l)%receiver; d=links(l)%donor
         if ((b==1) .neqv. coarse_receiver) cycle
         call interpolate_packets(blocks(d)%ni,blocks(d)%nj,blocks(d)%nh,blocks(d)%p,links(l)%count, &
-            links(l)%si,links(l)%sj,links(l)%wx,links(l)%wy,wt,links(l)%values)
+            links(l)%si,links(l)%sj,links(l)%wx,links(l)%wy,links(l)%coincident,wt,links(l)%values)
     enddo
     do l=1,nLinks
         b=links(l)%receiver
@@ -633,24 +706,29 @@ subroutine exchange_interfaces(coarse_receiver,wt)
     enddo
 end subroutine exchange_interfaces
 
-subroutine interpolate_packets(ni,nj,nh,p,count,si,sj,wx,wy,wt,val)
+subroutine interpolate_packets(ni,nj,nh,p,count,si,sj,wx,wy,coincident,wt,val)
     integer, intent(in) :: ni,nj,nh,count,si(count),sj(count)
     real(8), intent(in) :: p(ni,nj,packetSize,0:nh),wx(4,count),wy(4,count),wt(0:2)
+    logical, intent(in) :: coincident(count)
     real(8), intent(out) :: val(packetSize,count)
     integer :: c,a,ix,iy,k
     real(8) :: value,wk
-    !$acc parallel loop collapse(2) present(p,si,sj,wx,wy,val) firstprivate(wt) async(1) private(ix,iy,k,value,wk)
+    !$acc parallel loop collapse(2) present(p,si,sj,wx,wy,coincident,val) firstprivate(wt) async(1) private(ix,iy,k,value,wk)
     do c=1,count
         do a=1,packetSize
             value=0.0d0
             do k=0,nh
                 wk=1.0d0
                 if (nh==2) wk=wt(k)
-                do iy=1,4
-                    do ix=1,4
-                        value=value+wk*wx(ix,c)*wy(iy,c)*p(si(c)+ix-1,sj(c)+iy-1,a,k)
+                if (coincident(c)) then
+                    value=value+wk*p(si(c),sj(c),a,k)
+                else
+                    do iy=1,4
+                        do ix=1,4
+                            value=value+wk*wx(ix,c)*wy(iy,c)*p(si(c)+ix-1,sj(c)+iy-1,a,k)
+                        enddo
                     enddo
-                enddo
+                endif
             enddo
             val(a,c)=value
         enddo
@@ -1182,11 +1260,12 @@ subroutine thermal_populations(n,gv)
 end subroutine thermal_populations
 
 !===============================================================================================
-! 多块输出使用无重叠所有权分区，积分权重为 h^2，壁面/中线权重为 h。
+! 多块输出按不重叠物理分区积分，边缘节点使用裁剪权重；内部权重仍为 h^2。
 !===============================================================================================
 subroutine calNuRe()
     integer :: b,i,j,k,jm,im
-    real(8) :: area,conv,vel2,mass,meanT,nu,re,hot,cold,middle,dTdx,dTdy,theta,tm,um,vm
+    real(8) :: area,conv,vel2,mass,meanT,nu,re,hot,cold,middle,dTdx,dTdy,tm,um,vm,cellArea
+    real(8) :: w(4),dw(4)
     real(8) :: tmin,tmax,rmin,rmax,scale,xmid,ymid,xlo,xhi,ylo,yhi,h
     call update_host_all(.false.)
     area=dble(nx)*dble(ny); conv=0.0d0; vel2=0.0d0; mass=0.0d0; meanT=0.0d0
@@ -1203,57 +1282,56 @@ subroutine calNuRe()
                     write(*,*) 'Invalid state: coarse clock, block, i,j:',itc,b,i,j
                     error stop 'Nonfinite or nonpositive density in owned cells'
                 endif
+                cellArea=bl%dxWeight(i)*bl%dyWeight(j)
 #ifdef SideHeatedCell
-                conv=conv+bl%u(i,j)*bl%T(i,j)*h*h
+                conv=conv+bl%u(i,j)*bl%T(i,j)*cellArea
 #else
-                conv=conv+bl%v(i,j)*bl%T(i,j)*h*h
+                conv=conv+bl%v(i,j)*bl%T(i,j)*cellArea
 #endif
-                vel2=vel2+(bl%u(i,j)**2+bl%v(i,j)**2)*h*h
-                mass=mass+bl%rho(i,j)*h*h; meanT=meanT+bl%T(i,j)*h*h
+                vel2=vel2+(bl%u(i,j)**2+bl%v(i,j)**2)*cellArea
+                mass=mass+bl%rho(i,j)*cellArea; meanT=meanT+bl%T(i,j)*cellArea
                 tmin=min(tmin,bl%T(i,j)); tmax=max(tmax,bl%T(i,j))
                 rmin=min(rmin,bl%rho(i,j)); rmax=max(rmax,bl%rho(i,j))
             enddo
         enddo
-        xlo=bl%x0+(bl%ilo-1)*h; xhi=bl%x0+bl%ihi*h
-        ylo=bl%y0+(bl%jlo-1)*h; yhi=bl%y0+bl%jhi*h
+        xlo=bl%ownedBox(1); xhi=bl%ownedBox(2)
+        ylo=bl%ownedBox(3); yhi=bl%ownedBox(4)
 #ifdef SideHeatedCell
         if (xlo==0.0d0) then
             do j=bl%jlo,bl%jhi
-                hot=hot+(8.0d0*Thot-9.0d0*bl%T(1,j)+bl%T(2,j))/(3.0d0*h)*h/dble(ny)
+                hot=hot+(8.0d0*Thot-9.0d0*bl%T(1,j)+bl%T(2,j))/(3.0d0*h)*bl%dyWeight(j)/dble(ny)
             enddo
         endif
         if (xhi==dble(nx)) then
             do j=bl%jlo,bl%jhi
-                cold=cold+(-8.0d0*Tcold+9.0d0*bl%T(bl%ni,j)-bl%T(bl%ni-1,j))/(3.0d0*h)*h/dble(ny)
+                cold=cold+(-8.0d0*Tcold+9.0d0*bl%T(bl%ni,j)-bl%T(bl%ni-1,j))/(3.0d0*h)*bl%dyWeight(j)/dble(ny)
             enddo
         endif
         if (xmid>=xlo .and. xmid<xhi) then
-            im=floor((xmid-bl%x0)/h+0.5d0); theta=(xmid-bl%x0)/h+0.5d0-im
+            call section_weights((xmid-bl%x0)/h+0.5d0,bl%ni,im,w,dw)
             do j=bl%jlo,bl%jhi
-                tm=(1.0d0-theta)*bl%T(im,j)+theta*bl%T(im+1,j)
-                um=(1.0d0-theta)*bl%u(im,j)+theta*bl%u(im+1,j)
-                dTdx=(bl%T(im+1,j)-bl%T(im,j))/h
-                middle=middle+(um*tm/diffusivity-dTdx)*h/dble(ny)
+                tm=sum(w*bl%T(im:im+3,j)); um=sum(w*bl%u(im:im+3,j))
+                dTdx=sum(dw*bl%T(im:im+3,j))/h
+                middle=middle+(um*tm/diffusivity-dTdx)*bl%dyWeight(j)/dble(ny)
             enddo
         endif
 #else
         if (ylo==0.0d0) then
             do i=bl%ilo,bl%ihi
-                hot=hot+(8.0d0*Thot-9.0d0*bl%T(i,1)+bl%T(i,2))/(3.0d0*h)*h/dble(nx)
+                hot=hot+(8.0d0*Thot-9.0d0*bl%T(i,1)+bl%T(i,2))/(3.0d0*h)*bl%dxWeight(i)/dble(nx)
             enddo
         endif
         if (yhi==dble(ny)) then
             do i=bl%ilo,bl%ihi
-                cold=cold+(-8.0d0*Tcold+9.0d0*bl%T(i,bl%nj)-bl%T(i,bl%nj-1))/(3.0d0*h)*h/dble(nx)
+                cold=cold+(-8.0d0*Tcold+9.0d0*bl%T(i,bl%nj)-bl%T(i,bl%nj-1))/(3.0d0*h)*bl%dxWeight(i)/dble(nx)
             enddo
         endif
         if (ymid>=ylo .and. ymid<yhi) then
-            jm=floor((ymid-bl%y0)/h+0.5d0); theta=(ymid-bl%y0)/h+0.5d0-jm
+            call section_weights((ymid-bl%y0)/h+0.5d0,bl%nj,jm,w,dw)
             do i=bl%ilo,bl%ihi
-                tm=(1.0d0-theta)*bl%T(i,jm)+theta*bl%T(i,jm+1)
-                vm=(1.0d0-theta)*bl%v(i,jm)+theta*bl%v(i,jm+1)
-                dTdy=(bl%T(i,jm+1)-bl%T(i,jm))/h
-                middle=middle+(vm*tm/diffusivity-dTdy)*h/dble(nx)
+                tm=sum(w*bl%T(i,jm:jm+3)); vm=sum(w*bl%v(i,jm:jm+3))
+                dTdy=sum(dw*bl%T(i,jm:jm+3))/h
+                middle=middle+(vm*tm/diffusivity-dTdy)*bl%dxWeight(i)/dble(nx)
             enddo
         endif
 #endif
@@ -1270,18 +1348,21 @@ end subroutine calNuRe
 
 subroutine check()
 #ifdef steadyFlow
-    integer :: b,k
-    real(8) :: du,uu,dt,tt,h2
+    integer :: b,k,i,j
+    real(8) :: du,uu,dt,tt,cellArea
     du=0.0d0; uu=0.0d0; dt=0.0d0; tt=0.0d0
     call update_host_all(.false.)
     do b=1,nBlocks
         associate(bl=>blocks(b))
-        h2=bl%h**2
-        du=du+h2*(sum((bl%u(bl%ilo:bl%ihi,bl%jlo:bl%jhi)-bl%up(bl%ilo:bl%ihi,bl%jlo:bl%jhi))**2)+ &
-                  sum((bl%v(bl%ilo:bl%ihi,bl%jlo:bl%jhi)-bl%vp(bl%ilo:bl%ihi,bl%jlo:bl%jhi))**2))
-        uu=uu+h2*(sum(bl%u(bl%ilo:bl%ihi,bl%jlo:bl%jhi)**2)+sum(bl%v(bl%ilo:bl%ihi,bl%jlo:bl%jhi)**2))
-        dt=dt+h2*sum((bl%T(bl%ilo:bl%ihi,bl%jlo:bl%jhi)-bl%Tp(bl%ilo:bl%ihi,bl%jlo:bl%jhi))**2)
-        tt=tt+h2*sum(bl%T(bl%ilo:bl%ihi,bl%jlo:bl%jhi)**2)
+        do j=bl%jlo,bl%jhi
+            do i=bl%ilo,bl%ihi
+                cellArea=bl%dxWeight(i)*bl%dyWeight(j)
+                du=du+cellArea*((bl%u(i,j)-bl%up(i,j))**2+(bl%v(i,j)-bl%vp(i,j))**2)
+                uu=uu+cellArea*(bl%u(i,j)**2+bl%v(i,j)**2)
+                dt=dt+cellArea*(bl%T(i,j)-bl%Tp(i,j))**2
+                tt=tt+cellArea*bl%T(i,j)**2
+            enddo
+        enddo
         bl%up=bl%u; bl%vp=bl%v; bl%Tp=bl%T
         end associate
     enddo
@@ -1300,15 +1381,16 @@ subroutine output_Tecplot()
     write(num,'(I10.10)') pltFileNum
     call update_host_all(.false.)
     open(newunit=k,file=pltFolderPrefix//'-'//trim(num)//'.dat',status='replace')
-    write(k,'(a)') 'VARIABLES="x/L","y/L","u","v","T","rho","h/L"'
+    write(k,'(a)') 'VARIABLES="x/L","y/L","u","v","T","rho","h/L","integration_area/L^2"'
     do b=1,nBlocks
         associate(bl=>blocks(b))
         write(k,'(a,I0,a,I0,a,I0,a,ES24.16E3)') 'ZONE T="block ',b,'", I=',bl%ihi-bl%ilo+1, &
             ', J=',bl%jhi-bl%jlo+1,', F=POINT, SOLUTIONTIME=',dble(itc)/timeUnit
         do j=bl%jlo,bl%jhi
             do i=bl%ilo,bl%ihi
-                write(k,'(7(ES24.16E3,1X))') (bl%x0+(dble(i)-0.5d0)*bl%h)/lengthUnit, &
-                    (bl%y0+(dble(j)-0.5d0)*bl%h)/lengthUnit,bl%u(i,j),bl%v(i,j),bl%T(i,j),bl%rho(i,j),bl%h/lengthUnit
+                write(k,'(8(ES24.16E3,1X))') (bl%x0+(dble(i)-0.5d0)*bl%h)/lengthUnit, &
+                    (bl%y0+(dble(j)-0.5d0)*bl%h)/lengthUnit,bl%u(i,j),bl%v(i,j),bl%T(i,j),bl%rho(i,j),bl%h/lengthUnit, &
+                    bl%dxWeight(i)*bl%dyWeight(j)/lengthUnit**2
             enddo
         enddo
         end associate
@@ -1326,7 +1408,9 @@ subroutine output_SnapshotFile()
     write(k) snapshotMagic,nBlocks,nx,ny,itc,dble(itc)/timeUnit,lengthUnit
     do b=1,nBlocks
         associate(bl=>blocks(b))
-        write(k) bl%ihi-bl%ilo+1,bl%jhi-bl%jlo+1,bl%x0+(bl%ilo-1)*bl%h,bl%y0+(bl%jlo-1)*bl%h,bl%h
+        write(k) bl%ihi-bl%ilo+1,bl%jhi-bl%jlo+1, &
+            bl%x0+(dble(bl%ilo)-0.5d0)*bl%h,bl%y0+(dble(bl%jlo)-0.5d0)*bl%h,bl%h,bl%ownedBox
+        write(k) bl%dxWeight(bl%ilo:bl%ihi),bl%dyWeight(bl%jlo:bl%jhi)
         write(k) bl%u(bl%ilo:bl%ihi,bl%jlo:bl%jhi),bl%v(bl%ilo:bl%ihi,bl%jlo:bl%jhi), &
             bl%T(bl%ilo:bl%ihi,bl%jlo:bl%jhi),bl%rho(bl%ilo:bl%ihi,bl%jlo:bl%jhi)
         end associate
@@ -1397,7 +1481,7 @@ subroutine output_ReloadFile()
     write(k) itc,nextSample,nextReload,nextPlt,snapshotFileNum,pltFileNum,errorU,errorT
     do b=1,nBlocks
         associate(bl=>blocks(b))
-        write(k) bl%ni,bl%nj,bl%ilo,bl%ihi,bl%jlo,bl%jhi,bl%nh,bl%x0,bl%y0,bl%h
+        write(k) bl%ni,bl%nj,bl%ilo,bl%ihi,bl%jlo,bl%jhi,bl%nh,bl%x0,bl%y0,bl%h,bl%ownedBox
         write(k) bl%f,bl%g,bl%u,bl%v,bl%T,bl%rho,bl%Fx,bl%Fy,bl%Bx_prev,bl%By_prev,bl%p
 #ifdef steadyFlow
         write(k) bl%up,bl%vp,bl%Tp
@@ -1413,7 +1497,7 @@ end subroutine output_ReloadFile
 
 subroutine read_restart()
     integer :: k,b,ios,head(7),geom(7),sig(12)
-    real(8) :: phys(16),coord(3)
+    real(8) :: phys(16),coord(7)
     character(16) :: magic
     character(256) :: name
     open(newunit=k,file=reloadFilePrefix//'-latest.meta',status='old',iostat=ios)
@@ -1437,7 +1521,7 @@ subroutine read_restart()
         associate(bl=>blocks(b))
         read(k) geom,coord
         if (any(geom/=[bl%ni,bl%nj,bl%ilo,bl%ihi,bl%jlo,bl%jhi,bl%nh]) .or. &
-            any(coord/=[bl%x0,bl%y0,bl%h])) error stop 'Restart block layout mismatch'
+            any(coord/=[bl%x0,bl%y0,bl%h,bl%ownedBox])) error stop 'Restart block layout mismatch'
         read(k,iostat=ios) bl%f,bl%g,bl%u,bl%v,bl%T,bl%rho,bl%Fx,bl%Fy,bl%Bx_prev,bl%By_prev,bl%p
         if (ios/=0) error stop 'Incomplete checkpoint state/history'
 #ifdef steadyFlow

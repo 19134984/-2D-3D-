@@ -52,7 +52,7 @@ def variant(s, *, ratio=2, legacy=False, side=False, steady=False, ha=False, res
         s = s.replace('loadInitField=0', 'loadInitField=1')
     return s
 
-def compile_source(name, src, driver=None, n=96, ra=1000, syntax=False):
+def compile_source(name, src, driver=None, n=96, ra=1000, syntax=False, ny=None):
     folder = BUILD / name
     folder.mkdir(exist_ok=True)
     if driver:
@@ -61,7 +61,7 @@ def compile_source(name, src, driver=None, n=96, ra=1000, syntax=False):
     file.write_text(src, encoding='utf-8')
     exe = folder / 'solver.exe'
     flags = ['-cpp', '-fopenacc', '-ffree-line-length-none', '-O1', '-fcheck=all',
-             '-fbacktrace', f'-DNX_OVERRIDE={n}', f'-DNY_OVERRIDE={n}', f'-DRAYLEIGH_OVERRIDE={ra}']
+             '-fbacktrace', f'-DNX_OVERRIDE={n}', f'-DNY_OVERRIDE={n if ny is None else ny}', f'-DRAYLEIGH_OVERRIDE={ra}']
     if syntax:
         flags += ['-fsyntax-only']
     else:
@@ -167,6 +167,86 @@ CONDUCTION = '''program main
     call exit_data_2d_openacc()
 end program main'''
 
+GEOMETRY_DRIVER = '''program main
+    use commondata
+    implicit none
+    integer :: b,i,j,l,directCoarse,directFine,interpolatedFine
+    real(8) :: x,y,area,xmoment,ymoment,w
+    call initial()
+    area=0.0d0; xmoment=0.0d0; ymoment=0.0d0
+    do b=1,nBlocks
+        do j=1,blocks(b)%nj
+            y=blocks(b)%y0+(dble(j)-0.5d0)*blocks(b)%h
+            do i=1,blocks(b)%ni
+                x=blocks(b)%x0+(dble(i)-0.5d0)*blocks(b)%h
+                if (abs(x-0.5d0-dble(nint(x-0.5d0)))>1.0d-12 .or. &
+                    abs(y-0.5d0-dble(nint(y-0.5d0)))>1.0d-12) error stop 'Node is off the fine lattice'
+                w=blocks(b)%dxWeight(i)*blocks(b)%dyWeight(j)
+                if (w<0.0d0) error stop 'Negative integration weight'
+                area=area+w; xmoment=xmoment+w*x; ymoment=ymoment+w*y
+            enddo
+        enddo
+        if (blocks(b)%wall(1) .and. blocks(b)%x0+0.5d0*blocks(b)%h/=0.5d0) error stop 'Left wall moved'
+        if (blocks(b)%wall(2) .and. &
+            blocks(b)%x0+(blocks(b)%ni-0.5d0)*blocks(b)%h/=nx-0.5d0) error stop 'Right wall moved'
+        if (blocks(b)%wall(3) .and. blocks(b)%y0+0.5d0*blocks(b)%h/=0.5d0) error stop 'Bottom wall moved'
+        if (blocks(b)%wall(4) .and. &
+            blocks(b)%y0+(blocks(b)%nj-0.5d0)*blocks(b)%h/=ny-0.5d0) error stop 'Top wall moved'
+    enddo
+    if (abs(area-dble(nx)*ny)>1.0d-9) error stop 'Area is double counted or missing'
+    if (abs(xmoment-0.5d0*dble(nx)**2*ny)>1.0d-8) error stop 'Wrong first x moment'
+    if (abs(ymoment-0.5d0*dble(ny)**2*nx)>1.0d-8) error stop 'Wrong first y moment'
+    directCoarse=0; directFine=0; interpolatedFine=0
+    do l=1,nLinks
+        if (links(l)%receiver==1) then
+            if (.not.all(links(l)%coincident)) error stop 'Coarse receiver should coincide with fine nodes'
+            directCoarse=directCoarse+links(l)%count
+        elseif (links(l)%donor==1) then
+            directFine=directFine+count(links(l)%coincident)
+            interpolatedFine=interpolatedFine+count(.not.links(l)%coincident)
+        endif
+    enddo
+    if (min(directCoarse,directFine,interpolatedFine)<=0) error stop 'Missing direct or interpolation interface path'
+    write(*,*) 'ALIGNED_GEOMETRY',directCoarse,directFine,interpolatedFine,area
+end program main'''
+
+PACKET_DRIVER = '''program main
+    use commondata, only: packetSize,lagrange_weights,interpolate_packets
+    use openacc
+    implicit none
+    real(8) :: p(8,8,packetSize,0:2),wx(4,2),wy(4,2),val(packetSize,2),wt(0:2),err,expected
+    integer :: si(2),sj(2),i,j,k,a
+    logical :: same(2)
+    call acc_init(acc_device_host)
+    do k=0,2
+        do a=1,packetSize
+            do j=1,8
+                do i=1,8
+                    p(i,j,a,k)=a*(dble(i)**2+dble(j)**3)*(dble(k-1)**2+2.0d0*(k-1)+4.0d0)
+                enddo
+            enddo
+        enddo
+    enddo
+    si=[8,2]; sj=[8,3]; same=[.true.,.false.]
+    wx(:,1)=[1.0d0,0.0d0,0.0d0,0.0d0]; wy(:,1)=wx(:,1)
+    call lagrange_weights(1.5d0,wx(:,2)); call lagrange_weights(1.5d0,wy(:,2))
+    wt=[-0.125d0,0.75d0,0.375d0]
+    !$acc enter data copyin(p,si,sj,wx,wy,same) create(val)
+    call interpolate_packets(8,8,2,p,2,si,sj,wx,wy,same,wt,val)
+    !$acc wait(1)
+    !$acc update self(val)
+    err=0.0d0
+    do a=1,packetSize
+        expected=a*(8.0d0**2+8.0d0**3)*5.25d0
+        err=max(err,abs(val(a,1)-expected))
+        expected=a*(3.5d0**2+4.5d0**3)*5.25d0
+        err=max(err,abs(val(a,2)-expected))
+    enddo
+    if (err>1.0d-10) error stop 'Direct/cubic-space/quadratic-time packet transfer failed'
+    !$acc exit data delete(p,si,sj,wx,wy,same,val)
+    write(*,*) 'PACKET_ERROR',err
+end program main'''
+
 RESTART_DRIVER = '''program main
     use commondata
     use openacc
@@ -206,6 +286,19 @@ def main():
     REPORT['checks'].append({'syntax_openacc_cases':[name for name,_ in cases]})
     print('OpenACC syntax matrix passed',flush=True)
 
+    for nx,ny in [(96,96),(128,96)]:
+        folder,exe=compile_source(f'geometry_{nx}_{ny}',source,GEOMETRY_DRIVER,n=nx,ny=ny)
+        stdout=run([exe],folder)
+        values=next(line for line in stdout.splitlines() if 'ALIGNED_GEOMETRY' in line).split()[1:]
+        REPORT['checks'].append({'aligned_geometry':[nx,ny],'coarse_direct_nodes':int(values[0]),
+            'fine_direct_from_coarse':int(values[1]),'fine_interpolated_from_coarse':int(values[2]),
+            'area':float(values[3]),'linear_integrals_and_physical_walls':'passed'})
+    folder,exe=compile_source('packet_transfer',source,PACKET_DRIVER)
+    stdout=run([exe],folder)
+    err=float(next(line for line in stdout.splitlines() if 'PACKET_ERROR' in line).split()[1])
+    REPORT['checks'].append({'direct_and_interpolated_packet_transfer_error':err})
+    print('Node alignment, quadrature and interface transfer passed',flush=True)
+
     for name,kw in [('rb_useg',{}),('side_legacy',{'side':True,'legacy':True})]:
         pdir,pexe=compile_source('parent_'+name,variant(parent,**kw),uniform_driver(True),n=32)
         mdir,mexe=compile_source('uniform_'+name,variant(source,ratio=1,**kw),uniform_driver(),n=32)
@@ -241,6 +334,16 @@ def main():
         raise AssertionError(f'Restart differs from uninterrupted run: {err}')
     REPORT['checks'].append({'restart_exact':True,'fine_steps':40,'split_at':20,'max_absolute_error':err})
     print('Exact multiblock restart passed',flush=True)
+    # Old, staggered-grid snapshots must fail before reading state arrays.
+    latest=(split/'reloadFile2DOpenaccMultiblock-latest.meta').read_text().strip()
+    old=split/'old-layout.bin'
+    state=(split/latest).read_bytes()
+    old.write_bytes(b'MB2DRESTART0001  '[:16]+state[16:])
+    (split/'reloadFile2DOpenaccMultiblock-latest.meta').write_text('old-layout.bin\n')
+    bad=subprocess.run([str(split/'resume.exe'),'40'],cwd=split,env=ENV,capture_output=True)
+    if bad.returncode==0 or b'Wrong checkpoint format' not in bad.stderr:
+        raise AssertionError('Old staggered checkpoint was not rejected')
+    REPORT['checks'].append({'old_layout_restart_rejected':True})
 
     # Exercise the actual program, output clocks, binary snapshots and history-backed restart.
     smoke=source.replace('unsteadyRunDuration=1000.0d0','unsteadyRunDuration=0.1d0')
@@ -259,6 +362,21 @@ def main():
     stats=(whole/'NuReStatistics_2DOpenaccMultiblock.dat').read_text()
     if 'INCOMPLETE' in stats or 'relative half-window difference:' not in stats:
         raise AssertionError('Main statistics window is not covered')
+    with next(whole.glob('*Snapshot-*.bin')).open('rb') as f:
+        assert f.read(16)==b'MB2DSNAPSHOT0002'
+        nb,nx,ny,_=np.fromfile(f,dtype='<i4',count=4)
+        np.fromfile(f,dtype='<f8',count=2)
+        area=0.0
+        for b in range(nb):
+            ni,nj=np.fromfile(f,dtype='<i4',count=2)
+            first_x,first_y,h,*box=np.fromfile(f,dtype='<f8',count=7)
+            dx=np.fromfile(f,dtype='<f8',count=ni); dy=np.fromfile(f,dtype='<f8',count=nj)
+            assert np.all(np.mod(first_x+np.arange(ni)*h-.5,1)==0)
+            assert np.all(np.mod(first_y+np.arange(nj)*h-.5,1)==0)
+            area+=dx.sum()*dy.sum()
+            assert np.fromfile(f,dtype='<f8',count=4*ni*nj).size==4*ni*nj
+        assert area==nx*ny and not f.read(1)
+    REPORT['checks'].append({'aligned_snapshot_v2_area_and_coordinates':'passed'})
     REPORT['checks'].append({'main_smoke_and_history_restart':True,'samples':len(hfull),'target_t_ff':0.1})
     print('Actual main program, outputs and restart passed',flush=True)
     if hashlib.sha256(PARENT.read_bytes()).hexdigest()!=before:

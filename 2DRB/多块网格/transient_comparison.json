@@ -1,5 +1,6 @@
 {
   "case": "side-heated, EnableUseG, Ra=1e4, Pr=0.7, Ma=0.1",
+  "layout": "aligned nested nodes, snapshot v2, clipped integration weights",
   "fine_equivalent_grid": [
     96,
     96
@@ -13,16 +14,16 @@
     "rho"
   ],
   "field_relative_l2": [
-    0.0013514292093839675,
-    0.0013459263075431618,
-    0.0003561899602555388,
-    5.025845520377322e-07
+    0.0009659375537377607,
+    0.0009826136941919587,
+    0.0003017757488668493,
+    4.408730253253516e-07
   ],
   "field_max_abs": [
-    2.3668539692120114e-05,
-    2.5352535714286487e-05,
-    0.00023619010582576205,
-    1.178745847929541e-06
+    1.3825715381115752e-05,
+    1.5699897558668977e-05,
+    0.00020589233336525126,
+    1.109312207536739e-06
   ],
   "metric_order": [
     "NuVolAvg",
@@ -37,20 +38,20 @@
     1.049591921528495
   ],
   "multiblock": [
-    1.422789680640752,
-    15.925920361337832,
-    1.0496759810922878,
-    1.0496759810922858
+    1.422663168449718,
+    15.922812643126752,
+    1.0496712955662795,
+    1.0496850337948387
   ],
   "relative_metric_difference": [
-    0.0007015465807871322,
-    0.0009265670308512959,
-    8.008785324651554e-05,
-    8.008785325667106e-05
+    0.0006125657939907775,
+    0.0007312503615637337,
+    7.562371255317515e-05,
+    8.871282679851282e-05
   ],
-  "source_sha256": "54a0e7ae9850989adbc30ec46d5ab6f721e56d3ac922905244f5e40edeb0b9c0",
+  "source_sha256": "496508d1d2a218123624ba9f5c2fe39662e68824d8b553dff2c845ed61ca060d",
   "parent_sha256": "68debf94f75f3a70af6bf4f7205e18afc14618d48dd227ccf1d1a8e73d8afd48",
   "device": "OpenACC host",
-  "build_directory": "C:\\Users\\User\\AppData\\Local\\Temp\\mb2d-verify-adca9dvo",
+  "build_directory": "C:\\Users\\User\\AppData\\Local\\Temp\\mb2d-verify-guagv9pj",
   "scope": "Transient comparison only; this is not a converged benchmark or GPU validation."
 }

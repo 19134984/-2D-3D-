@@ -1,7 +1,7 @@
 {
   "compiler": "C:\\msys64\\ucrt64\\bin\\gfortran.EXE",
   "device": "OpenACC host",
-  "build_directory": "C:\\Users\\User\\AppData\\Local\\Temp\\mb2d-verify-ntvpy42n",
+  "build_directory": "C:\\Users\\User\\AppData\\Local\\Temp\\mb2d-verify-zpzs8mlw",
   "checks": [
     {
       "syntax_openacc_cases": [
@@ -11,6 +11,31 @@
         "side_legacy",
         "side_ha"
       ]
+    },
+    {
+      "aligned_geometry": [
+        96,
+        96
+      ],
+      "coarse_direct_nodes": 344,
+      "fine_direct_from_coarse": 116,
+      "fine_interpolated_from_coarse": 356,
+      "area": 9216.0,
+      "linear_integrals_and_physical_walls": "passed"
+    },
+    {
+      "aligned_geometry": [
+        128,
+        96
+      ],
+      "coarse_direct_nodes": 392,
+      "fine_direct_from_coarse": 140,
+      "fine_interpolated_from_coarse": 428,
+      "area": 12288.0,
+      "linear_integrals_and_physical_walls": "passed"
+    },
+    {
+      "direct_and_interpolated_packet_transfer_error": 0.0
     },
     {
       "uniform_regression": "rb_useg",
@@ -25,11 +50,11 @@
     {
       "conduction": "rb_useg",
       "coarse_steps": 300,
-      "max_T_error": 9.992007221626409e-16,
+      "max_T_error": 1.6653345369377348e-15,
       "max_rho_error": 2.220446049250313e-16,
       "Nu_volume_hot_cold_middle": [
         1.0,
-        0.9999999999999785,
+        0.9999999999999714,
         0.9999999999999756,
         0.9999999999999996
       ]
@@ -37,25 +62,25 @@
     {
       "conduction": "side_useg",
       "coarse_steps": 300,
-      "max_T_error": 9.43689570931383e-16,
+      "max_T_error": 1.7208456881689926e-15,
       "max_rho_error": 2.220446049250313e-16,
       "Nu_volume_hot_cold_middle": [
         1.0,
-        0.999999999999968,
-        0.9999999999999494,
+        0.9999999999999681,
+        0.9999999999999468,
         0.9999999999999998
       ]
     },
     {
       "conduction": "side_legacy",
       "coarse_steps": 300,
-      "max_T_error": 9.992007221626409e-16,
+      "max_T_error": 3.885780586188048e-16,
       "max_rho_error": 4.440892098500626e-16,
       "Nu_volume_hot_cold_middle": [
-        1.0000000000000009,
+        1.0,
         0.9999999999999694,
         0.999999999999998,
-        0.9999999999999998
+        0.9999999999999996
       ]
     },
     {
@@ -65,13 +90,19 @@
       "max_absolute_error": 0.0
     },
     {
+      "old_layout_restart_rejected": true
+    },
+    {
+      "aligned_snapshot_v2_area_and_coordinates": "passed"
+    },
+    {
       "main_smoke_and_history_restart": true,
       "samples": 10,
       "target_t_ff": 0.1
     }
   ],
   "parent_sha256": "68debf94f75f3a70af6bf4f7205e18afc14618d48dd227ccf1d1a8e73d8afd48",
-  "source_sha256": "54a0e7ae9850989adbc30ec46d5ab6f721e56d3ac922905244f5e40edeb0b9c0",
-  "elapsed_seconds": 21.062999999994645,
+  "source_sha256": "496508d1d2a218123624ba9f5c2fe39662e68824d8b553dff2c845ed61ca060d",
+  "elapsed_seconds": 27.42200000002049,
   "status": "passed"
 }

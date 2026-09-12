@@ -103,29 +103,29 @@ for x in list(range(0,wx+1,32))+list(range(nx-wx,nx+1,32)):
 for x in range(wx,nx-wx+1,64): layout.line(X(x),Y(wy),X(x),Y(ny-wy),'#cddbef',1)
 for y in range(wy,ny-wy+1,64): layout.line(X(wx),Y(y),X(nx-wx),Y(y),'#cddbef',1)
 # Shared overlap is twice the extension width at a straight interface.
-for y in (wy,ny-wy): box(0,nx,y-ov,y+ov,OVER_FILL)
-for x in (wx,nx-wx): box(x-ov,x+ov,wy-ov,ny-wy+ov,OVER_FILL)
+for y in (wy,ny-wy): box(0,nx,y-ov+.5,y+ov+.5,OVER_FILL)
+for x in (wx,nx-wx): box(x-ov+.5,x+ov+.5,wy-ov+.5,ny-wy+ov+.5,OVER_FILL)
 # Physical domain and non-overlapping ownership boundaries.
 layout.rect(X(0),Y(ny),nx*S,ny*S,None,INK,3)
 for y in (wy,ny-wy): layout.line(X(0),Y(y),X(nx),Y(y),INK,2)
 for x in (wx,nx-wx): layout.line(X(x),Y(wy),X(x),Y(ny-wy),INK,2)
 # Artificial boundaries of all five extended computation rectangles.
-for xa,xb,ya,yb in [(120,904,120,904),(0,1024,0,136),(0,1024,888,1024),(0,136,120,904),(888,1024,120,904)]:
+for xa,xb,ya,yb in [(120.5,904.5,120.5,904.5),(0,1024,0,136.5),(0,1024,888.5,1024),(0,136.5,120.5,904.5),(888.5,1024,120.5,904.5)]:
     if xa>0: layout.line(X(xa),Y(ya),X(xa),Y(yb),OVER,1,True)
     if xb<nx: layout.line(X(xb),Y(ya),X(xb),Y(yb),OVER,1,True)
     if ya>0: layout.line(X(xa),Y(ya),X(xb),Y(ya),OVER,1,True)
     if yb<ny: layout.line(X(xa),Y(yb),X(xb),Y(yb),OVER,1,True)
-layout.text(X(512),Y(960),'3  上细块   h=1   |   所有权节点 1024 × 128',30)
-layout.text(X(512),Y(64),'2  下细块   h=1   |   所有权节点 1024 × 128',30)
+layout.text(X(512),Y(960),'3  上细块   h=1   |   积分节点 1024 × 128',30)
+layout.text(X(512),Y(64),'2  下细块   h=1   |   积分节点 1024 × 128',30)
 layout.text(X(64),Y(585),'4\n左细块\nh=1',30)
 layout.text(X(960),Y(585),'5\n右细块\nh=1',30)
 layout.rect(X(265),Y(675),494*S,252*S,BLUE_FILL)
 layout.text(X(512),Y(638),'1  中心粗块',44)
 layout.text(X(512),Y(578),'h = 2   ·   Δt = 2',33)
 layout.text(X(512),Y(522),'物理范围 768 × 768',32)
-layout.text(X(512),Y(471),'所有权节点 384 × 384',32)
-layout.text(X(512),Y(298),'左右细块各为 128 × 768 个所有权节点',28,MUTED)
-layout.text(X(512),Y(252),'实线：不重复计数的分区边界    虚线：计算区边界',27,MUTED)
+layout.text(X(512),Y(471),'积分节点 385 × 385',32)
+layout.text(X(512),Y(298),'左右细块各为 128 × 768 个积分节点',28,MUTED)
+layout.text(X(512),Y(252),'实线：物理积分分区    虚线：人工边界节点行 / 列',26,MUTED)
 for tick in (0,128,896,1024):
     layout.line(X(tick),Y(0),X(tick),Y(0)+10,INK,2)
     layout.text(X(tick),Y(0)+34,str(tick),28)
@@ -138,66 +138,70 @@ layout.arrow(X(wx),1300,X(nx-wx),1300)
 layout.text(X(512),1340,'nx − 2×wallCellsX = 768',29)
 layout.arrow(185,Y(0),185,Y(wy))
 layout.text(165,Y(75),'wallCellsY\n=128',26,anchor='end')
-layout.text(750,1404,'概览网格线抽稀 32 倍；色带为实际比例的重叠区，统计与输出只计各块所有权区。',27,MUTED)
+layout.text(750,1404,'概览线条仅示意格距比例；重合点见放大图。积分按分区裁剪面积，不重复计入面积。',26,MUTED)
 layout.save('multiblock-layout')
 
-detail=Canvas(1500,1170,'左细块与中心粗块的真实格点；每块延伸8，共同覆盖16，人工边界分别重建两层节点。')
-detail.text(750,46,'左细块与中心粗块：接口放大',44)
-detail.text(750,102,'真实节点布置    ·    分区接口 x = 128    ·    所有长度以最细格距计',28,MUTED)
-ox,oy,scale=260,250,30
-def xx(x): return ox+(x-112)*scale
-def yy(y): return oy+(520-y)*scale
-detail.rect(xx(112),yy(520),16*scale,16*scale,FINE_FILL)
-detail.rect(xx(128),yy(520),16*scale,16*scale,BLUE_FILL)
-detail.rect(xx(120),yy(520),16*scale,16*scale,OVER_FILL)
-for x in range(112,137): detail.line(xx(x),yy(504),xx(x),yy(520),'#ead5be',1)
-for y in range(504,521): detail.line(xx(112),yy(y),xx(136),yy(y),'#ead5be',1)
-for x in range(120,145,2): detail.line(xx(x),yy(504),xx(x),yy(520),'#b7cbea',2)
-for y in range(504,521,2): detail.line(xx(120),yy(y),xx(144),yy(y),'#b7cbea',2)
-for x in range(112,136):
-    for y in range(504,520): detail.dot(xx(x+.5),yy(y+.5),3.7,ORANGE)
-for x in range(121,144,2):
-    for y in range(505,520,2): detail.dot(xx(x),yy(y),5,BLUE,True)
-detail.rect(xx(112),yy(520),32*scale,16*scale,None,GRID,2)
-detail.line(xx(128),yy(504),xx(128),yy(520),INK,3)
-detail.line(xx(120),yy(504),xx(120),yy(520),BLUE,3,True)
-detail.line(xx(136),yy(504),xx(136),yy(520),ORANGE,3,True)
-detail.text(xx(120),225,'粗块计算区起点',27)
-detail.text(xx(136),225,'细块计算区终点',27)
-detail.arrow(xx(120),177,xx(136),177,OVER)
-detail.text(xx(128),148,'共同覆盖宽度 = 16',29,OVER)
-for tick in (112,120,128,136,144): detail.text(xx(tick),762,str(tick),28)
-for tick in (504,512,520): detail.text(235,yy(tick),str(tick),27,anchor='end')
-detail.text(235,215,'y',28)
-detail.text(1260,762,'x',28)
-detail.dot(310,795,4,ORANGE); detail.text(328,795,'细节点 h=1',26,anchor='start')
-detail.dot(1050,795,5,BLUE,True); detail.text(1068,795,'粗节点 h=2',26,anchor='start')
-detail.arrow(xx(120),815,xx(128),815,BLUE)
-detail.arrow(xx(128),815,xx(136),815,ORANGE)
-detail.text(xx(124),851,'粗块向左延伸 8',26)
-detail.text(xx(132),851,'细块向右延伸 8',26)
-detail.text(750,890,'8 = overlapCells × refineRatio = 4 × 2',26)
-detail.text(750,929,'interfaceSkin = 2：人工边界重建的两层节点',29)
-detail.text(235,986,'粗块覆盖层',27,anchor='end')
-detail.rect(xx(120),972,24*scale,28,BLUE_FILL)
-detail.rect(xx(120),972,4*scale,28,BLUE)
-detail.text(650,986,'x∈[120,124]，2 个粗格，宽度 4',26,anchor='start')
-detail.text(235,1050,'细块覆盖层',27,anchor='end')
-detail.rect(xx(112),1036,24*scale,28,FINE_FILL)
-detail.rect(xx(134),1036,2*scale,28,ORANGE)
-detail.text(300,1050,'x∈[134,136]，2 个细格，宽度 2',26,anchor='start')
-detail.text(750,1125,'overlapCells 控制计算区延伸；interfaceSkin 控制人工边界覆盖，两者含义不同。',27,MUTED)
+detail=Canvas(1500,1220,'左细块与中心粗块的对齐格点；蓝框内橙点表示同坐标的粗细重合节点。')
+detail.text(750,46,'修改后：粗细节点重合的接口',44)
+detail.text(750,100,'粗节点是细节点的子集；蓝框内橙点 = 同一物理坐标、两块各自存储',28,MUTED)
+ox,oy,scale=200,280,34
+def xx(x): return ox+(x-112.5)*scale
+def yy(y): return oy+(520.5-y)*scale
+detail.rect(xx(112.5),yy(520.5),15.5*scale,12*scale,FINE_FILL)
+detail.rect(xx(128),yy(520.5),16.5*scale,12*scale,BLUE_FILL)
+detail.rect(xx(120.5),yy(520.5),16*scale,12*scale,OVER_FILL)
+# Lines pass through lattice nodes, not cell faces. Both levels share the .5 phase.
+for k in range(113,137): detail.line(xx(k+.5),yy(508.5),xx(k+.5),yy(520.5),'#e4cbb8',1)
+for k in range(509,520): detail.line(xx(112.5),yy(k+.5),xx(136.5),yy(k+.5),'#e4cbb8',1)
+for k in range(120,145,2): detail.line(xx(k+.5),yy(508.5),xx(k+.5),yy(520.5),'#a9bfdf',1)
+for k in range(508,521,2): detail.line(xx(120.5),yy(k+.5),xx(144.5),yy(k+.5),'#a9bfdf',1)
+detail.line(xx(128),yy(508.5),xx(128),yy(520.5),INK,2)
+detail.line(xx(128.5),yy(508.5),xx(128.5),yy(520.5),OVER,2,True)
+for k in range(112,137):
+    for l in range(508,521): detail.dot(xx(k+.5),yy(l+.5),4,ORANGE)
+for k in range(120,145,2):
+    for l in range(508,521,2): detail.rect(xx(k+.5)-8,yy(l+.5)-8,16,16,None,BLUE,2)
+detail.text(xx(120.5),244,'粗块首列 x=120.5',26)
+detail.text(xx(136.5),244,'细块末列 x=136.5',26)
+detail.arrow(xx(120.5),191,xx(136.5),191,OVER)
+detail.text(xx(128.5),155,'重叠节点范围 [120.5,136.5]，跨度 16',28,OVER)
+for tick in (112.5,120.5,128.5,136.5,144.5): detail.text(xx(tick),735,str(tick),27)
+for tick in (508.5,514.5,520.5): detail.text(175,yy(tick),str(tick),26,anchor='end')
+detail.text(160,235,'y',28); detail.text(1340,735,'x',28)
+detail.dot(205,795,4,ORANGE); detail.text(226,795,'细节点 h=1',27,anchor='start')
+detail.rect(575,787,16,16,None,BLUE,2); detail.text(607,795,'粗节点 h=2',27,anchor='start')
+detail.rect(965,787,16,16,None,BLUE,2); detail.dot(973,795,4,ORANGE)
+detail.text(997,795,'粗细重合点',27,anchor='start')
+detail.line(205,847,250,847,INK,2); detail.text(267,847,'实线 x=128：物理积分分区边界',26,anchor='start')
+detail.line(205,892,250,892,OVER,2,True); detail.text(267,892,'虚线 x=128.5：共同节点列，两侧各延伸 8',26,anchor='start')
+detail.text(750,945,'8 = overlapCells × refineRatio = 4 × 2；Δx粗 / Δx细 = Δt粗 / Δt细 = 2',27)
+detail.rect(140,987,1220,133,'#f5f7fa',GRID)
+detail.text(170,1017,'interfaceSkin = 2：每次重建人工边界的两层节点',28,anchor='start')
+detail.text(170,1068,'粗块首两列：120.5、122.5     |     细块末两列：135.5、136.5',27,anchor='start')
+detail.text(750,1170,'重合点直接取值并做矩重标定；非重合细点仍做空间插值。物理壁面半格距保持不变。',26,MUTED)
 detail.save('multiblock-interface')
 
 blocks=[]
 for name,xa,xb,ya,yb,h in [('1 中心',128,896,128,896,2),('2 下',0,1024,0,128,1),
                           ('3 上',0,1024,896,1024,1),('4 左',0,128,128,896,1),('5 右',896,1024,128,896,1)]:
-    comp=[max(0,xa-ov),min(nx,xb+ov),max(0,ya-ov),min(ny,yb+ov)]
-    blocks.append({'block':name,'owned_faces':[xa,xb,ya,yb], 'computed_faces':comp,'h':h,
-                   'owned_nodes':[(xb-xa)//h,(yb-ya)//h],
-                   'computed_nodes':[(comp[1]-comp[0])//h,(comp[3]-comp[2])//h]})
+    ext=[max(0,xa-ov),min(nx,xb+ov),max(0,ya-ov),min(ny,yb+ov)]
+    first=[ext[0]+.5,ext[2]+.5]
+    last=[ext[1]-.5 if ext[1]==nx else ext[1]+.5,ext[3]-.5 if ext[3]==ny else ext[3]+.5]
+    counts=[int((last[k]-first[k])/h)+1 for k in range(2)]
+    owned_counts=[]
+    for axis,(lo,hi) in enumerate([(xa,xb),(ya,yb)]):
+        weights=[max(0,min(hi,first[axis]+i*h+h/2)-max(lo,first[axis]+i*h-h/2)) for i in range(counts[axis])]
+        assert sum(weights)==hi-lo
+        assert abs(sum(w*(first[axis]+i*h) for i,w in enumerate(weights))-(hi*hi-lo*lo)/2)<1e-9
+        owned_counts.append(sum(w>0 for w in weights))
+    blocks.append({'block':name,'owned_faces':[xa,xb,ya,yb],'h':h,
+                   'first_computed_node':first,'last_computed_node':last,
+                   'integration_nodes':owned_counts,'computed_nodes':counts})
 manifest={'source_sha256':hashlib.sha256(SOURCE.read_bytes()).hexdigest(),'nx':nx,'ny':ny,
           'refineRatio':ratio,'wallCellsX':wx,'wallCellsY':wy,'overlapCells':overlap_cells,
-          'extension_fine_units':ov,'shared_overlap_fine_units':2*ov,'interfaceSkin':skin,'blocks':blocks}
+          'node_phase':0.5,'extension_from_reference_node':ov,'shared_node_span':2*ov,
+          'interfaceSkin':skin,'blocks':blocks,
+          'computed_node_total':sum(b['computed_nodes'][0]*b['computed_nodes'][1] for b in blocks),
+          'integration_sample_total':sum(b['integration_nodes'][0]*b['integration_nodes'][1] for b in blocks)}
 (HERE/'layout_parameters.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')
 print(json.dumps(manifest,ensure_ascii=False,indent=2))
