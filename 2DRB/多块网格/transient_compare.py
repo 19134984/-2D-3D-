@@ -52,13 +52,25 @@ uniformCold=np.mean((-8*(-.5)+9*tt[-1,:]-tt[-2,:])/3)*n
 coarse=np.loadtxt(md/'NuRe_2DOpenaccMultiblock.dat')
 metrics=np.array([uniformNu,uniformRe,uniformHot,uniformCold])
 actual=coarse[1:5]
+wide_src=src.replace('overlapCells=2','overlapCells=4')
+wd,we=v.compile_source('mb_wide_control',v.variant(wide_src,side=True),
+    v.uniform_driver().replace('step=1,40',f'step=1,{steps//2}').replace(v.state_writer(),'    call calNuRe()\n'),ra=10000)
+v.run([we],wd,timeout=180)
+wide_history=np.loadtxt(wd/'NuRe_2DOpenaccMultiblock.dat')
+assert np.all(np.isfinite(wide_history))
+wide_metrics=wide_history[1:5]
 result={'case':'side-heated, EnableUseG, Ra=1e4, Pr=0.7, Ma=0.1',
-        'layout':'aligned nested nodes, snapshot v2, clipped integration weights',
+        'layout':'pre-collision buffers, overlapCells=2, aligned nested nodes, snapshot v2, clipped integration weights',
         'fine_equivalent_grid':[n,n],'fine_steps':steps,'t_ff':float(tff),
         'field_order':['u','v','T','rho'],'field_relative_l2':np.sqrt(num/denom).tolist(),
         'field_max_abs':maxerr.tolist(),'metric_order':['NuVolAvg','ReVolRMS','Nu_hot','Nu_cold'],
         'uniform':metrics.tolist(),'multiblock':actual.tolist(),
         'relative_metric_difference':(np.abs(actual-metrics)/np.abs(metrics)).tolist(),
+        'width_control':{'same_pre_collision_scheme':True,'default_overlapCells':2,'control_overlapCells':4,
+            'control_metrics':wide_metrics.tolist(),
+            'relative_difference_narrow_vs_wide':(np.abs(actual-wide_metrics)/np.abs(wide_metrics)).tolist(),
+            'relative_mass_drift_narrow':float(abs(coarse[6]/(n*n)-1)),
+            'relative_mass_drift_wide':float(abs(wide_history[6]/(n*n)-1))},
         'source_sha256':v.hashlib.sha256(v.SOURCE.read_bytes()).hexdigest(),
         'parent_sha256':v.hashlib.sha256(v.PARENT.read_bytes()).hexdigest(),
         'device':'OpenACC host','build_directory':str(v.BUILD),

@@ -1,14 +1,14 @@
 {
-  "source_sha256": "496508d1d2a218123624ba9f5c2fe39662e68824d8b553dff2c845ed61ca060d",
+  "source_sha256": "95661c9bab2cf0f47a4f47ed5cd4fc4e9a0860106bf182cedd5b84fd10d3365b",
   "nx": 1024,
   "ny": 1024,
   "refineRatio": 2,
-  "wallCellsX": 128,
-  "wallCellsY": 128,
-  "overlapCells": 4,
+  "fineLayerCellsLeftRight": 128,
+  "fineLayerCellsBottomTop": 128,
+  "overlapCells": 2,
   "node_phase": 0.5,
-  "extension_from_reference_node": 8,
-  "shared_node_span": 16,
+  "extension_from_reference_node": 4,
+  "shared_node_span": 8,
   "interfaceSkin": 2,
   "blocks": [
     {
@@ -21,20 +21,20 @@
       ],
       "h": 2,
       "first_computed_node": [
-        120.5,
-        120.5
+        124.5,
+        124.5
       ],
       "last_computed_node": [
-        904.5,
-        904.5
+        900.5,
+        900.5
       ],
       "integration_nodes": [
         385,
         385
       ],
       "computed_nodes": [
-        393,
-        393
+        389,
+        389
       ]
     },
     {
@@ -52,7 +52,7 @@
       ],
       "last_computed_node": [
         1023.5,
-        136.5
+        132.5
       ],
       "integration_nodes": [
         1024,
@@ -60,7 +60,7 @@
       ],
       "computed_nodes": [
         1024,
-        137
+        133
       ]
     },
     {
@@ -74,7 +74,7 @@
       "h": 1,
       "first_computed_node": [
         0.5,
-        888.5
+        892.5
       ],
       "last_computed_node": [
         1023.5,
@@ -86,7 +86,7 @@
       ],
       "computed_nodes": [
         1024,
-        136
+        132
       ]
     },
     {
@@ -100,19 +100,19 @@
       "h": 1,
       "first_computed_node": [
         0.5,
-        120.5
+        124.5
       ],
       "last_computed_node": [
-        136.5,
-        904.5
+        132.5,
+        900.5
       ],
       "integration_nodes": [
         128,
         768
       ],
       "computed_nodes": [
-        137,
-        785
+        133,
+        777
       ]
     },
     {
@@ -125,23 +125,23 @@
       ],
       "h": 1,
       "first_computed_node": [
-        888.5,
-        120.5
+        892.5,
+        124.5
       ],
       "last_computed_node": [
         1023.5,
-        904.5
+        900.5
       ],
       "integration_nodes": [
         128,
         768
       ],
       "computed_nodes": [
-        136,
-        785
+        132,
+        777
       ]
     }
   ],
-  "computed_node_total": 648306,
+  "computed_node_total": 628586,
   "integration_sample_total": 606977
 }

@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+#PBS -N T9B02R900
+#PBS -q batch
+#PBS -l nodes=node05:ppn=1
+#PBS -l walltime=48:00:00
+#PBS -o /data2/XLLi/LBMCDE/THRERMAL-D2Q9TRT-TEST/FLOW_BGK_CHI_EQUAL_SCAN/Ra1e10_t100_latest/chinu0.2_chikappa0.2/continuation_t300_latest/continuation_t1000_latest/resume_t900_to1000_20260912/results/pbs.stdout
+#PBS -e /data2/XLLi/LBMCDE/THRERMAL-D2Q9TRT-TEST/FLOW_BGK_CHI_EQUAL_SCAN/Ra1e10_t100_latest/chinu0.2_chikappa0.2/continuation_t300_latest/continuation_t1000_latest/resume_t900_to1000_20260912/results/pbs.stderr
+set -u
+CASE=/data2/XLLi/LBMCDE/THRERMAL-D2Q9TRT-TEST/FLOW_BGK_CHI_EQUAL_SCAN/Ra1e10_t100_latest/chinu0.2_chikappa0.2/continuation_t300_latest/continuation_t1000_latest/resume_t900_to1000_20260912
+cd "$CASE/results" || exit 90
+export PATH=/opt/nvidia/hpc_sdk/Linux_x86_64/24.3/compilers/bin:$PATH
+export LD_LIBRARY_PATH=/opt/nvidia/hpc_sdk/Linux_x86_64/24.3/compilers/lib:${LD_LIBRARY_PATH:-}
+export CUDA_VISIBLE_DEVICES=0 OMP_NUM_THREADS=1 ACC_DEVICE_TYPE=nvidia
+date -Is > timing.txt
+sha256sum "$CASE/source/solver.F90" > runtime_source.sha256
+nvfortran -cpp -O3 -acc -gpu=cc60 -Minfo=accel "$CASE/source/solver.F90" -o solver.exe > compile.log 2>&1
+rc=$?
+printf '%s\n' "$rc" > compile.status
+if [ "$rc" -ne 0 ]; then printf '125\n' > run.status; exit "$rc"; fi
+./solver.exe > solver.stdout 2>&1
+rc=$?
+if grep -Eq 'NONFINITE_ABORT' solver.stdout; then rc=86
+elif grep -Eq '^[[:space:]]*Error:' solver.stdout; then rc=87; fi
+printf '%s\n' "$rc" > run.status
+date -Is >> timing.txt
+exit "$rc"
+

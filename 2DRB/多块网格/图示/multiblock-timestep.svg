@@ -1,0 +1,33 @@
+<?xml version='1.0' encoding='utf-8'?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="1170" viewBox="0 0 1500 1170" role="img">
+  <title>一次粗步：先准备碰撞前缓冲，粗步为2、细步为1，在t+2同步。</title>
+  <rect x="0" y="0" width="1500" height="1170" fill="#ffffff" stroke="none" stroke-width="1" />
+  <text x="750" y="48" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="43" fill="#243147" text-anchor="middle" dominant-baseline="central">读懂一次粗步：数据先到，节点再碰撞</text>
+  <text x="750" y="104" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="29" fill="#536277" text-anchor="middle" dominant-baseline="central">refineRatio = 2    |    以下时间以一个细步为单位</text>
+  <rect x="55" y="170" width="1390" height="137" fill="#f1f4f8" stroke="#d7dee8" stroke-width="1" />
+  <text x="82" y="207" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="29" fill="#243147" text-anchor="start" dominant-baseline="central">入口</text>
+  <text x="330" y="208" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="29" fill="#243147" text-anchor="start" dominant-baseline="central">两级都在 t；初始交换或上次同步已准备好缓冲</text>
+  <text x="330" y="261" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="25" fill="#536277" text-anchor="start" dominant-baseline="central">交换量来自迁移后的 f、g，供接下来的碰撞使用</text>
+  <text x="750" y="323" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="29" fill="#536277" text-anchor="middle" dominant-baseline="central">↓</text>
+  <rect x="55" y="345" width="1390" height="137" fill="#e8f0fc" stroke="#d7dee8" stroke-width="1" />
+  <text x="82" y="382" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="29" fill="#243147" text-anchor="start" dominant-baseline="central">① 粗块预测</text>
+  <text x="330" y="383" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="29" fill="#243147" text-anchor="start" dominant-baseline="central">粗块：碰撞 → 迁移 → 原温度推进，到达 t+2</text>
+  <text x="330" y="436" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="25" fill="#536277" text-anchor="start" dominant-baseline="central">保留 t−2、t、t+2 三个粗时间层；来源点排除两层人工边界</text>
+  <text x="750" y="498" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="29" fill="#536277" text-anchor="middle" dominant-baseline="central">↓</text>
+  <rect x="55" y="520" width="1390" height="137" fill="#fff1de" stroke="#d7dee8" stroke-width="1" />
+  <text x="82" y="557" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="29" fill="#243147" text-anchor="start" dominant-baseline="central">② 细块第一步</text>
+  <text x="330" y="558" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="29" fill="#243147" text-anchor="start" dominant-baseline="central">准备 t 的接口 → 碰撞、迁移及温度推进 → t+1</text>
+  <text x="330" y="611" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="25" fill="#536277" text-anchor="start" dominant-baseline="central">同级读取 t 快照；跨级读取粗块 t 快照，不能直接用 t+2</text>
+  <text x="750" y="673" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="29" fill="#536277" text-anchor="middle" dominant-baseline="central">↓</text>
+  <rect x="55" y="695" width="1390" height="137" fill="#fff1de" stroke="#d7dee8" stroke-width="1" />
+  <text x="82" y="732" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="29" fill="#243147" text-anchor="start" dominant-baseline="central">③ 细块第二步</text>
+  <text x="330" y="733" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="29" fill="#243147" text-anchor="start" dominant-baseline="central">准备 t+1 的接口 → 碰撞、迁移及温度推进 → t+2</text>
+  <text x="330" y="786" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="25" fill="#536277" text-anchor="start" dominant-baseline="central">同级读取 t+1 快照；跨级由三个粗时间层插值到 t+1</text>
+  <text x="750" y="848" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="29" fill="#536277" text-anchor="middle" dominant-baseline="central">↓</text>
+  <rect x="55" y="870" width="1390" height="137" fill="#f5dbe8" stroke="#d7dee8" stroke-width="1" />
+  <text x="82" y="907" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="29" fill="#243147" text-anchor="start" dominant-baseline="central">④ 同步</text>
+  <text x="330" y="908" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="29" fill="#243147" text-anchor="start" dominant-baseline="central">细 → 粗修复粗缓冲；再补齐细缓冲，均在 t+2</text>
+  <text x="330" y="961" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="25" fill="#536277" text-anchor="start" dominant-baseline="central">滚动历史，时钟增加2；此时输出、存检查点或开始下一个粗步</text>
+  <text x="750" y="1070" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="29" fill="#243147" text-anchor="middle" dominant-baseline="central">中间时刻：Q(t+1) = −Q(t−2)/8 + 3Q(t)/4 + 3Q(t+2)/8</text>
+  <text x="750" y="1125" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="26" fill="#536277" text-anchor="middle" dominant-baseline="central">首个粗步缺少 t−2，使用 t 与 t+2 的平均值启动；收到的缓冲节点必须参加碰撞。</text>
+</svg>
