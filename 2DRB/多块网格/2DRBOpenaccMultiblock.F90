@@ -228,9 +228,17 @@
 
     !===============================================================================================
     ! 初始化：构造计算块、积分分区及接口连接
+
+    !===============================================================================================
+    ! 子程序: initial
+    ! 作用: 初始化网格、积分分区与接口连接
+    !===============================================================================================
     subroutine initial()
-        integer(kind=4) :: b,k,overlap
-        real(kind=8) :: totalArea,xLeft,xRight,yBottom,yTop,xSplit,ySplit
+
+        implicit none
+
+        integer(kind=4) :: b, k, overlap
+        real(kind=8) :: totalArea, xLeft, xRight, yBottom, yTop, xSplit, ySplit
 
         if (refineRatio<1) error stop 'refineRatio must be a positive integer'
         if (min(nx,ny)<8) error stop 'At least 8 cells per direction are required'
@@ -247,7 +255,7 @@
         omegaT(1:4) = (thermalA+4.0d0)/20.0d0
         if (refineRatio==1) then
             nBlocks = 1
-            call make_block(blocks(1),0.0d0,dble(nx),0.0d0,dble(ny),1,0,0)
+            call make_block(blocks(1), 0.0d0, dble(nx), 0.0d0, dble(ny), 1, 0, 0)
         else
 #if defined(VerticalWallsPeriodicalU) || defined(VerticalWallsPeriodicalT)
             error stop 'Multiblock periodic sides require a periodic block topology; use wall BCs or refineRatio=1'
@@ -272,11 +280,11 @@
             ! 计算块：中心、下、上、左、右。细块基准保持用户指定的接口细节点坐标。
             ! make_block 先确定各块 baseBox，再向邻块延伸 overlap；统计分区随后单独设置。
             ! 最后一个 2 表示粗块历史下标 0:2（三个时间层），与粗细比无关。
-            call make_block(blocks(1),xLeft,xRight,yBottom,yTop,refineRatio,overlap,2)
-            call make_block(blocks(2),0.0d0,dble(nx),0.0d0,yBottom,1,overlap,0)
-            call make_block(blocks(3),0.0d0,dble(nx),yTop,dble(ny),1,overlap,0)
-            call make_block(blocks(4),0.0d0,xLeft,yBottom,yTop,1,overlap,0)
-            call make_block(blocks(5),xRight,dble(nx),yBottom,yTop,1,overlap,0)
+            call make_block(blocks(1), xLeft, xRight, yBottom, yTop, refineRatio, overlap, 2)
+            call make_block(blocks(2), 0.0d0, dble(nx), 0.0d0, yBottom, 1, overlap, 0)
+            call make_block(blocks(3), 0.0d0, dble(nx), yTop, dble(ny), 1, overlap, 0)
+            call make_block(blocks(4), 0.0d0, xLeft, yBottom, yTop, 1, overlap, 0)
+            call make_block(blocks(5), xRight, dble(nx), yBottom, yTop, 1, overlap, 0)
             ! 统计分界取粗细共址的粗块基准边界，默认右/上为897.5，而细块基准仍为896.5。
             ! 上细块及左右细块共用 ySplit，右细块与中心共用 xSplit，角部不重复也不漏算。
             xSplit = blocks(1)%baseBox(2)
@@ -290,8 +298,10 @@
         do b = 1,nBlocks
             ! 以最终统计分区统一生成权重；中心两端均为粗节点，自动得到端点半权重的梯形积分。
             associate(bl=>blocks(b))
-                call integration_weights(bl%ni,bl%x0,bl%h,bl%ownedBox(1),bl%ownedBox(2),bl%dxWeight,bl%ilo,bl%ihi)
-                call integration_weights(bl%nj,bl%y0,bl%h,bl%ownedBox(3),bl%ownedBox(4),bl%dyWeight,bl%jlo,bl%jhi)
+                call integration_weights(bl%ni, bl%x0, bl%h, bl%ownedBox(1), bl%ownedBox(2), bl%dxWeight, &
+                    bl%ilo, bl%ihi)
+                call integration_weights(bl%nj, bl%y0, bl%h, bl%ownedBox(3), bl%ownedBox(4), bl%dyWeight, &
+                    bl%jlo, bl%jhi)
             end associate
             call initial_block(blocks(b))
             totalArea = totalArea+sum(blocks(b)%dxWeight)*sum(blocks(b)%dyWeight)
@@ -349,14 +359,25 @@
             call check_history()
         endif
     end subroutine initial
+    !===============================================================================================
+
+
 
     !===============================================================================================
     ! 计算块：先对齐粗块基准边界，再向外延伸重叠层
-    subroutine make_block(b,xlo,xhi,ylo,yhi,spacing,overlap,nh)
+
+    !===============================================================================================
+    ! 子程序: make_block
+    ! 作用: 生成块的基准边界、计算节点与存储数组
+    !===============================================================================================
+    subroutine make_block(b, xlo, xhi, ylo, yhi, spacing, overlap, nh)
+
+        implicit none
+
         type(gridBlock), intent(out) :: b
-        real(kind=8), intent(in) :: xlo,xhi,ylo,yhi
-        integer(kind=4), intent(in) :: spacing,overlap,nh
-        real(kind=8) :: xb,xe,yb,ye
+        real(kind=8), intent(in) :: xlo, xhi, ylo, yhi
+        integer(kind=4), intent(in) :: spacing, overlap, nh
+        real(kind=8) :: xb, xe, yb, ye
 
         b%h = dble(spacing)
         b%ownedBox = [xlo,xhi,ylo,yhi]
@@ -402,16 +423,27 @@
         allocate(b%up(b%ni,b%nj),b%vp(b%ni,b%nj),b%Tp(b%ni,b%nj))
 #endif
     end subroutine make_block
+    !===============================================================================================
+
+
 
     !===============================================================================================
     ! 积分权重：保证分区面积与线性坐标积分准确
-    subroutine integration_weights(n,origin,h,lo,hi,w,first,last)
+
+    !===============================================================================================
+    ! 子程序: integration_weights
+    ! 作用: 构造一维积分权重并检查总长度和一阶矩
+    !===============================================================================================
+    subroutine integration_weights(n, origin, h, lo, hi, w, first, last)
+
+        implicit none
+
         integer(kind=4), intent(in) :: n
-        real(kind=8), intent(in) :: origin,h,lo,hi
+        real(kind=8), intent(in) :: origin, h, lo, hi
         real(kind=8), intent(out) :: w(n)
-        integer(kind=4), intent(out) :: first,last
+        integer(kind=4), intent(out) :: first, last
         integer(kind=4) :: i
-        real(kind=8) :: firstMoment,x,shift
+        real(kind=8) :: firstMoment, x, shift
 
         first = n+1
         last = 0
@@ -441,13 +473,24 @@
         if (abs(firstMoment-0.5d0*(hi**2-lo**2))>1.0d-9*max(1.0d0,abs(firstMoment))) &
             error stop 'Integration weights do not integrate a linear coordinate exactly'
     end subroutine integration_weights
+    !===============================================================================================
+
+
 
     !===============================================================================================
     ! 初始化各块的流场、温度场和分布函数
+
+    !===============================================================================================
+    ! 子程序: initial_block
+    ! 作用: 初始化各块的宏观量与分布函数
+    !===============================================================================================
     subroutine initial_block(b)
+
+        implicit none
+
         type(gridBlock), intent(inout) :: b
-        integer(kind=4) :: i,j,a
-        real(kind=8) :: x,y
+        integer(kind=4) :: i, j, a
+        real(kind=8) :: x, y
 
         b%u = 0.0d0
         b%v = 0.0d0
@@ -484,35 +527,55 @@
         b%Tp = b%T
 #endif
     end subroutine initial_block
+    !===============================================================================================
+
+
 
     !===============================================================================================
     ! OpenACC 数据区：传入数组并准备首次碰撞的接口状态
+
+    !===============================================================================================
+    ! 子程序: enter_data_2d_openacc
+    ! 作用: 建立设备数据区并准备初始接口状态
+    !===============================================================================================
     subroutine enter_data_2d_openacc()
-        integer(kind=4) :: b,l
+
+        implicit none
+
+        integer(kind=4) :: b, l
         !$acc enter data copyin(ex,ey,omega,omegaT)
         do b = 1,nBlocks
-            call block_device_data(blocks(b),.true.)
+            call block_device_data(blocks(b), .true.)
         enddo
         do l = 1,nLinks
-            call link_device_data(links(l),.true.)
+            call link_device_data(links(l), .true.)
         enddo
         if (loadInitField==0) then
             do b = 1,nBlocks
-                call pack_block(blocks(b),min(1,blocks(b)%nh))
+                call pack_block(blocks(b), min(1,blocks(b)%nh))
             enddo
             if (nBlocks>1) then
                 ! 首次碰撞前补齐两级接口。两次交换均读取同一份初始快照，不依赖块处理顺序。
-                call exchange_interfaces(.true.,[0.0d0,1.0d0,0.0d0])
-                call exchange_interfaces(.false.,[0.0d0,1.0d0,0.0d0])
+                call exchange_interfaces(.true., [0.0d0,1.0d0,0.0d0])
+                call exchange_interfaces(.false., [0.0d0,1.0d0,0.0d0])
                 do b = 1,nBlocks
-                    call pack_block(blocks(b),min(1,blocks(b)%nh))
+                    call pack_block(blocks(b), min(1,blocks(b)%nh))
                 enddo
             endif
         endif
     end subroutine enter_data_2d_openacc
+    !===============================================================================================
+
+
 
     !===============================================================================================
-    subroutine block_device_data(b,entering)
+    ! 子程序: block_device_data
+    ! 作用: 管理单个计算块的设备数组
+    !===============================================================================================
+    subroutine block_device_data(b, entering)
+
+        implicit none
+
         type(gridBlock), intent(inout) :: b
         logical, intent(in) :: entering
         ! 仅映射实际数组，不将含 allocatable 成员的宿主派生类型传给 GPU 内核。
@@ -525,9 +588,18 @@
             endif
         end associate
     end subroutine block_device_data
+    !===============================================================================================
+
+
 
     !===============================================================================================
-    subroutine link_device_data(l,entering)
+    ! 子程序: link_device_data
+    ! 作用: 管理接口连接的设备数组
+    !===============================================================================================
+    subroutine link_device_data(l, entering)
+
+        implicit none
+
         type(blockLink), intent(inout) :: l
         logical, intent(in) :: entering
         associate(ti=>l%ti,tj=>l%tj,si=>l%si,sj=>l%sj,wx=>l%wx,wy=>l%wy,val=>l%values,same=>l%coincident)
@@ -538,9 +610,18 @@
             endif
         end associate
     end subroutine link_device_data
+    !===============================================================================================
+
+
 
     !===============================================================================================
-    subroutine update_host_block(b,full)
+    ! 子程序: update_host_block
+    ! 作用: 将指定块的设备状态更新到主机
+    !===============================================================================================
+    subroutine update_host_block(b, full)
+
+        implicit none
+
         type(gridBlock), intent(inout) :: b
         logical, intent(in) :: full
         associate(f=>b%f,g=>b%g,u=>b%u,v=>b%v,T=>b%T,rho=>b%rho,Fx=>b%Fx,Fy=>b%Fy, &
@@ -551,57 +632,97 @@
             endif
         end associate
     end subroutine update_host_block
+    !===============================================================================================
+
+
 
     !===============================================================================================
+    ! 子程序: update_host_all
+    ! 作用: 将全部计算块的设备状态更新到主机
+    !===============================================================================================
     subroutine update_host_all(full)
+
+        implicit none
+
         logical, intent(in) :: full
         integer(kind=4) :: b
 
         do b = 1,nBlocks
-            call update_host_block(blocks(b),full)
+            call update_host_block(blocks(b), full)
         enddo
         !$acc wait(1)
     end subroutine update_host_all
+    !===============================================================================================
+
+
 
     !===============================================================================================
+    ! 子程序: exit_data_2d_openacc
+    ! 作用: 释放接口与计算块的设备数组
+    !===============================================================================================
     subroutine exit_data_2d_openacc()
-        integer(kind=4) :: b,l
+
+        implicit none
+
+        integer(kind=4) :: b, l
         !$acc wait(1)
         do l = 1,nLinks
-            call link_device_data(links(l),.false.)
+            call link_device_data(links(l), .false.)
         enddo
         do b = 1,nBlocks
-            call block_device_data(blocks(b),.false.)
+            call block_device_data(blocks(b), .false.)
         enddo
         !$acc exit data delete(ex,ey,omega,omegaT)
     end subroutine exit_data_2d_openacc
+    !===============================================================================================
+
+
 
     !===============================================================================================
     ! 块内推进：保持原流场与温度场的执行次序
+
+    !===============================================================================================
+    ! 子程序: advance_block
+    ! 作用: 按原算法次序推进单个计算块
+    !===============================================================================================
     subroutine advance_block(b)
+
+        implicit none
+
         type(gridBlock), intent(inout) :: b
         ! 原文件的执行次序保持不变。粗块的 dt 已吸收到松弛率及力增量中。
         ! 入口：人工边界已重建为本时刻的碰撞前状态；缓冲节点与内部节点一样参与碰撞。
         ! 出口：最外两层只作为待重建缓冲，不允许充当 donor；原算法的内部结果保留。
-        call collision(b%ni,b%nj,b%f,b%f_post,b%rho,b%u,b%v,b%Fx,b%Fy,b%T,b%sn,b%sq,b%gb &
+        call collision(b%ni, b%nj, b%f, b%f_post, b%rho, b%u, b%v, b%Fx, b%Fy, b%T, b%sn, b%sq, b%gb &
 #ifdef SideHeatedHa
             ,b%h*B2sigemarho &
 #endif
             )
-        call streaming(b%ni,b%nj,b%f,b%f_post)
-        call bounceback(b%ni,b%nj,b%f,b%f_post,b%wall(1),b%wall(2),b%wall(3),b%wall(4))
-        call macro(b%ni,b%nj,b%f,b%rho,b%u,b%v,b%Fx,b%Fy)
-        call collisionT(b%ni,b%nj,b%g,b%g_post,b%u,b%v,b%T,b%Bx_prev,b%By_prev,b%qk,b%qn)
-        call streamingT(b%ni,b%nj,b%g,b%g_post)
-        call bouncebackT(b%ni,b%nj,b%g,b%g_post,b%wall(1),b%wall(2),b%wall(3),b%wall(4))
-        call macroT(b%ni,b%nj,b%g,b%T)
+        call streaming(b%ni, b%nj, b%f, b%f_post)
+        call bounceback(b%ni, b%nj, b%f, b%f_post, b%wall(1), b%wall(2), b%wall(3), b%wall(4))
+        call macro(b%ni, b%nj, b%f, b%rho, b%u, b%v, b%Fx, b%Fy)
+        call collisionT(b%ni, b%nj, b%g, b%g_post, b%u, b%v, b%T, b%Bx_prev, b%By_prev, b%qk, b%qn)
+        call streamingT(b%ni, b%nj, b%g, b%g_post)
+        call bouncebackT(b%ni, b%nj, b%g, b%g_post, b%wall(1), b%wall(2), b%wall(3), b%wall(4))
+        call macroT(b%ni, b%nj, b%g, b%T)
     end subroutine advance_block
+    !===============================================================================================
+
+
 
     !===============================================================================================
     ! 多块推进：粗块预测、细块子步及两级同步
+
+    !===============================================================================================
+    ! 子程序: advance_multiblock
+    ! 作用: 执行粗块预测、细步推进和同步交换
+    !===============================================================================================
     subroutine advance_multiblock()
-        integer(kind=4) :: b,k
-        real(kind=8) :: theta,wt(0:2)
+
+        implicit none
+
+        integer(kind=4) :: b, k
+        real(kind=8) :: theta, wt(0:2)
 
         if (nBlocks==1) then
             call advance_block(blocks(1))
@@ -611,29 +732,38 @@
         ! 1. 入口是粗细同步的 t 时刻。粗块缓冲已在初始交换或上次同步时补齐。
         ! 2. 粗块先预测 t+dt_c；p(:,:,:,0:2) 分别代表 t-dt_c、t、t+dt_c。
         call advance_block(blocks(1))
-        call pack_block(blocks(1),2)
+        call pack_block(blocks(1), 2)
         do k = 1,refineRatio
             ! 3. 第 k 个细子步在 t+(k-1)*dt_f 开始：先补齐该时刻的碰撞前缓冲，再推进。
             ! 同级 donor 使用上一个子步结束的快照；粗级 donor 按三个粗时间层插值。
             theta = dble(k-1)/dble(refineRatio)
-            call coarse_time_weights(theta,wt)
-            call exchange_interfaces(.false.,wt)
+            call coarse_time_weights(theta, wt)
+            call exchange_interfaces(.false., wt)
             do b = 2,nBlocks
                 call advance_block(blocks(b))
-                call pack_block(blocks(b),0)
+                call pack_block(blocks(b), 0)
             enddo
         enddo
         ! 4. 两级均到 t+dt_c：细->粗修复粗缓冲，随后补齐细缓冲，供下次碰撞和同步输出使用。
-        call exchange_interfaces(.true.,[0.0d0,0.0d0,1.0d0])
-        call pack_block(blocks(1),2)
-        call exchange_interfaces(.false.,[0.0d0,0.0d0,1.0d0])
+        call exchange_interfaces(.true., [0.0d0,0.0d0,1.0d0])
+        call pack_block(blocks(1), 2)
+        call exchange_interfaces(.false., [0.0d0,0.0d0,1.0d0])
         ! 5. 只在同步点滚动历史和整数时钟，重启文件必须保存完整历史。
-        call rotate_coarse_history(blocks(1)%ni,blocks(1)%nj,blocks(1)%p)
+        call rotate_coarse_history(blocks(1)%ni, blocks(1)%nj, blocks(1)%p)
         itc = itc+refineRatio
     end subroutine advance_multiblock
+    !===============================================================================================
+
+
 
     !===============================================================================================
-    subroutine coarse_time_weights(theta,wt)
+    ! 子程序: coarse_time_weights
+    ! 作用: 计算粗时间层到细子步起点的插值权重
+    !===============================================================================================
+    subroutine coarse_time_weights(theta, wt)
+
+        implicit none
+
         real(kind=8), intent(in) :: theta
         real(kind=8), intent(out) :: wt(0:2)
         ! theta 是当前细子步起点相对粗步起点的时间，不能使用子步终点时间。
@@ -643,12 +773,21 @@
             wt = [0.5d0*theta*(theta-1.0d0),1.0d0-theta**2,0.5d0*theta*(theta+1.0d0)]
         endif
     end subroutine coarse_time_weights
+    !===============================================================================================
+
+
 
     !===============================================================================================
-    subroutine rotate_coarse_history(ni,nj,p)
-        integer(kind=4), intent(in) :: ni,nj
+    ! 子程序: rotate_coarse_history
+    ! 作用: 滚动保存粗块的三个时间层
+    !===============================================================================================
+    subroutine rotate_coarse_history(ni, nj, p)
+
+        implicit none
+
+        integer(kind=4), intent(in) :: ni, nj
         real(kind=8), intent(inout) :: p(ni,nj,packetSize,0:2)
-        integer(kind=4) :: i,j,k
+        integer(kind=4) :: i, j, k
         !$acc parallel loop collapse(3) present(p) async(1)
         do k = 1,packetSize
             do j = 1,nj
@@ -659,28 +798,48 @@
             enddo
         enddo
     end subroutine rotate_coarse_history
+    !===============================================================================================
+
+
 
     !===============================================================================================
-    logical function skin_node(b,i,j)
+    ! 函数: skin_node
+    ! 作用: 判断节点是否属于人工边界缓冲层
+    !===============================================================================================
+    logical function skin_node(b, i, j)
+
+        implicit none
+
         type(gridBlock), intent(in) :: b
-        integer(kind=4), intent(in) :: i,j
+        integer(kind=4), intent(in) :: i, j
 
         skin_node = (.not.b%wall(1) .and. i<=interfaceSkin) .or. &
             (.not.b%wall(2) .and. i>b%ni-interfaceSkin) .or. &
             (.not.b%wall(3) .and. j<=interfaceSkin) .or. &
             (.not.b%wall(4) .and. j>b%nj-interfaceSkin)
     end function skin_node
+    !===============================================================================================
+
+
 
     !===============================================================================================
     ! 接口来源：排除人工边界缓冲层，检查实际插值模板
-    subroutine donor_stencil(receiver,x,y,donor,si,sj,wx,wy,coincident)
+
+    !===============================================================================================
+    ! 子程序: donor_stencil
+    ! 作用: 选择合法来源块及空间插值模板
+    !===============================================================================================
+    subroutine donor_stencil(receiver, x, y, donor, si, sj, wx, wy, coincident)
+
+        implicit none
+
         integer(kind=4), intent(in) :: receiver
-        real(kind=8), intent(in) :: x,y
-        integer(kind=4), intent(out) :: donor,si,sj
-        real(kind=8), intent(out) :: wx(4),wy(4)
+        real(kind=8), intent(in) :: x, y
+        integer(kind=4), intent(out) :: donor, si, sj
+        real(kind=8), intent(out) :: wx(4), wy(4)
         logical, intent(out) :: coincident
-        integer(kind=4) :: d,il,ih,jl,jh,is,js
-        real(kind=8) :: qx,qy,score,best
+        integer(kind=4) :: d, il, ih, jl, jh, is, js
+        real(kind=8) :: qx, qy, score, best
 
         best = -huge(1.0d0)
         donor = 0
@@ -716,8 +875,8 @@
                 wx = [1.0d0,0.0d0,0.0d0,0.0d0]
                 wy = wx
             else
-                call lagrange_weights(qx-dble(is),wx)
-                call lagrange_weights(qy-dble(js),wy)
+                call lagrange_weights(qx-dble(is), wx)
+                call lagrange_weights(qy-dble(js), wy)
             endif
         enddo
         if (donor==0) then
@@ -725,12 +884,21 @@
             error stop 'Invalid overlap geometry'
         endif
     end subroutine donor_stencil
+    !===============================================================================================
+
+
 
     !===============================================================================================
-    subroutine lagrange_weights(q,w)
+    ! 子程序: lagrange_weights
+    ! 作用: 计算四点拉格朗日插值权重
+    !===============================================================================================
+    subroutine lagrange_weights(q, w)
+
+        implicit none
+
         real(kind=8), intent(in) :: q
         real(kind=8), intent(out) :: w(4)
-        integer(kind=4) :: a,k
+        integer(kind=4) :: a, k
 
         w = 1.0d0
         do a = 0,3
@@ -739,19 +907,28 @@
             enddo
         enddo
     end subroutine lagrange_weights
+    !===============================================================================================
+
+
 
     !===============================================================================================
-    subroutine section_weights(q,n,first,w,dw)
+    ! 子程序: section_weights
+    ! 作用: 计算指定截面的插值及导数权重
+    !===============================================================================================
+    subroutine section_weights(q, n, first, w, dw)
+
+        implicit none
+
         real(kind=8), intent(in) :: q
         integer(kind=4), intent(in) :: n
         integer(kind=4), intent(out) :: first
-        real(kind=8), intent(out) :: w(4),dw(4)
-        real(kind=8) :: z,term
-        integer(kind=4) :: a,k,l
+        real(kind=8), intent(out) :: w(4), dw(4)
+        real(kind=8) :: z, term
+        integer(kind=4) :: a, k, l
 
         first = max(1,min(floor(q)-1,n-3))
         z = q-dble(first)
-        call lagrange_weights(z,w)
+        call lagrange_weights(z, w)
         dw = 0.0d0
         do a = 0,3
             do k = 0,3
@@ -764,12 +941,23 @@
             enddo
         enddo
     end subroutine section_weights
+    !===============================================================================================
+
+
 
     !===============================================================================================
     ! 建立各块之间的接收节点、来源节点和空间权重
+
+    !===============================================================================================
+    ! 子程序: build_links
+    ! 作用: 建立接收节点与来源节点之间的连接
+    !===============================================================================================
     subroutine build_links()
-        integer(kind=4) :: b,d,i,j,l,n,si,sj,counts(maxBlocks,maxBlocks),idx(maxBlocks,maxBlocks)
-        real(kind=8) :: x,y,wx(4),wy(4)
+
+        implicit none
+
+        integer(kind=4) :: b, d, i, j, l, n, si, sj, counts(maxBlocks,maxBlocks), idx(maxBlocks,maxBlocks)
+        real(kind=8) :: x, y, wx(4), wy(4)
         logical :: coincident
 
         counts = 0
@@ -781,7 +969,7 @@
                     if (.not.skin_node(blocks(b),i,j)) cycle
                     x = blocks(b)%x0+(dble(i)-0.5d0)*blocks(b)%h
                     y = blocks(b)%y0+(dble(j)-0.5d0)*blocks(b)%h
-                    call donor_stencil(b,x,y,d,si,sj,wx,wy,coincident)
+                    call donor_stencil(b, x, y, d, si, sj, wx, wy, coincident)
                     counts(b,d) = counts(b,d)+1
                 enddo
             enddo
@@ -808,7 +996,7 @@
                     if (.not.skin_node(blocks(b),i,j)) cycle
                     x = blocks(b)%x0+(dble(i)-0.5d0)*blocks(b)%h
                     y = blocks(b)%y0+(dble(j)-0.5d0)*blocks(b)%h
-                    call donor_stencil(b,x,y,d,si,sj,wx,wy,coincident)
+                    call donor_stencil(b, x, y, d, si, sj, wx, wy, coincident)
                     counts(b,d) = counts(b,d)+1
                     n = counts(b,d)
                     l = idx(b,d)
@@ -825,12 +1013,21 @@
             enddo
         enddo
     end subroutine build_links
+    !===============================================================================================
+
+
 
     !===============================================================================================
-    subroutine equilibrium_moments(rh,ux,uy,temp,meq,neq)
+    ! 子程序: equilibrium_moments
+    ! 作用: 计算流场与温度场的平衡矩
+    !===============================================================================================
+    subroutine equilibrium_moments(rh, ux, uy, temp, meq, neq)
+
+        implicit none
+
         !$acc routine seq
-        real(kind=8), intent(in) :: rh,ux,uy,temp
-        real(kind=8), intent(out) :: meq(0:8),neq(0:4)
+        real(kind=8), intent(in) :: rh, ux, uy, temp
+        real(kind=8), intent(out) :: meq(0:8), neq(0:4)
 
         meq(0) = rh
         meq(1) = rh*(-2.0d0+3.0d0*(ux*ux+uy*uy))
@@ -843,36 +1040,65 @@
         meq(8) = rh*ux*uy
         neq = [temp,temp*ux,temp*uy,thermalA*temp,0.0d0]
     end subroutine equilibrium_moments
+    !===============================================================================================
+
+
 
     !===============================================================================================
-    subroutine force_moments(ux,uy,fx,fy,fm)
+    ! 子程序: force_moments
+    ! 作用: 计算含力修正所需的矩空间源项
+    !===============================================================================================
+    subroutine force_moments(ux, uy, fx, fy, fm)
+
+        implicit none
+
         !$acc routine seq
-        real(kind=8), intent(in) :: ux,uy,fx,fy
+        real(kind=8), intent(in) :: ux, uy, fx, fy
         real(kind=8), intent(out) :: fm(0:8)
 
         fm = [0.0d0,6.0d0*(ux*fx+uy*fy),-6.0d0*(ux*fx+uy*fy),fx,-fx,fy,-fy, &
             2.0d0*(ux*fx-uy*fy),ux*fy+uy*fx]
     end subroutine force_moments
+    !===============================================================================================
+
+
 
     !===============================================================================================
-    subroutine pack_block(b,slot)
+    ! 子程序: pack_block
+    ! 作用: 将指定块的状态编码到交换时间层
+    !===============================================================================================
+    subroutine pack_block(b, slot)
+
+        implicit none
+
         type(gridBlock), intent(inout) :: b
         integer(kind=4), intent(in) :: slot
 
-        call encode_packets(b%ni,b%nj,b%nh,slot,b%h,b%sn,b%sq,b%qk,b%qn, &
+        call encode_packets(b%ni, b%nj, b%nh, slot, b%h, b%sn, b%sq, b%qk, b%qn, &
             b%f,b%g,b%rho,b%u,b%v,b%T,b%Fx,b%Fy,b%Bx_prev,b%By_prev,b%p)
     end subroutine pack_block
+    !===============================================================================================
+
+
 
     !===============================================================================================
     ! 将宏观量及归一化非平衡矩编码为接口交换量
-    subroutine encode_packets(ni,nj,nh,slot,h,sn,sq,qk,qn,f,g,rho,u,v,T,Fx,Fy,Bx_prev,By_prev,p)
-        integer(kind=4), intent(in) :: ni,nj,nh,slot
-        real(kind=8), intent(in) :: h,sn,sq,qk,qn,f(ni,nj,0:8),g(ni,nj,0:4)
-        real(kind=8), intent(in) :: rho(ni,nj),u(ni,nj),v(ni,nj),T(ni,nj),Fx(ni,nj),Fy(ni,nj)
-        real(kind=8), intent(in) :: Bx_prev(ni,nj),By_prev(ni,nj)
+
+    !===============================================================================================
+    ! 子程序: encode_packets
+    ! 作用: 编码宏观量与归一化非平衡矩
+    !===============================================================================================
+    subroutine encode_packets(ni, nj, nh, slot, h, sn, sq, qk, qn, f, g, rho, u, v, T, Fx, Fy, Bx_prev, By_prev, p)
+
+        implicit none
+
+        integer(kind=4), intent(in) :: ni, nj, nh, slot
+        real(kind=8), intent(in) :: h, sn, sq, qk, qn, f(ni,nj,0:8), g(ni,nj,0:4)
+        real(kind=8), intent(in) :: rho(ni,nj), u(ni,nj), v(ni,nj), T(ni,nj), Fx(ni,nj), Fy(ni,nj)
+        real(kind=8), intent(in) :: Bx_prev(ni,nj), By_prev(ni,nj)
         real(kind=8), intent(inout) :: p(ni,nj,packetSize,0:nh)
-        integer(kind=4) :: i,j,a
-        real(kind=8) :: m(0:8),meq(0:8),fm(0:8),n(0:4),neq(0:4),s(0:8),q(0:4),src(0:4),fv(0:8),gv(0:4)
+        integer(kind=4) :: i, j, a
+        real(kind=8) :: m(0:8), meq(0:8), fm(0:8), n(0:4), neq(0:4), s(0:8), q(0:4), src(0:4), fv(0:8), gv(0:4)
         !$acc parallel loop collapse(2) present(f,g,rho,u,v,T,Fx,Fy,Bx_prev,By_prev,p) async(1) &
         !$acc& private(a,m,meq,fm,n,neq,s,q,src,fv,gv)
         do j = 1,nj
@@ -883,10 +1109,10 @@
                 do a = 0,4
                     gv(a) = g(i,j,a)
                 enddo
-                call flow_moments(fv,m)
-                call thermal_moments(gv,n)
-                call equilibrium_moments(rho(i,j),u(i,j),v(i,j),T(i,j),meq,neq)
-                call force_moments(u(i,j),v(i,j),Fx(i,j),Fy(i,j),fm)
+                call flow_moments(fv, m)
+                call thermal_moments(gv, n)
+                call equilibrium_moments(rho(i,j), u(i,j), v(i,j), T(i,j), meq, neq)
+                call force_moments(u(i,j), v(i,j), Fx(i,j), Fy(i,j), fm)
                 s = [0.0d0,sn,sn,0.0d0,sq,0.0d0,sq,sn,sn]
                 q = [0.0d0,qk,qk,qn,qn]
                 src = 0.0d0
@@ -912,39 +1138,59 @@
             enddo
         enddo
     end subroutine encode_packets
+    !===============================================================================================
+
+
 
     !===============================================================================================
     ! 接口交换：从来源块取值，再重建接收块的碰撞前状态
-    subroutine exchange_interfaces(coarse_receiver,wt)
+
+    !===============================================================================================
+    ! 子程序: exchange_interfaces
+    ! 作用: 完成指定接收层级的接口交换
+    !===============================================================================================
+    subroutine exchange_interfaces(coarse_receiver, wt)
+
+        implicit none
+
         logical, intent(in) :: coarse_receiver
         real(kind=8), intent(in) :: wt(0:2)
-        integer(kind=4) :: l,b,d
+        integer(kind=4) :: l, b, d
 
         do l = 1,nLinks
             b = links(l)%receiver
             d = links(l)%donor
             if ((b==1) .neqv. coarse_receiver) cycle
-            call interpolate_packets(blocks(d)%ni,blocks(d)%nj,blocks(d)%nh,blocks(d)%p,links(l)%count, &
+            call interpolate_packets(blocks(d)%ni, blocks(d)%nj, blocks(d)%nh, blocks(d)%p, links(l)%count, &
                 links(l)%si,links(l)%sj,links(l)%wx,links(l)%wy,links(l)%coincident,wt,links(l)%values)
         enddo
         do l = 1,nLinks
             b = links(l)%receiver
             if ((b==1) .neqv. coarse_receiver) cycle
-            call apply_packets(blocks(b)%ni,blocks(b)%nj,blocks(b)%h,blocks(b)%sn,blocks(b)%sq,blocks(b)%qk,blocks(b)%qn, &
+            call apply_packets(blocks(b)%ni, blocks(b)%nj, blocks(b)%h, blocks(b)%sn, blocks(b)%sq, blocks(b)%qk, blocks(b)%qn, &
                 blocks(b)%f,blocks(b)%g,blocks(b)%rho,blocks(b)%u,blocks(b)%v,blocks(b)%T, &
                 blocks(b)%Fx,blocks(b)%Fy,blocks(b)%Bx_prev,blocks(b)%By_prev, &
                 links(l)%count,links(l)%ti,links(l)%tj,links(l)%values)
         enddo
     end subroutine exchange_interfaces
+    !===============================================================================================
+
+
 
     !===============================================================================================
-    subroutine interpolate_packets(ni,nj,nh,p,count,si,sj,wx,wy,coincident,wt,val)
-        integer(kind=4), intent(in) :: ni,nj,nh,count,si(count),sj(count)
-        real(kind=8), intent(in) :: p(ni,nj,packetSize,0:nh),wx(4,count),wy(4,count),wt(0:2)
+    ! 子程序: interpolate_packets
+    ! 作用: 执行共址取值或空间、时间插值
+    !===============================================================================================
+    subroutine interpolate_packets(ni, nj, nh, p, count, si, sj, wx, wy, coincident, wt, val)
+
+        implicit none
+
+        integer(kind=4), intent(in) :: ni, nj, nh, count, si(count), sj(count)
+        real(kind=8), intent(in) :: p(ni,nj,packetSize,0:nh), wx(4,count), wy(4,count), wt(0:2)
         logical, intent(in) :: coincident(count)
         real(kind=8), intent(out) :: val(packetSize,count)
-        integer(kind=4) :: c,a,ix,iy,k
-        real(kind=8) :: value,wk
+        integer(kind=4) :: c, a, ix, iy, k
+        real(kind=8) :: value, wk
         !$acc parallel loop collapse(2) present(p,si,sj,wx,wy,coincident,val) firstprivate(wt) async(1) private(ix,iy,k,value,wk)
         do c = 1,count
             do a = 1,packetSize
@@ -966,15 +1212,25 @@
             enddo
         enddo
     end subroutine interpolate_packets
+    !===============================================================================================
+
+
 
     !===============================================================================================
-    subroutine apply_packets(ni,nj,h,sn,sq,qk,qn,f,g,rho,u,v,T,Fx,Fy,Bx_prev,By_prev,count,ti,tj,val)
-        integer(kind=4), intent(in) :: ni,nj,count,ti(count),tj(count)
-        real(kind=8), intent(in) :: h,sn,sq,qk,qn,val(packetSize,count)
-        real(kind=8), intent(inout) :: f(ni,nj,0:8),g(ni,nj,0:4),rho(ni,nj),u(ni,nj),v(ni,nj),T(ni,nj)
-        real(kind=8), intent(inout) :: Fx(ni,nj),Fy(ni,nj),Bx_prev(ni,nj),By_prev(ni,nj)
-        integer(kind=4) :: c,i,j,a
-        real(kind=8) :: m(0:8),meq(0:8),fm(0:8),n(0:4),neq(0:4),s(0:8),q(0:4),fv(0:8),gv(0:4),src(0:4)
+    ! 子程序: apply_packets
+    ! 作用: 按接收块参数重建碰撞前状态
+    !===============================================================================================
+    subroutine apply_packets(ni, nj, h, sn, sq, qk, qn, f, g, rho, u, v, T, Fx, Fy, Bx_prev, By_prev, count, ti, &
+        tj, val)
+
+        implicit none
+
+        integer(kind=4), intent(in) :: ni, nj, count, ti(count), tj(count)
+        real(kind=8), intent(in) :: h, sn, sq, qk, qn, val(packetSize,count)
+        real(kind=8), intent(inout) :: f(ni,nj,0:8), g(ni,nj,0:4), rho(ni,nj), u(ni,nj), v(ni,nj), T(ni,nj)
+        real(kind=8), intent(inout) :: Fx(ni,nj), Fy(ni,nj), Bx_prev(ni,nj), By_prev(ni,nj)
+        integer(kind=4) :: c, i, j, a
+        real(kind=8) :: m(0:8), meq(0:8), fm(0:8), n(0:4), neq(0:4), s(0:8), q(0:4), fv(0:8), gv(0:4), src(0:4)
         !$acc parallel loop present(f,g,rho,u,v,T,Fx,Fy,Bx_prev,By_prev,ti,tj,val) async(1) &
         !$acc& private(i,j,a,m,meq,fm,n,neq,s,q,fv,gv,src)
         do c = 1,count
@@ -986,8 +1242,8 @@
             T(i,j) = val(4,c)
             Fx(i,j) = h*val(5,c)
             Fy(i,j) = h*val(6,c)
-            call equilibrium_moments(rho(i,j),u(i,j),v(i,j),T(i,j),meq,neq)
-            call force_moments(u(i,j),v(i,j),Fx(i,j),Fy(i,j),fm)
+            call equilibrium_moments(rho(i,j), u(i,j), v(i,j), T(i,j), meq, neq)
+            call force_moments(u(i,j), v(i,j), Fx(i,j), Fy(i,j), fm)
             s = [0.0d0,sn,sn,0.0d0,sq,0.0d0,sq,sn,sn]
             q = [0.0d0,qk,qk,qn,qn]
             src = 0.0d0
@@ -1006,8 +1262,8 @@
                 n(a) = neq(a)+h/q(a)*val(16+a,c)-0.5d0*src(a)
             enddo
             n(0) = T(i,j)
-            call flow_populations(m,fv)
-            call thermal_populations(n,gv)
+            call flow_populations(m, fv)
+            call thermal_populations(n, gv)
             do a = 0,8
                 f(i,j,a) = fv(a)
             enddo
@@ -1023,23 +1279,30 @@
 #endif
         enddo
     end subroutine apply_packets
+    !===============================================================================================
+
+
 
     !===============================================================================================
     ! 以下八个块内子程序取自原文件。修改限于：显式块数组/局部尺寸/局部松弛率参数、物理壁面标记。
     !===============================================================================================
 
     !===============================================================================================
-    subroutine collision(nx,ny,f,f_post,rho,u,v,Fx,Fy,T,Snu,Sq,gBeta &
+    ! 子程序: collision
+    ! 作用: 流场多松弛碰撞及含力修正
+    !===============================================================================================
+    subroutine collision(nx, ny, f, f_post, rho, u, v, Fx, Fy, T, Snu, Sq, gBeta &
 #ifdef SideHeatedHa
         ,B2sigemarho &
 #endif
         )
 
     implicit none
-    integer(kind=4), intent(in) :: nx,ny
-    real(kind=8), intent(inout) :: f(nx,ny,0:8),f_post(0:nx+1,0:ny+1,0:8)
-    real(kind=8), intent(inout) :: u(nx,ny),v(nx,ny),T(nx,ny),rho(nx,ny),Fx(nx,ny),Fy(nx,ny)
-    real(kind=8), intent(in) :: Snu,Sq,gBeta
+
+    integer(kind=4), intent(in) :: nx, ny
+    real(kind=8), intent(inout) :: f(nx,ny,0:8), f_post(0:nx+1,0:ny+1,0:8)
+    real(kind=8), intent(inout) :: u(nx,ny), v(nx,ny), T(nx,ny), rho(nx,ny), Fx(nx,ny), Fy(nx,ny)
+    real(kind=8), intent(in) :: Snu, Sq, gBeta
 #ifdef SideHeatedHa
     real(kind=8), intent(in) :: B2sigemarho
 #endif
@@ -1130,13 +1393,20 @@
     enddo
     return
     end subroutine collision
+    !===============================================================================================
+
+
 
     !===============================================================================================
-    subroutine streaming(nx,ny,f,f_post)    !先迁移，再边界处理
+    ! 子程序: streaming
+    ! 作用: 流场分布函数迁移
+    !===============================================================================================
+    subroutine streaming(nx, ny, f, f_post)    !先迁移，再边界处理
 
         implicit none
-        integer(kind=4), intent(in) :: nx,ny
-        real(kind=8), intent(inout) :: f(nx,ny,0:8),f_post(0:nx+1,0:ny+1,0:8)
+
+        integer(kind=4), intent(in) :: nx, ny
+        real(kind=8), intent(inout) :: f(nx,ny,0:8), f_post(0:nx+1,0:ny+1,0:8)
 
         integer(kind=4) :: i, j
         integer(kind=4) :: ip, jp
@@ -1155,14 +1425,21 @@
         enddo
         return
     end subroutine streaming
+    !===============================================================================================
+
+
 
     !===============================================================================================
-    subroutine bounceback(nx,ny,f,f_post,leftWall,rightWall,bottomWall,topWall)
+    ! 子程序: bounceback
+    ! 作用: 流场物理壁面及周期边界处理
+    !===============================================================================================
+    subroutine bounceback(nx, ny, f, f_post, leftWall, rightWall, bottomWall, topWall)
 
         implicit none
-        integer(kind=4), intent(in) :: nx,ny
-        real(kind=8), intent(inout) :: f(nx,ny,0:8),f_post(0:nx+1,0:ny+1,0:8)
-        logical, intent(in) :: leftWall,rightWall,bottomWall,topWall
+
+        integer(kind=4), intent(in) :: nx, ny
+        real(kind=8), intent(inout) :: f(nx,ny,0:8), f_post(0:nx+1,0:ny+1,0:8)
+        logical, intent(in) :: leftWall, rightWall, bottomWall, topWall
 
         integer(kind=4) :: i, j
         ! integer(kind=4) :: alpha
@@ -1214,14 +1491,21 @@
 
         return
     end subroutine bounceback
+    !===============================================================================================
+
+
 
     !===============================================================================================
-    subroutine macro(nx,ny,f,rho,u,v,Fx,Fy)
+    ! 子程序: macro
+    ! 作用: 由流场分布函数计算密度和速度
+    !===============================================================================================
+    subroutine macro(nx, ny, f, rho, u, v, Fx, Fy)
 
         implicit none
-        integer(kind=4), intent(in) :: nx,ny
-        real(kind=8), intent(in) :: f(nx,ny,0:8),Fx(nx,ny),Fy(nx,ny)
-        real(kind=8), intent(inout) :: rho(nx,ny),u(nx,ny),v(nx,ny)
+
+        integer(kind=4), intent(in) :: nx, ny
+        real(kind=8), intent(in) :: f(nx,ny,0:8), Fx(nx,ny), Fy(nx,ny)
+        real(kind=8), intent(inout) :: rho(nx,ny), u(nx,ny), v(nx,ny)
 
         integer(kind=4) :: i, j
 
@@ -1235,15 +1519,22 @@
         enddo
         return
     end subroutine macro
+    !===============================================================================================
+
+
 
     !===============================================================================================
-    subroutine collisionT(nx,ny,g,g_post,u,v,T,Bx_prev,By_prev,Qk,Qnu)
+    ! 子程序: collisionT
+    ! 作用: 温度场多松弛碰撞及历史通量修正
+    !===============================================================================================
+    subroutine collisionT(nx, ny, g, g_post, u, v, T, Bx_prev, By_prev, Qk, Qnu)
 
         implicit none
-        integer(kind=4), intent(in) :: nx,ny
-        real(kind=8), intent(inout) :: g(nx,ny,0:4),g_post(0:nx+1,0:ny+1,0:4)
-        real(kind=8), intent(in) :: u(nx,ny),v(nx,ny),T(nx,ny),Qk,Qnu
-        real(kind=8), intent(inout) :: Bx_prev(nx,ny),By_prev(nx,ny)
+
+        integer(kind=4), intent(in) :: nx, ny
+        real(kind=8), intent(inout) :: g(nx,ny,0:4), g_post(0:nx+1,0:ny+1,0:4)
+        real(kind=8), intent(in) :: u(nx,ny), v(nx,ny), T(nx,ny), Qk, Qnu
+        real(kind=8), intent(inout) :: Bx_prev(nx,ny), By_prev(nx,ny)
 
         integer(kind=4) :: i, j
         integer(kind=4) :: alpha
@@ -1312,13 +1603,20 @@
         enddo
         return
     end subroutine collisionT
+    !===============================================================================================
+
+
 
     !===============================================================================================
-    subroutine streamingT(nx,ny,g,g_post)
+    ! 子程序: streamingT
+    ! 作用: 温度分布函数迁移
+    !===============================================================================================
+    subroutine streamingT(nx, ny, g, g_post)
 
         implicit none
-        integer(kind=4), intent(in) :: nx,ny
-        real(kind=8), intent(inout) :: g(nx,ny,0:4),g_post(0:nx+1,0:ny+1,0:4)
+
+        integer(kind=4), intent(in) :: nx, ny
+        real(kind=8), intent(inout) :: g(nx,ny,0:4), g_post(0:nx+1,0:ny+1,0:4)
 
         integer(kind=4) :: i, j
         integer(kind=4) :: ip, jp
@@ -1337,14 +1635,21 @@
         enddo
         return
     end subroutine streamingT
+    !===============================================================================================
+
+
 
     !===============================================================================================
-    subroutine bouncebackT(nx,ny,g,g_post,leftWall,rightWall,bottomWall,topWall)
+    ! 子程序: bouncebackT
+    ! 作用: 温度场恒温、绝热及周期边界处理
+    !===============================================================================================
+    subroutine bouncebackT(nx, ny, g, g_post, leftWall, rightWall, bottomWall, topWall)
 
         implicit none
-        integer(kind=4), intent(in) :: nx,ny
-        real(kind=8), intent(inout) :: g(nx,ny,0:4),g_post(0:nx+1,0:ny+1,0:4)
-        logical, intent(in) :: leftWall,rightWall,bottomWall,topWall
+
+        integer(kind=4), intent(in) :: nx, ny
+        real(kind=8), intent(inout) :: g(nx,ny,0:4), g_post(0:nx+1,0:ny+1,0:4)
+        logical, intent(in) :: leftWall, rightWall, bottomWall, topWall
 
         integer(kind=4) :: i, j
         !integer(kind=4) :: alpha
@@ -1420,12 +1725,19 @@
 
         return
     end subroutine bouncebackT
+    !===============================================================================================
+
+
 
     !===============================================================================================
-    subroutine macroT(nx,ny,g,T)
+    ! 子程序: macroT
+    ! 作用: 由温度分布函数计算温度
+    !===============================================================================================
+    subroutine macroT(nx, ny, g, T)
 
         implicit none
-        integer(kind=4), intent(in) :: nx,ny
+
+        integer(kind=4), intent(in) :: nx, ny
         real(kind=8), intent(in) :: g(nx,ny,0:4)
         real(kind=8), intent(inout) :: T(nx,ny)
 
@@ -1439,9 +1751,18 @@
         enddo
         return
     end subroutine macroT
+    !===============================================================================================
+
+
 
     !===============================================================================================
-    subroutine flow_moments(fv,m)
+    ! 子程序: flow_moments
+    ! 作用: 将流场分布函数变换到矩空间
+    !===============================================================================================
+    subroutine flow_moments(fv, m)
+
+        implicit none
+
         !$acc routine seq
         real(kind=8), intent(in) :: fv(0:8)
         real(kind=8), intent(out) :: m(0:8)
@@ -1457,9 +1778,18 @@
         m(8) = fv(5)-fv(6)+fv(7)-fv(8)
 
     end subroutine flow_moments
+    !===============================================================================================
+
+
 
     !===============================================================================================
-    subroutine flow_populations(m,fv)
+    ! 子程序: flow_populations
+    ! 作用: 由流场矩重建分布函数
+    !===============================================================================================
+    subroutine flow_populations(m, fv)
+
+        implicit none
+
         !$acc routine seq
         real(kind=8), intent(in) :: m(0:8)
         real(kind=8), intent(out) :: fv(0:8)
@@ -1483,9 +1813,18 @@
             -m(5)/6.0d0-m(6)/12.0d0-m(8)/4.0d0
 
     end subroutine flow_populations
+    !===============================================================================================
+
+
 
     !===============================================================================================
-    subroutine thermal_moments(gv,n)
+    ! 子程序: thermal_moments
+    ! 作用: 将温度分布函数变换到矩空间
+    !===============================================================================================
+    subroutine thermal_moments(gv, n)
+
+        implicit none
+
         !$acc routine seq
         real(kind=8), intent(in) :: gv(0:4)
         real(kind=8), intent(out) :: n(0:4)
@@ -1497,9 +1836,18 @@
         n(4) = gv(1)-gv(2)+gv(3)-gv(4)
 
     end subroutine thermal_moments
+    !===============================================================================================
+
+
 
     !===============================================================================================
-    subroutine thermal_populations(n,gv)
+    ! 子程序: thermal_populations
+    ! 作用: 由温度矩重建分布函数
+    !===============================================================================================
+    subroutine thermal_populations(n, gv)
+
+        implicit none
+
         !$acc routine seq
         real(kind=8), intent(in) :: n(0:4)
         real(kind=8), intent(out) :: gv(0:4)
@@ -1511,17 +1859,26 @@
         gv(4) = 0.2d0*n(0)-0.5d0*n(2)+0.05d0*n(3)-0.25d0*n(4)
 
     end subroutine thermal_populations
+    !===============================================================================================
+
+
 
     !===============================================================================================
     ! 多块输出按不重叠物理分区积分，边缘节点使用裁剪权重；内部权重仍为 h^2。
     !===============================================================================================
 
     !===============================================================================================
+    ! 子程序: calNuRe
+    ! 作用: 计算面积加权的 Nu、Re 及场量统计
+    !===============================================================================================
     subroutine calNuRe()
-        integer(kind=4) :: b,i,j,k,jm,im
-        real(kind=8) :: area,conv,vel2,mass,meanT,nu,re,hot,cold,middle,dTdx,dTdy,tm,um,vm,cellArea
-        real(kind=8) :: w(4),dw(4)
-        real(kind=8) :: tmin,tmax,rmin,rmax,scale,xmid,ymid,xlo,xhi,ylo,yhi,h
+
+        implicit none
+
+        integer(kind=4) :: b, i, j, k, jm, im
+        real(kind=8) :: area, conv, vel2, mass, meanT, nu, re, hot, cold, middle, dTdx, dTdy, tm, um, vm, cellArea
+        real(kind=8) :: w(4), dw(4)
+        real(kind=8) :: tmin, tmax, rmin, rmax, scale, xmid, ymid, xlo, xhi, ylo, yhi, h
 
         call update_host_all(.false.)
         area = dble(nx)*dble(ny)
@@ -1580,7 +1937,7 @@
                     enddo
                 endif
                 if (xmid>=xlo .and. xmid<xhi) then
-                    call section_weights((xmid-bl%x0)/h+0.5d0,bl%ni,im,w,dw)
+                    call section_weights((xmid-bl%x0)/h+0.5d0, bl%ni, im, w, dw)
                     do j = bl%jlo,bl%jhi
                         tm = sum(w*bl%T(im:im+3,j))
                         um = sum(w*bl%u(im:im+3,j))
@@ -1600,7 +1957,7 @@
                     enddo
                 endif
                 if (ymid>=ylo .and. ymid<yhi) then
-                    call section_weights((ymid-bl%y0)/h+0.5d0,bl%nj,jm,w,dw)
+                    call section_weights((ymid-bl%y0)/h+0.5d0, bl%nj, jm, w, dw)
                     do i = bl%ilo,bl%ihi
                         tm = sum(w*bl%T(i,jm:jm+3))
                         vm = sum(w*bl%v(i,jm:jm+3))
@@ -1619,12 +1976,21 @@
         close(k)
         write(*,'(a,f12.5,a,es13.5,a,es13.5)') 't_ff=',dble(itc)/timeUnit,' NuVolAvg=',nu,' ReVolRMS=',re
     end subroutine calNuRe
+    !===============================================================================================
 
+
+
+    !===============================================================================================
+    ! 子程序: check
+    ! 作用: 计算稳态速度与温度的收敛误差
     !===============================================================================================
     subroutine check()
 #ifdef steadyFlow
-        integer(kind=4) :: b,k,i,j
-        real(kind=8) :: du,uu,dt,tt,cellArea
+
+        implicit none
+
+        integer(kind=4) :: b, k, i, j
+        real(kind=8) :: du, uu, dt, tt, cellArea
 
         du = 0.0d0
         uu = 0.0d0
@@ -1655,10 +2021,19 @@
         write(*,*) 'errorU,errorT:',errorU,errorT
 #endif
     end subroutine check
+    !===============================================================================================
+
+
 
     !===============================================================================================
+    ! 子程序: output_Tecplot
+    ! 作用: 输出各统计分区的 Tecplot 数据
+    !===============================================================================================
     subroutine output_Tecplot()
-        integer(kind=4) :: k,b,i,j
+
+        implicit none
+
+        integer(kind=4) :: k, b, i, j
         character(16) :: num
 
         pltFileNum = pltFileNum+1
@@ -1681,10 +2056,19 @@
         enddo
         close(k)
     end subroutine output_Tecplot
+    !===============================================================================================
+
+
 
     !===============================================================================================
+    ! 子程序: output_SnapshotFile
+    ! 作用: 输出带积分权重的多块快照
+    !===============================================================================================
     subroutine output_SnapshotFile()
-        integer(kind=4) :: k,b
+
+        implicit none
+
+        integer(kind=4) :: k, b
         character(16) :: num
 
         snapshotFileNum = snapshotFileNum+1
@@ -1703,9 +2087,18 @@
         enddo
         close(k)
     end subroutine output_SnapshotFile
+    !===============================================================================================
+
+
 
     !===============================================================================================
+    ! 函数: model_signature
+    ! 作用: 生成重启模型配置标识
+    !===============================================================================================
     function model_signature() result(sig)
+
+        implicit none
+
         integer(kind=4) :: sig(12)
 
         sig = 0
@@ -1746,9 +2139,18 @@
         sig(12) = 1
 #endif
     end function model_signature
+    !===============================================================================================
+
+
 
     !===============================================================================================
+    ! 函数: physical_signature
+    ! 作用: 生成重启物理参数与输出间隔标识
+    !===============================================================================================
     function physical_signature() result(sig)
+
+        implicit none
+
         real(kind=8) :: sig(16)
 
         sig = [Rayleigh,Prandtl,Mach,Thot,Tcold,Snu,Sq,Qk,Qnu,thermalA,outputSnapshotInterval, &
@@ -1758,11 +2160,22 @@
         sig(15) = phi
 #endif
     end function physical_signature
+    !===============================================================================================
+
+
 
     !===============================================================================================
     ! 完整检查点：仅在粗细同步时写入
+
+    !===============================================================================================
+    ! 子程序: output_ReloadFile
+    ! 作用: 在同步时刻保存完整检查点
+    !===============================================================================================
     subroutine output_ReloadFile()
-        integer(kind=4) :: k,b
+
+        implicit none
+
+        integer(kind=4) :: k, b
         character(16) :: num
         character(256) :: name
 
@@ -1788,12 +2201,23 @@
         write(k,'(a)') trim(name)
         close(k)
     end subroutine output_ReloadFile
+    !===============================================================================================
+
+
 
     !===============================================================================================
     ! 精确续算：检查网格、物理参数、统计分区与历史状态
+
+    !===============================================================================================
+    ! 子程序: read_restart
+    ! 作用: 核对配置并恢复完整检查点状态
+    !===============================================================================================
     subroutine read_restart()
-        integer(kind=4) :: k,b,ios,head(7),geom(7),sig(12)
-        real(kind=8) :: phys(16),coord(7)
+
+        implicit none
+
+        integer(kind=4) :: k, b, ios, head(7), geom(7), sig(12)
+        real(kind=8) :: phys(16), coord(7)
         character(16) :: magic
         character(256) :: name
 
@@ -1828,19 +2252,37 @@
         enddo
         close(k)
     end subroutine read_restart
+    !===============================================================================================
+
+
 
     !===============================================================================================
-    integer(kind = 4) function scheduled_step(index,interval) result(step)
+    ! 函数: scheduled_step
+    ! 作用: 将输出时间向上对齐到粗细同步步
+    !===============================================================================================
+    integer(kind=4) function scheduled_step(index, interval) result(step)
+
+        implicit none
+
         integer(kind=4), intent(in) :: index
         real(kind=8), intent(in) :: interval
 
         step = max(refineRatio,ceiling(dble(index)*interval*timeUnit/dble(refineRatio))*refineRatio)
     end function scheduled_step
+    !===============================================================================================
+
+
 
     !===============================================================================================
+    ! 子程序: check_history
+    ! 作用: 核对检查点对应的统计历史文件
+    !===============================================================================================
     subroutine check_history()
-        integer(kind=4) :: k,ios,n
-        real(kind=8) :: values(12),lastTime,expected
+
+        implicit none
+
+        integer(kind=4) :: k, ios, n
+        real(kind=8) :: values(12), lastTime, expected
         character(512) :: line
 
         lastTime = -1.0d0
@@ -1865,13 +2307,22 @@
             if (abs(lastTime-expected)>1.0d-10*max(1.0d0,expected)) error stop 'Checkpoint/history time mismatch'
         endif
     end subroutine check_history
+    !===============================================================================================
+
+
 
     !===============================================================================================
-    subroutine average_window(t0,t1,result,coverage)
-        real(kind=8), intent(in) :: t0,t1
-        real(kind=8), intent(out) :: result(5),coverage
-        integer(kind=4) :: k,ios
-        real(kind=8) :: prev(12),row(12),aa,bb,dt,ra(5),rb(5),left(5),right(5)
+    ! 子程序: average_window
+    ! 作用: 对指定时间窗积分并计算平均量
+    !===============================================================================================
+    subroutine average_window(t0, t1, result, coverage)
+
+        implicit none
+
+        real(kind=8), intent(in) :: t0, t1
+        real(kind=8), intent(out) :: result(5), coverage
+        integer(kind=4) :: k, ios
+        real(kind=8) :: prev(12), row(12), aa, bb, dt, ra(5), rb(5), left(5), right(5)
         logical :: hasPrev
         character(512) :: line
 
@@ -1912,16 +2363,25 @@
             result(2) = sqrt(max(0.0d0,result(2)))
         endif
     end subroutine average_window
+    !===============================================================================================
 
+
+
+    !===============================================================================================
+    ! 子程序: output_unsteady_NuRe_postprocess
+    ! 作用: 输出完整时间窗与前后半窗的统计结果
     !===============================================================================================
     subroutine output_unsteady_NuRe_postprocess()
 #ifdef unsteadyFlow
-        integer(kind=4) :: k
-        real(kind=8) :: allMean(5),firstMean(5),lastMean(5),c0,c1,c2,relative(5)
 
-        call average_window(unsteadyAverageStartTf,unsteadyAverageEndTf,allMean,c0)
-        call average_window(unsteadyAverageStartTf,unsteadyAverageMidTf,firstMean,c1)
-        call average_window(unsteadyAverageMidTf,unsteadyAverageEndTf,lastMean,c2)
+        implicit none
+
+        integer(kind=4) :: k
+        real(kind=8) :: allMean(5), firstMean(5), lastMean(5), c0, c1, c2, relative(5)
+
+        call average_window(unsteadyAverageStartTf, unsteadyAverageEndTf, allMean, c0)
+        call average_window(unsteadyAverageStartTf, unsteadyAverageMidTf, firstMean, c1)
+        call average_window(unsteadyAverageMidTf, unsteadyAverageEndTf, lastMean, c2)
         open(newunit = k,file = 'NuReStatistics_2DOpenaccMultiblock.dat',status = 'replace')
         write(k,*) 'Window t_ff:',unsteadyAverageStartTf,unsteadyAverageEndTf
         write(k,*) 'Covered durations, full/first/last:',c0,c1,c2
@@ -1938,6 +2398,9 @@
         close(k)
 #endif
     end subroutine output_unsteady_NuRe_postprocess
+    !===============================================================================================
+
+
 
     end module commondata
 

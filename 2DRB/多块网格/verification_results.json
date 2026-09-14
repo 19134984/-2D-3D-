@@ -1,7 +1,7 @@
 {
   "compiler": "C:\\msys64\\ucrt64\\bin\\gfortran.EXE",
   "device": "OpenACC host",
-  "build_directory": "C:\\Users\\User\\AppData\\Local\\Temp\\mb2d-verify-fh0drtdr",
+  "build_directory": "C:\\Users\\User\\AppData\\Local\\Temp\\mb2d-verify-udc12ycs",
   "checks": [
     {
       "syntax_openacc_cases": [
@@ -561,37 +561,83 @@
       "target_t_ff": 0.1
     },
     {
-      "final_formatting_verification": {
-        "normalized_statements": 1566,
-        "note": "Full suite ran before final comment and blank-line additions; final source syntax and state comparison also passed.",
-        "syntax_matrix": "five configurations passed",
+      "all_procedure_style_verification": {
+        "procedures": [
+          "initial",
+          "make_block",
+          "integration_weights",
+          "initial_block",
+          "enter_data_2d_openacc",
+          "block_device_data",
+          "link_device_data",
+          "update_host_block",
+          "update_host_all",
+          "exit_data_2d_openacc",
+          "advance_block",
+          "advance_multiblock",
+          "coarse_time_weights",
+          "rotate_coarse_history",
+          "skin_node",
+          "donor_stencil",
+          "lagrange_weights",
+          "section_weights",
+          "build_links",
+          "equilibrium_moments",
+          "force_moments",
+          "pack_block",
+          "encode_packets",
+          "exchange_interfaces",
+          "interpolate_packets",
+          "apply_packets",
+          "collision",
+          "streaming",
+          "bounceback",
+          "macro",
+          "collisionT",
+          "streamingT",
+          "bouncebackT",
+          "macroT",
+          "flow_moments",
+          "flow_populations",
+          "thermal_moments",
+          "thermal_populations",
+          "calNuRe",
+          "check",
+          "output_Tecplot",
+          "output_SnapshotFile",
+          "model_signature",
+          "physical_signature",
+          "output_ReloadFile",
+          "read_restart",
+          "scheduled_step",
+          "check_history",
+          "average_window",
+          "output_unsteady_NuRe_postprocess"
+        ],
+        "token_equivalence": "passed",
+        "before_sha256": "9454de21b62230e1cf83b81f95e2dbbd007ebf49e7695b73e00e78b4691fda0d",
+        "build_directory": "C:\\Users\\User\\AppData\\Local\\Temp\\mb2d-verify-ptc3m00s",
         "before_after_state": [
           {
             "case": "rb_useg",
             "Rayleigh": 1000,
             "fine_steps": 40,
-            "compared_values": 405856,
-            "bitwise_equal": true
+            "bitwise_equal": true,
+            "values": 405856
           },
           {
             "case": "side_legacy",
             "Rayleigh": 10000,
             "fine_steps": 40,
-            "compared_values": 405856,
-            "bitwise_equal": true
+            "bitwise_equal": true,
+            "values": 405856
           }
-        ],
-        "build_directories": [
-          "C:\\Users\\User\\AppData\\Local\\Temp\\mb2d-verify-6l31tgbz",
-          "C:\\Users\\User\\AppData\\Local\\Temp\\mb2d-verify-h_oyr6_x"
-        ],
-        "before_format_sha256": "7576d5608ffbaef435be360650c323d04a73a51560ca1f6626668a4d3ab950f5"
+        ]
       }
     }
   ],
   "parent_sha256": "68debf94f75f3a70af6bf4f7205e18afc14618d48dd227ccf1d1a8e73d8afd48",
-  "source_sha256": "9454de21b62230e1cf83b81f95e2dbbd007ebf49e7695b73e00e78b4691fda0d",
-  "elapsed_seconds": 155.5835073000053,
-  "status": "passed",
-  "full_suite_source_sha256": "e6611fa12ed787e8697d982529b0f7befe1350c602f04d9adde444bc5ecf4a44"
+  "source_sha256": "e87451f6d720c237ae3d657ec0f6e720e10d5f588c3f4a4c45294a545484261e",
+  "elapsed_seconds": 154.24624089995632,
+  "status": "passed"
 }
