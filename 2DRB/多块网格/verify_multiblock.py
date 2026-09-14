@@ -34,7 +34,7 @@ def run(args, cwd, timeout=90):
     return p.stdout
 
 def variant(s, *, ratio=2, legacy=False, side=False, steady=False, ha=False, restart=False):
-    s = re.sub(r'\brefineRatio=\d+', f'refineRatio={ratio}', s)
+    s = re.sub(r'\brefineRatio\s*=\s*\d+', f'refineRatio={ratio}', s)
     if legacy:
         s = s.replace('#define EnableUseG\n', '!#define EnableUseG\n')
         s = s.replace('!#define EnableLegacyThermalScheme', '#define EnableLegacyThermalScheme')
@@ -49,8 +49,17 @@ def variant(s, *, ratio=2, legacy=False, side=False, steady=False, ha=False, res
     if ha:
         s = re.sub(r'^!#define SideHeatedHa\s*$', '#define SideHeatedHa', s, flags=re.M)
     if restart:
-        s = s.replace('loadInitField=0', 'loadInitField=1')
+        s = s.replace('loadInitField = 0', 'loadInitField = 1')
     return s
+
+
+def manual_reload_number(src, number):
+    # Change the user setting only; preserve the runtime reset for a fresh run.
+    src, count = re.subn(r'(::\s*reloadFileNum\s*=\s*)\d+',
+                         lambda match: match[1] + str(number), src)
+    if count != 1:
+        raise AssertionError('Manual reload file number declaration not found')
+    return src
 
 def compile_source(name, src, driver=None, n=96, ra=1000, syntax=False, ny=None, walls=None):
     folder = BUILD / name
@@ -61,16 +70,16 @@ def compile_source(name, src, driver=None, n=96, ra=1000, syntax=False, ny=None,
     if '#define NX_OVERRIDE' not in src:
         height = n if ny is None else ny
         wx, wy = (n // 8, height // 8) if walls is None else walls
-        src, count = re.subn(r'\bparameter :: nx=\d+, ny=\d+',
+        src, count = re.subn(r'\bparameter :: nx\s*=\s*\d+, ny\s*=\s*\d+',
                             f'parameter :: nx={n}, ny={height}', src)
         if count != 1:
             raise AssertionError('Manual grid parameters not found')
-        src, count = re.subn(r'\bparameter :: fineLayerCellsLeftRight=\d+, fineLayerCellsBottomTop=\d+',
+        src, count = re.subn(r'\bparameter :: fineLayerCellsLeftRight\s*=\s*\d+, fineLayerCellsBottomTop\s*=\s*\d+',
                             f'parameter :: fineLayerCellsLeftRight={wx}, fineLayerCellsBottomTop={wy}', src)
         if count != 1:
             raise AssertionError('Manual wall-layer parameters not found')
         ra_literal = format(float(ra), '.16e').replace('e', 'd')
-        src, count = re.subn(r'\bparameter :: Rayleigh=[^,\n]+',
+        src, count = re.subn(r'\bparameter :: Rayleigh\s*=\s*[^,\n]+',
                             f'parameter :: Rayleigh={ra_literal}', src)
         if count != 1:
             raise AssertionError('Manual Rayleigh parameter not found')
@@ -88,9 +97,10 @@ def compile_source(name, src, driver=None, n=96, ra=1000, syntax=False, ny=None,
 
 def state_writer(parent=False):
     names=['f','g','u','v','T','rho','Fx','Fy','Bx_prev','By_prev']
-    arrays=','.join(names if parent else ['blocks(1)%'+v for v in names])
+    arrays=','.join(names)
+    select='' if parent else '    call select_block(1)\n'
     return f"""
-    open(unit=77,file='state.bin',form='unformatted',access='stream',status='replace')
+{select}    open(unit=77,file='state.bin',form='unformatted',access='stream',status='replace')
     write(77) {arrays}
     close(77)
 """
@@ -136,26 +146,27 @@ CONDUCTION = '''program main
     call acc_init(acc_device_host)
     call initial()
     do b=1,nBlocks
-        blocks(b)%gb=0.0d0
-        do j=1,blocks(b)%nj
-            y=blocks(b)%y0+(dble(j)-0.5d0)*blocks(b)%h
-            do i=1,blocks(b)%ni
-                x=blocks(b)%x0+(dble(i)-0.5d0)*blocks(b)%h
+        call select_block(b)
+        blockGb(b)=0.0d0
+        do j=1,blockNj(b)
+            y=blockY0(b)+(dble(j)-0.5d0)*blockH(b)
+            do i=1,blockNi(b)
+                x=blockX0(b)+(dble(i)-0.5d0)*blockH(b)
 #ifdef SideHeatedCell
                 exact=Thot+(Tcold-Thot)*x/dble(nx)
 #else
                 exact=Thot+(Tcold-Thot)*y/dble(ny)
 #endif
-                blocks(b)%T(i,j)=exact
+                T(i,j)=exact
                 m=[exact,0.0d0,0.0d0,thermalA*exact,0.0d0]
                 ! 精确线性导热的迁移前非平衡热流矩；适用于两种原 D2Q5 分支。
 #ifdef SideHeatedCell
-                m(1)=-(thermalA+4.0d0)/10.0d0*blocks(b)%h/blocks(b)%qk*(Tcold-Thot)/dble(nx)
+                m(1)=-(thermalA+4.0d0)/10.0d0*blockH(b)/blockQk(b)*(Tcold-Thot)/dble(nx)
 #else
-                m(2)=-(thermalA+4.0d0)/10.0d0*blocks(b)%h/blocks(b)%qk*(Tcold-Thot)/dble(ny)
+                m(2)=-(thermalA+4.0d0)/10.0d0*blockH(b)/blockQk(b)*(Tcold-Thot)/dble(ny)
 #endif
                 call thermal_populations(m,gv)
-                blocks(b)%g(i,j,:)=gv
+                g(i,j,:)=gv
             enddo
         enddo
     enddo
@@ -166,15 +177,16 @@ CONDUCTION = '''program main
     call update_host_all(.true.)
     err=0.0d0; masserr=0.0d0
     do b=1,nBlocks
-        do j=blocks(b)%jlo,blocks(b)%jhi
-            do i=blocks(b)%ilo,blocks(b)%ihi
+        call select_block(b)
+        do j=blockJlo(b),blockJhi(b)
+            do i=blockIlo(b),blockIhi(b)
 #ifdef SideHeatedCell
-                exact=Thot+(Tcold-Thot)*(blocks(b)%x0+(dble(i)-0.5d0)*blocks(b)%h)/dble(nx)
+                exact=Thot+(Tcold-Thot)*(blockX0(b)+(dble(i)-0.5d0)*blockH(b))/dble(nx)
 #else
-                exact=Thot+(Tcold-Thot)*(blocks(b)%y0+(dble(j)-0.5d0)*blocks(b)%h)/dble(ny)
+                exact=Thot+(Tcold-Thot)*(blockY0(b)+(dble(j)-0.5d0)*blockH(b))/dble(ny)
 #endif
-                err=max(err,abs(blocks(b)%T(i,j)-exact))
-                masserr=max(masserr,abs(blocks(b)%rho(i,j)-1.0d0))
+                err=max(err,abs(T(i,j)-exact))
+                masserr=max(masserr,abs(rho(i,j)-1.0d0))
             enddo
         enddo
     enddo
@@ -190,98 +202,99 @@ GEOMETRY_DRIVER = '''program main
     integer :: b,c,i,j,l,directCoarse,directFine,interpolatedFine
     real(8) :: x,y,area,xmoment,ymoment,w,extraX,extraY,overlap,xLeft,xRight,yBottom,yTop,intersection
     call initial()
-    if (blocks(1)%h/=dble(refineRatio)) error stop 'Wrong coarse spacing'
+    if (blockH(1)/=dble(refineRatio)) error stop 'Wrong coarse spacing'
     xLeft=dble(fineLayerCellsLeftRight)-0.5d0; xRight=dble(nx)-xLeft
     yBottom=dble(fineLayerCellsBottomTop)-0.5d0; yTop=dble(ny)-yBottom
-    if (any(blocks(1)%ownedBox/=blocks(1)%baseBox)) error stop 'Coarse integration must end at base nodes'
-    if (any(blocks(2)%baseBox/=[0.0d0,dble(nx),0.0d0,yBottom]) .or. &
-        any(blocks(3)%baseBox/=[0.0d0,dble(nx),yTop,dble(ny)]) .or. &
-        any(blocks(4)%baseBox/=[0.0d0,xLeft,yBottom,yTop]) .or. &
-        any(blocks(5)%baseBox/=[xRight,dble(nx),yBottom,yTop])) error stop 'Fine bases must use requested indices'
-    if (blocks(1)%x0+0.5d0*blocks(1)%h/=dble(fineLayerCellsLeftRight)-0.5d0-overlapCells*refineRatio) &
+    if (any(blockOwnedBox(:, 1)/=blockBaseBox(:, 1))) error stop 'Coarse integration must end at base nodes'
+    if (any(blockBaseBox(:, 2)/=[0.0d0,dble(nx),0.0d0,yBottom]) .or. &
+        any(blockBaseBox(:, 3)/=[0.0d0,dble(nx),yTop,dble(ny)]) .or. &
+        any(blockBaseBox(:, 4)/=[0.0d0,xLeft,yBottom,yTop]) .or. &
+        any(blockBaseBox(:, 5)/=[xRight,dble(nx),yBottom,yTop])) error stop 'Fine bases must use requested indices'
+    if (blockX0(1)+0.5d0*blockH(1)/=dble(fineLayerCellsLeftRight)-0.5d0-overlapCells*refineRatio) &
         error stop 'Wrong coarse first node relative to interface'
-    if (blocks(4)%x0+(blocks(4)%ni-0.5d0)*blocks(4)%h/= &
+    if (blockX0(4)+(blockNi(4)-0.5d0)*blockH(4)/= &
         dble(fineLayerCellsLeftRight)-0.5d0+overlapCells*refineRatio) error stop 'Wrong fine last node'
     overlap=dble(overlapCells*refineRatio)
-    extraX=blocks(1)%baseBox(2)-xRight
-    extraY=blocks(1)%baseBox(4)-yTop
-    if (min(extraX,extraY)<0.0d0 .or. max(extraX,extraY)>=blocks(1)%h) &
+    extraX=blockBaseBox(2, 1)-xRight
+    extraY=blockBaseBox(4, 1)-yTop
+    if (min(extraX,extraY)<0.0d0 .or. max(extraX,extraY)>=blockH(1)) &
         error stop 'Coarse base must be the first covering coarse node'
-    if (blocks(1)%baseBox(1)/=xLeft .or. blocks(1)%baseBox(3)/=yBottom) error stop 'Coarse anchor moved'
-    if (modulo(blocks(1)%baseBox(2)-blocks(1)%baseBox(1),blocks(1)%h)/=0.0d0 .or. &
-        modulo(blocks(1)%baseBox(4)-blocks(1)%baseBox(3),blocks(1)%h)/=0.0d0) &
+    if (blockBaseBox(1, 1)/=xLeft .or. blockBaseBox(3, 1)/=yBottom) error stop 'Coarse anchor moved'
+    if (modulo(blockBaseBox(2, 1)-blockBaseBox(1, 1),blockH(1))/=0.0d0 .or. &
+        modulo(blockBaseBox(4, 1)-blockBaseBox(3, 1),blockH(1))/=0.0d0) &
         error stop 'Coarse base span is not an integer number of coarse spacings'
-    x=blocks(1)%x0+(blocks(1)%ni-0.5d0)*blocks(1)%h
-    y=blocks(1)%y0+(blocks(1)%nj-0.5d0)*blocks(1)%h
-    if (x/=blocks(1)%baseBox(2)+overlap .or. y/=blocks(1)%baseBox(4)+overlap) &
+    x=blockX0(1)+(blockNi(1)-0.5d0)*blockH(1)
+    y=blockY0(1)+(blockNj(1)-0.5d0)*blockH(1)
+    if (x/=blockBaseBox(2, 1)+overlap .or. y/=blockBaseBox(4, 1)+overlap) &
         error stop 'Overlap must extend from the aligned coarse base'
-    if (blocks(5)%x0+0.5d0*blocks(5)%h/=xRight-overlap .or. &
-        blocks(3)%y0+0.5d0*blocks(3)%h/=yTop-overlap) &
+    if (blockX0(5)+0.5d0*blockH(5)/=xRight-overlap .or. &
+        blockY0(3)+0.5d0*blockH(3)/=yTop-overlap) &
         error stop 'Right/top fine blocks moved with the coarse base'
-    if (blocks(5)%ownedBox(1)/=blocks(1)%ownedBox(2) .or. &
-        blocks(3)%ownedBox(3)/=blocks(1)%ownedBox(4) .or. &
-        blocks(4)%ownedBox(4)/=blocks(3)%ownedBox(3) .or. &
-        blocks(5)%ownedBox(4)/=blocks(3)%ownedBox(3)) error stop 'Statistics split is inconsistent at corners'
-    associate(bl=>blocks(1))
-    if (bl%x0+(bl%ilo-0.5d0)*bl%h/=bl%ownedBox(1) .or. &
-        bl%x0+(bl%ihi-0.5d0)*bl%h/=bl%ownedBox(2) .or. &
-        bl%y0+(bl%jlo-0.5d0)*bl%h/=bl%ownedBox(3) .or. &
-        bl%y0+(bl%jhi-0.5d0)*bl%h/=bl%ownedBox(4)) error stop 'Integration endpoint is not a coarse node'
-    if (any(bl%dxWeight([bl%ilo,bl%ihi])/=bl%h/2) .or. &
-        any(bl%dyWeight([bl%jlo,bl%jhi])/=bl%h/2) .or. &
-        any(bl%dxWeight(bl%ilo+1:bl%ihi-1)/=bl%h) .or. &
-        any(bl%dyWeight(bl%jlo+1:bl%jhi-1)/=bl%h)) error stop 'Coarse weights must be composite trapezoidal'
-    end associate
+    if (blockOwnedBox(1, 5)/=blockOwnedBox(2, 1) .or. &
+        blockOwnedBox(3, 3)/=blockOwnedBox(4, 1) .or. &
+        blockOwnedBox(4, 4)/=blockOwnedBox(3, 3) .or. &
+        blockOwnedBox(4, 5)/=blockOwnedBox(3, 3)) error stop 'Statistics split is inconsistent at corners'
+    call select_block(1)
+    if (blockX0(1)+(blockIlo(1)-0.5d0)*blockH(1)/=blockOwnedBox(1, 1) .or. &
+        blockX0(1)+(blockIhi(1)-0.5d0)*blockH(1)/=blockOwnedBox(2, 1) .or. &
+        blockY0(1)+(blockJlo(1)-0.5d0)*blockH(1)/=blockOwnedBox(3, 1) .or. &
+        blockY0(1)+(blockJhi(1)-0.5d0)*blockH(1)/=blockOwnedBox(4, 1)) error stop 'Integration endpoint is not a coarse node'
+    if (any(dxWeight([blockIlo(1),blockIhi(1)])/=blockH(1)/2) .or. &
+        any(dyWeight([blockJlo(1),blockJhi(1)])/=blockH(1)/2) .or. &
+        any(dxWeight(blockIlo(1)+1:blockIhi(1)-1)/=blockH(1)) .or. &
+        any(dyWeight(blockJlo(1)+1:blockJhi(1)-1)/=blockH(1))) error stop 'Coarse weights must be composite trapezoidal'
     if (nx==1024 .and. ny==1024 .and. refineRatio==2 .and. &
         fineLayerCellsLeftRight==128 .and. fineLayerCellsBottomTop==128 .and. overlapCells==2) then
-        if (any(blocks(1)%baseBox/=[127.5d0,897.5d0,127.5d0,897.5d0])) error stop 'Wrong default coarse base'
+        if (any(blockBaseBox(:, 1)/=[127.5d0,897.5d0,127.5d0,897.5d0])) error stop 'Wrong default coarse base'
         if (x/=901.5d0 .or. y/=901.5d0) error stop 'Wrong default coarse end nodes'
-        if (blocks(1)%ni/=390 .or. blocks(1)%nj/=390) error stop 'Wrong default coarse dimensions'
+        if (blockNi(1)/=390 .or. blockNj(1)/=390) error stop 'Wrong default coarse dimensions'
     endif
     area=0.0d0; xmoment=0.0d0; ymoment=0.0d0
     do b=1,nBlocks
+        call select_block(b)
         do c=b+1,nBlocks
-            intersection=max(0.0d0,min(blocks(b)%ownedBox(2),blocks(c)%ownedBox(2))- &
-                max(blocks(b)%ownedBox(1),blocks(c)%ownedBox(1)))* &
-                max(0.0d0,min(blocks(b)%ownedBox(4),blocks(c)%ownedBox(4))- &
-                max(blocks(b)%ownedBox(3),blocks(c)%ownedBox(3)))
+            intersection=max(0.0d0,min(blockOwnedBox(2, b),blockOwnedBox(2, c))- &
+                max(blockOwnedBox(1, b),blockOwnedBox(1, c)))* &
+                max(0.0d0,min(blockOwnedBox(4, b),blockOwnedBox(4, c))- &
+                max(blockOwnedBox(3, b),blockOwnedBox(3, c)))
             if (intersection>0.0d0) error stop 'Statistics rectangles overlap'
         enddo
-        do j=1,blocks(b)%nj
-            y=blocks(b)%y0+(dble(j)-0.5d0)*blocks(b)%h
-            do i=1,blocks(b)%ni
-                x=blocks(b)%x0+(dble(i)-0.5d0)*blocks(b)%h
+        do j=1,blockNj(b)
+            y=blockY0(b)+(dble(j)-0.5d0)*blockH(b)
+            do i=1,blockNi(b)
+                x=blockX0(b)+(dble(i)-0.5d0)*blockH(b)
                 if (abs(x-0.5d0-dble(nint(x-0.5d0)))>1.0d-12 .or. &
                     abs(y-0.5d0-dble(nint(y-0.5d0)))>1.0d-12) error stop 'Node is off the fine lattice'
-                w=blocks(b)%dxWeight(i)*blocks(b)%dyWeight(j)
+                w=dxWeight(i)*dyWeight(j)
                 if (w<0.0d0) error stop 'Negative integration weight'
                 area=area+w; xmoment=xmoment+w*x; ymoment=ymoment+w*y
             enddo
         enddo
-        if (abs(blocks(b)%h*(1.0d0/blocks(b)%sn-0.5d0)-(1.0d0/Snu-0.5d0))>1.0d-13 .or. &
-            abs(blocks(b)%h*(1.0d0/blocks(b)%sq-0.5d0)-(1.0d0/Sq-0.5d0))>1.0d-13 .or. &
-            abs(blocks(b)%h*(1.0d0/blocks(b)%qk-0.5d0)-(1.0d0/Qk-0.5d0))>1.0d-13 .or. &
-            abs(blocks(b)%h*(1.0d0/blocks(b)%qn-0.5d0)-(1.0d0/Qnu-0.5d0))>1.0d-13) &
+        if (abs(blockH(b)*(1.0d0/blockSn(b)-0.5d0)-(1.0d0/Snu-0.5d0))>1.0d-13 .or. &
+            abs(blockH(b)*(1.0d0/blockSq(b)-0.5d0)-(1.0d0/Sq-0.5d0))>1.0d-13 .or. &
+            abs(blockH(b)*(1.0d0/blockQk(b)-0.5d0)-(1.0d0/Qk-0.5d0))>1.0d-13 .or. &
+            abs(blockH(b)*(1.0d0/blockQn(b)-0.5d0)-(1.0d0/Qnu-0.5d0))>1.0d-13) &
             error stop 'Relaxation scaling changed physical transport coefficients'
-        if (blocks(b)%gb/=blocks(b)%h*gBeta) error stop 'Wrong force scaling'
-        if (blocks(b)%wall(1) .and. blocks(b)%x0+0.5d0*blocks(b)%h/=0.5d0) error stop 'Left wall moved'
-        if (blocks(b)%wall(2) .and. &
-            blocks(b)%x0+(blocks(b)%ni-0.5d0)*blocks(b)%h/=nx-0.5d0) error stop 'Right wall moved'
-        if (blocks(b)%wall(3) .and. blocks(b)%y0+0.5d0*blocks(b)%h/=0.5d0) error stop 'Bottom wall moved'
-        if (blocks(b)%wall(4) .and. &
-            blocks(b)%y0+(blocks(b)%nj-0.5d0)*blocks(b)%h/=ny-0.5d0) error stop 'Top wall moved'
+        if (blockGb(b)/=blockH(b)*gBeta) error stop 'Wrong force scaling'
+        if (blockWall(1, b) .and. blockX0(b)+0.5d0*blockH(b)/=0.5d0) error stop 'Left wall moved'
+        if (blockWall(2, b) .and. &
+            blockX0(b)+(blockNi(b)-0.5d0)*blockH(b)/=nx-0.5d0) error stop 'Right wall moved'
+        if (blockWall(3, b) .and. blockY0(b)+0.5d0*blockH(b)/=0.5d0) error stop 'Bottom wall moved'
+        if (blockWall(4, b) .and. &
+            blockY0(b)+(blockNj(b)-0.5d0)*blockH(b)/=ny-0.5d0) error stop 'Top wall moved'
     enddo
     if (abs(area-dble(nx)*ny)>1.0d-9) error stop 'Area is double counted or missing'
     if (abs(xmoment-0.5d0*dble(nx)**2*ny)>1.0d-8) error stop 'Wrong first x moment'
     if (abs(ymoment-0.5d0*dble(ny)**2*nx)>1.0d-8) error stop 'Wrong first y moment'
     directCoarse=0; directFine=0; interpolatedFine=0
     do l=1,nLinks
-        if (links(l)%receiver==1) then
-            if (.not.all(links(l)%coincident)) error stop 'Coarse receiver should coincide with fine nodes'
-            directCoarse=directCoarse+links(l)%count
-        elseif (links(l)%donor==1) then
-            directFine=directFine+count(links(l)%coincident)
-            interpolatedFine=interpolatedFine+count(.not.links(l)%coincident)
+        call select_link(l)
+        if (linkReceiver(l)==1) then
+            if (.not.all(linkSame)) error stop 'Coarse receiver should coincide with fine nodes'
+            directCoarse=directCoarse+linkCount(l)
+        elseif (linkDonor(l)==1) then
+            directFine=directFine+count(linkSame)
+            interpolatedFine=interpolatedFine+count(.not.linkSame)
         endif
     enddo
     if (min(directCoarse,directFine,interpolatedFine)<=0) error stop 'Missing direct or interpolation interface path'
@@ -289,7 +302,7 @@ GEOMETRY_DRIVER = '''program main
 end program main'''
 
 PACKET_DRIVER = '''program main
-    use commondata, only: packetSize,lagrange_weights,interpolate_packets,coarse_time_weights,itc,refineRatio
+    use commondata, only: packetSize,itc,refineRatio
     use openacc
     implicit none
     real(8) :: p(8,8,packetSize,0:2),wx(4,2),wy(4,2),val(packetSize,2),wt(0:2),err,expected
@@ -350,8 +363,9 @@ RESTART_DRIVER = '''program main
     call output_ReloadFile()
     open(unit=77,file='allstate.bin',form='unformatted',access='stream',status='replace')
     do b=1,nBlocks
-        write(77) blocks(b)%f,blocks(b)%g,blocks(b)%u,blocks(b)%v,blocks(b)%T,blocks(b)%rho, &
-            blocks(b)%Fx,blocks(b)%Fy,blocks(b)%Bx_prev,blocks(b)%By_prev,blocks(b)%p
+        call select_block(b)
+        write(77) f,g,u,v,T,rho, &
+            Fx,Fy,Bx_prev,By_prev,p
     enddo
     close(77)
     call exit_data_2d_openacc()
@@ -508,7 +522,7 @@ def main():
         REPORT['checks'].append({'nondivisible_wall_ratio':ratio,'restart_exact':True})
         print('Nondivisible wall thicknesses',ratio,'geometry, conduction and restart passed',flush=True)
 
-    narrow=source.replace('overlapCells=2','overlapCells=1')
+    narrow=source.replace('overlapCells = 2','overlapCells = 1')
     folder,exe=compile_source('invalid_overlap',narrow,GEOMETRY_DRIVER)
     bad=subprocess.run([str(exe)],cwd=folder,env=ENV,capture_output=True,text=True)
     if bad.returncode==0 or 'Overlap is too narrow' not in bad.stderr:
@@ -550,25 +564,63 @@ def main():
         raise AssertionError(f'Restart differs from uninterrupted run: {err}')
     REPORT['checks'].append({'restart_exact':True,'fine_steps':40,'split_at':20,'max_absolute_error':err})
     print('Exact multiblock restart passed',flush=True)
+    # Match the parent interface: manual numbered restart only when latest.meta is absent.
+    manual_src=manual_reload_number(variant(source,restart=True),1)
+    manual,mexe=compile_source('restart_manual_number',manual_src,RESTART_DRIVER)
+    first_name='reloadFile2DOpenaccMultiblock-000000000001.bin'
+    second_name='reloadFile2DOpenaccMultiblock-000000000002.bin'
+    assert (split/first_name).exists() and (split/second_name).exists()
+    shutil.copy2(split/first_name,manual/first_name)
+    shutil.copy2(split/'NuRe_2DOpenaccMultiblock.dat',manual/'NuRe_2DOpenaccMultiblock.dat')
+    first_hash=hashlib.sha256((manual/first_name).read_bytes()).hexdigest()
+    run([mexe,'40'],manual)
+    assert np.array_equal(np.fromfile(manual/'allstate.bin',dtype='<f8'),expected)
+    assert (manual/'reloadFile2DOpenaccMultiblock-latest.meta').read_text().strip()==second_name
+    assert hashlib.sha256((manual/first_name).read_bytes()).hexdigest()==first_hash
+    # An existing meta pointer overrides even an invalid manually supplied file number.
+    _,pexe=compile_source('restart_meta_priority',manual_reload_number(variant(source,restart=True),999),RESTART_DRIVER)
+    run([pexe,'40'],manual)
+    assert np.array_equal(np.fromfile(manual/'allstate.bin',dtype='<f8'),expected)
+    missing,missing_exe=compile_source('restart_missing_selection',variant(source,restart=True),RESTART_DRIVER)
+    bad=subprocess.run([str(missing_exe),'40'],cwd=missing,env=ENV,capture_output=True)
+    assert bad.returncode!=0 and b'set reloadFileNum' in bad.stderr
+    REPORT['checks'].append({'manual_number_restart_exact':True,'meta_priority':True,
+        'unsteady_checkpoint_counter_continues':True,'earlier_checkpoint_preserved':True})
+    fresh,fresh_exe=compile_source('fresh_ignores_manual_number',manual_reload_number(source,999),
+                                   RESTART_DRIVER)
+    run([fresh_exe,'40'],fresh)
+    assert (fresh/first_name).exists()
+    assert np.array_equal(np.fromfile(fresh/'allstate.bin',dtype='<f8'),expected)
+    steady,steady_exe=compile_source('steady_restart_full',variant(source,steady=True),RESTART_DRIVER)
+    steady_split,steady_split_exe=compile_source('steady_restart_split',variant(source,steady=True),RESTART_DRIVER)
+    _,steady_resume_exe=compile_source('steady_restart_resume',manual_reload_number(variant(source,steady=True,restart=True),20),RESTART_DRIVER)
+    run([steady_exe,'40'],steady); run([steady_split_exe,'20'],steady_split)
+    assert (steady_split/'reloadFile2DOpenaccMultiblock-000000000020.bin').exists()
+    (steady_split/'reloadFile2DOpenaccMultiblock-latest.meta').unlink()
+    run([steady_resume_exe,'40'],steady_split)
+    assert (steady_split/'reloadFile2DOpenaccMultiblock-000000000040.bin').exists()
+    assert np.array_equal(np.fromfile(steady/'allstate.bin',dtype='<f8'),
+                          np.fromfile(steady_split/'allstate.bin',dtype='<f8'))
+    REPORT['checks'].append({'fresh_run_resets_reload_counter':True,'steady_step_number_manual_restart_exact':True})
     # Previous layouts/statistics must fail before reading arrays (v5 used the old integration partition).
     latest=(split/'reloadFile2DOpenaccMultiblock-latest.meta').read_text().strip()
     old=split/'old-layout.bin'
     state=(split/latest).read_bytes()
-    for version in (3,4,5):
+    for version in (3,4,5,6):
         old.write_bytes(f'MB2DRESTART{version:04d}'.encode().ljust(16,b' ')+state[16:])
         (split/'reloadFile2DOpenaccMultiblock-latest.meta').write_text('old-layout.bin\n')
         bad=subprocess.run([str(split/'resume.exe'),'40'],cwd=split,env=ENV,capture_output=True)
         if bad.returncode==0 or b'Wrong checkpoint format' not in bad.stderr:
             raise AssertionError(f'Old checkpoint v{version} was not rejected')
-    REPORT['checks'].append({'old_layout_restart_rejected':[3,4,5]})
+    REPORT['checks'].append({'old_layout_restart_rejected':[3,4,5,6]})
 
     # Exercise the actual program, output clocks, binary snapshots and history-backed restart.
-    smoke=source.replace('unsteadyRunDuration=1000.0d0','unsteadyRunDuration=0.1d0')
-    smoke=smoke.replace('outputSnapshotInterval=0.5d0','outputSnapshotInterval=0.01d0')
-    smoke=smoke.replace('reloadFileInterval=100.0d0','reloadFileInterval=0.03d0')
-    smoke=smoke.replace('outputPltFileInterval=100.0d0','outputPltFileInterval=0.05d0')
+    smoke=source.replace('unsteadyRunDuration = 1000.0d0','unsteadyRunDuration = 0.1d0')
+    smoke=smoke.replace('outputSnapshotInterval = 0.5d0','outputSnapshotInterval = 0.01d0')
+    smoke=smoke.replace('reloadFileInterval = 100.0d0','reloadFileInterval = 0.03d0')
+    smoke=smoke.replace('outputPltFileInterval = 100.0d0','outputPltFileInterval = 0.05d0')
     whole,wexe=compile_source('main_full',smoke)
-    short,texe=compile_source('main_short',smoke.replace('unsteadyRunDuration=0.1d0','unsteadyRunDuration=0.05d0'))
+    short,texe=compile_source('main_short',smoke.replace('unsteadyRunDuration = 0.1d0','unsteadyRunDuration = 0.05d0'))
     resumed,rexe=compile_source('main_resumed',variant(smoke,restart=True))
     run([wexe],whole); run([texe],short)
     shutil.copy2(rexe,short/'resume.exe'); run([short/'resume.exe'],short)
@@ -595,6 +647,13 @@ def main():
         assert area==nx*ny and not f.read(1)
     REPORT['checks'].append({'aligned_snapshot_v2_area_and_coordinates':'passed'})
     REPORT['checks'].append({'main_smoke_and_history_restart':True,'samples':len(hfull),'target_t_ff':0.1})
+    for flag,pattern in [('outputSnapshotFile','*Snapshot-*.bin'),('outputPltFile','*Tecplot-*.dat'),
+                         ('outputReloadFile','reloadFile2DOpenaccMultiblock-*')]:
+        folder,exe=compile_source('disabled_'+flag,smoke.replace(flag+' = 1',flag+' = 0'))
+        run([exe],folder)
+        assert not list(folder.glob(pattern)),flag
+        assert np.array_equal(np.loadtxt(folder/'NuRe_2DOpenaccMultiblock.dat'),hfull),flag
+    REPORT['checks'].append({'independent_output_switches_and_unchanged_sampling':'passed'})
     print('Actual main program, outputs and restart passed',flush=True)
     if hashlib.sha256(PARENT.read_bytes()).hexdigest()!=before:
         raise AssertionError('Parent source changed')

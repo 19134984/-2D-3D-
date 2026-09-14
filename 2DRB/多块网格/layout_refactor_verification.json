@@ -1,0 +1,65 @@
+{
+  "device": "gfortran OpenACC host",
+  "before_source_sha256": "7dc4d8435e76bf06215c7c50d1aac1f53f2447a5868d3b0be8fa17ffa8d31127",
+  "before_source_copy": "C:\\Users\\User\\AppData\\Local\\Temp\\mb2d-layout-before-xxrijm11\\2DRBOpenaccMultiblock.F90",
+  "before_build": "C:\\Users\\User\\AppData\\Local\\Temp\\mb2d-verify-87qrdr9q",
+  "after_build": "C:\\Users\\User\\AppData\\Local\\Temp\\mb2d-verify-4yv8qlgn",
+  "checks": [
+    {
+      "case": "rb_useg",
+      "fine_steps": 40,
+      "state_values": 405856,
+      "bitwise_equal": true,
+      "max_absolute_state_error": 0.0,
+      "max_absolute_diagnostic_error": 0.0
+    },
+    {
+      "old_v7_checkpoint_resumed": true,
+      "max_absolute_state_error": 0.0
+    },
+    {
+      "case": "rb_legacy_steady",
+      "fine_steps": 40,
+      "state_values": 405856,
+      "bitwise_equal": true,
+      "max_absolute_state_error": 0.0,
+      "max_absolute_diagnostic_error": 0.0,
+      "errorU_errorT_max_absolute_difference": 0.0
+    },
+    {
+      "case": "side_useg_steady",
+      "fine_steps": 40,
+      "state_values": 405856,
+      "bitwise_equal": true,
+      "max_absolute_state_error": 0.0,
+      "max_absolute_diagnostic_error": 0.0,
+      "errorU_errorT_max_absolute_difference": 0.0
+    },
+    {
+      "case": "side_ha_r4",
+      "fine_steps": 40,
+      "state_values": 454080,
+      "bitwise_equal": true,
+      "max_absolute_state_error": 0.0,
+      "max_absolute_diagnostic_error": 0.0
+    }
+  ],
+  "status": "passed",
+  "runtime_checked_source_normalized_lf_sha256": "b16daf1ad793077700db106317d400a82456a309bca145f1b24ca405523fe467",
+  "before_source_normalized_lf_sha256": "1ea57a49bd271b08557a04fdbd9ad8a431bb762b28e2c20257aaf581ec147fbd",
+  "source_sha256": "00bf16bbe4822797990c76d92a4821fe9bfee24802552aed47ed0cb40210a562",
+  "final_nonexecuting_cleanup": {
+    "before_sha256": "b16daf1ad793077700db106317d400a82456a309bca145f1b24ca405523fe467",
+    "after_sha256": "1b078543add115742af9b799ee14d957bbe0b51bd5978cfe119eaab88234ae1c",
+    "changes": "Remove empty #ifdef/#endif and normalize procedure-header comments only. Trim blank lines at EOF.",
+    "hash_encoding": "UTF-8 text with LF line endings"
+  },
+  "final_syntax_132_columns_and_preprocessed_equivalence": [
+    "rb_useg",
+    "rb_legacy_steady",
+    "side_useg_steady",
+    "side_legacy",
+    "side_ha"
+  ],
+  "validation_script_copy": "C:\\Users\\User\\AppData\\Local\\Temp\\mb2d-layout-before-xxrijm11\\check_layout_tmp.py"
+}
