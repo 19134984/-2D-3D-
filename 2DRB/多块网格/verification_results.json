@@ -1,7 +1,7 @@
 {
   "compiler": "C:\\msys64\\ucrt64\\bin\\gfortran.EXE",
   "device": "OpenACC host",
-  "build_directory": "C:\\Users\\User\\AppData\\Local\\Temp\\mb2d-verify-ugl70jks",
+  "build_directory": "C:\\Users\\User\\AppData\\Local\\Temp\\mb2d-verify-_38za86u",
   "checks": [
     {
       "syntax_openacc_cases": [
@@ -17,12 +17,12 @@
         96,
         96
       ],
-      "coarse_direct_nodes": 320,
-      "fine_direct_from_coarse": 136,
-      "fine_interpolated_from_coarse": 408,
+      "coarse_direct_nodes": 312,
+      "fine_direct_from_coarse": 132,
+      "fine_interpolated_from_coarse": 404,
       "area": 9216.0,
       "linear_integrals_and_physical_walls": "passed",
-      "coarse_base_outward_alignment_then_overlap": "passed",
+      "four_shared_interfaces_without_rounding": "passed",
       "fine_interfaces_unchanged": "passed",
       "statistics_at_coincident_nodes_trapezoidal_weights_and_disjoint_rectangles": "passed"
     },
@@ -31,12 +31,12 @@
         128,
         96
       ],
-      "coarse_direct_nodes": 368,
-      "fine_direct_from_coarse": 160,
-      "fine_interpolated_from_coarse": 480,
+      "coarse_direct_nodes": 360,
+      "fine_direct_from_coarse": 156,
+      "fine_interpolated_from_coarse": 476,
       "area": 12288.0,
       "linear_integrals_and_physical_walls": "passed",
-      "coarse_base_outward_alignment_then_overlap": "passed",
+      "four_shared_interfaces_without_rounding": "passed",
       "fine_interfaces_unchanged": "passed",
       "statistics_at_coincident_nodes_trapezoidal_weights_and_disjoint_rectangles": "passed"
     },
@@ -45,12 +45,12 @@
         1024,
         1024
       ],
-      "coarse_direct_nodes": 3104,
-      "fine_direct_from_coarse": 1528,
-      "fine_interpolated_from_coarse": 4584,
+      "coarse_direct_nodes": 3096,
+      "fine_direct_from_coarse": 1524,
+      "fine_interpolated_from_coarse": 4580,
       "area": 1048576.0,
       "linear_integrals_and_physical_walls": "passed",
-      "coarse_base_outward_alignment_then_overlap": "passed",
+      "four_shared_interfaces_without_rounding": "passed",
       "fine_interfaces_unchanged": "passed",
       "statistics_at_coincident_nodes_trapezoidal_weights_and_disjoint_rectangles": "passed"
     },
@@ -63,14 +63,14 @@
       "conduction": "rb_useg",
       "coarse_steps": 60,
       "fine_steps": 180,
-      "max_T_error": 2.3869795029440866e-15,
-      "max_rho_error": 1.6653345369377348e-15,
+      "max_T_error": 3.3306690738754696e-16,
+      "max_rho_error": 4.440892098500626e-16,
       "geometry_and_transport_scaling": "passed",
       "Nu_volume_hot_cold_middle": [
-        0.999999999999996,
-        0.9999999999999625,
+        1.0,
+        0.9999999999999823,
         1.000000000000007,
-        1.0000000000000024
+        1.0000000000000004
       ]
     },
     {
@@ -78,13 +78,13 @@
       "conduction": "side_useg",
       "coarse_steps": 60,
       "fine_steps": 180,
-      "max_T_error": 2.886579864025407e-15,
-      "max_rho_error": 1.9984014443252818e-15,
+      "max_T_error": 5.551115123125783e-16,
+      "max_rho_error": 4.440892098500626e-16,
       "geometry_and_transport_scaling": "passed",
       "Nu_volume_hot_cold_middle": [
-        1.000000000000002,
+        1.0,
         0.9999999999999974,
-        0.9999999999999509,
+        0.9999999999999998,
         1.0000000000000007
       ]
     },
@@ -93,14 +93,14 @@
       "conduction": "side_legacy",
       "coarse_steps": 60,
       "fine_steps": 180,
-      "max_T_error": 2.9976021664879227e-15,
-      "max_rho_error": 1.9984014443252818e-15,
+      "max_T_error": 3.3306690738754696e-16,
+      "max_rho_error": 4.440892098500626e-16,
       "geometry_and_transport_scaling": "passed",
       "Nu_volume_hot_cold_middle": [
-        1.000000000000002,
+        1.0,
         0.9999999999999991,
-        0.9999999999999425,
-        0.9999999999999998
+        0.9999999999999991,
+        0.9999999999999997
       ]
     },
     {
@@ -113,14 +113,14 @@
       "conduction": "rb_useg",
       "coarse_steps": 60,
       "fine_steps": 240,
-      "max_T_error": 2.7755575615628914e-16,
+      "max_T_error": 3.0531133177191805e-16,
       "max_rho_error": 4.440892098500626e-16,
       "geometry_and_transport_scaling": "passed",
       "Nu_volume_hot_cold_middle": [
         1.0,
-        0.999999999999991,
-        0.9999999999999306,
-        0.9999999999999998
+        0.9999999999999908,
+        0.9999999999999369,
+        0.9999999999999996
       ]
     },
     {
@@ -128,7 +128,7 @@
       "conduction": "side_useg",
       "coarse_steps": 60,
       "fine_steps": 240,
-      "max_T_error": 6.661338147750939e-16,
+      "max_T_error": 3.885780586188048e-16,
       "max_rho_error": 4.440892098500626e-16,
       "geometry_and_transport_scaling": "passed",
       "Nu_volume_hot_cold_middle": [
@@ -143,14 +143,14 @@
       "conduction": "side_legacy",
       "coarse_steps": 60,
       "fine_steps": 240,
-      "max_T_error": 8.049116928532385e-16,
+      "max_T_error": 5.551115123125783e-16,
       "max_rho_error": 4.440892098500626e-16,
       "geometry_and_transport_scaling": "passed",
       "Nu_volume_hot_cold_middle": [
         1.0,
         0.9999999999999715,
         0.9999999999999981,
-        0.9999999999999996
+        0.9999999999999994
       ]
     },
     {
@@ -163,14 +163,14 @@
       "conduction": "rb_useg",
       "coarse_steps": 60,
       "fine_steps": 480,
-      "max_T_error": 7.993605777301127e-15,
-      "max_rho_error": 4.440892098500626e-15,
+      "max_T_error": 8.271161533457416e-15,
+      "max_rho_error": 3.4416913763379853e-15,
       "geometry_and_transport_scaling": "passed",
       "Nu_volume_hot_cold_middle": [
-        1.0000000000000027,
-        0.9999999999997612,
+        1.000000000000008,
+        0.9999999999997918,
         1.000000000000055,
-        1.0000000000000053
+        1.000000000000005
       ]
     },
     {
@@ -178,14 +178,14 @@
       "conduction": "side_useg",
       "coarse_steps": 60,
       "fine_steps": 480,
-      "max_T_error": 9.048317650695026e-15,
-      "max_rho_error": 3.1086244689504383e-15,
+      "max_T_error": 7.882583474838611e-15,
+      "max_rho_error": 3.774758283725532e-15,
       "geometry_and_transport_scaling": "passed",
       "Nu_volume_hot_cold_middle": [
-        0.9999999999999933,
-        0.9999999999999998,
-        0.9999999999998286,
-        1.0000000000000033
+        1.0000000000000022,
+        0.9999999999999611,
+        0.999999999999845,
+        1.000000000000004
       ]
     },
     {
@@ -193,14 +193,14 @@
       "conduction": "side_legacy",
       "coarse_steps": 60,
       "fine_steps": 480,
-      "max_T_error": 1.1102230246251565e-14,
-      "max_rho_error": 3.1086244689504383e-15,
+      "max_T_error": 9.825473767932635e-15,
+      "max_rho_error": 3.774758283725532e-15,
       "geometry_and_transport_scaling": "passed",
       "Nu_volume_hot_cold_middle": [
-        0.9999999999999933,
-        0.9999999999999974,
-        0.9999999999997651,
-        1.0000000000000044
+        1.0000000000000022,
+        0.9999999999999665,
+        0.9999999999997806,
+        1.000000000000004
       ]
     },
     {
@@ -213,11 +213,11 @@
     },
     {
       "small_core_ratio": 2,
-      "requested_core_width_fine_spacings": 5,
-      "integration_core_width_fine_spacings": 6,
+      "requested_core_width_fine_spacings": 4,
+      "integration_core_width_fine_spacings": 4,
       "conduction": "rb_useg",
       "coarse_direct_and_fine_direct_interpolated_counts": [
-        48,
+        40,
         0,
         0
       ],
@@ -232,15 +232,15 @@
     },
     {
       "small_core_ratio": 2,
-      "requested_core_width_fine_spacings": 5,
-      "integration_core_width_fine_spacings": 6,
+      "requested_core_width_fine_spacings": 4,
+      "integration_core_width_fine_spacings": 4,
       "conduction": "side_legacy",
       "coarse_direct_and_fine_direct_interpolated_counts": [
-        48,
+        40,
         0,
         0
       ],
-      "max_T_error": 1.8041124150158794e-16,
+      "max_T_error": 1.6653345369377348e-16,
       "max_rho_error": 4.440892098500626e-16,
       "Nu_volume_hot_cold_middle": [
         1.0,
@@ -255,11 +255,11 @@
     },
     {
       "small_core_ratio": 4,
-      "requested_core_width_fine_spacings": 9,
-      "integration_core_width_fine_spacings": 12,
+      "requested_core_width_fine_spacings": 8,
+      "integration_core_width_fine_spacings": 8,
       "conduction": "rb_useg",
       "coarse_direct_and_fine_direct_interpolated_counts": [
-        48,
+        40,
         0,
         0
       ],
@@ -269,26 +269,26 @@
         1.0,
         0.9999999999999983,
         0.9999999999999983,
-        0.9999999999999993
+        0.9999999999999988
       ]
     },
     {
       "small_core_ratio": 4,
-      "requested_core_width_fine_spacings": 9,
-      "integration_core_width_fine_spacings": 12,
+      "requested_core_width_fine_spacings": 8,
+      "integration_core_width_fine_spacings": 8,
       "conduction": "side_legacy",
       "coarse_direct_and_fine_direct_interpolated_counts": [
-        48,
+        40,
         0,
         0
       ],
-      "max_T_error": 4.718447854656915e-16,
+      "max_T_error": 2.7755575615628914e-16,
       "max_rho_error": 4.440892098500626e-16,
       "Nu_volume_hot_cold_middle": [
         1.0,
         1.0000000000000042,
-        0.9999999999999571,
-        1.0000000000000036
+        0.999999999999957,
+        1.0000000000000027
       ]
     },
     {
@@ -297,40 +297,40 @@
     },
     {
       "small_core_ratio": 8,
-      "requested_core_width_fine_spacings": 17,
-      "integration_core_width_fine_spacings": 24,
+      "requested_core_width_fine_spacings": 16,
+      "integration_core_width_fine_spacings": 16,
       "conduction": "rb_useg",
       "coarse_direct_and_fine_direct_interpolated_counts": [
-        48,
+        40,
         0,
         0
       ],
-      "max_T_error": 1.1102230246251565e-16,
+      "max_T_error": 1.942890293094024e-16,
       "max_rho_error": 4.440892098500626e-16,
       "Nu_volume_hot_cold_middle": [
-        0.9999999999999999,
+        1.0,
         0.9999999999999521,
         1.0000000000000089,
-        0.9999999999999997
+        0.9999999999999994
       ]
     },
     {
       "small_core_ratio": 8,
-      "requested_core_width_fine_spacings": 17,
-      "integration_core_width_fine_spacings": 24,
+      "requested_core_width_fine_spacings": 16,
+      "integration_core_width_fine_spacings": 16,
       "conduction": "side_legacy",
       "coarse_direct_and_fine_direct_interpolated_counts": [
-        48,
+        40,
         0,
         0
       ],
       "max_T_error": 3.3306690738754696e-16,
       "max_rho_error": 4.440892098500626e-16,
       "Nu_volume_hot_cold_middle": [
-        0.9999999999999999,
+        1.0,
         0.9999999999999645,
         0.9999999999999358,
-        0.9999999999999973
+        0.9999999999999974
       ]
     },
     {
@@ -341,25 +341,29 @@
       "nondivisible_wall_ratio": 2,
       "conduction": "rb_useg",
       "wall_thicknesses": [
-        7,
-        9
+        9,
+        8,
+        11,
+        10
       ],
-      "max_T_error": 4.440892098500626e-16,
+      "max_T_error": 2.7755575615628914e-16,
       "max_rho_error": 4.440892098500626e-16,
       "all_wall_residues_geometry": "passed",
       "Nu_volume_hot_cold_middle": [
         1.0,
-        0.9999999999999954,
-        0.9999999999999897,
-        1.0000000000000004
+        0.9999999999999947,
+        0.9999999999999882,
+        1.0000000000000002
       ]
     },
     {
       "nondivisible_wall_ratio": 2,
       "conduction": "side_legacy",
       "wall_thicknesses": [
-        7,
-        9
+        9,
+        8,
+        11,
+        10
       ],
       "max_T_error": 4.163336342344337e-16,
       "max_rho_error": 4.440892098500626e-16,
@@ -367,7 +371,7 @@
       "Nu_volume_hot_cold_middle": [
         1.0,
         0.9999999999999881,
-        0.9999999999999869,
+        0.9999999999999861,
         1.0
       ]
     },
@@ -379,34 +383,38 @@
       "nondivisible_wall_ratio": 3,
       "conduction": "rb_useg",
       "wall_thicknesses": [
-        10,
-        13
+        13,
+        12,
+        16,
+        15
       ],
-      "max_T_error": 5.551115123125783e-16,
+      "max_T_error": 3.3306690738754696e-16,
       "max_rho_error": 4.440892098500626e-16,
       "all_wall_residues_geometry": "passed",
       "Nu_volume_hot_cold_middle": [
         1.0,
         0.999999999999968,
         1.000000000000007,
-        1.0000000000000004
+        1.0000000000000007
       ]
     },
     {
       "nondivisible_wall_ratio": 3,
       "conduction": "side_legacy",
       "wall_thicknesses": [
-        10,
-        13
+        13,
+        12,
+        16,
+        15
       ],
-      "max_T_error": 3.885780586188048e-16,
+      "max_T_error": 3.3306690738754696e-16,
       "max_rho_error": 4.440892098500626e-16,
       "all_wall_residues_geometry": "passed",
       "Nu_volume_hot_cold_middle": [
         1.0,
-        0.9999999999999258,
-        0.9999999999999992,
-        1.0000000000000004
+        0.9999999999999971,
+        0.9999999999999991,
+        1.0000000000000007
       ]
     },
     {
@@ -417,34 +425,38 @@
       "nondivisible_wall_ratio": 4,
       "conduction": "rb_useg",
       "wall_thicknesses": [
-        13,
-        17
+        17,
+        16,
+        21,
+        20
       ],
-      "max_T_error": 4.996003610813204e-16,
+      "max_T_error": 2.498001805406602e-16,
       "max_rho_error": 4.440892098500626e-16,
       "all_wall_residues_geometry": "passed",
       "Nu_volume_hot_cold_middle": [
         1.0,
-        0.9999999999999923,
-        0.9999999999999316,
-        1.000000000000001
+        0.9999999999999913,
+        0.9999999999999302,
+        1.0000000000000004
       ]
     },
     {
       "nondivisible_wall_ratio": 4,
       "conduction": "side_legacy",
       "wall_thicknesses": [
-        13,
-        17
+        17,
+        16,
+        21,
+        20
       ],
-      "max_T_error": 6.106226635438361e-16,
+      "max_T_error": 6.661338147750939e-16,
       "max_rho_error": 4.440892098500626e-16,
       "all_wall_residues_geometry": "passed",
       "Nu_volume_hot_cold_middle": [
         1.0,
         0.9999999999999711,
         0.9999999999999981,
-        1.0000000000000002
+        1.0
       ]
     },
     {
@@ -455,34 +467,38 @@
       "nondivisible_wall_ratio": 8,
       "conduction": "rb_useg",
       "wall_thicknesses": [
-        25,
-        33
+        33,
+        32,
+        41,
+        40
       ],
       "max_T_error": 8.104628079763643e-15,
-      "max_rho_error": 1.7763568394002505e-15,
+      "max_rho_error": 3.1086244689504383e-15,
       "all_wall_residues_geometry": "passed",
       "Nu_volume_hot_cold_middle": [
-        0.999999999999991,
-        0.9999999999997856,
+        1.0000000000000069,
+        0.9999999999997563,
         1.000000000000055,
-        1.0000000000000049
+        1.000000000000005
       ]
     },
     {
       "nondivisible_wall_ratio": 8,
       "conduction": "side_legacy",
       "wall_thicknesses": [
-        25,
-        33
+        33,
+        32,
+        41,
+        40
       ],
-      "max_T_error": 1.021405182655144e-14,
+      "max_T_error": 1.0158540675320182e-14,
       "max_rho_error": 3.1086244689504383e-15,
       "all_wall_residues_geometry": "passed",
       "Nu_volume_hot_cold_middle": [
-        0.9999999999999992,
-        0.9999999999999116,
-        0.9999999999997438,
-        1.0000000000000033
+        0.9999999999999934,
+        0.9999999999999981,
+        0.9999999999997808,
+        1.0000000000000049
       ]
     },
     {
@@ -506,25 +522,25 @@
     {
       "conduction": "rb_useg",
       "coarse_steps": 300,
-      "max_T_error": 4.163336342344337e-15,
-      "max_rho_error": 4.440892098500626e-16,
+      "max_T_error": 1.2212453270876722e-15,
+      "max_rho_error": 2.220446049250313e-16,
       "Nu_volume_hot_cold_middle": [
-        0.9999999999999998,
-        0.9999999999999634,
+        1.0,
+        0.9999999999999736,
         0.9999999999999756,
-        1.000000000000003
+        0.9999999999999996
       ]
     },
     {
       "conduction": "side_useg",
       "coarse_steps": 300,
-      "max_T_error": 3.941291737419306e-15,
-      "max_rho_error": 4.440892098500626e-16,
+      "max_T_error": 9.43689570931383e-16,
+      "max_rho_error": 2.220446049250313e-16,
       "Nu_volume_hot_cold_middle": [
-        1.0000000000000002,
-        0.9999999999999676,
-        0.9999999999999132,
-        1.0000000000000002
+        1.0,
+        0.9999999999999645,
+        0.9999999999999485,
+        0.9999999999999998
       ]
     },
     {
@@ -536,7 +552,7 @@
         1.0,
         0.9999999999999694,
         0.999999999999998,
-        0.9999999999999996
+        0.9999999999999994
       ]
     },
     {
@@ -556,11 +572,15 @@
       "steady_step_number_manual_restart_exact": true
     },
     {
+      "independent_right_top_restart_mismatch_rejected": true
+    },
+    {
       "old_layout_restart_rejected": [
         3,
         4,
         5,
-        6
+        6,
+        7
       ]
     },
     {
@@ -576,21 +596,7 @@
     }
   ],
   "parent_sha256": "68debf94f75f3a70af6bf4f7205e18afc14618d48dd227ccf1d1a8e73d8afd48",
-  "source_sha256": "00bf16bbe4822797990c76d92a4821fe9bfee24802552aed47ed0cb40210a562",
-  "elapsed_seconds": 215.8079569999827,
-  "status": "passed",
-  "runtime_checked_source_sha256": "13ba538ce1299e8d84c4a5fb3c4e88888a088e0db8afd3c9ed0ba54f6a80991a",
-  "final_nonexecuting_cleanup": {
-    "before_sha256": "b16daf1ad793077700db106317d400a82456a309bca145f1b24ca405523fe467",
-    "after_sha256": "1b078543add115742af9b799ee14d957bbe0b51bd5978cfe119eaab88234ae1c",
-    "changes": "Remove empty #ifdef/#endif and normalize procedure-header comments only. Trim blank lines at EOF.",
-    "hash_encoding": "UTF-8 text with LF line endings"
-  },
-  "final_syntax_132_columns_and_preprocessed_equivalence": [
-    "rb_useg",
-    "rb_legacy_steady",
-    "side_useg_steady",
-    "side_legacy",
-    "side_ha"
-  ]
+  "source_sha256": "37e09dc23ba03b4bc4d041bb3c4fe5725892b72211d780c9195956577b99de9e",
+  "elapsed_seconds": 212.81622339994647,
+  "status": "passed"
 }

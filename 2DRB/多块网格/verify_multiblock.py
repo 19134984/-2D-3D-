@@ -69,15 +69,23 @@ def compile_source(name, src, driver=None, n=96, ra=1000, syntax=False, ny=None,
     # Multiblock parameters are edited only in this temporary source; the parent still uses -D overrides.
     if '#define NX_OVERRIDE' not in src:
         height = n if ny is None else ny
-        wx, wy = (n // 8, height // 8) if walls is None else walls
+        if walls is None:
+            left, bottom = n // 8, height // 8
+            left, right, bottom, top = left, left+1, bottom, bottom+1
+        elif len(walls) == 2:
+            left, bottom = walls
+            left, right, bottom, top = left, left+1, bottom, bottom+1
+        else:
+            left, right, bottom, top = walls
         src, count = re.subn(r'\bparameter :: nx\s*=\s*\d+, ny\s*=\s*\d+',
                             f'parameter :: nx={n}, ny={height}', src)
         if count != 1:
             raise AssertionError('Manual grid parameters not found')
-        src, count = re.subn(r'\bparameter :: fineLayerCellsLeftRight\s*=\s*\d+, fineLayerCellsBottomTop\s*=\s*\d+',
-                            f'parameter :: fineLayerCellsLeftRight={wx}, fineLayerCellsBottomTop={wy}', src)
-        if count != 1:
-            raise AssertionError('Manual wall-layer parameters not found')
+        for side, value in [('Left',left),('Right',right),('Bottom',bottom),('Top',top)]:
+            src, count = re.subn(r'\bparameter :: fineLayerCells'+side+r'\s*=\s*\d+',
+                                f'parameter :: fineLayerCells{side}={value}', src)
+            if count != 1:
+                raise AssertionError(f'Manual {side} wall-layer parameter not found')
         ra_literal = format(float(ra), '.16e').replace('e', 'd')
         src, count = re.subn(r'\bparameter :: Rayleigh\s*=\s*[^,\n]+',
                             f'parameter :: Rayleigh={ra_literal}', src)
@@ -203,22 +211,22 @@ GEOMETRY_DRIVER = '''program main
     real(8) :: x,y,area,xmoment,ymoment,w,extraX,extraY,overlap,xLeft,xRight,yBottom,yTop,intersection
     call initial()
     if (blockH(1)/=dble(refineRatio)) error stop 'Wrong coarse spacing'
-    xLeft=dble(fineLayerCellsLeftRight)-0.5d0; xRight=dble(nx)-xLeft
-    yBottom=dble(fineLayerCellsBottomTop)-0.5d0; yTop=dble(ny)-yBottom
+    xLeft=dble(fineLayerCellsLeft)-0.5d0; xRight=dble(nx-fineLayerCellsRight)+0.5d0
+    yBottom=dble(fineLayerCellsBottom)-0.5d0; yTop=dble(ny-fineLayerCellsTop)+0.5d0
     if (any(blockOwnedBox(:, 1)/=blockBaseBox(:, 1))) error stop 'Coarse integration must end at base nodes'
     if (any(blockBaseBox(:, 2)/=[0.0d0,dble(nx),0.0d0,yBottom]) .or. &
         any(blockBaseBox(:, 3)/=[0.0d0,dble(nx),yTop,dble(ny)]) .or. &
         any(blockBaseBox(:, 4)/=[0.0d0,xLeft,yBottom,yTop]) .or. &
         any(blockBaseBox(:, 5)/=[xRight,dble(nx),yBottom,yTop])) error stop 'Fine bases must use requested indices'
-    if (blockX0(1)+0.5d0*blockH(1)/=dble(fineLayerCellsLeftRight)-0.5d0-overlapCells*refineRatio) &
+    if (blockX0(1)+0.5d0*blockH(1)/=dble(fineLayerCellsLeft)-0.5d0-overlapCells*refineRatio) &
         error stop 'Wrong coarse first node relative to interface'
     if (blockX0(4)+(blockNi(4)-0.5d0)*blockH(4)/= &
-        dble(fineLayerCellsLeftRight)-0.5d0+overlapCells*refineRatio) error stop 'Wrong fine last node'
+        dble(fineLayerCellsLeft)-0.5d0+overlapCells*refineRatio) error stop 'Wrong fine last node'
     overlap=dble(overlapCells*refineRatio)
     extraX=blockBaseBox(2, 1)-xRight
     extraY=blockBaseBox(4, 1)-yTop
-    if (min(extraX,extraY)<0.0d0 .or. max(extraX,extraY)>=blockH(1)) &
-        error stop 'Coarse base must be the first covering coarse node'
+    if (extraX/=0.0d0 .or. extraY/=0.0d0) &
+        error stop 'Requested interfaces must not move'
     if (blockBaseBox(1, 1)/=xLeft .or. blockBaseBox(3, 1)/=yBottom) error stop 'Coarse anchor moved'
     if (modulo(blockBaseBox(2, 1)-blockBaseBox(1, 1),blockH(1))/=0.0d0 .or. &
         modulo(blockBaseBox(4, 1)-blockBaseBox(3, 1),blockH(1))/=0.0d0) &
@@ -244,10 +252,11 @@ GEOMETRY_DRIVER = '''program main
         any(dxWeight(blockIlo(1)+1:blockIhi(1)-1)/=blockH(1)) .or. &
         any(dyWeight(blockJlo(1)+1:blockJhi(1)-1)/=blockH(1))) error stop 'Coarse weights must be composite trapezoidal'
     if (nx==1024 .and. ny==1024 .and. refineRatio==2 .and. &
-        fineLayerCellsLeftRight==128 .and. fineLayerCellsBottomTop==128 .and. overlapCells==2) then
-        if (any(blockBaseBox(:, 1)/=[127.5d0,897.5d0,127.5d0,897.5d0])) error stop 'Wrong default coarse base'
-        if (x/=901.5d0 .or. y/=901.5d0) error stop 'Wrong default coarse end nodes'
-        if (blockNi(1)/=390 .or. blockNj(1)/=390) error stop 'Wrong default coarse dimensions'
+        fineLayerCellsLeft==128 .and. fineLayerCellsRight==129 .and. &
+        fineLayerCellsBottom==128 .and. fineLayerCellsTop==129 .and. overlapCells==2) then
+        if (any(blockBaseBox(:, 1)/=[127.5d0,895.5d0,127.5d0,895.5d0])) error stop 'Wrong default coarse base'
+        if (x/=899.5d0 .or. y/=899.5d0) error stop 'Wrong default coarse end nodes'
+        if (blockNi(1)/=389 .or. blockNj(1)/=389) error stop 'Wrong default coarse dimensions'
     endif
     area=0.0d0; xmoment=0.0d0; ymoment=0.0d0
     do b=1,nBlocks
@@ -392,7 +401,7 @@ def main():
         REPORT['checks'].append({'aligned_geometry':[nx,ny],'coarse_direct_nodes':int(values[0]),
             'fine_direct_from_coarse':int(values[1]),'fine_interpolated_from_coarse':int(values[2]),
             'area':float(values[3]),'linear_integrals_and_physical_walls':'passed',
-            'coarse_base_outward_alignment_then_overlap':'passed','fine_interfaces_unchanged':'passed',
+            'four_shared_interfaces_without_rounding':'passed','fine_interfaces_unchanged':'passed',
             'statistics_at_coincident_nodes_trapezoidal_weights_and_disjoint_rectangles':'passed'})
     folder,exe=compile_source('packet_transfer',source,PACKET_DRIVER)
     stdout=run([exe],folder)
@@ -446,7 +455,11 @@ def main():
         ('unaligned_height',4,dict(ny=98,walls=(24,24)),'must be multiples of refineRatio'),
         ('thin_wall',4,dict(walls=(8,24)),'Refined wall layer must exceed'),
         ('empty_core',3,dict(n=63,walls=(32,20)),'coarse core must have positive'),
-        ('negative_core',4,dict(n=64,walls=(20,36)),'coarse core must have positive')]:
+        ('negative_core',4,dict(n=64,walls=(20,36)),'coarse core must have positive'),
+        ('unaligned_core_width',4,dict(walls=(25,26,24,25)),'Central width and height must be multiples'),
+        ('unaligned_core_height',4,dict(walls=(24,25,25,26)),'Central width and height must be multiples'),
+        ('thin_right',2,dict(walls=(12,1,12,13)),'Refined wall layer must exceed'),
+        ('thin_top',2,dict(walls=(12,13,12,1)),'Refined wall layer must exceed')]:
         folder,exe=compile_source('invalid_'+name,variant(source,ratio=ratio),GEOMETRY_DRIVER,**dims)
         bad=subprocess.run([str(exe)],cwd=folder,env=ENV,capture_output=True,text=True)
         if bad.returncode==0 or message not in bad.stderr:
@@ -458,7 +471,7 @@ def main():
         "    if (min(directCoarse,directFine,interpolatedFine)<=0) error stop 'Missing direct or interpolation interface path'",
         "    if (directCoarse<=0) error stop 'Missing fine-to-coarse transfer'")
     for ratio in (2,4,8):
-        dims=dict(n=16*ratio,ny=18*ratio,walls=(7*ratio,8*ratio))  # Node-interface core width/height = 2*ratio+1.
+        dims=dict(n=16*ratio,ny=18*ratio,walls=(7*ratio,8*ratio))  # Both central spans are exactly 2*ratio; there is no rounding.
         src=variant(source,ratio=ratio)
         folder,exe=compile_source(f'two_cell_core_geometry_r{ratio}',src,small_geometry,**dims)
         stdout=run([exe],folder)
@@ -473,8 +486,8 @@ def main():
             history=np.loadtxt(folder/'NuRe_2DOpenaccMultiblock.dat')
             if not np.all(np.isfinite(history)) or max(abs(history[[1,3,4,5]]-1))>1e-10:
                 raise AssertionError(f'Two-cell core conduction diagnostics: {history}')
-            REPORT['checks'].append({'small_core_ratio':ratio,'requested_core_width_fine_spacings':2*ratio+1,
-                'integration_core_width_fine_spacings':3*ratio,'conduction':name,
+            REPORT['checks'].append({'small_core_ratio':ratio,'requested_core_width_fine_spacings':2*ratio,
+                'integration_core_width_fine_spacings':2*ratio,'conduction':name,
                 'coarse_direct_and_fine_direct_interpolated_counts':counts,
                 'max_T_error':result[0],'max_rho_error':result[1],
                 'Nu_volume_hot_cold_middle':history[[1,3,4,5]].tolist()})
@@ -490,14 +503,14 @@ def main():
         REPORT['checks'].append({'small_core_ratio':ratio,'restart_exact':True})
         print('Small node-interface core',ratio,'geometry, conduction and restart passed',flush=True)
 
-    # Wall layers may have any integer residue; only the full-domain dimensions must divide by the ratio.
+    # Individual indices need not divide by the ratio; paired indices must give whole central spans.
     for ratio in (2,3,4,8):
         for offset in range(1,ratio):
-            dims=dict(n=24*ratio,ny=28*ratio,walls=(3*ratio+offset,4*ratio+offset))
+            dims=dict(n=24*ratio,ny=28*ratio,walls=(4*ratio+offset,4*ratio-offset+1,5*ratio+offset,5*ratio-offset+1))
             src=variant(source,ratio=ratio)
             folder,exe=compile_source(f'free_wall_geometry_r{ratio}_{offset}',src,GEOMETRY_DRIVER,**dims)
             run([exe],folder)
-        dims=dict(n=24*ratio,ny=28*ratio,walls=(3*ratio+1,4*ratio+1))
+        dims=dict(n=24*ratio,ny=28*ratio,walls=(4*ratio+1,4*ratio,5*ratio+1,5*ratio))
         for name,kw in [('rb_useg',{}),('side_legacy',{'side':True,'legacy':True})]:
             folder,exe=compile_source(f'free_wall_conduction_r{ratio}_{name}',variant(source,ratio=ratio,**kw),
                                       CONDUCTION.replace('step=1,300','step=1,60'),ra=10000,**dims)
@@ -602,17 +615,26 @@ def main():
     assert np.array_equal(np.fromfile(steady/'allstate.bin',dtype='<f8'),
                           np.fromfile(steady_split/'allstate.bin',dtype='<f8'))
     REPORT['checks'].append({'fresh_run_resets_reload_counter':True,'steady_step_number_manual_restart_exact':True})
+    # Shift the right/top interface by one coarse spacing: valid meshes, but incompatible checkpoints.
+    for label, walls in [('right',(12,15,12,13)),('top',(12,13,12,15))]:
+        target,texe=compile_source('restart_changed_'+label,variant(source,restart=True),RESTART_DRIVER,walls=walls)
+        shutil.copy2(split/first_name,target/first_name)
+        (target/'reloadFile2DOpenaccMultiblock-latest.meta').write_text(first_name+'\n')
+        shutil.copy2(split/'NuRe_2DOpenaccMultiblock.dat',target/'NuRe_2DOpenaccMultiblock.dat')
+        bad=subprocess.run([str(texe),'40'],cwd=target,env=ENV,capture_output=True)
+        assert bad.returncode!=0 and b'Restart mesh/refinement mismatch' in bad.stderr
+    REPORT['checks'].append({'independent_right_top_restart_mismatch_rejected':True})
     # Previous layouts/statistics must fail before reading arrays (v5 used the old integration partition).
     latest=(split/'reloadFile2DOpenaccMultiblock-latest.meta').read_text().strip()
     old=split/'old-layout.bin'
     state=(split/latest).read_bytes()
-    for version in (3,4,5,6):
+    for version in (3,4,5,6,7):
         old.write_bytes(f'MB2DRESTART{version:04d}'.encode().ljust(16,b' ')+state[16:])
         (split/'reloadFile2DOpenaccMultiblock-latest.meta').write_text('old-layout.bin\n')
         bad=subprocess.run([str(split/'resume.exe'),'40'],cwd=split,env=ENV,capture_output=True)
         if bad.returncode==0 or b'Wrong checkpoint format' not in bad.stderr:
             raise AssertionError(f'Old checkpoint v{version} was not rejected')
-    REPORT['checks'].append({'old_layout_restart_rejected':[3,4,5,6]})
+    REPORT['checks'].append({'old_layout_restart_rejected':[3,4,5,6,7]})
 
     # Exercise the actual program, output clocks, binary snapshots and history-backed restart.
     smoke=source.replace('unsteadyRunDuration = 1000.0d0','unsteadyRunDuration = 0.1d0')
@@ -665,7 +687,11 @@ def main():
 
 if __name__=='__main__':
     try:
-        main()
+        if re.search(r'maxBlocks\s*=\s*2\b', SOURCE.read_text(encoding='utf-8-sig')):
+            from verify_ring import main as ring_main
+            ring_main()
+        else:
+            main()
     except Exception:
         REPORT['status']='failed'
         (BUILD/'failure_report.json').write_text(json.dumps(REPORT,indent=2),encoding='utf-8')

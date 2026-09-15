@@ -1,0 +1,76 @@
+{
+  "case": "side-heated, EnableUseG, Ra=1e4, Pr=0.7, Ma=0.1",
+  "layout": "pre-collision buffers, overlapCells=2, aligned nested nodes, connected fine ring, snapshot v3 explicit 2D area",
+  "fine_equivalent_grid": [
+    96,
+    96
+  ],
+  "fine_steps": 2000,
+  "t_ff": 1.2028130608117202,
+  "field_order": [
+    "u",
+    "v",
+    "T",
+    "rho"
+  ],
+  "field_relative_l2": [
+    0.0009989045983637354,
+    0.0009921989852598686,
+    0.00033089077382199284,
+    4.080736635097104e-07
+  ],
+  "field_max_abs": [
+    1.398332123928904e-05,
+    1.5263804730564906e-05,
+    0.0002058769727103088,
+    1.0179562893730676e-06
+  ],
+  "metric_order": [
+    "NuVolAvg",
+    "ReVolRMS",
+    "Nu_hot",
+    "Nu_cold"
+  ],
+  "uniform": [
+    1.4217922271651946,
+    15.911177588762065,
+    1.0495919215285077,
+    1.049591921528495
+  ],
+  "multiblock": [
+    1.4228009310422205,
+    15.92395375763131,
+    1.0496719758439048,
+    1.049666444402779
+  ],
+  "relative_metric_difference": [
+    0.0007094594116870898,
+    0.0008029681522923979,
+    7.62718479011984e-05,
+    7.100176054658843e-05
+  ],
+  "width_control": {
+    "same_pre_collision_scheme": true,
+    "default_overlapCells": 2,
+    "control_overlapCells": 4,
+    "control_metrics": [
+      1.4226628931581455,
+      15.922813745340216,
+      1.0496850337948502,
+      1.0496712955662835
+    ],
+    "relative_difference_narrow_vs_wide": [
+      9.702782348426314e-05,
+      7.159615814933852e-05,
+      1.2439875319750957e-05,
+      4.6216025197135595e-06
+    ],
+    "relative_mass_drift_narrow": 1.6424508775259028e-07,
+    "relative_mass_drift_wide": 3.1806845512960535e-07
+  },
+  "source_sha256": "e17e17c4971a8f384ae789d5f74350db2b53b05cb35ffa22e72a3dbd59cc7296",
+  "parent_sha256": "68debf94f75f3a70af6bf4f7205e18afc14618d48dd227ccf1d1a8e73d8afd48",
+  "device": "OpenACC host",
+  "build_directory": "C:\\Users\\User\\AppData\\Local\\Temp\\mb2d-verify-whq9ip_r",
+  "scope": "Transient comparison only; this is not a converged benchmark or GPU validation."
+}

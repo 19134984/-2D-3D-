@@ -1,0 +1,14 @@
+<?xml version='1.0' encoding='utf-8'?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="820" viewBox="0 0 1500 820" role="img">
+  <title>原上细块和左细块现已属于同一细环，直接访问相邻节点。</title>
+  <rect x="0" y="0" width="1500" height="820" fill="#ffffff" stroke="none" stroke-width="1" />
+  <text x="750" y="48" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="42" fill="#243147" text-anchor="middle" dominant-baseline="central">原来的上、左细区：现在直接连续迁移</text>
+  <text x="750" y="107" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="28" fill="#536277" text-anchor="middle" dominant-baseline="central">只有一套细网格 f、g；没有同级连接、缓冲打包或插值</text>
+  <rect x="100" y="185" width="1300" height="190" fill="#fff1de" stroke="#d7dee8" stroke-width="1" />
+  <text x="750" y="240" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="32" fill="#243147" text-anchor="middle" dominant-baseline="central">同一个细网格数组内的普通相邻节点</text>
+  <text x="750" y="310" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="31" fill="#243147" text-anchor="middle" dominant-baseline="central">f(i,j,α) ← f_post(i−ex(α), j−ey(α), α)</text>
+  <text x="750" y="440" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="31" fill="#237b69" text-anchor="middle" dominant-baseline="central">穿过原拼接位置与其他细网格内部位置完全相同。</text>
+  <text x="750" y="515" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="29" fill="#243147" text-anchor="middle" dominant-baseline="central">仍保留粗细交换：中心粗网格 与 连通细环的内边缘。</text>
+  <text x="750" y="605" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="29" fill="#243147" text-anchor="middle" dominant-baseline="central">二维细数组覆盖全域；中心空区不碰撞、不迁移、不计入积分。</text>
+  <text x="750" y="715" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="27" fill="#536277" text-anchor="middle" dominant-baseline="central">数组为空区保留存储；这版尚未采用只存环上节点的紧凑布局。</text>
+</svg>

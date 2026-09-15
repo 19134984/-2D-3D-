@@ -86,13 +86,16 @@
         ! 物理壁面在 x=0、nx 和 y=0、ny；最细块 dx=dt=1，中心粗块 dx=dt=refineRatio。
         integer(kind=4), parameter :: nx = 1024, ny = 1024    ! 手动设置最细网格等效分辨率，修改后重新编译
         integer(kind=4), parameter :: refineRatio = 2    ! 粗/细格距及时间步之比；逐级二分取2、4、8等2的幂，1为单块
-        integer(kind=4), parameter :: fineLayerCellsLeftRight = 128, fineLayerCellsBottomTop = 128    ! 左右/上下细块的基准边界：从对应墙向内数的细节点编号
-        ! 编号128表示距墙127.5；默认左/下细块基准为127.5，右/上为896.5，不是最终的积分分界。
-        ! 多块模式 nx、ny 须被 refineRatio 整除；上述节点编号为正整数，无须整除粗细比。
-        ! 基准距墙为编号减0.5，至少 (overlapCells+1)*refineRatio；中心宽高须为正，插值模板按实际节点检查。
-        ! 粗块以左/下基准为锚点，右/上基准向外补齐完整粗格距；默认补到897.5，细块基准不动。
-        ! 积分分界取粗块共址基准：默认中心为[127.5,897.5]^2，相邻细块及角部接到同一分界，面积不重复。
-        integer(kind=4), parameter :: overlapCells = 2    ! 各块从自身基准边界向外延伸的粗格距数；总重叠宽度还包括基准边界差
+        integer(kind=4), parameter :: fineLayerCellsLeft = 128      ! 从左墙向内数的细节点编号，x = Left-0.5
+        integer(kind=4), parameter :: fineLayerCellsRight = 129     ! 从右墙向内数的细节点编号，x = nx-Right+0.5
+        integer(kind=4), parameter :: fineLayerCellsBottom = 128    ! 从下墙向内数的细节点编号，y = Bottom-0.5
+        integer(kind=4), parameter :: fineLayerCellsTop = 129       ! 从上墙向内数的细节点编号，y = ny-Top+0.5
+        ! 默认交界面为 x/y=127.5、895.5；粗细块共用这些基准边界，积分也在此分区。
+        ! 中心宽度 nx-Left-Right+1、高度 ny-Bottom-Top+1 须为正，且均能被 refineRatio 整除。
+        ! 右=左+1、上=下+1 时，中心宽高为 nx-2*Left、ny-2*Bottom；较大粗细比仍须检查整除。
+        ! 默认 128/129 对 nx=ny=1024、粗细比 2/4/8 都满足条件；不再自动移动右/上交界面。
+        ! 多块模式 nx、ny 仍须整除粗细比；四个细网格编号本身无须整除，但距墙均至少 (overlapCells+1)*refineRatio。
+        integer(kind=4), parameter :: overlapCells = 2    ! 每块向交界面外延伸的粗格距数；总重叠跨度为两倍
         integer(kind=4), parameter :: interfaceSkin = 2    ! 原流场->温度场分步推进需要两层人工边界；这些节点在接收后参与碰撞
 
         !===============================================================================================
@@ -121,7 +124,7 @@
 #endif
 
         !===============================================================================================
-        ! 输运系数：沿用原程序的最细格子单位
+        ! 输运系数：沿用最细格子单位
         !===============================================================================================
         ! 以下参数全部沿用原文件的最细格子单位，不按块重新定义 Ra、Pr、Ma 或 paraA。
         real(kind=8), parameter :: tauf = 0.5d0+Mach*lengthUnit*sqrt(3.0d0*Prandtl/Rayleigh)
@@ -173,7 +176,7 @@
 #endif
 
 #ifdef unsteadyFlow
-        real(kind=8), parameter :: outputSnapshotInterval = 0.5d0    ! 快照与 Nu/Re 采样间隔，单位 t_ff
+        real(kind=8), parameter :: outputSnapshotInterval = 1.0d0    ! 快照与 Nu/Re 采样间隔，单位 t_ff
         real(kind=8), parameter :: reloadFileInterval = 100.0d0      ! 完整重启文件输出间隔，单位 t_ff
         real(kind=8), parameter :: outputPltFileInterval = 100.0d0   ! Tecplot 输出间隔，单位 t_ff
         real(kind=8), parameter :: unsteadyRunDuration = 1000.0d0    ! 绝对总目标 t_ff；续算只补足剩余时间
@@ -186,7 +189,7 @@
         integer(kind=4), parameter :: outputReloadFile = 1      ! 0: 不输出重启文件；1: 输出
         integer(kind=4), parameter :: itc_max = max(1, ceiling(unsteadyRunDuration*timeUnit))
 #endif
-        ! 多块输出和最终时刻向上对齐到粗细同步步，不早于设置的 t_ff；各间隔至少为一个粗步。
+        ! 多块输出和最终时刻向上对齐到粗细同步步；各间隔至少为一个粗步。
         ! nextSample/nextReload/nextPlt 是输出时钟，和各文件编号分开；禁用某类文件不影响其他输出。
 
         ! 输出文件命名与格式版本
@@ -195,21 +198,22 @@
         character(*), parameter :: pltFolderPrefix = 'buoyancyCavity2DOpenaccMultiblockTecplot'
         character(*), parameter :: reloadFilePrefix = 'reloadFile2DOpenaccMultiblock'
         character(*), parameter :: historyFile = 'NuRe_2DOpenaccMultiblock.dat'
-        character(16), parameter :: restartMagic = 'MB2DRESTART0007'
-        character(16), parameter :: snapshotMagic = 'MB2DSNAPSHOT0002'
+        character(16), parameter :: restartMagic = 'MB2DRESTART0009'
+        character(16), parameter :: snapshotMagic = 'MB2DSNAPSHOT0003'
 
         !===============================================================================================
         ! 格子方向、块数据与接口交换数据
         !===============================================================================================
         integer(kind=4), parameter :: packetSize = 22
-        integer(kind=4), parameter :: maxBlocks = 5
+        integer(kind=4), parameter :: maxBlocks = 2
         integer(kind=4) :: ex(0:8) = [0, 1, 0, -1, 0, 1, -1, -1, 1], ey(0:8) = [0, 0, 1, 0, -1, 1, 1, -1, -1]
         real(kind=8) :: omega(0:8), omegaT(0:4)
         integer(kind=4) :: nBlocks, itc = 0, snapshotFileNum = 0, pltFileNum = 0
         integer(kind=4) :: nextSample = 1, nextReload = 1, nextPlt = 1
         real(kind=8) :: errorU = 100.0d0, errorT = 100.0d0
 
-        ! 块编号：1 为中心粗块，2/3 为下/上细块，4/5 为左/右细块；单块模式只使用 1。
+        ! 块编号：1 为中心粗块，2 为连通细网格环；单块模式只使用 1。
+        ! 细环采用全域二维存储，中心空区不推进；原四个细区不再有独立状态或同级连接。
         ! 几何信息用普通数组保存，最后一个下标均为块编号。
         ! blockNi/blockNj 为本块含重叠层的节点数；blockNh 为历史时间层的最大下标。
         ! blockIlo:Ihi、blockJlo:Jhi 是参与积分的节点范围，实际面积仍由积分权重确定。
@@ -218,8 +222,8 @@
         real(kind=8) :: blockH(maxBlocks), blockX0(maxBlocks), blockY0(maxBlocks)
         ! blockH 同时表示本块格距和时间步；blockSn/Sq/Qk/Qn 为按该格距缩放后的松弛率。
         real(kind=8) :: blockSn(maxBlocks), blockSq(maxBlocks), blockQk(maxBlocks), blockQn(maxBlocks), blockGb(maxBlocks)
-        real(kind=8) :: blockOwnedBox(4, maxBlocks)    ! 不重叠积分分区：xmin, xmax, ymin, ymax
-        real(kind=8) :: blockBaseBox(4, maxBlocks)     ! 加重叠层前的基准边界，粗块右/上已向外对齐
+        real(kind=8) :: blockOwnedBox(4, maxBlocks)    ! 积分外框：粗块直接使用；细环须扣除粗块内框面积
+        real(kind=8) :: blockBaseBox(4, maxBlocks)     ! 加重叠层前的基准边界，粗细块共用指定交界面
         logical :: blockWall(4, maxBlocks)           ! 左、右、下、上是否为真实物理壁面
         ! blockX0/blockY0 为首节点减去本块半格距的虚拟面，不等于积分分界。
 
@@ -262,7 +266,8 @@
 
         ! 外部标量函数的返回类型；具体函数排在主程序之后。
         integer(kind=4), external :: scheduled_step
-        logical, external :: skin_node
+        logical, external :: skin_node, fine_active
+        real(kind=8), external :: owned_cell_area, section_owned_weight
 
     end module commondata
 
@@ -331,17 +336,18 @@
     !===============================================================================================
     subroutine initial()
 
-        use commondata, only: nx, ny, refineRatio, fineLayerCellsLeftRight, fineLayerCellsBottomTop, &
+        use commondata, only: nx, ny, refineRatio, fineLayerCellsLeft, fineLayerCellsRight, &
+            fineLayerCellsBottom, fineLayerCellsTop, &
             overlapCells, interfaceSkin, loadInitField, reloadFileNum, Rayleigh, Prandtl, Mach, tauf, &
             viscosity, diffusivity, gBeta, timeUnit, Snu, Sq, paraA, Qk, Qnu, thermalA, &
             outputSnapshotInterval, reloadFileInterval, outputPltFileInterval, settingsFile, historyFile, &
             omega, omegaT, nBlocks, blockNi, blockNj, blockIlo, blockIhi, blockJlo, blockJhi, blockH, &
             blockX0, blockY0, blockSn, blockSq, blockQk, blockQn, blockGb, blockOwnedBox, blockBaseBox, &
-            dxWeight, dyWeight, nLinks, linkReceiver, linkDonor, linkCount, linkSame
+            dxWeight, dyWeight, nLinks, linkReceiver, linkDonor, linkCount, linkSame, owned_cell_area
         implicit none
 
-        integer(kind=4) :: b, k, overlap
-        real(kind=8) :: totalArea, xLeft, xRight, yBottom, yTop, xSplit, ySplit
+        integer(kind=4) :: b, k, overlap, i, j
+        real(kind=8) :: totalArea, xLeft, xRight, yBottom, yTop
 
         if (refineRatio < 1) error stop 'refineRatio must be a positive integer'
         if (min(nx, ny) < 8) error stop 'At least 8 cells per direction are required'
@@ -372,31 +378,22 @@
                 error stop 'Overlap is too narrow for the pre-collision interface layers'
             if (mod(nx, refineRatio) /= 0 .or. mod(ny, refineRatio) /= 0) &
                 error stop 'nx,ny must be multiples of refineRatio'
-            xLeft = dble(fineLayerCellsLeftRight)-0.5d0
-            xRight = dble(nx)-xLeft
-            yBottom = dble(fineLayerCellsBottomTop)-0.5d0
-            yTop = dble(ny)-yBottom
-            if (min(xLeft, yBottom) < dble(overlap+refineRatio)) &
+            xLeft = dble(fineLayerCellsLeft)-0.5d0
+            xRight = dble(nx-fineLayerCellsRight)+0.5d0
+            yBottom = dble(fineLayerCellsBottom)-0.5d0
+            yTop = dble(ny-fineLayerCellsTop)+0.5d0
+            if (min(xLeft, dble(nx)-xRight, yBottom, dble(ny)-yTop) < dble(overlap+refineRatio)) &
                 error stop 'Refined wall layer must exceed the overlap width by at least one coarse cell'
             if (xRight <= xLeft .or. yTop <= yBottom) &
                 error stop 'The coarse core must have positive width and height'
-            nBlocks = 5
-            ! 计算块：中心、下、上、左、右。细块基准保持用户指定的接口细节点坐标。
-            ! make_block 先确定各块 baseBox，再向邻块延伸 overlap；统计分区随后单独设置。
-            ! 最后一个 2 表示粗块历史下标 0:2（三个时间层），与粗细比无关。
+            if (mod(nx-fineLayerCellsLeft-fineLayerCellsRight+1, refineRatio) /= 0 .or. &
+                mod(ny-fineLayerCellsBottom-fineLayerCellsTop+1, refineRatio) /= 0) &
+                error stop 'Central width and height must be multiples of refineRatio; adjust the four interface indices'
+
+            nBlocks = 2
+            ! 两级各有一套状态：中心粗矩形与连通细环。
             call make_block(1, xLeft, xRight, yBottom, yTop, refineRatio, overlap, 2)
-            call make_block(2, 0.0d0, dble(nx), 0.0d0, yBottom, 1, overlap, 0)
-            call make_block(3, 0.0d0, dble(nx), yTop, dble(ny), 1, overlap, 0)
-            call make_block(4, 0.0d0, xLeft, yBottom, yTop, 1, overlap, 0)
-            call make_block(5, xRight, dble(nx), yBottom, yTop, 1, overlap, 0)
-            ! 统计分界取粗细共址的粗块基准边界，默认右/上为897.5，而细块基准仍为896.5。
-            ! 上细块及左右细块共用 ySplit，右细块与中心共用 xSplit，角部不重复也不漏算。
-            xSplit = blockBaseBox(2, 1)
-            ySplit = blockBaseBox(4, 1)
-            blockOwnedBox(:, 1) = blockBaseBox(:, 1)
-            blockOwnedBox(:, 3) = [0.0d0, dble(nx), ySplit, dble(ny)]
-            blockOwnedBox(:, 4) = [0.0d0, xLeft, yBottom, ySplit]
-            blockOwnedBox(:, 5) = [xSplit, dble(nx), yBottom, ySplit]
+            call make_block(2, 0.0d0, dble(nx), 0.0d0, dble(ny), 1, 0, 0)
         endif
         ! 先确定所有块的大小，再分配连续存储；积分权重和场量随后逐块初始化。
         call allocate_block_arrays()
@@ -409,7 +406,11 @@
             call integration_weights(blockNj(b), blockY0(b), blockH(b), blockOwnedBox(3, b), blockOwnedBox(4, b), dyWeight, &
                 blockJlo(b), blockJhi(b))
             call initial_block(b)
-            totalArea = totalArea+sum(dxWeight)*sum(dyWeight)
+            do j = 1, blockNj(b)
+                do i = 1, blockNi(b)
+                    totalArea = totalArea+owned_cell_area(b,i,j)
+                enddo
+            enddo
         enddo
         if (abs(totalArea-dble(nx)*ny) > 1.0d-8) error stop 'Block ownership does not tile the physical domain'
         if (loadInitField == 1) call read_restart()
@@ -423,11 +424,12 @@
         write(k, *) 'Rayleigh, Prandtl, Mach:', Rayleigh, Prandtl, Mach
         write(k, *) 'Fine tauf, Snu, Sq, Qk, Qnu, thermalA:', tauf, Snu, Sq, Qk, Qnu, thermalA
         write(k, *) 'Fine viscosity, diffusivity, gBeta, timeUnit:', viscosity, diffusivity, gBeta, timeUnit
-        write(k, *) 'Interface fine-node indices from each wall; overlap in coarse spacings:', &
-            fineLayerCellsLeftRight, fineLayerCellsBottomTop, overlapCells
+        write(k, *) 'Fine-node indices left/right/bottom/top; overlap in coarse spacings:', &
+            fineLayerCellsLeft, fineLayerCellsRight, fineLayerCellsBottom, fineLayerCellsTop, overlapCells
         write(k, *) 'Owned physical area:', totalArea
-        write(k, *) 'Geometry: align coarse right/top base boundaries outward, then extend each base by the overlap.'
-        write(k, *) 'Fine bases stay at requested fine-node interfaces; integration partitions meet at coarse base nodes.'
+        write(k, *) 'Geometry: connected fine ring (block 2) and central coarse block (1); no fine/fine links.'
+        write(k, *) 'Fine storage is rectangular; the central inactive hole is excluded from advance and integration.'
+        write(k, *) 'Central spans must contain whole coarse spacings; interfaces and integration partitions are not shifted.'
         write(k, *) 'Node alignment: coarse nodes remain a subset of fine nodes; the integer phase depends on block origin.'
         write(k, *) 'Integration: clipped nodal control areas; shared coordinates do not duplicate physical area.'
         write(k, *) 'All nonconserved relaxation times satisfy h*(1/s-1/2)=constant.'
@@ -469,7 +471,7 @@
 
 
     !===============================================================================================
-    ! 计算块：先对齐粗块基准边界，再向外延伸重叠层
+    ! 计算块：保持指定的粗细共址交界面，再向外延伸重叠层
 
     !===============================================================================================
     ! 子程序: make_block
@@ -490,10 +492,8 @@
         blockOwnedBox(:, b) = [xlo, xhi, ylo, yhi]
         blockBaseBox(:, b) = blockOwnedBox(:, b)
         if (spacing > 1) then
-            ! 先补齐粗块基准跨度，再添加重叠层；细块基准不动，统计分区由 initial 单独确定。
-            ! 默认 xlo=127.5,xhi=896.5,h=2：粗右基准为897.5，加4后末节点为901.5；y同理。
-            blockBaseBox(2, b) = xlo+dble(ceiling((xhi-xlo)/blockH(b)))*blockH(b)
-            blockBaseBox(4, b) = ylo+dble(ceiling((yhi-ylo)/blockH(b)))*blockH(b)
+            ! 中心跨度已在 initial 中按整数检查；不取 ceiling，也不改变右/上交界面。
+            ! 默认基准为 [127.5,895.5]，各侧再延伸 4，得到计算节点范围 [123.5,899.5]。
             if (min(xlo, ylo)-dble(overlap) <= 0.5d0 .or. &
                 blockBaseBox(2, b)+dble(overlap) >= dble(nx)-0.5d0 .or. &
                 blockBaseBox(4, b)+dble(overlap) >= dble(ny)-0.5d0) &
@@ -507,7 +507,7 @@
         ! xb、yb 已是首节点坐标，不再加 0.5；整数粗细比保证粗节点属于细节点子集。
         blockX0(b) = xb-0.5d0*blockH(b)
         blockY0(b) = yb-0.5d0*blockH(b)
-        ! 基准跨度已补齐，overlap 也是粗格距整数倍；末节点必须恰好到达 xe、ye。
+        ! 基准跨度和 overlap 均为粗格距整数倍；末节点必须恰好到达 xe、ye。
         blockNi(b) = nint((xe-xb)/blockH(b))+1
         blockNj(b) = nint((ye-yb)/blockH(b))+1
         blockNh(b) = nh
@@ -975,7 +975,7 @@
         call pack_block(1, 2)
         do k = 1, refineRatio
             ! 3. 第 k 个细子步在 t+(k-1)*dt_f 开始：先补齐该时刻的碰撞前缓冲，再推进。
-            ! 同级 donor 使用上一个子步结束的快照；粗级 donor 按三个粗时间层插值。
+            ! 唯一细环的内边缘由粗级历史插值；细环内部不交换数据。
             theta = dble(k-1)/dble(refineRatio)
             call coarse_time_weights(theta, wt)
             call exchange_interfaces(.false., wt)
@@ -1048,12 +1048,24 @@
     !===============================================================================================
     logical function skin_node(b, i, j)
 
-        use commondata, only: interfaceSkin, blockNi, blockNj, blockWall
+        use commondata, only: interfaceSkin, blockNi, blockNj, blockWall, nBlocks, blockH, fine_active, &
+            fineLayerCellsLeft, fineLayerCellsRight, fineLayerCellsBottom, fineLayerCellsTop, nx, ny, overlapCells, refineRatio
         implicit none
 
         integer(kind=4), intent(in) :: b
         integer(kind=4), intent(in) :: i, j
 
+        real(8) :: x,y,xl,xr,yb,yt
+        if (nBlocks>1 .and. b==2) then
+            x=dble(i)-0.5d0; y=dble(j)-0.5d0
+            xl=fineLayerCellsLeft-0.5d0+overlapCells*refineRatio
+            xr=nx-fineLayerCellsRight+0.5d0-overlapCells*refineRatio
+            yb=fineLayerCellsBottom-0.5d0+overlapCells*refineRatio
+            yt=ny-fineLayerCellsTop+0.5d0-overlapCells*refineRatio
+            skin_node=fine_active(i,j) .and. x>xl-interfaceSkin .and. x<xr+interfaceSkin .and. &
+                y>yb-interfaceSkin .and. y<yt+interfaceSkin
+            return
+        endif
         skin_node = (.not.blockWall(1, b) .and. i <= interfaceSkin) .or. &
             (.not.blockWall(2, b) .and. i > blockNi(b)-interfaceSkin) .or. &
             (.not.blockWall(3, b) .and. j <= interfaceSkin) .or. &
@@ -1071,7 +1083,7 @@
     !===============================================================================================
     subroutine donor_stencil(receiver, x, y, donor, si, sj, wx, wy, coincident)
 
-        use commondata, only: interfaceSkin, nBlocks, blockNi, blockNj, blockH, blockX0, blockY0, blockWall
+        use commondata, only: interfaceSkin, nBlocks, blockNi, blockNj, blockH, blockX0, blockY0, blockWall, fine_active, skin_node
         implicit none
 
         integer(kind=4), intent(in) :: receiver
@@ -1098,12 +1110,16 @@
             qx = (x-blockX0(d))/blockH(d)+0.5d0
             qy = (y-blockY0(d))/blockH(d)+0.5d0
             if (qx < dble(il) .or. qx > dble(ih) .or. qy < dble(jl) .or. qy > dble(jh)) cycle
+            if (d==2) then
+                if (abs(qx-nint(qx))>1d-12 .or. abs(qy-nint(qy))>1d-12) cycle
+                if (.not.fine_active(nint(qx),nint(qy))) cycle
+                if (skin_node(d,nint(qx),nint(qy))) cycle
+            endif
             if (ih-il < 3 .or. jh-jl < 3) cycle
             is = max(il, min(floor(qx)-1, ih-3))
             js = max(jl, min(floor(qy)-1, jh-3))
             score = min(qx-il, ih-qx, qy-jl, jh-qy)*blockH(d)
-            ! 可用时优先同级直接交换；粗块始终从细块获取边界。
-            if (blockH(d) == blockH(receiver)) score = score+1.0d6
+            ! 只存在粗->细或细->粗连接；细环内部直接迁移。
             if (score <= best) cycle
             best = score
             donor = d
@@ -1550,6 +1566,7 @@
 #ifdef SideHeatedHa
         use commondata, only: phi
 #endif
+        use commondata, only: globalNx=>nx, refineRatio, fine_active
         implicit none
 
         integer(kind=4), intent(in) :: nx, ny
@@ -1570,6 +1587,9 @@
         !$acc& private(alpha, s, m, m_post, meq, fSource)
         do j = 1, ny
             do i = 1, nx
+                if (refineRatio>1 .and. nx==globalNx) then
+                    if (.not.fine_active(i,j)) cycle
+                endif
 
                 m(0) = f(i, j, 0)+f(i, j, 1)+f(i, j, 2)+f(i, j, 3)+f(i, j, 4)+f(i, j, 5)+f(i, j, 6)+f(i, j, 7)+f(i, j, 8)
                 m(1) = -4.0d0*f(i, j, 0)-f(i, j, 1)-f(i, j, 2)-f(i, j, 3)-f(i, j, 4)+2.0d0*(f(i, j, 5)+f(i, j, &
@@ -1658,6 +1678,7 @@
     subroutine streaming(nx, ny, f, f_post)    !先迁移，再边界处理
 
         use commondata, only: ex, ey
+        use commondata, only: globalNx=>nx, refineRatio, fine_active
         implicit none
 
         integer(kind=4), intent(in) :: nx, ny
@@ -1670,6 +1691,9 @@
         !$acc parallel loop gang vector collapse(2) present(f, f_post, ex, ey) async(1) private(alpha, ip, jp)
         do j = 1, ny
             do i = 1, nx
+                if (refineRatio>1 .and. nx==globalNx) then
+                    if (.not.fine_active(i,j)) cycle
+                endif
                 do alpha = 0, 8    !上游格点索引：fα(i,j) <- f_postα(i-exα, j-eyα)
                     ip = i-ex(alpha)    !边界附近 (ip/jp 可能为 0 或 nx+1/ny+1)，需在 bounceback/周期边界处理中覆盖修正边界分布
                     jp = j-ey(alpha)    !ghost 层在初始化中为 0，保证不会出现未初始化垃圾值
@@ -1754,6 +1778,7 @@
     !===============================================================================================
     subroutine macro(nx, ny, f, rho, u, v, Fx, Fy)
 
+        use commondata, only: globalNx=>nx, refineRatio, fine_active
         implicit none
 
         integer(kind=4), intent(in) :: nx, ny
@@ -1765,6 +1790,9 @@
         !$acc parallel loop gang vector collapse(2) present(f, rho, u, v, Fx, Fy) async(1)
         do j = 1, ny
             do i = 1, nx
+                if (refineRatio>1 .and. nx==globalNx) then
+                    if (.not.fine_active(i,j)) cycle
+                endif
                 rho(i, j) = f(i, j, 0)+f(i, j, 1)+f(i, j, 2)+f(i, j, 3)+f(i, j, 4)+f(i, j, 5)+f(i, j, 6)+f(i, j, 7)+f(i, j, 8)
                 u(i, j) = ( f(i, j, 1)-f(i, j, 3)+f(i, j, 5)-f(i, j, 6)-f(i, j, 7)+f(i, j, 8)+0.5d0*Fx(i, j) )/rho(i, j)    !含力LBM的半步动量修正：rho*u = Σ f e + 0.5*F，对应Guo forcing的二阶定义
                 v(i, j) = ( f(i, j, 2)-f(i, j, 4)+f(i, j, 5)+f(i, j, 6)-f(i, j, 7)-f(i, j, 8)+0.5d0*Fy(i, j) )/rho(i, j)
@@ -1782,6 +1810,7 @@
     subroutine collisionT(nx, ny, g, g_post, u, v, T, Bx_prev, By_prev, Qk, Qnu)
 
         use commondata, only: paraA
+        use commondata, only: globalNx=>nx, refineRatio, fine_active
         implicit none
 
         integer(kind=4), intent(in) :: nx, ny
@@ -1802,6 +1831,9 @@
         !$acc& private(alpha, n, neq, q, n_post, Bx, By, dBx, dBy)
         do j = 1, ny
             do i = 1, nx
+                if (refineRatio>1 .and. nx==globalNx) then
+                    if (.not.fine_active(i,j)) cycle
+                endif
 
                 Bx = u(i, j) * T(i, j)
                 By = v(i, j) * T(i, j)
@@ -1866,6 +1898,7 @@
     subroutine streamingT(nx, ny, g, g_post)
 
         use commondata, only: ex, ey
+        use commondata, only: globalNx=>nx, refineRatio, fine_active
         implicit none
 
         integer(kind=4), intent(in) :: nx, ny
@@ -1878,6 +1911,9 @@
         !$acc parallel loop gang vector collapse(2) present(g, g_post, ex, ey) async(1) private(alpha, ip, jp)
         do j = 1, ny
             do i = 1, nx
+                if (refineRatio>1 .and. nx==globalNx) then
+                    if (.not.fine_active(i,j)) cycle
+                endif
                 do alpha = 0, 4
                     ip = i-ex(alpha)
                     jp = j-ey(alpha)
@@ -1987,6 +2023,7 @@
     !===============================================================================================
     subroutine macroT(nx, ny, g, T)
 
+        use commondata, only: globalNx=>nx, refineRatio, fine_active
         implicit none
 
         integer(kind=4), intent(in) :: nx, ny
@@ -1998,6 +2035,9 @@
         !$acc parallel loop gang vector collapse(2) present(g, T) async(1)
         do j = 1, ny
             do i = 1, nx
+                if (refineRatio>1 .and. nx==globalNx) then
+                    if (.not.fine_active(i,j)) cycle
+                endif
                 T(i, j) = g(i, j, 0)+g(i, j, 1)+g(i, j, 2)+g(i, j, 3)+g(i, j, 4)
             enddo
         enddo
@@ -2123,6 +2163,7 @@
         use commondata, only: nx, ny, Thot, Tcold, lengthUnit, viscosity, diffusivity, timeUnit, historyFile, &
             nBlocks, itc, blockNi, blockNj, blockIlo, blockIhi, blockJlo, blockJhi, blockH, blockX0, blockY0, &
             blockOwnedBox, rho, u, v, T, dxWeight, dyWeight, ieee_is_finite
+        use commondata, only: owned_cell_area, section_owned_weight
         implicit none
 
         integer(kind=4) :: b, i, j, k, jm, im
@@ -2151,12 +2192,14 @@
             h = blockH(b)
             do j = blockJlo(b), blockJhi(b)
                 do i = blockIlo(b), blockIhi(b)
+                    cellArea=owned_cell_area(b,i,j)
+                    if (cellArea<=0d0) cycle
                     if (.not.ieee_is_finite(T(i, j)) .or. .not.ieee_is_finite(rho(i, j)) .or. &
                         .not.ieee_is_finite(u(i, j)) .or. .not.ieee_is_finite(v(i, j)) .or. rho(i, j) <= 0.0d0) then
                         write(*, *) 'Invalid state: coarse clock, block, i,j:', itc, b, i, j
                         error stop 'Nonfinite or nonpositive density in owned cells'
                     endif
-                    cellArea = dxWeight(i)*dyWeight(j)
+                    cellArea = owned_cell_area(b,i,j)
 #ifdef SideHeatedCell
                     conv = conv+u(i, j)*T(i, j)*cellArea
 #else
@@ -2189,10 +2232,11 @@
             if (xmid >= xlo .and. xmid < xhi) then
                 call section_weights((xmid-blockX0(b))/h+0.5d0, blockNi(b), im, w, dw)
                 do j = blockJlo(b), blockJhi(b)
+                    if (section_owned_weight(b,j,1,xmid)<=0d0) cycle
                     tm = sum(w*T(im:im+3, j))
                     um = sum(w*u(im:im+3, j))
                     dTdx = sum(dw*T(im:im+3, j))/h
-                    middle = middle+(um*tm/diffusivity-dTdx)*dyWeight(j)/dble(ny)
+                    middle = middle+(um*tm/diffusivity-dTdx)*section_owned_weight(b,j,1,xmid)/dble(ny)
                 enddo
             endif
 #else
@@ -2209,10 +2253,11 @@
             if (ymid >= ylo .and. ymid < yhi) then
                 call section_weights((ymid-blockY0(b))/h+0.5d0, blockNj(b), jm, w, dw)
                 do i = blockIlo(b), blockIhi(b)
+                    if (section_owned_weight(b,i,2,ymid)<=0d0) cycle
                     tm = sum(w*T(i, jm:jm+3))
                     vm = sum(w*v(i, jm:jm+3))
                     dTdy = sum(dw*T(i, jm:jm+3))/h
-                    middle = middle+(vm*tm/diffusivity-dTdy)*dxWeight(i)/dble(nx)
+                    middle = middle+(vm*tm/diffusivity-dTdy)*section_owned_weight(b,i,2,ymid)/dble(nx)
                 enddo
             endif
 #endif
@@ -2242,6 +2287,7 @@
 #ifdef steadyFlow
         use commondata, only: up, vp, Tp
 #endif
+        use commondata, only: owned_cell_area, section_owned_weight
         implicit none
 
         integer(kind=4) :: b, k, i, j
@@ -2256,7 +2302,7 @@
             call select_block(b)
             do j = blockJlo(b), blockJhi(b)
                 do i = blockIlo(b), blockIhi(b)
-                    cellArea = dxWeight(i)*dyWeight(j)
+                    cellArea = owned_cell_area(b,i,j)
                     du = du+cellArea*((u(i, j)-up(i, j))**2+(v(i, j)-vp(i, j))**2)
                     uu = uu+cellArea*(u(i, j)**2+v(i, j)**2)
                     dt = dt+cellArea*(T(i, j)-Tp(i, j))**2
@@ -2286,6 +2332,7 @@
 
         use commondata, only: lengthUnit, timeUnit, pltFolderPrefix, nBlocks, itc, pltFileNum, blockIlo, &
             blockIhi, blockJlo, blockJhi, blockH, blockX0, blockY0, rho, u, v, T, dxWeight, dyWeight
+        use commondata, only: owned_cell_area, section_owned_weight
         implicit none
 
         integer(kind=4) :: k, b, i, j
@@ -2305,7 +2352,7 @@
                     write(k, '(8(ES24.16E3,1X))') (blockX0(b)+(dble(i)-0.5d0)*blockH(b))/lengthUnit, &
                         (blockY0(b)+(dble(j)-0.5d0)*blockH(b))/lengthUnit, u(i, j), v(i, j), T(i, j), rho(i, j), &
                         blockH(b)/lengthUnit, &
-                        dxWeight(i)*dyWeight(j)/lengthUnit**2
+                        owned_cell_area(b,i,j)/lengthUnit**2
                 enddo
             enddo
         enddo
@@ -2323,9 +2370,10 @@
         use commondata, only: nx, ny, lengthUnit, timeUnit, snapshotFilePrefix, snapshotMagic, nBlocks, itc, &
             snapshotFileNum, blockIlo, blockIhi, blockJlo, blockJhi, blockH, blockX0, blockY0, blockOwnedBox, &
             rho, u, v, T, dxWeight, dyWeight
+        use commondata, only: owned_cell_area, section_owned_weight
         implicit none
 
-        integer(kind=4) :: k, b
+        integer(kind=4) :: k, b, i,j
         character(16) :: num
 
         snapshotFileNum = snapshotFileNum+1
@@ -2340,6 +2388,8 @@
                 blockX0(b)+(dble(blockIlo(b))-0.5d0)*blockH(b), blockY0(b)+(dble(blockJlo(b))-0.5d0)*blockH(b), &
                 blockH(b), blockOwnedBox(:, b)
             write(k) dxWeight(blockIlo(b):blockIhi(b)), dyWeight(blockJlo(b):blockJhi(b))
+            ! Snapshot v3 appends explicit 2D area after the separable coordinate weights.
+            write(k) ((owned_cell_area(b,i,j),i=blockIlo(b),blockIhi(b)),j=blockJlo(b),blockJhi(b))
             write(k) u(blockIlo(b):blockIhi(b), blockJlo(b):blockJhi(b)), v(blockIlo(b):blockIhi(b), blockJlo(b):blockJhi(b)), &
                 T(blockIlo(b):blockIhi(b), blockJlo(b):blockJhi(b)), rho(blockIlo(b):blockIhi(b), blockJlo(b):blockJhi(b))
         enddo
@@ -2433,7 +2483,8 @@
     !===============================================================================================
     subroutine output_ReloadFile()
 
-        use commondata, only: nx, ny, refineRatio, fineLayerCellsLeftRight, fineLayerCellsBottomTop, &
+        use commondata, only: nx, ny, refineRatio, fineLayerCellsLeft, fineLayerCellsRight, &
+            fineLayerCellsBottom, fineLayerCellsTop, &
             overlapCells, reloadFileNum, reloadFilePrefix, restartMagic, nBlocks, itc, snapshotFileNum, &
             pltFileNum, nextSample, nextReload, nextPlt, errorU, errorT, blockNi, blockNj, blockNh, blockIlo, &
             blockIhi, blockJlo, blockJhi, blockH, blockX0, blockY0, blockOwnedBox, f, g, rho, u, v, T, Fx, &
@@ -2457,7 +2508,8 @@
         write(num, '(I12.12)') reloadFileNum
         name = reloadFilePrefix//'-'//trim(num)//'.bin'
         open(newunit = k, file = trim(name), access = 'stream', form = 'unformatted', status = 'replace')
-        write(k) restartMagic, nx, ny, refineRatio, fineLayerCellsLeftRight, fineLayerCellsBottomTop, overlapCells, nBlocks
+        write(k) restartMagic, nx, ny, refineRatio, fineLayerCellsLeft, fineLayerCellsRight, &
+            fineLayerCellsBottom, fineLayerCellsTop, overlapCells, nBlocks
         call model_signature(currentModel)
         call physical_signature(currentPhysics)
         write(k) currentModel, currentPhysics
@@ -2489,7 +2541,8 @@
     !===============================================================================================
     subroutine read_restart()
 
-        use commondata, only: nx, ny, refineRatio, fineLayerCellsLeftRight, fineLayerCellsBottomTop, &
+        use commondata, only: nx, ny, refineRatio, fineLayerCellsLeft, fineLayerCellsRight, &
+            fineLayerCellsBottom, fineLayerCellsTop, &
             overlapCells, reloadFileNum, reloadFilePrefix, restartMagic, nBlocks, itc, snapshotFileNum, &
             pltFileNum, nextSample, nextReload, nextPlt, errorU, errorT, blockNi, blockNj, blockNh, blockIlo, &
             blockIhi, blockJlo, blockJhi, blockH, blockX0, blockY0, blockOwnedBox, f, g, rho, u, v, T, Fx, &
@@ -2499,7 +2552,7 @@
 #endif
         implicit none
 
-        integer(kind=4) :: k, b, ios, head(7), geom(7), sig(12), currentModel(12)
+        integer(kind=4) :: k, b, ios, head(9), geom(7), sig(12), currentModel(12)
         real(kind=8) :: phys(16), coord(7), currentPhysics(16)
         character(16) :: magic
         character(16) :: num
@@ -2523,7 +2576,8 @@
         read(k, iostat = ios) magic, head
         if (ios /= 0) error stop 'Truncated multiblock checkpoint header'
         if (magic /= restartMagic) error stop 'Wrong checkpoint format'
-        if (any(head /= [nx, ny, refineRatio, fineLayerCellsLeftRight, fineLayerCellsBottomTop, overlapCells, nBlocks])) &
+        if (any(head /= [nx, ny, refineRatio, fineLayerCellsLeft, fineLayerCellsRight, &
+            fineLayerCellsBottom, fineLayerCellsTop, overlapCells, nBlocks])) &
             error stop 'Restart mesh/refinement mismatch'
         read(k) sig, phys
         call model_signature(currentModel)
@@ -2694,3 +2748,58 @@
 #endif
     end subroutine output_unsteady_NuRe_postprocess
     !===============================================================================================
+
+    ! 细环只保留中心空区之外的节点；四个原细区的拼接处没有特殊处理。
+    logical function fine_active(i,j)
+        use commondata, only: nx,ny,refineRatio,overlapCells,fineLayerCellsLeft,fineLayerCellsRight, &
+            fineLayerCellsBottom,fineLayerCellsTop
+        implicit none
+        !$acc routine seq
+        integer,intent(in) :: i,j
+        real(8) :: x,y,o
+        x=dble(i)-.5d0; y=dble(j)-.5d0; o=dble(overlapCells*refineRatio)
+        fine_active=refineRatio==1 .or. x<=fineLayerCellsLeft-.5d0+o .or. &
+            x>=nx-fineLayerCellsRight+.5d0-o .or. y<=fineLayerCellsBottom-.5d0+o .or. &
+            y>=ny-fineLayerCellsTop+.5d0-o
+    end function fine_active
+
+    real(8) function owned_cell_area(b,i,j) result(a)
+        use commondata, only: nBlocks,blockOwnedBox,blockH,blockX0,blockY0
+        implicit none
+        integer,intent(in) :: b,i,j
+        real(8) :: x,y,h,wx,wy
+        h=blockH(b); x=blockX0(b)+(i-.5d0)*h; y=blockY0(b)+(j-.5d0)*h
+        wx=max(0d0,min(x+h/2,blockOwnedBox(2,b))-max(x-h/2,blockOwnedBox(1,b)))
+        wy=max(0d0,min(y+h/2,blockOwnedBox(4,b))-max(y-h/2,blockOwnedBox(3,b)))
+        a=wx*wy
+        if(nBlocks>1 .and. b==2) then
+            wx=max(0d0,min(x+h/2,blockOwnedBox(2,1))-max(x-h/2,blockOwnedBox(1,1)))
+            wy=max(0d0,min(y+h/2,blockOwnedBox(4,1))-max(y-h/2,blockOwnedBox(3,1)))
+            a=a-wx*wy
+        endif
+    end function owned_cell_area
+
+    real(8) function section_owned_weight(b,k,axis,position) result(w)
+        use commondata, only: nBlocks,blockOwnedBox,blockH,blockX0,blockY0
+        implicit none
+        integer,intent(in) :: b,k,axis
+        real(8),intent(in) :: position
+        real(8) :: q,h,lo,hi
+        h=blockH(b)
+        if(axis==1) then
+            q=blockY0(b)+(k-.5d0)*h; lo=blockOwnedBox(3,b);hi=blockOwnedBox(4,b)
+        else
+            q=blockX0(b)+(k-.5d0)*h; lo=blockOwnedBox(1,b);hi=blockOwnedBox(2,b)
+        endif
+        w=max(0d0,min(q+h/2,hi)-max(q-h/2,lo))
+        if(nBlocks>1 .and. b==2) then
+            if(axis==1) then
+                if(position<blockOwnedBox(1,1) .or. position>=blockOwnedBox(2,1)) return
+                lo=blockOwnedBox(3,1);hi=blockOwnedBox(4,1)
+            else
+                if(position<blockOwnedBox(3,1) .or. position>=blockOwnedBox(4,1)) return
+                lo=blockOwnedBox(1,1);hi=blockOwnedBox(2,1)
+            endif
+            w=w-max(0d0,min(q+h/2,hi)-max(q-h/2,lo))
+        endif
+    end function section_owned_weight

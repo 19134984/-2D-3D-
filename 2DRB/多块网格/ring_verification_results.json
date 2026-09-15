@@ -1,0 +1,83 @@
+{
+  "source_sha256": "e17e17c4971a8f384ae789d5f74350db2b53b05cb35ffa22e72a3dbd59cc7296",
+  "device": "gfortran OpenACC host",
+  "build_directory": "C:\\Users\\User\\AppData\\Local\\Temp\\mb2d-verify-vdxw1an8",
+  "checks": [
+    {
+      "five_macro_syntax_checks": true
+    },
+    {
+      "ratio": 2,
+      "geometry_and_direct_seam_streaming": "RING_GEOMETRY_AND_DIRECT_STREAMING_OK   30720.000000000000"
+    },
+    {
+      "ratio": 4,
+      "geometry_and_direct_seam_streaming": "RING_GEOMETRY_AND_DIRECT_STREAMING_OK   30720.000000000000"
+    },
+    {
+      "ratio": 8,
+      "geometry_and_direct_seam_streaming": "RING_GEOMETRY_AND_DIRECT_STREAMING_OK   30720.000000000000"
+    },
+    {
+      "conduction": "rb",
+      "coarse_steps": 300,
+      "max_T_and_rho_error": [
+        3.3306690738754696e-16,
+        4.440892098500626e-16
+      ],
+      "Nu": [
+        1.0,
+        0.9999999999999756,
+        0.9999999999999973,
+        1.0
+      ]
+    },
+    {
+      "conduction": "side",
+      "coarse_steps": 300,
+      "max_T_and_rho_error": [
+        3.3306690738754696e-16,
+        4.440892098500626e-16
+      ],
+      "Nu": [
+        1.0,
+        0.9999999999999742,
+        0.999999999999998,
+        0.9999999999999994
+      ]
+    },
+    {
+      "conduction": "legacy",
+      "coarse_steps": 300,
+      "max_T_and_rho_error": [
+        2.7755575615628914e-16,
+        4.440892098500626e-16
+      ],
+      "Nu": [
+        1.0,
+        0.9999999999999696,
+        0.999999999999998,
+        0.9999999999999994
+      ]
+    },
+    {
+      "uniform_regression": "rb",
+      "max_state_error": 8.881784197001252e-16
+    },
+    {
+      "uniform_regression": "legacy",
+      "max_state_error": 0.0
+    },
+    {
+      "exact_restart": "rb",
+      "fine_steps": 40,
+      "split": 20
+    },
+    {
+      "exact_restart": "steady",
+      "fine_steps": 40,
+      "split": 20
+    }
+  ],
+  "status": "passed"
+}

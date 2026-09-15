@@ -17,12 +17,12 @@
   <rect x="55" y="520" width="1390" height="137" fill="#fff1de" stroke="#d7dee8" stroke-width="1" />
   <text x="82" y="557" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="29" fill="#243147" text-anchor="start" dominant-baseline="central">② 细块第一步</text>
   <text x="330" y="558" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="29" fill="#243147" text-anchor="start" dominant-baseline="central">准备 t 的接口 → 碰撞、迁移及温度推进 → t+1</text>
-  <text x="330" y="611" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="25" fill="#536277" text-anchor="start" dominant-baseline="central">同级读取 t 快照；跨级读取粗块 t 快照，不能直接用 t+2</text>
+  <text x="330" y="611" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="25" fill="#536277" text-anchor="start" dominant-baseline="central">细环内边缘读取粗块 t 快照；环内邻点直接迁移</text>
   <text x="750" y="673" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="29" fill="#536277" text-anchor="middle" dominant-baseline="central">↓</text>
   <rect x="55" y="695" width="1390" height="137" fill="#fff1de" stroke="#d7dee8" stroke-width="1" />
   <text x="82" y="732" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="29" fill="#243147" text-anchor="start" dominant-baseline="central">③ 细块第二步</text>
   <text x="330" y="733" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="29" fill="#243147" text-anchor="start" dominant-baseline="central">准备 t+1 的接口 → 碰撞、迁移及温度推进 → t+2</text>
-  <text x="330" y="786" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="25" fill="#536277" text-anchor="start" dominant-baseline="central">同级读取 t+1 快照；跨级由三个粗时间层插值到 t+1</text>
+  <text x="330" y="786" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="25" fill="#536277" text-anchor="start" dominant-baseline="central">细环内边缘由粗时间层插值到 t+1；没有同级交换</text>
   <text x="750" y="848" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="29" fill="#536277" text-anchor="middle" dominant-baseline="central">↓</text>
   <rect x="55" y="870" width="1390" height="137" fill="#f5dbe8" stroke="#d7dee8" stroke-width="1" />
   <text x="82" y="907" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="29" fill="#243147" text-anchor="start" dominant-baseline="central">④ 同步</text>
