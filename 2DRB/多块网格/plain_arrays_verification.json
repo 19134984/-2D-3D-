@@ -1,0 +1,38 @@
+{
+  "source_sha256": "fda246d78b80c3faf9bb87ad9bcb8dd746cb1a0d79b790f2fdc544f947ac241d",
+  "baseline_sha256": "5eff362a8eceff71d30d59457a78d22dc2d6850d97e56cf274f4d096d6187bb3",
+  "baseline_path": "C:\\Users\\User\\AppData\\Local\\Temp\\mb2d-plain-arrays-id0xabjk\\2DRBOpenaccMultiblock.F90",
+  "device": "gfortran OpenACC host",
+  "build_directory": "C:\\Users\\User\\AppData\\Local\\Temp\\mb2d-verify-skdyd5f8",
+  "checks": [
+    {
+      "case": "r1_side0_steady0",
+      "fine_steps": 40,
+      "fields_packets_checkpoint_outputs_bitwise_equal": true
+    },
+    {
+      "case": "r2_side0_steady0",
+      "fine_steps": 40,
+      "fields_packets_checkpoint_outputs_bitwise_equal": true
+    },
+    {
+      "case": "r4_side1_steady0",
+      "fine_steps": 40,
+      "fields_packets_checkpoint_outputs_bitwise_equal": true
+    },
+    {
+      "case": "r8_side1_steady1",
+      "fine_steps": 40,
+      "fields_packets_checkpoint_outputs_bitwise_equal": true
+    },
+    {
+      "actual_main_bidirectional_v10_restart": "unsteady",
+      "checkpoints_counters_histories_outputs_bitwise_equal": true
+    },
+    {
+      "actual_main_bidirectional_v10_restart": "steady",
+      "checkpoints_counters_histories_outputs_bitwise_equal": true
+    }
+  ],
+  "status": "passed"
+}

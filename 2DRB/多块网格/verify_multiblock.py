@@ -61,10 +61,55 @@ def manual_reload_number(src, number):
         raise AssertionError('Manual reload file number declaration not found')
     return src
 
+def plain_array_driver(driver):
+    """Use the same numerical probes with explicit coarse/fine arrays.
+
+    Historical baselines retain the original driver, so before/after checks
+    exercise each solver's real storage without adding aliases to the solver.
+    """
+    names = {'blockNi':'xLocalCount', 'blockNj':'yLocalCount', 'blockNh':'historyLast',
+             'blockH':'meshSpacing', 'blockX0':'xOrigin', 'blockY0':'yOrigin',
+             'blockIlo':'iStart', 'blockIhi':'iEnd', 'blockJlo':'jStart', 'blockJhi':'jEnd',
+             'dxWeight':'quadWidthX', 'dyWeight':'quadWidthY'}
+    for old, new in names.items():
+        driver = re.sub(r'\b'+old+r'\b', new, driver)
+    fields = r'\b(f|g|f_post|g_post|u|v|T|rho|Fx|Fy|p|up|vp|Tp|quadWidthX|quadWidthY)\b'
+    def named(text, suffix):
+        return re.sub(fields, lambda m: m[0]+'_'+suffix, text)
+    # A runtime block loop becomes two explicit array calls/operations.
+    while 'call select_block(b)' in driver:
+        pos = driver.index('call select_block(b)')
+        loops = list(re.finditer(r'^\s*do b\s*=\s*1\s*,\s*nBlocks\s*$', driver[:pos], re.M))
+        begin = loops[-1].start()
+        depth = 0
+        length = 0
+        for line in driver[begin:].splitlines(True):
+            if re.match(r'\s*do\b', line): depth += 1
+            if re.match(r'\s*enddo\b', line): depth -= 1
+            length += len(line)
+            if depth == 0 and length > pos-begin: break
+        loop = driver[begin:begin+length]
+        lines = loop.splitlines()
+        start = next(i for i, line in enumerate(lines) if re.match(r'\s*do b', line))
+        body = '\n'.join(lines[start+1:-1]).replace('call select_block(b)', '')
+        replacement = '\n    do b=1,nBlocks\n        if (b==1) then\n'
+        replacement += named(body, 'coarse')+'\n        else\n'+named(body, 'fine')
+        replacement += '\n        endif\n    enddo\n'
+        driver = driver[:begin]+replacement+driver[begin+length:]
+    fixed = re.findall(r'call select_block\(([12])\)', driver)
+    if fixed:
+        assert len(set(fixed)) == 1
+        driver = re.sub(r'call select_block\([12]\)', '', driver)
+        driver = named(driver, 'coarse' if fixed[0] == '1' else 'fine')
+    return driver
+
+
 def compile_source(name, src, driver=None, n=96, ra=1000, syntax=False, ny=None, walls=None):
     folder = BUILD / name
     folder.mkdir(exist_ok=True)
     if driver:
+        if 'allocatable :: f_coarse' in src:
+            driver = plain_array_driver(driver)
         src = re.sub(r'^\s*program main\b.*?^\s*end program main\b', driver, src, flags=re.S|re.M|re.I)
     # Multiblock parameters are edited only in this temporary source; the parent still uses -D overrides.
     if '#define NX_OVERRIDE' not in src:
@@ -104,7 +149,7 @@ def compile_source(name, src, driver=None, n=96, ra=1000, syntax=False, ny=None,
     return folder, exe
 
 def state_writer(parent=False):
-    names=['f','g','u','v','T','rho','Fx','Fy','Bx_prev','By_prev']
+    names=['f','g','u','v','T','rho','Fx','Fy']
     arrays=','.join(names)
     select='' if parent else '    call select_block(1)\n'
     return f"""
@@ -374,7 +419,7 @@ RESTART_DRIVER = '''program main
     do b=1,nBlocks
         call select_block(b)
         write(77) f,g,u,v,T,rho, &
-            Fx,Fy,Bx_prev,By_prev,p
+            Fx,Fy,p
     enddo
     close(77)
     call exit_data_2d_openacc()

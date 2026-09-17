@@ -1,0 +1,15 @@
+#!/bin/bash
+#PBS -N MBsideR2
+#PBS -q batch
+#PBS -l nodes=node05:ppn=1
+#PBS -l walltime=96:00:00
+#PBS -o /data2/XLLi/Multiblock/campaign_20260916/pbs.stdout
+#PBS -e /data2/XLLi/Multiblock/campaign_20260916/pbs.stderr
+set -u
+cd /data2/XLLi/Multiblock/campaign_20260916 || exit 90
+date -Is > started
+bash '/data2/XLLi/Multiblock/Ra1e6/ratio2/sideheated_N256_20260916/run.sh'
+rc=$?
+echo 'Ra1e6/ratio2/sideheated_N256_20260916' $rc >> case_exit_status.txt
+if [ "$rc" -ne 0 ]; then exit "$rc"; fi
+date -Is > finished

@@ -1,0 +1,156 @@
+========= COMPUTE-SANITIZER
+========= Invalid __global__ read of size 8 bytes
+=========     at interpolate_packets_1438+0xae8 in /data2/XLLi/Multiblock/gpu_debug/memcheck/solver.F90:1445
+=========     by thread (0,0,0) in block (0,0,0)
+=========     Address 0x2b39cf000000 is out of bounds
+=========     and is 624,033,792 bytes before the nearest allocation at 0x2b39f4320000 of size 65,536 bytes
+=========     Saved host backtrace up to driver entry point at kernel launch time
+=========     Host Frame: [0x2ef370]
+=========                in /lib64/libcuda.so.1
+=========     Host Frame:__pgi_uacc_cuda_launch3 in ../../src/cuda_launch.c:840 [0x190e1]
+=========                in /opt/nvidia/hpc_sdk/Linux_x86_64/24.3/compilers/lib/libaccdevice.so
+=========     Host Frame:__pgi_uacc_cuda_launch in ../../src/cuda_launche.c:197 [0x1b850]
+=========                in /opt/nvidia/hpc_sdk/Linux_x86_64/24.3/compilers/lib/libaccdevice.so
+=========     Host Frame:__pgi_uacc_launch in ../../src/launch.c:55 [0x3b741]
+=========                in /opt/nvidia/hpc_sdk/Linux_x86_64/24.3/compilers/lib/libacchost.so
+=========     Host Frame:interpolate_packets_ in /data2/XLLi/Multiblock/gpu_debug/memcheck/solver.F90:1459 [0x12311]
+=========                in /data2/XLLi/Multiblock/gpu_debug/memcheck/./solver.exe
+=========     Host Frame:exchange_interfaces_ in /data2/XLLi/Multiblock/gpu_debug/memcheck/solver.F90:1406 [0x1175c]
+=========                in /data2/XLLi/Multiblock/gpu_debug/memcheck/./solver.exe
+=========     Host Frame:enter_data_2d_openacc_ in /data2/XLLi/Multiblock/gpu_debug/memcheck/solver.F90:788 [0xa734]
+=========                in /data2/XLLi/Multiblock/gpu_debug/memcheck/./solver.exe
+=========     Host Frame:MAIN_ in /data2/XLLi/Multiblock/gpu_debug/memcheck/solver.F90:288 [0x2a88]
+=========                in /data2/XLLi/Multiblock/gpu_debug/memcheck/./solver.exe
+=========     Host Frame:main [0x2971]
+=========                in /data2/XLLi/Multiblock/gpu_debug/memcheck/./solver.exe
+=========     Host Frame:__libc_start_main [0x22555]
+=========                in /lib64/libc.so.6
+=========     Host Frame: [0x2829]
+=========                in /data2/XLLi/Multiblock/gpu_debug/memcheck/./solver.exe
+========= 
+========= Invalid __global__ read of size 8 bytes
+=========     at interpolate_packets_1438+0xae8 in /data2/XLLi/Multiblock/gpu_debug/memcheck/solver.F90:1445
+=========     by thread (1,0,0) in block (0,0,0)
+=========     Address 0x2b39cf000008 is out of bounds
+=========     and is 624,033,784 bytes before the nearest allocation at 0x2b39f4320000 of size 65,536 bytes
+=========     Saved host backtrace up to driver entry point at kernel launch time
+=========     Host Frame: [0x2ef370]
+=========                in /lib64/libcuda.so.1
+=========     Host Frame:__pgi_uacc_cuda_launch3 in ../../src/cuda_launch.c:840 [0x190e1]
+=========                in /opt/nvidia/hpc_sdk/Linux_x86_64/24.3/compilers/lib/libaccdevice.so
+=========     Host Frame:__pgi_uacc_cuda_launch in ../../src/cuda_launche.c:197 [0x1b850]
+=========                in /opt/nvidia/hpc_sdk/Linux_x86_64/24.3/compilers/lib/libaccdevice.so
+=========     Host Frame:__pgi_uacc_launch in ../../src/launch.c:55 [0x3b741]
+=========                in /opt/nvidia/hpc_sdk/Linux_x86_64/24.3/compilers/lib/libacchost.so
+=========     Host Frame:interpolate_packets_ in /data2/XLLi/Multiblock/gpu_debug/memcheck/solver.F90:1459 [0x12311]
+=========                in /data2/XLLi/Multiblock/gpu_debug/memcheck/./solver.exe
+=========     Host Frame:exchange_interfaces_ in /data2/XLLi/Multiblock/gpu_debug/memcheck/solver.F90:1406 [0x1175c]
+=========                in /data2/XLLi/Multiblock/gpu_debug/memcheck/./solver.exe
+=========     Host Frame:enter_data_2d_openacc_ in /data2/XLLi/Multiblock/gpu_debug/memcheck/solver.F90:788 [0xa734]
+=========                in /data2/XLLi/Multiblock/gpu_debug/memcheck/./solver.exe
+=========     Host Frame:MAIN_ in /data2/XLLi/Multiblock/gpu_debug/memcheck/solver.F90:288 [0x2a88]
+=========                in /data2/XLLi/Multiblock/gpu_debug/memcheck/./solver.exe
+=========     Host Frame:main [0x2971]
+=========                in /data2/XLLi/Multiblock/gpu_debug/memcheck/./solver.exe
+=========     Host Frame:__libc_start_main [0x22555]
+=========                in /lib64/libc.so.6
+=========     Host Frame: [0x2829]
+=========                in /data2/XLLi/Multiblock/gpu_debug/memcheck/./solver.exe
+========= 
+========= Invalid __global__ read of size 8 bytes
+=========     at interpolate_packets_1438+0xae8 in /data2/XLLi/Multiblock/gpu_debug/memcheck/solver.F90:1445
+=========     by thread (2,0,0) in block (0,0,0)
+=========     Address 0x2b39cf000010 is out of bounds
+=========     and is 624,033,776 bytes before the nearest allocation at 0x2b39f4320000 of size 65,536 bytes
+=========     Saved host backtrace up to driver entry point at kernel launch time
+=========     Host Frame: [0x2ef370]
+=========                in /lib64/libcuda.so.1
+=========     Host Frame:__pgi_uacc_cuda_launch3 in ../../src/cuda_launch.c:840 [0x190e1]
+=========                in /opt/nvidia/hpc_sdk/Linux_x86_64/24.3/compilers/lib/libaccdevice.so
+=========     Host Frame:__pgi_uacc_cuda_launch in ../../src/cuda_launche.c:197 [0x1b850]
+=========                in /opt/nvidia/hpc_sdk/Linux_x86_64/24.3/compilers/lib/libaccdevice.so
+=========     Host Frame:__pgi_uacc_launch in ../../src/launch.c:55 [0x3b741]
+=========                in /opt/nvidia/hpc_sdk/Linux_x86_64/24.3/compilers/lib/libacchost.so
+=========     Host Frame:interpolate_packets_ in /data2/XLLi/Multiblock/gpu_debug/memcheck/solver.F90:1459 [0x12311]
+=========                in /data2/XLLi/Multiblock/gpu_debug/memcheck/./solver.exe
+=========     Host Frame:exchange_interfaces_ in /data2/XLLi/Multiblock/gpu_debug/memcheck/solver.F90:1406 [0x1175c]
+=========                in /data2/XLLi/Multiblock/gpu_debug/memcheck/./solver.exe
+=========     Host Frame:enter_data_2d_openacc_ in /data2/XLLi/Multiblock/gpu_debug/memcheck/solver.F90:788 [0xa734]
+=========                in /data2/XLLi/Multiblock/gpu_debug/memcheck/./solver.exe
+=========     Host Frame:MAIN_ in /data2/XLLi/Multiblock/gpu_debug/memcheck/solver.F90:288 [0x2a88]
+=========                in /data2/XLLi/Multiblock/gpu_debug/memcheck/./solver.exe
+=========     Host Frame:main [0x2971]
+=========                in /data2/XLLi/Multiblock/gpu_debug/memcheck/./solver.exe
+=========     Host Frame:__libc_start_main [0x22555]
+=========                in /lib64/libc.so.6
+=========     Host Frame: [0x2829]
+=========                in /data2/XLLi/Multiblock/gpu_debug/memcheck/./solver.exe
+========= 
+========= Invalid __global__ read of size 8 bytes
+=========     at interpolate_packets_1438+0xae8 in /data2/XLLi/Multiblock/gpu_debug/memcheck/solver.F90:1445
+=========     by thread (0,0,0) in block (56,0,0)
+=========     Address 0x2b39cf000000 is out of bounds
+=========     and is 624,033,792 bytes before the nearest allocation at 0x2b39f4320000 of size 65,536 bytes
+=========     Saved host backtrace up to driver entry point at kernel launch time
+=========     Host Frame: [0x2ef370]
+=========                in /lib64/libcuda.so.1
+=========     Host Frame:__pgi_uacc_cuda_launch3 in ../../src/cuda_launch.c:840 [0x190e1]
+=========                in /opt/nvidia/hpc_sdk/Linux_x86_64/24.3/compilers/lib/libaccdevice.so
+=========     Host Frame:__pgi_uacc_cuda_launch in ../../src/cuda_launche.c:197 [0x1b850]
+=========                in /opt/nvidia/hpc_sdk/Linux_x86_64/24.3/compilers/lib/libaccdevice.so
+=========     Host Frame:__pgi_uacc_launch in ../../src/launch.c:55 [0x3b741]
+=========                in /opt/nvidia/hpc_sdk/Linux_x86_64/24.3/compilers/lib/libacchost.so
+=========     Host Frame:interpolate_packets_ in /data2/XLLi/Multiblock/gpu_debug/memcheck/solver.F90:1459 [0x12311]
+=========                in /data2/XLLi/Multiblock/gpu_debug/memcheck/./solver.exe
+=========     Host Frame:exchange_interfaces_ in /data2/XLLi/Multiblock/gpu_debug/memcheck/solver.F90:1406 [0x1175c]
+=========                in /data2/XLLi/Multiblock/gpu_debug/memcheck/./solver.exe
+=========     Host Frame:enter_data_2d_openacc_ in /data2/XLLi/Multiblock/gpu_debug/memcheck/solver.F90:788 [0xa734]
+=========                in /data2/XLLi/Multiblock/gpu_debug/memcheck/./solver.exe
+=========     Host Frame:MAIN_ in /data2/XLLi/Multiblock/gpu_debug/memcheck/solver.F90:288 [0x2a88]
+=========                in /data2/XLLi/Multiblock/gpu_debug/memcheck/./solver.exe
+=========     Host Frame:main [0x2971]
+=========                in /data2/XLLi/Multiblock/gpu_debug/memcheck/./solver.exe
+=========     Host Frame:__libc_start_main [0x22555]
+=========                in /lib64/libc.so.6
+=========     Host Frame: [0x2829]
+=========                in /data2/XLLi/Multiblock/gpu_debug/memcheck/./solver.exe
+========= 
+========= Invalid __global__ read of size 8 bytes
+=========     at interpolate_packets_1438+0xae8 in /data2/XLLi/Multiblock/gpu_debug/memcheck/solver.F90:1445
+=========     by thread (1,0,0) in block (56,0,0)
+=========     Address 0x2b39cf000008 is out of bounds
+=========     and is 624,033,784 bytes before the nearest allocation at 0x2b39f4320000 of size 65,536 bytes
+=========     Saved host backtrace up to driver entry point at kernel launch time
+=========     Host Frame: [0x2ef370]
+=========                in /lib64/libcuda.so.1
+=========     Host Frame:__pgi_uacc_cuda_launch3 in ../../src/cuda_launch.c:840 [0x190e1]
+=========                in /opt/nvidia/hpc_sdk/Linux_x86_64/24.3/compilers/lib/libaccdevice.so
+=========     Host Frame:__pgi_uacc_cuda_launch in ../../src/cuda_launche.c:197 [0x1b850]
+=========                in /opt/nvidia/hpc_sdk/Linux_x86_64/24.3/compilers/lib/libaccdevice.so
+=========     Host Frame:__pgi_uacc_launch in ../../src/launch.c:55 [0x3b741]
+=========                in /opt/nvidia/hpc_sdk/Linux_x86_64/24.3/compilers/lib/libacchost.so
+=========     Host Frame:interpolate_packets_ in /data2/XLLi/Multiblock/gpu_debug/memcheck/solver.F90:1459 [0x12311]
+=========                in /data2/XLLi/Multiblock/gpu_debug/memcheck/./solver.exe
+=========     Host Frame:exchange_interfaces_ in /data2/XLLi/Multiblock/gpu_debug/memcheck/solver.F90:1406 [0x1175c]
+=========                in /data2/XLLi/Multiblock/gpu_debug/memcheck/./solver.exe
+=========     Host Frame:enter_data_2d_openacc_ in /data2/XLLi/Multiblock/gpu_debug/memcheck/solver.F90:788 [0xa734]
+=========                in /data2/XLLi/Multiblock/gpu_debug/memcheck/./solver.exe
+=========     Host Frame:MAIN_ in /data2/XLLi/Multiblock/gpu_debug/memcheck/solver.F90:288 [0x2a88]
+=========                in /data2/XLLi/Multiblock/gpu_debug/memcheck/./solver.exe
+=========     Host Frame:main [0x2971]
+=========                in /data2/XLLi/Multiblock/gpu_debug/memcheck/./solver.exe
+=========     Host Frame:__libc_start_main [0x22555]
+=========                in /lib64/libc.so.6
+=========     Host Frame: [0x2829]
+=========                in /data2/XLLi/Multiblock/gpu_debug/memcheck/./solver.exe
+========= 
+Failing in Thread:1
+Accelerator Fatal Error: call to cuStreamSynchronize returned error 719 (CUDA_ERROR_LAUNCH_FAILED): Launch failed (often invalid pointer dereference)
+ File: /data2/XLLi/Multiblock/gpu_debug/memcheck/solver.F90
+ Function: main:1012
+ Line: 317
+
+ Visible OpenACC devices:            1
+========= Target application returned an error
+========= ERROR SUMMARY: 575 errors
+========= ERROR SUMMARY: 570 errors were not printed. Use --print-limit option to adjust the number of printed errors

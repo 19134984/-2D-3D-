@@ -1,0 +1,8 @@
+{
+  "fine_steps": 40,
+  "n": 256,
+  "ra": 1000000.0,
+  "host_before_after_bitwise_equal": true,
+  "state_values": 3286046,
+  "source_sha256": "5eff362a8eceff71d30d59457a78d22dc2d6850d97e56cf274f4d096d6187bb3"
+}

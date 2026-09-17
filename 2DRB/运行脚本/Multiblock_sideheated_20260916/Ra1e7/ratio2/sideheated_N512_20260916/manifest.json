@@ -1,0 +1,33 @@
+{
+  "case": "Ra1e7/ratio2/sideheated_N512_20260916",
+  "local_master_sha256": "d1cf2337fa74a08ad29d8cc29839b9427586b14e985ddd0c074377bacc5e9aca",
+  "case_source_sha256": "3ec302a8e1102331a1f4833248604d5881330d9bf36644f370519a69d59c9b73",
+  "ra": 10000000,
+  "n": 512,
+  "ratio": 2,
+  "pr": 0.71,
+  "mach": 0.1,
+  "fine_indices": [
+    64,
+    65,
+    64,
+    65
+  ],
+  "epsU": 1e-07,
+  "epsT": 1e-07,
+  "max_steps": 20000000,
+  "check_steps": 2000,
+  "shared_gpu": true,
+  "source_changes": {
+    "nx": "512",
+    "ny": "512",
+    "refineRatio": "2",
+    "Rayleigh": "1.0d7",
+    "Prandtl": "0.71d0",
+    "fineLayerCellsLeft": "64",
+    "fineLayerCellsBottom": "64",
+    "fineLayerCellsRight": "65",
+    "fineLayerCellsTop": "65"
+  },
+  "numerical_kernels_changed": false
+}

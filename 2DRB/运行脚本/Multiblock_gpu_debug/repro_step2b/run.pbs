@@ -1,0 +1,17 @@
+#!/bin/bash
+#PBS -N MBdebug
+#PBS -q batch
+#PBS -l nodes=node05:ppn=1
+#PBS -l walltime=00:20:00
+#PBS -o /data2/XLLi/Multiblock/gpu_debug/repro_step2b/pbs.stdout
+#PBS -e /data2/XLLi/Multiblock/gpu_debug/repro_step2b/pbs.stderr
+set -eu
+cd /data2/XLLi/Multiblock/gpu_debug/repro_step2b
+export PATH=/opt/nvidia/hpc_sdk/Linux_x86_64/24.3/compilers/bin:$PATH
+export LD_LIBRARY_PATH=/opt/nvidia/hpc_sdk/Linux_x86_64/24.3/compilers/lib:${LD_LIBRARY_PATH:-}
+export OMP_NUM_THREADS=1 CUDA_VISIBLE_DEVICES=0 ACC_DEVICE_TYPE=nvidia
+sha256sum -c source.sha256
+nvfortran -cpp -O3 -acc -gpu=cc60,lineinfo -Minfo=accel -Mextend solver.F90 -o solver.exe > compile.log 2>&1
+set +e
+./solver.exe > solver.stdout 2>&1
+echo $? > run.status

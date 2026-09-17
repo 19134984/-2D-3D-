@@ -1,0 +1,2 @@
+job=6972.master
+host=node05

@@ -59,7 +59,7 @@ def main():
  s=v.SOURCE.read_text(encoding='utf-8-sig')
  report={'source_sha256':hashlib.sha256(v.SOURCE.read_bytes()).hexdigest(),
          'device':'gfortran OpenACC host','build_directory':str(v.BUILD),'checks':[]}
- for name,kw in [('rb',{}),('legacy',{'legacy':True}),('side',{'side':True}),('steady',{'steady':True}),('ha',{'side':True,'ha':True})]:
+ for name,kw in [('rb',{}),('side_steady',{'side':True,'steady':True}),('side',{'side':True}),('steady',{'steady':True}),('ha',{'side':True,'ha':True})]:
   v.compile_source('syntax_'+name,v.variant(s,**kw),syntax=True)
  report['checks'].append({'five_macro_syntax_checks':True})
  for ratio in [2,4,8]:
@@ -67,7 +67,7 @@ def main():
   output=v.run([exe],folder)
   report['checks'].append({'ratio':ratio,'geometry_and_direct_seam_streaming':output.strip()})
   print('Geometry and direct streaming',ratio,flush=True)
- for name,kw in [('rb',{}),('side',{'side':True}),('legacy',{'side':True,'legacy':True})]:
+ for name,kw in [('rb',{}),('side',{'side':True})]:
   d=v.CONDUCTION.replace('                err=max(err','                if(owned_cell_area(b,i,j)<=0d0) cycle\n                err=max(err')
   folder,exe=v.compile_source('conduction_'+name,v.variant(s,**kw),d,ra=10000)
   output=v.run([exe],folder,timeout=150)
@@ -76,7 +76,7 @@ def main():
   assert np.max(abs(hist[[1,3,4,5]]-1))<1e-10
   report['checks'].append({'conduction':name,'coarse_steps':300,'max_T_and_rho_error':values,'Nu':hist[[1,3,4,5]].tolist()})
   print('Conduction',name,values,flush=True)
- for name,kw in [('rb',{}),('legacy',{'side':True,'legacy':True})]:
+ for name,kw in [('rb',{'legacy':True}),('side',{'side':True,'legacy':True})]:
   parent=v.PARENT.read_text(encoding='utf-8-sig')
   a,ae=v.compile_source('uniform_parent_'+name,v.variant(parent,**kw),v.uniform_driver(True),n=32)
   b,be=v.compile_source('uniform_ring_'+name,v.variant(s,ratio=1,**kw),v.uniform_driver(),n=32)
@@ -85,14 +85,27 @@ def main():
   assert diff<3e-13
   report['checks'].append({'uniform_regression':name,'max_state_error':float(diff)})
  for name,kw in [('rb',{}),('steady',{'steady':True})]:
-  full,fe=v.compile_source('restart_full_'+name,v.variant(s,**kw),v.RESTART_DRIVER)
-  split,se=v.compile_source('restart_split_'+name,v.variant(s,**kw),v.RESTART_DRIVER)
-  _,re=v.compile_source('restart_resume_'+name,v.variant(s,restart=True,**kw),v.RESTART_DRIVER)
+  full,fe=v.compile_source('restart_full_'+name,v.variant(s,**kw),v.RESTART_DRIVER,ra=10000)
+  split,se=v.compile_source('restart_split_'+name,v.variant(s,**kw),v.RESTART_DRIVER,ra=10000)
+  _,re=v.compile_source('restart_resume_'+name,v.variant(s,restart=True,**kw),v.RESTART_DRIVER,ra=10000)
   v.run([fe,'40'],full);v.run([se,'20'],split);v.run([re,'40'],split)
   a=np.fromfile(full/'allstate.bin',dtype='<f8');b=np.fromfile(split/'allstate.bin',dtype='<f8')
   assert np.all(np.isfinite(a)) and np.array_equal(a,b)
   report['checks'].append({'exact_restart':name,'fine_steps':40,'split':20})
   print('Exact restart',name,flush=True)
+ if len(__import__('sys').argv)>1:
+  baseline=Path(__import__('sys').argv[1])
+  old=baseline.read_text(encoding='utf-8-sig')
+  report['legacy_baseline_sha256']=hashlib.sha256(baseline.read_bytes()).hexdigest()
+  driver=v.RESTART_DRIVER.replace('Fx,Fy,p','Fx,Fy')
+  for name,kw in [('rb',{}),('side',{'side':True})]:
+   a,ae=v.compile_source('legacy_before_'+name,v.variant(old,legacy=True,**kw),driver,ra=10000)
+   b,be=v.compile_source('legacy_after_'+name,v.variant(s,legacy=True,**kw),driver,ra=10000)
+   v.run([ae,'40'],a);v.run([be,'40'],b)
+   x=np.fromfile(a/'allstate.bin',dtype='<f8');y=np.fromfile(b/'allstate.bin',dtype='<f8')
+   assert np.all(np.isfinite(x)) and np.array_equal(x,y)
+   report['checks'].append({'legacy_before_after':name,'fine_steps':40,'bitwise_equal':True})
+   print('Legacy before/after identical',name,flush=True)
  report['status']='passed'
  (v.HERE/'ring_verification_results.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
  print('All ring checks passed',flush=True)

@@ -1,0 +1,10 @@
+#!/bin/bash
+#PBS -N MB8N512R2
+#PBS -q batch
+#PBS -l nodes=node05:ppn=1
+#PBS -l walltime=96:00:00
+#PBS -o /data2/XLLi/Multiblock/Ra1e8/ratio2/sideheated_N512_20260916_v3/results/pbs.stdout
+#PBS -e /data2/XLLi/Multiblock/Ra1e8/ratio2/sideheated_N512_20260916_v3/results/pbs.stderr
+set -eu
+cd /data2/XLLi/Multiblock/Ra1e8/ratio2/sideheated_N512_20260916_v3/results
+exec bash /data2/XLLi/Multiblock/Ra1e8/ratio2/sideheated_N512_20260916_v3/run.sh

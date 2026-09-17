@@ -1,0 +1,54 @@
+ Parent: uniform-grid 2DRBOpenacc.F90; D2Q9 MRT / D2Q5 MRT unchanged inside blocks
+ Huang (2014): force-aware MRT scaling and four-point Lagrange; original D2Q5 adaptation.
+ Yu (2002): aligned two-way coupling and acoustic subcycling; cubic spline is not used.
+ Chen (2016): pre-collision buffer states; received f,g participate in the next collision.
+ Fine-equivalent nx,ny; refinement ratio:          512          512 
+            2
+ Rayleigh, Prandtl, Mach:    10000000.00000000        0.7100000000000000      
+   0.1000000000000000     
+ Fine tauf, Snu, Sq, Qk, Qnu, thermalA:   0.5236297845948710      
+    1.909746216544373        0.1185550378223043         1.267949192431123      
+   0.9282032302755088        -3.615699647979109     
+ Fine viscosity, diffusivity, gBeta, timeUnit:   7.8765948649569904E-003 
+   1.1093795584446465E-002   6.5104166666666840E-006    8868.100134752640     
+ Fine-node indices left/right/bottom/top; overlap in coarse spacings: 
+           64           65           64           65            2
+ Owned physical area:    262144.0000000000     
+ Geometry: connected fine ring (block 2) and central coarse block (1); no fine/fine links.
+ Fine storage is rectangular; the central inactive hole is excluded from advance and integration.
+ Central spans must contain whole coarse spacings; interfaces and integration partitions are not shifted.
+ Node alignment: coarse nodes remain a subset of fine nodes; the integer phase depends on block origin.
+ Integration: clipped nodal control areas; shared coordinates do not duplicate physical area.
+ All nonconserved relaxation times satisfy h*(1/s-1/2)=constant.
+ Time: coarse prediction; prepare fine buffers BEFORE each substep; endpoint synchronization.
+ Buffers: two local layers for original split flow/thermal sequence; donors exclude these layers.
+ First coarse interval uses linear startup; subsequent intervals use three-time Lagrange interpolation.
+ Output clocks are absolute and rounded UP to a synchronized coarse step; time columns contain actual times.
+ Restart stores coarse time history; uniform-grid and earlier multiblock restart files are incompatible.
+ Thermal scheme: original legacy D2Q5; paraA is fixed across blocks.
+ block,ni,nj,h,x0,y0,owned ilo,ihi,jlo,jhi:            1          197 
+          197    2.000000000000000         58.50000000000000      
+    58.50000000000000                 3          195            3          195
+ Snu,Sq,Qk,Qnu,gBeta:    1.953831385232263        0.2238413177014629      
+    1.551981524520408         1.267949192431122        1.3020833333333368E-005
+ Owned physical rectangle:    63.50000000000000         447.5000000000000      
+    63.50000000000000         447.5000000000000     
+ Base rectangle before overlap:    63.50000000000000      
+    447.5000000000000         63.50000000000000         447.5000000000000     
+ Computed first/last node x,y:    59.50000000000000      
+    451.5000000000000         59.50000000000000         451.5000000000000     
+ block,ni,nj,h,x0,y0,owned ilo,ihi,jlo,jhi:            2          512 
+          512    1.000000000000000         0.000000000000000      
+    0.000000000000000                 1          512            1          512
+ Snu,Sq,Qk,Qnu,gBeta:    1.909746216544373        0.1185550378223043      
+    1.267949192431123        0.9282032302755088        6.5104166666666840E-006
+ Owned physical rectangle:    0.000000000000000         512.0000000000000      
+    0.000000000000000         512.0000000000000     
+ Base rectangle before overlap:    0.000000000000000      
+    512.0000000000000         0.000000000000000         512.0000000000000     
+ Computed first/last node x,y:   0.5000000000000000      
+    511.5000000000000        0.5000000000000000         511.5000000000000     
+ receiver, donor, direct nodes, interpolated nodes:            1            2 
+         1560            0
+ receiver, donor, direct nodes, interpolated nodes:            2            1 
+          752         2264

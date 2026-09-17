@@ -53,19 +53,8 @@
 #error "Define one convection case: RayleighBenardCell or SideHeatedCell"
 #endif
 
-!算法切换
-!启用 M1G 修正；注释掉则不使用 useG 相关修正
-#define EnableUseG
-!启用旧温度算法
-!#define EnableLegacyThermalScheme
-
-!   温度算法宏的选择
-#if defined(EnableUseG) && defined(EnableLegacyThermalScheme)
-#error "Choose only one thermal scheme: EnableUseG or EnableLegacyThermalScheme"
-#endif
-#if !defined(EnableUseG) && !defined(EnableLegacyThermalScheme)
-#error "Define one thermal scheme: EnableUseG or EnableLegacyThermalScheme"
-#endif
+! 温度算法：保留原 D2Q5 MRT 旧算法，平衡矩系数为 paraA，不使用热流历史修正。
+#define EnableLegacyThermalScheme
 
 !   自定义宏结束
 !=============================================================
@@ -142,18 +131,10 @@
         real(kind=8), parameter :: Snu = 1.0d0/tauf
         real(kind=8), parameter :: Sq = 8.0d0*(2.0d0*tauf-1.0d0)/(8.0d0*tauf-1.0d0)
         real(kind=8), parameter :: paraA = 20.0d0*sqrt(3.0d0)*diffusivity-4.0d0
-#ifdef EnableLegacyThermalScheme
         real(kind=8), parameter :: Qk = 3.0d0-sqrt(3.0d0)
         real(kind=8), parameter :: Qnu = 4.0d0*sqrt(3.0d0)-6.0d0
         real(kind=8), parameter :: thermalGeqCoeff = 10.0d0/(4.0d0+paraA)
         real(kind=8), parameter :: thermalA = paraA
-#else
-        real(kind=8), parameter :: taug = 0.5d0+(tauf-0.5d0)/Prandtl
-        real(kind=8), parameter :: Qk = 1.0d0/taug
-        real(kind=8), parameter :: Qnu = 1.0d0
-        real(kind=8), parameter :: thermalGeqCoeff = 3.0d0
-        real(kind=8), parameter :: thermalA = -2.0d0/3.0d0
-#endif
 #ifdef SideHeatedHa
         real(kind=8), parameter :: Ha = 20.0d0
         real(kind=8), parameter :: phi = 0.0d0*pi/180.0d0
@@ -198,71 +179,109 @@
         character(*), parameter :: pltFolderPrefix = 'buoyancyCavity2DOpenaccMultiblockTecplot'
         character(*), parameter :: reloadFilePrefix = 'reloadFile2DOpenaccMultiblock'
         character(*), parameter :: historyFile = 'NuRe_2DOpenaccMultiblock.dat'
-        character(16), parameter :: restartMagic = 'MB2DRESTART0009'
+        character(16), parameter :: restartMagic = 'MB2DRESTART0010'
         character(16), parameter :: snapshotMagic = 'MB2DSNAPSHOT0003'
 
         !===============================================================================================
         ! 格子方向、块数据与接口交换数据
         !===============================================================================================
-        integer(kind=4), parameter :: packetSize = 22
+        ! 每个节点、每个时间层交换 20 个数值：4 个宏观量 + 2 个力分量 + 9 个流场矩 + 5 个温度矩。
+        ! p 的位置：1:4 为 rho,u,v,T；5:6 为 Fx/h,Fy/h；7:15 为归一化流场非平衡矩；16:20 为归一化温度非平衡矩。
+        ! h 也表示本块时间步；流场矩包含力修正，温度场采用无热流历史修正的旧 MRT 算法。
+        ! 20 是统一存储长度，守恒矩对应项仍保留为零；接口不再传递热流历史差分。
+        integer(kind=4), parameter :: packetSize = 20
+        ! 最多保存两块数据：1 为中心粗块，2 为外围连通细环；不是粗细比，也不是四周细区的数量。
+        ! nBlocks 是实际使用的块数：多块模式为 2，refineRatio=1 的单块模式为 1；仅修改此上限不会自动增加网格块。
         integer(kind=4), parameter :: maxBlocks = 2
-        integer(kind=4) :: ex(0:8) = [0, 1, 0, -1, 0, 1, -1, -1, 1], ey(0:8) = [0, 0, 1, 0, -1, 1, 1, -1, -1]
+        integer(kind=4) :: ex(0:8) = [0, 1, 0, -1, 0, 1, -1, -1, 1]
+        integer(kind=4) :: ey(0:8) = [0, 0, 1, 0, -1, 1, 1, -1, -1]
         real(kind=8) :: omega(0:8), omegaT(0:4)
-        integer(kind=4) :: nBlocks, itc = 0, snapshotFileNum = 0, pltFileNum = 0
+        ! nBlocks 为实际块数，初始化时设为 2（中心粗块+细环）或 1（单块）。
+        ! itc 为累计细时间步数，新计算从 0 开始，续算从检查点恢复；粗细比为 r 时，每个粗步累计增加 r。
+        ! snapshotFileNum、pltFileNum 分别为快照和 Tecplot 文件编号，仅在实际输出相应文件时增加 1。
+        integer(kind=4) :: nBlocks
+        integer(kind=4) :: itc = 0
+        integer(kind=4) :: snapshotFileNum = 0, pltFileNum = 0
+        ! nextSample、nextReload、nextPlt 分别安排下一次 Nu/Re 采样、续算文件和 Tecplot 输出。
+        ! 目标时间为对应序号乘输出间隔，再向上对齐到粗细同步步；初值 1 表示第一次计划输出。
+        ! 这些序号与文件编号分开：关闭快照仍按时采样，nextSample 继续增加，snapshotFileNum 不增加。
+        ! 续算时，各计划序号和文件编号均从检查点恢复，不重新从 1 或 0 开始。
         integer(kind=4) :: nextSample = 1, nextReload = 1, nextPlt = 1
         real(kind=8) :: errorU = 100.0d0, errorT = 100.0d0
 
         ! 块编号：1 为中心粗块，2 为连通细网格环；单块模式只使用 1。
-        ! 细环采用全域二维存储，中心空区不推进；原四个细区不再有独立状态或同级连接。
+        ! 细环采用全域二维存储，中心空区不推进
         ! 几何信息用普通数组保存，最后一个下标均为块编号。
-        ! blockNi/blockNj 为本块含重叠层的节点数；blockNh 为历史时间层的最大下标。
-        ! blockIlo:Ihi、blockJlo:Jhi 是参与积分的节点范围，实际面积仍由积分权重确定。
-        integer(kind=4) :: blockNi(maxBlocks), blockNj(maxBlocks), blockNh(maxBlocks)
-        integer(kind=4) :: blockIlo(maxBlocks), blockIhi(maxBlocks), blockJlo(maxBlocks), blockJhi(maxBlocks)
-        real(kind=8) :: blockH(maxBlocks), blockX0(maxBlocks), blockY0(maxBlocks)
-        ! blockH 同时表示本块格距和时间步；blockSn/Sq/Qk/Qn 为按该格距缩放后的松弛率。
+        ! xLocalCount/yLocalCount 为本块含重叠层的节点数；historyLast 为历史时间层的最大下标。
+        ! iStart:iEnd、jStart:jEnd 为本块 x/y 方向积分下标范围；节点实际面积仍由积分权重确定。
+        integer(kind=4) :: xLocalCount(maxBlocks), yLocalCount(maxBlocks), historyLast(maxBlocks)
+        integer(kind=4) :: iStart(maxBlocks), iEnd(maxBlocks), jStart(maxBlocks), jEnd(maxBlocks)
+        real(kind=8) :: meshSpacing(maxBlocks), xOrigin(maxBlocks), yOrigin(maxBlocks)     !中心粗块 meshSpacing=2、xOrigin=122.5
+        ! meshSpacing 同时表示本块格距和时间步；blockSn/Sq/Qk/Qn 为按该格距缩放后的松弛率, 本块对应的松弛率
         real(kind=8) :: blockSn(maxBlocks), blockSq(maxBlocks), blockQk(maxBlocks), blockQn(maxBlocks), blockGb(maxBlocks)
+        ! 下面的参数四个位置依次是：xmin、xmax、ymin、ymax
         real(kind=8) :: blockOwnedBox(4, maxBlocks)    ! 积分外框：粗块直接使用；细环须扣除粗块内框面积
         real(kind=8) :: blockBaseBox(4, maxBlocks)     ! 加重叠层前的基准边界，粗细块共用指定交界面
-        logical :: blockWall(4, maxBlocks)           ! 左、右、下、上是否为真实物理壁面
-        ! blockX0/blockY0 为首节点减去本块半格距的虚拟面，不等于积分分界。
+        logical :: blockWall(4, maxBlocks)           ! 左、右、下、上是否为真实物理壁面，中心粗块：false、false、false、false，
+                                                     ! 外围细环：true、true、true、true
+        ! xOrigin/yOrigin 为首节点减去本块半格距的坐标原点，用于坐标反查下标及兼容 v10 检查点。
 
-        ! 各块按顺序存入连续数组，避免把所有块都扩充到最大宽高而浪费显存。
-        ! 下列偏移从 0 开始；nodeOffset 用于宏观量，haloOffset 用于含迁移外圈的分布函数。
-        integer(kind=4) :: nodeOffset(0:maxBlocks), haloOffset(0:maxBlocks), packetOffset(0:maxBlocks)
-        integer(kind=4) :: xWeightOffset(0:maxBlocks), yWeightOffset(0:maxBlocks)
-        real(kind=8), allocatable, target :: fStorage(:), gStorage(:), f_postStorage(:), g_postStorage(:)
-        real(kind=8), allocatable, target :: rhoStorage(:), uStorage(:), vStorage(:), TStorage(:), FxStorage(:), &
-            FyStorage(:), Bx_prevStorage(:), By_prevStorage(:)
-        real(kind=8), allocatable, target :: pStorage(:), dxWeightStorage(:), dyWeightStorage(:)
+        ! 粗、细网格分别分配普通数组，直接作为子程序实参传入；不切换指针。
+        ! _coarse 属于中心粗块（单块模式也使用这一套），_fine 属于外围细环。
+        ! 每套数组按本块 x/y 方向节点数分配，细环中心仍保留占位存储。
+        real(kind=8), allocatable :: f_coarse(:, :, :)
+        real(kind=8), allocatable :: g_coarse(:, :, :)
+        real(kind=8), allocatable :: f_post_coarse(:, :, :)
+        real(kind=8), allocatable :: g_post_coarse(:, :, :)
+        real(kind=8), allocatable :: rho_coarse(:, :)
+        real(kind=8), allocatable :: u_coarse(:, :)
+        real(kind=8), allocatable :: v_coarse(:, :)
+        real(kind=8), allocatable :: T_coarse(:, :)
+        real(kind=8), allocatable :: Fx_coarse(:, :)
+        real(kind=8), allocatable :: Fy_coarse(:, :)
+        real(kind=8), allocatable :: p_coarse(:, :, :, :)
+        real(kind=8), allocatable :: quadWidthX_coarse(:)
+        real(kind=8), allocatable :: quadWidthY_coarse(:)
 #ifdef steadyFlow
-        real(kind=8), allocatable, target :: upStorage(:), vpStorage(:), TpStorage(:)
+        real(kind=8), allocatable :: up_coarse(:, :)
+        real(kind=8), allocatable :: vp_coarse(:, :)
+        real(kind=8), allocatable :: Tp_coarse(:, :)
+#endif
+        real(kind=8), allocatable :: f_fine(:, :, :)
+        real(kind=8), allocatable :: g_fine(:, :, :)
+        real(kind=8), allocatable :: f_post_fine(:, :, :)
+        real(kind=8), allocatable :: g_post_fine(:, :, :)
+        real(kind=8), allocatable :: rho_fine(:, :)
+        real(kind=8), allocatable :: u_fine(:, :)
+        real(kind=8), allocatable :: v_fine(:, :)
+        real(kind=8), allocatable :: T_fine(:, :)
+        real(kind=8), allocatable :: Fx_fine(:, :)
+        real(kind=8), allocatable :: Fy_fine(:, :)
+        real(kind=8), allocatable :: p_fine(:, :, :, :)
+        real(kind=8), allocatable :: quadWidthX_fine(:)
+        real(kind=8), allocatable :: quadWidthY_fine(:)
+#ifdef steadyFlow
+        real(kind=8), allocatable :: up_fine(:, :)
+        real(kind=8), allocatable :: vp_fine(:, :)
+        real(kind=8), allocatable :: Tp_fine(:, :)
 #endif
 
-        ! select_block(b) 仅将下面的数组指向第 b 块，不复制数据。
-        ! 这样块内仍按 u(i,j)、f(i,j,k) 读写；切换块前须等当前主机调用返回。
-        ! GPU 内核通过显式尺寸的形参接收本块数组，不读取这些可切换的主机指针。
-        real(kind=8), pointer, contiguous :: f(:, :, :), g(:, :, :), f_post(:, :, :), g_post(:, :, :)
-        real(kind=8), pointer, contiguous :: rho(:, :), u(:, :), v(:, :), T(:, :), Fx(:, :), Fy(:, :)
-        real(kind=8), pointer, contiguous :: Bx_prev(:, :), By_prev(:, :), dxWeight(:), dyWeight(:)
-        ! p 的 22 个量：rho,u,v,T,Fx/dt,Fy/dt,Kf(0:8),Kg(0:4),dBx/dt,dBy/dt。
-        ! K=S/dt*(m-meq+F_lattice/2)；粗块存三个时间层，细块只存当前层。
-        real(kind=8), pointer, contiguous :: p(:, :, :, :)
-#ifdef steadyFlow
-        real(kind=8), pointer, contiguous :: up(:, :), vp(:, :), Tp(:, :)
-#endif
+        ! xp(i,b)、yp(j,b) 为节点坐标，单位是最细格距；输出无量纲坐标时再除以 lengthUnit。
+        ! xStartGlobal/yStartGlobal 为本块首节点在最细网格中的编号。
+        ! globalI = xStartGlobal(b)+(i-1)*nint(meshSpacing(b))，对应坐标 x=globalI-0.5。
+        integer(kind=4) :: xStartGlobal(maxBlocks), xEndGlobal(maxBlocks)
+        integer(kind=4) :: yStartGlobal(maxBlocks), yEndGlobal(maxBlocks)
+        real(kind=8), allocatable :: xp(:, :), yp(:, :)
 
         ! 接口连接：receiver 接收、donor 提供数据；每条连接只保存实际接收节点。
         integer(kind=4) :: nLinks = 0
         integer(kind=4) :: linkReceiver(maxBlocks*maxBlocks), linkDonor(maxBlocks*maxBlocks)
-        integer(kind=4) :: linkCount(maxBlocks*maxBlocks), linkOffset(0:maxBlocks*maxBlocks)
-        integer(kind=4), allocatable, target :: tiStorage(:), tjStorage(:), siStorage(:), sjStorage(:)
-        logical, allocatable, target :: sameStorage(:)    ! 共址节点不做空间插值，仍重标定非平衡矩
-        real(kind=8), allocatable, target :: wxStorage(:), wyStorage(:), valuesStorage(:)
-        ! select_link(l) 选择一条连接；wx/wy 为四点拉格朗日权重，values 为交换暂存量。
-        integer(kind=4), pointer, contiguous :: linkTi(:), linkTj(:), linkSi(:), linkSj(:)
-        logical, pointer, contiguous :: linkSame(:)
-        real(kind=8), pointer, contiguous :: linkWx(:, :), linkWy(:, :), linkValues(:, :)
+        integer(kind=4) :: linkCount(maxBlocks*maxBlocks)
+        integer(kind=4) :: linkStart(maxBlocks*maxBlocks), linkEnd(maxBlocks*maxBlocks)
+        ! 各连接的接收节点依次排列；linkStart:linkEnd 是该连接在下列数组中的范围。
+        integer(kind=4), allocatable :: linkTi(:), linkTj(:), linkSi(:), linkSj(:)
+        logical, allocatable :: linkSame(:)    ! 共址节点仍须按接收块参数重标定
+        real(kind=8), allocatable :: linkWx(:, :), linkWy(:, :), linkValues(:, :)
 
         ! 外部标量函数的返回类型；具体函数排在主程序之后。
         integer(kind=4), external :: scheduled_step
@@ -337,13 +356,13 @@
     subroutine initial()
 
         use commondata, only: nx, ny, refineRatio, fineLayerCellsLeft, fineLayerCellsRight, &
-            fineLayerCellsBottom, fineLayerCellsTop, &
-            overlapCells, interfaceSkin, loadInitField, reloadFileNum, Rayleigh, Prandtl, Mach, tauf, &
-            viscosity, diffusivity, gBeta, timeUnit, Snu, Sq, paraA, Qk, Qnu, thermalA, &
-            outputSnapshotInterval, reloadFileInterval, outputPltFileInterval, settingsFile, historyFile, &
-            omega, omegaT, nBlocks, blockNi, blockNj, blockIlo, blockIhi, blockJlo, blockJhi, blockH, &
-            blockX0, blockY0, blockSn, blockSq, blockQk, blockQn, blockGb, blockOwnedBox, blockBaseBox, &
-            dxWeight, dyWeight, nLinks, linkReceiver, linkDonor, linkCount, linkSame, owned_cell_area
+            fineLayerCellsBottom, fineLayerCellsTop, overlapCells, interfaceSkin, loadInitField, reloadFileNum, &
+            Rayleigh, Prandtl, Mach, tauf, viscosity, diffusivity, gBeta, timeUnit, Snu, Sq, paraA, Qk, Qnu, &
+            thermalA, outputSnapshotInterval, reloadFileInterval, outputPltFileInterval, settingsFile, &
+            historyFile, omega, omegaT, nBlocks, xLocalCount, yLocalCount, iStart, iEnd, jStart, jEnd, &
+            meshSpacing, xOrigin, yOrigin, blockSn, blockSq, blockQk, blockQn, blockGb, blockOwnedBox, &
+            blockBaseBox, nLinks, linkReceiver, linkDonor, linkCount, linkSame, owned_cell_area, linkStart, &
+            linkEnd
         implicit none
 
         integer(kind=4) :: b, k, overlap, i, j
@@ -355,9 +374,7 @@
         if (loadInitField == 0) reloadFileNum = 0
         if (min(outputSnapshotInterval, reloadFileInterval, outputPltFileInterval)*timeUnit < dble(refineRatio)) &
             error stop 'Output intervals must be at least one synchronized coarse step'
-#ifdef EnableLegacyThermalScheme
         if (paraA <= -4.0d0 .or. paraA >= 1.0d0) error stop 'Legacy paraA must be in (-4,1)'
-#endif
         omega(0) = 4.0d0/9.0d0
         omega(1:4) = 1.0d0/9.0d0
         omega(5:8) = 1.0d0/36.0d0
@@ -395,19 +412,14 @@
             call make_block(1, xLeft, xRight, yBottom, yTop, refineRatio, overlap, 2)
             call make_block(2, 0.0d0, dble(nx), 0.0d0, dble(ny), 1, 0, 0)
         endif
-        ! 先确定所有块的大小，再分配连续存储；积分权重和场量随后逐块初始化。
+        ! 先确定所有块的大小，再分别分配粗、细数组；积分权重和场量随后逐块初始化。
         call allocate_block_arrays()
         totalArea = 0.0d0
         do b = 1, nBlocks
             ! 以最终统计分区统一生成权重；中心两端均为粗节点，自动得到端点半权重的梯形积分。
-            call select_block(b)
-            call integration_weights(blockNi(b), blockX0(b), blockH(b), blockOwnedBox(1, b), blockOwnedBox(2, b), dxWeight, &
-                blockIlo(b), blockIhi(b))
-            call integration_weights(blockNj(b), blockY0(b), blockH(b), blockOwnedBox(3, b), blockOwnedBox(4, b), dyWeight, &
-                blockJlo(b), blockJhi(b))
             call initial_block(b)
-            do j = 1, blockNj(b)
-                do i = 1, blockNi(b)
+            do j = 1, yLocalCount(b)
+                do i = 1, xLocalCount(b)
                     totalArea = totalArea+owned_cell_area(b,i,j)
                 enddo
             enddo
@@ -437,26 +449,21 @@
         write(k, *) 'Buffers: two local layers for original split flow/thermal sequence; donors exclude these layers.'
         write(k, *) 'First coarse interval uses linear startup; subsequent intervals use three-time Lagrange interpolation.'
         write(k, *) 'Output clocks are absolute and rounded UP to a synchronized coarse step; time columns contain actual times.'
-        write(k, *) 'Restart stores both coarse history and thermal B_prev; uniform-grid restart files are incompatible.'
-#ifdef EnableUseG
-        write(k, *) 'Thermal scheme: original D2Q5 EnableUseG, including transferred B_prev history.'
-#else
+        write(k, *) 'Restart stores coarse time history; uniform-grid and earlier multiblock restart files are incompatible.'
         write(k, *) 'Thermal scheme: original legacy D2Q5; paraA is fixed across blocks.'
-#endif
         do b = 1, nBlocks
-            write(k, *) 'block,ni,nj,h,x0,y0,owned ilo,ihi,jlo,jhi:', b, blockNi(b), blockNj(b), &
-                blockH(b), blockX0(b), blockY0(b), blockIlo(b), blockIhi(b), blockJlo(b), blockJhi(b)
+            write(k, *) 'block,ni,nj,h,x0,y0,owned ilo,ihi,jlo,jhi:', b, xLocalCount(b), yLocalCount(b), &
+                meshSpacing(b), xOrigin(b), yOrigin(b), iStart(b), iEnd(b), jStart(b), jEnd(b)
             write(k, *) 'Snu,Sq,Qk,Qnu,gBeta:', blockSn(b), blockSq(b), blockQk(b), blockQn(b), blockGb(b)
             write(k, *) 'Owned physical rectangle:', blockOwnedBox(:, b)
             write(k, *) 'Base rectangle before overlap:', blockBaseBox(:, b)
-            write(k, *) 'Computed first/last node x,y:', blockX0(b)+0.5d0*blockH(b), &
-                blockX0(b)+(dble(blockNi(b))-0.5d0)*blockH(b), &
-                blockY0(b)+0.5d0*blockH(b), blockY0(b)+(dble(blockNj(b))-0.5d0)*blockH(b)
+            write(k, *) 'Computed first/last node x,y:', xOrigin(b)+0.5d0*meshSpacing(b), &
+                xOrigin(b)+(dble(xLocalCount(b))-0.5d0)*meshSpacing(b), &
+                yOrigin(b)+0.5d0*meshSpacing(b), yOrigin(b)+(dble(yLocalCount(b))-0.5d0)*meshSpacing(b)
         enddo
         do b = 1, nLinks
-            call select_link(b)
             write(k, *) 'receiver, donor, direct nodes, interpolated nodes:', linkReceiver(b), linkDonor(b), &
-                count(linkSame), linkCount(b)-count(linkSame)
+                count(linkSame(linkStart(b):linkEnd(b))), linkCount(b)-count(linkSame(linkStart(b):linkEnd(b)))
         enddo
         close(k)
         if (loadInitField == 0) then
@@ -477,10 +484,12 @@
     ! 子程序: make_block
     ! 作用: 确定块的基准边界、实际节点数和本块输运系数
     !===============================================================================================
+    ! 显式接收本块普通数组；计算和写入都直接作用于传入的粗块或细环数据。
     subroutine make_block(b, xlo, xhi, ylo, yhi, spacing, overlap, nh)
 
-        use commondata, only: nx, ny, gBeta, Snu, Sq, Qk, Qnu, blockNi, blockNj, blockNh, blockH, blockX0, &
-            blockY0, blockSn, blockSq, blockQk, blockQn, blockGb, blockOwnedBox, blockBaseBox, blockWall
+        use commondata, only: nx, ny, gBeta, Snu, Sq, Qk, Qnu, xLocalCount, yLocalCount, historyLast, &
+            meshSpacing, xOrigin, yOrigin, blockSn, blockSq, blockQk, blockQn, blockGb, blockOwnedBox, &
+            blockBaseBox, blockWall
         implicit none
 
         integer(kind=4), intent(in) :: b
@@ -488,7 +497,7 @@
         integer(kind=4), intent(in) :: spacing, overlap, nh
         real(kind=8) :: xb, xe, yb, ye
 
-        blockH(b) = dble(spacing)
+        meshSpacing(b) = dble(spacing)
         blockOwnedBox(:, b) = [xlo, xhi, ylo, yhi]
         blockBaseBox(:, b) = blockOwnedBox(:, b)
         if (spacing > 1) then
@@ -505,21 +514,21 @@
         yb = max(0.5d0, blockBaseBox(3, b)-dble(overlap))
         ye = min(dble(ny)-0.5d0, blockBaseBox(4, b)+dble(overlap))
         ! xb、yb 已是首节点坐标，不再加 0.5；整数粗细比保证粗节点属于细节点子集。
-        blockX0(b) = xb-0.5d0*blockH(b)
-        blockY0(b) = yb-0.5d0*blockH(b)
+        xOrigin(b) = xb-0.5d0*meshSpacing(b)
+        yOrigin(b) = yb-0.5d0*meshSpacing(b)
         ! 基准跨度和 overlap 均为粗格距整数倍；末节点必须恰好到达 xe、ye。
-        blockNi(b) = nint((xe-xb)/blockH(b))+1
-        blockNj(b) = nint((ye-yb)/blockH(b))+1
-        blockNh(b) = nh
-        if (abs(xb+dble(blockNi(b)-1)*blockH(b)-xe) > 1.0d-10 .or. abs(yb+dble(blockNj(b)-1)*blockH(b)-ye) > 1.0d-10) &
+        xLocalCount(b) = nint((xe-xb)/meshSpacing(b))+1
+        yLocalCount(b) = nint((ye-yb)/meshSpacing(b))+1
+        historyLast(b) = nh
+        if (abs(xb+dble(xLocalCount(b)-1)*meshSpacing(b)-xe) > 1.0d-10 .or. abs(yb+dble(yLocalCount(b)-1)*meshSpacing(b)-ye) > 1.0d-10) &
             error stop 'Computed block span must contain whole grid spacings'
         blockWall(:, b) = [xb == 0.5d0, xe == dble(nx)-0.5d0, yb == 0.5d0, ye == dble(ny)-0.5d0]
         ! Eq. (20): h_d*(tau_d-1/2)=h_s*(tau_s-1/2)，包括非水动力矩。
-        blockSn(b) = 1.0d0/(0.5d0+(1.0d0/Snu-0.5d0)/blockH(b))
-        blockSq(b) = 1.0d0/(0.5d0+(1.0d0/Sq-0.5d0)/blockH(b))
-        blockQk(b) = 1.0d0/(0.5d0+(1.0d0/Qk-0.5d0)/blockH(b))
-        blockQn(b) = 1.0d0/(0.5d0+(1.0d0/Qnu-0.5d0)/blockH(b))
-        blockGb(b) = blockH(b)*gBeta
+        blockSn(b) = 1.0d0/(0.5d0+(1.0d0/Snu-0.5d0)/meshSpacing(b))
+        blockSq(b) = 1.0d0/(0.5d0+(1.0d0/Sq-0.5d0)/meshSpacing(b))
+        blockQk(b) = 1.0d0/(0.5d0+(1.0d0/Qk-0.5d0)/meshSpacing(b))
+        blockQn(b) = 1.0d0/(0.5d0+(1.0d0/Qnu-0.5d0)/meshSpacing(b))
+        blockGb(b) = meshSpacing(b)*gBeta
     end subroutine make_block
     !===============================================================================================
 
@@ -529,89 +538,69 @@
     ! 作用: 根据每块实际节点数一次性分配场量、迁移外圈和历史数组
     !===============================================================================================
     subroutine allocate_block_arrays()
-
-        use commondata, only: packetSize, nBlocks, blockNi, blockNj, blockNh, nodeOffset, haloOffset, &
-            packetOffset, xWeightOffset, yWeightOffset, fStorage, gStorage, f_postStorage, g_postStorage, &
-            rhoStorage, uStorage, vStorage, TStorage, FxStorage, FyStorage, Bx_prevStorage, By_prevStorage, &
-            pStorage, dxWeightStorage, dyWeightStorage
-#ifdef steadyFlow
-        use commondata, only: upStorage, vpStorage, TpStorage
-#endif
+        use commondata
         implicit none
-
-        integer(kind=4) :: b, n, nhalo
-
-        nodeOffset(0) = 0
-        haloOffset(0) = 0
-        packetOffset(0) = 0
-        xWeightOffset(0) = 0
-        yWeightOffset(0) = 0
+        integer(kind=4) :: ni, nj, nh, b, i
+        ni = xLocalCount(1)
+        nj = yLocalCount(1)
+        nh = historyLast(1)
+        allocate(f_coarse(ni, nj, 0:8))
+        allocate(g_coarse(ni, nj, 0:4))
+        allocate(f_post_coarse(0:ni+1, 0:nj+1, 0:8))
+        allocate(g_post_coarse(0:ni+1, 0:nj+1, 0:4))
+        allocate(rho_coarse(ni, nj))
+        allocate(u_coarse(ni, nj))
+        allocate(v_coarse(ni, nj))
+        allocate(T_coarse(ni, nj))
+        allocate(Fx_coarse(ni, nj))
+        allocate(Fy_coarse(ni, nj))
+        allocate(p_coarse(ni, nj, packetSize, 0:nh))
+        allocate(quadWidthX_coarse(ni))
+        allocate(quadWidthY_coarse(nj))
+#ifdef steadyFlow
+        allocate(up_coarse(ni, nj))
+        allocate(vp_coarse(ni, nj))
+        allocate(Tp_coarse(ni, nj))
+#endif
+        if (nBlocks == 2) then
+            ni = xLocalCount(2)
+            nj = yLocalCount(2)
+            nh = historyLast(2)
+            allocate(f_fine(ni, nj, 0:8))
+            allocate(g_fine(ni, nj, 0:4))
+            allocate(f_post_fine(0:ni+1, 0:nj+1, 0:8))
+            allocate(g_post_fine(0:ni+1, 0:nj+1, 0:4))
+            allocate(rho_fine(ni, nj))
+            allocate(u_fine(ni, nj))
+            allocate(v_fine(ni, nj))
+            allocate(T_fine(ni, nj))
+            allocate(Fx_fine(ni, nj))
+            allocate(Fy_fine(ni, nj))
+            allocate(p_fine(ni, nj, packetSize, 0:nh))
+            allocate(quadWidthX_fine(ni))
+            allocate(quadWidthY_fine(nj))
+#ifdef steadyFlow
+            allocate(up_fine(ni, nj))
+            allocate(vp_fine(ni, nj))
+            allocate(Tp_fine(ni, nj))
+#endif
+        endif
+        allocate(xp(maxval(xLocalCount(1:nBlocks)), nBlocks), yp(maxval(yLocalCount(1:nBlocks)), nBlocks))
+        xp = 0.0d0
+        yp = 0.0d0
         do b = 1, nBlocks
-            n = blockNi(b)*blockNj(b)
-            nodeOffset(b) = nodeOffset(b-1)+n
-            haloOffset(b) = haloOffset(b-1)+(blockNi(b)+2)*(blockNj(b)+2)
-            packetOffset(b) = packetOffset(b-1)+n*packetSize*(blockNh(b)+1)
-            xWeightOffset(b) = xWeightOffset(b-1)+blockNi(b)
-            yWeightOffset(b) = yWeightOffset(b-1)+blockNj(b)
+            xStartGlobal(b) = nint(xOrigin(b)+0.5d0*meshSpacing(b)+0.5d0)
+            yStartGlobal(b) = nint(yOrigin(b)+0.5d0*meshSpacing(b)+0.5d0)
+            xEndGlobal(b) = xStartGlobal(b)+(xLocalCount(b)-1)*nint(meshSpacing(b))
+            yEndGlobal(b) = yStartGlobal(b)+(yLocalCount(b)-1)*nint(meshSpacing(b))
+            do i = 1, xLocalCount(b)
+                xp(i,b) = dble(xStartGlobal(b)+(i-1)*nint(meshSpacing(b)))-0.5d0
+            enddo
+            do i = 1, yLocalCount(b)
+                yp(i,b) = dble(yStartGlobal(b)+(i-1)*nint(meshSpacing(b)))-0.5d0
+            enddo
         enddo
-        n = nodeOffset(nBlocks)
-        nhalo = haloOffset(nBlocks)
-        allocate(fStorage(9*n), gStorage(5*n), f_postStorage(9*nhalo), g_postStorage(5*nhalo))
-        allocate(rhoStorage(n), uStorage(n), vStorage(n), TStorage(n))
-        allocate(FxStorage(n), FyStorage(n), Bx_prevStorage(n), By_prevStorage(n))
-        allocate(pStorage(packetOffset(nBlocks)))
-        allocate(dxWeightStorage(xWeightOffset(nBlocks)), dyWeightStorage(yWeightOffset(nBlocks)))
-#ifdef steadyFlow
-        allocate(upStorage(n), vpStorage(n), TpStorage(n))
-#endif
     end subroutine allocate_block_arrays
-    !===============================================================================================
-
-    !===============================================================================================
-    ! 子程序: select_block
-    ! 作用: 让块内数组指向第 b 块的连续存储，保留二维和分布函数下标
-    !===============================================================================================
-    subroutine select_block(b)
-
-        use commondata, only: packetSize, blockNi, blockNj, blockNh, nodeOffset, haloOffset, packetOffset, &
-            xWeightOffset, yWeightOffset, fStorage, gStorage, f_postStorage, g_postStorage, rhoStorage, &
-            uStorage, vStorage, TStorage, FxStorage, FyStorage, Bx_prevStorage, By_prevStorage, pStorage, &
-            dxWeightStorage, dyWeightStorage, f, g, f_post, g_post, rho, u, v, T, Fx, Fy, Bx_prev, By_prev, &
-            dxWeight, dyWeight, p
-#ifdef steadyFlow
-        use commondata, only: upStorage, vpStorage, TpStorage, up, vp, Tp
-#endif
-        implicit none
-
-        integer(kind=4), intent(in) :: b
-        integer(kind=4) :: ni, nj, first, last
-
-        ni = blockNi(b)
-        nj = blockNj(b)
-        first = nodeOffset(b-1)+1
-        last = nodeOffset(b)
-        ! 指针重设下标只改变访问方式；不会分配数组，也不会复制流场。
-        rho(1:ni, 1:nj) => rhoStorage(first:last)
-        u(1:ni, 1:nj) => uStorage(first:last)
-        v(1:ni, 1:nj) => vStorage(first:last)
-        T(1:ni, 1:nj) => TStorage(first:last)
-        Fx(1:ni, 1:nj) => FxStorage(first:last)
-        Fy(1:ni, 1:nj) => FyStorage(first:last)
-        Bx_prev(1:ni, 1:nj) => Bx_prevStorage(first:last)
-        By_prev(1:ni, 1:nj) => By_prevStorage(first:last)
-#ifdef steadyFlow
-        up(1:ni, 1:nj) => upStorage(first:last)
-        vp(1:ni, 1:nj) => vpStorage(first:last)
-        Tp(1:ni, 1:nj) => TpStorage(first:last)
-#endif
-        f(1:ni, 1:nj, 0:8) => fStorage(9*nodeOffset(b-1)+1:9*last)
-        g(1:ni, 1:nj, 0:4) => gStorage(5*nodeOffset(b-1)+1:5*last)
-        f_post(0:ni+1, 0:nj+1, 0:8) => f_postStorage(9*haloOffset(b-1)+1:9*haloOffset(b))
-        g_post(0:ni+1, 0:nj+1, 0:4) => g_postStorage(5*haloOffset(b-1)+1:5*haloOffset(b))
-        p(1:ni, 1:nj, 1:packetSize, 0:blockNh(b)) => pStorage(packetOffset(b-1)+1:packetOffset(b))
-        dxWeight => dxWeightStorage(xWeightOffset(b-1)+1:xWeightOffset(b))
-        dyWeight => dyWeightStorage(yWeightOffset(b-1)+1:yWeightOffset(b))
-    end subroutine select_block
     !===============================================================================================
 
     !===============================================================================================
@@ -619,54 +608,21 @@
     ! 作用: 按每条连接的实际节点数分配接口索引、插值权重和交换缓存
     !===============================================================================================
     subroutine allocate_link_arrays()
-
-        use commondata, only: packetSize, nLinks, linkCount, linkOffset, tiStorage, tjStorage, siStorage, &
-            sjStorage, sameStorage, wxStorage, wyStorage, valuesStorage
+        use commondata, only: nLinks, linkCount, linkStart, linkEnd, packetSize, linkTi, linkTj, linkSi, linkSj, &
+            linkSame, linkWx, linkWy, linkValues
         implicit none
-
         integer(kind=4) :: l, n
-
-        linkOffset(0) = 0
+        n = 0
         do l = 1, nLinks
-            linkOffset(l) = linkOffset(l-1)+linkCount(l)
+            linkStart(l) = n+1
+            n = n+linkCount(l)
+            linkEnd(l) = n
         enddo
-        n = linkOffset(nLinks)
-        allocate(tiStorage(n), tjStorage(n), siStorage(n), sjStorage(n), sameStorage(n))
-        allocate(wxStorage(4*n), wyStorage(4*n), valuesStorage(packetSize*n))
-        valuesStorage = 0.0d0
+        allocate(linkTi(n), linkTj(n), linkSi(n), linkSj(n), linkSame(n))
+        allocate(linkWx(4,n), linkWy(4,n), linkValues(packetSize,n))
+        linkValues = 0.0d0
     end subroutine allocate_link_arrays
     !===============================================================================================
-
-    !===============================================================================================
-    ! 子程序: select_link
-    ! 作用: 选择第 l 条接口连接，不复制索引、权重或交换数据
-    !===============================================================================================
-    subroutine select_link(l)
-
-        use commondata, only: packetSize, linkCount, linkOffset, tiStorage, tjStorage, siStorage, sjStorage, &
-            sameStorage, wxStorage, wyStorage, valuesStorage, linkTi, linkTj, linkSi, linkSj, linkSame, &
-            linkWx, linkWy, linkValues
-        implicit none
-
-        integer(kind=4), intent(in) :: l
-        integer(kind=4) :: first, last, n
-
-        first = linkOffset(l-1)+1
-        last = linkOffset(l)
-        n = linkCount(l)
-        linkTi => tiStorage(first:last)
-        linkTj => tjStorage(first:last)
-        linkSi => siStorage(first:last)
-        linkSj => sjStorage(first:last)
-        linkSame => sameStorage(first:last)
-        linkWx(1:4, 1:n) => wxStorage(4*(first-1)+1:4*last)
-        linkWy(1:4, 1:n) => wyStorage(4*(first-1)+1:4*last)
-        linkValues(1:packetSize, 1:n) => valuesStorage(packetSize*(first-1)+1:packetSize*last)
-    end subroutine select_link
-    !===============================================================================================
-
-    !===============================================================================================
-    ! 积分权重：保证分区面积与线性坐标积分准确
 
     !===============================================================================================
     ! 子程序: integration_weights
@@ -722,33 +678,83 @@
     ! 作用: 初始化各块的宏观量与分布函数
     !===============================================================================================
     subroutine initial_block(b)
-
-        use commondata, only: nx, ny, Thot, Tcold, pi, lengthUnit, omega, omegaT, blockNi, blockNj, blockH, &
-            blockX0, blockY0, f, g, f_post, g_post, rho, u, v, T, Fx, Fy, Bx_prev, By_prev, p
+        use commondata, only: f_coarse, g_coarse, f_post_coarse, g_post_coarse, rho_coarse, u_coarse, v_coarse, &
+            T_coarse, Fx_coarse, Fy_coarse, p_coarse, quadWidthX_coarse, quadWidthY_coarse, f_fine, g_fine, &
+            f_post_fine, g_post_fine, rho_fine, u_fine, v_fine, T_fine, Fx_fine, Fy_fine, p_fine, &
+            quadWidthX_fine, quadWidthY_fine
 #ifdef steadyFlow
-        use commondata, only: up, vp, Tp
+        use commondata, only: up_coarse, vp_coarse, Tp_coarse, up_fine, vp_fine, Tp_fine
 #endif
+        implicit none
+        integer(kind=4), intent(in) :: b
+
+        if (b == 1) then
+            call initial_block_arrays(b, f_coarse, g_coarse, f_post_coarse, g_post_coarse, rho_coarse, u_coarse, &
+            v_coarse, T_coarse, Fx_coarse, Fy_coarse, p_coarse, quadWidthX_coarse, quadWidthY_coarse &
+#ifdef steadyFlow
+                , up_coarse, vp_coarse, Tp_coarse &
+#endif
+            )
+        else
+            call initial_block_arrays(b, f_fine, g_fine, f_post_fine, g_post_fine, rho_fine, u_fine, v_fine, &
+            T_fine, Fx_fine, Fy_fine, p_fine, quadWidthX_fine, quadWidthY_fine &
+#ifdef steadyFlow
+                , up_fine, vp_fine, Tp_fine &
+#endif
+            )
+        endif
+    end subroutine initial_block
+
+    ! 显式接收本块普通数组；计算和写入都直接作用于传入的粗块或细环数据。
+    subroutine initial_block_arrays(b, f, g, f_post, g_post, rho, u, v, T, Fx, Fy, p, quadWidthX, quadWidthY &
+#ifdef steadyFlow
+            , up, vp, Tp &
+#endif
+        )
+
+        use commondata, only: nx, ny, Thot, Tcold, pi, lengthUnit, omega, omegaT, xLocalCount, yLocalCount, &
+            meshSpacing, xOrigin, yOrigin, blockOwnedBox, iStart, iEnd, jStart, jEnd, xp, yp, historyLast, &
+            packetSize
         implicit none
 
         integer(kind=4), intent(in) :: b
+        real(kind=8) :: f(xLocalCount(b), yLocalCount(b), 0:8)
+        real(kind=8) :: g(xLocalCount(b), yLocalCount(b), 0:4)
+        real(kind=8) :: f_post(0:xLocalCount(b)+1, 0:yLocalCount(b)+1, 0:8)
+        real(kind=8) :: g_post(0:xLocalCount(b)+1, 0:yLocalCount(b)+1, 0:4)
+        real(kind=8) :: rho(xLocalCount(b), yLocalCount(b))
+        real(kind=8) :: u(xLocalCount(b), yLocalCount(b))
+        real(kind=8) :: v(xLocalCount(b), yLocalCount(b))
+        real(kind=8) :: T(xLocalCount(b), yLocalCount(b))
+        real(kind=8) :: Fx(xLocalCount(b), yLocalCount(b))
+        real(kind=8) :: Fy(xLocalCount(b), yLocalCount(b))
+        real(kind=8) :: p(xLocalCount(b), yLocalCount(b), packetSize, 0:historyLast(b))
+        real(kind=8) :: quadWidthX(xLocalCount(b))
+        real(kind=8) :: quadWidthY(yLocalCount(b))
+#ifdef steadyFlow
+        real(kind=8) :: up(xLocalCount(b), yLocalCount(b))
+        real(kind=8) :: vp(xLocalCount(b), yLocalCount(b))
+        real(kind=8) :: Tp(xLocalCount(b), yLocalCount(b))
+#endif
         integer(kind=4) :: i, j, a
         real(kind=8) :: x, y
 
-        call select_block(b)
+        call integration_weights(xLocalCount(b), xOrigin(b), meshSpacing(b), &
+            blockOwnedBox(1,b), blockOwnedBox(2,b), quadWidthX, iStart(b), iEnd(b))
+        call integration_weights(yLocalCount(b), yOrigin(b), meshSpacing(b), &
+            blockOwnedBox(3,b), blockOwnedBox(4,b), quadWidthY, jStart(b), jEnd(b))
         u = 0.0d0
         v = 0.0d0
         rho = 1.0d0
         Fx = 0.0d0
         Fy = 0.0d0
-        Bx_prev = 0.0d0
-        By_prev = 0.0d0
         f_post = 0.0d0
         g_post = 0.0d0
         p = 0.0d0
-        do j = 1, blockNj(b)
-            y = (blockY0(b)+(dble(j)-0.5d0)*blockH(b))/lengthUnit
-            do i = 1, blockNi(b)
-                x = (blockX0(b)+(dble(i)-0.5d0)*blockH(b))/lengthUnit
+        do j = 1, yLocalCount(b)
+            y = yp(j,b)/lengthUnit
+            do i = 1, xLocalCount(b)
+                x = xp(i,b)/lengthUnit
 #ifdef SideHeatedCell
                 T(i, j) = Thot+x/(dble(nx)/lengthUnit)*(Tcold-Thot)
 #else
@@ -769,7 +775,7 @@
         vp = v
         Tp = T
 #endif
-    end subroutine initial_block
+    end subroutine initial_block_arrays
     !===============================================================================================
 
 
@@ -782,7 +788,7 @@
     !===============================================================================================
     subroutine enter_data_2d_openacc()
 
-        use commondata, only: loadInitField, ex, ey, omega, omegaT, nBlocks, blockNh
+        use commondata, only: loadInitField, ex, ey, omega, omegaT, nBlocks, historyLast
         implicit none
 
         integer(kind=4) :: b, l
@@ -791,14 +797,14 @@
         call link_device_data(.true.)
         if (loadInitField == 0) then
             do b = 1, nBlocks
-                call pack_block(b, min(1, blockNh(b)))
+                call pack_block(b, min(1, historyLast(b)))
             enddo
             if (nBlocks > 1) then
                 ! 首次碰撞前补齐两级接口。两次交换均读取同一份初始快照，不依赖块处理顺序。
                 call exchange_interfaces(.true., [0.0d0, 1.0d0, 0.0d0])
                 call exchange_interfaces(.false., [0.0d0, 1.0d0, 0.0d0])
                 do b = 1, nBlocks
-                    call pack_block(b, min(1, blockNh(b)))
+                    call pack_block(b, min(1, historyLast(b)))
                 enddo
             endif
         endif
@@ -811,20 +817,60 @@
     ! 作用: 整体建立或释放所有计算块的设备存储
     !===============================================================================================
     subroutine block_device_data(entering)
-
-        use commondata, only: fStorage, gStorage, f_postStorage, g_postStorage, rhoStorage, uStorage, &
-            vStorage, TStorage, FxStorage, FyStorage, Bx_prevStorage, By_prevStorage, pStorage
+        use commondata
         implicit none
-
         logical, intent(in) :: entering
-
-        ! 整体映射连续存储；各块形参只是其中的连续片段，不在设备端切换指针。
         if (entering) then
-            !$acc enter data copyin(fStorage, gStorage, f_postStorage, g_postStorage, rhoStorage, uStorage, &
-            !$acc& vStorage, TStorage, FxStorage, FyStorage, Bx_prevStorage, By_prevStorage, pStorage)
+            !$acc enter data copyin(f_coarse)
+            !$acc enter data copyin(g_coarse)
+            !$acc enter data copyin(f_post_coarse)
+            !$acc enter data copyin(g_post_coarse)
+            !$acc enter data copyin(rho_coarse)
+            !$acc enter data copyin(u_coarse)
+            !$acc enter data copyin(v_coarse)
+            !$acc enter data copyin(T_coarse)
+            !$acc enter data copyin(Fx_coarse)
+            !$acc enter data copyin(Fy_coarse)
+            !$acc enter data copyin(p_coarse)
         else
-            !$acc exit data delete(fStorage, gStorage, f_postStorage, g_postStorage, rhoStorage, uStorage, &
-            !$acc& vStorage, TStorage, FxStorage, FyStorage, Bx_prevStorage, By_prevStorage, pStorage)
+            !$acc exit data delete(f_coarse)
+            !$acc exit data delete(g_coarse)
+            !$acc exit data delete(f_post_coarse)
+            !$acc exit data delete(g_post_coarse)
+            !$acc exit data delete(rho_coarse)
+            !$acc exit data delete(u_coarse)
+            !$acc exit data delete(v_coarse)
+            !$acc exit data delete(T_coarse)
+            !$acc exit data delete(Fx_coarse)
+            !$acc exit data delete(Fy_coarse)
+            !$acc exit data delete(p_coarse)
+        endif
+        if (nBlocks == 2) then
+            if (entering) then
+                !$acc enter data copyin(f_fine)
+                !$acc enter data copyin(g_fine)
+                !$acc enter data copyin(f_post_fine)
+                !$acc enter data copyin(g_post_fine)
+                !$acc enter data copyin(rho_fine)
+                !$acc enter data copyin(u_fine)
+                !$acc enter data copyin(v_fine)
+                !$acc enter data copyin(T_fine)
+                !$acc enter data copyin(Fx_fine)
+                !$acc enter data copyin(Fy_fine)
+                !$acc enter data copyin(p_fine)
+            else
+                !$acc exit data delete(f_fine)
+                !$acc exit data delete(g_fine)
+                !$acc exit data delete(f_post_fine)
+                !$acc exit data delete(g_post_fine)
+                !$acc exit data delete(rho_fine)
+                !$acc exit data delete(u_fine)
+                !$acc exit data delete(v_fine)
+                !$acc exit data delete(T_fine)
+                !$acc exit data delete(Fx_fine)
+                !$acc exit data delete(Fy_fine)
+                !$acc exit data delete(p_fine)
+            endif
         endif
     end subroutine block_device_data
     !===============================================================================================
@@ -836,18 +882,17 @@
     !===============================================================================================
     subroutine link_device_data(entering)
 
-        use commondata, only: nLinks, tiStorage, tjStorage, siStorage, sjStorage, sameStorage, wxStorage, &
-            wyStorage, valuesStorage
+        use commondata, only: nLinks, linkTi, linkTj, linkSi, linkSj, linkSame, linkWx, linkWy, linkValues
         implicit none
 
         logical, intent(in) :: entering
 
         if (nLinks == 0) return
         if (entering) then
-            !$acc enter data copyin(tiStorage, tjStorage, siStorage, sjStorage, wxStorage, wyStorage, &
-            !$acc& sameStorage, valuesStorage)
+            !$acc enter data copyin(linkTi, linkTj, linkSi, linkSj, linkWx, linkWy, &
+            !$acc& linkSame, linkValues)
         else
-            !$acc exit data delete(tiStorage, tjStorage, siStorage, sjStorage, wxStorage, wyStorage, sameStorage, valuesStorage)
+            !$acc exit data delete(linkTi, linkTj, linkSi, linkSj, linkWx, linkWy, linkSame, linkValues)
         endif
     end subroutine link_device_data
     !===============================================================================================
@@ -858,19 +903,45 @@
     ! 作用: 将指定块的设备状态更新到主机
     !===============================================================================================
     subroutine update_host_block(b, full)
-
-        use commondata, only: f, g, rho, u, v, T, Fx, Fy, Bx_prev, By_prev, p
+        use commondata, only: f_coarse, g_coarse, rho_coarse, u_coarse, v_coarse, T_coarse, Fx_coarse, &
+            Fy_coarse, p_coarse, f_fine, g_fine, rho_fine, u_fine, v_fine, T_fine, Fx_fine, Fy_fine, p_fine
         implicit none
-
         integer(kind=4), intent(in) :: b
         logical, intent(in) :: full
 
-        call select_block(b)
-        !$acc update self(u, v, T, rho) async(1)
-        if (full) then
-            !$acc update self(f, g, Fx, Fy, Bx_prev, By_prev, p) async(1)
+        if (b == 1) then
+            call update_host_block_arrays(b, full, f_coarse, g_coarse, rho_coarse, u_coarse, v_coarse, T_coarse, &
+            Fx_coarse, Fy_coarse, p_coarse)
+        else
+            call update_host_block_arrays(b, full, f_fine, g_fine, rho_fine, u_fine, v_fine, T_fine, Fx_fine, &
+            Fy_fine, p_fine)
         endif
     end subroutine update_host_block
+
+    ! 显式接收本块普通数组；计算和写入都直接作用于传入的粗块或细环数据。
+    subroutine update_host_block_arrays(b, full, f, g, rho, u, v, T, Fx, Fy, p)
+
+
+        use commondata, only: xLocalCount, yLocalCount, historyLast, packetSize
+        implicit none
+
+        integer(kind=4), intent(in) :: b
+        real(kind=8) :: f(xLocalCount(b), yLocalCount(b), 0:8)
+        real(kind=8) :: g(xLocalCount(b), yLocalCount(b), 0:4)
+        real(kind=8) :: rho(xLocalCount(b), yLocalCount(b))
+        real(kind=8) :: u(xLocalCount(b), yLocalCount(b))
+        real(kind=8) :: v(xLocalCount(b), yLocalCount(b))
+        real(kind=8) :: T(xLocalCount(b), yLocalCount(b))
+        real(kind=8) :: Fx(xLocalCount(b), yLocalCount(b))
+        real(kind=8) :: Fy(xLocalCount(b), yLocalCount(b))
+        real(kind=8) :: p(xLocalCount(b), yLocalCount(b), packetSize, 0:historyLast(b))
+        logical, intent(in) :: full
+
+        !$acc update self(u, v, T, rho) async(1)
+        if (full) then
+            !$acc update self(f, g, Fx, Fy, p) async(1)
+        endif
+    end subroutine update_host_block_arrays
     !===============================================================================================
 
 
@@ -920,32 +991,59 @@
     ! 作用: 按原算法次序推进单个计算块
     !===============================================================================================
     subroutine advance_block(b)
+        use commondata, only: f_coarse, g_coarse, f_post_coarse, g_post_coarse, rho_coarse, u_coarse, v_coarse, &
+            T_coarse, Fx_coarse, Fy_coarse, f_fine, g_fine, f_post_fine, g_post_fine, rho_fine, u_fine, v_fine, &
+            T_fine, Fx_fine, Fy_fine
+        implicit none
+        integer(kind=4), intent(in) :: b
 
-        use commondata, only: blockNi, blockNj, blockH, blockSn, blockSq, blockQk, blockQn, blockGb, &
-            blockWall, f, g, f_post, g_post, rho, u, v, T, Fx, Fy, Bx_prev, By_prev
+        if (b == 1) then
+            call advance_block_arrays(b, f_coarse, g_coarse, f_post_coarse, g_post_coarse, rho_coarse, u_coarse, &
+            v_coarse, T_coarse, Fx_coarse, Fy_coarse)
+        else
+            call advance_block_arrays(b, f_fine, g_fine, f_post_fine, g_post_fine, rho_fine, u_fine, v_fine, &
+            T_fine, Fx_fine, Fy_fine)
+        endif
+    end subroutine advance_block
+
+    ! 显式接收本块普通数组；计算和写入都直接作用于传入的粗块或细环数据。
+    subroutine advance_block_arrays(b, f, g, f_post, g_post, rho, u, v, T, Fx, Fy)
+
+        use commondata, only: xLocalCount, yLocalCount, meshSpacing, blockSn, blockSq, blockQk, blockQn, &
+            blockGb, blockWall
 #ifdef SideHeatedHa
         use commondata, only: B2sigemarho
 #endif
+        use commondata, only: xLocalCount, yLocalCount
         implicit none
 
         integer(kind=4), intent(in) :: b
-        call select_block(b)
+        real(kind=8) :: f(xLocalCount(b), yLocalCount(b), 0:8)
+        real(kind=8) :: g(xLocalCount(b), yLocalCount(b), 0:4)
+        real(kind=8) :: f_post(0:xLocalCount(b)+1, 0:yLocalCount(b)+1, 0:8)
+        real(kind=8) :: g_post(0:xLocalCount(b)+1, 0:yLocalCount(b)+1, 0:4)
+        real(kind=8) :: rho(xLocalCount(b), yLocalCount(b))
+        real(kind=8) :: u(xLocalCount(b), yLocalCount(b))
+        real(kind=8) :: v(xLocalCount(b), yLocalCount(b))
+        real(kind=8) :: T(xLocalCount(b), yLocalCount(b))
+        real(kind=8) :: Fx(xLocalCount(b), yLocalCount(b))
+        real(kind=8) :: Fy(xLocalCount(b), yLocalCount(b))
         ! 原文件的执行次序保持不变。粗块的 dt 已吸收到松弛率及力增量中。
         ! 入口：人工边界已重建为本时刻的碰撞前状态；缓冲节点与内部节点一样参与碰撞。
         ! 出口：最外两层只作为待重建缓冲，不允许充当 donor；原算法的内部结果保留。
-        call collision(blockNi(b), blockNj(b), f, f_post, rho, u, v, Fx, Fy, T, blockSn(b), blockSq(b), blockGb(b) &
+        call collision(xLocalCount(b), yLocalCount(b), f, f_post, rho, u, v, Fx, Fy, T, blockSn(b), blockSq(b), blockGb(b) &
 #ifdef SideHeatedHa
-            , blockH(b)*B2sigemarho &
+            , meshSpacing(b)*B2sigemarho &
 #endif
             )
-        call streaming(blockNi(b), blockNj(b), f, f_post)
-        call bounceback(blockNi(b), blockNj(b), f, f_post, blockWall(1, b), blockWall(2, b), blockWall(3, b), blockWall(4, b))
-        call macro(blockNi(b), blockNj(b), f, rho, u, v, Fx, Fy)
-        call collisionT(blockNi(b), blockNj(b), g, g_post, u, v, T, Bx_prev, By_prev, blockQk(b), blockQn(b))
-        call streamingT(blockNi(b), blockNj(b), g, g_post)
-        call bouncebackT(blockNi(b), blockNj(b), g, g_post, blockWall(1, b), blockWall(2, b), blockWall(3, b), blockWall(4, b))
-        call macroT(blockNi(b), blockNj(b), g, T)
-    end subroutine advance_block
+        call streaming(xLocalCount(b), yLocalCount(b), f, f_post)
+        call bounceback(xLocalCount(b), yLocalCount(b), f, f_post, blockWall(1, b), blockWall(2, b), blockWall(3, b), blockWall(4, b))
+        call macro(xLocalCount(b), yLocalCount(b), f, rho, u, v, Fx, Fy)
+        call collisionT(xLocalCount(b), yLocalCount(b), g, g_post, u, v, T, blockQk(b), blockQn(b))
+        call streamingT(xLocalCount(b), yLocalCount(b), g, g_post)
+        call bouncebackT(xLocalCount(b), yLocalCount(b), g, g_post, blockWall(1, b), blockWall(2, b), blockWall(3, b), blockWall(4, b))
+        call macroT(xLocalCount(b), yLocalCount(b), g, T)
+    end subroutine advance_block_arrays
     !===============================================================================================
 
 
@@ -958,7 +1056,7 @@
     !===============================================================================================
     subroutine advance_multiblock()
 
-        use commondata, only: refineRatio, nBlocks, itc, blockNi, blockNj, p
+        use commondata, only: refineRatio, nBlocks, itc, xLocalCount, yLocalCount, p_coarse
         implicit none
 
         integer(kind=4) :: b, k
@@ -989,8 +1087,7 @@
         call pack_block(1, 2)
         call exchange_interfaces(.false., [0.0d0, 0.0d0, 1.0d0])
         ! 5. 只在同步点滚动历史和整数时钟，重启文件必须保存完整历史。
-        call select_block(1)
-        call rotate_coarse_history(blockNi(1), blockNj(1), p)
+        call rotate_coarse_history(xLocalCount(1), yLocalCount(1), p_coarse)
         itc = itc+refineRatio
     end subroutine advance_multiblock
     !===============================================================================================
@@ -1048,8 +1145,9 @@
     !===============================================================================================
     logical function skin_node(b, i, j)
 
-        use commondata, only: interfaceSkin, blockNi, blockNj, blockWall, nBlocks, blockH, fine_active, &
-            fineLayerCellsLeft, fineLayerCellsRight, fineLayerCellsBottom, fineLayerCellsTop, nx, ny, overlapCells, refineRatio
+        use commondata, only: interfaceSkin, xLocalCount, yLocalCount, blockWall, nBlocks, fine_active, &
+            fineLayerCellsLeft, fineLayerCellsRight, fineLayerCellsBottom, fineLayerCellsTop, nx, ny, &
+            overlapCells, refineRatio
         implicit none
 
         integer(kind=4), intent(in) :: b
@@ -1067,9 +1165,9 @@
             return
         endif
         skin_node = (.not.blockWall(1, b) .and. i <= interfaceSkin) .or. &
-            (.not.blockWall(2, b) .and. i > blockNi(b)-interfaceSkin) .or. &
+            (.not.blockWall(2, b) .and. i > xLocalCount(b)-interfaceSkin) .or. &
             (.not.blockWall(3, b) .and. j <= interfaceSkin) .or. &
-            (.not.blockWall(4, b) .and. j > blockNj(b)-interfaceSkin)
+            (.not.blockWall(4, b) .and. j > yLocalCount(b)-interfaceSkin)
     end function skin_node
     !===============================================================================================
 
@@ -1083,7 +1181,8 @@
     !===============================================================================================
     subroutine donor_stencil(receiver, x, y, donor, si, sj, wx, wy, coincident)
 
-        use commondata, only: interfaceSkin, nBlocks, blockNi, blockNj, blockH, blockX0, blockY0, blockWall, fine_active, skin_node
+        use commondata, only: interfaceSkin, nBlocks, xLocalCount, yLocalCount, meshSpacing, xOrigin, yOrigin, &
+            blockWall, fine_active, skin_node
         implicit none
 
         integer(kind=4), intent(in) :: receiver
@@ -1100,15 +1199,15 @@
             if (d == receiver) cycle
             ! 来源模板严格避开刚推进后尚未修复的两层人工边界。
             il = 1
-            ih = blockNi(d)
+            ih = xLocalCount(d)
             jl = 1
-            jh = blockNj(d)
+            jh = yLocalCount(d)
             if (.not.blockWall(1, d)) il = 1+interfaceSkin
             if (.not.blockWall(2, d)) ih = ih-interfaceSkin
             if (.not.blockWall(3, d)) jl = 1+interfaceSkin
             if (.not.blockWall(4, d)) jh = jh-interfaceSkin
-            qx = (x-blockX0(d))/blockH(d)+0.5d0
-            qy = (y-blockY0(d))/blockH(d)+0.5d0
+            qx = (x-xOrigin(d))/meshSpacing(d)+0.5d0
+            qy = (y-yOrigin(d))/meshSpacing(d)+0.5d0
             if (qx < dble(il) .or. qx > dble(ih) .or. qy < dble(jl) .or. qy > dble(jh)) cycle
             if (d==2) then
                 if (abs(qx-nint(qx))>1d-12 .or. abs(qy-nint(qy))>1d-12) cycle
@@ -1118,7 +1217,7 @@
             if (ih-il < 3 .or. jh-jl < 3) cycle
             is = max(il, min(floor(qx)-1, ih-3))
             js = max(jl, min(floor(qy)-1, jh-3))
-            score = min(qx-il, ih-qx, qy-jl, jh-qy)*blockH(d)
+            score = min(qx-il, ih-qx, qy-jl, jh-qy)*meshSpacing(d)
             ! 只存在粗->细或细->粗连接；细环内部直接迁移。
             if (score <= best) cycle
             best = score
@@ -1208,9 +1307,9 @@
     !===============================================================================================
     subroutine build_links()
 
-        use commondata, only: maxBlocks, nBlocks, blockNi, blockNj, blockH, blockX0, blockY0, nLinks, &
-            linkReceiver, linkDonor, linkCount, linkTi, linkTj, linkSi, linkSj, linkSame, linkWx, linkWy, &
-            skin_node
+        use commondata, only: maxBlocks, nBlocks, xLocalCount, yLocalCount, meshSpacing, nLinks, linkReceiver, &
+            linkDonor, linkCount, linkTi, linkTj, linkSi, linkSj, linkSame, linkWx, linkWy, skin_node, &
+            linkStart, xp, yp
         implicit none
 
         integer(kind=4) :: b, d, i, j, l, n, si, sj, counts(maxBlocks, maxBlocks), idx(maxBlocks, maxBlocks)
@@ -1221,11 +1320,11 @@
         idx = 0
         nLinks = 0
         do b = 1, nBlocks
-            do j = 1, blockNj(b)
-                do i = 1, blockNi(b)
+            do j = 1, yLocalCount(b)
+                do i = 1, xLocalCount(b)
                     if (.not.skin_node(b, i, j)) cycle
-                    x = blockX0(b)+(dble(i)-0.5d0)*blockH(b)
-                    y = blockY0(b)+(dble(j)-0.5d0)*blockH(b)
+                    x = xp(i,b)
+                    y = yp(j,b)
                     call donor_stencil(b, x, y, d, si, sj, wx, wy, coincident)
                     counts(b, d) = counts(b, d)+1
                 enddo
@@ -1247,16 +1346,16 @@
         call allocate_link_arrays()
         counts = 0
         do b = 1, nBlocks
-            do j = 1, blockNj(b)
-                do i = 1, blockNi(b)
+            do j = 1, yLocalCount(b)
+                do i = 1, xLocalCount(b)
                     if (.not.skin_node(b, i, j)) cycle
-                    x = blockX0(b)+(dble(i)-0.5d0)*blockH(b)
-                    y = blockY0(b)+(dble(j)-0.5d0)*blockH(b)
+                    x = xp(i,b)
+                    y = yp(j,b)
                     call donor_stencil(b, x, y, d, si, sj, wx, wy, coincident)
                     counts(b, d) = counts(b, d)+1
                     n = counts(b, d)
                     l = idx(b, d)
-                    call select_link(l)
+                    n = linkStart(l)+n-1
                     linkTi(n) = i
                     linkTj(n) = j
                     linkSi(n) = si
@@ -1264,7 +1363,7 @@
                     linkWx(:, n) = wx
                     linkWy(:, n) = wy
                     linkSame(n) = coincident
-                    if (blockH(b) > blockH(d) .and. .not.coincident) &
+                    if (meshSpacing(b) > meshSpacing(d) .and. .not.coincident) &
                         error stop 'Coarse interface node is not aligned with a fine node'
                 enddo
             enddo
@@ -1323,19 +1422,43 @@
     ! 作用: 将指定块的状态编码到交换时间层
     !===============================================================================================
     subroutine pack_block(b, slot)
+        use commondata, only: f_coarse, g_coarse, rho_coarse, u_coarse, v_coarse, T_coarse, Fx_coarse, &
+            Fy_coarse, p_coarse, f_fine, g_fine, rho_fine, u_fine, v_fine, T_fine, Fx_fine, Fy_fine, p_fine
+        implicit none
+        integer(kind=4), intent(in) :: b, slot
 
-        use commondata, only: blockNi, blockNj, blockNh, blockH, blockSn, blockSq, blockQk, blockQn, f, g, &
-            rho, u, v, T, Fx, Fy, Bx_prev, By_prev, p
+        if (b == 1) then
+            call pack_block_arrays(b, slot, f_coarse, g_coarse, rho_coarse, u_coarse, v_coarse, T_coarse, &
+            Fx_coarse, Fy_coarse, p_coarse)
+        else
+            call pack_block_arrays(b, slot, f_fine, g_fine, rho_fine, u_fine, v_fine, T_fine, Fx_fine, Fy_fine, &
+            p_fine)
+        endif
+    end subroutine pack_block
+
+    ! 显式接收本块普通数组；计算和写入都直接作用于传入的粗块或细环数据。
+    subroutine pack_block_arrays(b, slot, f, g, rho, u, v, T, Fx, Fy, p)
+
+        use commondata, only: xLocalCount, yLocalCount, historyLast, meshSpacing, blockSn, blockSq, blockQk, &
+            blockQn, packetSize
         implicit none
 
         integer(kind=4), intent(in) :: b
+        real(kind=8) :: f(xLocalCount(b), yLocalCount(b), 0:8)
+        real(kind=8) :: g(xLocalCount(b), yLocalCount(b), 0:4)
+        real(kind=8) :: rho(xLocalCount(b), yLocalCount(b))
+        real(kind=8) :: u(xLocalCount(b), yLocalCount(b))
+        real(kind=8) :: v(xLocalCount(b), yLocalCount(b))
+        real(kind=8) :: T(xLocalCount(b), yLocalCount(b))
+        real(kind=8) :: Fx(xLocalCount(b), yLocalCount(b))
+        real(kind=8) :: Fy(xLocalCount(b), yLocalCount(b))
+        real(kind=8) :: p(xLocalCount(b), yLocalCount(b), packetSize, 0:historyLast(b))
         integer(kind=4), intent(in) :: slot
 
-        call select_block(b)
-        call encode_packets(blockNi(b), blockNj(b), blockNh(b), slot, blockH(b), blockSn(b), blockSq(b), &
+        call encode_packets(xLocalCount(b), yLocalCount(b), historyLast(b), slot, meshSpacing(b), blockSn(b), blockSq(b), &
             blockQk(b), blockQn(b), &
-            f, g, rho, u, v, T, Fx, Fy, Bx_prev, By_prev, p)
-    end subroutine pack_block
+            f, g, rho, u, v, T, Fx, Fy, p)
+    end subroutine pack_block_arrays
     !===============================================================================================
 
 
@@ -1346,7 +1469,7 @@
     ! 子程序: encode_packets
     ! 作用: 编码宏观量与归一化非平衡矩
     !===============================================================================================
-    subroutine encode_packets(ni, nj, nh, slot, h, sn, sq, qk, qn, f, g, rho, u, v, T, Fx, Fy, Bx_prev, By_prev, p)
+    subroutine encode_packets(ni, nj, nh, slot, h, sn, sq, qk, qn, f, g, rho, u, v, T, Fx, Fy, p)
 
         use commondata, only: packetSize
         implicit none
@@ -1354,12 +1477,11 @@
         integer(kind=4), intent(in) :: ni, nj, nh, slot
         real(kind=8), intent(in) :: h, sn, sq, qk, qn, f(ni, nj, 0:8), g(ni, nj, 0:4)
         real(kind=8), intent(in) :: rho(ni, nj), u(ni, nj), v(ni, nj), T(ni, nj), Fx(ni, nj), Fy(ni, nj)
-        real(kind=8), intent(in) :: Bx_prev(ni, nj), By_prev(ni, nj)
         real(kind=8), intent(inout) :: p(ni, nj, packetSize, 0:nh)
         integer(kind=4) :: i, j, a
-        real(kind=8) :: m(0:8), meq(0:8), fm(0:8), n(0:4), neq(0:4), s(0:8), q(0:4), src(0:4), fv(0:8), gv(0:4)
-        !$acc parallel loop collapse(2) present(f, g, rho, u, v, T, Fx, Fy, Bx_prev, By_prev, p) async(1) &
-        !$acc& private(a, m, meq, fm, n, neq, s, q, src, fv, gv)
+        real(kind=8) :: m(0:8), meq(0:8), fm(0:8), n(0:4), neq(0:4), s(0:8), q(0:4), fv(0:8), gv(0:4)
+        !$acc parallel loop collapse(2) present(f, g, rho, u, v, T, Fx, Fy, p) async(1) &
+        !$acc& private(a, m, meq, fm, n, neq, s, q, fv, gv)
         do j = 1, nj
             do i = 1, ni
                 do a = 0, 8
@@ -1374,12 +1496,6 @@
                 call force_moments(u(i, j), v(i, j), Fx(i, j), Fy(i, j), fm)
                 s = [0.0d0, sn, sn, 0.0d0, sq, 0.0d0, sq, sn, sn]
                 q = [0.0d0, qk, qk, qn, qn]
-                src = 0.0d0
-#ifdef EnableUseG
-                ! 原 D2Q5 离散修正源。以当前 B 与上次 collisionT 保存的 B_prev 形成时间差。
-                src(1) = u(i, j)*T(i, j)-Bx_prev(i, j)
-                src(2) = v(i, j)*T(i, j)-By_prev(i, j)
-#endif
                 p(i, j, 1, slot) = rho(i, j)
                 p(i, j, 2, slot) = u(i, j)
                 p(i, j, 3, slot) = v(i, j)
@@ -1390,10 +1506,8 @@
                     p(i, j, 7+a, slot) = s(a)/h*(m(a)-meq(a)+0.5d0*fm(a))
                 enddo
                 do a = 0, 4
-                    p(i, j, 16+a, slot) = q(a)/h*(n(a)-neq(a)+0.5d0*src(a))
+                    p(i, j, 16+a, slot) = q(a)/h*(n(a)-neq(a))
                 enddo
-                p(i, j, 21, slot) = src(1)/h
-                p(i, j, 22, slot) = src(2)/h
             enddo
         enddo
     end subroutine encode_packets
@@ -1409,33 +1523,47 @@
     !===============================================================================================
     subroutine exchange_interfaces(coarse_receiver, wt)
 
-        use commondata, only: blockNi, blockNj, blockNh, blockH, blockSn, blockSq, blockQk, blockQn, f, g, &
-            rho, u, v, T, Fx, Fy, Bx_prev, By_prev, p, nLinks, linkReceiver, linkDonor, linkCount, linkTi, &
-            linkTj, linkSi, linkSj, linkSame, linkWx, linkWy, linkValues
+        use commondata, only: xLocalCount, yLocalCount, historyLast, meshSpacing, blockSn, blockSq, blockQk, &
+            blockQn, nLinks, linkReceiver, linkDonor, linkCount, linkTi, linkTj, linkSi, linkSj, linkSame, &
+            linkWx, linkWy, linkValues, linkStart, linkEnd, f_coarse, g_coarse, rho_coarse, u_coarse, v_coarse, &
+            T_coarse, Fx_coarse, Fy_coarse, p_coarse, f_fine, g_fine, rho_fine, u_fine, v_fine, T_fine, Fx_fine, &
+            Fy_fine, p_fine
         implicit none
 
         logical, intent(in) :: coarse_receiver
         real(kind=8), intent(in) :: wt(0:2)
-        integer(kind=4) :: l, b, d
+        integer(kind=4) :: l, b, d, first, last
 
         do l = 1, nLinks
             b = linkReceiver(l)
             d = linkDonor(l)
             if ((b == 1) .neqv. coarse_receiver) cycle
-            call select_link(l)
-            call select_block(d)
-            call interpolate_packets(blockNi(d), blockNj(d), blockNh(d), p, linkCount(l), &
-                linkSi, linkSj, linkWx, linkWy, linkSame, wt, linkValues)
+            first = linkStart(l)
+            last = linkEnd(l)
+            if (d == 1) then
+            call interpolate_packets(xLocalCount(d), yLocalCount(d), historyLast(d), p_coarse, linkCount(l), &
+                linkSi(first:last), linkSj(first:last), linkWx(:,first:last), linkWy(:,first:last), linkSame(first:last), wt, linkValues(:,first:last))
+            else
+            call interpolate_packets(xLocalCount(d), yLocalCount(d), historyLast(d), p_fine, linkCount(l), &
+                linkSi(first:last), linkSj(first:last), linkWx(:,first:last), linkWy(:,first:last), linkSame(first:last), wt, linkValues(:,first:last))
+            endif
         enddo
         do l = 1, nLinks
             b = linkReceiver(l)
             if ((b == 1) .neqv. coarse_receiver) cycle
-            call select_link(l)
-            call select_block(b)
-            call apply_packets(blockNi(b), blockNj(b), blockH(b), blockSn(b), blockSq(b), blockQk(b), blockQn(b), &
-                f, g, rho, u, v, T, &
-                Fx, Fy, Bx_prev, By_prev, &
-                linkCount(l), linkTi, linkTj, linkValues)
+            first = linkStart(l)
+            last = linkEnd(l)
+            if (b == 1) then
+            call apply_packets(xLocalCount(b), yLocalCount(b), meshSpacing(b), blockSn(b), blockSq(b), blockQk(b), blockQn(b), &
+                f_coarse, g_coarse, rho_coarse, u_coarse, v_coarse, T_coarse, &
+                Fx_coarse, Fy_coarse, &
+                linkCount(l), linkTi(first:last), linkTj(first:last), linkValues(:,first:last))
+            else
+            call apply_packets(xLocalCount(b), yLocalCount(b), meshSpacing(b), blockSn(b), blockSq(b), blockQk(b), blockQn(b), &
+                f_fine, g_fine, rho_fine, u_fine, v_fine, T_fine, &
+                Fx_fine, Fy_fine, &
+                linkCount(l), linkTi(first:last), linkTj(first:last), linkValues(:,first:last))
+            endif
         enddo
     end subroutine exchange_interfaces
     !===============================================================================================
@@ -1455,15 +1583,29 @@
         logical, intent(in) :: coincident(count)
         real(kind=8), intent(out) :: val(packetSize, count)
         integer(kind=4) :: c, a, ix, iy, k
-        real(kind=8) :: value, wk
+        real(kind=8) :: value, wk, wt0, wt1, wt2
+        ! NVHPC 24.3/P100 上数组形参 firstprivate(wt) 会在设备读取 wt(k) 时非法访问。
+        ! 在主机端取出三个时间权重，按标量值捕获；保持原三时间层插值及 async(1) 次序。
+        wt0 = wt(0)
+        wt1 = wt(1)
+        wt2 = wt(2)
         !$acc parallel loop collapse(2) present(p, si, sj, wx, wy, coincident, &
-        !$acc& val) firstprivate(wt) async(1) private(ix, iy, k, value, wk)
+        !$acc& val) firstprivate(wt0, wt1, wt2) async(1) private(ix, iy, k, value, wk)
         do c = 1, count
             do a = 1, packetSize
                 value = 0.0d0
                 do k = 0, nh
                     wk = 1.0d0
-                    if (nh == 2) wk = wt(k)
+                    if (nh == 2) then
+                        select case (k)
+                        case (0)
+                            wk = wt0
+                        case (1)
+                            wk = wt1
+                        case (2)
+                            wk = wt2
+                        end select
+                    endif
                     if (coincident(c)) then
                         value = value+wk*p(si(c), sj(c), a, k)
                     else
@@ -1485,7 +1627,7 @@
     ! 子程序: apply_packets
     ! 作用: 按接收块参数重建碰撞前状态
     !===============================================================================================
-    subroutine apply_packets(ni, nj, h, sn, sq, qk, qn, f, g, rho, u, v, T, Fx, Fy, Bx_prev, By_prev, count, ti, &
+    subroutine apply_packets(ni, nj, h, sn, sq, qk, qn, f, g, rho, u, v, T, Fx, Fy, count, ti, &
         tj, val)
 
         use commondata, only: packetSize
@@ -1494,11 +1636,11 @@
         integer(kind=4), intent(in) :: ni, nj, count, ti(count), tj(count)
         real(kind=8), intent(in) :: h, sn, sq, qk, qn, val(packetSize, count)
         real(kind=8), intent(inout) :: f(ni, nj, 0:8), g(ni, nj, 0:4), rho(ni, nj), u(ni, nj), v(ni, nj), T(ni, nj)
-        real(kind=8), intent(inout) :: Fx(ni, nj), Fy(ni, nj), Bx_prev(ni, nj), By_prev(ni, nj)
+        real(kind=8), intent(inout) :: Fx(ni, nj), Fy(ni, nj)
         integer(kind=4) :: c, i, j, a
-        real(kind=8) :: m(0:8), meq(0:8), fm(0:8), n(0:4), neq(0:4), s(0:8), q(0:4), fv(0:8), gv(0:4), src(0:4)
-        !$acc parallel loop present(f, g, rho, u, v, T, Fx, Fy, Bx_prev, By_prev, ti, tj, val) async(1) &
-        !$acc& private(i, j, a, m, meq, fm, n, neq, s, q, fv, gv, src)
+        real(kind=8) :: m(0:8), meq(0:8), fm(0:8), n(0:4), neq(0:4), s(0:8), q(0:4), fv(0:8), gv(0:4)
+        !$acc parallel loop present(f, g, rho, u, v, T, Fx, Fy, ti, tj, val) async(1) &
+        !$acc& private(i, j, a, m, meq, fm, n, neq, s, q, fv, gv)
         do c = 1, count
             i = ti(c)
             j = tj(c)
@@ -1512,9 +1654,6 @@
             call force_moments(u(i, j), v(i, j), Fx(i, j), Fy(i, j), fm)
             s = [0.0d0, sn, sn, 0.0d0, sq, 0.0d0, sq, sn, sn]
             q = [0.0d0, qk, qk, qn, qn]
-            src = 0.0d0
-            src(1) = h*val(21, c)
-            src(2) = h*val(22, c)
             m = meq
             n = neq
             do a = 0, 8
@@ -1525,7 +1664,7 @@
             m(3) = rho(i, j)*u(i, j)-0.5d0*Fx(i, j)
             m(5) = rho(i, j)*v(i, j)-0.5d0*Fy(i, j)
             do a = 1, 4
-                n(a) = neq(a)+h/q(a)*val(16+a, c)-0.5d0*src(a)
+                n(a) = neq(a)+h/q(a)*val(16+a, c)
             enddo
             n(0) = T(i, j)
             call flow_populations(m, fv)
@@ -1536,13 +1675,6 @@
             do a = 0, 4
                 g(i, j, a) = gv(a)
             enddo
-#ifdef EnableUseG
-            Bx_prev(i, j) = u(i, j)*T(i, j)-src(1)
-            By_prev(i, j) = v(i, j)*T(i, j)-src(2)
-#else
-            Bx_prev(i, j) = 0.0d0
-            By_prev(i, j) = 0.0d0
-#endif
         enddo
     end subroutine apply_packets
     !===============================================================================================
@@ -1677,8 +1809,7 @@
     !===============================================================================================
     subroutine streaming(nx, ny, f, f_post)    !先迁移，再边界处理
 
-        use commondata, only: ex, ey
-        use commondata, only: globalNx=>nx, refineRatio, fine_active
+        use commondata, only: ex, ey, globalNx=>nx, refineRatio, fine_active
         implicit none
 
         integer(kind=4), intent(in) :: nx, ny
@@ -1805,51 +1936,28 @@
 
     !===============================================================================================
     ! 子程序: collisionT
-    ! 作用: 温度场多松弛碰撞及历史通量修正
+    ! 作用: 原 D2Q5 MRT 温度场碰撞（无热流历史修正）
     !===============================================================================================
-    subroutine collisionT(nx, ny, g, g_post, u, v, T, Bx_prev, By_prev, Qk, Qnu)
+    subroutine collisionT(nx, ny, g, g_post, u, v, T, Qk, Qnu)
 
-        use commondata, only: paraA
-        use commondata, only: globalNx=>nx, refineRatio, fine_active
+        use commondata, only: paraA, globalNx=>nx, refineRatio, fine_active
         implicit none
 
         integer(kind=4), intent(in) :: nx, ny
         real(kind=8), intent(inout) :: g(nx, ny, 0:4), g_post(0:nx+1, 0:ny+1, 0:4)
         real(kind=8), intent(in) :: u(nx, ny), v(nx, ny), T(nx, ny), Qk, Qnu
-        real(kind=8), intent(inout) :: Bx_prev(nx, ny), By_prev(nx, ny)
 
         integer(kind=4) :: i, j
         integer(kind=4) :: alpha
         real(kind=8) :: n(0:4), n_post(0:4), neq(0:4)
         real(kind=8) :: q(0:4)
-        real(kind=8) :: Bx, By
-        real(kind=8) :: dBx, dBy
-        real(kind=8) :: SG
-
-        SG = 1.0d0 - 0.5d0*Qk
-        !$acc parallel loop gang vector collapse(2) present(g, g_post, u, v, T, Bx_prev, By_prev) async(1) &
-        !$acc& private(alpha, n, neq, q, n_post, Bx, By, dBx, dBy)
+        !$acc parallel loop gang vector collapse(2) present(g, g_post, u, v, T) async(1) &
+        !$acc& private(alpha, n, neq, q, n_post)
         do j = 1, ny
             do i = 1, nx
                 if (refineRatio>1 .and. nx==globalNx) then
                     if (.not.fine_active(i,j)) cycle
                 endif
-
-                Bx = u(i, j) * T(i, j)
-                By = v(i, j) * T(i, j)
-
-#ifdef EnableUseG
-                dBx = Bx - Bx_prev(i, j)
-                dBy = By - By_prev(i, j)
-#else
-                dBx = 0.0d0
-                dBy = 0.0d0
-#endif
-
-#ifdef EnableUseG
-                Bx_prev(i, j) = Bx
-                By_prev(i, j) = By
-#endif
 
                 n(0) = g(i, j, 0)+g(i, j, 1)+g(i, j, 2)+g(i, j, 3)+g(i, j, 4)
                 n(1) = g(i, j, 1)-g(i, j, 3)
@@ -1860,11 +1968,7 @@
                 neq(0) = T(i, j)
                 neq(1) = T(i, j)*u(i, j)
                 neq(2) = T(i, j)*v(i, j)
-#ifdef EnableLegacyThermalScheme
                 neq(3) = T(i, j)*paraA
-#else
-                neq(3) = T(i, j)*(-2.0d0/3.0d0)
-#endif
                 neq(4) = 0.0d0
 
                 q(0) = 0.0d0
@@ -1874,8 +1978,8 @@
                 q(4) = Qnu
 
                 n_post(0) = n(0)-q(0)*(n(0)-neq(0))
-                n_post(1) = n(1)-q(1)*(n(1)-neq(1))+ SG*dBx
-                n_post(2) = n(2)-q(2)*(n(2)-neq(2))+ SG*dBy
+                n_post(1) = n(1)-q(1)*(n(1)-neq(1))
+                n_post(2) = n(2)-q(2)*(n(2)-neq(2))
                 n_post(3) = n(3)-q(3)*(n(3)-neq(3))
                 n_post(4) = n(4)-q(4)*(n(4)-neq(4))
 
@@ -1897,8 +2001,7 @@
     !===============================================================================================
     subroutine streamingT(nx, ny, g, g_post)
 
-        use commondata, only: ex, ey
-        use commondata, only: globalNx=>nx, refineRatio, fine_active
+        use commondata, only: ex, ey, globalNx=>nx, refineRatio, fine_active
         implicit none
 
         integer(kind=4), intent(in) :: nx, ny
@@ -1958,17 +2061,9 @@
         !$acc parallel loop gang vector present(g, g_post, omegaT) async(1)
         do j = 1, ny
             !Left boundary
-#ifdef EnableLegacyThermalScheme
             if (leftWall) g(1, j, 1) = -g_post(1, j, 3)+(4.0d0+paraA)/10.0d0*Thot
-#else
-            if (leftWall) g(1, j, 1) = -g_post(1, j, 3)+2.0d0*omegaT(3)*Thot
-#endif
             !Right boundary
-#ifdef EnableLegacyThermalScheme
             if (rightWall) g(nx, j, 3) = -g_post(nx, j, 1)+(4.0d0+paraA)/10.0d0*Tcold
-#else
-            if (rightWall) g(nx, j, 3) = -g_post(nx, j, 1)+2.0d0*omegaT(1)*Tcold
-#endif
         enddo
 #endif
 
@@ -1998,17 +2093,9 @@
         !$acc parallel loop gang vector present(g, g_post, omegaT) async(1)
         do i = 1, nx
             !Bottom side
-#ifdef EnableLegacyThermalScheme
             if (bottomWall) g(i, 1, 2) = -g_post(i, 1, 4)+(4.0d0+paraA)/10.0d0*Thot
-#else
-            if (bottomWall) g(i, 1, 2) = -g_post(i, 1, 4)+2.0d0*omegaT(4)*Thot
-#endif
             !Top side
-#ifdef EnableLegacyThermalScheme
             if (topWall) g(i, ny, 4) = -g_post(i, ny, 2)+(4.0d0+paraA)/10.0d0*Tcold
-#else
-            if (topWall) g(i, ny, 4) = -g_post(i, ny, 2)+2.0d0*omegaT(2)*Tcold
-#endif
         enddo
 #endif
 
@@ -2161,9 +2248,8 @@
     subroutine calNuRe()
 
         use commondata, only: nx, ny, Thot, Tcold, lengthUnit, viscosity, diffusivity, timeUnit, historyFile, &
-            nBlocks, itc, blockNi, blockNj, blockIlo, blockIhi, blockJlo, blockJhi, blockH, blockX0, blockY0, &
-            blockOwnedBox, rho, u, v, T, dxWeight, dyWeight, ieee_is_finite
-        use commondata, only: owned_cell_area, section_owned_weight
+            nBlocks, itc, rho_coarse, u_coarse, v_coarse, T_coarse, quadWidthX_coarse, quadWidthY_coarse, &
+            rho_fine, u_fine, v_fine, T_fine, quadWidthX_fine, quadWidthY_fine
         implicit none
 
         integer(kind=4) :: b, i, j, k, jm, im
@@ -2188,79 +2274,13 @@
         xmid = 0.5d0*nx
         ymid = 0.5d0*ny
         do b = 1, nBlocks
-            call select_block(b)
-            h = blockH(b)
-            do j = blockJlo(b), blockJhi(b)
-                do i = blockIlo(b), blockIhi(b)
-                    cellArea=owned_cell_area(b,i,j)
-                    if (cellArea<=0d0) cycle
-                    if (.not.ieee_is_finite(T(i, j)) .or. .not.ieee_is_finite(rho(i, j)) .or. &
-                        .not.ieee_is_finite(u(i, j)) .or. .not.ieee_is_finite(v(i, j)) .or. rho(i, j) <= 0.0d0) then
-                        write(*, *) 'Invalid state: coarse clock, block, i,j:', itc, b, i, j
-                        error stop 'Nonfinite or nonpositive density in owned cells'
-                    endif
-                    cellArea = owned_cell_area(b,i,j)
-#ifdef SideHeatedCell
-                    conv = conv+u(i, j)*T(i, j)*cellArea
-#else
-                    conv = conv+v(i, j)*T(i, j)*cellArea
-#endif
-                    vel2 = vel2+(u(i, j)**2+v(i, j)**2)*cellArea
-                    mass = mass+rho(i, j)*cellArea
-                    meanT = meanT+T(i, j)*cellArea
-                    tmin = min(tmin, T(i, j))
-                    tmax = max(tmax, T(i, j))
-                    rmin = min(rmin, rho(i, j))
-                    rmax = max(rmax, rho(i, j))
-                enddo
-            enddo
-            xlo = blockOwnedBox(1, b)
-            xhi = blockOwnedBox(2, b)
-            ylo = blockOwnedBox(3, b)
-            yhi = blockOwnedBox(4, b)
-#ifdef SideHeatedCell
-            if (xlo == 0.0d0) then
-                do j = blockJlo(b), blockJhi(b)
-                    hot = hot+(8.0d0*Thot-9.0d0*T(1, j)+T(2, j))/(3.0d0*h)*dyWeight(j)/dble(ny)
-                enddo
+            if (b == 1) then
+                call calNuRe_block(b, conv, vel2, mass, meanT, hot, cold, middle, tmin, tmax, rmin, rmax, xmid, &
+            ymid, rho_coarse, u_coarse, v_coarse, T_coarse, quadWidthX_coarse, quadWidthY_coarse)
+            else
+                call calNuRe_block(b, conv, vel2, mass, meanT, hot, cold, middle, tmin, tmax, rmin, rmax, xmid, &
+            ymid, rho_fine, u_fine, v_fine, T_fine, quadWidthX_fine, quadWidthY_fine)
             endif
-            if (xhi == dble(nx)) then
-                do j = blockJlo(b), blockJhi(b)
-                    cold = cold+(-8.0d0*Tcold+9.0d0*T(blockNi(b), j)-T(blockNi(b)-1, j))/(3.0d0*h)*dyWeight(j)/dble(ny)
-                enddo
-            endif
-            if (xmid >= xlo .and. xmid < xhi) then
-                call section_weights((xmid-blockX0(b))/h+0.5d0, blockNi(b), im, w, dw)
-                do j = blockJlo(b), blockJhi(b)
-                    if (section_owned_weight(b,j,1,xmid)<=0d0) cycle
-                    tm = sum(w*T(im:im+3, j))
-                    um = sum(w*u(im:im+3, j))
-                    dTdx = sum(dw*T(im:im+3, j))/h
-                    middle = middle+(um*tm/diffusivity-dTdx)*section_owned_weight(b,j,1,xmid)/dble(ny)
-                enddo
-            endif
-#else
-            if (ylo == 0.0d0) then
-                do i = blockIlo(b), blockIhi(b)
-                    hot = hot+(8.0d0*Thot-9.0d0*T(i, 1)+T(i, 2))/(3.0d0*h)*dxWeight(i)/dble(nx)
-                enddo
-            endif
-            if (yhi == dble(ny)) then
-                do i = blockIlo(b), blockIhi(b)
-                    cold = cold+(-8.0d0*Tcold+9.0d0*T(i, blockNj(b))-T(i, blockNj(b)-1))/(3.0d0*h)*dxWeight(i)/dble(nx)
-                enddo
-            endif
-            if (ymid >= ylo .and. ymid < yhi) then
-                call section_weights((ymid-blockY0(b))/h+0.5d0, blockNj(b), jm, w, dw)
-                do i = blockIlo(b), blockIhi(b)
-                    if (section_owned_weight(b,i,2,ymid)<=0d0) cycle
-                    tm = sum(w*T(i, jm:jm+3))
-                    vm = sum(w*v(i, jm:jm+3))
-                    dTdy = sum(dw*T(i, jm:jm+3))/h
-                    middle = middle+(vm*tm/diffusivity-dTdy)*section_owned_weight(b,i,2,ymid)/dble(nx)
-                enddo
-            endif
-#endif
         enddo
         ! 空间积分只覆盖 ownedBox；重叠节点按各自分区面积计权，不重复计算整块面积。
         ! Re 使用速度平方的面积平均再开方，非稳态时间统计也采用同一 RMS 定义。
@@ -2272,6 +2292,100 @@
         close(k)
         write(*, '(a,f12.5,a,es13.5,a,es13.5)') 't_ff=', dble(itc)/timeUnit, ' NuVolAvg=', nu, ' ReVolRMS=', re
     end subroutine calNuRe
+
+    ! 显式接收本块普通数组；计算和写入都直接作用于传入的粗块或细环数据。
+    subroutine calNuRe_block(b, conv, vel2, mass, meanT, hot, cold, middle, tmin, tmax, rmin, rmax, xmid, ymid, &
+            rho, u, v, T, quadWidthX, quadWidthY)
+
+        use commondata, only: nx, ny, Thot, Tcold, diffusivity, itc, xLocalCount, yLocalCount, iStart, iEnd, &
+            jStart, jEnd, meshSpacing, xOrigin, yOrigin, blockOwnedBox, ieee_is_finite, owned_cell_area, &
+            section_owned_weight
+        implicit none
+
+        integer(kind=4) :: b, i, j, jm, im
+        real(kind=8) :: rho(xLocalCount(b), yLocalCount(b))
+        real(kind=8) :: u(xLocalCount(b), yLocalCount(b))
+        real(kind=8) :: v(xLocalCount(b), yLocalCount(b))
+        real(kind=8) :: T(xLocalCount(b), yLocalCount(b))
+        real(kind=8) :: quadWidthX(xLocalCount(b))
+        real(kind=8) :: quadWidthY(yLocalCount(b))
+        real(kind=8) :: conv, vel2, mass, meanT, hot, cold, middle, dTdx, dTdy, tm, um, vm, cellArea
+        real(kind=8) :: w(4), dw(4)
+        real(kind=8) :: tmin, tmax, rmin, rmax, xmid, ymid, xlo, xhi, ylo, yhi, h
+
+        h = meshSpacing(b)
+        do j = jStart(b), jEnd(b)
+            do i = iStart(b), iEnd(b)
+                cellArea=owned_cell_area(b,i,j)
+                if (cellArea<=0d0) cycle
+                if (.not.ieee_is_finite(T(i, j)) .or. .not.ieee_is_finite(rho(i, j)) .or. &
+                    .not.ieee_is_finite(u(i, j)) .or. .not.ieee_is_finite(v(i, j)) .or. rho(i, j) <= 0.0d0) then
+                    write(*, *) 'Invalid state: coarse clock, block, i,j:', itc, b, i, j
+                    error stop 'Nonfinite or nonpositive density in owned cells'
+                endif
+                cellArea = owned_cell_area(b,i,j)
+#ifdef SideHeatedCell
+                conv = conv+u(i, j)*T(i, j)*cellArea
+#else
+                conv = conv+v(i, j)*T(i, j)*cellArea
+#endif
+                vel2 = vel2+(u(i, j)**2+v(i, j)**2)*cellArea
+                mass = mass+rho(i, j)*cellArea
+                meanT = meanT+T(i, j)*cellArea
+                tmin = min(tmin, T(i, j))
+                tmax = max(tmax, T(i, j))
+                rmin = min(rmin, rho(i, j))
+                rmax = max(rmax, rho(i, j))
+            enddo
+        enddo
+        xlo = blockOwnedBox(1, b)
+        xhi = blockOwnedBox(2, b)
+        ylo = blockOwnedBox(3, b)
+        yhi = blockOwnedBox(4, b)
+#ifdef SideHeatedCell
+        if (xlo == 0.0d0) then
+            do j = jStart(b), jEnd(b)
+                hot = hot+(8.0d0*Thot-9.0d0*T(1, j)+T(2, j))/(3.0d0*h)*quadWidthY(j)/dble(ny)
+            enddo
+        endif
+        if (xhi == dble(nx)) then
+            do j = jStart(b), jEnd(b)
+                cold = cold+(-8.0d0*Tcold+9.0d0*T(xLocalCount(b), j)-T(xLocalCount(b)-1, j))/(3.0d0*h)*quadWidthY(j)/dble(ny)
+            enddo
+        endif
+        if (xmid >= xlo .and. xmid < xhi) then
+            call section_weights((xmid-xOrigin(b))/h+0.5d0, xLocalCount(b), im, w, dw)
+            do j = jStart(b), jEnd(b)
+                if (section_owned_weight(b,j,1,xmid)<=0d0) cycle
+                tm = sum(w*T(im:im+3, j))
+                um = sum(w*u(im:im+3, j))
+                dTdx = sum(dw*T(im:im+3, j))/h
+                middle = middle+(um*tm/diffusivity-dTdx)*section_owned_weight(b,j,1,xmid)/dble(ny)
+            enddo
+        endif
+#else
+        if (ylo == 0.0d0) then
+            do i = iStart(b), iEnd(b)
+                hot = hot+(8.0d0*Thot-9.0d0*T(i, 1)+T(i, 2))/(3.0d0*h)*quadWidthX(i)/dble(nx)
+            enddo
+        endif
+        if (yhi == dble(ny)) then
+            do i = iStart(b), iEnd(b)
+                cold = cold+(-8.0d0*Tcold+9.0d0*T(i, yLocalCount(b))-T(i, yLocalCount(b)-1))/(3.0d0*h)*quadWidthX(i)/dble(nx)
+            enddo
+        endif
+        if (ymid >= ylo .and. ymid < yhi) then
+            call section_weights((ymid-yOrigin(b))/h+0.5d0, yLocalCount(b), jm, w, dw)
+            do i = iStart(b), iEnd(b)
+                if (section_owned_weight(b,i,2,ymid)<=0d0) cycle
+                tm = sum(w*T(i, jm:jm+3))
+                vm = sum(w*v(i, jm:jm+3))
+                dTdy = sum(dw*T(i, jm:jm+3))/h
+                middle = middle+(vm*tm/diffusivity-dTdy)*section_owned_weight(b,i,2,ymid)/dble(nx)
+            enddo
+        endif
+#endif
+    end subroutine calNuRe_block
     !===============================================================================================
 
 
@@ -2282,12 +2396,11 @@
     subroutine check()
 #ifdef steadyFlow
 
-        use commondata, only: nBlocks, itc, errorU, errorT, blockIlo, blockIhi, blockJlo, blockJhi, u, v, T, &
-            dxWeight, dyWeight
+        use commondata, only: nBlocks, itc, errorU, errorT, u_coarse, v_coarse, T_coarse, u_fine, v_fine, &
+            T_fine
 #ifdef steadyFlow
-        use commondata, only: up, vp, Tp
+        use commondata, only: up_coarse, vp_coarse, Tp_coarse, up_fine, vp_fine, Tp_fine
 #endif
-        use commondata, only: owned_cell_area, section_owned_weight
         implicit none
 
         integer(kind=4) :: b, k, i, j
@@ -2299,19 +2412,19 @@
         tt = 0.0d0
         call update_host_all(.false.)
         do b = 1, nBlocks
-            call select_block(b)
-            do j = blockJlo(b), blockJhi(b)
-                do i = blockIlo(b), blockIhi(b)
-                    cellArea = owned_cell_area(b,i,j)
-                    du = du+cellArea*((u(i, j)-up(i, j))**2+(v(i, j)-vp(i, j))**2)
-                    uu = uu+cellArea*(u(i, j)**2+v(i, j)**2)
-                    dt = dt+cellArea*(T(i, j)-Tp(i, j))**2
-                    tt = tt+cellArea*T(i, j)**2
-                enddo
-            enddo
-            up = u
-            vp = v
-            Tp = T
+            if (b == 1) then
+                call check_block(b, du, uu, dt, tt, u_coarse, v_coarse, T_coarse &
+#ifdef steadyFlow
+                    , up_coarse, vp_coarse, Tp_coarse &
+#endif
+                )
+            else
+                call check_block(b, du, uu, dt, tt, u_fine, v_fine, T_fine &
+#ifdef steadyFlow
+                    , up_fine, vp_fine, Tp_fine &
+#endif
+                )
+            endif
         enddo
         errorU = sqrt(du/max(uu, 1.0d-300))
         errorT = sqrt(dt/max(tt, 1.0d-300))
@@ -2321,6 +2434,43 @@
         write(*, *) 'errorU,errorT:', errorU, errorT
 #endif
     end subroutine check
+
+#ifdef steadyFlow
+    ! 显式接收本块普通数组；计算和写入都直接作用于传入的粗块或细环数据。
+    subroutine check_block(b, du, uu, dt, tt, u, v, T &
+#ifdef steadyFlow
+            , up, vp, Tp &
+#endif
+        )
+
+        use commondata, only: iStart, iEnd, jStart, jEnd, owned_cell_area, xLocalCount, yLocalCount
+        implicit none
+
+        integer(kind=4) :: b, i, j
+        real(kind=8) :: u(xLocalCount(b), yLocalCount(b))
+        real(kind=8) :: v(xLocalCount(b), yLocalCount(b))
+        real(kind=8) :: T(xLocalCount(b), yLocalCount(b))
+#ifdef steadyFlow
+        real(kind=8) :: up(xLocalCount(b), yLocalCount(b))
+        real(kind=8) :: vp(xLocalCount(b), yLocalCount(b))
+        real(kind=8) :: Tp(xLocalCount(b), yLocalCount(b))
+#endif
+        real(kind=8) :: du, uu, dt, tt, cellArea
+
+        do j = jStart(b), jEnd(b)
+            do i = iStart(b), iEnd(b)
+                cellArea = owned_cell_area(b,i,j)
+                du = du+cellArea*((u(i, j)-up(i, j))**2+(v(i, j)-vp(i, j))**2)
+                uu = uu+cellArea*(u(i, j)**2+v(i, j)**2)
+                dt = dt+cellArea*(T(i, j)-Tp(i, j))**2
+                tt = tt+cellArea*T(i, j)**2
+            enddo
+        enddo
+        up = u
+        vp = v
+        Tp = T
+    end subroutine check_block
+#endif
     !===============================================================================================
 
 
@@ -2330,9 +2480,8 @@
     !===============================================================================================
     subroutine output_Tecplot()
 
-        use commondata, only: lengthUnit, timeUnit, pltFolderPrefix, nBlocks, itc, pltFileNum, blockIlo, &
-            blockIhi, blockJlo, blockJhi, blockH, blockX0, blockY0, rho, u, v, T, dxWeight, dyWeight
-        use commondata, only: owned_cell_area, section_owned_weight
+        use commondata, only: pltFolderPrefix, nBlocks, pltFileNum, rho_coarse, u_coarse, v_coarse, T_coarse, &
+            rho_fine, u_fine, v_fine, T_fine
         implicit none
 
         integer(kind=4) :: k, b, i, j
@@ -2344,20 +2493,39 @@
         open(newunit = k, file = pltFolderPrefix//'-'//trim(num)//'.dat', status = 'replace')
         write(k, '(a)') 'VARIABLES="x/L","y/L","u","v","T","rho","h/L","integration_area/L^2"'
         do b = 1, nBlocks
-            call select_block(b)
-            write(k, '(a,I0,a,I0,a,I0,a,ES24.16E3)') 'ZONE T="block ', b, '", I=', blockIhi(b)-blockIlo(b)+1, &
-                ', J=', blockJhi(b)-blockJlo(b)+1, ', F=POINT, SOLUTIONTIME=', dble(itc)/timeUnit
-            do j = blockJlo(b), blockJhi(b)
-                do i = blockIlo(b), blockIhi(b)
-                    write(k, '(8(ES24.16E3,1X))') (blockX0(b)+(dble(i)-0.5d0)*blockH(b))/lengthUnit, &
-                        (blockY0(b)+(dble(j)-0.5d0)*blockH(b))/lengthUnit, u(i, j), v(i, j), T(i, j), rho(i, j), &
-                        blockH(b)/lengthUnit, &
-                        owned_cell_area(b,i,j)/lengthUnit**2
-                enddo
-            enddo
+            if (b == 1) then
+                call output_Tecplot_block(b, k, rho_coarse, u_coarse, v_coarse, T_coarse)
+            else
+                call output_Tecplot_block(b, k, rho_fine, u_fine, v_fine, T_fine)
+            endif
         enddo
         close(k)
     end subroutine output_Tecplot
+
+    ! 显式接收本块普通数组；计算和写入都直接作用于传入的粗块或细环数据。
+    subroutine output_Tecplot_block(b, k, rho, u, v, T)
+
+        use commondata, only: lengthUnit, timeUnit, itc, iStart, iEnd, jStart, jEnd, meshSpacing, &
+            owned_cell_area, xLocalCount, yLocalCount, xp, yp
+        implicit none
+
+        integer(kind=4) :: k, b, i, j
+        real(kind=8) :: rho(xLocalCount(b), yLocalCount(b))
+        real(kind=8) :: u(xLocalCount(b), yLocalCount(b))
+        real(kind=8) :: v(xLocalCount(b), yLocalCount(b))
+        real(kind=8) :: T(xLocalCount(b), yLocalCount(b))
+
+        write(k, '(a,I0,a,I0,a,I0,a,ES24.16E3)') 'ZONE T="block ', b, '", I=', iEnd(b)-iStart(b)+1, &
+            ', J=', jEnd(b)-jStart(b)+1, ', F=POINT, SOLUTIONTIME=', dble(itc)/timeUnit
+        do j = jStart(b), jEnd(b)
+            do i = iStart(b), iEnd(b)
+                write(k, '(8(ES24.16E3,1X))') (xp(i,b))/lengthUnit, &
+                    (yp(j,b))/lengthUnit, u(i, j), v(i, j), T(i, j), rho(i, j), &
+                    meshSpacing(b)/lengthUnit, &
+                    owned_cell_area(b,i,j)/lengthUnit**2
+            enddo
+        enddo
+    end subroutine output_Tecplot_block
     !===============================================================================================
 
 
@@ -2368,9 +2536,8 @@
     subroutine output_SnapshotFile()
 
         use commondata, only: nx, ny, lengthUnit, timeUnit, snapshotFilePrefix, snapshotMagic, nBlocks, itc, &
-            snapshotFileNum, blockIlo, blockIhi, blockJlo, blockJhi, blockH, blockX0, blockY0, blockOwnedBox, &
-            rho, u, v, T, dxWeight, dyWeight
-        use commondata, only: owned_cell_area, section_owned_weight
+            snapshotFileNum, rho_coarse, u_coarse, v_coarse, T_coarse, quadWidthX_coarse, quadWidthY_coarse, &
+            rho_fine, u_fine, v_fine, T_fine, quadWidthX_fine, quadWidthY_fine
         implicit none
 
         integer(kind=4) :: k, b, i,j
@@ -2383,18 +2550,41 @@
             access = 'stream', status = 'replace')
         write(k) snapshotMagic, nBlocks, nx, ny, itc, dble(itc)/timeUnit, lengthUnit
         do b = 1, nBlocks
-            call select_block(b)
-            write(k) blockIhi(b)-blockIlo(b)+1, blockJhi(b)-blockJlo(b)+1, &
-                blockX0(b)+(dble(blockIlo(b))-0.5d0)*blockH(b), blockY0(b)+(dble(blockJlo(b))-0.5d0)*blockH(b), &
-                blockH(b), blockOwnedBox(:, b)
-            write(k) dxWeight(blockIlo(b):blockIhi(b)), dyWeight(blockJlo(b):blockJhi(b))
-            ! Snapshot v3 appends explicit 2D area after the separable coordinate weights.
-            write(k) ((owned_cell_area(b,i,j),i=blockIlo(b),blockIhi(b)),j=blockJlo(b),blockJhi(b))
-            write(k) u(blockIlo(b):blockIhi(b), blockJlo(b):blockJhi(b)), v(blockIlo(b):blockIhi(b), blockJlo(b):blockJhi(b)), &
-                T(blockIlo(b):blockIhi(b), blockJlo(b):blockJhi(b)), rho(blockIlo(b):blockIhi(b), blockJlo(b):blockJhi(b))
+            if (b == 1) then
+                call output_SnapshotFile_block(b, k, rho_coarse, u_coarse, v_coarse, T_coarse, quadWidthX_coarse, &
+            quadWidthY_coarse)
+            else
+                call output_SnapshotFile_block(b, k, rho_fine, u_fine, v_fine, T_fine, quadWidthX_fine, &
+            quadWidthY_fine)
+            endif
         enddo
         close(k)
     end subroutine output_SnapshotFile
+
+    ! 显式接收本块普通数组；计算和写入都直接作用于传入的粗块或细环数据。
+    subroutine output_SnapshotFile_block(b, k, rho, u, v, T, quadWidthX, quadWidthY)
+
+        use commondata, only: iStart, iEnd, jStart, jEnd, meshSpacing, xOrigin, yOrigin, blockOwnedBox, &
+            owned_cell_area, xLocalCount, yLocalCount
+        implicit none
+
+        integer(kind=4) :: k, b, i, j
+        real(kind=8) :: rho(xLocalCount(b), yLocalCount(b))
+        real(kind=8) :: u(xLocalCount(b), yLocalCount(b))
+        real(kind=8) :: v(xLocalCount(b), yLocalCount(b))
+        real(kind=8) :: T(xLocalCount(b), yLocalCount(b))
+        real(kind=8) :: quadWidthX(xLocalCount(b))
+        real(kind=8) :: quadWidthY(yLocalCount(b))
+
+        write(k) iEnd(b)-iStart(b)+1, jEnd(b)-jStart(b)+1, &
+            xOrigin(b)+(dble(iStart(b))-0.5d0)*meshSpacing(b), yOrigin(b)+(dble(jStart(b))-0.5d0)*meshSpacing(b), &
+            meshSpacing(b), blockOwnedBox(:, b)
+        write(k) quadWidthX(iStart(b):iEnd(b)), quadWidthY(jStart(b):jEnd(b))
+        ! Snapshot v3 appends explicit 2D area after the separable coordinate weights.
+        write(k) ((owned_cell_area(b,i,j),i=iStart(b),iEnd(b)),j=jStart(b),jEnd(b))
+        write(k) u(iStart(b):iEnd(b), jStart(b):jEnd(b)), v(iStart(b):iEnd(b), jStart(b):jEnd(b)), &
+            T(iStart(b):iEnd(b), jStart(b):jEnd(b)), rho(iStart(b):iEnd(b), jStart(b):jEnd(b))
+    end subroutine output_SnapshotFile_block
     !===============================================================================================
 
 
@@ -2411,9 +2601,6 @@
         sig = 0
 #ifdef steadyFlow
         sig(1) = 1
-#endif
-#ifdef EnableUseG
-        sig(2) = 1
 #endif
 #ifdef SideHeatedCell
         sig(3) = 1
@@ -2484,13 +2671,12 @@
     subroutine output_ReloadFile()
 
         use commondata, only: nx, ny, refineRatio, fineLayerCellsLeft, fineLayerCellsRight, &
-            fineLayerCellsBottom, fineLayerCellsTop, &
-            overlapCells, reloadFileNum, reloadFilePrefix, restartMagic, nBlocks, itc, snapshotFileNum, &
-            pltFileNum, nextSample, nextReload, nextPlt, errorU, errorT, blockNi, blockNj, blockNh, blockIlo, &
-            blockIhi, blockJlo, blockJhi, blockH, blockX0, blockY0, blockOwnedBox, f, g, rho, u, v, T, Fx, &
-            Fy, Bx_prev, By_prev, p
+            fineLayerCellsBottom, fineLayerCellsTop, overlapCells, reloadFileNum, reloadFilePrefix, &
+            restartMagic, nBlocks, itc, snapshotFileNum, pltFileNum, nextSample, nextReload, nextPlt, errorU, &
+            errorT, f_coarse, g_coarse, u_coarse, v_coarse, T_coarse, rho_coarse, Fx_coarse, Fy_coarse, &
+            p_coarse, f_fine, g_fine, u_fine, v_fine, T_fine, rho_fine, Fx_fine, Fy_fine, p_fine
 #ifdef steadyFlow
-        use commondata, only: up, vp, Tp
+        use commondata, only: up_coarse, vp_coarse, Tp_coarse, up_fine, vp_fine, Tp_fine
 #endif
         implicit none
 
@@ -2515,13 +2701,21 @@
         write(k) currentModel, currentPhysics
         write(k) itc, nextSample, nextReload, nextPlt, snapshotFileNum, pltFileNum, reloadFileNum, errorU, errorT
         do b = 1, nBlocks
-            call select_block(b)
-            write(k) blockNi(b), blockNj(b), blockIlo(b), blockIhi(b), blockJlo(b), blockJhi(b), blockNh(b), &
-                blockX0(b), blockY0(b), blockH(b), blockOwnedBox(:, b)
-            write(k) f, g, u, v, T, rho, Fx, Fy, Bx_prev, By_prev, p
+            if (b == 1) then
+                call output_ReloadFile_block(b, k, f_coarse, g_coarse, u_coarse, v_coarse, T_coarse, rho_coarse, &
+            Fx_coarse, Fy_coarse, p_coarse &
 #ifdef steadyFlow
-            write(k) up, vp, Tp
+                    , up_coarse, vp_coarse, Tp_coarse &
 #endif
+                )
+            else
+                call output_ReloadFile_block(b, k, f_fine, g_fine, u_fine, v_fine, T_fine, rho_fine, Fx_fine, &
+            Fy_fine, p_fine &
+#ifdef steadyFlow
+                    , up_fine, vp_fine, Tp_fine &
+#endif
+                )
+            endif
         enddo
         close(k)
         ! 完整写完独立编号的 checkpoint 后再更新 latest 指针，旧 checkpoint 仍保留。
@@ -2529,6 +2723,41 @@
         write(k, '(a)') trim(name)
         close(k)
     end subroutine output_ReloadFile
+
+    ! 显式接收本块普通数组；计算和写入都直接作用于传入的粗块或细环数据。
+    subroutine output_ReloadFile_block(b, k, f, g, u, v, T, rho, Fx, Fy, p &
+#ifdef steadyFlow
+            , up, vp, Tp &
+#endif
+        )
+
+        use commondata, only: xLocalCount, yLocalCount, historyLast, iStart, iEnd, jStart, jEnd, meshSpacing, &
+            xOrigin, yOrigin, blockOwnedBox, packetSize
+        implicit none
+
+        integer(kind=4) :: k, b
+        real(kind=8) :: f(xLocalCount(b), yLocalCount(b), 0:8)
+        real(kind=8) :: g(xLocalCount(b), yLocalCount(b), 0:4)
+        real(kind=8) :: u(xLocalCount(b), yLocalCount(b))
+        real(kind=8) :: v(xLocalCount(b), yLocalCount(b))
+        real(kind=8) :: T(xLocalCount(b), yLocalCount(b))
+        real(kind=8) :: rho(xLocalCount(b), yLocalCount(b))
+        real(kind=8) :: Fx(xLocalCount(b), yLocalCount(b))
+        real(kind=8) :: Fy(xLocalCount(b), yLocalCount(b))
+        real(kind=8) :: p(xLocalCount(b), yLocalCount(b), packetSize, 0:historyLast(b))
+#ifdef steadyFlow
+        real(kind=8) :: up(xLocalCount(b), yLocalCount(b))
+        real(kind=8) :: vp(xLocalCount(b), yLocalCount(b))
+        real(kind=8) :: Tp(xLocalCount(b), yLocalCount(b))
+#endif
+
+        write(k) xLocalCount(b), yLocalCount(b), iStart(b), iEnd(b), jStart(b), jEnd(b), historyLast(b), &
+            xOrigin(b), yOrigin(b), meshSpacing(b), blockOwnedBox(:, b)
+        write(k) f, g, u, v, T, rho, Fx, Fy, p
+#ifdef steadyFlow
+        write(k) up, vp, Tp
+#endif
+    end subroutine output_ReloadFile_block
     !===============================================================================================
 
 
@@ -2542,13 +2771,12 @@
     subroutine read_restart()
 
         use commondata, only: nx, ny, refineRatio, fineLayerCellsLeft, fineLayerCellsRight, &
-            fineLayerCellsBottom, fineLayerCellsTop, &
-            overlapCells, reloadFileNum, reloadFilePrefix, restartMagic, nBlocks, itc, snapshotFileNum, &
-            pltFileNum, nextSample, nextReload, nextPlt, errorU, errorT, blockNi, blockNj, blockNh, blockIlo, &
-            blockIhi, blockJlo, blockJhi, blockH, blockX0, blockY0, blockOwnedBox, f, g, rho, u, v, T, Fx, &
-            Fy, Bx_prev, By_prev, p
+            fineLayerCellsBottom, fineLayerCellsTop, overlapCells, reloadFileNum, reloadFilePrefix, &
+            restartMagic, nBlocks, itc, snapshotFileNum, pltFileNum, nextSample, nextReload, nextPlt, errorU, &
+            errorT, f_coarse, g_coarse, u_coarse, v_coarse, T_coarse, rho_coarse, Fx_coarse, Fy_coarse, &
+            p_coarse, f_fine, g_fine, u_fine, v_fine, T_fine, rho_fine, Fx_fine, Fy_fine, p_fine
 #ifdef steadyFlow
-        use commondata, only: up, vp, Tp
+        use commondata, only: up_coarse, vp_coarse, Tp_coarse, up_fine, vp_fine, Tp_fine
 #endif
         implicit none
 
@@ -2587,19 +2815,64 @@
         read(k) itc, nextSample, nextReload, nextPlt, snapshotFileNum, pltFileNum, reloadFileNum, errorU, errorT
         if (itc < 0 .or. mod(itc, refineRatio) /= 0) error stop 'Restart is not at a synchronized time'
         do b = 1, nBlocks
-            call select_block(b)
-            read(k) geom, coord
-            if (any(geom /= [blockNi(b), blockNj(b), blockIlo(b), blockIhi(b), blockJlo(b), blockJhi(b), blockNh(b)]) .or. &
-                any(coord /= [blockX0(b), blockY0(b), blockH(b), blockOwnedBox(:, &
-                b)])) error stop 'Restart block layout mismatch'
-            read(k, iostat = ios) f, g, u, v, T, rho, Fx, Fy, Bx_prev, By_prev, p
-            if (ios /= 0) error stop 'Incomplete checkpoint state/history'
+            if (b == 1) then
+                call read_restart_block(b, k, f_coarse, g_coarse, u_coarse, v_coarse, T_coarse, rho_coarse, &
+            Fx_coarse, Fy_coarse, p_coarse &
 #ifdef steadyFlow
-            read(k) up, vp, Tp
+                    , up_coarse, vp_coarse, Tp_coarse &
 #endif
+                )
+            else
+                call read_restart_block(b, k, f_fine, g_fine, u_fine, v_fine, T_fine, rho_fine, Fx_fine, Fy_fine, &
+            p_fine &
+#ifdef steadyFlow
+                    , up_fine, vp_fine, Tp_fine &
+#endif
+                )
+            endif
         enddo
         close(k)
     end subroutine read_restart
+
+    ! 显式接收本块普通数组；计算和写入都直接作用于传入的粗块或细环数据。
+    subroutine read_restart_block(b, k, f, g, u, v, T, rho, Fx, Fy, p &
+#ifdef steadyFlow
+            , up, vp, Tp &
+#endif
+        )
+
+        use commondata, only: xLocalCount, yLocalCount, historyLast, iStart, iEnd, jStart, jEnd, meshSpacing, &
+            xOrigin, yOrigin, blockOwnedBox, packetSize
+        implicit none
+
+        integer(kind=4) :: k, b, ios, geom(7)
+        real(kind=8) :: f(xLocalCount(b), yLocalCount(b), 0:8)
+        real(kind=8) :: g(xLocalCount(b), yLocalCount(b), 0:4)
+        real(kind=8) :: u(xLocalCount(b), yLocalCount(b))
+        real(kind=8) :: v(xLocalCount(b), yLocalCount(b))
+        real(kind=8) :: T(xLocalCount(b), yLocalCount(b))
+        real(kind=8) :: rho(xLocalCount(b), yLocalCount(b))
+        real(kind=8) :: Fx(xLocalCount(b), yLocalCount(b))
+        real(kind=8) :: Fy(xLocalCount(b), yLocalCount(b))
+        real(kind=8) :: p(xLocalCount(b), yLocalCount(b), packetSize, 0:historyLast(b))
+#ifdef steadyFlow
+        real(kind=8) :: up(xLocalCount(b), yLocalCount(b))
+        real(kind=8) :: vp(xLocalCount(b), yLocalCount(b))
+        real(kind=8) :: Tp(xLocalCount(b), yLocalCount(b))
+#endif
+        real(kind=8) :: coord(7)
+        logical :: metaExists
+
+        read(k) geom, coord
+        if (any(geom /= [xLocalCount(b), yLocalCount(b), iStart(b), iEnd(b), jStart(b), jEnd(b), historyLast(b)]) .or. &
+            any(coord /= [xOrigin(b), yOrigin(b), meshSpacing(b), blockOwnedBox(:, &
+            b)])) error stop 'Restart block layout mismatch'
+        read(k, iostat = ios) f, g, u, v, T, rho, Fx, Fy, p
+        if (ios /= 0) error stop 'Incomplete checkpoint state/history'
+#ifdef steadyFlow
+        read(k) up, vp, Tp
+#endif
+    end subroutine read_restart_block
     !===============================================================================================
 
 
@@ -2751,8 +3024,8 @@
 
     ! 细环只保留中心空区之外的节点；四个原细区的拼接处没有特殊处理。
     logical function fine_active(i,j)
-        use commondata, only: nx,ny,refineRatio,overlapCells,fineLayerCellsLeft,fineLayerCellsRight, &
-            fineLayerCellsBottom,fineLayerCellsTop
+        use commondata, only: nx, ny, refineRatio, overlapCells, fineLayerCellsLeft, fineLayerCellsRight, &
+            fineLayerCellsBottom, fineLayerCellsTop
         implicit none
         !$acc routine seq
         integer,intent(in) :: i,j
@@ -2764,11 +3037,11 @@
     end function fine_active
 
     real(8) function owned_cell_area(b,i,j) result(a)
-        use commondata, only: nBlocks,blockOwnedBox,blockH,blockX0,blockY0
+        use commondata, only: nBlocks, blockOwnedBox, meshSpacing, xp, yp
         implicit none
         integer,intent(in) :: b,i,j
         real(8) :: x,y,h,wx,wy
-        h=blockH(b); x=blockX0(b)+(i-.5d0)*h; y=blockY0(b)+(j-.5d0)*h
+        h=meshSpacing(b); x=xp(i,b); y=yp(j,b)
         wx=max(0d0,min(x+h/2,blockOwnedBox(2,b))-max(x-h/2,blockOwnedBox(1,b)))
         wy=max(0d0,min(y+h/2,blockOwnedBox(4,b))-max(y-h/2,blockOwnedBox(3,b)))
         a=wx*wy
@@ -2780,16 +3053,16 @@
     end function owned_cell_area
 
     real(8) function section_owned_weight(b,k,axis,position) result(w)
-        use commondata, only: nBlocks,blockOwnedBox,blockH,blockX0,blockY0
+        use commondata, only: nBlocks, blockOwnedBox, meshSpacing, xOrigin, yOrigin
         implicit none
         integer,intent(in) :: b,k,axis
         real(8),intent(in) :: position
         real(8) :: q,h,lo,hi
-        h=blockH(b)
+        h=meshSpacing(b)
         if(axis==1) then
-            q=blockY0(b)+(k-.5d0)*h; lo=blockOwnedBox(3,b);hi=blockOwnedBox(4,b)
+            q=yOrigin(b)+(k-.5d0)*h; lo=blockOwnedBox(3,b);hi=blockOwnedBox(4,b)
         else
-            q=blockX0(b)+(k-.5d0)*h; lo=blockOwnedBox(1,b);hi=blockOwnedBox(2,b)
+            q=xOrigin(b)+(k-.5d0)*h; lo=blockOwnedBox(1,b);hi=blockOwnedBox(2,b)
         endif
         w=max(0d0,min(q+h/2,hi)-max(q-h/2,lo))
         if(nBlocks>1 .and. b==2) then

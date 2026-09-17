@@ -1,0 +1,37 @@
+{
+  "job": "6981.master",
+  "state": "completed_steady_threshold_passed",
+  "fine_steps": 4580000,
+  "errors": [
+    9.686565316828698e-08,
+    1.7488425255499588e-08
+  ],
+  "final_checkpoint_metrics": {
+    "t_ff": 516.4578579860324,
+    "NuVolAvg": 30.295593524327128,
+    "ReVolRMS": 536.2629786910492,
+    "Nu_hot": 30.33048562776314,
+    "Nu_cold": 30.330661648296132
+  },
+  "last_history_tff": 510.0001050141649,
+  "history_rows": 51,
+  "convergence_rows": 2290,
+  "checkpoint_all_fields_finite": true,
+  "history_continuous_finite": true,
+  "mass_relative_drift_percent": -0.00110405895434873,
+  "hot_cold_difference_percent": 0.000580341954144587,
+  "paper_signed_errors_percent": {
+    "paper_513": {
+      "NuVolAvg": -0.05742247772530309,
+      "ReVolRMS": -1.228916693732666,
+      "Nu_hot": -0.06528558939075396
+    },
+    "paper_extrapolated": {
+      "NuVolAvg": 0.3029175652548075,
+      "ReVolRMS": -0.05267423848986285,
+      "Nu_hot": 0.40015633362619996
+    }
+  },
+  "source_sha256": "905a764abb8bec99eb218d678e97456328cb98192ff41b45420ac7e5c5a3bc30",
+  "checkpoint_sha256": "daade893e397a6eaf1571ca5b8840fc9fe920e18df7ebc6a9839e1ca813c49e3"
+}

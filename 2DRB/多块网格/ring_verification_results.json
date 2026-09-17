@@ -1,7 +1,7 @@
 {
-  "source_sha256": "e17e17c4971a8f384ae789d5f74350db2b53b05cb35ffa22e72a3dbd59cc7296",
+  "source_sha256": "fda246d78b80c3faf9bb87ad9bcb8dd746cb1a0d79b790f2fdc544f947ac241d",
   "device": "gfortran OpenACC host",
-  "build_directory": "C:\\Users\\User\\AppData\\Local\\Temp\\mb2d-verify-vdxw1an8",
+  "build_directory": "C:\\Users\\User\\AppData\\Local\\Temp\\mb2d-verify-542ptbb1",
   "checks": [
     {
       "five_macro_syntax_checks": true
@@ -22,32 +22,18 @@
       "conduction": "rb",
       "coarse_steps": 300,
       "max_T_and_rho_error": [
-        3.3306690738754696e-16,
+        3.608224830031759e-16,
         4.440892098500626e-16
       ],
       "Nu": [
         1.0,
-        0.9999999999999756,
-        0.9999999999999973,
-        1.0
+        0.9999999999999969,
+        0.999999999999998,
+        0.9999999999999996
       ]
     },
     {
       "conduction": "side",
-      "coarse_steps": 300,
-      "max_T_and_rho_error": [
-        3.3306690738754696e-16,
-        4.440892098500626e-16
-      ],
-      "Nu": [
-        1.0,
-        0.9999999999999742,
-        0.999999999999998,
-        0.9999999999999994
-      ]
-    },
-    {
-      "conduction": "legacy",
       "coarse_steps": 300,
       "max_T_and_rho_error": [
         2.7755575615628914e-16,
@@ -62,10 +48,10 @@
     },
     {
       "uniform_regression": "rb",
-      "max_state_error": 8.881784197001252e-16
+      "max_state_error": 0.0
     },
     {
-      "uniform_regression": "legacy",
+      "uniform_regression": "side",
       "max_state_error": 0.0
     },
     {

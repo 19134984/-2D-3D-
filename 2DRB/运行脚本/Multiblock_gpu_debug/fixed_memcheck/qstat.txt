@@ -1,0 +1,54 @@
+Job Id: 6977.master
+    Job_Name = MBdebug
+    Job_Owner = xlli@master
+    resources_used.cput = 00:00:09
+    resources_used.vmem = 10522756kb
+    resources_used.walltime = 00:00:10
+    resources_used.mem = 180448kb
+    resources_used.energy_used = 0
+    job_state = C
+    queue = batch
+    server = master
+    Checkpoint = u
+    ctime = Wed Sep 16 16:33:47 2026
+    Error_Path = master:/data2/XLLi/Multiblock/gpu_debug/fixed_memcheck/pbs.st
+	derr
+    exec_host = node05/0
+    Hold_Types = n
+    Join_Path = n
+    Keep_Files = n
+    Mail_Points = a
+    mtime = Wed Sep 16 16:33:58 2026
+    Output_Path = master:/data2/XLLi/Multiblock/gpu_debug/fixed_memcheck/pbs.s
+	tdout
+    Priority = 0
+    qtime = Wed Sep 16 16:33:47 2026
+    Rerunable = True
+    Resource_List.nodes = node05:ppn=1
+    Resource_List.walltime = 00:20:00
+    Resource_List.nodect = 1
+    session_id = 92428
+    Variable_List = PBS_O_QUEUE=batch,PBS_O_HOME=/home/xlli,PBS_O_LOGNAME=xlli,
+	PBS_O_PATH=/usr/local/torque/bin:/usr/local/torque/sbin:/usr/lib64/qt
+	-3.3/bin:/home/xlli/perl5/bin:/usr/local/bin:/usr/bin,
+	PBS_O_MAIL=/var/mail/xlli,PBS_O_SHELL=/bin/bash,
+	PBS_O_LANG=en_US.UTF-8,
+	PBS_O_WORKDIR=/data2/XLLi/Multiblock/gpu_debug/fixed_memcheck,
+	PBS_O_HOST=master,PBS_O_SERVER=master
+    euser = xlli
+    egroup = stu
+    queue_type = E
+    comment = Job started on Wed Sep 16 at 16:33
+    etime = Wed Sep 16 16:33:47 2026
+    exit_status = 0
+    submit_args = run.pbs
+    start_time = Wed Sep 16 16:33:47 2026
+    start_count = 1
+    fault_tolerant = False
+    comp_time = Wed Sep 16 16:33:58 2026
+    job_radix = 0
+    total_runtime = 11.157093
+    submit_host = master
+    init_work_dir = /data2/XLLi/Multiblock/gpu_debug/fixed_memcheck
+    request_version = 1
+

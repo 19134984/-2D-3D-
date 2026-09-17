@@ -1,0 +1,41 @@
+{
+  "case": "Ra1e6/ratio2/sideheated_N256_20260916_v2",
+  "local_master_sha256": "d1cf2337fa74a08ad29d8cc29839b9427586b14e985ddd0c074377bacc5e9aca",
+  "case_source_sha256": "e31b2d317b901a481c647c65d249ea818a31b974d9a0726b181a5942e0671114",
+  "ra": 1000000,
+  "n": 256,
+  "ratio": 2,
+  "pr": 0.71,
+  "mach": 0.1,
+  "fine_indices": [
+    32,
+    33,
+    32,
+    33
+  ],
+  "epsU": 1e-07,
+  "epsT": 1e-07,
+  "max_steps": 20000000,
+  "check_steps": 2000,
+  "shared_gpu": true,
+  "source_changes": {
+    "nx": "256",
+    "ny": "256",
+    "refineRatio": "2",
+    "Rayleigh": "1.0d6",
+    "Prandtl": "0.71d0",
+    "fineLayerCellsLeft": "32",
+    "fineLayerCellsBottom": "32",
+    "fineLayerCellsRight": "33",
+    "fineLayerCellsTop": "33"
+  },
+  "numerical_kernels_changed": false,
+  "start": "from_zero",
+  "node": "node05",
+  "walltime": "96:00:00",
+  "sampling_tff": 10,
+  "checkpoint_tff": 100,
+  "tecplot_tff": 100,
+  "finite_check": "owned macroscopic fields at Nu/Re sampling, every 10 tff",
+  "statistics": "steady convergence; no unsteady half-window criterion"
+}

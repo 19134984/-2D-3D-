@@ -26,3 +26,6 @@ fort.*
 
 # Too large for ordinary GitHub Git pushes without Git LFS.
 /detail/OPENACC并行编程实战.pdf
+
+# Keep simulation restart states locally; do not add new checkpoints to Git.
+reloadFile2DOpenaccMultiblock-*.bin

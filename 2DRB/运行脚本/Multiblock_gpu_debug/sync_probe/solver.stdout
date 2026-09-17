@@ -1,0 +1,7 @@
+Failing in Thread:1
+Accelerator Fatal Error: call to cuStreamSynchronize(after launch) returned error 700 (CUDA_ERROR_ILLEGAL_ADDRESS): Illegal address during kernel execution
+ File: /data2/XLLi/Multiblock/gpu_debug/sync_probe/solver.F90
+ Function: interpolate_packets:1427
+ Line: 1438
+
+ Visible OpenACC devices:            1

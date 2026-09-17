@@ -1,0 +1,947 @@
+                                                  PHYSICAL REVIEW E 89, 043303 (2014)
+
+
+                 Multiblock approach for the passive scalar thermal lattice Boltzmann method
+
+                                                     Rongzong Huang and Huiying Wu*
+              Key Laboratory for Power Machinery and Engineering of Ministry of Education, School of Mechanical Engineering,
+                                         Shanghai Jiao Tong University, Shanghai 200240, China
+                                          (Received 14 December 2013; published 7 April 2014)
+                   A multiblock approach for the passive scalar thermal lattice Boltzmann method (TLBM) with multiple-
+                relaxation-time collision scheme is proposed based on the Chapman-Enskog analysis. The interaction between
+                blocks is executed in the moment space directly and an external force term is considered. Theoretical analysis
+                shows that all the nonequilibrium parts of the nonconserved moments should be rescaled, while the nonequilibrium
+                parts of the conserved moments can be calculated directly. Moreover, a local scheme based on the pseudoparticles
+                for computing heat flux is proposed with no need to calculate temperature gradient based on the finite-difference
+                scheme. In order to validate the multiblock approach and local scheme for computing heat flux, thermal Couette
+                flow with wall injection is simulated and good results are obtained, which show that the adoption of the multiblock
+                approach does not deteriorate the convergence rate of TLBM and the local scheme for computing heat flux has
+                second-order convergence rate. Further application of the present approach is the simulation of natural convection
+                in a square cavity with the Rayleigh number up to 109 .
+
+                DOI: 10.1103/PhysRevE.89.043303                                                       PACS number(s): 47.11.−j
+
+
+                        I. INTRODUCTION                                     approach is constructed artificially merely to recover the
+                                                                            correct macroscopic equation [i.e., the convection-diffusion
+    As a powerful numerical technique for simulating fluid
+                                                                            equation (CDE)]. Whereas in the thermal energy distribution
+flows and complex physical processes in fluids, the lattice
+                                                                            approach, both the viscous dissipation and compression work
+Boltzmann equation (LBE) method [1–3] has attracted con-
+                                                                            can be considered naturally because this approach is derived
+siderable attention in past years. Different from the traditional
+                                                                            from the Boltzmann equation for the internal energy or total
+computational fluid dynamics (CFD) method based on the
+                                                                            energy directly. However, the thermal energy distribution
+macroscopic continuum equations, the LBE method can be
+                                                                            approach is much more complicated than the passive scalar
+regarded as a mesoscopic method based on the pseudoparticles,
+                                                                            approach. And as Peng et al. [10] pointed out, the viscous
+although it has been proved that LBE is a special discrete
+                                                                            dissipation and compression work can be neglected in real
+form of the Boltzmann equation (BE) [4,5]. As an extremely
+                                                                            incompressible applications. Therefore the passive scalar
+important problem in engineering and natural systems, thermal
+                                                                            approach is more widely adopted in real applications due to
+fluid flow has also been solved by the LBE method exten-
+                                                                            its simplicity [16–18].
+sively [6–15].
+                                                                                In order to solve thermal fluid flow more efficiently by
+    The existing thermal lattice Boltzmann methods (TLBMs)
+                                                                            the passive scalar TLBM, the multiblock approach with grid
+can generally be grouped into three major categories: (1)
+                                                                            refinement can be used. Unlike the traditional CFD methods,
+the multispeed approach [6,7], (2) the double-distribution-
+                                                                            there exist a relatively small number of papers treating grid
+function (DDF) approach [8–13], and (3) the hybrid ap-
+                                                                            refinement in the framework of the LBE method [19–25].
+proach [14,15]. The multispeed approach is a straightforward
+                                                                            In 1998, Filippova and Hänel [21] first introduced the grid
+extension of the athermal LBE method, and uses only one
+                                                                            refinement technique in the LBE method. A two-way inter-
+distribution function for the thermodynamics equations. The
+                                                                            action approach with rescaling the postcollision distribution
+DDF approach uses two independent distribution functions:
+                                                                            functions was proposed. Later, Yu et al. [22] developed
+one for the velocity field and one for the temperature field.
+                                                                            Filippova and Hänel’s method further, adopting the cubic
+The hybrid approach is a mixed method, where the velocity
+                                                                            spline fitting for spatial interpolation and the three-point
+field is solved by the LBE method, and the temperature
+                                                                            Lagrangian formula for temporal interpolation. Different from
+field is solved by conventional numerical techniques (such
+                                                                            Filippova and Hänel’s method, Lin and Lai [23] proposed a
+as the finite-difference method, etc.). Among these TLBMs,
+                                                                            simplified method with a one-way interaction approach and
+the DDF approach is employed most commonly due to its
+                                                                            assumed that the distribution functions are interchangeable
+good numerical stability, adjustable Prandtl number, and easy
+                                                                            between different grids. Having pointed out that there exists a
+implementation.
+                                                                            singularity (τ = 1) in Filippova and Hänel’s method, and that
+    The DDF approaches can also be further classified
+                                                                            Lin and Lai’s method is inaccurate since the nonequilibrium
+into two main categories: (1) the passive scalar approach
+                                                                            parts of the distribution functions are not interchangeable,
+[8–10] and (2) the thermal energy distribution approach
+                                                                            Dupuis and Chopard [24] proposed a more general two-
+[11–13]. In the passive scalar approach, the viscous dissipation
+                                                                            way interaction approach with rescaling the poststreaming
+and compression work are commonly ignored because this
+                                                                            distribution functions. In 2012, Lagrava et al. [25] found that a
+                                                                            direct copy of the information cannot guarantee the numerical
+                                                                            stability when the Reynolds number is high, and then proposed
+                                                                            a filter technique to remove the scales of the fine grid that are
+ *
+     Corresponding author: whysrj@sjtu.edu.cn                               not resolved by the coarse grid.
+
+1539-3755/2014/89(4)/043303(10)                                     043303-1                                  ©2014 American Physical Society
+RONGZONG HUANG AND HUIYING WU                                                                  PHYSICAL REVIEW E 89, 043303 (2014)
+
+    It should be pointed out that most of the grid refinement        process at one point only depends on the information of this
+approaches in the LBE method are proposed for athermal               point) based on the pseudoparticles is proposed for computing
+fluid flows without considering an external force term in            heat flux with no need to calculate temperature gradient
+LBEs [21–25]. What is more, a single-relaxation-time (SRT)           based on the finite-difference scheme. The remainder of the
+collision scheme is adopted in the above LBEs. Although              present paper is organized as follows. Section II presents the
+some scholars have applied the grid refinement approach              passive scalar TLBM with MRT collision scheme, and then
+to LBEs with a multiple-relaxation-time (MRT) collision              the corresponding multiblock approach is given in Sec. III.
+scheme [26,27], they only deduced the interaction approach           Section IV introduces a local scheme for computing heat flux.
+based on the continuity of mass, momentum, and stresses              Some numerical tests are carried out in Sec. V. Finally, a brief
+between different grids. In this paper, a multiblock approach        conclusion is drawn in Sec. VI.
+with grid refinement for the passive scalar TLBM with MRT
+collision scheme is proposed. The interaction approach with
+considering an external force term is deduced based on the
+                                                                          II. THERMAL LATTICE BOLTZMANN METHOD
+Chapman-Enskog analysis in the moment space directly.
+Moreover, as an important physical variable, heat flux has              Without loss of generality, the two-dimensional nine-
+not obtained much attention in the framework of the LBE              velocity (D2Q9) model is adopted for both the velocity and
+method. Here, a local scheme (“local” means the computation          temperature fields. The nine discrete velocities are given by
+
+                                    ⎧
+                                    ⎪
+                                    ⎨c (0,0) ,                                             i = 0,
+                                ei = c (cos [(i − 1)π/2] , sin [(i − 1)π/2]) ,             i = 1,2,3,4,                                       (1)
+                                    ⎪
+                                    ⎩√
+                                        2c (cos [(2i − 1)π/4] , sin [(2i − 1)π/4]) ,       i = 5,6,7,8,
+
+
+where c = δx /δt is the lattice speed, in which δx is the lattice    the postcollision moment, mσ,eq is the equilibrium moment
+spacing, and δt is the time step. Note that δx and δt are            function, and Sσ = Mσ M−1 and Fσm = (I − Sσ /2)−1 MFσv
+dimensionless, and c ≡ 1 is appointed in order to simplify           are the relaxation matrix and discrete force term in the moment
+the linear transformation processes between the velocity and         space, respectively. In general, the relaxation matrix in the
+moment spaces. In what follows all variables are defined to          moment space is a diagonal matrix, which can be expressed as
+be dimensionless too. The LBE with MRT collision scheme
+                                                                               Sσ = diag s0σ ,seσ ,sεσ ,sjσ ,sqσ ,sjσ ,sqσ ,spσ ,spσ ,        (6)
+for the density and temperature distribution functions can be
+expressed as                                                         and the equilibrium moment function can be given as [28]
+                                                          σ,eq  
+ fiσ (x + ei δt ,t + δt ) = fiσ (x,t) − σij fjσ (x,t) − fj (x,t)         mu,eq = ρ,−2ρ + 3u2 ,ρ − 3u2 ,ux ,−ux ,uy ,
+                         + δt Fviσ (x,t),   i = 0–8,          (2)                                              T
+                                                                                      − uy ,u2x − u2y ,ux uy ,                               (7a)
+which can be decomposed into two substeps, i.e., the collision
+process                                                                   m T ,eq
+                                                                                    = (T ,−2T ,T ,T ux ,−T ux ,T uy ,−T uy ,0,0) ,       T
+
+                                                 σ,eq                                                                                      (7b)
+      f¯iσ (x,t) = fiσ (x,t) − σij fjσ (x,t) − fj (x,t)
+                   + δt Fviσ (x,t), i = 0–8                   (3)    where the superscript “T” means the transposition of a vector.
+                                                                     Note that here an incompressible LBE method with modified
+and the streaming process                                            equilibrium moment function is adopted, and the mean density
+          fiσ (x + ei δt ,t + δt ) = f¯iσ (x,t), i = 0–8.     (4)    (ρ0 ) is set to be 1.0 [28]. In order to avoid error terms induced
+                                                                     by the unsteady and nonuniform force, the discrete force term
+Here, fiσ is the distribution function (i.e., the poststreaming      in the moment space should be given as [29,30]
+distribution function), f¯iσ is the postcollision distribution
+function, fi
+            σ,eq
+                 is the equilibrium distribution function, and                 Fum = (0,6F · u,−6F · u,Fx ,−Fx ,Fy ,−Fy ,
+ and Fv are the relaxation matrix and discrete force term in
+  σ       σ
+                                                                                        2Fx ux − 2Fy uy ,Fx uy + Fy ux )T ,                  (8a)
+the velocity space, respectively. The superscript “σ ” denotes
+the velocity field when σ = u or the temperature field when                    FTm = (q,−2q,q,0,0,0,0,0,0)T ,                                (8b)
+σ = T . Generally, the collision process is carried out in the       where F = (Fx ,Fy )T is the force term in the momentum
+moment space as [28–30]                                              equation and q is the heat source term in the energy equation.
+       m̄σ (x,t) = mσ (x,t) − Sσ [mσ (x,t) − mσ,eq (x,t)]            With the assumption of the Boussinesq approximation, F can
+                                                                    be expressed as
+                             Sσ
+                   + δt I −        Fσm ,                      (5)
+                              2                                                              F = −gβ(T − Tref ),                              (9)
+where I is the unit matrix, mσ = Mf is the moment calculated
+                                       σ
+                                                                     in which g is the acceleration of gravity, β is the volume
+by the distribution function through a linear transformation by      expansivity, and Tref is the reference temperature. The corre-
+                                                           σ
+the orthogonal transformation matrix M [28], m̄σ = Mf̄ is            sponding macroscopic variables such as density, velocity, and
+
+                                                               043303-2
+MULTIBLOCK APPROACH FOR THE PASSIVE SCALAR . . .                                                                      PHYSICAL REVIEW E 89, 043303 (2014)
+
+
+  Nodes of coarse block                                                                      and the thermal diffusivity α = δt (1/sjT − 0.5)/3. Note that
+                                                                                             ρ0 = 1.0 has been substituted into Eqs. (11a) and (11b).
+   t
+
+
+
+
+                                                             t
+                               t
+      t ,c
+
+
+
+
+                                                                      t ,c
+                                                                                                 III. MULTIBLOCK APPROACH FOR MRT SCHEME
+
+                        x,c                                                                     As illustrated by Fig. 1, a two-block system (i.e., the coarse
+
+
+
+
+                                                       Bo fin
+                                                                                             and fine blocks) is considered here. The ratio of the lattice
+
+
+
+
+                                                         un e b ter ock oun ars
+                                                            da lo
+                                          t
+                                                                                             spacing and time step between the coarse and fine blocks are
+
+
+
+
+                                                              ry ck ce b
+                        x, f
+
+
+
+
+                                                                of
+                                                                  In bl
+                                              t,
+                                                                                                                            δx,c   δt,c
+
+
+
+                                               f
+                                                                                                                      n=         =      ,                 (12)
+
+
+
+
+                                                                      fa s
+                                                                                                                            δx,f   δt,f
+
+
+
+
+                                                                           et
+                                                                            B co
+                                                                                              which indicates c ≡ 1 for both blocks. Here, the subscript “c”
+
+
+
+
+                                                                             w
+                                                                              ee
+                                                                                n
+                                                                                 da e b
+                                                                                             denotes the coarse block and subscript “f ” denotes the fine
+
+
+
+                                                                                   ry lo
+                                                                                             block. Note that the overlap area (the gray area in Fig. 1) is set
+
+
+
+                                                                                     of ck
+                                                                                             for the convenience of information exchange (i.e., interaction
+                                                                                             approach) between adjacent blocks, i.e., all information on the
+                                                                                             boundary of the coarse block (the blue solid line in Fig. 1) can
+                                                                                             be obtained from the fine block, and similarly, all information
+  Nodes of fine block                                                                        on the boundary of the fine block (the red solid line in Fig. 1)
+                                                                                             can be obtained from the coarse block.
+    FIG. 1. (Color online) Interface structure between two blocks of                             To deduce the interaction approach for the MRT collision
+different lattice spacings.                                                                  scheme, the Chapman-Enskog analysis is conducted here.
+                                                                                             Applying the Taylor series expansion to Eq. (2) and rewriting
+                                                                                             it in the moment space, we can get
+temperature are calculated via
+                                                                                                            σ  δt 2 σ
+       8                   8                       8                                                    D̃m +    D̃ m + O δt2
+                             δt               δt                                                               2
+ρ=     fiu , u =     ei fiu + F, T =     fiT + q.                                                                             
+                             2                2                                                               Sσ                   Sσ
+   i=0           i=0                 i=0                                                                   = − (mσ − mσ,eq ) + I −    Fσm ,               (13)
+                                                                                                              δt                    2
+                                                                                (10)
+                                                                                             where D̃ = I∂t + Ex ∂x + Ey ∂y , in which Ex = M[diag
+  Through the Chapman-Enskog analysis, the corresponding                                     (e0x , . . . ,e8x )]M−1 and Ey = M[diag(e0y , . . . ,e8y )]M−1 .
+macroscopic continuum equations are                                                          Substituting the following Chapman-Enskog expansions
+      ∂t ρ + ∇ · u = 0,                                                      (11a)                    ∂t = ε∂t1 + ε2 ∂t2 , ∂x = ε∂x1 , ∂y = ε∂y1 , (14a)
+  ∂t u + ∇ · (uu) = −∇p + ν∇ 2 u + ς ∇(∇ · u) + F, (11b)                                                    +∞
+                                                                                                     mσ =         ε(n) mσ,(n) ,   Fσm = εFσ,(1)          (14b)
+ ∂t T + ∇ · (T u) = α∇ 2 T + q,                                              (11c)                                                        m
+                                                                                                            n=0
+
+where the pressure p = ρ/3, the kinetic viscosity ν =                                        into Eq. (13), we can rewrite it in the consecutive orders of the
+δt (1/spu − 0.5)/3, the bulk viscosity ς = δt (1/seu − 0.5)/3,                               small expansion parameter ε as
+
+                                                                               ε0 : mσ,(0) = mσ,eq ,                                                     (15a)
+                                                                                                   
+                                                                                               Sσ            δt
+                                              ε : (I∂t1 + Ex ∂x1 + Ey ∂y1 )m
+                                               1                            σ,(0)
+                                                                                  − Fm = −
+                                                                                      σ,(1)
+                                                                                                     mσ,(1) + Fσ,(1) ,                                   (15b)
+                                                                                               δt            2 m
+                                                                   
+                                                               Sσ               δt             Sσ
+              ε2 : ∂t2 mσ,(0) + (I∂t1 + Ex ∂x1 + Ey ∂y1 ) I −        mσ,(1) + Fσ,(1)m       = − mσ,(2) .                                                 (15c)
+                                                                2               2              δt
+
+
+From Eq. (15), the macroscopic continuum equation [i.e.,                                     For the equilibrium part, since the macroscopic variables are
+Eq. (11)] can be recovered. Therefore, in order to maintain                                  independent of grids, Eqs. (7) and (8) indicate
+the continuity of macroscopic properties across the block                                                                  σ,eq
+interface, Eq. (15) should be continuous between blocks                                                      mσ,eq
+                                                                                                              c    = mf , Fσm,c = Fσm,f .                 (17)
+fundamentally.
+   In the interaction approach between blocks, the moment                                    As for the nonequilibrium part, the truncation mσ,(n) ≈ 0
+can be decomposed into two parts: the equilibrium and                                        (∀n ⩾ 2) should be applied, which indicates that the nonequi-
+nonequilibrium parts, that is,                                                               librium part can be simplified as mσ,neq ≈ εmσ,(1) . Further,
+                                                                                             Eq. (17) is equivalent to mσ,(0)
+                                                                                                                         c    = mσ,(0)
+                                                                                                                                  f
+                                                                                                                                                      σ,(1)
+                                                                                                                                              m,c = Fm,f
+                                                                                                                                       and Fσ,(1)
+                                                                                             due to Eq. (15a) and Fm = εFm , and c ≡ 1 indicates that
+                                                                                                                    σ      σ,(1)
+
+                     mσ = mσ,eq + mσ,neq .                                      (16)         Ex and Ey remain consistent between blocks. Therefore,
+
+                                                                                      043303-3
+RONGZONG HUANG AND HUIYING WU                                                                              PHYSICAL REVIEW E 89, 043303 (2014)
+
+the left-hand side of Eq. (15b) is independent of grids,                                        ( x0 , h0 ) ( x1 , h1 ) ( x2 , h2 ) ( x3 , h3 )
+which suggests the right-hand side of Eq. (15b) should
+satisfy                                                                                                                ( x, h )
+                                
+  Sσc           δt,c σ,(1)  Sσf            δt,f σ,(1)
+         mc +
+          σ,(1)
+                    Fm,c =        mσ,(1)
+                                   f     +     F      ,                          FIG. 2. (Color online) Schematic                 of   spatial    and   temporal
+  δt,c           2          δt,f            2 m,f                            interpolations.
+                                                                   (18)
+which can be further written as                                              nonequilibrium part of the moment (mσ,neq ) based on Eq. (19)
+                                   
+  Sσc            δt,c σ         Sσf    σ,neq   δt,f σ                        in which the relation between the relaxation matrices is given
+        mσ,neq
+         c     +     F      =         mf     +     F               .         by Eq. (20); and (4) calculate the moment by Eq. (16). As
+ δt,c             2 m,c        δt,f             2 m,f
+                                                                             shown by Fig. 1, when we transfer information from the coarse
+                                                                   (19)      block to the fine block, spatial and temporal interpolations
+It can be seen that the nonequilibrium parts should be rescaled              are needed on the boundary of the fine block because both
+between the coarse and fine blocks. Moreover, replacing                      the lattice spacing and time step for the fine block are n
+the part (mσ,(1) + δt Fσ,(1)
+                         m /2) in Eq. (15c) with Eq. (15b),
+                                                                             times smaller than those of the coarse block. As pointed out
+and considering mσ,(n) ≈ 0 (∀n ⩾ 2), all the other parts of                  by Lagrava et al. [25], the second-order interpolation cannot
+Eq. (15c) are independent of grids except (I − Sσ /2) Sσ,−1 δt ,             guarantee the mass conservation and third-order interpolation
+which indicates that                                                         is needed at least. Accordingly, the n-point Lagrangian
+                                                                             formula with nth-order accuracy is adopted here. For spatial
+             δt,c Sσ,−1
+                   c    − I/2 = δt,f Sσ,−1
+                                      f    − I/2 .                 (20)      interpolation, four points are used; for temporal interpolation,
+Equations (17), (19), and (20) describe the interaction ap-                  three points are used. As illustrated by Fig. 2, the n-point
+proach between the coarse and fine blocks in the moment                      Lagrangian formula is expressed as
+space. Obviously, it can be seen from Eq. (19) that the external                                           ⎛                       ⎞
+force term in LBEs should be considered in the interaction
+approach, while most previous works are proposed for LBEs
+                                                                                                 n−1
+                                                                                                          ⎜    
+                                                                                                               n−1
+                                                                                                                    x − xj ⎟
+                                                                                        h(x) =         hi ⎜
+                                                                                                          ⎝
+                                                                                                                           ⎟             (n = 3,4) .       (22)
+without an external force term.
+                                                                                                 i=0
+                                                                                                                   x − xj ⎠
+                                                                                                               j =0 i
+    More attention should be focused on the conserved mo-                                                      j =i
+ments (i = 0,3,5 for σ = u and i = 0 for σ = T , i.e., mu0 , mu3 ,
+mu5 , and mT0 ). For these conserved moments, substituting the
+Chapman-Enskog expansions into Eq. (10), we can get                          Note that, for temporal interpolation, (x0 , h0 ), (x1 , h1 ),
+                                                                             (x2 , h2 ), and (x3 , h3 ) denote the information obtained from
+                 δt σ,(1)                                                    the coarse block at times t − δt,c , t, t + δt,c , and t + 2δt,c ,
+      mσ,(1)
+       i     +     F      ≡ 0,     mσ,(n) ≡ 0 (∀n ⩾ 2) ,           (21)
+                 2 m,i              i
+                                                                             respectively, and (x, h) denotes the information at time
+which means that mi
+                      σ,neq
+                            = εmσ,(1)
+                                               σ,neq
+                                          and mi       + δt Fm,i
+                                                             σ
+                                                                 /2 ≡ 0,     t + kδt,f (0 < k < n). Therefore, only (x0 , h0 ), (x1 , h1 ), and
+                                      i
+namely, the nonequilibrium parts of the conserved moments                    (x2 , h2 ) are used for the temporal interpolation (see Fig. 1)
+can be calculated precisely and directly and there is no need to             and the three-point Lagrangian formula is adopted.
+execute the rescaling procedure [Eq. (19)] for them. Further,
+in view of Eq. (21), all terms containing the corresponding
+                                                                                  IV. LOCAL SCHEME FOR COMPUTING HEAT FLUX
+relaxation factors (i.e., s0u , sju , and s0T ) in Eq. (15c) disappear,
+which indicates there is no need to rescale these relaxation                    From the point of collision and streaming processes,
+factors as Eq. (20) describes, namely, we can set s0u =                      the temperature distribution function can be regarded as
+sju = s0T ≡ 1 for both blocks consistently. From the above                   pseudoparticles which are composed of “thermal energy”, and
+discussions, we can see that the rescaling procedures [Eqs. (19)             the heat flux can be treated as particle flux (note that the “heat
+and (20)] are only valid for the nonconserved moments.                       flux” in this paper actually means the “temperature flux”). So
+Note that in the interaction approach for the MRT collision                  that the heat flux in the x direction at node x can be calculated
+scheme proposed previously [26,27], only the nonequilibrium                  by
+parts of the moments mu7 and mu8 are rescaled for the
+                                                                                                                       
+continuity of stresses; while in the present approach, all                        Jx,L (x,t + δt ) = f1T + f5T + f8T (x,t+δt )
+the nonequilibrium parts of the nonconserved moments are                                                                   
+rescaled from the perspective of the continuity of the first-order                                  − f¯3T + f¯6T + f¯7T (x,t) δx /δt ,  (23a)
+expansion equation [i.e., Eq. (15b)], which may be more                                              T                 
+fundamental.                                                                      Jx,R (x,t + δt ) = f¯1 + f¯5T + f¯8T (x,t)
+                                                                                                                                 
+    In real simulation, the interaction approach can be carried                                     − f3T + f6T + f7T (x,t+δt ) δx /δt , (23b)
+out by transferring the information from the coarse block to
+the fine block, or alternatively from the fine block to the coarse                                     Jx,L (x,t + δt ) + Jx,R (x,t + δt )
+                                                                                   Jx (x,t + δt ) =                                        .              (23c)
+block in the following sequence: (1) transfer the macroscopic                                                           2
+variables (ρ, u, T , F, and q) which are independent of grids;
+(2) transfer the equilibrium part of the moment (mσ,eq ) and                 Here, Jx,L (x,t + δt ) and Jx,R (x,t + δt ) are considered as the
+the discrete force term (Fσm ) based on Eq. (17); (3) transfer the           heat fluxes at the virtual points (i.e., points L and R shown
+
+                                                                       043303-4
+MULTIBLOCK APPROACH FOR THE PASSIVE SCALAR . . .                                                    PHYSICAL REVIEW E 89, 043303 (2014)
+
+
+              6                    2                   5                                             ux   U0 , uy     V0 , T       Th
+
+
+                                                                                                                             L
+                                       U                                                   y               0.5L
+
+                           L               R                                               O    x    ux   0, u y    V0 , T     Tc
+                                       x
+              3                                        1
+                                                                             FIG. 4. (Color online) Schematic diagram of the multiblock ar-
+                                                                         rangement for the thermal Couette flow with boundary conditions
+                                       D
+                                                                         shown (the gray area is the fine block with n = 4, and the white area
+                                                                         is the coarse block).
+
+              7                    4                   8
+                                                                         and the fluid is injected into the channel from the stationary
+                                                                         bottom wall with velocity V0 , and withdrawn from the moving
+    FIG. 3. (Color online) Streaming process at node x with the black
+solid circles being the lattice nodes, the gray solid circles being
+                                                                         top wall with the same velocity. The problem has the following
+the virtual points, the blue dashed lines being the postcollision        analytical solutions for the velocity and temperature as [31]:
+distribution functions f¯iT (x,t), and the red solid lines being the                                eRe y/L − 1
+poststreaming distribution functions fiT (x,t + δt ).                                  ux = U0                  , uy = V0 ,               (25a)
+                                                                                                     eRe − 1
+                                                                                                                    ePr Rey/L − 1
+in Fig. 3) at the left and right sides of node x, respectively.                         T = Tc + (Th − Tc )                       ,       (25b)
+Similarly, the heat flux in the y direction at node x can be                                                         ePr Re − 1
+calculated by                                                            where U0 is the moving velocity of the top wall, Th (=1) and
+                                                                       Tc (=0) are the temperatures of the heating (top) and cooling
+   Jy,D (x,t + δt ) = f2T + f5T + f6T (x,t+δt )                         (bottom) walls, respectively, L(=1) is the width of the channel,
+                                                                       and Re and Pr are the Reynolds number and Prandtl number,
+                     − f¯4T + f¯7T + f¯8T (x,t) δx /δt ,  (24a)
+                                                                         which are defined by
+                      T                 
+   Jy,U (x,t + δt ) = f¯2 + f¯5T + f¯6T (x,t)                                                         V0 L                  ν
+                                                                                             Re =         ,       Pr =       .           (26)
+                     − f4T + f7T + f8T (x,t+δt ) δx /δt , (24b)                                        ν                    α
+                        Jy,D (x,t + δt ) + Jy,U (x,t + δt )              The analytical solution for the heat flux is
+     Jy (x,t + δt ) =                                       .   (24c)
+                                         2                                                                              eRe y/L − 1
+                                                                                    Jx = −α∂x T + T ux = U0
+Here, Jy,D (x,t + δt ) and Jy,U (x,t + δt ) are considered as                                                            eRe − 1
+                                                                                                                         
+the heat fluxes at the virtual points (i.e., points D and U                                                ePr Re y/L − 1
+shown in Fig. 3) at the lower and upper sides of node x,                                  × Tc + (Th − Tc ) Pr Re           ,             (27a)
+                                                                                                             e      −1
+respectively.
+   As seen from the above discussion, the present computation                                                          ePr Re Tc − Th
+                                                                                    Jy = −α∂y T + T uy = V0                           .   (27b)
+process for heat flux is local, and the calculation of temperature                                                       ePr Re − 1
+gradient based on the finite-difference scheme can be avoided.
+                                                                            In the simulation, boundary conditions on the bottom and
+Compared with the very recent work proposed by Chai and
+                                                                         top walls are treated by the nonequilibrium extrapolation ap-
+Zhao based on the Chapman-Enskog analysis [31], an easy
+                                                                         proach [32,33] due to its simplicity and second-order accuracy.
+and concise alternative way is proposed here.
+                                                                         On the left and right sides, periodic boundary conditions are
+                                                                         applied. The lattice spacings of the coarse and fine blocks
+               V. RESULTS AND DISCUSSIONS                                are δx,c = 1/16 and δx,f = δx,c /4, respectively. The other
+   In this section, numerical tests are conducted to validate            parameters are set as U0 = V0 = 0.05, Re = 10, and Pr = 0.5.
+the present multiblock approach for the TLBM with MRT                    Figure 5 gives the horizontal velocity ux , the temperature T ,
+collision scheme and local scheme for computing heat flux.               and the heat flux Jx and Jy profiles along the y coordinate.
+The simulated problems include the thermal Couette flow with             It shows that the numerical results are in good agreement
+wall injection and the natural convection in a square cavity with        with the analytical solutions. The variables ux and T are
+the Rayleigh number up to 109 .                                          smooth across the block interface, while there is a small jump
+                                                                         for the heat flux Jy . This error can be explained as follows.
+                                                                         On the one hand, considering a one-dimensional steady-state
+          A. Thermal Couette flow with wall injection                    problem and the special arrangement of the blocks (all the
+   In order to validate the present multiblock approach                  information along the boundary of the fine block remains
+and local scheme for computing heat flux, a simulation of                unchangeable), no additional numerical errors are introduced
+thermal Couette flow with wall injection (which has analytical           by the spatial and temporal interpolations, which means the
+solution) is carried out in this section. As shown by Fig. 4,            small jump cannot be due to these interpolations. On the other
+the problem consists of a parallel channel with porous walls,            hand, as shown by Chai and Zhao [31], Jx ∝ εmT3 ,(1) and
+
+                                                                   043303-5
+RONGZONG HUANG AND HUIYING WU                                                                                                           PHYSICAL REVIEW E 89, 043303 (2014)
+
+
+                           0.05                                                                             1
+                                                 Numerical                                                                         Numerical
+                           0.04                  Analytical                                               0.8                      Analytical
+                 ux        0.03                                                                           0.6
+
+
+
+
+                                                                                               T
+                           0.02                                                                           0.4
+
+                           0.01                                                                           0.2
+
+                                  0                                                                         0
+                                      0   0.2          0.4         0.6     0.8        1                         0           0.2         0.4         0.6         0.8     1
+                                                              y                                                                                y
+                                                             (a)                                                                              (b)
+                                                                                                                       -4
+                                                                                                                x 10
+                           0.05                                                                             0
+                                                 Numerical                                                                         Numerical
+                           0.04                  Analytical                                                -1                      Analytical
+                           0.03                                                                            -2
+                 Jx
+
+
+
+
+                                                                                               Jy
+                           0.02                                                                            -3
+
+                           0.01                                                                            -4
+
+                                  0                                                                        -5
+                                      0   0.2          0.4         0.6     0.8        1                         0           0.2         0.4         0.6         0.8     1
+                                                              y                                                                                y
+                                                             (c)                                                                              (d)
+
+   FIG. 5. (Color online) The profiles of the horizontal velocity ux (a), the temperature T (b), and the heat flux Jx (c) and Jy (d) along the y
+coordinate when U0 = V0 = 0.05, Re = 10, and Pr = 0.5.
+
+Jy ∝ εmT5 ,(1) ; while when deducing the interaction approach                               the reason for the small jump. It should be pointed out that
+between blocks, the following truncation mT ,(n) ≈ 0 (∀n ⩾ 2)                               due to the tiny value of |Jy | in this case, the height of the jump
+is adopted, which indicates that mT ,neq ≈ εmT ,(1) ; this may be                           is apparent.
+
+
+                                 -5                                                                       -5
+                                                 Eru                                                                              ErT
+                                                 Linear fit                                                                       Linear fit
+                                 -6                                                                       -6
+                   ln( Erux )
+
+
+
+
+                                                                                            ln( ErT )
+
+
+
+
+                                 -7                           slope=1.963                                 -7                                   slope=2.003
+
+
+                                 -8                                                                       -8
+                                  -4.5      -4           -3.5            -3       -2.5                     -4.5              -4          -3.5             -3          -2.5
+                                                        ln( x ,c )                                                                      ln( x ,c )
+                                                          (a)                                                                             (b)
+
+                                 -3                                                                       -3
+
+                                 -4                                                                       -4
+                                                                                            ln( ErJ y )
+                   ln( ErJ x )
+
+
+
+
+                                          slope=1.766                                                               slope=2.088
+                                 -5                                                                       -5
+
+                                 -6                                      ErJ                              -6                                              ErJ
+                                                                         Linear fit                                                                       Linear fit
+                                 -7                                                                       -7
+                                  -4.5      -4           -3.5            -3       -2.5                     -4.5              -4          -3.5             -3          -2.5
+                                                        ln( x ,c )                                                                      ln( x ,c )
+                                                          (c)                                                                             (d)
+
+    FIG. 6. (Color online) Relative errors of the horizontal velocity ux (a), the temperature T (b), and the heat flux Jx (c) and Jy (d) versus
+lattice spacings δx,c when Re = 10 and Pr = 0.5.
+
+
+                                                                                      043303-6
+MULTIBLOCK APPROACH FOR THE PASSIVE SCALAR . . .                                                                PHYSICAL REVIEW E 89, 043303 (2014)
+
+
+                        ux     uy     0, yT     0                                   1                                          1
+
+                                                                                 0.8                                       0.8
+                                     0.5L
+
+
+
+
+                                                        ux
+               Th
+                                                                                 0.6                                       0.6
+                                    0.75L
+
+
+
+
+                                                                              y
+
+
+
+
+                                                                                                                           y
+                                                        uy
+               0, T
+
+
+
+
+                                            0.75L
+                                             0.5L
+                                                                                 0.4                                       0.4
+                             L
+
+
+
+
+                                                        0, T
+               uy
+
+
+
+
+                                     L                                           0.2                                       0.2
+
+
+
+
+                                                        Tc
+               ux
+
+
+
+
+                                                                                    0                                          0
+                                                                                     0   0.2    0.4       0.6    0.8   1        0   0.2    0.4       0.6   0.8   1
+                                                                                                      x                                          x
+                        ux     uy     0, yT     0                                              (a) Ra 103                                 (b) Ra 104
+                                                                                    1                                          1
+   FIG. 7. (Color online) Schematic diagram of the multiblock ar-
+rangement for the natural convection in a square cavity with boundary            0.8                                       0.8
+conditions shown (the gray area is the fine block with n = 4, and the
+white area is the coarse block).                                                 0.6                                       0.6
+
+
+
+
+                                                                              y
+
+
+
+
+                                                                                                                           y
+                                                                                 0.4                                       0.4
+
+   To estimate the overall convergence rate of TLBM adopting                     0.2                                       0.2
+the present multiblock approach, the relative errors with
+                                                                                    0                                          0
+different lattice spacings are calculated here. The relative errors                  0   0.2    0.4       0.6    0.8   1        0   0.2    0.4       0.6   0.8   1
+are defined as                                                                                        x                                          x
+                                                                                                                5                                          6
+                                                                                               (c) Ra 10                                  (d) Ra 10
+                      
+                           x,y (φnumerical − φanalytical )
+                                                               2                  FIG. 8. (Color online) Streamlines of the natural convection in
+             Erφ =                                               .   (28)    a square cavity at Ra = 103 (a), Ra = 104 (b), Ra = 105 (c), and
+                                           2
+                                      x,y φanalytical                          Ra = 106 (d) (the red solid line is the inner boundary of the fine
+                                                                               block).
+
+Here, φ is used to represent ux , T , Jx , and Jy ; φnumerical
+and φanalytical represent the corresponding numerical result and
+analytical solution of φ, respectively. The lattice spacing δx,c                    1                                          1
+decreases from 1/16 to 1/64 with a corresponding δx,f ≡
+δx,c /4. Considering the fact that the relaxation factors have an                0.8                                       0.8
+influence on numerical errors, they are kept unvaried. Thus
+                                                                                 0.6                                       0.6
+fixed Re (Re = 10) is achieved by decreasing the velocity
+                                                                              y
+
+
+
+
+                                                                                                                           y
+
+
+
+
+V0 (=U0 ) when δx,c decreases (U0 = V0 = 0.05 at δx,c =                          0.4                                       0.4
+1/16). Figure 6 shows the numerical results. As seen from the
+figures, the overall convergence rate is second order, which                     0.2                                       0.2
+indicates that the adoption of the present multiblock approach
+                                                                                    0                                          0
+does not deteriorate the convergence rate of the TLBM. What is                       0   0.2    0.4       0.6    0.8   1        0   0.2    0.4       0.6   0.8   1
+                                                                                                      x                                          x
+more, from Fig. 6(d), we can infer that the convergence rate of                                                 3                                          4
+                                                                                               (a) Ra 10                                  (b) Ra 10
+the local scheme for computing heat flux proposed in Sec. IV
+is also second order, which is consistent with the convergence                      1                                          1
+rate of the TLBM. Note that the overall convergence rate for
+computing Jx is a little lower than second order [it is 1.766, as                0.8                                       0.8
+shown by Fig. 6(c)], which is caused by the boundary condition
+                                                                                 0.6                                       0.6
+treatment on the bottom and top walls (just as discussed by
+                                                                              y
+
+
+
+
+                                                                                                                           y
+
+
+
+
+Chai and Zhao [31] and Krüger et al. [34,35]) rather than the                   0.4                                       0.4
+adoption of the present multiblock approach.
+                                                                                 0.2                                       0.2
+
+                                                                                    0                                          0
+                                                                                     0   0.2    0.4       0.6    0.8   1        0   0.2    0.4       0.6   0.8   1
+   TABLE I. Lattice spacings for different Rayleigh numbers                                           x                                          x
+Ra with fixed Prandtl number Pr = 0.71.                                                        (c) Ra 105                                 (d) Ra 106
+
+Ra     103      104      105         106        107        108         109
+                                                                                  FIG. 9. (Color online) Isothermals of the natural convection in
+δx,c   1/32 1/64    1/64 1/128                1/256 1/512 1/1024               a square cavity at Ra = 103 (a), Ra = 104 (b), Ra = 105 (c), and
+δx,f   1/128 1/256 1/256 1/512                1/1024 1/2048 1/4096             Ra = 106 (d) (the red solid line is the inner boundary of the fine
+                                                                               block).
+
+                                                                         043303-7
+RONGZONG HUANG AND HUIYING WU                                                                PHYSICAL REVIEW E 89, 043303 (2014)
+
+   TABLE II. Comparisons of the average Nusselt number (Nu) along the left side, the maximum scaled velocities (umax and vmax ), and the
+corresponding coordinates (yu and xv ) along the vertical and horizontal midplanes.
+
+Ra                                 Nu                    umax                   vmax                    yu                     xv
+103         Present           1.1243 × 100           3.6565 × 100          3.7058 × 100           8.1250 × 10−1          1.8750 × 10−1
+            Ref. [10]         1.117                  3.644                 3.691                  0.810                  0.180
+            Ref. [12]         1.1195                 3.643                 3.6919                 0.8047                 0.1719
+            Ref. [16]         1.1272                 3.6529                3.682                  0.8125                 0.17183
+104         Present           2.2497 × 100           1.6177 × 101          1.9640 × 101           8.2813 × 10−1          1.1719 × 10−1
+            Ref. [10]         2.241                  16.134                19.552                 0.820                  0.120
+            Ref. [12]         2.2545                 16.1254               19.5577                0.8203                 0.1172
+            Ref. [16]         2.247                  16.163                19.569                 0.828                  0.125
+105         Present           4.5403 × 100           3.4718 × 101          6.8718 × 101           8.5938 × 10−1          6.6406 × 10−2
+            Ref. [10]         4.511                  34.261                67.799                 0.855                  0.065
+            Ref. [12]         4.5278                 34.6033               68.0820                0.8516                 0.0703
+            Ref. [16]         4.5226                 35.521                68.655                 0.8554                 0.0664
+106         Present           8.8430 × 100           6.5034 × 101          2.2096 × 102           8.5156 × 10−1          3.7109 × 10−2
+            Ref. [10]         8.731                  63.024                215.26                 0.848                  0.040
+            Ref. [12]         8.7746                 64.9059               218.900                0.8516                 0.0391
+            Ref. [16]         8.805                  64.186                219.866                0.8496                 0.0371
+107         Present           1.6535 × 101           1.5020 × 102          7.0107 × 102           8.7988 × 10−1          2.1484 × 10−2
+            Ref. [16]         16.79                  164.236               701.922                0.851                  0.020
+            Ref. [36]         16.52                  148.6                 699.2                  0.879                  0.0215
+            Ref. [37]         16.92                  149.61                687.20                 0.900                  0.021
+108         Present           3.0219 × 101           3.2664 × 102          2.2277 × 103           9.2432 × 10−1          1.2207 × 10−2
+            Ref. [16]         30.506                 389.877               2241.374               0.937                  0.0112
+            Ref. [36]         30.31                  322.7                 2223                   0.928                  0.0120
+            Ref. [37]         32.12                  278.49                2095.23                0.930                  0.009
+109         Present           5.4628 × 101           5.8986 × 102          7.0678 × 103           9.2126 × 10−1          6.8351 × 10−3
+            Ref. [16]         57.350                 503.24                6820.07                0.966                  0.0064
+            Ref. [36]         –                      –                     –                      –                      –
+            Ref. [37]         –                      –                     –                      –                      –
+
+
+
+
+            B. Natural convection in a square cavity                  of the small Mach number. The other parameters are the Prandtl
+    As a further application of the present multiblock approach       number Pr, which is fixed at 0.71, and the Rayleigh number
+and local scheme for computing heat flux, natural convection in       Ra, which ranges from 103 up to 109 . As shown in Table I,
+a square cavity shown in Fig. 7 is simulated in this section. The     the lattice spacing adopted for the simulation decreases as the
+problem is characterized by two dimensionless parameters:             Rayleigh number increases to ensure the numerical stability
+the Prandtl number Pr and the Rayleigh number Ra, which are           and accuracy.
+defined as                                                                Figures 8 and 9 show the streamlines and isothermals for
+                                                                      low Rayleigh numbers (i.e., Ra ⩽ 106 ), respectively. In this
+                    ν            |g|β (Th − Tc ) L3                   region, the convection is laminar flow and a steady convergent
+              Pr = , Ra =                           ,        (29)
+                    α                   να                            result can be obtained easily. With regard to the flow pattern,
+ where Th (=1) and Tc (=0) are the temperatures of the heating        it can be found from Fig. 8 that a single vortex appears
+(left) and cooling (right) walls of the cavity, respectively, and     in the center of the cavity at Ra = 103 ; as Ra increases,
+L(=1) is the length of side for the square cavity. Considering        the vortex tends to become elliptic (Ra = 104 ) and breaks
+that the velocity and temperature boundary layers develop             up into two vortices at Ra = 105 ; when Ra = 106 , the two
+along the heating and cooling walls, as well as the direction         vortices move to the heating and cooling walls oppositely
+of fluid motion turns rapidly around the four corners, the            and another vortex appears in the center of the cavity. With
+fine block with n = 4 is arranged in the vicinity of all              regard to the heat transfer mechanism, Fig. 9 indicates that
+sides and corners of the square cavity, as illustrated by             when Ra is relatively small (i.e., Ra = 103 ), conduction is
+Fig. 7.                                                               the dominating mechanism, which is evident from the nearly
+    In the simulation, both the velocity and temperature bound-       vertical isothermals; as Ra increases, the role of convection
+ary conditions are treated by the nonequilibrium extrapolation        grows progressively and the isothermals tend to become
+approach [32,33]. The gravity√acceleration is |g| = 1.0, and the      horizontal in the center of the cavity. In Figs. 8 and 9, it
+characteristic velocity Uc = |g| β (Th − Tc ) L is fixed at 0.2       can be seen that both the streamlines and isothermals exhibit a
+to accelerate the convergence as well as to satisfy the condition     smooth transition across the block interface. In order to further
+
+                                                                043303-8
+MULTIBLOCK APPROACH FOR THE PASSIVE SCALAR . . .                                                            PHYSICAL REVIEW E 89, 043303 (2014)
+
+    1                                         1                                      cooling walls and secondary vortices develop at the upper-left
+                                                                                     and bottom-right corners. As Ra increases, the temperature
+  0.8                                     0.8                                        gradient along the heating and cooling walls becomes steeper,
+                                                                                     which indicates a stronger heat transfer. All these observed
+  0.6                                     0.6
+                                                                                     flow and heat transfer characteristics conform well to the
+y
+
+
+
+
+                                          y
+  0.4                                     0.4                                        results reported in previous works [16,36]. Note that when
+                                                                                     Ra = 109 , the convection becomes unsteady, and Fig. 10(c)
+  0.2                                     0.2                                        shows the instantaneous streamlines and isothermals at some
+                                                                                     time point. This is consistent with previous works which show
+    0                                         0
+     0   0.2   0.4       0.6   0.8    1        0   0.2   0.4       0.6   0.8   1     that the natural convection becomes unsteady for Ra higher
+                     x                                         x                     than 1.9 × 108 [38,39]. Again, it can be seen from Fig. 10 that
+                                     (a) Ra 107                                      the streamlines and isothermals are smooth across the block
+    1                                         1
+                                                                                     interface. To further validate the present multiblock approach
+                                                                                     and local scheme for computing heat flux, Nu, umax , vmax , yu ,
+  0.8                                     0.8                                        and xv (the time-averaged values for Ra = 109 ) are also given
+                                                                                     in Table II. Good consistency with the data from previous
+  0.6                                     0.6                                        studies can be seen again.
+y
+
+
+
+
+                                          y
+
+
+
+
+  0.4                                     0.4
+
+  0.2                                     0.2
+                                                                                                           VI. CONCLUSION
+    0                                         0
+     0   0.2   0.4       0.6   0.8    1        0   0.2   0.4       0.6   0.8   1
+                     x                                         x                        In this paper, we have proposed a multiblock approach
+                                     (b) Ra 108                                      for the passive scalar thermal lattice Boltzmann method
+                                                                                     with multiple-relaxation-time collision scheme, and have
+                                                                                     considered an external force term in LBEs. The interaction
+                                                                                     approach between blocks is developed based on the continuity
+                                                                                     of the first three order (ε0 , ε1 , and ε2 ) expansion equations in
+                                                                                     the Chapman-Enskog analysis, which is more fundamental and
+                                                                                     shows that all the nonequilibrium parts of the nonconserved
+                                                                                     moments should be rescaled and the nonequilibrium parts
+                                                                                     of the conserved moments can be calculated directly. What
+                                                                                     is more, a local scheme for computing heat flux has also
+                                                                                     been proposed based on the pseudoparticles, with no need to
+                                                                                     calculate temperature gradient based on the finite-difference
+                                     (c) Ra 109                                      scheme. Numerical tests have been carried out to validate the
+                                                                                     proposed multiblock approach and local scheme for computing
+    FIG. 10. (Color online) Streamlines (left) and isothermals (right)               heat flux. Smooth results can be obtained except that there is a
+of the natural convection in a square cavity at Ra = 107 (a), Ra = 108               small jump for heat flux across the block interface which may
+(b), and Ra = 109 (c) (the red solid line is the inner boundary of the               be caused by the truncation of second order (ε2 ) when rescaling
+fine block).                                                                         the nonequilibrium parts of the nonconserved moments. More-
+                                                                                     over, the numerical results show that the adoption of the present
+                                                                                     multiblock approach does not deteriorate the convergence rate
+validate the present multiblock approach, as well as the present                     of the TLBM, and the present local scheme for computing
+local scheme for computing heat flux, the average Nusselt                            heat flux also has second-order convergence rate. Further ap-
+number (Nu) along the left side, the maximum scaled velocities                       plications show that natural convection in a square cavity with
+(umax and vmax , scaled by α/L), and the correspond-                                 severe condition (Ra ⩾ 107 ) can be simulated effectively with
+ing coordinates (yu and xv ) along the vertical and hor-                             the multiblock approach due to the decrease of computation
+izontal midplanes are given in Table II. As shown, the                               load.
+present results agree well with the data from previous
+studies.
+   Figure 10 shows the streamlines and isothermals for
+high Rayleigh numbers (i.e., Ra ⩾ 107 ). In this region, the
+                                                                                                         ACKNOWLEDGMENTS
+convection tends to become turbulent flow and a convergent
+result is not easy to obtain when uniform grid is used                                  This work was supported by the National Natural Science
+because the computation load may increase rapidly. However,                          Foundation of China through Grants No. 51376130 and
+by adopting the multiblock approach, the computation load                            No. 50925624, National Basic Research Program of China
+can be decreased significantly without losing the numerical                          (973 Program) through Grant No. 2012CB720404, and Sci-
+accuracy. From Fig. 10, we can find that the bulk of the fluid                       ence and Technology Commission of Shanghai Municipality
+motion takes place in the regions close to the heating and                           through Grant No. 12JC1405100.
+
+                                                                               043303-9
+RONGZONG HUANG AND HUIYING WU                                                                   PHYSICAL REVIEW E 89, 043303 (2014)
+
+ [1] R. Benzi, S. Succi, and M. Vergassola, Phys. Rep. 222, 145         [20] M. Rohde, D. Kandhai, J. J. Derksen, and H. E. A. van den
+     (1992).                                                                 Akker, Int. J. Numer. Methods Fluids 51, 439 (2006).
+ [2] S. Y. Chen and G. D. Doolen, Annu. Rev. Fluid Mech. 30, 329        [21] O. Filippova and D. Hänel, J. Comput. Phys. 147, 219 (1998).
+     (1998).                                                            [22] D. Yu, R. Mei, and W. Shyy, Int. J. Numer. Methods Fluids 39,
+ [3] C. K. Aidun and J. R. Clausen, Annu. Rev. Fluid Mech. 42, 439           99 (2002).
+     (2010).                                                            [23] C. L. Lin and Y. G. Lai, Phys. Rev. E 62, 2219 (2000).
+ [4] X. Y. He and L. S. Luo, Phys. Rev. E 55, R6333 (1997).             [24] A. Dupuis and B. Chopard, Phys. Rev. E 67, 066707 (2003).
+ [5] X. Y. He and L. S. Luo, Phys. Rev. E 56, 6811 (1997).              [25] D. Lagrava, O. Malaspinas, J. Latt, and B. Chopard, J. Comput.
+ [6] G. R. McNamara, A. L. Garcia, and B. J. Alder, J. Stat. Phys.           Phys. 231, 4808 (2012).
+     87, 1111 (1997).                                                   [26] D. Yu, Ph.D. thesis, University of Florida, 2002.
+ [7] L. Zheng, B. C. Shi, and Z. L. Guo, Phys. Rev. E 78, 026705        [27] Y. Peng, C. Shu, Y. T. Chew, X. D. Niu, and X. Y. Lu, J. Comput.
+     (2008).                                                                 Phys. 218, 460 (2006).
+ [8] X. W. Shan, Phys. Rev. E 55, 2780 (1997).                          [28] P. Lallemand and L. S. Luo, Phys. Rev. E 61, 6546 (2000).
+ [9] Z. L. Guo, B. C. Shi, and C. G. Zheng, Int. J. Numer. Methods      [29] Z. L. Guo C. G. Zheng, and B. C. Shi, Phys. Rev. E 65, 046308
+     Fluids 39, 325 (2002).                                                  (2002).
+[10] Y. Peng, C. Shu, and Y. T. Chew, Phys. Rev. E 68, 026701           [30] Z. L. Guo and C. G. Zheng, Int. J. Comput. Fluid D 22, 465
+     (2003).                                                                 (2008).
+[11] X. Y. He, S. Y. Chen, and G. D. Doolen, J. Comput. Phys. 146,      [31] Z. H. Chai and T. S. Zhao, Phys. Rev. E 87, 063309 (2013).
+     282 (1998).                                                        [32] Z. L. Guo, C. G. Zheng, and B. C. Shi, Phys. Fluids 14, 2007
+[12] Z. L. Guo, C. G. Zheng, B. C. Shi, and T. S. Zhao, Phys. Rev. E         (2002).
+     75, 036704 (2007).                                                 [33] G. H. Tang, W. Q. Tao, and Y. L. He, Phys. Rev. E 72, 016703
+[13] Q. Li, K. H. Luo, Y. L. He, Y. J. Gao, and W. Q. Tao, Phys. Rev.        (2005).
+     E 85, 016710 (2012).                                               [34] T. Krüger, F. Varnik, and D. Raabe, Phys. Rev. E 82, 025701(R)
+[14] P. Lallemand and L. S. Luo, Phys. Rev. E 68, 036706 (2003).             (2010).
+[15] A. Mezrhab, M. h. Bouzidi, and P. Lallemand, Comput. Fluids        [35] T. Krüger, F. Varnik, and D. Raabe, Phys. Rev. E 79, 046704
+     33, 623 (2004).                                                         (2009).
+[16] H. N. Dixit and V. Babu, Int. J. Heat Mass Transfer 49, 727        [36] F. Arpino, N. Massarotti, and A. Mauro, Numer. Heat Transfer,
+     (2006).                                                                 Part B 58, 73 (2010).
+[17] A. Mezrhab, M. A. Mohammed, M. Jami, H. Naji, and M. h.            [37] G. Kosec and B. Šarler, Int. J. Numer. Meth. Heat Fluid Flow
+     Bouzidi, Phys. Lett. A 374, 3499 (2010).                                18, 868 (2008).
+[18] R. Z. Huang, H. Y. Wu, and P. Cheng, Int. J. Heat Mass Transfer    [38] S. Paolucci and D. R. Chenoweth, J. Fluid Mech. 201, 379
+     59, 295 (2013).                                                         (1989).
+[19] H. Chen, O. Filippova, J. Hoch, K. Molvig, R. Shock,               [39] D. A. Mayne, A. S. Usmani, and M. Crapper, Int. J. Numer.
+     C. Teixeira, and R. Zhang, Physica A 362, 158 (2006).                   Meth. Heat Fluid Flow 11, 172 (2001).
+
+
+
+
+                                                                  043303-10
+
