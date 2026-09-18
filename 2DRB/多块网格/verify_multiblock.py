@@ -110,6 +110,18 @@ def compile_source(name, src, driver=None, n=96, ra=1000, syntax=False, ny=None,
     if driver:
         if 'allocatable :: f_coarse' in src:
             driver = plain_array_driver(driver)
+        if 'allocatable :: rhoHistory_coarse' in src:
+            # Preserve the original diagnostic stream order for comparisons
+            # with both packed-history and named-history solver versions.
+            histories = ['rhoHistory','uHistory','vHistory','THistory',
+                         'FxHistory','FyHistory','flowNeqHistory','thermalNeqHistory']
+            if re.search(r'\bp_(coarse|fine)\b', driver):
+                driver = driver.replace('implicit none', 'implicit none\n    integer :: historyIndex', 1)
+                for suffix, block in [('coarse','b'), ('fine','b')]:
+                    bound = 'historyLast(b)' if re.search(r'\bdo b\s*=', driver) else 'historyLast(1)'
+                    arrays = [a+'_'+suffix+'('+(':,:,:,historyIndex' if a in histories[6:] else ':,:,historyIndex')+')'
+                              for a in histories]
+                    driver = re.sub(r'\bp_'+suffix+r'\b', '('+', '.join(arrays)+', historyIndex=0,'+bound+')', driver)
         src = re.sub(r'^\s*program main\b.*?^\s*end program main\b', driver, src, flags=re.S|re.M|re.I)
     # Multiblock parameters are edited only in this temporary source; the parent still uses -D overrides.
     if '#define NX_OVERRIDE' not in src:

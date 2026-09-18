@@ -1,6 +1,6 @@
 # 2DRBOpenaccMultiblock：连通细网格环
 
-当前版本（2026-09-17）为 **中心粗矩形＋外围一个连通细环**，不是原来的五个独立矩形。修改基于用户当前版本，原 `均匀网格/2DRBOpenacc.F90` 未修改。
+当前版本（2026-09-18）为 **中心粗矩形＋外围一个连通细环**，不是原来的五个独立矩形。修改基于用户当前版本，原 `均匀网格/2DRBOpenacc.F90` 未修改。
 
 先读 [代码逻辑说明](代码逻辑说明.md)，查看 [布局](图示/multiblock-layout.png)、[粗细节点](图示/multiblock-interface.png)、[连通迁移](图示/multiblock-samelevel.png) 和 [时间顺序](图示/multiblock-timestep.png)。
 
@@ -14,6 +14,8 @@
 - 面积和中线统计显式扣除细数组中的中心物理区域，零面积处不参与极值或积分。
 
 源码仍为 `module commondata → program main → 外部子程序`；普通数组保存区域属性，粗、细场分别使用 `f_coarse/g_coarse/T_coarse` 与 `f_fine/g_fine/T_fine` 等独立 `allocatable` 数组，按实际块大小分配。已删除 `target`、`pointer`、`Storage` 偏移及 `select_block/select_link`；子程序显式传入数组，没有引入派生类型或 MPI。
+
+接口历史也分别保存为 `rhoHistory、uHistory、vHistory、THistory、FxHistory、FyHistory、flowNeqHistory、thermalNeqHistory`，各有 `_coarse/_fine` 两套数组。已删除 `packetSize` 和合并的 `p` 数组；插值结果分别写入对应的 `Receive` 数组。力历史保存的是 `Fx/h、Fy/h`，非平衡矩历史保存的是按松弛率及格距归一化的矩，相关含义已在源码注释说明。
 
 ## 存储取舍与输出
 
@@ -35,10 +37,11 @@ python transient_compare.py
 python 图示/draw_layout.py
 ```
 
-第一条在当前两区域版本自动调用 `verify_ring.py`。构建及运行输出写入系统临时目录，验证参数只在临时源码中修改。存储重构对照可运行 `python verify_plain_arrays.py <修改前源码路径>`，报告记录两份源码哈希。
+第一条在当前两区域版本自动调用 `verify_ring.py`。构建及运行输出写入系统临时目录，验证参数只在临时源码中修改。历史数组拆分对照可运行 `python verify_plain_arrays.py <修改前源码路径> --report-name named_history_verification.json`，报告记录两份源码哈希。
 
-- `plain_arrays_verification.json`：此次普通数组重构与指定旧源码对照，覆盖粗细比 1/2/4/8、场量与交换历史、Nu/Re、收敛误差、快照、Tecplot 和实际主程序的双向 v10 续算。
-- `ring_verification_results.json`：五种宏配置语法、2/4/8 粗细比几何、原接缝直接迁移、空区排除、线性导热、单块退化和精确重启。
+- `named_history_verification.json`：本次拆分历史数组与修改前源码的对照，覆盖比值 1/2/4/8 的场数据、全部交换历史、Nu/Re、收敛误差、快照、Tecplot 和双向 v10 续算；文件内容逐字节一致。
+- `plain_arrays_verification.json`：历史记录；此次普通数组重构与指定旧源码对照，覆盖粗细比 1/2/4/8、场量与交换历史、Nu/Re、收敛误差、快照、Tecplot 和实际主程序的双向 v10 续算。
+- `ring_verification_results.json`：五种宏配置语法、标量/矩数组的空间和时间插值、2/4/8 粗细比几何、原接缝直接迁移、空区排除、线性导热、单块退化和精确重启。
 - `ring_transient_comparison.json`：历史版本结果，尚未在此次删除分支后重新生成；96²、Ra=1e4 侧壁差温 2000 细步瞬态，与原均匀代码比较，并比较不同粗细重叠宽度。
 - `图示/layout_parameters.json`：绘图时的源码哈希、几何与活动节点计数；此次未改变几何，未重新生成图示。
 

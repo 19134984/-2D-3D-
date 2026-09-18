@@ -53,7 +53,7 @@
 #error "Define one convection case: RayleighBenardCell or SideHeatedCell"
 #endif
 
-! 温度算法：保留原 D2Q5 MRT 旧算法，平衡矩系数为 paraA，不使用热流历史修正。
+! 温度算法：原 D2Q5 MRT 旧算法，平衡矩系数为 paraA。
 #define EnableLegacyThermalScheme
 
 !   自定义宏结束
@@ -73,7 +73,7 @@
         !===============================================================================================
         ! nx,ny 为按最细格距计的全域长度
         ! 物理壁面在 x=0、nx 和 y=0、ny；最细块 dx=dt=1，中心粗块 dx=dt=refineRatio。
-        integer(kind=4), parameter :: nx = 1024, ny = 1024    ! 手动设置最细网格等效分辨率，修改后重新编译
+        integer(kind=4), parameter :: nx = 1024, ny = 1024    ! 手动设置最细网格等效分辨率，需要被refineRatio整除得到粗网格间距
         integer(kind=4), parameter :: refineRatio = 2    ! 粗/细格距及时间步之比；逐级二分取2、4、8等2的幂，1为单块
         integer(kind=4), parameter :: fineLayerCellsLeft = 128      ! 从左墙向内数的细节点编号，x = Left-0.5
         integer(kind=4), parameter :: fineLayerCellsRight = 129     ! 从右墙向内数的细节点编号，x = nx-Right+0.5
@@ -83,9 +83,9 @@
         ! 中心宽度 nx-Left-Right+1、高度 ny-Bottom-Top+1 须为正，且均能被 refineRatio 整除。
         ! 右=左+1、上=下+1 时，中心宽高为 nx-2*Left、ny-2*Bottom；较大粗细比仍须检查整除。
         ! 默认 128/129 对 nx=ny=1024、粗细比 2/4/8 都满足条件；不再自动移动右/上交界面。
-        ! 多块模式 nx、ny 仍须整除粗细比；四个细网格编号本身无须整除，但距墙均至少 (overlapCells+1)*refineRatio。
-        integer(kind=4), parameter :: overlapCells = 2    ! 每块向交界面外延伸的粗格距数；总重叠跨度为两倍
-        integer(kind=4), parameter :: interfaceSkin = 2    ! 原流场->温度场分步推进需要两层人工边界；这些节点在接收后参与碰撞
+        ! 多块模式 nx、ny 仍须整除粗细比；四个细网格编号fineLayerCellsLeft本身无须整除，但距墙均至少 (overlapCells+1)*refineRatio，得保证重叠层足够。
+        integer(kind=4), parameter :: overlapCells = 2    ! 每块向交界面外延伸的粗格距数；总重叠跨度为两倍粗格距数
+        integer(kind=4), parameter :: interfaceSkin = 2    ! 
 
         !===============================================================================================
         ! 是否从本程序检查点精确续算
@@ -157,7 +157,7 @@
 #endif
 
 #ifdef unsteadyFlow
-        real(kind=8), parameter :: outputSnapshotInterval = 1.0d0    ! 快照与 Nu/Re 采样间隔，单位 t_ff
+        real(kind=8), parameter :: outputSnapshotInterval = 0.5d0    ! 快照与 Nu/Re 采样间隔，单位 t_ff
         real(kind=8), parameter :: reloadFileInterval = 100.0d0      ! 完整重启文件输出间隔，单位 t_ff
         real(kind=8), parameter :: outputPltFileInterval = 100.0d0   ! Tecplot 输出间隔，单位 t_ff
         real(kind=8), parameter :: unsteadyRunDuration = 1000.0d0    ! 绝对总目标 t_ff；续算只补足剩余时间
@@ -168,7 +168,8 @@
         integer(kind=4), parameter :: outputSnapshotFile = 1    ! 0: 不输出快照；1: 输出，Nu/Re 仍独立采样
         integer(kind=4), parameter :: outputPltFile = 1         ! 0: 不输出 Tecplot；1: 输出
         integer(kind=4), parameter :: outputReloadFile = 1      ! 0: 不输出重启文件；1: 输出
-        integer(kind=4), parameter :: itc_max = max(1, ceiling(unsteadyRunDuration*timeUnit))
+        integer(kind=4), parameter :: itc_max = max(1, &
+            ceiling(unsteadyRunDuration*timeUnit))  !ceiling 是向上取整函数，返回不小于输入值的最小整数
 #endif
         ! 多块输出和最终时刻向上对齐到粗细同步步；各间隔至少为一个粗步。
         ! nextSample/nextReload/nextPlt 是输出时钟，和各文件编号分开；禁用某类文件不影响其他输出。
@@ -178,18 +179,21 @@
         character(*), parameter :: snapshotFilePrefix = 'buoyancyCavity2DOpenaccMultiblockSnapshot'
         character(*), parameter :: pltFolderPrefix = 'buoyancyCavity2DOpenaccMultiblockTecplot'
         character(*), parameter :: reloadFilePrefix = 'reloadFile2DOpenaccMultiblock'
-        character(*), parameter :: historyFile = 'NuRe_2DOpenaccMultiblock.dat'
-        character(16), parameter :: restartMagic = 'MB2DRESTART0010'
-        character(16), parameter :: snapshotMagic = 'MB2DSNAPSHOT0003'
+        character(*), parameter :: NuReHistoryFile = 'NuRe_2DOpenaccMultiblock.dat'    ! 按采样时间记录 Nu、Re 及场量统计，续算时追加
+        ! Magic 为二进制文件开头的格式标识；末尾数字表示格式版本，不是时间步或输出编号。
+        ! 续算文件保存恢复计算所需的状态；读取时检查此标识，不匹配则停止，防止按错误格式读取数组。
+        character(16), parameter :: restartMagic = 'MB2DRESTART0010'    ! 续算文件格式 v10
+        ! 场快照用于绘图和后处理；读取程序可据此识别格式，不能把快照当作完整续算文件。
+        character(16), parameter :: snapshotMagic = 'MB2DSNAPSHOT0003'    ! 场快照格式 v3
 
         !===============================================================================================
         ! 格子方向、块数据与接口交换数据
         !===============================================================================================
-        ! 每个节点、每个时间层交换 20 个数值：4 个宏观量 + 2 个力分量 + 9 个流场矩 + 5 个温度矩。
-        ! p 的位置：1:4 为 rho,u,v,T；5:6 为 Fx/h,Fy/h；7:15 为归一化流场非平衡矩；16:20 为归一化温度非平衡矩。
-        ! h 也表示本块时间步；流场矩包含力修正，温度场采用无热流历史修正的旧 MRT 算法。
-        ! 20 是统一存储长度，守恒矩对应项仍保留为零；接口不再传递热流历史差分。
-        integer(kind=4), parameter :: packetSize = 20
+        ! 接口历史按物理量分别保存，不再用数字位置区分速度、温度和非平衡矩。
+        ! rhoHistory、uHistory、vHistory、THistory 分别保存密度、两个方向速度和温度。
+        ! FxHistory、FyHistory 保存 Fx/h、Fy/h；接收后乘接收块时间步，恢复该块的力增量。
+        ! flowNeqHistory 保存 s/h*(m-meq+Fm/2)，thermalNeqHistory 保存 q/h*(n-neq)。
+        ! 非平衡矩保留矩编号 0:8 或 0:4；它们不是方向分布 f/g，也不是温度修正源项。
         ! 最多保存两块数据：1 为中心粗块，2 为外围连通细环；不是粗细比，也不是四周细区的数量。
         ! nBlocks 是实际使用的块数：多块模式为 2，refineRatio=1 的单块模式为 1；仅修改此上限不会自动增加网格块。
         integer(kind=4), parameter :: maxBlocks = 2
@@ -216,9 +220,11 @@
         ! iStart:iEnd、jStart:jEnd 为本块 x/y 方向积分下标范围；节点实际面积仍由积分权重确定。
         integer(kind=4) :: xLocalCount(maxBlocks), yLocalCount(maxBlocks), historyLast(maxBlocks)
         integer(kind=4) :: iStart(maxBlocks), iEnd(maxBlocks), jStart(maxBlocks), jEnd(maxBlocks)
-        real(kind=8) :: meshSpacing(maxBlocks), xOrigin(maxBlocks), yOrigin(maxBlocks)     !中心粗块 meshSpacing=2、xOrigin=122.5
+        real(kind=8) :: meshSpacing(maxBlocks), xOrigin(maxBlocks), &
+            yOrigin(maxBlocks)     !中心粗块 meshSpacing=2、xOrigin=122.5
         ! meshSpacing 同时表示本块格距和时间步；blockSn/Sq/Qk/Qn 为按该格距缩放后的松弛率, 本块对应的松弛率
-        real(kind=8) :: blockSn(maxBlocks), blockSq(maxBlocks), blockQk(maxBlocks), blockQn(maxBlocks), blockGb(maxBlocks)
+        real(kind=8) :: blockSn(maxBlocks), blockSq(maxBlocks), blockQk(maxBlocks), blockQn(maxBlocks), &
+            blockGb(maxBlocks)
         ! 下面的参数四个位置依次是：xmin、xmax、ymin、ymax
         real(kind=8) :: blockOwnedBox(4, maxBlocks)    ! 积分外框：粗块直接使用；细环须扣除粗块内框面积
         real(kind=8) :: blockBaseBox(4, maxBlocks)     ! 加重叠层前的基准边界，粗细块共用指定交界面
@@ -239,7 +245,15 @@
         real(kind=8), allocatable :: T_coarse(:, :)
         real(kind=8), allocatable :: Fx_coarse(:, :)
         real(kind=8), allocatable :: Fy_coarse(:, :)
-        real(kind=8), allocatable :: p_coarse(:, :, :, :)
+        ! 粗块历史：多块时末下标 0:2，分别供过去、当前、预测时刻使用；单块时只有 0。
+        real(kind=8), allocatable :: rhoHistory_coarse(:, :, :)
+        real(kind=8), allocatable :: uHistory_coarse(:, :, :)
+        real(kind=8), allocatable :: vHistory_coarse(:, :, :)
+        real(kind=8), allocatable :: THistory_coarse(:, :, :)
+        real(kind=8), allocatable :: FxHistory_coarse(:, :, :)
+        real(kind=8), allocatable :: FyHistory_coarse(:, :, :)
+        real(kind=8), allocatable :: flowNeqHistory_coarse(:, :, :, :)
+        real(kind=8), allocatable :: thermalNeqHistory_coarse(:, :, :, :)
         real(kind=8), allocatable :: quadWidthX_coarse(:)
         real(kind=8), allocatable :: quadWidthY_coarse(:)
 #ifdef steadyFlow
@@ -257,7 +271,15 @@
         real(kind=8), allocatable :: T_fine(:, :)
         real(kind=8), allocatable :: Fx_fine(:, :)
         real(kind=8), allocatable :: Fy_fine(:, :)
-        real(kind=8), allocatable :: p_fine(:, :, :, :)
+        ! 细环只保存当前交换状态，历史下标为 0；每个细步推进后更新。
+        real(kind=8), allocatable :: rhoHistory_fine(:, :, :)
+        real(kind=8), allocatable :: uHistory_fine(:, :, :)
+        real(kind=8), allocatable :: vHistory_fine(:, :, :)
+        real(kind=8), allocatable :: THistory_fine(:, :, :)
+        real(kind=8), allocatable :: FxHistory_fine(:, :, :)
+        real(kind=8), allocatable :: FyHistory_fine(:, :, :)
+        real(kind=8), allocatable :: flowNeqHistory_fine(:, :, :, :)
+        real(kind=8), allocatable :: thermalNeqHistory_fine(:, :, :, :)
         real(kind=8), allocatable :: quadWidthX_fine(:)
         real(kind=8), allocatable :: quadWidthY_fine(:)
 #ifdef steadyFlow
@@ -281,7 +303,17 @@
         ! 各连接的接收节点依次排列；linkStart:linkEnd 是该连接在下列数组中的范围。
         integer(kind=4), allocatable :: linkTi(:), linkTj(:), linkSi(:), linkSj(:)
         logical, allocatable :: linkSame(:)    ! 共址节点仍须按接收块参数重标定
-        real(kind=8), allocatable :: linkWx(:, :), linkWy(:, :), linkValues(:, :)
+        real(kind=8), allocatable :: linkWx(:, :), linkWy(:, :)
+        ! 下列 Receive 数组保存每个接收节点的插值结果，随后按接收块松弛率重建 f/g。
+        ! FxReceive、FyReceive 仍为单位时间的力；flowNeqReceive、thermalNeqReceive 仍为归一化矩。
+        real(kind=8), allocatable :: rhoReceive(:)
+        real(kind=8), allocatable :: uReceive(:)
+        real(kind=8), allocatable :: vReceive(:)
+        real(kind=8), allocatable :: TReceive(:)
+        real(kind=8), allocatable :: FxReceive(:)
+        real(kind=8), allocatable :: FyReceive(:)
+        real(kind=8), allocatable :: flowNeqReceive(:, :)
+        real(kind=8), allocatable :: thermalNeqReceive(:, :)
 
         ! 外部标量函数的返回类型；具体函数排在主程序之后。
         integer(kind=4), external :: scheduled_step
@@ -359,10 +391,9 @@
             fineLayerCellsBottom, fineLayerCellsTop, overlapCells, interfaceSkin, loadInitField, reloadFileNum, &
             Rayleigh, Prandtl, Mach, tauf, viscosity, diffusivity, gBeta, timeUnit, Snu, Sq, paraA, Qk, Qnu, &
             thermalA, outputSnapshotInterval, reloadFileInterval, outputPltFileInterval, settingsFile, &
-            historyFile, omega, omegaT, nBlocks, xLocalCount, yLocalCount, iStart, iEnd, jStart, jEnd, &
+            NuReHistoryFile, omega, omegaT, nBlocks, xLocalCount, yLocalCount, iStart, iEnd, jStart, jEnd, &
             meshSpacing, xOrigin, yOrigin, blockSn, blockSq, blockQk, blockQn, blockGb, blockOwnedBox, &
-            blockBaseBox, nLinks, linkReceiver, linkDonor, linkCount, linkSame, owned_cell_area, linkStart, &
-            linkEnd
+            blockBaseBox, nLinks, linkReceiver, linkDonor, linkCount, linkSame, owned_cell_area, linkStart, linkEnd
         implicit none
 
         integer(kind=4) :: b, k, overlap, i, j
@@ -441,15 +472,20 @@
         write(k, *) 'Owned physical area:', totalArea
         write(k, *) 'Geometry: connected fine ring (block 2) and central coarse block (1); no fine/fine links.'
         write(k, *) 'Fine storage is rectangular; the central inactive hole is excluded from advance and integration.'
-        write(k, *) 'Central spans must contain whole coarse spacings; interfaces and integration partitions are not shifted.'
-        write(k, *) 'Node alignment: coarse nodes remain a subset of fine nodes; the integer phase depends on block origin.'
+        write(k, &
+            *) 'Central spans must contain whole coarse spacings; interfaces and integration partitions are not shifted.'
+        write(k, &
+            *) 'Node alignment: coarse nodes remain a subset of fine nodes; the integer phase depends on block origin.'
         write(k, *) 'Integration: clipped nodal control areas; shared coordinates do not duplicate physical area.'
         write(k, *) 'All nonconserved relaxation times satisfy h*(1/s-1/2)=constant.'
         write(k, *) 'Time: coarse prediction; prepare fine buffers BEFORE each substep; endpoint synchronization.'
         write(k, *) 'Buffers: two local layers for original split flow/thermal sequence; donors exclude these layers.'
-        write(k, *) 'First coarse interval uses linear startup; subsequent intervals use three-time Lagrange interpolation.'
-        write(k, *) 'Output clocks are absolute and rounded UP to a synchronized coarse step; time columns contain actual times.'
-        write(k, *) 'Restart stores coarse time history; uniform-grid and earlier multiblock restart files are incompatible.'
+        write(k, &
+            *) 'First coarse interval uses linear startup; subsequent intervals use three-time Lagrange interpolation.'
+        write(k, &
+            *) 'Output clocks are absolute and rounded UP to a synchronized coarse step; time columns contain actual times.'
+        write(k, &
+            *) 'Restart stores coarse time history; uniform-grid and earlier multiblock restart files are incompatible.'
         write(k, *) 'Thermal scheme: original legacy D2Q5; paraA is fixed across blocks.'
         do b = 1, nBlocks
             write(k, *) 'block,ni,nj,h,x0,y0,owned ilo,ihi,jlo,jhi:', b, xLocalCount(b), yLocalCount(b), &
@@ -467,7 +503,7 @@
         enddo
         close(k)
         if (loadInitField == 0) then
-            open(newunit = k, file = historyFile, status = 'replace')
+            open(newunit = k, file = NuReHistoryFile, status = 'replace')
             write(k, '(a)') '# t_ff NuVolAvg ReVolRMS Nu_hot Nu_cold Nu_middle mass meanT Tmin Tmax rhoMin rhoMax'
             close(k)
         else
@@ -554,7 +590,14 @@
         allocate(T_coarse(ni, nj))
         allocate(Fx_coarse(ni, nj))
         allocate(Fy_coarse(ni, nj))
-        allocate(p_coarse(ni, nj, packetSize, 0:nh))
+        allocate(rhoHistory_coarse(ni, nj, 0:nh))
+        allocate(uHistory_coarse(ni, nj, 0:nh))
+        allocate(vHistory_coarse(ni, nj, 0:nh))
+        allocate(THistory_coarse(ni, nj, 0:nh))
+        allocate(FxHistory_coarse(ni, nj, 0:nh))
+        allocate(FyHistory_coarse(ni, nj, 0:nh))
+        allocate(flowNeqHistory_coarse(ni, nj, 0:8, 0:nh))
+        allocate(thermalNeqHistory_coarse(ni, nj, 0:4, 0:nh))
         allocate(quadWidthX_coarse(ni))
         allocate(quadWidthY_coarse(nj))
 #ifdef steadyFlow
@@ -576,7 +619,14 @@
             allocate(T_fine(ni, nj))
             allocate(Fx_fine(ni, nj))
             allocate(Fy_fine(ni, nj))
-            allocate(p_fine(ni, nj, packetSize, 0:nh))
+            allocate(rhoHistory_fine(ni, nj, 0:nh))
+            allocate(uHistory_fine(ni, nj, 0:nh))
+            allocate(vHistory_fine(ni, nj, 0:nh))
+            allocate(THistory_fine(ni, nj, 0:nh))
+            allocate(FxHistory_fine(ni, nj, 0:nh))
+            allocate(FyHistory_fine(ni, nj, 0:nh))
+            allocate(flowNeqHistory_fine(ni, nj, 0:8, 0:nh))
+            allocate(thermalNeqHistory_fine(ni, nj, 0:4, 0:nh))
             allocate(quadWidthX_fine(ni))
             allocate(quadWidthY_fine(nj))
 #ifdef steadyFlow
@@ -608,8 +658,9 @@
     ! 作用: 按每条连接的实际节点数分配接口索引、插值权重和交换缓存
     !===============================================================================================
     subroutine allocate_link_arrays()
-        use commondata, only: nLinks, linkCount, linkStart, linkEnd, packetSize, linkTi, linkTj, linkSi, linkSj, &
-            linkSame, linkWx, linkWy, linkValues
+        use commondata, only: nLinks, linkCount, linkStart, linkEnd, linkTi, linkTj, linkSi, linkSj, linkSame, &
+            linkWx, linkWy, rhoReceive, uReceive, vReceive, TReceive, FxReceive, FyReceive, flowNeqReceive, &
+            thermalNeqReceive
         implicit none
         integer(kind=4) :: l, n
         n = 0
@@ -619,8 +670,23 @@
             linkEnd(l) = n
         enddo
         allocate(linkTi(n), linkTj(n), linkSi(n), linkSj(n), linkSame(n))
-        allocate(linkWx(4,n), linkWy(4,n), linkValues(packetSize,n))
-        linkValues = 0.0d0
+        allocate(linkWx(4,n), linkWy(4,n))
+        allocate(rhoReceive(n))
+        allocate(uReceive(n))
+        allocate(vReceive(n))
+        allocate(TReceive(n))
+        allocate(FxReceive(n))
+        allocate(FyReceive(n))
+        allocate(flowNeqReceive(0:8, n))
+        allocate(thermalNeqReceive(0:4, n))
+        rhoReceive = 0.0d0
+        uReceive = 0.0d0
+        vReceive = 0.0d0
+        TReceive = 0.0d0
+        FxReceive = 0.0d0
+        FyReceive = 0.0d0
+        flowNeqReceive = 0.0d0
+        thermalNeqReceive = 0.0d0
     end subroutine allocate_link_arrays
     !===============================================================================================
 
@@ -679,9 +745,12 @@
     !===============================================================================================
     subroutine initial_block(b)
         use commondata, only: f_coarse, g_coarse, f_post_coarse, g_post_coarse, rho_coarse, u_coarse, v_coarse, &
-            T_coarse, Fx_coarse, Fy_coarse, p_coarse, quadWidthX_coarse, quadWidthY_coarse, f_fine, g_fine, &
-            f_post_fine, g_post_fine, rho_fine, u_fine, v_fine, T_fine, Fx_fine, Fy_fine, p_fine, &
-            quadWidthX_fine, quadWidthY_fine
+            T_coarse, Fx_coarse, Fy_coarse, rhoHistory_coarse, uHistory_coarse, vHistory_coarse, &
+            THistory_coarse, FxHistory_coarse, FyHistory_coarse, flowNeqHistory_coarse, &
+            thermalNeqHistory_coarse, quadWidthX_coarse, quadWidthY_coarse, f_fine, g_fine, f_post_fine, &
+            g_post_fine, rho_fine, u_fine, v_fine, T_fine, Fx_fine, Fy_fine, rhoHistory_fine, uHistory_fine, &
+            vHistory_fine, THistory_fine, FxHistory_fine, FyHistory_fine, flowNeqHistory_fine, &
+            thermalNeqHistory_fine, quadWidthX_fine, quadWidthY_fine
 #ifdef steadyFlow
         use commondata, only: up_coarse, vp_coarse, Tp_coarse, up_fine, vp_fine, Tp_fine
 #endif
@@ -690,14 +759,18 @@
 
         if (b == 1) then
             call initial_block_arrays(b, f_coarse, g_coarse, f_post_coarse, g_post_coarse, rho_coarse, u_coarse, &
-            v_coarse, T_coarse, Fx_coarse, Fy_coarse, p_coarse, quadWidthX_coarse, quadWidthY_coarse &
+            v_coarse, T_coarse, Fx_coarse, Fy_coarse, rhoHistory_coarse, uHistory_coarse, vHistory_coarse, &
+                THistory_coarse, FxHistory_coarse, FyHistory_coarse, flowNeqHistory_coarse, &
+                thermalNeqHistory_coarse, quadWidthX_coarse, quadWidthY_coarse &
 #ifdef steadyFlow
                 , up_coarse, vp_coarse, Tp_coarse &
 #endif
             )
         else
             call initial_block_arrays(b, f_fine, g_fine, f_post_fine, g_post_fine, rho_fine, u_fine, v_fine, &
-            T_fine, Fx_fine, Fy_fine, p_fine, quadWidthX_fine, quadWidthY_fine &
+            T_fine, Fx_fine, Fy_fine, rhoHistory_fine, uHistory_fine, vHistory_fine, THistory_fine, &
+                FxHistory_fine, FyHistory_fine, flowNeqHistory_fine, thermalNeqHistory_fine, quadWidthX_fine, &
+                quadWidthY_fine &
 #ifdef steadyFlow
                 , up_fine, vp_fine, Tp_fine &
 #endif
@@ -706,15 +779,15 @@
     end subroutine initial_block
 
     ! 显式接收本块普通数组；计算和写入都直接作用于传入的粗块或细环数据。
-    subroutine initial_block_arrays(b, f, g, f_post, g_post, rho, u, v, T, Fx, Fy, p, quadWidthX, quadWidthY &
+    subroutine initial_block_arrays(b, f, g, f_post, g_post, rho, u, v, T, Fx, Fy, rhoHistory, uHistory, &
+        vHistory, THistory, FxHistory, FyHistory, flowNeqHistory, thermalNeqHistory, quadWidthX, quadWidthY &
 #ifdef steadyFlow
             , up, vp, Tp &
 #endif
         )
 
         use commondata, only: nx, ny, Thot, Tcold, pi, lengthUnit, omega, omegaT, xLocalCount, yLocalCount, &
-            meshSpacing, xOrigin, yOrigin, blockOwnedBox, iStart, iEnd, jStart, jEnd, xp, yp, historyLast, &
-            packetSize
+            meshSpacing, xOrigin, yOrigin, blockOwnedBox, iStart, iEnd, jStart, jEnd, xp, yp, historyLast
         implicit none
 
         integer(kind=4), intent(in) :: b
@@ -728,7 +801,14 @@
         real(kind=8) :: T(xLocalCount(b), yLocalCount(b))
         real(kind=8) :: Fx(xLocalCount(b), yLocalCount(b))
         real(kind=8) :: Fy(xLocalCount(b), yLocalCount(b))
-        real(kind=8) :: p(xLocalCount(b), yLocalCount(b), packetSize, 0:historyLast(b))
+        real(kind=8) :: rhoHistory(xLocalCount(b), yLocalCount(b), 0:historyLast(b))
+        real(kind=8) :: uHistory(xLocalCount(b), yLocalCount(b), 0:historyLast(b))
+        real(kind=8) :: vHistory(xLocalCount(b), yLocalCount(b), 0:historyLast(b))
+        real(kind=8) :: THistory(xLocalCount(b), yLocalCount(b), 0:historyLast(b))
+        real(kind=8) :: FxHistory(xLocalCount(b), yLocalCount(b), 0:historyLast(b))
+        real(kind=8) :: FyHistory(xLocalCount(b), yLocalCount(b), 0:historyLast(b))
+        real(kind=8) :: flowNeqHistory(xLocalCount(b), yLocalCount(b), 0:8, 0:historyLast(b))
+        real(kind=8) :: thermalNeqHistory(xLocalCount(b), yLocalCount(b), 0:4, 0:historyLast(b))
         real(kind=8) :: quadWidthX(xLocalCount(b))
         real(kind=8) :: quadWidthY(yLocalCount(b))
 #ifdef steadyFlow
@@ -750,7 +830,14 @@
         Fy = 0.0d0
         f_post = 0.0d0
         g_post = 0.0d0
-        p = 0.0d0
+        rhoHistory = 0.0d0
+        uHistory = 0.0d0
+        vHistory = 0.0d0
+        THistory = 0.0d0
+        FxHistory = 0.0d0
+        FyHistory = 0.0d0
+        flowNeqHistory = 0.0d0
+        thermalNeqHistory = 0.0d0
         do j = 1, yLocalCount(b)
             y = yp(j,b)/lengthUnit
             do i = 1, xLocalCount(b)
@@ -797,14 +884,14 @@
         call link_device_data(.true.)
         if (loadInitField == 0) then
             do b = 1, nBlocks
-                call pack_block(b, min(1, historyLast(b)))
+                call save_block_history(b, min(1, historyLast(b)))
             enddo
             if (nBlocks > 1) then
                 ! 首次碰撞前补齐两级接口。两次交换均读取同一份初始快照，不依赖块处理顺序。
                 call exchange_interfaces(.true., [0.0d0, 1.0d0, 0.0d0])
                 call exchange_interfaces(.false., [0.0d0, 1.0d0, 0.0d0])
                 do b = 1, nBlocks
-                    call pack_block(b, min(1, historyLast(b)))
+                    call save_block_history(b, min(1, historyLast(b)))
                 enddo
             endif
         endif
@@ -831,7 +918,8 @@
             !$acc enter data copyin(T_coarse)
             !$acc enter data copyin(Fx_coarse)
             !$acc enter data copyin(Fy_coarse)
-            !$acc enter data copyin(p_coarse)
+            !$acc enter data copyin(rhoHistory_coarse, uHistory_coarse, vHistory_coarse, THistory_coarse, &
+            !$acc& FxHistory_coarse, FyHistory_coarse, flowNeqHistory_coarse, thermalNeqHistory_coarse)
         else
             !$acc exit data delete(f_coarse)
             !$acc exit data delete(g_coarse)
@@ -843,7 +931,8 @@
             !$acc exit data delete(T_coarse)
             !$acc exit data delete(Fx_coarse)
             !$acc exit data delete(Fy_coarse)
-            !$acc exit data delete(p_coarse)
+            !$acc exit data delete(rhoHistory_coarse, uHistory_coarse, vHistory_coarse, THistory_coarse, &
+            !$acc& FxHistory_coarse, FyHistory_coarse, flowNeqHistory_coarse, thermalNeqHistory_coarse)
         endif
         if (nBlocks == 2) then
             if (entering) then
@@ -857,7 +946,8 @@
                 !$acc enter data copyin(T_fine)
                 !$acc enter data copyin(Fx_fine)
                 !$acc enter data copyin(Fy_fine)
-                !$acc enter data copyin(p_fine)
+                !$acc enter data copyin(rhoHistory_fine, uHistory_fine, vHistory_fine, THistory_fine, &
+                !$acc& FxHistory_fine, FyHistory_fine, flowNeqHistory_fine, thermalNeqHistory_fine)
             else
                 !$acc exit data delete(f_fine)
                 !$acc exit data delete(g_fine)
@@ -869,7 +959,8 @@
                 !$acc exit data delete(T_fine)
                 !$acc exit data delete(Fx_fine)
                 !$acc exit data delete(Fy_fine)
-                !$acc exit data delete(p_fine)
+                !$acc exit data delete(rhoHistory_fine, uHistory_fine, vHistory_fine, THistory_fine, &
+                !$acc& FxHistory_fine, FyHistory_fine, flowNeqHistory_fine, thermalNeqHistory_fine)
             endif
         endif
     end subroutine block_device_data
@@ -882,7 +973,8 @@
     !===============================================================================================
     subroutine link_device_data(entering)
 
-        use commondata, only: nLinks, linkTi, linkTj, linkSi, linkSj, linkSame, linkWx, linkWy, linkValues
+        use commondata, only: nLinks, linkTi, linkTj, linkSi, linkSj, linkSame, linkWx, linkWy, rhoReceive, &
+            uReceive, vReceive, TReceive, FxReceive, FyReceive, flowNeqReceive, thermalNeqReceive
         implicit none
 
         logical, intent(in) :: entering
@@ -890,9 +982,11 @@
         if (nLinks == 0) return
         if (entering) then
             !$acc enter data copyin(linkTi, linkTj, linkSi, linkSj, linkWx, linkWy, &
-            !$acc& linkSame, linkValues)
+            !$acc& linkSame, rhoReceive, uReceive, vReceive, TReceive, FxReceive, FyReceive, flowNeqReceive, &
+            !$acc& thermalNeqReceive)
         else
-            !$acc exit data delete(linkTi, linkTj, linkSi, linkSj, linkWx, linkWy, linkSame, linkValues)
+            !$acc exit data delete(linkTi, linkTj, linkSi, linkSj, linkWx, linkWy, linkSame, rhoReceive, &
+            !$acc& uReceive, vReceive, TReceive, FxReceive, FyReceive, flowNeqReceive, thermalNeqReceive)
         endif
     end subroutine link_device_data
     !===============================================================================================
@@ -904,25 +998,31 @@
     !===============================================================================================
     subroutine update_host_block(b, full)
         use commondata, only: f_coarse, g_coarse, rho_coarse, u_coarse, v_coarse, T_coarse, Fx_coarse, &
-            Fy_coarse, p_coarse, f_fine, g_fine, rho_fine, u_fine, v_fine, T_fine, Fx_fine, Fy_fine, p_fine
+            Fy_coarse, rhoHistory_coarse, uHistory_coarse, vHistory_coarse, THistory_coarse, FxHistory_coarse, &
+            FyHistory_coarse, flowNeqHistory_coarse, thermalNeqHistory_coarse, f_fine, g_fine, rho_fine, u_fine, &
+            v_fine, T_fine, Fx_fine, Fy_fine, rhoHistory_fine, uHistory_fine, vHistory_fine, THistory_fine, &
+            FxHistory_fine, FyHistory_fine, flowNeqHistory_fine, thermalNeqHistory_fine
         implicit none
         integer(kind=4), intent(in) :: b
         logical, intent(in) :: full
 
         if (b == 1) then
             call update_host_block_arrays(b, full, f_coarse, g_coarse, rho_coarse, u_coarse, v_coarse, T_coarse, &
-            Fx_coarse, Fy_coarse, p_coarse)
+            Fx_coarse, Fy_coarse, rhoHistory_coarse, uHistory_coarse, vHistory_coarse, THistory_coarse, &
+                FxHistory_coarse, FyHistory_coarse, flowNeqHistory_coarse, thermalNeqHistory_coarse)
         else
             call update_host_block_arrays(b, full, f_fine, g_fine, rho_fine, u_fine, v_fine, T_fine, Fx_fine, &
-            Fy_fine, p_fine)
+            Fy_fine, rhoHistory_fine, uHistory_fine, vHistory_fine, THistory_fine, FxHistory_fine, &
+                FyHistory_fine, flowNeqHistory_fine, thermalNeqHistory_fine)
         endif
     end subroutine update_host_block
 
     ! 显式接收本块普通数组；计算和写入都直接作用于传入的粗块或细环数据。
-    subroutine update_host_block_arrays(b, full, f, g, rho, u, v, T, Fx, Fy, p)
+    subroutine update_host_block_arrays(b, full, f, g, rho, u, v, T, Fx, Fy, rhoHistory, uHistory, vHistory, &
+        THistory, FxHistory, FyHistory, flowNeqHistory, thermalNeqHistory)
 
 
-        use commondata, only: xLocalCount, yLocalCount, historyLast, packetSize
+        use commondata, only: xLocalCount, yLocalCount, historyLast
         implicit none
 
         integer(kind=4), intent(in) :: b
@@ -934,12 +1034,20 @@
         real(kind=8) :: T(xLocalCount(b), yLocalCount(b))
         real(kind=8) :: Fx(xLocalCount(b), yLocalCount(b))
         real(kind=8) :: Fy(xLocalCount(b), yLocalCount(b))
-        real(kind=8) :: p(xLocalCount(b), yLocalCount(b), packetSize, 0:historyLast(b))
+        real(kind=8) :: rhoHistory(xLocalCount(b), yLocalCount(b), 0:historyLast(b))
+        real(kind=8) :: uHistory(xLocalCount(b), yLocalCount(b), 0:historyLast(b))
+        real(kind=8) :: vHistory(xLocalCount(b), yLocalCount(b), 0:historyLast(b))
+        real(kind=8) :: THistory(xLocalCount(b), yLocalCount(b), 0:historyLast(b))
+        real(kind=8) :: FxHistory(xLocalCount(b), yLocalCount(b), 0:historyLast(b))
+        real(kind=8) :: FyHistory(xLocalCount(b), yLocalCount(b), 0:historyLast(b))
+        real(kind=8) :: flowNeqHistory(xLocalCount(b), yLocalCount(b), 0:8, 0:historyLast(b))
+        real(kind=8) :: thermalNeqHistory(xLocalCount(b), yLocalCount(b), 0:4, 0:historyLast(b))
         logical, intent(in) :: full
 
         !$acc update self(u, v, T, rho) async(1)
         if (full) then
-            !$acc update self(f, g, Fx, Fy, p) async(1)
+            !$acc update self(f, g, Fx, Fy, rhoHistory, uHistory, vHistory, THistory, FxHistory, FyHistory, &
+            !$acc& flowNeqHistory, thermalNeqHistory) async(1)
         endif
     end subroutine update_host_block_arrays
     !===============================================================================================
@@ -1031,17 +1139,20 @@
         ! 原文件的执行次序保持不变。粗块的 dt 已吸收到松弛率及力增量中。
         ! 入口：人工边界已重建为本时刻的碰撞前状态；缓冲节点与内部节点一样参与碰撞。
         ! 出口：最外两层只作为待重建缓冲，不允许充当 donor；原算法的内部结果保留。
-        call collision(xLocalCount(b), yLocalCount(b), f, f_post, rho, u, v, Fx, Fy, T, blockSn(b), blockSq(b), blockGb(b) &
+        call collision(xLocalCount(b), yLocalCount(b), f, f_post, rho, u, v, Fx, Fy, T, blockSn(b), blockSq(b), &
+            blockGb(b) &
 #ifdef SideHeatedHa
             , meshSpacing(b)*B2sigemarho &
 #endif
             )
         call streaming(xLocalCount(b), yLocalCount(b), f, f_post)
-        call bounceback(xLocalCount(b), yLocalCount(b), f, f_post, blockWall(1, b), blockWall(2, b), blockWall(3, b), blockWall(4, b))
+        call bounceback(xLocalCount(b), yLocalCount(b), f, f_post, blockWall(1, b), blockWall(2, b), &
+            blockWall(3, b), blockWall(4, b))
         call macro(xLocalCount(b), yLocalCount(b), f, rho, u, v, Fx, Fy)
         call collisionT(xLocalCount(b), yLocalCount(b), g, g_post, u, v, T, blockQk(b), blockQn(b))
         call streamingT(xLocalCount(b), yLocalCount(b), g, g_post)
-        call bouncebackT(xLocalCount(b), yLocalCount(b), g, g_post, blockWall(1, b), blockWall(2, b), blockWall(3, b), blockWall(4, b))
+        call bouncebackT(xLocalCount(b), yLocalCount(b), g, g_post, blockWall(1, b), blockWall(2, b), &
+            blockWall(3, b), blockWall(4, b))
         call macroT(xLocalCount(b), yLocalCount(b), g, T)
     end subroutine advance_block_arrays
     !===============================================================================================
@@ -1056,7 +1167,9 @@
     !===============================================================================================
     subroutine advance_multiblock()
 
-        use commondata, only: refineRatio, nBlocks, itc, xLocalCount, yLocalCount, p_coarse
+        use commondata, only: refineRatio, nBlocks, itc, xLocalCount, yLocalCount, rhoHistory_coarse, &
+            uHistory_coarse, vHistory_coarse, THistory_coarse, FxHistory_coarse, FyHistory_coarse, &
+            flowNeqHistory_coarse, thermalNeqHistory_coarse
         implicit none
 
         integer(kind=4) :: b, k
@@ -1068,9 +1181,9 @@
             return
         endif
         ! 1. 入口是粗细同步的 t 时刻。粗块缓冲已在初始交换或上次同步时补齐。
-        ! 2. 粗块先预测 t+dt_c；p(:,:,:,0:2) 分别代表 t-dt_c、t、t+dt_c。
+        ! 2. 粗块先预测 t+dt_c；各历史数组末下标 0:2 分别代表 t-dt_c、t、t+dt_c。
         call advance_block(1)
-        call pack_block(1, 2)
+        call save_block_history(1, 2)
         do k = 1, refineRatio
             ! 3. 第 k 个细子步在 t+(k-1)*dt_f 开始：先补齐该时刻的碰撞前缓冲，再推进。
             ! 唯一细环的内边缘由粗级历史插值；细环内部不交换数据。
@@ -1079,15 +1192,17 @@
             call exchange_interfaces(.false., wt)
             do b = 2, nBlocks
                 call advance_block(b)
-                call pack_block(b, 0)
+                call save_block_history(b, 0)
             enddo
         enddo
         ! 4. 两级均到 t+dt_c：细->粗修复粗缓冲，随后补齐细缓冲，供下次碰撞和同步输出使用。
         call exchange_interfaces(.true., [0.0d0, 0.0d0, 1.0d0])
-        call pack_block(1, 2)
+        call save_block_history(1, 2)
         call exchange_interfaces(.false., [0.0d0, 0.0d0, 1.0d0])
         ! 5. 只在同步点滚动历史和整数时钟，重启文件必须保存完整历史。
-        call rotate_coarse_history(xLocalCount(1), yLocalCount(1), p_coarse)
+        call rotate_coarse_history(xLocalCount(1), yLocalCount(1), rhoHistory_coarse, uHistory_coarse, &
+            vHistory_coarse, THistory_coarse, FxHistory_coarse, FyHistory_coarse, flowNeqHistory_coarse, &
+            thermalNeqHistory_coarse)
         itc = itc+refineRatio
     end subroutine advance_multiblock
     !===============================================================================================
@@ -1118,20 +1233,43 @@
     ! 子程序: rotate_coarse_history
     ! 作用: 滚动保存粗块的三个时间层
     !===============================================================================================
-    subroutine rotate_coarse_history(ni, nj, p)
-
-        use commondata, only: packetSize
+    subroutine rotate_coarse_history(ni, nj, rhoHistory, uHistory, vHistory, THistory, FxHistory, FyHistory, &
+        flowNeqHistory, thermalNeqHistory)
         implicit none
-
         integer(kind=4), intent(in) :: ni, nj
-        real(kind=8), intent(inout) :: p(ni, nj, packetSize, 0:2)
-        integer(kind=4) :: i, j, k
-        !$acc parallel loop collapse(3) present(p) async(1)
-        do k = 1, packetSize
-            do j = 1, nj
-                do i = 1, ni
-                    p(i, j, k, 0) = p(i, j, k, 1)
-                    p(i, j, k, 1) = p(i, j, k, 2)
+        real(kind=8), intent(inout) :: rhoHistory(ni, nj, 0:2)
+        real(kind=8), intent(inout) :: uHistory(ni, nj, 0:2)
+        real(kind=8), intent(inout) :: vHistory(ni, nj, 0:2)
+        real(kind=8), intent(inout) :: THistory(ni, nj, 0:2)
+        real(kind=8), intent(inout) :: FxHistory(ni, nj, 0:2)
+        real(kind=8), intent(inout) :: FyHistory(ni, nj, 0:2)
+        real(kind=8), intent(inout) :: flowNeqHistory(ni, nj, 0:8, 0:2)
+        real(kind=8), intent(inout) :: thermalNeqHistory(ni, nj, 0:4, 0:2)
+        integer(kind=4) :: i, j, a
+        ! 预测层转为当前层，原当前层转为过去层；下一个粗步会重新计算第 2 层。
+        !$acc parallel loop collapse(2) present(rhoHistory, uHistory, vHistory, THistory, FxHistory, FyHistory, &
+        !$acc& flowNeqHistory, thermalNeqHistory) async(1) private(a)
+        do j = 1, nj
+            do i = 1, ni
+                rhoHistory(i,j,0) = rhoHistory(i,j,1)
+                rhoHistory(i,j,1) = rhoHistory(i,j,2)
+                uHistory(i,j,0) = uHistory(i,j,1)
+                uHistory(i,j,1) = uHistory(i,j,2)
+                vHistory(i,j,0) = vHistory(i,j,1)
+                vHistory(i,j,1) = vHistory(i,j,2)
+                THistory(i,j,0) = THistory(i,j,1)
+                THistory(i,j,1) = THistory(i,j,2)
+                FxHistory(i,j,0) = FxHistory(i,j,1)
+                FxHistory(i,j,1) = FxHistory(i,j,2)
+                FyHistory(i,j,0) = FyHistory(i,j,1)
+                FyHistory(i,j,1) = FyHistory(i,j,2)
+                do a = 0, 8
+                    flowNeqHistory(i,j,a,0) = flowNeqHistory(i,j,a,1)
+                    flowNeqHistory(i,j,a,1) = flowNeqHistory(i,j,a,2)
+                enddo
+                do a = 0, 4
+                    thermalNeqHistory(i,j,a,0) = thermalNeqHistory(i,j,a,1)
+                    thermalNeqHistory(i,j,a,1) = thermalNeqHistory(i,j,a,2)
                 enddo
             enddo
         enddo
@@ -1308,8 +1446,7 @@
     subroutine build_links()
 
         use commondata, only: maxBlocks, nBlocks, xLocalCount, yLocalCount, meshSpacing, nLinks, linkReceiver, &
-            linkDonor, linkCount, linkTi, linkTj, linkSi, linkSj, linkSame, linkWx, linkWy, skin_node, &
-            linkStart, xp, yp
+            linkDonor, linkCount, linkTi, linkTj, linkSi, linkSj, linkSame, linkWx, linkWy, skin_node, linkStart, xp, yp
         implicit none
 
         integer(kind=4) :: b, d, i, j, l, n, si, sj, counts(maxBlocks, maxBlocks), idx(maxBlocks, maxBlocks)
@@ -1418,29 +1555,35 @@
 
 
     !===============================================================================================
-    ! 子程序: pack_block
-    ! 作用: 将指定块的状态编码到交换时间层
+    ! 子程序: save_block_history
+    ! 作用: 分别保存本块宏观量、归一化力和非平衡矩的时间层
     !===============================================================================================
-    subroutine pack_block(b, slot)
+    subroutine save_block_history(b, slot)
         use commondata, only: f_coarse, g_coarse, rho_coarse, u_coarse, v_coarse, T_coarse, Fx_coarse, &
-            Fy_coarse, p_coarse, f_fine, g_fine, rho_fine, u_fine, v_fine, T_fine, Fx_fine, Fy_fine, p_fine
+            Fy_coarse, rhoHistory_coarse, uHistory_coarse, vHistory_coarse, THistory_coarse, FxHistory_coarse, &
+            FyHistory_coarse, flowNeqHistory_coarse, thermalNeqHistory_coarse, f_fine, g_fine, rho_fine, u_fine, &
+            v_fine, T_fine, Fx_fine, Fy_fine, rhoHistory_fine, uHistory_fine, vHistory_fine, THistory_fine, &
+            FxHistory_fine, FyHistory_fine, flowNeqHistory_fine, thermalNeqHistory_fine
         implicit none
         integer(kind=4), intent(in) :: b, slot
 
         if (b == 1) then
-            call pack_block_arrays(b, slot, f_coarse, g_coarse, rho_coarse, u_coarse, v_coarse, T_coarse, &
-            Fx_coarse, Fy_coarse, p_coarse)
+            call save_block_history_arrays(b, slot, f_coarse, g_coarse, rho_coarse, u_coarse, v_coarse, T_coarse, &
+            Fx_coarse, Fy_coarse, rhoHistory_coarse, uHistory_coarse, vHistory_coarse, THistory_coarse, &
+                FxHistory_coarse, FyHistory_coarse, flowNeqHistory_coarse, thermalNeqHistory_coarse)
         else
-            call pack_block_arrays(b, slot, f_fine, g_fine, rho_fine, u_fine, v_fine, T_fine, Fx_fine, Fy_fine, &
-            p_fine)
+            call save_block_history_arrays(b, slot, f_fine, g_fine, rho_fine, u_fine, v_fine, T_fine, Fx_fine, &
+                Fy_fine, &
+            rhoHistory_fine, uHistory_fine, vHistory_fine, THistory_fine, FxHistory_fine, FyHistory_fine, &
+                flowNeqHistory_fine, thermalNeqHistory_fine)
         endif
-    end subroutine pack_block
+    end subroutine save_block_history
 
     ! 显式接收本块普通数组；计算和写入都直接作用于传入的粗块或细环数据。
-    subroutine pack_block_arrays(b, slot, f, g, rho, u, v, T, Fx, Fy, p)
+    subroutine save_block_history_arrays(b, slot, f, g, rho, u, v, T, Fx, Fy, rhoHistory, uHistory, vHistory, &
+        THistory, FxHistory, FyHistory, flowNeqHistory, thermalNeqHistory)
 
-        use commondata, only: xLocalCount, yLocalCount, historyLast, meshSpacing, blockSn, blockSq, blockQk, &
-            blockQn, packetSize
+        use commondata, only: xLocalCount, yLocalCount, historyLast, meshSpacing, blockSn, blockSq, blockQk, blockQn
         implicit none
 
         integer(kind=4), intent(in) :: b
@@ -1452,35 +1595,52 @@
         real(kind=8) :: T(xLocalCount(b), yLocalCount(b))
         real(kind=8) :: Fx(xLocalCount(b), yLocalCount(b))
         real(kind=8) :: Fy(xLocalCount(b), yLocalCount(b))
-        real(kind=8) :: p(xLocalCount(b), yLocalCount(b), packetSize, 0:historyLast(b))
+        real(kind=8) :: rhoHistory(xLocalCount(b), yLocalCount(b), 0:historyLast(b))
+        real(kind=8) :: uHistory(xLocalCount(b), yLocalCount(b), 0:historyLast(b))
+        real(kind=8) :: vHistory(xLocalCount(b), yLocalCount(b), 0:historyLast(b))
+        real(kind=8) :: THistory(xLocalCount(b), yLocalCount(b), 0:historyLast(b))
+        real(kind=8) :: FxHistory(xLocalCount(b), yLocalCount(b), 0:historyLast(b))
+        real(kind=8) :: FyHistory(xLocalCount(b), yLocalCount(b), 0:historyLast(b))
+        real(kind=8) :: flowNeqHistory(xLocalCount(b), yLocalCount(b), 0:8, 0:historyLast(b))
+        real(kind=8) :: thermalNeqHistory(xLocalCount(b), yLocalCount(b), 0:4, 0:historyLast(b))
         integer(kind=4), intent(in) :: slot
 
-        call encode_packets(xLocalCount(b), yLocalCount(b), historyLast(b), slot, meshSpacing(b), blockSn(b), blockSq(b), &
+        call save_exchange_history(xLocalCount(b), yLocalCount(b), historyLast(b), slot, meshSpacing(b), &
+            blockSn(b), blockSq(b), &
             blockQk(b), blockQn(b), &
-            f, g, rho, u, v, T, Fx, Fy, p)
-    end subroutine pack_block_arrays
+            f, g, rho, u, v, T, Fx, Fy, rhoHistory, uHistory, vHistory, THistory, FxHistory, FyHistory, &
+                flowNeqHistory, thermalNeqHistory)
+    end subroutine save_block_history_arrays
     !===============================================================================================
 
 
     !===============================================================================================
-    ! 将宏观量及归一化非平衡矩编码为接口交换量
+    ! 分别保存宏观量、归一化力和非平衡矩，供接口插值使用
 
     !===============================================================================================
-    ! 子程序: encode_packets
-    ! 作用: 编码宏观量与归一化非平衡矩
+    ! 子程序: save_exchange_history
+    ! 作用: 保存具名历史数组：宏观量、归一化力和非平衡矩
     !===============================================================================================
-    subroutine encode_packets(ni, nj, nh, slot, h, sn, sq, qk, qn, f, g, rho, u, v, T, Fx, Fy, p)
+    subroutine save_exchange_history(ni, nj, nh, slot, h, sn, sq, qk, qn, f, g, rho, u, v, T, Fx, Fy, &
+        rhoHistory, uHistory, vHistory, THistory, FxHistory, FyHistory, flowNeqHistory, thermalNeqHistory)
 
-        use commondata, only: packetSize
         implicit none
 
         integer(kind=4), intent(in) :: ni, nj, nh, slot
         real(kind=8), intent(in) :: h, sn, sq, qk, qn, f(ni, nj, 0:8), g(ni, nj, 0:4)
         real(kind=8), intent(in) :: rho(ni, nj), u(ni, nj), v(ni, nj), T(ni, nj), Fx(ni, nj), Fy(ni, nj)
-        real(kind=8), intent(inout) :: p(ni, nj, packetSize, 0:nh)
+        real(kind=8), intent(inout) :: rhoHistory(ni, nj, 0:nh)
+        real(kind=8), intent(inout) :: uHistory(ni, nj, 0:nh)
+        real(kind=8), intent(inout) :: vHistory(ni, nj, 0:nh)
+        real(kind=8), intent(inout) :: THistory(ni, nj, 0:nh)
+        real(kind=8), intent(inout) :: FxHistory(ni, nj, 0:nh)
+        real(kind=8), intent(inout) :: FyHistory(ni, nj, 0:nh)
+        real(kind=8), intent(inout) :: flowNeqHistory(ni, nj, 0:8, 0:nh)
+        real(kind=8), intent(inout) :: thermalNeqHistory(ni, nj, 0:4, 0:nh)
         integer(kind=4) :: i, j, a
         real(kind=8) :: m(0:8), meq(0:8), fm(0:8), n(0:4), neq(0:4), s(0:8), q(0:4), fv(0:8), gv(0:4)
-        !$acc parallel loop collapse(2) present(f, g, rho, u, v, T, Fx, Fy, p) async(1) &
+        !$acc parallel loop collapse(2) present(f, g, rho, u, v, T, Fx, Fy, rhoHistory, uHistory, vHistory, &
+        !$acc& THistory, FxHistory, FyHistory, flowNeqHistory, thermalNeqHistory) async(1) &
         !$acc& private(a, m, meq, fm, n, neq, s, q, fv, gv)
         do j = 1, nj
             do i = 1, ni
@@ -1496,21 +1656,21 @@
                 call force_moments(u(i, j), v(i, j), Fx(i, j), Fy(i, j), fm)
                 s = [0.0d0, sn, sn, 0.0d0, sq, 0.0d0, sq, sn, sn]
                 q = [0.0d0, qk, qk, qn, qn]
-                p(i, j, 1, slot) = rho(i, j)
-                p(i, j, 2, slot) = u(i, j)
-                p(i, j, 3, slot) = v(i, j)
-                p(i, j, 4, slot) = T(i, j)
-                p(i, j, 5, slot) = Fx(i, j)/h
-                p(i, j, 6, slot) = Fy(i, j)/h
+                rhoHistory(i, j, slot) = rho(i, j)
+                uHistory(i, j, slot) = u(i, j)
+                vHistory(i, j, slot) = v(i, j)
+                THistory(i, j, slot) = T(i, j)
+                FxHistory(i, j, slot) = Fx(i, j)/h
+                FyHistory(i, j, slot) = Fy(i, j)/h
                 do a = 0, 8
-                    p(i, j, 7+a, slot) = s(a)/h*(m(a)-meq(a)+0.5d0*fm(a))
+                    flowNeqHistory(i, j, a, slot) = s(a)/h*(m(a)-meq(a)+0.5d0*fm(a))
                 enddo
                 do a = 0, 4
-                    p(i, j, 16+a, slot) = q(a)/h*(n(a)-neq(a))
+                    thermalNeqHistory(i, j, a, slot) = q(a)/h*(n(a)-neq(a))
                 enddo
             enddo
         enddo
-    end subroutine encode_packets
+    end subroutine save_exchange_history
     !===============================================================================================
 
 
@@ -1525,9 +1685,12 @@
 
         use commondata, only: xLocalCount, yLocalCount, historyLast, meshSpacing, blockSn, blockSq, blockQk, &
             blockQn, nLinks, linkReceiver, linkDonor, linkCount, linkTi, linkTj, linkSi, linkSj, linkSame, &
-            linkWx, linkWy, linkValues, linkStart, linkEnd, f_coarse, g_coarse, rho_coarse, u_coarse, v_coarse, &
-            T_coarse, Fx_coarse, Fy_coarse, p_coarse, f_fine, g_fine, rho_fine, u_fine, v_fine, T_fine, Fx_fine, &
-            Fy_fine, p_fine
+            linkWx, linkWy, rhoReceive, uReceive, vReceive, TReceive, FxReceive, FyReceive, flowNeqReceive, &
+            thermalNeqReceive, linkStart, linkEnd, f_coarse, g_coarse, rho_coarse, u_coarse, v_coarse, T_coarse, &
+            Fx_coarse, Fy_coarse, rhoHistory_coarse, uHistory_coarse, vHistory_coarse, THistory_coarse, &
+            FxHistory_coarse, FyHistory_coarse, flowNeqHistory_coarse, thermalNeqHistory_coarse, f_fine, g_fine, &
+            rho_fine, u_fine, v_fine, T_fine, Fx_fine, Fy_fine, rhoHistory_fine, uHistory_fine, vHistory_fine, &
+            THistory_fine, FxHistory_fine, FyHistory_fine, flowNeqHistory_fine, thermalNeqHistory_fine
         implicit none
 
         logical, intent(in) :: coarse_receiver
@@ -1541,11 +1704,21 @@
             first = linkStart(l)
             last = linkEnd(l)
             if (d == 1) then
-            call interpolate_packets(xLocalCount(d), yLocalCount(d), historyLast(d), p_coarse, linkCount(l), &
-                linkSi(first:last), linkSj(first:last), linkWx(:,first:last), linkWy(:,first:last), linkSame(first:last), wt, linkValues(:,first:last))
+                call interpolate_exchange_history(xLocalCount(d), yLocalCount(d), historyLast(d), rhoHistory_coarse, &
+                    uHistory_coarse, vHistory_coarse, THistory_coarse, FxHistory_coarse, FyHistory_coarse, &
+                    flowNeqHistory_coarse, thermalNeqHistory_coarse, linkCount(l), &
+                    linkSi(first:last), linkSj(first:last), linkWx(:,first:last), linkWy(:,first:last), &
+                        linkSame(first:last), wt, rhoReceive(first:last), uReceive(first:last), &
+                        vReceive(first:last), TReceive(first:last), FxReceive(first:last), FyReceive(first:last), &
+                        flowNeqReceive(:,first:last), thermalNeqReceive(:,first:last))
             else
-            call interpolate_packets(xLocalCount(d), yLocalCount(d), historyLast(d), p_fine, linkCount(l), &
-                linkSi(first:last), linkSj(first:last), linkWx(:,first:last), linkWy(:,first:last), linkSame(first:last), wt, linkValues(:,first:last))
+                call interpolate_exchange_history(xLocalCount(d), yLocalCount(d), historyLast(d), rhoHistory_fine, &
+                    uHistory_fine, vHistory_fine, THistory_fine, FxHistory_fine, FyHistory_fine, &
+                    flowNeqHistory_fine, thermalNeqHistory_fine, linkCount(l), &
+                    linkSi(first:last), linkSj(first:last), linkWx(:,first:last), linkWy(:,first:last), &
+                        linkSame(first:last), wt, rhoReceive(first:last), uReceive(first:last), &
+                        vReceive(first:last), TReceive(first:last), FxReceive(first:last), FyReceive(first:last), &
+                        flowNeqReceive(:,first:last), thermalNeqReceive(:,first:last))
             endif
         enddo
         do l = 1, nLinks
@@ -1554,15 +1727,21 @@
             first = linkStart(l)
             last = linkEnd(l)
             if (b == 1) then
-            call apply_packets(xLocalCount(b), yLocalCount(b), meshSpacing(b), blockSn(b), blockSq(b), blockQk(b), blockQn(b), &
-                f_coarse, g_coarse, rho_coarse, u_coarse, v_coarse, T_coarse, &
-                Fx_coarse, Fy_coarse, &
-                linkCount(l), linkTi(first:last), linkTj(first:last), linkValues(:,first:last))
+                call apply_interface_data(xLocalCount(b), yLocalCount(b), meshSpacing(b), blockSn(b), blockSq(b), &
+                    blockQk(b), blockQn(b), &
+                    f_coarse, g_coarse, rho_coarse, u_coarse, v_coarse, T_coarse, &
+                    Fx_coarse, Fy_coarse, &
+                    linkCount(l), linkTi(first:last), linkTj(first:last), rhoReceive(first:last), &
+                        uReceive(first:last), vReceive(first:last), TReceive(first:last), FxReceive(first:last), &
+                        FyReceive(first:last), flowNeqReceive(:,first:last), thermalNeqReceive(:,first:last))
             else
-            call apply_packets(xLocalCount(b), yLocalCount(b), meshSpacing(b), blockSn(b), blockSq(b), blockQk(b), blockQn(b), &
-                f_fine, g_fine, rho_fine, u_fine, v_fine, T_fine, &
-                Fx_fine, Fy_fine, &
-                linkCount(l), linkTi(first:last), linkTj(first:last), linkValues(:,first:last))
+                call apply_interface_data(xLocalCount(b), yLocalCount(b), meshSpacing(b), blockSn(b), blockSq(b), &
+                    blockQk(b), blockQn(b), &
+                    f_fine, g_fine, rho_fine, u_fine, v_fine, T_fine, &
+                    Fx_fine, Fy_fine, &
+                    linkCount(l), linkTi(first:last), linkTj(first:last), rhoReceive(first:last), &
+                        uReceive(first:last), vReceive(first:last), TReceive(first:last), FxReceive(first:last), &
+                        FyReceive(first:last), flowNeqReceive(:,first:last), thermalNeqReceive(:,first:last))
             endif
         enddo
     end subroutine exchange_interfaces
@@ -1570,18 +1749,102 @@
 
 
     !===============================================================================================
-    ! 子程序: interpolate_packets
+    ! 子程序: interpolate_exchange_history
     ! 作用: 执行共址取值或空间、时间插值
     !===============================================================================================
-    subroutine interpolate_packets(ni, nj, nh, p, count, si, sj, wx, wy, coincident, wt, val)
+    subroutine interpolate_exchange_history(ni, nj, nh, rhoHistory, uHistory, vHistory, THistory, FxHistory, &
+        FyHistory, flowNeqHistory, thermalNeqHistory, count, si, sj, wx, wy, coincident, wt, rhoReceive, &
+        uReceive, vReceive, TReceive, FxReceive, FyReceive, flowNeqReceive, thermalNeqReceive)
+        implicit none
+        integer(kind=4), intent(in) :: ni, nj, nh, count, si(count), sj(count)
+        real(kind=8), intent(in) :: wx(4,count), wy(4,count), wt(0:2)
+        logical, intent(in) :: coincident(count)
+        real(kind=8), intent(in) :: rhoHistory(ni, nj, 0:nh)
+        real(kind=8), intent(in) :: uHistory(ni, nj, 0:nh)
+        real(kind=8), intent(in) :: vHistory(ni, nj, 0:nh)
+        real(kind=8), intent(in) :: THistory(ni, nj, 0:nh)
+        real(kind=8), intent(in) :: FxHistory(ni, nj, 0:nh)
+        real(kind=8), intent(in) :: FyHistory(ni, nj, 0:nh)
+        real(kind=8), intent(in) :: flowNeqHistory(ni, nj, 0:8, 0:nh)
+        real(kind=8), intent(in) :: thermalNeqHistory(ni, nj, 0:4, 0:nh)
+        real(kind=8), intent(out) :: rhoReceive(count)
+        real(kind=8), intent(out) :: uReceive(count)
+        real(kind=8), intent(out) :: vReceive(count)
+        real(kind=8), intent(out) :: TReceive(count)
+        real(kind=8), intent(out) :: FxReceive(count)
+        real(kind=8), intent(out) :: FyReceive(count)
+        real(kind=8), intent(out) :: flowNeqReceive(0:8, count)
+        real(kind=8), intent(out) :: thermalNeqReceive(0:4, count)
+        ! 每个宏观量分别插值；矩数组的额外下标只表示物理矩编号。
+        call interpolate_scalar_history(ni, nj, nh, rhoHistory, count, si, sj, wx, wy, coincident, wt, &
+            rhoReceive)
+        call interpolate_scalar_history(ni, nj, nh, uHistory, count, si, sj, wx, wy, coincident, wt, uReceive)
+        call interpolate_scalar_history(ni, nj, nh, vHistory, count, si, sj, wx, wy, coincident, wt, vReceive)
+        call interpolate_scalar_history(ni, nj, nh, THistory, count, si, sj, wx, wy, coincident, wt, TReceive)
+        call interpolate_scalar_history(ni, nj, nh, FxHistory, count, si, sj, wx, wy, coincident, wt, FxReceive)
+        call interpolate_scalar_history(ni, nj, nh, FyHistory, count, si, sj, wx, wy, coincident, wt, FyReceive)
+        call interpolate_moment_history(ni, nj, nh, 9, flowNeqHistory, count, si, sj, wx, wy, coincident, wt, &
+            flowNeqReceive)
+        call interpolate_moment_history(ni, nj, nh, 5, thermalNeqHistory, count, si, sj, wx, wy, coincident, wt, &
+            thermalNeqReceive)
+    end subroutine interpolate_exchange_history
 
-        use commondata, only: packetSize
+    ! 插值使用来源块有效内部节点，保持三时间层标量权重及原累加次序。
+    subroutine interpolate_scalar_history(ni, nj, nh, fieldHistory, count, si, sj, wx, wy, coincident, wt, fieldReceive)
+
         implicit none
 
         integer(kind=4), intent(in) :: ni, nj, nh, count, si(count), sj(count)
-        real(kind=8), intent(in) :: p(ni, nj, packetSize, 0:nh), wx(4, count), wy(4, count), wt(0:2)
+        real(kind=8), intent(in) :: fieldHistory(ni, nj, 0:nh), wx(4, count), wy(4, count), wt(0:2)
         logical, intent(in) :: coincident(count)
-        real(kind=8), intent(out) :: val(packetSize, count)
+        real(kind=8), intent(out) :: fieldReceive(count)
+        integer(kind=4) :: c, ix, iy, k
+        real(kind=8) :: value, wk, wt0, wt1, wt2
+        ! NVHPC 24.3/P100 上数组形参 firstprivate(wt) 会在设备读取 wt(k) 时非法访问。
+        ! 在主机端取出三个时间权重，按标量值捕获；保持原三时间层插值及 async(1) 次序。
+        wt0 = wt(0)
+        wt1 = wt(1)
+        wt2 = wt(2)
+        !$acc parallel loop present(fieldHistory, si, sj, wx, wy, coincident, &
+        !$acc& fieldReceive) firstprivate(wt0, wt1, wt2) async(1) private(ix, iy, k, value, wk)
+        do c = 1, count
+            value = 0.0d0
+            do k = 0, nh
+                wk = 1.0d0
+                if (nh == 2) then
+                    select case (k)
+                    case (0)
+                        wk = wt0
+                    case (1)
+                        wk = wt1
+                    case (2)
+                        wk = wt2
+                    end select
+                endif
+                if (coincident(c)) then
+                    value = value+wk*fieldHistory(si(c), sj(c), k)
+                else
+                    do iy = 1, 4
+                        do ix = 1, 4
+                            value = value+wk*wx(ix, c)*wy(iy, c)*fieldHistory(si(c)+ix-1, sj(c)+iy-1, k)
+                        enddo
+                    enddo
+                endif
+            enddo
+            fieldReceive(c) = value
+        enddo
+    end subroutine interpolate_scalar_history
+
+    ! 插值使用来源块有效内部节点，保持三时间层标量权重及原累加次序。
+    subroutine interpolate_moment_history(ni, nj, nh, momentCount, fieldHistory, count, si, sj, wx, wy, &
+        coincident, wt, fieldReceive)
+
+        implicit none
+
+        integer(kind=4), intent(in) :: ni, nj, nh, momentCount, count, si(count), sj(count)
+        real(kind=8), intent(in) :: fieldHistory(ni, nj, 0:momentCount-1, 0:nh), wx(4, count), wy(4, count), wt(0:2)
+        logical, intent(in) :: coincident(count)
+        real(kind=8), intent(out) :: fieldReceive(0:momentCount-1, count)
         integer(kind=4) :: c, a, ix, iy, k
         real(kind=8) :: value, wk, wt0, wt1, wt2
         ! NVHPC 24.3/P100 上数组形参 firstprivate(wt) 会在设备读取 wt(k) 时非法访问。
@@ -1589,10 +1852,10 @@
         wt0 = wt(0)
         wt1 = wt(1)
         wt2 = wt(2)
-        !$acc parallel loop collapse(2) present(p, si, sj, wx, wy, coincident, &
-        !$acc& val) firstprivate(wt0, wt1, wt2) async(1) private(ix, iy, k, value, wk)
+        !$acc parallel loop collapse(2) present(fieldHistory, si, sj, wx, wy, coincident, &
+        !$acc& fieldReceive) firstprivate(wt0, wt1, wt2) async(1) private(ix, iy, k, value, wk)
         do c = 1, count
-            do a = 1, packetSize
+            do a = 0, momentCount-1
                 value = 0.0d0
                 do k = 0, nh
                     wk = 1.0d0
@@ -1607,49 +1870,57 @@
                         end select
                     endif
                     if (coincident(c)) then
-                        value = value+wk*p(si(c), sj(c), a, k)
+                        value = value+wk*fieldHistory(si(c), sj(c), a, k)
                     else
                         do iy = 1, 4
                             do ix = 1, 4
-                                value = value+wk*wx(ix, c)*wy(iy, c)*p(si(c)+ix-1, sj(c)+iy-1, a, k)
+                                value = value+wk*wx(ix, c)*wy(iy, c)*fieldHistory(si(c)+ix-1, sj(c)+iy-1, a, k)
                             enddo
                         enddo
                     endif
                 enddo
-                val(a, c) = value
+                fieldReceive(a, c) = value
             enddo
         enddo
-    end subroutine interpolate_packets
+    end subroutine interpolate_moment_history
     !===============================================================================================
 
 
     !===============================================================================================
-    ! 子程序: apply_packets
+    ! 子程序: apply_interface_data
     ! 作用: 按接收块参数重建碰撞前状态
     !===============================================================================================
-    subroutine apply_packets(ni, nj, h, sn, sq, qk, qn, f, g, rho, u, v, T, Fx, Fy, count, ti, &
-        tj, val)
+    subroutine apply_interface_data(ni, nj, h, sn, sq, qk, qn, f, g, rho, u, v, T, Fx, Fy, count, ti, &
+        tj, rhoReceive, uReceive, vReceive, TReceive, FxReceive, FyReceive, flowNeqReceive, thermalNeqReceive)
 
-        use commondata, only: packetSize
         implicit none
 
         integer(kind=4), intent(in) :: ni, nj, count, ti(count), tj(count)
-        real(kind=8), intent(in) :: h, sn, sq, qk, qn, val(packetSize, count)
+        real(kind=8), intent(in) :: h, sn, sq, qk, qn
+real(kind=8), intent(in) :: rhoReceive(count)
+        real(kind=8), intent(in) :: uReceive(count)
+        real(kind=8), intent(in) :: vReceive(count)
+        real(kind=8), intent(in) :: TReceive(count)
+        real(kind=8), intent(in) :: FxReceive(count)
+        real(kind=8), intent(in) :: FyReceive(count)
+        real(kind=8), intent(in) :: flowNeqReceive(0:8, count)
+        real(kind=8), intent(in) :: thermalNeqReceive(0:4, count)
         real(kind=8), intent(inout) :: f(ni, nj, 0:8), g(ni, nj, 0:4), rho(ni, nj), u(ni, nj), v(ni, nj), T(ni, nj)
         real(kind=8), intent(inout) :: Fx(ni, nj), Fy(ni, nj)
         integer(kind=4) :: c, i, j, a
         real(kind=8) :: m(0:8), meq(0:8), fm(0:8), n(0:4), neq(0:4), s(0:8), q(0:4), fv(0:8), gv(0:4)
-        !$acc parallel loop present(f, g, rho, u, v, T, Fx, Fy, ti, tj, val) async(1) &
+        !$acc parallel loop present(f, g, rho, u, v, T, Fx, Fy, ti, tj, rhoReceive, uReceive, vReceive, &
+        !$acc& TReceive, FxReceive, FyReceive, flowNeqReceive, thermalNeqReceive) async(1) &
         !$acc& private(i, j, a, m, meq, fm, n, neq, s, q, fv, gv)
         do c = 1, count
             i = ti(c)
             j = tj(c)
-            rho(i, j) = val(1, c)
-            u(i, j) = val(2, c)
-            v(i, j) = val(3, c)
-            T(i, j) = val(4, c)
-            Fx(i, j) = h*val(5, c)
-            Fy(i, j) = h*val(6, c)
+            rho(i, j) = rhoReceive(c)
+            u(i, j) = uReceive(c)
+            v(i, j) = vReceive(c)
+            T(i, j) = TReceive(c)
+            Fx(i, j) = h*FxReceive(c)
+            Fy(i, j) = h*FyReceive(c)
             call equilibrium_moments(rho(i, j), u(i, j), v(i, j), T(i, j), meq, neq)
             call force_moments(u(i, j), v(i, j), Fx(i, j), Fy(i, j), fm)
             s = [0.0d0, sn, sn, 0.0d0, sq, 0.0d0, sq, sn, sn]
@@ -1657,14 +1928,14 @@
             m = meq
             n = neq
             do a = 0, 8
-                if (s(a) > 0.0d0) m(a) = meq(a)+h/s(a)*val(7+a, c)-0.5d0*fm(a)
+                if (s(a) > 0.0d0) m(a) = meq(a)+h/s(a)*flowNeqReceive(a,c)-0.5d0*fm(a)
             enddo
             ! Eq. (21)：守恒矩直接用宏观量和半步力重建，不除以零松弛率。
             m(0) = rho(i, j)
             m(3) = rho(i, j)*u(i, j)-0.5d0*Fx(i, j)
             m(5) = rho(i, j)*v(i, j)-0.5d0*Fy(i, j)
             do a = 1, 4
-                n(a) = neq(a)+h/q(a)*val(16+a, c)
+                n(a) = neq(a)+h/q(a)*thermalNeqReceive(a,c)
             enddo
             n(0) = T(i, j)
             call flow_populations(m, fv)
@@ -1676,7 +1947,7 @@
                 g(i, j, a) = gv(a)
             enddo
         enddo
-    end subroutine apply_packets
+    end subroutine apply_interface_data
     !===============================================================================================
 
 
@@ -1723,7 +1994,8 @@
                     if (.not.fine_active(i,j)) cycle
                 endif
 
-                m(0) = f(i, j, 0)+f(i, j, 1)+f(i, j, 2)+f(i, j, 3)+f(i, j, 4)+f(i, j, 5)+f(i, j, 6)+f(i, j, 7)+f(i, j, 8)
+                m(0) = f(i, j, 0)+f(i, j, 1)+f(i, j, 2)+f(i, j, 3)+f(i, j, 4)+f(i, j, 5)+f(i, j, 6)+f(i, j, &
+                    7)+f(i, j, 8)
                 m(1) = -4.0d0*f(i, j, 0)-f(i, j, 1)-f(i, j, 2)-f(i, j, 3)-f(i, j, 4)+2.0d0*(f(i, j, 5)+f(i, j, &
                     6)+f(i, j, 7)+f(i, j, 8))
                 m(2) = 4.0d0*f(i, j, 0)-2.0d0*(f(i, j, 1)+f(i, j, 2)+f(i, j, 3)+f(i, j, 4))+f(i, j, 5)+f(i, j, &
@@ -1924,8 +2196,10 @@
                 if (refineRatio>1 .and. nx==globalNx) then
                     if (.not.fine_active(i,j)) cycle
                 endif
-                rho(i, j) = f(i, j, 0)+f(i, j, 1)+f(i, j, 2)+f(i, j, 3)+f(i, j, 4)+f(i, j, 5)+f(i, j, 6)+f(i, j, 7)+f(i, j, 8)
-                u(i, j) = ( f(i, j, 1)-f(i, j, 3)+f(i, j, 5)-f(i, j, 6)-f(i, j, 7)+f(i, j, 8)+0.5d0*Fx(i, j) )/rho(i, j)    !含力LBM的半步动量修正：rho*u = Σ f e + 0.5*F，对应Guo forcing的二阶定义
+                rho(i, j) = f(i, j, 0)+f(i, j, 1)+f(i, j, 2)+f(i, j, 3)+f(i, j, 4)+f(i, j, 5)+f(i, j, 6)+f(i, j, &
+                    7)+f(i, j, 8)
+                u(i, j) = ( f(i, j, 1)-f(i, j, 3)+f(i, j, 5)-f(i, j, 6)-f(i, j, 7)+f(i, j, 8)+0.5d0*Fx(i, &
+                    j) )/rho(i, j)    !含力LBM的半步动量修正：rho*u = Σ f e + 0.5*F，对应Guo forcing的二阶定义
                 v(i, j) = ( f(i, j, 2)-f(i, j, 4)+f(i, j, 5)+f(i, j, 6)-f(i, j, 7)-f(i, j, 8)+0.5d0*Fy(i, j) )/rho(i, j)
             enddo
         enddo
@@ -2247,9 +2521,9 @@
     !===============================================================================================
     subroutine calNuRe()
 
-        use commondata, only: nx, ny, Thot, Tcold, lengthUnit, viscosity, diffusivity, timeUnit, historyFile, &
-            nBlocks, itc, rho_coarse, u_coarse, v_coarse, T_coarse, quadWidthX_coarse, quadWidthY_coarse, &
-            rho_fine, u_fine, v_fine, T_fine, quadWidthX_fine, quadWidthY_fine
+        use commondata, only: nx, ny, Thot, Tcold, lengthUnit, viscosity, diffusivity, timeUnit, &
+            NuReHistoryFile, nBlocks, itc, rho_coarse, u_coarse, v_coarse, T_coarse, quadWidthX_coarse, &
+            quadWidthY_coarse, rho_fine, u_fine, v_fine, T_fine, quadWidthX_fine, quadWidthY_fine
         implicit none
 
         integer(kind=4) :: b, i, j, k, jm, im
@@ -2286,7 +2560,7 @@
         ! Re 使用速度平方的面积平均再开方，非稳态时间统计也采用同一 RMS 定义。
         nu = 1.0d0+conv/area*scale/diffusivity
         re = sqrt(vel2/area)*lengthUnit/viscosity
-        open(newunit = k, file = historyFile, status = 'old', position = 'append')
+        open(newunit = k, file = NuReHistoryFile, status = 'old', position = 'append')
         write(k, '(12(ES24.16E3,1X))') dble(itc)/timeUnit, nu, re, scale*hot, scale*cold, scale*middle, &
             mass, meanT/area, tmin, tmax, rmin, rmax
         close(k)
@@ -2350,7 +2624,8 @@
         endif
         if (xhi == dble(nx)) then
             do j = jStart(b), jEnd(b)
-                cold = cold+(-8.0d0*Tcold+9.0d0*T(xLocalCount(b), j)-T(xLocalCount(b)-1, j))/(3.0d0*h)*quadWidthY(j)/dble(ny)
+                cold = cold+(-8.0d0*Tcold+9.0d0*T(xLocalCount(b), j)-T(xLocalCount(b)-1, &
+                    j))/(3.0d0*h)*quadWidthY(j)/dble(ny)
             enddo
         endif
         if (xmid >= xlo .and. xmid < xhi) then
@@ -2371,7 +2646,8 @@
         endif
         if (yhi == dble(ny)) then
             do i = iStart(b), iEnd(b)
-                cold = cold+(-8.0d0*Tcold+9.0d0*T(i, yLocalCount(b))-T(i, yLocalCount(b)-1))/(3.0d0*h)*quadWidthX(i)/dble(nx)
+                cold = cold+(-8.0d0*Tcold+9.0d0*T(i, yLocalCount(b))-T(i, &
+                    yLocalCount(b)-1))/(3.0d0*h)*quadWidthX(i)/dble(nx)
             enddo
         endif
         if (ymid >= ylo .and. ymid < yhi) then
@@ -2396,8 +2672,7 @@
     subroutine check()
 #ifdef steadyFlow
 
-        use commondata, only: nBlocks, itc, errorU, errorT, u_coarse, v_coarse, T_coarse, u_fine, v_fine, &
-            T_fine
+        use commondata, only: nBlocks, itc, errorU, errorT, u_coarse, v_coarse, T_coarse, u_fine, v_fine, T_fine
 #ifdef steadyFlow
         use commondata, only: up_coarse, vp_coarse, Tp_coarse, up_fine, vp_fine, Tp_fine
 #endif
@@ -2674,7 +2949,10 @@
             fineLayerCellsBottom, fineLayerCellsTop, overlapCells, reloadFileNum, reloadFilePrefix, &
             restartMagic, nBlocks, itc, snapshotFileNum, pltFileNum, nextSample, nextReload, nextPlt, errorU, &
             errorT, f_coarse, g_coarse, u_coarse, v_coarse, T_coarse, rho_coarse, Fx_coarse, Fy_coarse, &
-            p_coarse, f_fine, g_fine, u_fine, v_fine, T_fine, rho_fine, Fx_fine, Fy_fine, p_fine
+            rhoHistory_coarse, uHistory_coarse, vHistory_coarse, THistory_coarse, FxHistory_coarse, &
+            FyHistory_coarse, flowNeqHistory_coarse, thermalNeqHistory_coarse, f_fine, g_fine, u_fine, v_fine, &
+            T_fine, rho_fine, Fx_fine, Fy_fine, rhoHistory_fine, uHistory_fine, vHistory_fine, THistory_fine, &
+            FxHistory_fine, FyHistory_fine, flowNeqHistory_fine, thermalNeqHistory_fine
 #ifdef steadyFlow
         use commondata, only: up_coarse, vp_coarse, Tp_coarse, up_fine, vp_fine, Tp_fine
 #endif
@@ -2703,14 +2981,16 @@
         do b = 1, nBlocks
             if (b == 1) then
                 call output_ReloadFile_block(b, k, f_coarse, g_coarse, u_coarse, v_coarse, T_coarse, rho_coarse, &
-            Fx_coarse, Fy_coarse, p_coarse &
+            Fx_coarse, Fy_coarse, rhoHistory_coarse, uHistory_coarse, vHistory_coarse, THistory_coarse, &
+                FxHistory_coarse, FyHistory_coarse, flowNeqHistory_coarse, thermalNeqHistory_coarse &
 #ifdef steadyFlow
                     , up_coarse, vp_coarse, Tp_coarse &
 #endif
                 )
             else
                 call output_ReloadFile_block(b, k, f_fine, g_fine, u_fine, v_fine, T_fine, rho_fine, Fx_fine, &
-            Fy_fine, p_fine &
+            Fy_fine, rhoHistory_fine, uHistory_fine, vHistory_fine, THistory_fine, FxHistory_fine, &
+                FyHistory_fine, flowNeqHistory_fine, thermalNeqHistory_fine &
 #ifdef steadyFlow
                     , up_fine, vp_fine, Tp_fine &
 #endif
@@ -2725,15 +3005,18 @@
     end subroutine output_ReloadFile
 
     ! 显式接收本块普通数组；计算和写入都直接作用于传入的粗块或细环数据。
-    subroutine output_ReloadFile_block(b, k, f, g, u, v, T, rho, Fx, Fy, p &
+    subroutine output_ReloadFile_block(b, k, f, g, u, v, T, rho, Fx, Fy, rhoHistory, uHistory, vHistory, &
+        THistory, FxHistory, FyHistory, flowNeqHistory, thermalNeqHistory &
 #ifdef steadyFlow
             , up, vp, Tp &
 #endif
         )
 
         use commondata, only: xLocalCount, yLocalCount, historyLast, iStart, iEnd, jStart, jEnd, meshSpacing, &
-            xOrigin, yOrigin, blockOwnedBox, packetSize
+            xOrigin, yOrigin, blockOwnedBox
         implicit none
+
+        integer(kind=4) :: historyIndex
 
         integer(kind=4) :: k, b
         real(kind=8) :: f(xLocalCount(b), yLocalCount(b), 0:8)
@@ -2744,7 +3027,14 @@
         real(kind=8) :: rho(xLocalCount(b), yLocalCount(b))
         real(kind=8) :: Fx(xLocalCount(b), yLocalCount(b))
         real(kind=8) :: Fy(xLocalCount(b), yLocalCount(b))
-        real(kind=8) :: p(xLocalCount(b), yLocalCount(b), packetSize, 0:historyLast(b))
+        real(kind=8) :: rhoHistory(xLocalCount(b), yLocalCount(b), 0:historyLast(b))
+        real(kind=8) :: uHistory(xLocalCount(b), yLocalCount(b), 0:historyLast(b))
+        real(kind=8) :: vHistory(xLocalCount(b), yLocalCount(b), 0:historyLast(b))
+        real(kind=8) :: THistory(xLocalCount(b), yLocalCount(b), 0:historyLast(b))
+        real(kind=8) :: FxHistory(xLocalCount(b), yLocalCount(b), 0:historyLast(b))
+        real(kind=8) :: FyHistory(xLocalCount(b), yLocalCount(b), 0:historyLast(b))
+        real(kind=8) :: flowNeqHistory(xLocalCount(b), yLocalCount(b), 0:8, 0:historyLast(b))
+        real(kind=8) :: thermalNeqHistory(xLocalCount(b), yLocalCount(b), 0:4, 0:historyLast(b))
 #ifdef steadyFlow
         real(kind=8) :: up(xLocalCount(b), yLocalCount(b))
         real(kind=8) :: vp(xLocalCount(b), yLocalCount(b))
@@ -2753,7 +3043,12 @@
 
         write(k) xLocalCount(b), yLocalCount(b), iStart(b), iEnd(b), jStart(b), jEnd(b), historyLast(b), &
             xOrigin(b), yOrigin(b), meshSpacing(b), blockOwnedBox(:, b)
-        write(k) f, g, u, v, T, rho, Fx, Fy, p
+        ! 按 v10 的“每时间层：宏观量、归一化力、流场矩、温度矩”顺序写入，不另建打包数组。
+        write(k) f, g, u, v, T, rho, Fx, Fy, &
+            (rhoHistory(:, :, historyIndex), uHistory(:, :, historyIndex), vHistory(:, :, historyIndex), &
+                THistory(:, :, historyIndex), FxHistory(:, :, historyIndex), FyHistory(:, :, historyIndex), &
+                flowNeqHistory(:, :, :, historyIndex), thermalNeqHistory(:, :, :, historyIndex), historyIndex=0, &
+                historyLast(b))
 #ifdef steadyFlow
         write(k) up, vp, Tp
 #endif
@@ -2774,7 +3069,10 @@
             fineLayerCellsBottom, fineLayerCellsTop, overlapCells, reloadFileNum, reloadFilePrefix, &
             restartMagic, nBlocks, itc, snapshotFileNum, pltFileNum, nextSample, nextReload, nextPlt, errorU, &
             errorT, f_coarse, g_coarse, u_coarse, v_coarse, T_coarse, rho_coarse, Fx_coarse, Fy_coarse, &
-            p_coarse, f_fine, g_fine, u_fine, v_fine, T_fine, rho_fine, Fx_fine, Fy_fine, p_fine
+            rhoHistory_coarse, uHistory_coarse, vHistory_coarse, THistory_coarse, FxHistory_coarse, &
+            FyHistory_coarse, flowNeqHistory_coarse, thermalNeqHistory_coarse, f_fine, g_fine, u_fine, v_fine, &
+            T_fine, rho_fine, Fx_fine, Fy_fine, rhoHistory_fine, uHistory_fine, vHistory_fine, THistory_fine, &
+            FxHistory_fine, FyHistory_fine, flowNeqHistory_fine, thermalNeqHistory_fine
 #ifdef steadyFlow
         use commondata, only: up_coarse, vp_coarse, Tp_coarse, up_fine, vp_fine, Tp_fine
 #endif
@@ -2817,14 +3115,16 @@
         do b = 1, nBlocks
             if (b == 1) then
                 call read_restart_block(b, k, f_coarse, g_coarse, u_coarse, v_coarse, T_coarse, rho_coarse, &
-            Fx_coarse, Fy_coarse, p_coarse &
+            Fx_coarse, Fy_coarse, rhoHistory_coarse, uHistory_coarse, vHistory_coarse, THistory_coarse, &
+                FxHistory_coarse, FyHistory_coarse, flowNeqHistory_coarse, thermalNeqHistory_coarse &
 #ifdef steadyFlow
                     , up_coarse, vp_coarse, Tp_coarse &
 #endif
                 )
             else
                 call read_restart_block(b, k, f_fine, g_fine, u_fine, v_fine, T_fine, rho_fine, Fx_fine, Fy_fine, &
-            p_fine &
+            rhoHistory_fine, uHistory_fine, vHistory_fine, THistory_fine, FxHistory_fine, FyHistory_fine, &
+                flowNeqHistory_fine, thermalNeqHistory_fine &
 #ifdef steadyFlow
                     , up_fine, vp_fine, Tp_fine &
 #endif
@@ -2835,15 +3135,18 @@
     end subroutine read_restart
 
     ! 显式接收本块普通数组；计算和写入都直接作用于传入的粗块或细环数据。
-    subroutine read_restart_block(b, k, f, g, u, v, T, rho, Fx, Fy, p &
+    subroutine read_restart_block(b, k, f, g, u, v, T, rho, Fx, Fy, rhoHistory, uHistory, vHistory, THistory, &
+        FxHistory, FyHistory, flowNeqHistory, thermalNeqHistory &
 #ifdef steadyFlow
             , up, vp, Tp &
 #endif
         )
 
         use commondata, only: xLocalCount, yLocalCount, historyLast, iStart, iEnd, jStart, jEnd, meshSpacing, &
-            xOrigin, yOrigin, blockOwnedBox, packetSize
+            xOrigin, yOrigin, blockOwnedBox
         implicit none
+
+        integer(kind=4) :: historyIndex
 
         integer(kind=4) :: k, b, ios, geom(7)
         real(kind=8) :: f(xLocalCount(b), yLocalCount(b), 0:8)
@@ -2854,7 +3157,14 @@
         real(kind=8) :: rho(xLocalCount(b), yLocalCount(b))
         real(kind=8) :: Fx(xLocalCount(b), yLocalCount(b))
         real(kind=8) :: Fy(xLocalCount(b), yLocalCount(b))
-        real(kind=8) :: p(xLocalCount(b), yLocalCount(b), packetSize, 0:historyLast(b))
+        real(kind=8) :: rhoHistory(xLocalCount(b), yLocalCount(b), 0:historyLast(b))
+        real(kind=8) :: uHistory(xLocalCount(b), yLocalCount(b), 0:historyLast(b))
+        real(kind=8) :: vHistory(xLocalCount(b), yLocalCount(b), 0:historyLast(b))
+        real(kind=8) :: THistory(xLocalCount(b), yLocalCount(b), 0:historyLast(b))
+        real(kind=8) :: FxHistory(xLocalCount(b), yLocalCount(b), 0:historyLast(b))
+        real(kind=8) :: FyHistory(xLocalCount(b), yLocalCount(b), 0:historyLast(b))
+        real(kind=8) :: flowNeqHistory(xLocalCount(b), yLocalCount(b), 0:8, 0:historyLast(b))
+        real(kind=8) :: thermalNeqHistory(xLocalCount(b), yLocalCount(b), 0:4, 0:historyLast(b))
 #ifdef steadyFlow
         real(kind=8) :: up(xLocalCount(b), yLocalCount(b))
         real(kind=8) :: vp(xLocalCount(b), yLocalCount(b))
@@ -2867,7 +3177,11 @@
         if (any(geom /= [xLocalCount(b), yLocalCount(b), iStart(b), iEnd(b), jStart(b), jEnd(b), historyLast(b)]) .or. &
             any(coord /= [xOrigin(b), yOrigin(b), meshSpacing(b), blockOwnedBox(:, &
             b)])) error stop 'Restart block layout mismatch'
-        read(k, iostat = ios) f, g, u, v, T, rho, Fx, Fy, p
+        read(k, iostat = ios) f, g, u, v, T, rho, Fx, Fy, &
+            (rhoHistory(:, :, historyIndex), uHistory(:, :, historyIndex), vHistory(:, :, historyIndex), &
+                THistory(:, :, historyIndex), FxHistory(:, :, historyIndex), FyHistory(:, :, historyIndex), &
+                flowNeqHistory(:, :, :, historyIndex), thermalNeqHistory(:, :, :, historyIndex), historyIndex=0, &
+                historyLast(b))
         if (ios /= 0) error stop 'Incomplete checkpoint state/history'
 #ifdef steadyFlow
         read(k) up, vp, Tp
@@ -2899,7 +3213,7 @@
     !===============================================================================================
     subroutine check_history()
 
-        use commondata, only: timeUnit, outputSnapshotInterval, historyFile, nextSample, scheduled_step, &
+        use commondata, only: timeUnit, outputSnapshotInterval, NuReHistoryFile, nextSample, scheduled_step, &
             ieee_is_finite
         implicit none
 
@@ -2909,7 +3223,7 @@
 
         lastTime = -1.0d0
         n = 0
-        open(newunit = k, file = historyFile, status = 'old', iostat = ios)
+        open(newunit = k, file = NuReHistoryFile, status = 'old', iostat = ios)
         if (ios /= 0) error stop 'Restart requires the matching Nu/Re history'
         do
             read(k, '(a)', iostat = ios) line
@@ -2938,7 +3252,7 @@
     !===============================================================================================
     subroutine average_window(t0, t1, result, coverage)
 
-        use commondata, only: historyFile, ieee_is_finite
+        use commondata, only: NuReHistoryFile, ieee_is_finite
         implicit none
 
         real(kind=8), intent(in) :: t0, t1
@@ -2951,7 +3265,7 @@
         result = 0.0d0
         coverage = 0.0d0
         hasPrev = .false.
-        open(newunit = k, file = historyFile, status = 'old')
+        open(newunit = k, file = NuReHistoryFile, status = 'old')
         do
             read(k, '(a)', iostat = ios) line
             if (ios < 0) exit

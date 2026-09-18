@@ -6,6 +6,59 @@ import hashlib,json,shutil
 import numpy as np
 import verify_multiblock as v
 
+NAMED_HISTORY_INTERPOLATION = r"""program main
+ use commondata, only: itc, refineRatio
+ use openacc
+ implicit none
+ real(8) :: THistory(8,8,0:2), flowNeqHistory(8,8,0:8,0:2)
+ real(8) :: TReceive(2), flowNeqReceive(0:8,2), wx(4,2), wy(4,2), wt(0:2)
+ real(8) :: polynomial, expected, error
+ integer :: i,j,k,a,si(2),sj(2)
+ logical :: coincident(2)
+ call acc_init(acc_device_host)
+ do k=0,2
+  do j=1,8
+   do i=1,8
+    polynomial=(dble(i)**2+dble(j)**3)*(dble(k-1)**2+2d0*(k-1)+4d0)
+    THistory(i,j,k)=polynomial
+    do a=0,8
+     flowNeqHistory(i,j,a,k)=dble(a+1)*polynomial
+    enddo
+   enddo
+  enddo
+ enddo
+ si=[8,2];sj=[8,3];coincident=[.true.,.false.]
+ wx(:,1)=[1d0,0d0,0d0,0d0];wy(:,1)=wx(:,1)
+ call lagrange_weights(1.5d0,wx(:,2))
+ call lagrange_weights(1.5d0,wy(:,2))
+ itc=0
+ call coarse_time_weights(0.5d0,wt)
+ if(any(wt/=[0d0,0.5d0,0.5d0])) error stop 'Wrong linear startup'
+ itc=refineRatio
+ call coarse_time_weights(0.5d0,wt)
+ if(any(wt/=[-0.125d0,0.75d0,0.375d0])) error stop 'Wrong midpoint weights'
+ !$acc enter data copyin(THistory,flowNeqHistory,si,sj,wx,wy,coincident) create(TReceive,flowNeqReceive)
+ call interpolate_scalar_history(8,8,2,THistory,2,si,sj,wx,wy,coincident,wt,TReceive)
+ call interpolate_moment_history(8,8,2,9,flowNeqHistory,2,si,sj,wx,wy,coincident,wt,flowNeqReceive)
+ !$acc wait(1)
+ !$acc update self(TReceive,flowNeqReceive)
+ error=0d0
+ do i=1,2
+  if(i==1) then
+   expected=(8d0**2+8d0**3)*5.25d0
+  else
+   expected=(3.5d0**2+4.5d0**3)*5.25d0
+  endif
+  error=max(error,abs(TReceive(i)-expected))
+  do a=0,8
+   error=max(error,abs(flowNeqReceive(a,i)-dble(a+1)*expected))
+  enddo
+ enddo
+ if(error>1d-10) error stop 'Scalar/moment cubic-space quadratic-time interpolation failed'
+ !$acc exit data delete(THistory,flowNeqHistory,si,sj,wx,wy,coincident,TReceive,flowNeqReceive)
+ write(*,*) 'NAMED_HISTORY_INTERPOLATION_ERROR',error
+end program main"""
+
 GEOMETRY = r"""program main
  use commondata
  use openacc
@@ -62,6 +115,10 @@ def main():
  for name,kw in [('rb',{}),('side_steady',{'side':True,'steady':True}),('side',{'side':True}),('steady',{'steady':True}),('ha',{'side':True,'ha':True})]:
   v.compile_source('syntax_'+name,v.variant(s,**kw),syntax=True)
  report['checks'].append({'five_macro_syntax_checks':True})
+ if 'subroutine interpolate_scalar_history' in s:
+  folder,exe=v.compile_source('named_history_interpolation',s,NAMED_HISTORY_INTERPOLATION)
+  output=v.run([exe],folder)
+  report['checks'].append({'named_scalar_and_moment_interpolation':output.strip()})
  for ratio in [2,4,8]:
   folder,exe=v.compile_source('geometry_'+str(ratio),v.variant(s,ratio=ratio),GEOMETRY,n=192,ny=160,walls=(32,33,32,33),ra=10000)
   output=v.run([exe],folder)

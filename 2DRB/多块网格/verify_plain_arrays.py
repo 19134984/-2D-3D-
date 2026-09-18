@@ -19,6 +19,8 @@ def checkpoint(folder):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('baseline', type=Path)
+    parser.add_argument('--report-name', default='plain_arrays_verification.json',
+                        help='Report filename within the solver directory')
     args = parser.parse_args()
     old = args.baseline.read_text(encoding='utf-8-sig')
     new = v.SOURCE.read_text(encoding='utf-8-sig')
@@ -101,7 +103,9 @@ def main():
                                  'checkpoints_counters_histories_outputs_bitwise_equal':True})
         print('Scheduled main-loop bidirectional v10 restart identical:', label, flush=True)
     report['status'] = 'passed'
-    (v.HERE/'plain_arrays_verification.json').write_text(json.dumps(report, indent=2), encoding='utf-8')
+    if Path(args.report_name).name != args.report_name:
+        raise ValueError('report-name must be a filename, not a path')
+    (v.HERE/args.report_name).write_text(json.dumps(report, indent=2), encoding='utf-8')
 
 
 if __name__ == '__main__':
