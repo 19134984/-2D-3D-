@@ -744,7 +744,10 @@ def main():
 
 if __name__=='__main__':
     try:
-        if re.search(r'maxBlocks\s*=\s*2\b', SOURCE.read_text(encoding='utf-8-sig')):
+        if 'subroutine advance_fine()' in SOURCE.read_text(encoding='utf-8-sig'):
+            from verify_compact import main as compact_main
+            compact_main()
+        elif re.search(r'logical\s+function\s+fine_active\b', SOURCE.read_text(encoding='utf-8-sig'), re.I):
             from verify_ring import main as ring_main
             ring_main()
         else:

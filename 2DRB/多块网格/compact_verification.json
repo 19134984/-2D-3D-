@@ -1,0 +1,71 @@
+{
+  "source_sha256": "046feb748ea4c5399b7b37570433f8a44d7ae0f471ee93b738d735b16635e2be",
+  "device": "gfortran OpenACC host",
+  "build_directory": "C:\\Users\\User\\AppData\\Local\\Temp\\mb2d-verify-9uu963yg",
+  "checks": [
+    {
+      "case": "r1_side0_steady0_ha0",
+      "fine_steps": 40,
+      "fields_and_history_bitwise_equal": true,
+      "diagnostics_tolerance": 2e-12,
+      "converted_v10_payload_bitwise_equal": true
+    },
+    {
+      "case": "r2_side0_steady0_ha0",
+      "fine_steps": 40,
+      "fields_and_history_bitwise_equal": true,
+      "diagnostics_tolerance": 2e-12,
+      "converted_v10_payload_bitwise_equal": true
+    },
+    {
+      "case": "r2_side1_steady1_ha0",
+      "fine_steps": 40,
+      "fields_and_history_bitwise_equal": true,
+      "diagnostics_tolerance": 2e-12,
+      "converted_v10_payload_bitwise_equal": true
+    },
+    {
+      "case": "r4_side1_steady0_ha0",
+      "fine_steps": 40,
+      "fields_and_history_bitwise_equal": true,
+      "diagnostics_tolerance": 2e-12,
+      "converted_v10_payload_bitwise_equal": true
+    },
+    {
+      "case": "r8_side0_steady1_ha0",
+      "fine_steps": 40,
+      "fields_and_history_bitwise_equal": true,
+      "diagnostics_tolerance": 2e-12,
+      "converted_v10_payload_bitwise_equal": true
+    },
+    {
+      "case": "r2_side1_steady0_ha1",
+      "fine_steps": 40,
+      "fields_and_history_bitwise_equal": true,
+      "diagnostics_tolerance": 2e-12,
+      "converted_v10_payload_bitwise_equal": true
+    },
+    {
+      "case": "r2_side1_steady0_ha0_seam",
+      "fine_steps": 40,
+      "fields_and_history_bitwise_equal": true,
+      "diagnostics_tolerance": 2e-12,
+      "converted_v10_payload_bitwise_equal": true
+    },
+    {
+      "actual_main_v11_restart": "unsteady",
+      "fields_history_and_diagnostics_exact": true
+    },
+    {
+      "actual_main_v11_restart": "steady",
+      "fields_history_and_diagnostics_exact": true
+    },
+    {
+      "independent_output_switches": true,
+      "snapshot_area_exact": true
+    }
+  ],
+  "baseline_sha256": "f25eebb860cc49710353459d7d01304c2578ac2eec939f5c988d2075c568bf1d",
+  "baseline_path": "C:\\Users\\User\\AppData\\Local\\Temp\\mb2d-compact-44s1yws_\\before.F90",
+  "status": "passed"
+}

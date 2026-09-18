@@ -1,48 +1,67 @@
-# 2DRBOpenaccMultiblock：连通细网格环
+# 2DRBOpenaccMultiblock：中心粗网格与四套紧凑细数组
 
-当前版本（2026-09-18）为 **中心粗矩形＋外围一个连通细环**，不是原来的五个独立矩形。修改基于用户当前版本，原 `均匀网格/2DRBOpenacc.F90` 未修改。
+当前版本（2026-09-18）直接使用 `_coarse、_left、_right、_bottom、_top` 五套普通数组，不再通过块编号选择数据。原均匀网格和 ISLBM 源码未修改。变量和计算次序见 [代码逻辑说明](代码逻辑说明.md)。
 
-先读 [代码逻辑说明](代码逻辑说明.md)，查看 [布局](图示/multiblock-layout.png)、[粗细节点](图示/multiblock-interface.png)、[连通迁移](图示/multiblock-samelevel.png) 和 [时间顺序](图示/multiblock-timestep.png)。
+## 数组与坐标
 
-## 当前实现
+每套场数组的空间下标从 1 开始。例如左细网格：
 
-- `nBlocks=2`：1 是粗网格，2 是一套连通细网格数组。只建立粗→细和细→粗两条连接，原上/下/左/右细区之间不再打包或交换。
-- 细数组为 `nx×ny`，中心空区由 `fine_active` 排除在碰撞、迁移、宏观更新之外，保持直接二维邻点寻址。
-- 保留块内 D2Q9 MRT、原 D2Q5 MRT 旧温度算法（已移除 `EnableUseG` 分支）、真实壁面以及流热推进顺序；只在细空区增加跳过逻辑。
-- 保留 Huang 含力矩重标定、四点空间 Lagrange、三层时间插值，以及 Chen 碰撞前缓冲交换。
-- 参数仍在 `module commondata`；默认四边节点编号 Left/Right/Bottom/Top 为 `128/129/128/129`，基准分界为 `127.5/895.5`，粗细比 2，单侧延伸 4 个细格距。
-- 面积和中线统计显式扣除细数组中的中心物理区域，零面积处不参与极值或积分。
+```fortran
+x = xOffsetLeft+(i-0.5d0)*dxFine
+y = yOffsetLeft+(j-0.5d0)*dxFine
+```
 
-源码仍为 `module commondata → program main → 外部子程序`；普通数组保存区域属性，粗、细场分别使用 `f_coarse/g_coarse/T_coarse` 与 `f_fine/g_fine/T_fine` 等独立 `allocatable` 数组，按实际块大小分配。已删除 `target`、`pointer`、`Storage` 偏移及 `select_block/select_link`；子程序显式传入数组，没有引入派生类型或 MPI。
+左右细区贯穿整个高度，上下细区只填左右之间的部分，角点不重复存储。默认参数下：
 
-接口历史也分别保存为 `rhoHistory、uHistory、vHistory、THistory、FxHistory、FyHistory、flowNeqHistory、thermalNeqHistory`，各有 `_coarse/_fine` 两套数组。已删除 `packetSize` 和合并的 `p` 数组；插值结果分别写入对应的 `Receive` 数组。力历史保存的是 `Fx/h、Fy/h`，非平衡矩历史保存的是按松弛率及格距归一化的矩，相关含义已在源码注释说明。
+| 数组后缀 | 本地尺寸 | xOffset | yOffset | dx |
+|---|---:|---:|---:|---:|
+| _coarse | 389×389 | 122.5 | 122.5 | 2 |
+| _left | 132×1024 | 0 | 0 | 1 |
+| _right | 133×1024 | 891 | 0 | 1 |
+| _bottom | 759×132 | 132 | 0 | 1 |
+| _top | 759×133 | 132 | 891 | 1 |
 
-## 存储取舍与输出
+细数组共 472,495 个节点，原完整细矩形为 1,048,576 个节点；节点存储减少约 54.9%。另有少量 f_post/g_post 迁移外圈。单个数组的一维仍可能为 1024，但没有完整的 1024×1024 细场数组，也不再分配中心空区。
 
-细数组保留中心空区的占位存储，因此不是内存最省的实现。默认两级合计分配 1,199,897 个节点位置，其中活动节点 623,816 个。以后若采用紧凑环形存储，需要另做索引和内核改造。
+当前紧凑布局要求细存储的中心空区宽高为正；参数检查会拒绝重叠层填满中心空区的配置。`refineRatio=1` 仍只使用 _coarse 一套全域均匀数组。
 
-检查点为 **v10**（20 个接口交换量，不含热流历史修正数组）。此次仅调整内存存储和命名，保持 v10 二进制字段顺序，兼容修改前同配置的 v10 检查点；v9 及更早版本不兼容。快照为 **v3**，在每区一维权重后新增二维实际面积，后面才是 `u,v,T,rho`。读取器必须适配；完整顺序见 [逻辑说明](代码逻辑说明.md)。
+## 计算与交换
 
-Tecplot 输出中的 `integration_area/L^2=0` 表示不属于该区域物理积分范围，绘图必须屏蔽这些节点，不能显示中心占位数据。输出文件继续使用 `Multiblock` 前缀。
+- 保留原 D2Q9 流场、D2Q5 温度场、墙面处理及粗细接口尺度变换。
+- 细区之间直接复制碰撞后的 f_post/g_post 外圈，含 D2Q9 对角方向；不做空间或时间插值。
+- 每个细步先完成四区流场碰撞，交换 f_post，再迁移、处理墙面和恢复速度；随后完成四区温度碰撞，交换 g_post，再推进温度。
+- 粗→细仍使用四点空间 Lagrange 和三时间层插值，初始粗步线性启动；细→粗使用同步时刻的共址数据。
+- rhoHistory、uHistory、vHistory、THistory、FxHistory、FyHistory、flowNeqHistory、thermalNeqHistory 各有五套。粗历史末下标为 0:2，四套细历史为 0:0。
+- 原 h 已统一命名为 dx。本程序最细格子单位下 dt=dx；力历史仍为 Fx/dx、Fy/dx，接收端再乘接收网格的 dx。
+- 积分使用原物理分区，细区扣除中心面积。中线模板跨细数组接缝时按全局坐标取值。
 
-原均匀网格的流函数/涡量、壁面极值拟合等结束后处理尚未全部移植；这次保留现有功能范围。五块历史记录保留，但不作为本版验证依据。
+源码仍为 module commondata → program main → 外部子程序。没有 target、pointer、派生类型、contains、nBlocks 或块编号选择器。通用计算子程序显式接收数组、尺寸和所需几何参数。
 
-## 本地检查
+## 续算和输出
 
-在本目录运行：
+新检查点为 **v11**：按 coarse、left、right、bottom、top 固定顺序保存数组及历史，保留物理配置检查、输出时钟和稳态检查场。
+
+旧连通细环 **v10** 文件可转换；输入不会修改，输出路径必须不存在：
+
+```text
+python convert_restart_v10.py old-v10.bin converted-v11.bin
+```
+
+转换后保留与检查点匹配的 NuRe/收敛历史，将 `reloadFile2DOpenaccMultiblock-latest.meta` 内容设为转换后的文件名，再设置 `loadInitField=1`。转换不改变计算时刻、物理参数、输出计数或历史时间层。v9 及更早格式不支持该工具。
+
+快照仍为 **v3**，区域数量为 1 或 5；每区含几何、一维权重、显式二维积分面积及 u/v/T/rho。读取器应按文件记录的区域数量循环。Tecplot 区域采用具名标题，零积分面积节点需在物理区域绘图时屏蔽。
+
+稳态误差检查、非稳态 Nu/Re 窗口统计、独立输出间隔和开关均保留。原均匀代码中此前尚未移植的流函数/涡量等后处理不属于此次新增功能。
+
+## 验证
 
 ```text
 python verify_multiblock.py
-python transient_compare.py
-python 图示/draw_layout.py
+python verify_compact.py path/to/pre-change-ring.F90
 ```
 
-第一条在当前两区域版本自动调用 `verify_ring.py`。构建及运行输出写入系统临时目录，验证参数只在临时源码中修改。历史数组拆分对照可运行 `python verify_plain_arrays.py <修改前源码路径> --report-name named_history_verification.json`，报告记录两份源码哈希。
+第一条自动运行紧凑数组版本的本地检查；第二条另外与指定的改动前连通细环源码逐节点对照。小网格参数只修改临时源码，构建和运行输出位于系统临时目录。
 
-- `named_history_verification.json`：本次拆分历史数组与修改前源码的对照，覆盖比值 1/2/4/8 的场数据、全部交换历史、Nu/Re、收敛误差、快照、Tecplot 和双向 v10 续算；文件内容逐字节一致。
-- `plain_arrays_verification.json`：历史记录；此次普通数组重构与指定旧源码对照，覆盖粗细比 1/2/4/8、场量与交换历史、Nu/Re、收敛误差、快照、Tecplot 和实际主程序的双向 v10 续算。
-- `ring_verification_results.json`：五种宏配置语法、标量/矩数组的空间和时间插值、2/4/8 粗细比几何、原接缝直接迁移、空区排除、线性导热、单块退化和精确重启。
-- `ring_transient_comparison.json`：历史版本结果，尚未在此次删除分支后重新生成；96²、Ra=1e4 侧壁差温 2000 细步瞬态，与原均匀代码比较，并比较不同粗细重叠宽度。
-- `图示/layout_parameters.json`：绘图时的源码哈希、几何与活动节点计数；此次未改变几何，未重新生成图示。
+`compact_verification.json` 记录源码哈希和实际检查内容：粗细比 1/2/4/8、流场/温度/接口历史逐位对照、稳态和非稳态实际主程序续算、v10 转换、中线模板跨接缝、快照面积以及独立输出开关。
 
-以上为本机 gfortran OpenACC host 验证，不代表 nvfortran/P100 GPU、高 Ra 长期稳定性、严格守恒或网格/时间收敛阶验证。
+这些是 **gfortran OpenACC host** 检查，不是当前源码的 nvfortran/P100 GPU 验证。此前的 P100 报告、ring/plain/named_history 报告、transient_compare.py 和图示目录中的两区域图对应历史版本，不能作为本次五套数组布局的验证结果。
