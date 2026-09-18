@@ -139,7 +139,8 @@ def actual_main(new,report):
         if steady:
             s=re.sub(r'(::\s*itc_max\s*=)\s*\d+',r'\g<1> '+str(end),s)
             s=re.sub(r'(::\s*eps[UT]\s*=)\s*[^\n]+',r'\1 0.0d0',s)
-            s=s.replace('mod(itc, 2000)','mod(itc, 20)')
+            # Keep the short convergence-check cadence independent of source formatting.
+            s=re.sub(r'\bmod\s*\(\s*itc\s*,\s*2000\s*\)', 'mod(itc, 20)', s, flags=re.I)
         else:
             s=re.sub(r'(::\s*unsteadyRunDuration\s*=)\s*[^\n!]+',r'\1 '+str(end)+'d0 ',s)
         return s

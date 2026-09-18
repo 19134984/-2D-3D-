@@ -1,0 +1,188 @@
+{
+  "source_sha256": "390f8297ee60eec7e8b515e44d33570e77f0b583e512537d4a2562b97765d1cc",
+  "baseline_sha256": "68debf94f75f3a70af6bf4f7205e18afc14618d48dd227ccf1d1a8e73d8afd48",
+  "compiler": "GNU Fortran (Rev13, Built by MSYS2 project) 15.2.0",
+  "work_dir": "C:\\Users\\User\\AppData\\Local\\Temp\\ptrt_verify_05pd9ezp",
+  "collision_tests": [
+    {
+      "ra": 1000,
+      "force": "buoyancy",
+      "backend": "serial",
+      "samples": 256,
+      "max_tensor_error": 1.1102230246251565e-16,
+      "Snu": 1.7442229253086636,
+      "Sq": 0.32709231372853104
+    },
+    {
+      "ra": 1000,
+      "force": "buoyancy",
+      "backend": "openacc_host",
+      "samples": 256,
+      "max_tensor_error": 1.1102230246251565e-16,
+      "Snu": 1.7442229253086636,
+      "Sq": 0.32709231372853104
+    },
+    {
+      "ra": 1000,
+      "force": "magnetic",
+      "backend": "serial",
+      "samples": 256,
+      "max_tensor_error": 1.1102230246251565e-16,
+      "Snu": 1.7442229253086636,
+      "Sq": 0.32709231372853104
+    },
+    {
+      "ra": 1000,
+      "force": "magnetic",
+      "backend": "openacc_host",
+      "samples": 256,
+      "max_tensor_error": 1.1102230246251565e-16,
+      "Snu": 1.7442229253086636,
+      "Sq": 0.32709231372853104
+    },
+    {
+      "ra": 1000000,
+      "force": "buoyancy",
+      "backend": "serial",
+      "samples": 256,
+      "max_tensor_error": 1.1102230246251565e-16,
+      "Snu": 1.9907683283645718,
+      "Sq": 0.01228998599471972
+    },
+    {
+      "ra": 1000000,
+      "force": "buoyancy",
+      "backend": "openacc_host",
+      "samples": 256,
+      "max_tensor_error": 1.1102230246251565e-16,
+      "Snu": 1.9907683283645718,
+      "Sq": 0.01228998599471972
+    },
+    {
+      "ra": 1000000,
+      "force": "magnetic",
+      "backend": "serial",
+      "samples": 256,
+      "max_tensor_error": 1.1102230246251565e-16,
+      "Snu": 1.9907683283645718,
+      "Sq": 0.01228998599471972
+    },
+    {
+      "ra": 1000000,
+      "force": "magnetic",
+      "backend": "openacc_host",
+      "samples": 256,
+      "max_tensor_error": 1.1102230246251565e-16,
+      "Snu": 1.9907683283645718,
+      "Sq": 0.01228998599471972
+    },
+    {
+      "ra": 10000000000,
+      "force": "buoyancy",
+      "backend": "serial",
+      "samples": 256,
+      "max_tensor_error": 1.1102230246251565e-16,
+      "Snu": 1.9999072594894247,
+      "Sq": 0.0001236521028404826
+    },
+    {
+      "ra": 10000000000,
+      "force": "buoyancy",
+      "backend": "openacc_host",
+      "samples": 256,
+      "max_tensor_error": 1.1102230246251565e-16,
+      "Snu": 1.9999072594894247,
+      "Sq": 0.0001236521028404826
+    },
+    {
+      "ra": 10000000000,
+      "force": "magnetic",
+      "backend": "serial",
+      "samples": 256,
+      "max_tensor_error": 1.1102230246251565e-16,
+      "Snu": 1.9999072594894247,
+      "Sq": 0.0001236521028404826
+    },
+    {
+      "ra": 10000000000,
+      "force": "magnetic",
+      "backend": "openacc_host",
+      "samples": 256,
+      "max_tensor_error": 1.1102230246251565e-16,
+      "Snu": 1.9999072594894247,
+      "Sq": 0.0001236521028404826
+    }
+  ],
+  "smoke_tests": [
+    {
+      "case": "baseline_luo",
+      "backend": "serial",
+      "grid": [
+        32,
+        32
+      ],
+      "Ra": 10000,
+      "steps": 2000,
+      "mass_relative_drift": -1.1168843627729075e-13,
+      "rho_min": 0.9992464831677265,
+      "rho_max": 1.0004080841133733,
+      "speed_max": 7.207404844464264e-05,
+      "T_min": -0.48444048547470725,
+      "T_max": 0.4844404854747076,
+      "t_ff": 3.6084391824351605
+    },
+    {
+      "case": "baseline_luo",
+      "backend": "openacc_host",
+      "grid": [
+        32,
+        32
+      ],
+      "Ra": 10000,
+      "steps": 2000,
+      "mass_relative_drift": -1.1168843627729075e-13,
+      "rho_min": 0.9992464831677265,
+      "rho_max": 1.0004080841133733,
+      "speed_max": 7.207404844464264e-05,
+      "T_min": -0.48444048547470725,
+      "T_max": 0.4844404854747076,
+      "t_ff": 3.6084391824351605
+    },
+    {
+      "case": "ptrt",
+      "backend": "serial",
+      "grid": [
+        32,
+        32
+      ],
+      "Ra": 10000,
+      "steps": 2000,
+      "mass_relative_drift": -3.140820936664568e-13,
+      "rho_min": 0.9992458933668604,
+      "rho_max": 1.000408536343571,
+      "speed_max": 7.200899905834214e-05,
+      "T_min": -0.48444036375742877,
+      "T_max": 0.4844403637574288,
+      "t_ff": 3.6084391824351605
+    },
+    {
+      "case": "ptrt",
+      "backend": "openacc_host",
+      "grid": [
+        32,
+        32
+      ],
+      "Ra": 10000,
+      "steps": 2000,
+      "mass_relative_drift": -3.140820936664568e-13,
+      "rho_min": 0.9992458933668604,
+      "rho_max": 1.000408536343571,
+      "speed_max": 7.200899905834214e-05,
+      "T_min": -0.48444036375742877,
+      "T_max": 0.4844403637574288,
+      "t_ff": 3.6084391824351605
+    }
+  ],
+  "baseline_max_field_difference": 5.910804939945891e-07,
+  "status": "PASS; local serial and OpenACC host only; no GPU validation"
+}

@@ -1,0 +1,1907 @@
+                                                           Puriﬁed Two-Relaxation-Time Lattice Boltzmann Method:
+                                                           Removing Ghost Modes from TRT for Enhanced Stability
+                                                   Yuan Yua,b,c,∗, Yaolong Yua , Yuting Zhoua , Siwei Chena , Haizhuan Yuana,∗, Shi Shua,∗
+                                                   a
+                                                       School of Mathematics and Computational Science, Xiangtan University, Xiangtan, 411105, China
+                                                                b
+                                                                  National Center for Applied Mathematics in Hunan, Xiangtan, 411105, China
+                                                        c
+                                                          Hunan Key Laboratory for Computation and Simulation in Science and Engineering, Xiangtan
+                                                                                      University, Xiangtan, 411105, China
+arXiv:2602.06686v1 [physics.flu-dyn] 6 Feb 2026
+
+
+
+
+                                                  Abstract
+                                                  The two-relaxation-time (TRT) lattice Boltzmann model is widely adopted for its algorith-
+                                                  mic simplicity and tunable boundary accuracy. However, its collision operator relaxes the
+                                                  full symmetric non-equilibrium component, which implicitly retains non-hydrodynamic
+                                                  ghost modes that degrade numerical stability, particularly at high Reynolds numbers. In
+                                                  this work, we establish a rigorous theoretical connection between ghost-mode ﬁltering
+                                                  and regularization within the TRT framework. Speciﬁcally, by invoking the orthogonal
+                                                  decomposition of the discrete velocity space into hydrodynamic and non-hydrodynamic
+                                                  subspaces, we prove that the recently proposed TRT-regularized lattice Boltzmann (TRT-
+                                                  RLB) model is mathematically equivalent to the standard TRT model with its ghost
+                                                  modes explicitly removed. This equivalence holds exactly for the D2Q9 and D3Q19
+                                                  lattices, where the symmetric and antisymmetric subspaces are completely spanned by
+                                                  the physically relevant Hermite modes and a ﬁnite number of identiﬁable ghost modes.
+                                                  Based on this ﬁnding, we propose the Puriﬁed TRT (P-TRT) model, which achieves
+                                                  regularization-level stability through simple algebraic ghost-mode subtraction rather than
+                                                  expensive tensor projections. For the D2Q9 lattice, the total non-equilibrium collision cost
+                                                  is reduced from 180 to 52 ﬂoating-point operations per node, representing a 71% reduction.
+                                                  A linear stability analysis in the moment space further reveals that the P-TRT collision
+                                                  operator annihilates the ghost eigenvalue, proving that its spectral radius is bounded
+                                                  above by that of the standard TRT and that its numerical stability is governed exclu-
+                                                  sively by the hydrodynamic modes. Benchmark simulations, including the double shear
+                                                  layer at Reynolds numbers up to 107 , the decaying Taylor–Green vortex, the force-driven
+                                                  Poiseuille ﬂow, and creeping ﬂow past a square cylinder, conﬁrm that the P-TRT model
+                                                  preserves the stability, second-order accuracy, and zero-slip boundary properties of the
+                                                  original TRT-RLB formulation while retaining the simplicity characteristic of the TRT
+                                                  family.
+                                                  Keywords: Lattice Boltzmann method, Two-relaxation-time, Ghost modes,
+                                                  Regularization, Non-hydrodynamic modes, Orthogonal decomposition
+
+
+                                                       ∗
+                                                     Corresponding author
+                                                     Email addresses: yuyuan@xtu.edu.cn (Yuan Yu), yhz@xtu.edu.cn (Haizhuan Yuan),
+                                                  shushi@xtu.edu.cn (Shi Shu)
+1. Introduction
+    The lattice Boltzmann method (LBM) has become a popular numerical tool in com-
+putational ﬂuid dynamics (CFD) over the last two decades. Distinct from traditional
+approaches that discretize macroscopic continuum equations, the LBM simulates ﬂuid
+dynamics from a mesoscopic kinetic perspective. This fundamental diﬀerence confers
+unique advantages, notably inherent parallelism and the capability to eﬀortlessly handle
+complex and moving boundary conditions. Consequently, the versatility of LBM has led
+to its widespread adoption across a broad spectrum of complex ﬂow phenomena, including
+turbulent ﬂows [1, 2, 3, 4], multiphase ﬂows [5, 6], transport in porous media [7, 8], com-
+bustion processes [9, 10, 11, 12], evaporation and phase-change phenomena [13, 14, 15],
+and biological systems such as blood ﬂow [16, 17, 18]. For a deeper foundational un-
+derstanding of the method and its diverse applications, several comprehensive reviews
+[9, 19, 20] and monographs [21, 22] are recommended.
+    In the majority of practical implementations, the standard lattice Bhatnagar–Gross–
+Krook (LBGK) model [23, 24] remains the most widely adopted choice due to its algo-
+rithmic simplicity. Despite its popularity, the single-relaxation-time formulation imposes
+inherent limitations, often leading to numerical instability at high Reynolds numbers
+and generating viscosity-dependent errors at solid boundaries. To overcome these limi-
+tations, two principal lines of development have emerged. The ﬁrst line focuses on en-
+riching the collision operator by introducing multiple relaxation rates. Representative
+methods include the multiple-relaxation-time (MRT) model [25, 26, 27], which relaxes
+diﬀerent moments at independent rates, and the cumulant model [28, 29, 30, 31], which
+relaxes cumulants instead of raw moments to further enhance Galilean invariance. Among
+these, the two-relaxation-time (TRT) model [32, 33, 34] stands out for its elegant sim-
+plicity: it distinguishes only between symmetric and antisymmetric relaxation processes,
+yet this minimal extension is suﬃcient to eliminate the viscosity-dependent numerical
+slip at bounce-back boundaries through an appropriately chosen free parameter. This
+combination of simplicity and boundary accuracy has made the TRT model one of the
+most widely used LBM formulations in practice. The second line of development is the
+regularized lattice Boltzmann (RLB) method [35, 36, 37, 38, 39, 40], which ﬁlters out
+high-order non-equilibrium modes before the collision step. By reconstructing the non-
+equilibrium distribution function solely from its hydrodynamically relevant components,
+the RLB approach eﬀectively suppresses spurious modes and delivers superior stability in
+high-Reynolds-number simulations [41]. However, standard regularized models still suﬀer
+from numerical slip when using the simple bounce-back boundary scheme.
+    A key concept that connects these two lines of development is that of non-hydrodynamic
+ghost modes. In the discrete velocity space of any lattice model, the total number of de-
+grees of freedom exceeds the number of conserved hydrodynamic quantities. The surplus
+degrees of freedom correspond to non-physical modes, termed ghost modes, which do not
+participate in the macroscopic conservation laws but can be excited during the simula-
+tion [25]. In the landmark analysis of the MRT collision operator, Lallemand and Luo
+[25] demonstrated that the damping rates of these ghost modes critically aﬀect the nu-
+merical stability of the scheme. When ghost modes are under-damped, they can grow
+uncontrollably and trigger numerical divergence, especially in under-resolved or high-
+Reynolds-number simulations. From this perspective, the regularization procedure can
+be interpreted as a spectral ﬁlter that projects the non-equilibrium distribution onto the
+hydrodynamic subspace, thereby annihilating all ghost modes. Conversely, the standard
+TRT collision operator relaxes the full symmetric and antisymmetric non-equilibrium
+
+                                            2
+components, which implicitly retain the ghost modes. This observation suggests a natu-
+ral question: can one achieve regularization-level stability within the TRT framework by
+explicitly removing only the ghost modes, without resorting to the full Hermite tensor
+machinery?
+    To combine the stability of regularization with the boundary accuracy of TRT, Yu
+et al. [42] recently proposed the TRT-RLB model. This model performs a third-order
+Hermite expansion of the non-equilibrium distribution function, introducing a free relax-
+ation parameter τs,2 for the third-order moments. Numerical experiments demonstrated
+that the TRT-RLB model achieves both high stability and zero numerical slip. However,
+the original formulation raises two important issues. On the practical side, the explicit
+computation of third-order Hermite projections involves complex tensor contractions, sig-
+niﬁcantly increasing the ﬂoating-point operations per time step. On the theoretical side,
+the relationship between the Hermite-based regularization and the underlying structure of
+the TRT collision operator remains unclear: what exactly does the regularization remove,
+and how does it relate to the non-hydrodynamic modes of the lattice?
+    In this work, we address both questions simultaneously. By invoking the orthogonal
+decomposition of the discrete velocity space into hydrodynamic and non-hydrodynamic
+subspaces, we prove that the Hermite-based regularization employed in the TRT-RLB
+model is mathematically equivalent to the explicit removal of ghost modes from the stan-
+dard TRT collision operator. For the D2Q9 and D3Q19 lattices, this equivalence is exact:
+the symmetric subspace is completely spanned by the mass mode, the stress modes,
+and a ﬁnite number of identiﬁable ghost modes, while the antisymmetric subspace is ex-
+actly spanned by the momentum modes and the energy-ﬂux modes. As a consequence,
+the expensive tensor projection can be replaced by a simple algebraic subtraction of the
+ghost-mode contribution, yielding the same post-collision state at a fraction of the compu-
+tational cost. Based on this ﬁnding, we propose the Puriﬁed TRT (P-TRT) model, which
+upgrades the standard TRT by explicitly ﬁltering out its ghost modes. For TRT prac-
+titioners, P-TRT oﬀers a minimal and physically transparent modiﬁcation that elevates
+the stability to the regularization level. For TRT-RLB users, it provides an equivalent
+but substantially more eﬃcient algorithm. A linear stability analysis in the moment
+space further demonstrates that the ghost-mode annihilation renders the P-TRT scheme
+provably no less stable than the standard TRT, with the ghost eigenvalue ﬁxed at zero.
+Benchmark simulations conﬁrm that the P-TRT model preserves the stability, accuracy,
+and zero-slip boundary properties of the original TRT-RLB formulation while achieving
+a 71% reduction in non-equilibrium collision operations for the D2Q9 lattice.
+    The remainder of this paper is organized as follows. Section 2 presents the mathe-
+matical framework: a brief recap of the original TRT-RLB model, the orthogonal decom-
+position theory establishing the equivalence between Hermite projection and ghost-mode
+ﬁltering, the resulting P-TRT formulation with its optimal implementation strategy, and
+a linear stability analysis comparing the spectral properties of the P-TRT and standard
+TRT collision operators. Section 3 provides numerical validation through four benchmark
+problems: the double shear layer, the decaying Taylor–Green vortex, the force-driven
+Poiseuille ﬂow, and the creeping ﬂow past a square cylinder. Finally, conclusions are
+drawn in Section 4.
+
+
+
+
+                                            3
+2. The Puriﬁed TRT (P-TRT) Lattice Boltzmann Model
+2.1. Lattice Boltzmann Framework and Notation
+    The macroscopic ﬂuid dynamics are governed by the weakly compressible Navier–
+Stokes equations (NSEs). Utilizing Einstein’s summation notation, they are expressed as:
+
+
+                                  ∂t ρ + ∂α (ρuα ) = 0,                                     (1a)
+                ∂t (ρuα ) + ∂β (ρuα uβ + ρc2s δαβ ) = ∂β [µ(∂α uβ + ∂β uα )] + Fα ,         (1b)
+where ρ is the ﬂuid density, µ the dynamic viscosity, δαβ the Kronecker delta, and cs
+the lattice speed of sound. The terms uα and Fα represent the velocity and body force
+components in the α-direction, respectively.
+    This work adopts the standard D2Q9 lattice model, where the discrete velocities ei
+and weight coeﬃcients wi are given by:
+                                                                   
+                                                               
+                                                                   4/9, i = 0,
+      eix         0 1 0 −1 0 1 −1 −1 1
+            =c                                            , wi = 1/9, i = 1 . . . 4,         (2)
+      eiy         0 0 1 0 −1 1 1 −1 −1                             
+                                                                   
+                                                                      1/36, i = 5 . . . 8,
+                                                            √
+with c = ∆x/∆t being the lattice speed and cs = c/ 3 the speed of sound. For each
+velocity index i, the index ī denotes the opposite direction satisfying eī = −ei and wī = wi .
+    The equilibrium distribution function fieq is expanded up to the third-order Hermite
+polynomials to minimize discretization errors:
+                              (       (1)       (2)            (3)
+                                                                             )
+                    eq              Hi,α      Hi,αβ          Hi,αβγ
+                  f i = w i ρ 1 + 2 uα +            uα u β +        u α uβ uγ ,              (3)
+                                     cs        2c4s           6c6s
+
+where the Hermite polynomial tensors are deﬁned as:
+                          (0)
+                        Hi = 1,                                                             (4a)
+                          (1)
+                        Hi,α = eiα ,                                                        (4b)
+                         (2)
+                       Hi,αβ = eiα eiβ − c2s δαβ ,                                          (4c)
+                       (3)
+                      Hi,αβγ = eiα eiβ eiγ − c2s (eiα δβγ + eiβ δγα + eiγ δαβ ).            (4d)
+                                                         (n)         (n)
+These polynomials satisfy the parity relation Hī = (−1)n Hi , i.e., even-order polynomi-
+als are symmetric and odd-order polynomials are antisymmetric under velocity inversion.
+This property will play a central role in the subsequent analysis.
+    The non-equilibrium distribution function is deﬁned as fineq = fi − fieq . Its projection
+onto the Hermite basis yields the non-equilibrium moments:
+                               X (n) neq
+                       Aneq
+                         k  =      Hi,k fi , k ∈ {α, αβ, αβγ}.                            (5)
+                                    i
+
+   Regarding the treatment of external body forces, two schemes are considered in this
+work:
+Scheme I: The Guo forcing scheme.. The widely used scheme proposed by Guo et al. [43]
+ensures second-order accuracy and eliminates discrete lattice eﬀects:
+                                                                        
+                           1     (ei · u)(ei · F )        1     (ei − u) · F
+           Si = w i 1 −
+            I
+                                                   + 1−                        .  (6)
+                         2τs,1          c4s             2τs,2        c2s
+
+                                                     4
+Scheme II: The simpliﬁed projection scheme.. In the original TRT-RLB implementation
+[42], a simpliﬁed strategy is employed, consisting of a ﬁrst-order force projection supple-
+mented by a compensatory term Gi that corrects cubic velocity errors:
+                                              
+                                          1         ei · F
+                             Si = 1 −
+                               II
+                                                 w i 2 + Gi ,                           (7)
+                                         2τs,1        cs
+where                                                      
+                                       (2)
+                                    Hi,αβ            1
+                           Gi = −wi              1−             ∂γ Φαβγ ,               (8)
+                                     6c6s           2τs,1
+with Φαβγ deﬁned as Φxxx = ρu3x , Φyyy = ρu3y , and zero otherwise.
+    In both schemes, the macroscopic quantities are computed with a half-step force cor-
+rection to achieve second-order temporal accuracy [44]:
+                              X                  X          ∆t
+                          ρ=      fi ,  ρu =        ei fi +    F.                    (9)
+                               i                  i
+                                                            2
+2.2. The TRT-RLB Model: Regularization via Hermite Projection
+    The TRT-RLB model, recently proposed by Yu et al. [42], integrates the enhanced
+stability of the regularized collision operator with the boundary accuracy inherent to the
+two-relaxation-time scheme. Its evolution equation reads:
+                                                                  
+                                                1      (2)       1      (3)
+    fi (x + ei ∆t, t + ∆t) = fi (x, t) + 1 −
+                               eq
+                                                      Ri + 1 −         Ri + Si ∆t,    (10)
+                                               τs,1             τs,2
+where τs,1 governs the relaxation of both the ﬁrst- and second-order non-equilibrium
+moments, which are directly linked to the physical transport coeﬃcients, while τs,2 is a
+free parameter that exclusively controls the third-order non-equilibrium moments. The
+source term Si is given by either Scheme I (6) or Scheme II (7). The physical viscosity
+is related to the symmetric relaxation time by µ = ρc2s (τs,1 − ∆t/2), while τs,2 is a free
+parameter that controls the relaxation of the odd non-equilibrium modes.
+                                                                       (2)     (3)
+    The key feature of this model lies in the regularization terms Ri and Ri . Rather
+than using the raw non-equilibrium distribution in the collision step, the TRT-RLB model
+reconstructs the non-equilibrium part exclusively from its Hermite projections:
+                                (2)                          (3)
+                      (2)     Hi,αβ neq             (3)     Hi,αβγ neq
+                     Ri = w i       A ,            Ri = w i       Aαβγ .               (11)
+                               2c4s αβ                       6c6s
+This procedure is, in essence, a projection of the non-equilibrium distribution onto the
+subspace spanned by the hydrodynamically relevant Hermite polynomials. Any compo-
+nent of fineq that lies outside this subspace—that is, any non-hydrodynamic mode—is
+discarded during the reconstruction. This ﬁltering is what endows the TRT-RLB model
+with its superior stability compared to the standard TRT.
+    However, the explicit evaluation of Eq. (11) is computationally expensive. The second-
+order term requires computing D(D + 1)/2 independent components of the stress tensor
+Aneq
+  αβ via a summation over all discrete velocities, followed by a tensor contraction to re-
+construct the distribution. The third-order term involves an analogous procedure for the
+energy-ﬂux tensor Aneq αβγ . This “projection–reconstruction” cycle constitutes the dominant
+computational overhead in the original TRT-RLB algorithm. A natural question thus
+arises: is it possible to achieve the same ﬁltering eﬀect through a simpler algebraic oper-
+ation, without explicitly computing the Hermite projections? The answer, as we show in
+the next subsection, is aﬃrmative.
+
+                                             5
+2.3. Orthogonal Decomposition and Ghost-Mode Identiﬁcation
+    The central theoretical contribution of this work is to show that the Hermite-based
+regularization described above can be recast as a ghost-mode ﬁltering operation within
+the framework of orthogonal subspace decomposition. In this subsection, we establish the
+necessary mathematical structure.
+
+2.3.1. Parity Decomposition of the Velocity Space
+    Any distribution function fi deﬁned on a lattice with inversion symmetry (eī = −ei ,
+wī = wi ) can be uniquely decomposed into symmetric and antisymmetric parts [21]:
+                               1                          1
+                          fi+ = (fi + fī ),         fi− = (fi − fī ),             (12)
+                               2                          2
+satisfying fi+ = fī+ and fi− = −fī− . The set of all symmetric distributions spans the
+symmetric subspace S, and the set of all antisymmetric distributions spans the antisym-
+metric subspace A. These two subspaces are mutually orthogonal and together span the
+full Q-dimensional velocity space: RQ = S ⊕ A.
+    For a lattice with Q velocities, of which Q0 are self-inverting (ei = 0) and Qp =
+(Q − Q0 )/2 form inversion pairs, the subspace dimensions are:
+
+                          dim(S) = Q0 + Qp ,            dim(A) = Qp .               (13)
+
+For the D2Q9 lattice (Q = 9, Q0 = 1, Qp = 4), this gives dim(S) = 5 and dim(A) = 4.
+                                                      (n)         (n)
+    The parity relation of the Hermite polynomials, Hī = (−1)n Hi , implies that even-
+order Hermite polynomials (n = 0, 2) reside in S, while odd-order polynomials (n = 1, 3)
+reside in A. The non-equilibrium distribution inherits this decomposition:
+                           1                                  1
+                  fineq,+ = (fineq + fīneq ),       fineq,− = (fineq − fīneq ).   (14)
+                           2                                  2
+2.3.2. Ghost Modes in the Symmetric Subspace
+    We now examine the internal structure of the symmetric subspace S. The even-order
+Hermite polynomials residing in S consist of the zeroth-order mode (H(0) = 1, spanning
+                                                                        (2)
+a one-dimensional subspace S (0) ) and the second-order stress modes (Hαβ , spanning a
+subspace S (2) of dimension M2 = D(D + 1)/2). However, for most standard lattices,
+these hydrodynamic modes do not exhaust the full symmetric subspace. The remaining
+dimensions correspond to higher-order even modes that have no macroscopic physical
+counterpart—these are the ghost modes.
+    Formally, the symmetric subspace admits the orthogonal decomposition:
+
+                                   S = S (0) ⊕ S (2) ⊕ S (G) ,                      (15)
+
+where S (G) denotes the ghost-mode subspace, with dimension
+
+                                                        D(D + 1)
+                              NG = dim(S) − 1 −                  .                  (16)
+                                                           2
+For the D2Q9 lattice, NG = 5 − 1 − 3 = 1, meaning that a single ghost mode exists. Its
+explicit form is:
+                               (G)
+                             ϕi = (e2ix − c2s )(e2iy − c2s ),                    (17)
+
+
+                                                 6
+              Table 1: Structure of the symmetric subspace for common lattice models.
+
+             Lattice dim(S)            dim(S (0) ) dim(S (2) )             NG        Ghost mode order
+             D2Q9         5                1                    3          1               4th
+             D3Q19        10               1                    6          3               4th
+             D3Q27        14               1                    6          7           4th and 6th
+
+                           (ϕ)   P      (G)
+with the weighted norm NG = i wi [ϕi ]2 = 4c8s . For the D3Q19 lattice, NG = 10 −
+1 − 6 = 3, and three orthogonal ghost modes can be identiﬁed as (e2iα − c2s )(e2iβ − c2s ) for
+each pair α ̸= β. For the D3Q27 lattice, NG = 7, which includes both fourth-order and
+sixth-order ghost modes. A complete enumeration of the ghost modes for each lattice is
+provided in Appendix A.
+    The projection operator onto the ghost subspace is deﬁned as:
+                                                      X
+                                                      NG
+                                                         wi ϕi,k X
+                                                             (G)
+                                                                               (G)
+                               (P̂   (G) neq
+                                       f       )i =          (ϕ)
+                                                                           ϕj,k fjneq ,                 (18)
+                                                      k=1   NG,k       j
+
+                                                                                               (G)
+where the summation is over all NG orthogonal ghost basis functions ϕi,k .
+
+2.3.3. The Null-Space Property of the Antisymmetric Subspace
+    The antisymmetric subspace A is spanned by odd-order Hermite polynomials: the
+                                (1)
+ﬁrst-order momentum modes (Hα , spanning A(1) of dimension D) and the third-order
+                     (3)
+energy-ﬂux modes (Hαβγ , spanning A(3) of dimension N3 ). Unlike the symmetric case,
+for the D2Q9 and D3Q19 lattices, these modes completely exhaust the antisymmetric
+subspace:
+                    A = A(1) ⊕ A(3) ,    with dim(A) = D + N3 .                 (19)
+That is, no antisymmetric ghost modes exist. This is a consequence of the lattice aliasing
+property: for standard lattices satisfying |eiα | ∈ {0, c}, the identity e3iα = c2 eiα implies that
+                                        (3)
+purely cubic Hermite polynomials (Hααα ) vanish identically, and no independent ﬁfth- or
+higher-order antisymmetric modes can be formed from the available velocity components.
+    Table 2 summarizes the antisymmetric subspace structure. Notably, for the D2Q9
+lattice, D + N3 = 2 + 2 = 4 = dim(A), and for the D3Q19 lattice, D + N3 = 3 + 6 = 9 =
+dim(A). The completeness condition (19) holds exactly. For the D3Q27 lattice, however,
+D + N3 = 3 + 7 = 10 < 13 = dim(A), leaving a deﬁcit of 3 dimensions that correspond to
+ﬁfth-order antisymmetric modes (e.g., eix (eiy 2
+                                                  − c2s )(e2iz − c2s ) and its cyclic permutations).
+
+Table 2: Structure of the antisymmetric subspace for common lattice models. The completeness condition
+dim(A) = D + N3 determines whether the third-order equivalence is exact.
+
+           Lattice dim(A)             D    N3     D + N3            Completeness
+           D2Q9          4            2    2            4           Exact
+           D3Q19          9           3    6           9            Exact
+           D3Q27         13           3    7           10           Deﬁcit of 3 (5th-order modes)
+
+Remark 2.1. The absence of antisymmetric ghost modes for D2Q9 and D3Q19 is a struc-
+tural property of these lattices, not an approximation. It guarantees that any antisymmet-
+ric distribution can be exactly represented as a linear combination of ﬁrst- and third-order
+
+                                                            7
+Hermite modes. This property is the key to the exact equivalence established in the next
+subsection.
+
+2.4. Equivalence Theorem: From Projection to Puriﬁcation
+    With the orthogonal decomposition established, we now prove the central result: the
+Hermite projection employed in the TRT-RLB model is mathematically equivalent to the
+removal of ghost modes from the raw non-equilibrium distribution.
+
+2.4.1. Second-Order Term: Stress Projection vs. Ghost Subtraction
+Theorem 2.2 (Second-order equivalence). Let the symmetric subspace admit the or-
+P neq decomposition S = S ⊕ S ⊕ S , and let fi satisfy mass conservation
+                              (0)   (2)    (G)           neq
+thogonal
+   i fi  = 0. Then the second-order Hermite projection (Method A) is identical to the
+symmetric non-equilibrium part minus the ghost-mode contribution (Method B):
+                                    (2)
+                                 Hi,αβ neq
+                              wi      A                 = fineq,+ − (P̂ (G) f neq )i .            (20)
+                                  2c4s αβ                 |         {z             }
+                              |    {z    }                  Method B: ghost subtraction
+                       Method A: Hermite projection
+
+Proof. Denote the projection operators onto S (0) , S (2) , and S (G) by P̂ (0) , P̂ (2) , and P̂ (G) ,
+respectively. The orthogonal completeness of the symmetric subspace gives:
+                        fineq,+ = (P̂ (0) f neq )i + (P̂ (2) f neq )i + (P̂ (G) f neq )i ,        (21)
+where we have used the fact that fineq,+ is the projection of fineq onto S, since the anti-
+symmetric component fineq,−P ∈ neq A is orthogonal to S.
+   By mass conservation, i fi = 0, the zeroth-order projection vanishes:
+                                         wi · 1 X neq
+                    (P̂ (0) f neq )i = P               fj = wi · 0 = 0.                (22)
+                                          j wj · 1
+                                                   2
+                                                     j
+
+Substituting into Eq. (21) and rearranging yields:
+                                 (P̂ (2) f neq )i = fineq,+ − (P̂ (G) f neq )i .                  (23)
+                                                                                   (2)
+The left-hand side is precisely the Hermite stress projection Ri , and the right-hand side
+is the ghost subtraction formula.
+   For the D2Q9 lattice, the single ghost mode (17) gives the explicit formula:
+
+                                               wi ϕi X (G) neq
+                                                   (G) 8
+                             (2)
+                            Ri D2Q9 = fi
+                                       neq,+
+                                             −           ϕ f ,                                    (24)
+                                                4c8s j=0 j j
+
+which replaces the tensor projection with a single scalar subtraction.
+
+2.4.2. Third-Order Term: Energy-Flux Projection vs. Antisymmetric Component
+Theorem 2.3 (Third-order equivalence). Let the antisymmetric subspace satisfy the
+completeness
+P               condition A = A(1) ⊕ A(3) , and let fineq satisfy the momentum constraint
+          neq
+   i eiα fi   = 0 (i.e., no external force or after appropriate correction). Then the third-
+order Hermite projection is identical to the antisymmetric non-equilibrium component:
+                                  (3)
+                              Hi,αβγ neq
+                           wi       Aαβγ              =               fineq,−                .    (25)
+                               6c6s                                   | {z }
+                           |     {z    }                    Method B: antisymmetric part
+                      Method A: Hermite projection
+
+
+                                                        8
+Proof. By the completeness condition, the antisymmetric subspace is spanned by the
+ﬁrst-order and third-order Hermite modes. Denoting the corresponding projections by
+P̂ (1) and P̂ (3) :
+                           fineq,− = (P̂ (1) f neq )i + (P̂ (3) f neq )i .     (26)
+The ﬁrst-order projection is:
+                                              X wi eiα X
+                         (P̂ (1) f neq )i =                       ejα fjneq = 0,      (27)
+                                              α
+                                                  c2s         j
+                                                          |       {z         }
+                                                                  =0
+
+where the momentum constraint has been used. Substituting into Eq. (26):
+                                                                       (3)
+                                 fineq,− = (P̂ (3) f neq )i = Ri .                    (28)
+
+
+
+P When      an external body force F is present, the momentum constraint is modiﬁed to
+         neq
+  i eiα fi   = − ∆t F (cf. Eq. (9)), so that the ﬁrst-order projection no longer vanishes.
+                  2 α
+The equivalence is then restored by a simple correction:
+
+                                   (3)                  ∆t wi eiα
+                                Ri = fineq,− +                    Fα .                (29)
+                                                        2 c2s
+
+Remark 2.4 (Exactness for D2Q9 and D3Q19). The completeness condition dim(A) = D+
+N3 holds exactly for the D2Q9 and D3Q19 lattices (cf. Table 2). Therefore, Theorems 2.2
+and 2.3 together establish that the P-TRT collision operator is mathematically identical
+to the TRT-RLB collision operator for these lattices. The two models produce the same
+post-collision distribution, and consequently the same numerical solution, at every grid
+point and time step.
+Remark 2.5 (Approximation for D3Q27). For the D3Q27 lattice, three ﬁfth-order anti-
+symmetric modes exist outside A(1) ⊕ A(3) . In this case, the antisymmetric component
+fineq,− contains a small residual contribution from these modes, and Eq. (25) holds only
+approximately. However, in the Chapman–Enskog framework, the non-equilibrium distri-
+bution is dominated by ﬁrst- and second-order terms in the Knudsen number, making the
+ﬁfth-order contribution negligibly small in practice. If higher precision is required, the
+residual can be explicitly removed by subtracting the ﬁfth-order projection, as detailed in
+Appendix A.
+
+2.5. The P-TRT Model
+    Based on the equivalence theorems established in Section 2.4, we now present the com-
+plete P-TRT formulation. The model replaces the expensive Hermite tensor projections
+with algebraically equivalent ghost-mode subtraction and antisymmetric decomposition
+operations, while producing the identical post-collision distribution for the D2Q9 and
+D3Q19 lattices.
+
+
+
+
+                                                  9
+2.5.1. Evolution Equation
+    For the D2Q9 and D3Q19 lattices, where both the second- and third-order equivalences
+hold exactly, the P-TRT evolution equation reads:
+                                                                                !
+                                               1                XNG      (G)
+                                                                     wi ϕi,k
+           fi (x + ei ∆t, t + ∆t) = fi + 1 −
+                                     eq                 neq,+
+                                                       fi     −         (ϕ)
+                                                                             SG,k
+                                              τs,1              k=1 NG,k
+                                                                   
+                                         1                ∆t wi eiα
+                                  + 1−           neq,−
+                                                fi     +            Fα + Si ∆t,     (30)
+                                        τs,2              2 c2s
+              P (G)
+where SG,k = j ϕj,k fjneq is the ghost scalar moment for the k-th ghost mode. For D2Q9,
+only a single ghost mode (k = 1) is needed; for D3Q19, three ghost modes contribute.
+   For the D3Q27 lattice, a hybrid strategy is adopted as discussed in Appendix A.3: the
+second-order term retains the original tensor projection (since NG = 7 > M2 = 6), while
+the third-order term uses the antisymmetric approximation:
+                                                            (2)
+                                                      Hi,αβ neq
+                                                      1
+                                        1−
+           fi (x + ei ∆t, t + ∆t) = fieq +         wi      A
+                                            τs,1       2c4s αβ
+                                                                 
+                                       1                ∆t wi eiα
+                                 + 1−          neq,−
+                                              fi     +            Fα + Si ∆t.        (31)
+                                      τs,2              2 c2s
+
+   The physical interpretation of Eq. (30) is transparent: the P-TRT collision operator
+takes the standard TRT structure—relaxing symmetric and antisymmetric components
+at diﬀerent rates—but with the symmetric part puriﬁed by removing the ghost-mode
+contamination. This single modiﬁcation elevates the TRT scheme to regularization-level
+stability.
+
+2.5.2. Computational Complexity Analysis
+    To quantify the eﬃciency gain, we compare the ﬂoating-point operations (FLOPs) re-
+quired for the non-equilibrium collision terms. The counting convention is as follows: one
+addition/subtraction or one multiplication each counts as one operation. Pre-computable
+constants (weights, lattice-dependent coeﬃcients) are excluded.
+    For the second-order term, the original method (tensor projection) requires computing
+M2 = D(D + 1)/2 moment components via summation over Q velocities, followed by
+distribution reconstruction, yielding approximately 4M2 Q operations. The P-TRT ghost
+subtraction method requires 2Qp operations for the parity decomposition, plus 4NG Q
+operations for the ghost moment computation and subtraction, totaling 2Qp + 4NG Q.
+    For the third-order term, the original method involves N3 tensor moment components
+and costs approximately 4N3 Q operations. The P-TRT antisymmetric method requires
+only 2Qp operations (parity decomposition), since the antisymmetric part is obtained as
+a by-product of the same decomposition used for the second-order term.
+    Table 3 presents the detailed operation counts for each term, and Table 4 compares
+the total non-equilibrium collision cost across diﬀerent models.
+    Several observations are noteworthy. First, the eﬃciency gain is most dramatic for the
+third-order term, where the antisymmetric decomposition reduces the cost by nearly an
+order of magnitude (89–97%) across all lattices. Second, the ghost subtraction method
+for the second-order term is advantageous when NG < M2 (D2Q9 and D3Q19) but not
+when NG > M2 (D3Q27), motivating the hybrid strategy. Third, the total P-TRT cost
+is much closer to the standard TRT baseline than to the original TRT-RLB, conﬁrming
+
+                                                 10
+Table 3: Floating-point operations per node for the second-order and third-order regularization terms.
+The P-TRT method selects the cheaper option for each term and each lattice.
+
+                   Second-order term                      Third-order term                         P-TRT choice
+      Lattice
+                 Original Ghost sub.                    Original      Antisym.                    2nd            3rd
+      D2Q9         108                  44                  72                 8           Ghost sub. Antisym.
+      D3Q19        456                  246                456                18           Ghost sub. Antisym.
+      D3Q27        648                  782                756                26            Original  Antisym.
+
+Table 4: Total non-equilibrium collision cost (FLOPs per node) for diﬀerent models. “Standard TRT”
+represents the baseline cost of parity decomposition and two-rate relaxation without regularization.
+
+   Lattice Standard TRT Original TRT-RLB P-TRT Reduction vs. TRT-RLB
+   D2Q9              16                             180                       52                           71%
+   D3Q19             36                             912                       264                          71%
+   D3Q27             52                            1404                       674                          52%
+
+
+that the regularization overhead has been largely eliminated. Empirical validation of
+these theoretical predictions is presented in Section 3.1.2 using the double shear layer
+benchmark.
+
+2.6. Macroscopic Consistency via Chapman–Enskog Analysis
+    In this subsection, we verify that the P-TRT model correctly recovers the Navier–
+Stokes equations (1) through the Chapman–Enskog (CE) expansion. Since the equiva-
+lence theorems (Theorems 2.2 and 2.3) establish that the P-TRT and TRT-RLB collision
+operators produce the identical post-collision distribution for D2Q9 and D3Q19 lattices,
+the two models necessarily yield the same CE expansion. Nevertheless, we present the
+full derivation here using the P-TRT formulation (Scheme II) to make the analysis self-
+contained and to explicitly conﬁrm that the free parameter τs,2 does not enter the recovered
+macroscopic equations.
+    We adopt the standard multi-scale expansion with respect to a small parameter ε:
+                          (0)        (1)          (2)                   (1)          (2)
+                fi = fi         + εfi      + ε2 f i ,       ∂t = ε∂t + ε2 ∂t ,                   ∂α = ε∂α(1) ,
+                                                             (1)                    (1)
+                                                                                                                        (32)
+                                                Gi = εGi ,            Fi = εFi ,                 Fα = εFα(1) .
+The non-equilibrium quantities inherit this expansion:
+                                              neq,(0)         neq,(1)              neq,(2)
+                                 αβ = Aαβ
+                                Aneq                    + εAαβ          + ε2 Aαβ             ,                         (33a)
+                                              neq,−,(0)          neq,−,(1)           neq,−,(2)
+                            fineq,− = fi                  + εfi               + ε2 f i             .                   (33b)
+The moments of the equilibrium distribution (3) are:
+                     X
+                          eiα fieq = ρuα ,                                                                             (34a)
+                                 i
+                          X
+                                 eiα eiβ fieq = ρuα uβ + ρc2s δαβ ,                                                    (34b)
+                            i
+                    X                                                                         1
+                           eiα eiβ eiγ fieq = ρuα uβ uγ + ρc2s uζ ∆αβγζ −                         Φαβγ ,               (34c)
+                      i
+                                                                                             3c2s
+
+
+                                                             11
+where ∆αβγζ = δαβ δγζ + δαγ δβζ + δαζ δβγ . The moments of the source terms (8)–(7) satisfy:
+
+        X                      X                           X                              
+                                                                                    1
+               Gi = 0,                 eiα Gi = 0,              eiα eiβ Gi = − 1 −             ∂γ Φαβγ ,           (35a)
+          i                    i                              i
+                                                                                   2τs,1
+        X                      X                              X
+               Fi = 0,                 eiα Fi = Fα ,             eiα eiβ Fi = 0.                                   (35b)
+          i                    i                                i
+
+Taylor expansion.. Applying a second-order Taylor expansion to the P-TRT evolution
+equation (30) and substituting the multi-scale expansions (32)–(33) yields the following
+                                                                                           (2)
+scale-resolved equations. To streamline the notation, the ghost subtraction term in Ri
+is left implicit, since by Theorem 2.2 it is identical to the Hermite stress projection.
+    At order ε0 :
+                                           (2)                    
+                 (0)              1        Hi,αβ neq,(0)         1      neq,−,(0)
+               fi = fi + 1 −
+                        eq
+                                        wi       A       + 1−          fi         .      (36)
+                                 τs,1       2c4s αβ             τs,2
+                                                                                   neq,(0)                 neq,−,(0)
+Taking the second and third moments of Eq. (36) leads to Aαβ                                 = 0 and fi                = 0,
+from which:
+                                      (0)
+                                    fi = fieq .                                                                        (37)
+   At order ε1 :
+                                              (1)       
+                                                                         
+                                                                           (2)
+ (1)           (1)                      (0)  Hi,α (1)
+                                              ∆t                 1     1 Hi,αβ neq,(1)
+fi + ∆t       ∂t + eiα ∂α(1)       1−  fi = −
+                                           wi 2 Fα + 1 −              wi       A
+                                2     τs,1     cs              τs,1       2c4s αβ
+                                            
+          1       neq,−,(1)  1 (1)           1        (1)    (1)
+    + 1−         fi         + Fi ∆t + 1 −           Fi ∆t + Gi ∆t.               (38)
+         τs,2                2             2τs,1
+Taking the zeroth and ﬁrst moments gives the leading-order conservation laws:
+                                                    (1)
+                                                   ∂t ρ + ∂α(1) (ρuα ) = 0,                                        (39a)
+                                       (1)                (1)
+                                   ∂t (ρuα ) + ∂β (ρuα uβ + ρc2s δαβ ) = Fα(1) .                                   (39b)
+
+The second moment of Eq. (38) yields the ﬁrst-order non-equilibrium stress:
+                                                                                             
+ neq,(1)              (1)                                                            1 (1)
+Aαβ      = −τs,1 ∆t ∂t (ρuα uβ + ρcs δαβ ) + ∂γ (ρuα uβ uγ + ρcs uζ ∆αβγζ ) −
+                                        2        (1)                  2
+                                                                                        ∂ Φαβγ .
+                                                                                   2τs,1 γ
+                                                                                            (40)
+               2
+   At order ε :
+                                                             ∆t2  (1)          2
+           (2)         (1)               (1)       (2) (0)                            (0)
+          fi + ∆t ∂t + eiα ∂α(1) fi + ∆t ∂t fi +                    ∂t + eiα ∂α(1) fi
+                                                                2
+                                  (2)                       
+                         1        Hi,αβ neq,(2)            1      neq,−,(2)
+               = 1−            wi     4
+                                        Aαβ     + 1−             fi         .               (41)
+                        τs,1       2cs                    τs,2
+                         (1)                 (1)
+Eliminating the (∂t + eiα ∂α )2 term using Eq. (38) and taking the zeroth and ﬁrst
+moments of the resulting equation yields:
+                                                                (2)
+                                         ∂t ρ = 0,                                                                 (42a)
+                                                              
+       (2)         (1)       1       neq,(1)   ∆t (1)       1
+      ∂t (ρuα ) + ∂β     1−         Aαβ      −   ∂      1−         ∂γ(1) Φαβγ = 0.                                 (42b)
+                            2τs,1              2 β         2τs,1
+
+                                                                      12
+Substituting Eq. (40) into Eq. (42b) and simplifying using the leading-order conservation
+laws (39), we obtain:
+                                    h                                               i
+       (2)         (1)          1                        (1)                      (1)
+     ∂t (ρuα ) = ∂β      τs,1 −     ∆t ρc2s (∂α(1) uβ + ∂β uα ) + (Fα(1) uβ + uα Fβ ) . (43)
+                                2
+
+Recovered macroscopic equations.. Combining Eqs. (39a)×ε + (42a)×ε2 and Eqs. (39b)×ε
++ (43)×ε2 , we recover:
+
+                                       ∂t ρ + ∂α (ρuα ) = 0,                              (44a)
+                                                                                              
+∂t (ρuα ) + ∂β (ρuα uβ + ρcs δαβ ) = ∂β [µ(∂α uβ + ∂β uα )] + Fα + ∂β µ(Fα uβ + uα Fβ )/(ρc2s ) ,
+                           2
+
+                                                                                           (44b)
+
+where the dynamic viscosity is:
+                                                            
+                                                         1
+                                   µ = ρc2s       τs,1 −         ∆t.                        (45)
+                                                         2
+
+The last term on the right-hand side of the momentum equation is an artifact of the
+simpliﬁed forcing scheme (Scheme II). As noted by Guo et al. [43], this term does not
+compromise accuracy for low-Mach-number ﬂows, and Postma et al. [45] conﬁrmed its
+suitability for two-relaxation-time models. When Scheme I (the Guo forcing) is employed,
+this artifact vanishes and the standard Navier–Stokes equations are recovered exactly.
+
+Role of the free parameter τs,2 . A critical observation from the above analysis is that the
+free relaxation parameter τs,2 is entirely absent from the recovered macroscopic equa-
+tions (44) and the viscosity relation (45). This conﬁrms that τs,2 does not aﬀect the
+physical transport coeﬃcients. Its role is conﬁned to the non-hydrodynamic level: it con-
+trols the damping rate of the third-order (antisymmetric) non-equilibrium modes, which
+are ﬁltered out during the regularization process. The P-TRT framework makes this role
+transparent—τs,2 governs how quickly the antisymmetric non-equilibrium component, pu-
+riﬁed of any ﬁrst-order residual via the force correction (29), is relaxed toward zero.
+
+Implications for numerical stability.. Although the Chapman–Enskog analysis conﬁrms
+macroscopic consistency, it is inherently asymptotic and does not directly address nu-
+merical stability, which depends on the spectral properties of the fully discrete evolution
+operator. To bridge this gap, a linear stability analysis is presented in the next subsection,
+where the eigenvalue structure of the P-TRT collision operator is compared with that of
+the standard TRT model.
+
+2.7. Linear Stability Analysis
+    The Chapman–Enskog expansion establishes the macroscopic consistency of the P-
+TRT model but provides no direct information about numerical stability, which is gov-
+erned by the spectral radius of the fully discrete evolution operator. In this subsection, we
+perform a linear stability analysis (LSA) in the moment space to rigorously characterize
+how the ghost-mode annihilation in the P-TRT collision operator aﬀects the eigenvalue
+spectrum of the scheme, in comparison with the standard TRT model.
+
+
+
+
+                                                  13
+2.7.1. Linearization and Fourier Analysis
+                                      (0)
+    Consider a uniform rest state fi = wi ρ0 , u(0) = 0. A small perturbation is intro-
+duced:
+                                        (0)
+                          fi (x, t) = fi + ϵ δfi (x, t), |ϵ| ≪ 1,                  (46)
+where the perturbation takes the Fourier normal-mode form:
+                                   δfi (x, t) = fˆi z n eik·x ,                              (47)
+with k = (kx , ky ) the wave vector, n the discrete time index, and z ∈ C the temporal
+ampliﬁcation factor. The numerical scheme is linearly stable if and only if |z| ≤ 1 for all
+k ∈ [−π/∆x, π/∆x]2 .
+    One complete time step of the lattice Boltzmann algorithm consists of collision followed
+by streaming. In Fourier space, the streaming step is represented by the diagonal phase-
+shift matrix                                      Q−1
+                                  A = diag e−ik·ei i=0 ,                                 (48)
+and the linearized collision step is represented by a collision matrix C acting on the
+perturbation vector δf = (δf0 , . . . , δfQ−1 )T . The full evolution is governed by
+                              δf n+1 = L δf n ,         L = A C,                             (49)
+and the stability is determined by the eigenvalues of the evolution operator L.
+
+2.7.2. Moment-Space Representation
+    The analysis is most transparent in the moment space. Deﬁne the moment vector
+                                        δm = M δf ,                                          (50)
+where M is the transformation matrix whose rows correspond to the orthogonal mo-
+ment basis vectors identiﬁed in Section 2.3. For the D2Q9 lattice, the nine moments are
+organized into four groups:                       
+                                            δmcons
+                                           δm(2) 
+                                   δm =           
+                                           δm(3)  ,                              (51)
+                                             δmG
+where δmcons = (δρ, δjx , δjy )T contains the conserved quantities (3 modes), δm(2) =
+(δπxx , δπyy , δπxy )T the second-order stress modes (3 modes), δm(3) = (δqx , δqy )T the
+third-order energy-ﬂux modes (2 modes), and δmG the ghost mode (1 mode). The ﬁrst
+eight modes constitute the hydrodynamic sector H, and the last mode the ghost sector G.
+    In this basis, the linearized collision matrices of the two models take diagonal form.
+For the P-TRT model:
+                                                                               
+                                1          1        1         1         1         
+   C̃P-TRT = diag    1, 1, 1 −
+                 |1, {z             , 1−      , 1−      , 1−      , 1−         0 
+                                                                             , |{z},        (52)
+                          }     τs,1      τs,1      τs,1      τs,2      τs,2
+                    cons.   |            {z            } |        {z       } ghost
+                                       2nd order                     3rd order
+
+and for the standard TRT model:
+                                                                                        
+                                                                              1 
+                            1          1        1         1         1             
+  C̃TRT = diag1, 1, 1, 1 −      , 1−      , 1−      , 1−      , 1−      , 1−      .        (53)
+              | {z }       τs,1      τs,1      τs,1      τs,2      τs,2      τs,1 
+                cons.   |            {z            } |        {z       } | {z }
+                                    2nd order                     3rd order      ghost
+
+
+                                                14
+The sole diﬀerence is the treatment of the ghost mode: P-TRT sets its relaxation factor
+to zero (complete annihilation), whereas the standard TRT retains the factor 1 − 1/τs,1 ,
+identical to the stress modes. This can be equivalently understood as P-TRT applying an
+eﬀective relaxation rate of 1/τG = 1 (instantaneous equilibration) to the ghost subspace,
+while TRT applies 1/τG = 1/τs,1 .
+
+2.7.3. Block Structure of the Evolution Operator
+    The moment-space evolution operator is L̃ = Ã C̃, where Ã = M AM −1 is the
+moment-space streaming matrix. The streaming matrix Ã is generally not diagonal in
+moment space; it couples diﬀerent moments through the advection step. Writing Ã in a
+2 × 2 block form partitioned by the hydrodynamic (H, 8 modes) and ghost (G, 1 mode)
+sectors:                                          
+                                         ÃHH ÃHG
+                                  Ã =               ,                           (54)
+                                         ÃGH ÃGG
+the collision matrices (52)–(53) have the corresponding block forms:
+                                                                     
+                             CHH 0                    CHH        0
+                C̃P-TRT =              ,    C̃TRT =                       ,            (55)
+                              0    0                    0    1 − 1/τs,1
+
+where CHH is the 8 × 8 hydrodynamic collision block, which is identical in both models.
+The zero column in the P-TRT collision matrix ensures that the ghost mode contributes
+nothing to the post-collision state, regardless of its pre-collision value.
+   Multiplying out, the evolution operators become:
+                                                          
+                                            ÃHH CHH 0
+                                L̃P-TRT =                    ,                    (56)
+                                            ÃGH CHH 0
+                                                                 
+                                      ÃHH CHH (1 − 1/τs,1 ) ÃHG
+                        L̃TRT =                                     .                  (57)
+                                      ÃGH CHH (1 − 1/τs,1 ) ÃGG
+Two structural diﬀerences are immediately apparent. First, L̃P-TRT is block lower-triangular,
+so its eigenvalues decouple into those of ÃHH CHH and the scalar zero entry. Second,
+L̃TRT has a non-zero upper-right block (1 − 1/τs,1 ) ÃHG , which couples the ghost mode
+back into the hydrodynamic sector during streaming, and a non-zero ghost diagonal entry
+(1 − 1/τs,1 ) ÃGG .
+
+2.7.4. Eigenvalue Structure and Stability Decoupling
+    The block lower-triangular structure of Eq. (56) leads directly to the following result.
+
+Theorem 2.6 (Ghost-mode annihilation and stability decoupling). For the P-TRT model,
+the eigenvalues of the evolution operator L̃P-TRT consist of:
+  (i) The ghost eigenvalue zG = 0, which is unconditionally stable.
+ (ii) Eight hydrodynamic eigenvalues {zα }8α=1 , determined by
+                                                      
+                                 det ÃHH CHH − z I8 = 0.                              (58)
+
+Consequently, the numerical stability of the P-TRT scheme is governed exclusively by the
+hydrodynamic eigenvalues, and is completely independent of the ghost mode.
+
+
+                                               15
+Proof. The characteristic polynomial of the block lower-triangular matrix (56) factors as:
+                                                         
+               det L̃P-TRT − z I9 = det ÃHH CHH − z I8 · (−z) = 0.                  (59)
+
+The factor (−z) = 0 yields zG = 0, with |zG | = 0 < 1.
+    In contrast, for the standard TRT model, the ghost eigenvalue is generally non-zero.
+When the coupling between the ghost and hydrodynamic sectors via streaming is weak
+(i.e., when the oﬀ-diagonal blocks ÃHG and ÃGH are small relative to the diagonal blocks),
+the ghost eigenvalue can be approximated as:
+                                                   
+                                                1
+                              zG (k) ≈ 1 −
+                               TRT
+                                                      ÃGG (k),                         (60)
+                                               τs,1
+
+where ÃGG (k) is the ghost-sector entry of the streaming matrix in moment space. At high
+Reynolds numbers, τs,1 → 1/2 (i.e., 1/τs,1 → 2), so the pre-factor |1 − 1/τs,1 | → 1, and
+|zG
+  TRT
+      | approaches |ÃGG (k)|. For certain high-wavenumber modes, |ÃGG | can exceed unity,
+causing the ghost eigenvalue to escape the unit circle and triggering numerical instability.
+    These observations lead to the following comparison.
+Remark 2.7 (Spectral radius comparison). Let ρ(·) denote the spectral radius. For any
+ﬁxed parameter set (τs,1 , τs,2 ) and wave vector k:
+                                                                  
+           ρ L̃P-TRT = max |zα | ≤ max max |zα |, |zG | = ρ L̃TRT .
+                                                      TRT
+                                                                                 (61)
+                           α∈H                    α∈H
+
+
+Equality holds if and only if the ghost eigenvalue of TRT does not exceed the largest
+hydrodynamic eigenvalue. When the stability bottleneck of the standard TRT lies in
+the ghost mode (i.e., |zGTRT
+                             | > maxα∈H |zα |), the P-TRT model is strictly more stable,
+permitting a larger critical relaxation rate and hence a lower attainable viscosity.
+   Combining Theorem 2.6 with the equivalence results of Theorems 2.2 and 2.3, the
+same spectral properties apply to the original TRT-RLB model, since the two formulations
+produce the identical post-collision state for D2Q9 and D3Q19 lattices.
+Remark 2.8 (On the optimal value of τs,2 ). With the ghost mode annihilated, the stability
+of the P-TRT scheme depends on the eight hydrodynamic eigenvalues {zα (k, τs,1 , τs,2 )},
+whose moduli depend on τs,2 through the collision factor (1 − 1/τs,2 ) applied to the third-
+order modes. The optimal value of τs,2 corresponds to a minimax condition:
+                           opt
+                          τs,2 = arg min max |zα (k, τs,1 , τs,2 )|.                   (62)
+                                      τs,2   k, α∈H
+
+The determination of this optimum requires a parametric numerical eigenvalue com-
+putation of the 8 × 8 hydrodynamic evolution matrix over the full Brillouin zone k ∈
+[−π/∆x, π/∆x]2 , which constitutes a substantial numerical algebra problem in its own
+right. Such a complete parametric study is beyond the scope of the present work and is
+left for future investigation. Nevertheless, the empirical observation of an optimal sta-
+bility plateau near 1/τs,2 ≈ 1.6 reported in Section 3 is consistent with this minimax
+interpretation. We note that the analogous problem for the classical TRT framework—
+the analytical determination of the optimal “magic parameter” Λ—remains similarly open
+in the existing literature, where optimal values are typically identiﬁed through numerical
+experimentation [32, 33].
+
+                                               16
+3. Numerical Results and Discussion
+    In this section, we perform a series of benchmark simulations to validate the P-TRT
+model from three complementary perspectives: computational eﬃciency, numerical sta-
+bility, and physical accuracy. The central expectation, derived from the mathematical
+equivalence established in Section 2.4, is that the P-TRT model should produce results
+identical to the original TRT-RLB model while requiring signiﬁcantly less computational
+eﬀort. Four benchmark problems are considered: the double shear layer ﬂow (stability
+and eﬃciency), the 2D decaying Taylor–Green vortex (accuracy and convergence), the
+force-driven Poiseuille ﬂow (boundary properties), and the creeping ﬂow past a square
+cylinder (robustness at ultra-low Reynolds numbers). For quantitative assessment, the
+relative L2 error norm is deﬁned as:
+                                   sP
+                                             (x, t) − qa (x, t))2
+                                        x (qnP
+                              L2 =                 2
+                                                                  ,                 (63)
+                                               x qa (x, t)
+
+
+where qa (x, t) and qn (x, t) represent the analytical and numerical solutions, respectively.
+For steady-state ﬂows, the convergence criterion is:
+                                                              
+                               uα (x, t + 10000∆t) − uα (x, t)
+                      max                                        < 10−7 .               (64)
+                                              uc
+
+3.1. Double Shear Layer: Stability and Eﬃciency
+    The double shear layer ﬂow is selected to benchmark numerical stability at high
+Reynolds numbers. Its periodic boundary conditions also enable precise quantiﬁcation
+of computational eﬃciency by eliminating boundary-handling overheads. The computa-
+tional domain is a two-dimensional square region with periodic boundary conditions on all
+sides, deﬁned as (x, y) ∈ [0, L]2 [42]. The initial velocity ﬁeld consists of two longitudinal
+shear layers and a transverse perturbation, given by:
+                                                       
+                                   
+                                                  y    1       y    1
+                                   uc tanh κ        −       ,     ≤ ,
+                       ux (x, 0) =             L 4          L    2
+                                                                                          (65)
+                                   
+                                                 3     y       y    1
+                                    c
+                                     u  tanh  κ      −       ,     >   ,
+                                                  4 L           L    2
+
+and                                                                  
+                                                              x 1
+                             uy (x, 0) = uc δ sin 2π           +            .            (66)
+                                                              L 4
+Here, uc represents the characteristic velocity, κ controls the thickness of the shear layers,
+and δ determines the magnitude of the initial perturbation.
+   In our simulations, the parameters are set as follows: κ = 80, δ = 0.05, L = 1, c = 1,
+and ρ0 = 1. A uniform grid with resolution N × N = 1282 is used, giving ∆x = L/N .
+The ﬂow is characterized by the Reynolds number and Mach number:
+                                        ρ0 u c L                uc
+                                 Re =            ,       Ma =      ,                     (67)
+                                           µ                    cs
+
+and the characteristic time is tc = L/uc .
+
+
+
+
+                                                17
+3.1.1. Stability at Super-High Reynolds Numbers
+     To quantify the impact of the free relaxation parameter τs,2 on numerical stability, we
+measured the maximum critical Mach number (M ac ). A simulation is considered stable
+if it runs to t = 2tc without divergence. The precision for M ac is set to ∆M a = 0.01. We
+investigated stability across a wide range of Reynolds numbers, with the inverse relaxation
+parameter 1/τs,2 varying from 0.1 to 2.0. For a comprehensive comparison, the P-TRT
+model is tested alongside the BGK, TRT, RLB, and original TRT-RLB models [42] under
+identical conditions.
+     The stability comparison is presented in Figure 1. The SRT-type models (BGK and
+RLB) are represented by horizontal lines without markers, indicating that their stability
+is independent of τs,2 . When Re ≥ 5 × 104 , both the standard BGK and TRT models
+exhibit divergence, resulting in M ac = 0. In contrast, the P-TRT model consistently
+demonstrates superior numerical stability. Notably, the stability proﬁle of the P-TRT
+model is virtually identical to that of the original TRT-RLB model across the entire
+parameter space. This numerical identity is a direct manifestation of the mathematical
+equivalence established in Theorems 2.2 and 2.3: since the two models produce the iden-
+tical post-collision distribution for the D2Q9 lattice, they must exhibit the same stability
+boundary.
+     The stability reaches its optimal state near 1/τs,2 ≈ 1.6. Even at super-high Reynolds
+numbers ranging from 5 × 104 to 1 × 107 , the maximum M ac remains robustly above 0.51.
+These observations are fully consistent with the linear stability analysis of Section 2.7.
+According to Theorem 2.6, the P-TRT collision operator annihilates the ghost eigenvalue
+(zG = 0), so the scheme’s stability is governed exclusively by the eight hydrodynamic
+eigenvalues. In contrast, the standard TRT model relaxes the ghost mode at the same rate
+as the stress modes (both governed by τs,1 ); as τs,1 → 1/2 at high Reynolds numbers, the
+ghost ampliﬁcation factor |zG  TRT
+                                   | can approach or exceed unity, triggering instability (cf.
+Remark 2.7). The P-TRT model eliminates this failure mechanism entirely by removing
+the ghost mode from the collision step.
+     The parameter τs,2 , which controls the antisymmetric (third-order) relaxation, provides
+an additional degree of freedom for optimizing the spectral properties of the remaining
+hydrodynamic modes. The observed optimum near 1/τs,2 ≈ 1.6 reﬂects the minimax bal-
+ance described in Remark 2.8: at this value, the maximum modulus of the hydrodynamic
+eigenvalues across the Brillouin zone is minimized. A precise analytical determination of
+this optimum would require a parametric eigenvalue study of the 8 × 8 hydrodynamic
+evolution matrix, which is beyond the scope of the present work. Nevertheless, the robust
+empirical plateau observed across six decades of Reynolds number (Figure 1) conﬁrms
+that this optimal value is insensitive to τs,1 , consistent with the theoretical prediction
+that the ghost-mode decoupling renders the stability landscape dependent only on the
+hydrodynamic sector.
+
+
+
+
+                                             18
+          BGK                                       BGK                                      BGK
+          TRT                                                           (1.6,0.59)           TRT                (1.6,0.53)
+                                                    TRT
+          RLB                                       RLB                                      RLB
+                              (1.6,0.62)
+          TRT-R                                     TRT-R                                    TRT-R
+          Present                                   Present                                  Present
+
+
+
+
+                                                                        (1.8,0.35)
+                              (1.7,0.38)
+ Mac
+
+
+
+
+                                           Mac
+
+
+
+
+                                                                                     Mac
+                     1/τs,2                                    1/τs,2                                  1/τs,2
+
+
+
+
+        (a) Re = 5 × 103                          (b) Re = 1 × 104                         (c) Re = 5 × 104
+
+           BGK                                      BGK                                      BGK
+                              (1.6,0.52)                                (1.6,0.51)                              (1.6,0.51)
+           TRT                                      TRT                                      TRT
+           RLB                                      RLB                                      RLB
+           TRT-R                                    TRT-R                                    TRT-R
+           Present                                  Present                                  Present
+ Mac
+
+
+
+
+                                           Mac
+
+
+
+
+                                                                                     Mac
+                     1/τs,2                                    1/τs,2                                  1/τs,2
+
+
+
+
+        (d) Re = 1 × 105                          (e) Re = 1 × 106                         (f) Re = 1 × 107
+
+Figure 1: Maximum critical Mach number M ac versus the inverse relaxation parameter 1/τs,2 in the
+double shear layer simulations at various Reynolds numbers. The P-TRT model (labeled “Present”)
+demonstrates robust stability at super-high Reynolds numbers where standard BGK and TRT models
+fail to converge. The stability proﬁle is identical to the original TRT-RLB model, conﬁrming the math-
+ematical equivalence.
+
+
+3.1.2. Computational Eﬃciency Evaluation
+    This test case is also employed to benchmark the computational eﬃciency of the
+P-TRT model. The periodic boundaries remove boundary-related computational costs,
+thereby focusing the assessment on the collision operator. We conducted simulations
+across a range of Reynolds numbers from 10 to 104 . To ensure a fair comparison, all
+simulations were performed on the same computing platform, and all runs were terminated
+only upon satisfying the strict convergence criterion. The speedup ratio is deﬁned as:
+                                                              TTRT-RLB
+                                                 Sp =                  .                                                     (68)
+                                                               TP-TRT
+The comparative results are summarized in Table 5. The P-TRT model consistently
+outperforms the original TRT-RLB framework. The relative reduction in computational
+cost ranges from 29% to 35%, yielding an average speedup ratio of approximately 1.45.
+This measured speedup is consistent with the theoretical FLOP reduction predicted in
+Table 4: for the D2Q9 lattice, the non-equilibrium collision cost is reduced by 71%,
+and the observed wall-clock reduction of approximately 30% conﬁrms that the collision
+step constitutes a substantial fraction of the total computational work for this periodic
+benchmark.
+
+3.2. 2D Decaying Taylor–Green Vortex: Accuracy and Convergence
+    To rigorously validate the accuracy and grid convergence of the P-TRT model, we
+simulate the 2D decaying Taylor–Green vortex ﬂow. This canonical benchmark admits
+an exact analytical solution, enabling precise quantiﬁcation of numerical errors. The ﬂow
+
+                                                              19
+Table 5: Comparison of execution time (in seconds) and computational eﬃciency between the original
+TRT-RLB and the P-TRT models for the double shear layer simulation across a wide range of Reynolds
+numbers.
+
+                Re   TRT-RLB (s)          P-TRT (s)      Reduction (%)      Speedup
+                10        6.93               4.53            34.63            1.53
+               100       43.40               30.75           29.14            1.41
+              1,000     328.34              232.14           29.30            1.41
+              10,000   2,503.53            1747.91           30.18            1.43
+
+
+is deﬁned within a square domain (x, y) ∈ [0, 1]2 with periodic boundary conditions. The
+analytical solutions for the velocity ﬁeld and density are given by [21, 46]:
+
+                      ux (x, t) = −u0 cos(2πx) sin(2πy) e−t/td ,                              (69a)
+                      uy (x, t) = u0 cos(2πy) sin(2πx) e−t/td ,                              (69b)
+                                          u2
+                       ρ(x, t) = ρ0 − ρ0 02 [cos(4πx) + cos(4πy)] e−t/td ,                    (69c)
+                                          4cs
+
+where td = 1/(8νπ 2 ) is the vortex decay time.
+   In our simulations, the physical parameters are set to u0 = 0.01, ρ0 = 1, and ν = 0.01,
+with L = 1. The time step is determined by the scaling relation ∆x2 /∆t = 0.01π 2 . The
+magic parameter is deﬁned as:
+                                                        
+                                             1           1
+                               Λs = τs,1 −        τs,2 −     ,                        (70)
+                                             2           2
+
+and is set to Λs = 1/4 for this test case.
+   To assess accuracy, a simulation was performed with grid resolution N = 64. Figure 2
+compares the computed velocity proﬁles ux (L/2, y) and uy (x, L/2) at various time instants
+with the analytical solutions. The results show excellent agreement, conﬁrming that the
+ghost-mode subtraction does not introduce any additional numerical error.
+
+
+    0.8                                                 0.8
+
+
+    0.6                                                 0.6
+
+
+    0.4                                                 0.4
+
+
+    0.2                                                 0.2
+
+
+     0                                                   0
+
+
+   -0.2                                                -0.2
+
+
+   -0.4                                                -0.4
+
+
+   -0.6                                                -0.6
+
+
+   -0.8                                                -0.8
+          0   0.25     0.5     0.75      1                    0    0.25    0.5     0.75      1
+
+
+
+
+Figure 2: Comparison between the velocity components ux (left) and uy (right) computed by the P-TRT
+model and the analytical solution for the 2D decaying Taylor–Green vortex ﬂow on a 64 × 64 grid with
+ν = 0.01 at diﬀerent times.
+
+
+                                                20
+    A grid convergence study was also performed with ﬁve resolutions: N 2 = 322 , 642 , 1282 , 2562 ,
+and 5122 . The computed L2 errors are presented in Figure 3. The P-TRT model main-
+tains the second-order spatial convergence of the original TRT-RLB formulation, and the
+error magnitudes are consistent across the entire range of grid resolutions. This result
+is expected from the equivalence theorems: since the two models produce the identical
+post-collision distribution, they must exhibit the same truncation error structure.
+
+
+                            -1
+                                        slope=2
+                                        TRT-RLB
+                                        Present
+                            -2
+
+
+
+
+                            -3
+
+
+
+
+                            -4
+
+
+
+
+                            -5
+
+
+
+
+                            -6
+                             -2.9    -2.5         -2.1   -1.7     -1.3
+
+
+
+
+Figure 3: Grid convergence study showing the L2 error norms of the TRT-RLB and P-TRT models for
+the 2D decaying Taylor–Green vortex ﬂow (ν = 0.01) at t = td .
+
+
+3.3. Force-Driven Poiseuille Flow: Elimination of Numerical Slip
+    A key feature of the TRT framework is its ability to eliminate the viscosity-dependent
+numerical slip inherent in the standard half-way bounce-back (HWBB) scheme [47]. It has
+been conﬁrmed that the original TRT-RLB model eﬀectively eliminates this numerical slip
+[42]. Since the P-TRT model is mathematically equivalent to TRT-RLB, it must inherit
+this property. To verify this numerically, the 2D force-driven Poiseuille ﬂow between two
+parallel plates is simulated.
+    We consider a steady, fully developed laminar ﬂow driven by a constant body force.
+Under these conditions [48]:
+
+                            ρ = const.,     ∂x ux = 0,    ∂x uy = 0,                       (71)
+
+with uy = 0 throughout the domain. The body force acts solely in the streamwise direc-
+tion: Fx = ρg, Fy = 0. Under the HWBB scheme, the discrete analytical solution for the
+velocity proﬁle is:
+                                          4uc
+                                    u = 2 yi (N − yi ),                              (72)
+                                          N
+where N = L/∆x, and yi = i − 0.5 with i = 1, . . . , N reﬂects the half-grid oﬀset of the
+HWBB scheme. The centerline velocity is uc = L2 g/(8ν).
+    In the numerical experiments, L = 1, the grid size is Nx × Ny = 4 × 32, c = 1,
+ρ0 = 1, uc = 0.1, and simulations are performed at Re = 1. First, the inﬂuence of the
+magic parameter Λs on numerical accuracy is examined. Figure 4 shows the L2 error as
+a function of Λs . The numerical slip is completely eliminated when Λs = 3/16, consistent
+with the theoretical prediction for the TRT-RLB framework [42]. This conﬁrms that the
+
+                                                  21
+ghost-mode puriﬁcation preserves the slip-elimination mechanism of the TRT family: the
+speciﬁc relationship between τs,1 and τs,2 that cancels the viscosity-dependent boundary
+error is unaﬀected by the regularization procedure.
+
+
+                           2.5E-03
+                                               TRT-RLB
+                                               Present
+
+                           2.0E-03
+
+
+
+
+                           1.5E-03
+
+
+
+
+                           1.0E-03
+
+
+
+
+                           5.0E-04
+
+
+
+
+                          0.0E+00
+                                     0   0.1       0.2         0.3         0.4   0.5
+                                                         Λ
+
+
+Figure 4: The L2 error versus the magic parameter Λs for the P-TRT model. The vanishing error at
+Λs = 3/16 conﬁrms the slip-elimination property inherited from the TRT framework.
+
+    Furthermore, simulations are performed at Re = 1, 5, and 10 with Λs = 3/16. Figure 5
+compares the velocity proﬁles with the analytical solutions. Table 6 lists the L2 errors,
+which are consistent with the original TRT-RLB model to machine precision. This is a
+direct consequence of the mathematical equivalence: the two models produce the same
+post-collision distribution and therefore the same steady-state solution.
+
+
+                               1.0
+
+
+
+
+                               0.8
+
+
+
+
+                               0.6
+
+
+
+
+                               0.4
+                                                     Present, Re=1
+                                                     Present, Re=5
+                                                     Present, Re=10
+                               0.2                   Analytical solution
+
+
+
+                               0.0
+                                     0     0.25          0.5           0.75      1
+
+
+
+
+Figure 5: Comparison of horizontal velocity proﬁles between the P-TRT model and the analytical solution
+at Re = 1, 5, 10.
+
+
+
+3.4. Creeping Flow Past a Square Cylinder: Robustness
+    To verify the robustness of the P-TRT model at low Reynolds numbers, we simulate the
+creeping ﬂow past a square cylinder. The computational domain, illustrated in Figure 6,
+
+                                                         22
+Table 6: Comparison of L2 errors between the original TRT-RLB model and the P-TRT model for force-
+driven Poiseuille ﬂow.
+
+                                                     L2 error
+                             Re    τs,1
+                                          TRT-RLB           P-TRT
+                              1    10.1   9.3 × 10−13     9.6 × 10−13
+                              5    2.42   5.3 × 10−13     4.2 × 10−13
+                              10   1.46   1.2 × 10−12     1.1 × 10−12
+
+
+is a square region with side length L = 50D, where D is the side length of the cylinder.
+The cylinder is centered in the domain. A uniform velocity uc is imposed at the left
+boundary using the HWBB scheme, a constant pressure outlet is implemented at the
+right boundary via the Zou–He method, and periodic conditions are applied to the top
+and bottom boundaries. The no-slip condition on the cylinder surface is enforced by the
+HWBB scheme. The simulation is governed by three dimensionless parameters: Re, M a,
+and the incompressibility parameter introduced by Gsell et al. [49]:
+                                                 M a2
+                                           T =        .                                       (73)
+                                                 Re
+
+
+
+
+Figure 6: Schematic of the computational domain and boundary conditions for the creeping ﬂow past a
+square cylinder.
+
+    In this section, the convergence criterion is set to L2 < 10−9 to accommodate the small
+characteristic velocities. The parameters are ρ0 = 1, c = 1, ∆x = 1, and Λs = 3/16. The
+investigation consists of three parts: grid independence analysis, accuracy validation, and
+performance at ultra-low Reynolds numbers.
+    First, a grid independence test was conducted at Re = 1 and M a = 0.1 with six grid
+resolutions. The drag coeﬃcient is deﬁned as:
+                                                 2Fx
+                                        Cd =            ,                              (74)
+                                               ρ0 u20 D
+
+                                                23
+where Fx is computed via the momentum exchange method:
+
+                                      ∆x2 X
+                               Fx =          eix [fī∗ (xs , t) + fi∗ (xf , t)] .                                       (75)
+                                      ∆t i∈I
+                                                 w
+
+
+Here, Iw denotes the set of discrete directions pointing from the ﬂuid nodes toward the
+wall, xf is a ﬂuid node adjacent to the wall, and xs the corresponding solid node. The
+results are shown in Figure 7a. The drag coeﬃcient converges with increasing resolution,
+and the P-TRT results are identical to those of TRT-RLB. A resolution of D = 21∆x is
+adopted for subsequent simulations.
+   Subsequently, we validated accuracy by simulating ﬁve cases with Reynolds numbers
+from 2 to 20 and comparing with the empirical drag law of Sen et al. [50]:
+
+                           Cd = 0.7496 + 10.5767 Re−0.66 ,             Re ∈ [2, 40].                                    (76)
+
+The results in Figure 7b show excellent agreement with the reference data and consistency
+with the TRT-RLB model.
+    Finally, we investigated the low-Reynolds-number regime (Re ≤ 0.1) with T = 0.1.
+The viscous drag coeﬃcient Cd,µ = Cd · Re, which is independent of the Reynolds number
+in the Stokes limit, is recorded in Table 7. As the Reynolds number decreases from 10−1
+to 10−6 , Cd,µ converges to approximately 8.252. The P-TRT results are identical to the
+original TRT-RLB model at every Reynolds number tested. Furthermore, the relaxation
+time τs,1 reaches values as high as 11503 without divergence, demonstrating robustness far
+exceeding single-relaxation-time models such as BGK and RLB, which typically require
+τs,1 < 3 for stability [49]. This robustness originates from the explicit removal of ghost
+modes in the P-TRT collision operator: even at extreme values of τs,1 , the puriﬁed collision
+step prevents the accumulation of non-physical modes that would otherwise destabilize
+the computation.
+
+
+    13                                                         8
+
+
+                                      Present                                                         Present
+                                      TRT-RLB                  7                                      TRT-RLB
+                                                                                                      Sen et al.
+   12.5
+
+                                                               6
+
+
+
+    12                                                         5
+
+
+
+                                                               4
+
+   11.5
+
+                                                               3
+
+
+
+    11                                                         2
+          0   10    20         30     40        50                 2   4   6   8    10     12   14   16   18       20
+                          ∆
+
+
+                         (a)                                                         (b)
+
+Figure 7: Numerical analysis of the ﬂow past a square cylinder using the P-TRT model. (a) Convergence
+of the drag coeﬃcient Cd with increasing grid resolution D/∆x (Re = 1, M a = 0.1); (b) comparison of
+the computed Cd with reference data at diﬀerent Reynolds numbers (D/∆x = 21). Both sets of results
+are identical to those of the original TRT-RLB model.
+
+
+
+
+                                                      24
+                                                          Cd,µ
+                     Re          Ma          τs,1
+                                                  TRT-RLB P-TRT
+                     10−1    1.00 × 10−1     37     8.449      8.449
+                     10−2    3.16 × 10−2     116    8.260      8.260
+                     10−3    1.00 × 10−2     364    8.253      8.253
+                     10−4    3.16 × 10−3    1151    8.253      8.253
+                     10−5    1.00 × 10−3    3638    8.252      8.252
+                     10−6    3.16 × 10−4    11503   8.252      8.252
+Table 7: Comparison of the viscous drag coeﬃcient Cd,µ between TRT-RLB and P-TRT at low Reynolds
+numbers. Parameters: T = 0.1, D/∆x = 21, L = 50D.
+
+
+4. Conclusions
+    In this work, we have established a rigorous theoretical connection between the regular-
+ized lattice Boltzmann method and the ghost-mode structure of the two-relaxation-time
+collision operator. By invoking the orthogonal decomposition of the discrete velocity
+space into hydrodynamic and non-hydrodynamic subspaces, we proved that the Hermite-
+based regularization employed in the TRT-RLB model of Yu et al. [42] is mathematically
+equivalent to the explicit removal of ghost modes from the standard TRT collision op-
+erator. Speciﬁcally, the second-order Hermite projection reduces to the symmetric non-
+equilibrium part minus the ghost-mode contribution (Theorem 2.2), and the third-order
+Hermite projection reduces to the antisymmetric non-equilibrium part under momentum
+conservation (Theorem 2.3). For the D2Q9 and D3Q19 lattices, both equivalences are
+exact, meaning that the two formulations produce the identical post-collision distribution
+at every grid point and time step.
+    Based on this equivalence, we proposed the Puriﬁed TRT (P-TRT) model, which
+upgrades the standard TRT by explicitly ﬁltering out its ghost modes through simple
+algebraic operations. The P-TRT model oﬀers a dual interpretation depending on the
+user’s perspective:
+    For TRT practitioners, it provides a minimal and physically transparent modiﬁcation—
+subtracting a small number of identiﬁable ghost-mode contributions from the symmetric
+collision term—that elevates the stability of the classical TRT scheme to the regularization
+level without sacriﬁcing its algorithmic simplicity or boundary-accuracy properties.
+    For TRT-RLB users, it provides a mathematically equivalent but substantially more
+eﬃcient algorithm that replaces the expensive Hermite tensor projections with parity
+decomposition and scalar ghost-mode subtraction, achieving a 71% reduction in non-
+equilibrium collision operations for the D2Q9 and D3Q19 lattices.
+    Extensive numerical validation through four benchmark problems conﬁrmed that the
+P-TRT model preserves all the desirable properties of the original TRT-RLB formulation:
+robust stability at Reynolds numbers up to 107 , second-order spatial convergence, exact
+elimination of viscosity-dependent numerical slip at bounce-back boundaries (Λs = 3/16),
+and reliable performance at ultra-low Reynolds numbers with relaxation times exceeding
+104 . The measured wall-clock speedup of approximately 30% for the D2Q9 lattice is
+consistent with the theoretical FLOP reduction when the collision step dominates the
+computational cost.
+    Beyond the immediate practical beneﬁts, a linear stability analysis in the moment
+space reveals that the P-TRT collision operator annihilates the ghost eigenvalue (zG = 0),
+thereby completely decoupling numerical stability from the non-hydrodynamic sector
+
+                                              25
+(Theorem 2.6). This provides a rigorous theoretical explanation for the superior sta-
+bility observed in the numerical benchmarks: the spectral radius of the P-TRT evolution
+operator is bounded above by that of the standard TRT (Remark 2.7), and the stability
+bottleneck is shifted from the ghost mode to the physically meaningful hydrodynamic
+modes. The analytical determination of the optimal free parameter τs,2 , which requires a
+parametric eigenvalue study of the hydrodynamic evolution matrix over the full Brillouin
+zone, is identiﬁed as an important direction for future work.
+    More broadly, the present analysis reveals a deeper insight: the core mechanism by
+which regularization improves the stability of LBM collision operators is the annihilation
+of non-hydrodynamic ghost modes. This understanding, obscured in the original Hermite
+tensor formalism, becomes transparent in the orthogonal decomposition framework. We
+believe that this ghost-mode perspective may prove useful for the analysis and design of
+other advanced collision operators in the lattice Boltzmann community.
+
+Acknowledgments
+    This work was supported by the National Natural Science Foundation of China (Grant
+Nos. 12101527, 12271464, and 12371373), the Natural Science Foundation of Hunan
+Province (Grant No. 2026JJ60005), the 111 Project (No. D23017), and the Program
+for Science and Technology Innovative Research Team in Higher Educational Institutions
+of Hunan Province. Computational resources were provided by the High Performance
+Computing Platform of Xiangtan University.
+
+Appendix A. Ghost-Mode Enumeration and Explicit Formulas
+   This appendix provides the complete enumeration of ghost modes and the explicit
+implementation formulas for the P-TRT model on the D2Q9, D3Q19, and D3Q27 lattices.
+Table A.8 summarizes the key structural parameters.
+
+Table A.8: Structural parameters of common lattice models. Here Q is the number of discrete velocities,
+Q0 the number of rest velocities, Qp the number of inversion pairs, NG the number of symmetric ghost
+modes, and N3 the number of independent third-order Hermite polynomials.
+
+              Lattice     Q    D       c2s      Q0     Qp     dim(S) dim(A)            NG / N3
+              D2Q9       9     2      c2 /3      1      4         5            4            1/2
+              D3Q19      19    3      c2 /3      1      9        10            9            3/6
+              D3Q27      27    3      c2 /3      1      13       14           13            7/7
+
+
+Appendix A.1. D2Q9 Lattice
+Symmetric ghost mode (NG = 1).. The unique ghost mode is the fourth-order product:
+                                       (G)
+                                      ϕi      = (e2ix − c2s )(e2iy − c2s ),                        (A.1)
+
+with values at each velocity direction:
+                   i    0      1        2             3       4         5      6      7      8
+                  (G)
+                 ϕi     c4s   −2c4s    −2c4s         −2c4s   −2c4s     4c4s   4c4s   4c4s   4c4s
+
+
+
+                                                        26
+                      (ϕ)    P      (G)
+The weighted norm is NG = i wi [ϕi ]2 = 4c8s . The ghost scalar moment and projection
+are:                                    "                             #
+                      X
+                      8
+                           (G)
+                                                   X
+                                                   4           X
+                                                               8
+                SG =      ϕj fjneq = c4s f0neq − 2   fjneq + 4   fjneq ,        (A.2)
+                               j=0                                      j=1                j=5
+
+                                                                        (G)
+                                                                   w i ϕi
+                                             (P̂ (G) f neq )i =               SG .                               (A.3)
+                                                                     4c8s
+Antisymmetric subspace (dim(A) = 4 = D + N3 ).. No antisymmetric ghost modes exist.
+The two independent third-order Hermite modes are:
+                               (xxy)                                 (xyy)
+                          ψi           = eiy (e2ix − c2s ),        ψi                 2
+                                                                              = eix (eiy − c2s ),                (A.4)
+                                                                                           (3)          (3)
+with norms N (xxy) = N (xyy) = 2c6s . The purely cubic modes Hxxx and Hyyy vanish due to
+the lattice aliasing e3iα = c2 eiα .
+
+P-TRT implementation.. The second-order regularization term is:
+                                                               (G)
+                                             (2)          w i ϕi
+                                            Ri = fi
+                                                  neq,+
+                                                        −          SG .                                          (A.5)
+                                                            4c8s
+
+The third-order regularization term (without external force) is:
+                                                        (3)
+                                                      Ri = fineq,− .                                             (A.6)
+
+Both relations are exact.
+
+Appendix A.2. D3Q19 Lattice
+    The D3Q19 lattice consists of 1 rest velocity, 6 axial velocities (3 inversion pairs), and
+12 face-diagonal velocities (6 inversion pairs). No body-diagonal velocities are present.
+
+Symmetric ghost modes (NG = 3).. Three orthogonal fourth-order ghost modes exist:
+                                              (G )
+                                            ϕi 1 = (e2ix − c2s )(e2iy − c2s ),                                   (A.7)
+                                             (G )
+                                            ϕi 2 = (e2iy − c2s )(e2iz − c2s ),                                   (A.8)
+                                             (G )
+                                            ϕi 3 = (e2iz − c2s )(e2ix − cs2 ).                                   (A.9)
+
+These modes are mutually orthogonal under the weighted inner product. Each has the
+                 (ϕ)
+weighted norm NG,k = 4c8s . The absence of body-diagonal velocities (eix , eiy , eiz simulta-
+neously nonzero) ensures the orthogonality and the fact that no higher-order symmetric
+ghost modes arise.
+
+Antisymmetric subspace (dim(A) = 9 = D + N3 ).. No antisymmetric ghost modes exist.
+The six independent third-order Hermite modes are:
+        (xxy)                                (xxz)                               (xyy)
+       ψi       = eiy (e2ix − c2s ),       ψi                2
+                                                     = eiz (eix − c2s ),       ψi        = eix (e2iy − c2s ),   (A.10)
+        (yyz)                                (xzz)                               (yzz)
+       ψi       = eiz (e2iy − c2s ),       ψi        = eix (e2iz − c2s ),      ψi        = eiy (e2iz − c2s ).   (A.11)
+                         (3)
+The mixed mode Hxyz vanishes on D3Q19 because no velocity has all three components
+nonzero.
+
+                                                              27
+P-TRT implementation.. The formulas are structurally identical to the D2Q9 case:
+
+                 (2)
+                                      X
+                                      3
+                                        wi ϕi,k X
+                                            (G)
+                                                                  (G)                (3)
+                Ri = fineq,+ −                                   ϕj,k fjneq ,      Ri = fineq,− .   (A.12)
+                                      k=1
+                                                 4c8s      j
+
+Both relations are exact.
+
+Appendix A.3. D3Q27 Lattice
+    The D3Q27 lattice consists of 1 rest velocity, 6 axial velocities, 12 face-diagonal veloc-
+ities, and 8 body-diagonal velocities (Q0 = 1, Qp = 13).
+Symmetric ghost modes (NG = 7).. Seven orthogonal ghost modes exist, organized into
+two groups:
+   Group 1: Fourth-order diagonal coupling modes (3) and the sixth-order full coupling
+mode (1).
+                               (G )
+                              ϕi 1 = (e2ix − c2s )(e2iy − c2s ),                                    (A.13)
+                               (G )
+                              ϕi 2 = (e2iy − c2s )(e2iz − c2s ),                                    (A.14)
+                               (G )
+                              ϕi 3 = (e2iz − c2s )(e2ix − c2s ),                                    (A.15)
+                               (G )
+                              ϕi 4 = (e2ix − c2s )(eiy
+                                                    2
+                                                       − c2s )(e2iz − c2s )/c2s .                   (A.16)
+
+   Group 2: Fourth-order shear–energy coupling modes (3).
+                                              (G )
+                                          ϕi 5 = eix eiy (e2iz − c2s ),                             (A.17)
+                                           (G )
+                                          ϕi 6 = eiy eiz (e2ix − c2s ),                             (A.18)
+                                           (G )
+                                          ϕi 7 = eiz eix (e2iy − c2s ).                             (A.19)
+
+Antisymmetric subspace (dim(A) = 13 > D + N3 = 10).. The deﬁcit of 3 dimensions
+corresponds to ﬁfth-order antisymmetric modes:
+                                      (5,x)
+                                     ψi        = eix (e2iy − c2s )(e2iz − c2s ),                    (A.20)
+                                      (5,y)             (5,z)
+and its cyclic permutations ψi                 and ψi           . These modes are nonzero only at body-
+diagonal velocities.
+P-TRT implementation (hybrid strategy). Since NG = 7 > M2 = 6, the ghost subtraction
+method for the second-order term is more expensive than the direct Hermite projection.
+Therefore, a hybrid strategy is recommended for D3Q27:
+                                (2)
+                      (2)     Hi,αβ neq
+                     Ri = w i       A                    (tensor projection, exact),                (A.21)
+                               2c4s αβ
+                        (3)
+                     Ri ≈ fineq,−               (antisymmetric approximation).                      (A.22)
+                               (3)
+The approximation in Ri neglects the ﬁfth-order residual, which is O(Kn3 ) in the
+Chapman–Enskog expansion and negligibly small in practice. If exact equivalence is
+required, one may subtract the ﬁfth-order projection explicitly:
+                    (3)
+                                    X                          ∆t wi eiα
+                   Ri = fineq,− −         (P̂ (5,k) f neq )i +           Fα . (A.23)
+                                                               2 c2s
+                                               k∈{x,y,z}
+
+
+                                                           28
+References
+ [1] H. Oh, H. Jo, Numerical study of turbulent ﬂow boiling heat transfer in structured
+     cooling channels using lattice Boltzmann method with advanced outlet boundary
+     conditions, Physics of Fluids 37 (1) (2025).
+
+ [2] A. Montessori, M. La Rocca, G. Amati, M. Lauricella, A. Tiribocchi, S. Succi, High-
+     order thread-safe lattice Boltzmann model for high performance computing turbulent
+     ﬂow simulations, Physics of Fluids 36 (3) (2024).
+
+ [3] S. Guo, Y. Feng, P. Sagaut, Improved standard thermal lattice Boltzmann model
+     with hybrid recursive regularization for compressible laminar and turbulent ﬂows,
+     Physics of Fluids 32 (12) (2020).
+
+ [4] K. Suga, Y. Kuwata, K. Takashima, R. Chikasue, A D3Q27 multiple-relaxation-
+     time lattice Boltzmann method for turbulent ﬂows, Computers & Mathematics with
+     Applications 69 (6) (2015) 518–529.
+
+ [5] M. Lulli, L. Biferale, G. Falcucci, M. Sbragaglia, D. Yang, X. Shan, Metastable and
+     unstable hydrodynamics in multiphase lattice Boltzmann, Physical Review E 109 (4)
+     (2024) 045304.
+
+ [6] R. Huang, Q. Li, Y. Qiu, Three-dimensional lattice Boltzmann model with self-tuning
+     equation of state for multiphase ﬂows, Physical Review E 109 (6) (2024) 065306.
+
+ [7] X. Zhang, T. Huang, Z. Ge, T. Man, H. E. Huppert, Inﬁltration characteristics of
+     slurries in porous media based on the coupled lattice-Boltzmann discrete element
+     method, Computers and Geotechnics 177 (2025) 106865.
+
+ [8] D. P. Sourya, P. S. Gurugubelli, S. Bhaskaran, N. Vorhauer-Huget, E. Tsotsas, V. K.
+     Surasani, A comparative study on the lattice Boltzmann method and the VOF-
+     continuum method for oxygen transport in the anodic porous transport layer of an
+     electrolyzer, International Journal of Hydrogen Energy 92 (2024) 1091–1098.
+
+ [9] S. A. Hosseini, P. Boivin, D. Thévenin, I. Karlin, Lattice Boltzmann methods for
+     combustion applications, Progress in Energy and Combustion Science 102 (2024)
+     101140.
+
+[10] C. Stockinger, A. Raiolo, R. Alamian, A. Hadjadj, U. Nieken, M. S. Shadloo, Lat-
+     tice Boltzmann simulations of heterogeneous combustion reactions for application in
+     porous media, Engineering Analysis with Boundary Elements 166 (2024) 105817.
+
+[11] T. Lei, Z. Wang, K. H. Luo, Study of pore-scale coke combustion in porous media
+     using lattice Boltzmann method, Combustion and Flame 225 (2021) 104–119.
+
+[12] M. Tayyab, S. Zhao, Y. Feng, P. Boivin, Hybrid regularized lattice-Boltzmann mod-
+     elling of premixed and non-premixed combustion processes, Combustion and Flame
+     211 (2020) 173–184.
+
+[13] L. Fei, F. Qin, J. Zhao, D. Derome, J. Carmeliet, Lattice Boltzmann modelling of
+     isothermal two-component evaporation in porous media, Journal of Fluid Mechanics
+     955 (2023) A18.
+
+
+                                          29
+[14] S. Kumar, D. Panda, P. Ghodke, K. M. Gangawane, Lattice Boltzmann method for
+     heat transfer in phase change materials: a review, Journal of Thermal Analysis and
+     Calorimetry 148 (17) (2023) 9263–9287.
+
+[15] Q. Li, P. Zhou, H. Yan, Pinning–depinning mechanism of the contact line during
+     evaporation on chemically patterned surfaces: A lattice Boltzmann study, Langmuir
+     32 (37) (2016) 9389–9396.
+
+[16] I. Cherkaoui, S. Bettaibi, A. Barkaoui, F. Kuznik, Numerical study of pulsatile
+     thermal magnetohydrodynamic blood ﬂow in an artery with aneurysm using lattice
+     Boltzmann method (LBM), Communications in Nonlinear Science and Numerical
+     Simulation 123 (2023) 107281.
+
+[17] I. Cherkaoui, S. Bettaibi, A. Barkaoui, F. Kuznik, Magnetohydrodynamic blood
+     ﬂow study in stenotic coronary artery using lattice Boltzmann method, Computer
+     Methods and Programs in Biomedicine 221 (2022) 106850.
+
+[18] S. S. Esfahani, X. Zhai, M. Chen, A. Amira, F. Bensaali, J. AbiNahed, S. Dakua,
+     G. Younes, A. Baobeid, R. A. Richardson, et al., Lattice-Boltzmann interactive blood
+     ﬂow simulation pipeline, International Journal of Computer Assisted Radiology and
+     Surgery 15 (4) (2020) 629–639.
+
+[19] A. Tiribocchi, M. Durve, M. Lauricella, A. Montessori, J.-M. Tucny, S. Succi, Lattice
+     Boltzmann simulations for soft ﬂowing matter, Physics Reports 1105 (2025) 1–52.
+
+[20] P. Lallemand, L.-S. Luo, M. Krafczyk, W.-A. Yong, The lattice Boltzmann method
+     for nearly incompressible ﬂows, Journal of Computational Physics 431 (2021) 109713.
+
+[21] T. Krüger, H. Kusumaatmaja, A. Kuzmin, O. Shardt, G. Silva, E. M. Viggen, The
+     lattice Boltzmann method, Springer, 2017.
+
+[22] Z. Guo, C. Shu, Lattice Boltzmann method and its application in engineering, Vol. 3,
+     World Scientiﬁc, 2013.
+
+[23] P. L. Bhatnagar, E. P. Gross, M. Krook, A model for collision processes in gases. i.
+     small amplitude processes in charged and neutral one-component systems, Physical
+     Review 94 (3) (1954) 511.
+
+[24] Y.-H. Qian, D. d’Humières, P. Lallemand, Lattice BGK models for Navier-Stokes
+     equation, Europhysics Letters 17 (6) (1992) 479.
+
+[25] P. Lallemand, L.-S. Luo, Theory of the lattice Boltzmann method: Dispersion, dissi-
+     pation, isotropy, Galilean invariance, and stability, Physical Review E 61 (6) (2000)
+     6546.
+
+[26] D. d’Humières, Multiple–relaxation–time lattice Boltzmann models in three dimen-
+     sions, Philosophical Transactions of the Royal Society of London. Series A: Mathe-
+     matical, Physical and Engineering Sciences 360 (1792) (2002) 437–451.
+
+[27] R. Du, B. Shi, X. Chen, Multi-relaxation-time lattice Boltzmann model for incom-
+     pressible ﬂow, Physics Letters A 359 (6) (2006) 564–572.
+
+
+
+                                           30
+[28] Y. Ning, K. N. Premnath, D. V. Patil, Numerical study of the properties of the central
+     moment lattice Boltzmann method, International Journal for Numerical Methods in
+     Fluids 82 (2) (2016) 59–90.
+
+[29] L. Fei, K. H. Luo, Consistent forcing scheme in the cascaded lattice Boltzmann
+     method, Physical Review E 96 (5) (2017) 053–307.
+
+[30] M. Geier, A. Greiner, J. G. Korvink, Cascaded digital lattice Boltzmann automata
+     for high reynolds number ﬂow, Physical Review EStatistical, Nonlinear, and Soft
+     Matter Physics 73 (6) (2006) 066705.
+
+[31] K. N. Premnath, S. Banerjee, Incorporating forcing terms in cascaded lattice Boltz-
+     mann approach by method of central moments, Physical Review E–Statistical, Non-
+     linear, and Soft Matter Physics 80 (3) (2009) 036702.
+
+[32] I. Ginzburg, F. Verhaeghe, D. d’Humieres, Study of simple hydrodynamic solutions
+     with the two-relaxation-times lattice Boltzmann scheme, Communications in Com-
+     putational Physics 3 (3) (2008) 519–581.
+
+[33] I. Ginzburg, F. Verhaeghe, D. d’Humieres, Two-relaxation-time lattice Boltzmann
+     scheme: About parametrization, velocity, pressure and mixed boundary conditions,
+     Communications in Computational Physics 3 (2) (2008) 427–478.
+
+[34] I. Ginzburg, Equilibrium-type and link-type lattice Boltzmann models for generic
+     advection and anisotropic-dispersion equation, Advances in Water Resources 28 (11)
+     (2005) 1171–1195.
+
+[35] J. Latt, B. Chopard, Lattice Boltzmann method with regularized pre-collision distri-
+     bution functions, Mathematics and Computers in Simulation 72 (2-6) (2006) 165–168.
+
+[36] A. Jonnalagadda, A. Sharma, A. Agrawal, Onsager-regularized lattice Boltzmann
+     method: A nonequilibrium thermodynamics-based regularized lattice Boltzmann
+     method, Physical Review E 104 (1) (2021) 015313.
+
+[37] C. Coreixas, G. Wissocq, G. Puigt, J.-F. Boussuge, P. Sagaut, Recursive regular-
+     ization step for high-order lattice Boltzmann methods, Physical Review E 96 (3)
+     (2017).
+
+[38] K. K. Mattila, P. C. Philippi, L. A. Hegele, High-order regularization in lattice-
+     Boltzmann equations, Physics of Fluids 29 (4) (2017).
+
+[39] X. Yang, Y. Zhang, An eﬃcient regularized lattice Boltzmann method to solve con-
+     sistent and conservative phase ﬁeld model for simulating incompressible two-phase
+     ﬂows, Advances in Applied Mathematics and Mechanics 16 (5) (2024) 1277–1296.
+
+[40] Y. Yu, S. Chen, Y. Zhou, L. Wang, H.-Z. Yuan, S. Shu, An improved lattice Boltz-
+     mann method with a novel conservative boundary scheme for viscoelastic ﬂuid ﬂows,
+     Journal of Computational Physics (2026) 114667.
+
+[41] Y. Feng, S. Guo, J. Jacob, P. Sagaut, Solid wall and open boundary conditions in
+     hybrid recursive regularized lattice Boltzmann method for compressible ﬂows, Physics
+     of Fluids 31 (12) (2019).
+
+
+                                            31
+[42] Y. Yu, Z. Qin, S. Chen, S. Shu, H. Yuan, Two-relaxation-time regularized lattice
+     Boltzmann model for navier-stokes equations, Advances in Applied Mathematics and
+     Mechanics 17 (2) (2025) 489–516. doi:10.4208/aamm.OA-2024-0203.
+
+[43] Z. Guo, C. Zheng, B. Shi, Discrete lattice eﬀects on the forcing term in the lattice
+     Boltzmann method, Physical Review E 65 (4) (2002) 046308.
+
+[44] X. He, X. Shan, G. D. Doolen, Discrete Boltzmann equation model for nonideal
+     gases, Physical Review E 57 (1) (1998) R13.
+
+[45] B. Postma, G. Silva, Force methods for the two-relaxation-times lattice Boltzmann,
+     Physical Review E 102 (6) (2020) 063307. doi:10.1103/PhysRevE.102.063307.
+
+[46] C. E. Pearson, A computational method for viscous ﬂow problems, Journal of Fluid
+     Mechanics 21 (4) (1965) 611–622.
+
+[47] A. J. Ladd, Numerical simulations of particulate suspensions via a discretized Boltz-
+     mann equation. Part 1. theoretical foundation, Journal of Fluid Mechanics 271 (1994)
+     285–309.
+
+[48] X. He, Q. Zou, L.-S. Luo, M. Dembo, Analytic solutions of simple ﬂows and analysis
+     of nonslip boundary conditions for the lattice Boltzmann BGK model, Journal of
+     Statistical Physics 87 (1) (1997) 115–136.
+
+[49] S. Gsell, U. d’Ortona, J. Favier, Lattice-Boltzmann simulation of creeping generalized
+     newtonian ﬂows: theory and guidelines, Journal of Computational Physics 429 (2021)
+     109943.
+
+[50] S. Sen, S. Mittal, G. Biswas, Flow past a square cylinder at low reynolds numbers,
+     International Journal for Numerical Methods in Fluids 67 (9) (2011) 1160–1174.
+
+
+
+
+                                            32
+
