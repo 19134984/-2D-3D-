@@ -444,7 +444,7 @@
     use openacc
     use commondata
     implicit none
-    integer(kind=4) :: finalStep
+    integer(kind=4) :: step, finalStep
     integer(kind=8) :: clockStart, clockEnd, clockRate
 
     !===============================================================================================
@@ -472,7 +472,9 @@
 
     !===============================================================================================
     ! 时间推进
-    do while( itc .LT. finalStep)
+    ! step 为本轮结束时的累计细步数；每轮前进 refineRatio 个细步，续算从已完成的 itc 接着走。
+    ! itc 仍在 advance_multiblock 中更新，因此不直接用 itc 作为 do 循环变量。
+    do step = itc + refineRatio, finalStep, refineRatio
 
 #ifdef steadyFlow
         ! 稳态模式：速度和温度误差均达标后停止。
@@ -4378,9 +4380,9 @@
     real(8), intent(in) :: x
     integer, intent(in) :: j
     real(8), intent(out) :: tm, um, dTdx
-    real(8) :: w(4), dw(4), temp(4), velocity(4), fine_value
+    real(8) :: w(4), dw(4), temp(4), velocity(4)
     integer :: first, a
-    external :: fine_value
+    real(8), external :: fine_value
 
     call section_weights(x + 0.5d0, nx, first, w, dw)
     do a = 1, 4
@@ -4407,9 +4409,9 @@
     integer, intent(in) :: i
     real(8), intent(in) :: y
     real(8), intent(out) :: tm, vm, dTdy
-    real(8) :: w(4), dw(4), temp(4), velocity(4), fine_value
+    real(8) :: w(4), dw(4), temp(4), velocity(4)
     integer :: first, a
-    external :: fine_value
+    real(8), external :: fine_value
 
     call section_weights(y + 0.5d0, ny, first, w, dw)
     do a = 1, 4

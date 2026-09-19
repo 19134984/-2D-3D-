@@ -1,0 +1,81 @@
+ Start: Fri Sep 18 21:25:05 2026
+ Starting OpenACC >>>>>>
+ Visible OpenACC devices:            1
+ Snapshot data will be stored in 
+ buoyancyCavity2DOpenaccSnapshot                                                                     
+ Data will be stored in 
+ buoyancyCavity2DOpenaccTecplot                                                                      
+ Reload data will be stored in 
+ reloadFile2DOpenacc                                                                                 
+ -------------------------------------------------------------------------------
+ Mesh:          256          256
+ Rayleigh=    1000000.000000000      ; Prandtl =   0.7100000000000000      
+ ; Mach =   0.1000000000000000     
+ Length unit: L0 =    256.0000000000000     
+ Time unit: Sqrt(L0/(gBeta*DeltaT)) =    4434.050067376331     
+ Velocity unit: Sqrt(gBeta*L0*DeltaT) =   5.7735026918962512E-002
+    
+ tauf=   0.5373619699694756     
+ flowScheme = P-TRT D2Q9, third-order equilibrium, fourth-order ghost removed
+ flowForcing = conserved-moment Guo/MRT (see PTRT/README.md)
+ Snu=    1.860943006548834      ; Sq=   0.1812095813405939      ; magic= 
+   0.1875000000000000     
+ thermalScheme = legacy D2Q5 (Qk/Qnu)
+ Qk=    1.267949192431123      ; Qnu=   0.9282032302755088      ; paraA= 
+   -3.392367791004748     
+ viscosity =   1.2453989989825201E-002 ; diffusivity = 
+   1.7540830971584792E-002
+ outputSnapshotFile =            1
+ outputSnapshotInterval =    10.00000000000000      free-fall time units
+ outputSnapshotIntervalItc =        44341 in itc units
+ outputPltFile =            1
+ outputPltFileInterval =    100.0000000000000      free-fall time units
+ outputPltFileIntervalItc =       443405 in itc units
+ outputReloadFile =            1
+ reloadFileInterval =    100.0000000000000      free-fall time units
+ reloadFileIntervalItc =       443405 in itc units
+ itc_max =     20000000
+ default epsU =   9.9999999999999995E-008 ; epsT =   9.9999999999999995E-008
+ useG =  F
+     
+ I am Side Heated Cell
+ I am steadyFlow
+ OpenACC GPU version; final wall-fit and psi/vorticity diagnostics stay on host
+ Initial field is set exactly
+ Velocity B.C. for vertical walls are: ===No-slip wall===
+ Velocity B.C. for horizontal walls are: ===No-slip wall===
+ Temperature B.C. for vertical walls are:===Hot/cold wall===
+ Temperature B.C. for horizontal walls are:===Adiabatic wall===
+ -------------------------------------------------------------------------------
+ Backup f/g restart state to: reloadFile2DOpenacc-000000443405.bin
+ Backup restart metadata to: reloadFile2DOpenacc-latest.meta
+ Backup f/g restart state to: reloadFile2DOpenacc-000000832000.bin
+ Backup restart metadata to: reloadFile2DOpenacc-latest.meta
+Nu_global =  8.8325943198096759E+000
+Nu_hot    =  8.8344573887600077E+000
+Nu_cold   =  8.8344573887599829E+000
+Nu_middle =  8.8325764206495787E+000
+Nu_hot_max =  1.7701938783388137E+001  y_max =  3.7990195228428600E-002
+Nu_hot_min =  9.8758902711842222E-001  y_min =  9.8632812500000000E-001
+ --- calc_umid_max --- Fri Sep 18 21:27:19 2026
+x_mid =  5.0000000000000000E-001
+u_mid_max =  6.4829406941071866E+001 y_pos =  8.4979645842067564E-001  (grid j0=218)
+ --- calc_vmid_max --- Fri Sep 18 21:27:19 2026
+y_mid =  5.0000000000000000E-001
+v_mid_max =  2.2067273921940682E+002 x_pos =  3.8086180359138494E-002  (grid i0=10)
+abs(psi_center_coarse) =  1.6394093072122281E+001
+abs(psi_center_fine) =  1.6394093021558334E+001
+max(|psi|) =  1.6818202793002321E+001  x* =  1.5040000000000001E-001  y* =  5.4659999999999997E-001
+ ======================================================================
+ Time (CPU) =     132.1970119476318      s
+ MLUPS =     412.4597916146528     
+ Time (ACC) =     132.1969320000000      s
+ MLUPS (ACC) =     412.4600410545080     
+Nu_global =  8.8325943198096759E+000
+Nu_hot    =  8.8344573887600077E+000
+Nu_cold   =  8.8344573887599829E+000
+ useG =  F
+ Dellocate Array......
+     
+ Successfully: DNS completed!
+ End:   Fri Sep 18 21:27:24 2026

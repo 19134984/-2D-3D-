@@ -1,0 +1,60 @@
+#!/bin/bash
+#PBS -N PTRT_S7_N512
+#PBS -q batch
+#PBS -l nodes=node07:ppn=1
+#PBS -l walltime=24:00:00
+#PBS -o /data2/XLLi/PTRT/Ra1e7/sideheated_N512_20260918/results/pbs.stdout
+#PBS -e /data2/XLLi/PTRT/Ra1e7/sideheated_N512_20260918/results/pbs.stderr
+set -eu
+CASE=/data2/XLLi/PTRT/Ra1e7/sideheated_N512_20260918
+NVHPC_ROOT=/opt/nvidia/hpc_sdk/Linux_x86_64/24.3
+export PATH="$NVHPC_ROOT/compilers/bin:$PATH"
+export LD_LIBRARY_PATH="$NVHPC_ROOT/compilers/lib:${LD_LIBRARY_PATH:-}"
+export OMP_NUM_THREADS=1 ACC_DEVICE_TYPE=nvidia
+export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
+cd "$CASE/results"
+test ! -e run.started
+printf 'job=%s
+host=%s
+' "${PBS_JOBID:-unknown}" "$(hostname)" > job_identity.txt
+date -Is > timing.txt
+sha256sum "$CASE/source/solver.F90" > runtime_source.sha256
+test "$(cut -d ' ' -f1 runtime_source.sha256)" = '389e8aef59659473629a8cf17db40aa9b388372bca03c0238b7f14f6c44fd334'
+nvfortran --version > compiler_version.txt 2>&1
+printf '%s
+' '-cpp -O3 -acc -gpu=cc60 -Minfo=accel -Mextend' > build_flags.txt
+cd "$CASE/build"
+set +e
+nvfortran -cpp -O3 -acc -gpu=cc60 -Minfo=accel -Mextend "$CASE/source/solver.F90" -o solver.exe > "$CASE/results/compile.log" 2>&1
+rc=$?
+set -e
+echo "$rc" > "$CASE/results/compile.status"
+test "$rc" -eq 0 || exit "$rc"
+cd "$CASE/results"
+nvidia-smi > nvidia_smi_before.log
+# Do not start GPU work over an unexpected existing GPU process.
+nvidia-smi --query-compute-apps=pid --format=csv,noheader > gpu_pids_before.txt
+if grep -Eq '[0-9]' gpu_pids_before.txt; then
+    echo gpu_occupied > validation.status
+    echo 88 > run.status
+    exit 88
+fi
+date -Is > run.started
+set +e
+"$CASE/build/solver.exe" > solver.stdout 2>&1
+rc=$?
+set -e
+echo "$rc" > run.status
+date -Is > run.finished
+date -Is >> timing.txt
+if [ "$rc" -ne 0 ]; then echo runtime_failed > validation.status; exit "$rc"; fi
+if grep -Eqi '(^|[^[:alpha:]])(nan|infinity|inf)([^[:alpha:]]|$)|CUDA_ERROR|ERROR STOP|FATAL|Error:' solver.stdout ./*.dat SimulationSettings2DOpenacc.txt; then
+    echo 86 > run.status; echo nonfinite_or_error > validation.status; exit 86
+fi
+if awk 'END {exit !(NF==4 && $2<=1e-7 && $3<=1e-7)}' Convergence_PTRT.dat; then
+    echo steady_threshold_passed_pending_checkpoint_audit > validation.status
+else
+    echo steady_threshold_not_met > validation.status
+    exit 89
+fi
+nvidia-smi > nvidia_smi_after.log

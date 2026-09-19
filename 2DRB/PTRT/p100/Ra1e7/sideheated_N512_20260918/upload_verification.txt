@@ -1,0 +1,2 @@
+389e8aef59659473629a8cf17db40aa9b388372bca03c0238b7f14f6c44fd334  /data2/XLLi/PTRT/Ra1e7/sideheated_N512_20260918/source/solver.F90
+390f8297ee60eec7e8b515e44d33570e77f0b583e512537d4a2562b97765d1cc  /data2/XLLi/PTRT/Ra1e7/sideheated_N512_20260918/source/local_master.F90

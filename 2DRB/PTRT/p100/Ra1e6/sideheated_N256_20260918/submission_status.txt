@@ -1,0 +1,52 @@
+Job Id: 7044.master
+    Job_Name = PTRT_S6_N256
+    Job_Owner = xlli@master
+    job_state = R
+    queue = batch
+    server = master
+    Checkpoint = u
+    ctime = Fri Sep 18 21:24:48 2026
+    Error_Path = master:/data2/XLLi/PTRT/Ra1e6/sideheated_N256_20260918/result
+	s/pbs.stderr
+    exec_host = node07/48
+    Hold_Types = n
+    Join_Path = n
+    Keep_Files = n
+    Mail_Points = a
+    mtime = Fri Sep 18 21:24:48 2026
+    Output_Path = master:/data2/XLLi/PTRT/Ra1e6/sideheated_N256_20260918/resul
+	ts/pbs.stdout
+    Priority = 0
+    qtime = Fri Sep 18 21:24:48 2026
+    Rerunable = True
+    Resource_List.nodes = node07:ppn=1
+    Resource_List.walltime = 24:00:00
+    Resource_List.nodect = 1
+    session_id = 48692
+    Variable_List = PBS_O_QUEUE=batch,PBS_O_HOME=/home/xlli,PBS_O_LOGNAME=xlli,
+	PBS_O_PATH=/usr/local/torque/bin:/usr/local/torque/sbin:/usr/lib64/qt
+	-3.3/bin:/home/xlli/perl5/bin:/usr/local/bin:/usr/bin,
+	PBS_O_MAIL=/var/mail/xlli,PBS_O_SHELL=/bin/bash,
+	PBS_O_LANG=en_US.UTF-8,
+	PBS_O_WORKDIR=/data2/XLLi/PTRT/Ra1e6/sideheated_N256_20260918,
+	PBS_O_HOST=master,PBS_O_SERVER=master
+    euser = xlli
+    egroup = stu
+    queue_type = E
+    comment = Job started on Fri Sep 18 at 21:24
+    etime = Fri Sep 18 21:24:48 2026
+    submit_args = run.pbs
+    start_time = Fri Sep 18 21:24:48 2026
+    Walltime.Remaining = 86387
+    start_count = 1
+    fault_tolerant = False
+    job_radix = 0
+    submit_host = master
+    init_work_dir = /data2/XLLi/PTRT/Ra1e6/sideheated_N256_20260918
+    request_version = 1
+
+FILE=job_identity.txt
+job=7044.master
+host=node07
+FILE=runtime_source.sha256
+65c59be92219f44026a20889ff593601cbbd2c54a30e04a796e179ce349daa4b  /data2/XLLi/PTRT/Ra1e6/sideheated_N256_20260918/source/solver.F90

@@ -1,0 +1,49 @@
+ Start: Fri Sep 18 21:57:35 2026
+ Starting OpenACC >>>>>>
+ Visible OpenACC devices:            1
+ Snapshot data will be stored in 
+ buoyancyCavity2DOpenaccSnapshot                                                                     
+ Data will be stored in 
+ buoyancyCavity2DOpenaccTecplot                                                                      
+ Reload data will be stored in 
+ reloadFile2DOpenacc                                                                                 
+ -------------------------------------------------------------------------------
+ Mesh:          512          512
+ Rayleigh=    100000000.0000000      ; Prandtl =   0.7100000000000000      
+ ; Mach =   0.1000000000000000     
+ Length unit: L0 =    512.0000000000000     
+ Time unit: Sqrt(L0/(gBeta*DeltaT)) =    8868.100134752687     
+ Velocity unit: Sqrt(gBeta*L0*DeltaT) =   5.7735026918962346E-002
+    
+ tauf=   0.5074723939938951     
+ flowScheme = P-TRT D2Q9, third-order equilibrium, fourth-order ghost removed
+ flowForcing = conserved-moment Guo/MRT (see PTRT/README.md)
+ Snu=    1.970550539961057      ; Sq=   3.9074161226989736E-002 ; magic= 
+   0.1875000000000000     
+ thermalScheme = legacy D2Q5 (Qk/Qnu)
+ Qk=    1.267949192431123      ; Qnu=   0.9282032302755088      ; paraA= 
+   -3.878473558200950     
+ viscosity =   2.4907979979650330E-003 ; diffusivity = 
+   3.5081661943169480E-003
+ outputSnapshotFile =            1
+ outputSnapshotInterval =    10.00000000000000      free-fall time units
+ outputSnapshotIntervalItc =        88681 in itc units
+ outputPltFile =            1
+ outputPltFileInterval =    100.0000000000000      free-fall time units
+ outputPltFileIntervalItc =       886810 in itc units
+ outputReloadFile =            1
+ reloadFileInterval =    100.0000000000000      free-fall time units
+ reloadFileIntervalItc =       886810 in itc units
+ itc_max =     20000000
+ default epsU =   9.9999999999999995E-008 ; epsT =   9.9999999999999995E-008
+ useG =  F
+     
+ I am Side Heated Cell
+ I am steadyFlow
+ OpenACC GPU version; final wall-fit and psi/vorticity diagnostics stay on host
+ Initial field is set exactly
+ Velocity B.C. for vertical walls are: ===No-slip wall===
+ Velocity B.C. for horizontal walls are: ===No-slip wall===
+ Temperature B.C. for vertical walls are:===Hot/cold wall===
+ Temperature B.C. for horizontal walls are:===Adiabatic wall===
+ -------------------------------------------------------------------------------

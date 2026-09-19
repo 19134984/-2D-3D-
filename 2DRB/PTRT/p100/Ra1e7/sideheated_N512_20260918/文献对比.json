@@ -1,0 +1,79 @@
+{
+  "final_checkpoint_metrics": {
+    "NuVolAvg": 16.53496673474015,
+    "ReVolRMS": 229.96891764850315,
+    "Nu_hot": 16.537963270236993,
+    "Nu_cold": 16.537963270237007,
+    "Nu_middle": 16.534999735805062
+  },
+  "reported": {
+    "NuVolAvg": 16.534966734740127,
+    "ReVolRMS": 229.9689176485033,
+    "Nu_hot": 16.537963270236986,
+    "Nu_cold": 16.537963270237007,
+    "Nu_middle": 16.534999735805037
+  },
+  "references": {
+    "paper_513": {
+      "NuVolAvg": 16.5245,
+      "Nu_hot": 16.5461,
+      "Nu_middle": 16.5243,
+      "ReVolRMS": 230.6601
+    },
+    "paper_1025": {
+      "NuVolAvg": 16.5133,
+      "Nu_hot": 16.5242,
+      "Nu_middle": 16.5133,
+      "ReVolRMS": 230.2448
+    },
+    "paper_2049": {
+      "NuVolAvg": 16.5114,
+      "Nu_hot": 16.5169,
+      "Nu_middle": 16.5114,
+      "ReVolRMS": 230.1948
+    },
+    "paper_extrapolated": {
+      "NuVolAvg": 16.511,
+      "Nu_hot": 16.5132,
+      "Nu_middle": 16.511,
+      "ReVolRMS": 230.1879
+    }
+  },
+  "deviations_percent": {
+    "paper_513": {
+      "NuVolAvg": 0.06334070465157075,
+      "Nu_hot": -0.04917611862013372,
+      "Nu_middle": 0.06475152233415034,
+      "ReVolRMS": -0.2996540587196697
+    },
+    "paper_1025": {
+      "NuVolAvg": 0.1312077824550367,
+      "Nu_hot": 0.08329159800167484,
+      "Nu_middle": 0.1314076278215816,
+      "ReVolRMS": -0.11982131691870866
+    },
+    "paper_2049": {
+      "NuVolAvg": 0.14273008188373038,
+      "Nu_hot": 0.12752556615947003,
+      "Nu_middle": 0.14292995024688346,
+      "ReVolRMS": -0.09812660907059394
+    },
+    "paper_extrapolated": {
+      "NuVolAvg": 0.14515616704105944,
+      "Nu_hot": 0.14996045731288898,
+      "Nu_middle": 0.14535604024627813,
+      "ReVolRMS": -0.09513199933483137
+    }
+  },
+  "step": 3008000,
+  "t_ff": 339.19328314890555,
+  "errors": [
+    9.902543058625402e-08,
+    7.386890627127686e-08
+  ],
+  "checkpoint_f_g_finite": true,
+  "checkpoint_sha256": "9168b35a32155682312f21defe776490a025340cf76d5a06d05da1b452597c91",
+  "source_sha256": "389e8aef59659473629a8cf17db40aa9b388372bca03c0238b7f14f6c44fd334",
+  "mass_drift_percent": -3.188416197730248e-08,
+  "hot_cold_difference_percent": 8.592868712422989e-14
+}

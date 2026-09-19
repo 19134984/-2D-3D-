@@ -1,0 +1,85 @@
+ Start: Fri Sep 18 21:35:53 2026
+ Starting OpenACC >>>>>>
+ Visible OpenACC devices:            1
+ Snapshot data will be stored in 
+ buoyancyCavity2DOpenaccSnapshot                                                                     
+ Data will be stored in 
+ buoyancyCavity2DOpenaccTecplot                                                                      
+ Reload data will be stored in 
+ reloadFile2DOpenacc                                                                                 
+ -------------------------------------------------------------------------------
+ Mesh:          512          512
+ Rayleigh=    10000000.00000000      ; Prandtl =   0.7100000000000000      
+ ; Mach =   0.1000000000000000     
+ Length unit: L0 =    512.0000000000000     
+ Time unit: Sqrt(L0/(gBeta*DeltaT)) =    8868.100134752640     
+ Velocity unit: Sqrt(gBeta*L0*DeltaT) =   5.7735026918962651E-002
+    
+ tauf=   0.5236297845948710     
+ flowScheme = P-TRT D2Q9, third-order equilibrium, fourth-order ghost removed
+ flowForcing = conserved-moment Guo/MRT (see PTRT/README.md)
+ Snu=    1.909746216544373      ; Sq=   0.1185550378223043      ; magic= 
+   0.1875000000000000     
+ thermalScheme = legacy D2Q5 (Qk/Qnu)
+ Qk=    1.267949192431123      ; Qnu=   0.9282032302755088      ; paraA= 
+   -3.615699647979109     
+ viscosity =   7.8765948649569904E-003 ; diffusivity = 
+   1.1093795584446465E-002
+ outputSnapshotFile =            1
+ outputSnapshotInterval =    10.00000000000000      free-fall time units
+ outputSnapshotIntervalItc =        88681 in itc units
+ outputPltFile =            1
+ outputPltFileInterval =    100.0000000000000      free-fall time units
+ outputPltFileIntervalItc =       886810 in itc units
+ outputReloadFile =            1
+ reloadFileInterval =    100.0000000000000      free-fall time units
+ reloadFileIntervalItc =       886810 in itc units
+ itc_max =     20000000
+ default epsU =   9.9999999999999995E-008 ; epsT =   9.9999999999999995E-008
+ useG =  F
+     
+ I am Side Heated Cell
+ I am steadyFlow
+ OpenACC GPU version; final wall-fit and psi/vorticity diagnostics stay on host
+ Initial field is set exactly
+ Velocity B.C. for vertical walls are: ===No-slip wall===
+ Velocity B.C. for horizontal walls are: ===No-slip wall===
+ Temperature B.C. for vertical walls are:===Hot/cold wall===
+ Temperature B.C. for horizontal walls are:===Adiabatic wall===
+ -------------------------------------------------------------------------------
+ Backup f/g restart state to: reloadFile2DOpenacc-000000886810.bin
+ Backup restart metadata to: reloadFile2DOpenacc-latest.meta
+ Backup f/g restart state to: reloadFile2DOpenacc-000001773620.bin
+ Backup restart metadata to: reloadFile2DOpenacc-latest.meta
+ Backup f/g restart state to: reloadFile2DOpenacc-000002660430.bin
+ Backup restart metadata to: reloadFile2DOpenacc-latest.meta
+ Backup f/g restart state to: reloadFile2DOpenacc-000003008000.bin
+ Backup restart metadata to: reloadFile2DOpenacc-latest.meta
+Nu_global =  1.6534975538818479E+001
+Nu_hot    =  1.6537963270236986E+001
+Nu_cold   =  1.6537963270237007E+001
+Nu_middle =  1.6534999735805037E+001
+Nu_hot_max =  3.9840498197208746E+001  y_max =  1.7306491389736903E-002
+Nu_hot_min =  1.3415473122053072E+000  y_min =  9.9852570031842858E-001
+ --- calc_umid_max --- Fri Sep 18 21:57:11 2026
+x_mid =  5.0000000000000000E-001
+u_mid_max =  1.4852124177618404E+002 y_pos =  8.7908243946908116E-001  (grid j0=451)
+ --- calc_vmid_max --- Fri Sep 18 21:57:11 2026
+y_mid =  5.0000000000000000E-001
+v_mid_max =  6.9977219428779154E+002 x_pos =  2.1425884003974691E-002  (grid i0=11)
+abs(psi_center_coarse) =  2.9371645553766715E+001
+abs(psi_center_fine) =  2.9371645557463733E+001
+max(|psi|) =  3.0174558167922896E+001  x* =  8.6000000000000007E-002  y* =  5.5549999999999999E-001
+ ======================================================================
+ Time (CPU) =     1274.665859937668      s
+ MLUPS =     618.6163580458331     
+ Time (ACC) =     1274.665844200000      s
+ MLUPS (ACC) =     618.6163656835828     
+Nu_global =  1.6534975538818479E+001
+Nu_hot    =  1.6537963270236986E+001
+Nu_cold   =  1.6537963270237007E+001
+ useG =  F
+ Dellocate Array......
+     
+ Successfully: DNS completed!
+ End:   Fri Sep 18 21:57:18 2026

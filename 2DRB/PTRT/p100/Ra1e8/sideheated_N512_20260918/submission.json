@@ -1,0 +1,6 @@
+{
+  "job": "7046.master",
+  "node": "node07",
+  "remote_case": "/data2/XLLi/PTRT/Ra1e8/sideheated_N512_20260918",
+  "dependency": "afterany:7045.master"
+}
