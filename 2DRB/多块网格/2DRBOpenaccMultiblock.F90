@@ -83,7 +83,9 @@
         ! 右=左+1、上=下+1 时，中心宽高为 nx-2*Left、ny-2*Bottom；较大粗细比仍须检查整除。
         ! 默认 128/129 对 nx=ny=1024、粗细比 2/4/8 都满足条件；不再自动移动右/上交界面。
         ! 多块模式 nx、ny 仍须整除粗细比；四个细网格编号fineLayerCellsLeft本身无须整除，但距墙均至少 (overlapCells+1)*refineRatio，得保证重叠层足够。
-        integer(kind=4), parameter :: overlapCells = 2    ! 每块向交界面外延伸的粗格距数；总重叠跨度为两倍粗格距数
+        integer(kind=4), parameter :: overlapCells = 2    ! 中心粗块越过分区线向外延伸的粗格距数。
+        integer(kind=4), parameter :: fineOverlapCells = 2    ! 外围细网格越过分区线向内延伸的细格距数。
+        ! 两侧按各自格距延伸；默认左侧粗边缘 x=123.5、细边缘 x=129.5，分区线仍为 x=127.5。
         integer(kind=4), parameter :: interfaceSkin = 2    ! 粗细人工边缘上每次重建的本地节点层数；细区之间直接迁移，不使用此层数。
 
         !===============================================================================================
@@ -595,9 +597,12 @@
 #endif
         overlap = overlapCells * refineRatio
         if( interfaceSkin < 2 ) error stop 'Split flow/thermal advance requires at least two interface layers'
+        ! 接收层须位于各自延伸区，避免人工边缘推进误差进入本区的积分节点。
+        if( overlapCells < interfaceSkin .OR. fineOverlapCells < interfaceSkin ) &
+            error stop 'Each grid extension must cover its local interface layers'
         ! 目标细块最内侧缓冲点必须位于来源粗块可用区内；四点模板另由 donor_stencil 检查。
-        ! 2*overlap >= interfaceSkin*refineRatio + interfaceSkin-1；默认比值2、两层缓冲时 overlapCells>=2。
-        if( 2 * overlap < interfaceSkin * refineRatio + interfaceSkin - 1) &
+        ! 总重叠跨度为 overlapCells*refineRatio+fineOverlapCells，统一按细格距计。
+        if( overlap + fineOverlapCells < interfaceSkin * refineRatio + interfaceSkin - 1) &
             error stop 'Overlap is too narrow for the pre-collision interface layers'
         if( mod(nx, refineRatio) /= 0 .OR. mod(ny, refineRatio) /= 0) &
             error stop 'nx,ny must be multiples of refineRatio'
@@ -620,29 +625,29 @@
         xOffsetCoarse = xLeft - overlap - 0.5d0 * dxCoarse
         yOffsetCoarse = yBottom - overlap - 0.5d0 * dxCoarse
 
-        ! 四个细矩形恰好拼成原来的有效细环；拼接处不增加插值接口。
+        ! 四个细矩形拼成细环；仅向中心延伸 fineOverlapCells 个细格距，拼接处直接迁移。
 
         ! 左侧细区：先确定节点数，再设置该区域的坐标偏移。
-        nxLeft = fineLayerCellsLeft + overlap
+        nxLeft = fineLayerCellsLeft + fineOverlapCells
         nyLeft = ny
         xOffsetLeft = 0.0d0
         yOffsetLeft = 0.0d0
 
         ! 右侧细区：先确定节点数，再设置该区域的坐标偏移。
-        nxRight = fineLayerCellsRight + overlap
+        nxRight = fineLayerCellsRight + fineOverlapCells
         nyRight = ny
         xOffsetRight = dble(nx - nxRight)
         yOffsetRight = 0.0d0
 
         ! 下侧细区：先确定节点数，再设置该区域的坐标偏移。
         nxBottom = nx - nxLeft - nxRight
-        nyBottom = fineLayerCellsBottom + overlap
+        nyBottom = fineLayerCellsBottom + fineOverlapCells
         xOffsetBottom = dble(nxLeft)
         yOffsetBottom = 0.0d0
 
         ! 上侧细区：先确定节点数，再设置该区域的坐标偏移。
         nxTop = nxBottom
-        nyTop = fineLayerCellsTop + overlap
+        nyTop = fineLayerCellsTop + fineOverlapCells
         xOffsetTop = dble(nxLeft)
         yOffsetTop = dble(ny - nyTop)
         if( min(nxBottom, ny - nyBottom - nyTop) < 1) &
@@ -785,8 +790,10 @@
     write(k, *) 'Rayleigh, Prandtl, Mach:', Rayleigh, Prandtl, Mach
     write(k, *) 'Fine tauf, Snu, Sq, Qk, Qnu, thermalA:', tauf, Snu, Sq, Qk, Qnu, thermalA
     write(k, *) 'Fine viscosity, diffusivity, gBeta, timeUnit:', viscosity, diffusivity, gBeta, timeUnit
-    write(k, *) 'Fine-node indices left/right/bottom/top; overlap in coarse spacings:', &
-        fineLayerCellsLeft, fineLayerCellsRight, fineLayerCellsBottom, fineLayerCellsTop, overlapCells
+    write(k, *) 'Fine-node indices left/right/bottom/top:', &
+        fineLayerCellsLeft, fineLayerCellsRight, fineLayerCellsBottom, fineLayerCellsTop
+    write(k, *) 'Coarse extension (coarse spacings); fine extension (fine spacings); interface layers:', &
+        overlapCells, fineOverlapCells, interfaceSkin
     write(k, *) 'Owned physical area:', totalArea
     write(k, *) 'Geometry: central coarse rectangle and four compact fine rectangles.'
     write(k, *) 'Fine seams exchange post-collision populations directly, including diagonal links.'
@@ -2520,16 +2527,16 @@
 ! 作用: 按全局坐标判断细节点是否处于细环内侧的人工边缘层。
 !===================================================================================================
   logical function fine_skin(x, y)
-    use commondata, only: centerBox, overlapCells, refineRatio, interfaceSkin
+    use commondata, only: centerBox, fineOverlapCells, interfaceSkin
     implicit none
 
     ! 这里检查的是整个细环的内缘；四个细矩形之间的存储接缝不属于粗细人工边界。
-    ! overlapCells*refineRatio 把重叠宽度换算成细格距，随后定位细环的最内侧计算节点。
+    ! fineOverlapCells 直接按细格距定位细环内缘，与粗块向外延伸的距离分别设置。
 
     real(8), intent(in) :: x, y
     real(8) :: xl, xr, yb, yt, o
 
-    o = dble(overlapCells * refineRatio)
+    o = dble(fineOverlapCells)
     xl = centerBox(1) + o
     xr = centerBox(2) - o
     yb = centerBox(3) + o
@@ -3923,6 +3930,8 @@
 
     ! 先核对 v11、网格参数、物理参数及输出间隔，匹配后才恢复场量。
     ! 旧 v10 连通细环文件需先用 convert_restart_v10.py 转换，不能按五套数组直接读取。
+    ! fineOverlapCells 决定各细数组尺寸和偏移，由 read_restart_grid 核对；旧对称布局不可直接续算。
+    ! 若需读取旧对称布局，先将 fineOverlapCells 设为 overlapCells*refineRatio，保持几何一致。
 
     integer(kind=4) :: k, ios, head(9), geom(7), sig(12), currentModel(12)
     real(kind=8) :: phys(16), coord(7), currentPhysics(16)

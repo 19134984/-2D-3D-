@@ -19,26 +19,29 @@ def parameter(name):
         raise ValueError('Missing integer parameter: '+name)
     return int(match[1])
 nx, ny, ratio = [parameter(k) for k in ('nx','ny','refineRatio')]
-overlap_cells, skin = [parameter(k) for k in ('overlapCells','interfaceSkin')]
+overlap_cells, fine_ov, skin = [parameter(k) for k in ('overlapCells','fineOverlapCells','interfaceSkin')]
 left,right,bottom,top = [parameter('fineLayerCells'+k) for k in ('Left','Right','Bottom','Top')]
 xl,xr,yb,yt = left-.5,nx-right+.5,bottom-.5,ny-top+.5
 ov = overlap_cells*ratio
 if ratio != 2:
     raise ValueError('The two-substep time diagram requires refineRatio=2; update its stages for another ratio.')
+nl,nr,nb,nt=left+fine_ov,right+fine_ov,bottom+fine_ov,top+fine_ov
+middle=nx-nl-nr
+assert middle>0 and ny-nb-nt>0
+assert overlap_cells>=skin and fine_ov>=skin
+assert (xr-xl)%ratio==0 and (yt-yb)%ratio==0
 blocks=[]
-for name,xa,xb,ya,ye,h in [('1 中心',xl,xr,yb,yt,ratio),('2 连通细环',0,nx,0,ny,1)]:
-    first=[max(.5,xa-ov),max(.5,ya-ov)]
-    last=[min(nx-.5,xb+ov),min(ny-.5,ye+ov)]
-    counts=[round((last[k]-first[k])/h)+1 for k in range(2)]
-    owned_counts=[]
-    for axis,(lo,hi) in enumerate([(xa,xb),(ya,ye)]):
-        assert abs(first[axis]+(counts[axis]-1)*h-last[axis])<1e-10
-        weights=[max(0,min(hi,first[axis]+i*h+h/2)-max(lo,first[axis]+i*h-h/2)) for i in range(counts[axis])]
-        assert abs(sum(weights)-(hi-lo))<1e-10
-        owned_counts.append(sum(w>0 for w in weights))
-    blocks.append({'block':name,'owned_faces':[xa,xb,ya,ye],'h':h,
-                   'first_computed_node':first,'last_computed_node':last,
-                   'integration_nodes':owned_counts,'computed_nodes':counts})
+for name,first,counts,dx in [
+    ('coarse',[xl-ov,yb-ov],[round((xr-xl)/ratio)+2*overlap_cells+1,
+                            round((yt-yb)/ratio)+2*overlap_cells+1],ratio),
+    ('left',[.5,.5],[nl,ny],1),
+    ('right',[nx-nr+.5,.5],[nr,ny],1),
+    ('bottom',[nl+.5,.5],[middle,nb],1),
+    ('top',[nl+.5,ny-nt+.5],[middle,nt],1)]:
+    last=[first[k]+(counts[k]-1)*dx for k in range(2)]
+    blocks.append({'array':name,'dx':dx,'first_computed_node':first,
+                   'last_computed_node':last,'computed_nodes':counts,
+                   'offset':[x-.5*dx for x in first]})
 def fmt(x): return f'{x:g}'
 
 INK='#243147'; MUTED='#536277'; GRID='#d7dee8'
@@ -97,10 +100,10 @@ class Canvas:
         ET.ElementTree(self.svg).write(HERE/(name+'.svg'),encoding='utf-8',xml_declaration=True)
 
 SAME='#237b69'
-layout=Canvas(1500,1500,'中心粗网格和连通细网格环：仅在两级之间保留接口。')
-layout.text(750,48,'连通细网格环：只保留粗细接口',44)
+layout=Canvas(1500,1500,'中心粗网格与四套紧凑细数组；粗细两侧按各自格距延伸。')
+layout.text(750,48,'五套数组：粗细网格采用非对称重叠',44)
 layout.text(750,105,f'nx={nx}，ny={ny}  ·  粗细比 {ratio}  ·  坐标以细格距计',29,MUTED)
-for x,color,desc in [(175,BLUE_FILL,'中心粗网格'),(620,FINE_FILL,'一个连通细环'),(1040,OVER_FILL,'粗细重叠带')]:
+for x,color,desc in [(175,BLUE_FILL,'中心粗网格'),(620,FINE_FILL,'四套细数组'),(1040,OVER_FILL,'粗细重叠带')]:
     layout.rect(x,150,28,24,color,GRID); layout.text(x+43,162,desc,27,anchor='start')
 X0,Y0=300,245
 sx=sy=min(900/nx,900/ny)
@@ -108,38 +111,42 @@ def X(x): return X0+x*sx
 def Y(y): return Y0+(ny-y)*sy
 def box(xlo,xhi,ylo,yhi,fill): layout.rect(X(xlo),Y(yhi),(xhi-xlo)*sx,(yhi-ylo)*sy,fill)
 box(0,nx,0,ny,FINE_FILL);box(xl,xr,yb,yt,BLUE_FILL)
-# Coarse/fine overlap occupies only the four sides of the central block.
-# Fine/fine buffer overlaps are identified by separate green seams, not this pink category.
-for y in (yb,yt): box(xl-ov,xr+ov,y-ov,y+ov,OVER_FILL)
-for x in (xl,xr): box(x-ov,x+ov,yb-ov,yt+ov,OVER_FILL)
+# Intersection of the coarse rectangle and fine ring, using node coordinates.
+box(xl-ov,xr+ov,yb-ov,yb+fine_ov,OVER_FILL)
+box(xl-ov,xr+ov,yt-fine_ov,yt+ov,OVER_FILL)
+box(xl-ov,xl+fine_ov,yb+fine_ov,yt-fine_ov,OVER_FILL)
+box(xr-fine_ov,xr+ov,yb+fine_ov,yt-fine_ov,OVER_FILL)
 layout.rect(X(0),Y(ny),nx*sx,ny*sy,None,INK,3)
 for y in (yb,yt):
-    layout.line(X(xl),Y(y),X(xr),Y(y),OVER,3)
-    # 原细块接缝已消除；这里没有人工边界或交换线。
-for x in (xl,xr): layout.line(X(x),Y(yb),X(x),Y(yt),OVER,3)
-layout.text(X(nx/2),Y((yt+ny)/2),'2  连通细网格环   h=1，Δt=1',30)
-layout.text(X(nx/2),Y(yb/2),'同一套 f、g，沿细环直接迁移',30)
-layout.text(X(xl/2),Y(ny*.57),'细环\nh=1',27)
-layout.text(X((xr+nx)/2),Y(ny*.57),'细环\nh=1',27)
-layout.text(X((xl+xr)/2),Y(ny*.64),'1  中心粗块',43)
-layout.text(X((xl+xr)/2),Y(ny*.56),f'h={ratio}，Δt={ratio}',32)
-layout.text(X((xl+xr)/2),Y(ny*.49),f'基准范围 [{fmt(xl)}, {fmt(xr)}] × [{fmt(yb)}, {fmt(yt)}]',26)
+    layout.line(X(xl),Y(y),X(xr),Y(y),OVER,3,True)
+for x in (xl,xr): layout.line(X(x),Y(yb),X(x),Y(yt),OVER,3,True)
+# Fine-array storage seams are halfway between adjacent fine nodes.
+for x in (nl,nx-nr):
+    for ya,ye in [(0,nb),(ny-nt,ny)]: layout.line(X(x),Y(ya),X(x),Y(ye),SAME,3)
+layout.text(X(nx/2),Y((yt+ny)/2),f'top：{middle} × {nt}，dx=1',29)
+layout.text(X(nx/2),Y(yb/2),f'bottom：{middle} × {nb}，dx=1',29)
+layout.text(X(xl/2),Y(ny*.57),f'left\n{nl} ×\n{ny}\ndx=1',25)
+layout.text(X((xr+nx)/2),Y(ny*.57),f'right\n{nr} ×\n{ny}\ndx=1',25)
+layout.text(X((xl+xr)/2),Y(ny*.64),'coarse：中心粗网格',40)
+layout.text(X((xl+xr)/2),Y(ny*.56),f'dx={ratio}，Δt={ratio}',32)
+layout.text(X((xl+xr)/2),Y(ny*.49),f'积分范围 [{fmt(xl)}, {fmt(xr)}] × [{fmt(yb)}, {fmt(yt)}]',26)
 layout.text(X((xl+xr)/2),Y(ny*.42),f'物理宽高 {fmt(xr-xl)} × {fmt(yt-yb)}',29)
 layout.text(X((xl+xr)/2),Y(ny*.34),f'计算节点 {blocks[0]["computed_nodes"][0]} × {blocks[0]["computed_nodes"][1]}（含重叠）',28)
-layout.text(X((xl+xr)/2),Y(ny*.27),f'正面积积分节点 {blocks[0]["integration_nodes"][0]} × {blocks[0]["integration_nodes"][1]}',27,MUTED)
+layout.text(X((xl+xr)/2),Y(ny*.27),f'粗向外延伸 {overlap_cells} 个粗格距；细向内延伸 {fine_ov} 个细格距',25,MUTED)
 for tick in (0,xl,xr,nx): layout.text(X(tick),1160,fmt(tick),25)
 for tick in (0,yb,yt,ny): layout.text(275,Y(tick),fmt(tick),25,anchor='end')
 layout.text(1305,1160,'x',27);layout.text(275,212,'y',27)
-layout.line(100,1220,155,1220,OVER,4);layout.text(178,1220,'粉色：粗细接口及重叠带，需要跨级取值与矩重标定',29,anchor='start')
-layout.text(178,1275,'四角处连续相邻：没有细块拼接线，没有同级缓冲交换',29,SAME,anchor='start')
+layout.line(100,1220,155,1220,OVER,4,True);layout.text(178,1220,'粉色带：粗细共同计算范围；虚线：积分分区线',29,anchor='start')
+layout.line(100,1275,155,1275,SAME,4)
+layout.text(178,1275,'绿色短线：细数组接缝，直接交换 f_post / g_post 后迁移',29,SAME,anchor='start')
 layout.text(750,1330,f'Left={left} → x={fmt(xl)}     Right={right} → x={fmt(xr)}',28)
 layout.text(750,1378,f'Bottom={bottom} → y={fmt(yb)}     Top={top} → y={fmt(yt)}',28)
 layout.text(750,1443,'Left / Right / Bottom / Top 是从对应墙面数的节点编号，不是物理层厚。',26,MUTED)
 layout.save('multiblock-layout')
 
-detail=Canvas(1500,1200,'左细块与中心粗块：基准边界就是共址节点列，图中展示实际格点。')
-detail.text(750,45,'粗细接口放大：基准边界就是共同节点列',42)
-lo,hi=xl-ov,xl+ov
+detail=Canvas(1500,1360,'左侧非对称重叠：区分积分分区线、人工边缘和两层接收节点。')
+detail.text(750,45,f'左侧接口放大：粗延伸 {overlap_cells} 格，细延伸 {fine_ov} 格',42)
+lo,hi=xl-ov,xl+fine_ov
 xa,xe=xl-14,xl+18
 ylo=blocks[0]['first_computed_node'][1]+ratio*round((ny/2-6-blocks[0]['first_computed_node'][1])/ratio)
 yhi=ylo+12
@@ -162,33 +169,42 @@ for j in range(13): detail.line(xx(xa),yy(ylo+j),xx(hi),yy(ylo+j),'#e4cbb8',1)
 for j in range(0,13,ratio): detail.line(xx(lo),yy(ylo+j),xx(xe),yy(ylo+j),'#a9bfdf',1)
 detail.line(xx(xl),yy(ylo)-5,xx(xl),yy(yhi)-5,OVER,3,True)
 detail.arrow(xx(lo),190,xx(hi),190,OVER)
-detail.text(750,150,f'重叠范围 [{fmt(lo)}, {fmt(hi)}]，跨度 {2*ov}：{2*ov+1} 排细点、{2*overlap_cells+1} 排粗点',28,OVER)
-detail.text(xx(lo)-18,242,f'粗块首列 {fmt(lo)}',25,anchor='end')
-detail.text(xx(hi)+18,242,f'细块末列 {fmt(hi)}',25,anchor='start')
-for x in (xa,lo,xl,hi,xe): detail.text(xx(x),728,fmt(x),25)
+detail.text(750,150,f'重叠范围 [{fmt(lo)}, {fmt(hi)}]，跨度 {ov+fine_ov} 个细格距',28,OVER)
+detail.text(xx(lo)-18,242,f'粗人工边缘 {fmt(lo)}',25,anchor='end')
+detail.text(xx(hi)+18,242,f'细人工边缘 {fmt(hi)}',25,anchor='start')
+for x in (xa,lo,xl,hi,xe):
+    tick_y=758 if x==hi else 728
+    detail.line(xx(x),yy(ylo)+12,xx(x),tick_y-18,MUTED,1)
+    detail.text(xx(x),tick_y,fmt(x),25)
 for y in (ylo,ylo+6,yhi): detail.text(165,yy(y),fmt(y),25,anchor='end')
-detail.dot(200,795,4,ORANGE);detail.text(225,795,'细点 h=1',27,anchor='start')
-detail.rect(560,787,16,16,None,BLUE,2);detail.text(590,795,f'粗点 h={ratio}',27,anchor='start')
+detail.dot(200,795,4,ORANGE);detail.text(225,795,'细点 dx=1',27,anchor='start')
+detail.rect(560,787,16,16,None,BLUE,2);detail.text(590,795,f'粗点 dx={ratio}',27,anchor='start')
 detail.rect(980,787,16,16,None,BLUE,2);detail.dot(988,795,4,ORANGE);detail.text(1010,795,'粗细重合点',27,anchor='start')
-detail.text(750,860,f'虚线 x={fmt(xl)}：共用基准边界，同时也是积分分界',28)
-detail.text(750,915,f'每块向外延伸 overlapCells × refineRatio = {overlap_cells} × {ratio} = {ov}',28)
-detail.rect(110,959,1280,146,'#f5f7fa',GRID)
-detail.text(140,997,f'interfaceSkin={skin}：人工边界接收 {skin} 层，接收后参加碰撞',28,anchor='start')
+detail.text(750,860,f'虚线 x={fmt(xl)}：积分分区线；两侧人工边缘仍在流体内部，不是墙壁',27)
+detail.text(750,915,f'粗向左：{overlap_cells} × {ratio} = {ov} 细格距；细向右：{fine_ov} 细格距',28)
+detail.rect(110,959,1280,260,'#f5f7fa',GRID)
+detail.text(140,997,f'interfaceSkin={skin}：各自接收 {skin} 层，重建 f、g 后参加碰撞与迁移',28,anchor='start')
 cs='、'.join(fmt(lo+i*ratio) for i in range(skin));fs='、'.join(fmt(hi-skin+1+i) for i in range(skin))
 detail.text(140,1055,f'粗块接收列：{cs}     |     细块接收列：{fs}',27,anchor='start')
-detail.text(750,1150,'重合点直接读取交换量；非重合点四点 Lagrange（二维 4×4），随后重建分布。',26,MUTED)
+for i in range(skin):
+    for j in range(0,13,ratio): detail.rect(xx(lo+i*ratio)-9,yy(ylo+j)-9,18,18,None,OVER,3)
+    for j in range(13): detail.dot(xx(hi-i),yy(ylo+j),6,SAME)
+detail.text(140,1110,'图中粉框：粗接收节点；绿点：细接收节点（其余为正常计算节点）',26,anchor='start')
+detail.text(140,1165,'共址取值也要转换非平衡矩尺度；接收层不作为反向交换的来源。',26,anchor='start')
+detail.text(750,1265,'空间：共址直接取值，非共址每方向四点 Lagrange；模板可伸出重叠区。',26,MUTED)
+detail.text(750,1310,'所有坐标以细格距计；人工边缘表示最外计算节点，没有额外半格距壁面。',26,MUTED)
 detail.save('multiblock-interface')
 
-same=Canvas(1500,820,'原上细块和左细块现已属于同一细环，直接访问相邻节点。')
-same.text(750,48,'原来的上、左细区：现在直接连续迁移',42)
-same.text(750,107,'只有一套细网格 f、g；没有同级连接、缓冲打包或插值',28,MUTED)
+same=Canvas(1500,820,'四套细数组通过碰撞后分布函数外圈交换，保持同级连续迁移。')
+same.text(750,48,'四套细数组：接缝处先交换，再迁移',42)
+same.text(750,107,'left / right / bottom / top 各存一套 f、g；格距和时间步相同',28,MUTED)
 same.rect(100,185,1300,190,FINE_FILL,GRID)
-same.text(750,240,'同一个细网格数组内的普通相邻节点',32)
+same.text(750,240,'先将邻区 f_post / g_post 复制到本区迁移外圈',32)
 same.text(750,310,'f(i,j,α) ← f_post(i−ex(α), j−ey(α), α)',31)
-same.text(750,440,'穿过原拼接位置与其他细网格内部位置完全相同。',31,SAME)
-same.text(750,515,'仍保留粗细交换：中心粗网格 ↔ 连通细环的内边缘。'.replace('↔','与'),29)
-same.text(750,605,'二维细数组覆盖全域；中心空区不碰撞、不迁移、不计入积分。',29)
-same.text(750,715,'数组为空区保留存储；这版尚未采用只存环上节点的紧凑布局。',27,MUTED)
+same.text(750,440,'同级接缝不插值、不反弹；D2Q9 同时交换对角方向所需数据。',29,SAME)
+same.text(750,515,'顺序：四区流场碰撞 → 交换 → 迁移；温度场随后按同样顺序推进。',28)
+same.text(750,605,'左右细区贯穿全高，上下细区填中间；角点不重复存储。',29)
+same.text(750,715,'中心空区不分配细数组；粗细人工边缘仍用 interfaceSkin 接收层交换。',27,MUTED)
 same.save('multiblock-samelevel')
 
 clock=Canvas(1500,1170,'一次粗步：先准备碰撞前缓冲，粗步为2、细步为1，在t+2同步。')
@@ -200,9 +216,9 @@ stages=[
     (345,'① 粗块预测','粗块：碰撞 → 迁移 → 原温度推进，到达 t+2',
      '保留 t−2、t、t+2 三个粗时间层；来源点排除两层人工边界',BLUE_FILL),
     (520,'② 细块第一步','准备 t 的接口 → 碰撞、迁移及温度推进 → t+1',
-     '细环内边缘读取粗块 t 快照；环内邻点直接迁移',FINE_FILL),
+     '重建细接收层；四套细数组先交换碰撞后外圈，再迁移',FINE_FILL),
     (695,'③ 细块第二步','准备 t+1 的接口 → 碰撞、迁移及温度推进 → t+2',
-     '细环内边缘由粗时间层插值到 t+1；没有同级交换',FINE_FILL),
+     '粗历史插值到 t+1；细数组间继续交换碰撞后外圈',FINE_FILL),
     (870,'④ 同步','细 → 粗修复粗缓冲；再补齐细缓冲，均在 t+2',
      '滚动历史，时钟增加2；此时输出、存检查点或开始下一个粗步',OVER_FILL),
 ]
@@ -219,23 +235,29 @@ clock.save('multiblock-timestep')
 manifest={'source_sha256':hashlib.sha256(SOURCE.read_bytes()).hexdigest(),'nx':nx,'ny':ny,
           'refineRatio':ratio,'fineLayerCellsLeft':left,'fineLayerCellsRight':right,
           'fineLayerCellsBottom':bottom,'fineLayerCellsTop':top,'overlapCells':overlap_cells,
+          'fineOverlapCells':fine_ov,
           'interfaces':{'xLeft':xl,'xRight':xr,'yBottom':yb,'yTop':yt},
-          'extension_from_reference_node':ov,'shared_node_span':2*ov,'interfaceSkin':skin,'blocks':blocks,
+          'coarse_extension_in_fine_units':ov,'fine_extension_in_fine_units':fine_ov,
+          'shared_node_span':ov+fine_ov,'interfaceSkin':skin,'blocks':blocks,
           'computed_node_total':sum(b['computed_nodes'][0]*b['computed_nodes'][1] for b in blocks),
           'integration_sample_total':None,
-          'legend':{'pink':'coarse-fine interface and overlap','fine_seams':'none; direct neighbor streaming within one ring'}}
-fine_active_count=0;fine_owned_count=0
-for j in range(ny):
-    y=j+.5
-    for i in range(nx):
-        x=i+.5
-        fine_active_count+=int(x<=xl+ov or x>=xr-ov or y<=yb+ov or y>=yt-ov)
-        cut=max(0,min(x+.5,xr)-max(x-.5,xl))*max(0,min(y+.5,yt)-max(y-.5,yb))
-        fine_owned_count+=int(1-cut>0)
-manifest['active_node_total']=blocks[0]['computed_nodes'][0]*blocks[0]['computed_nodes'][1]+fine_active_count
-manifest['integration_sample_total']=blocks[0]['integration_nodes'][0]*blocks[0]['integration_nodes'][1]+fine_owned_count
-manifest['blocks'][1]['active_node_count']=fine_active_count
-manifest['blocks'][1]['positive_area_node_count']=fine_owned_count
-manifest['blocks'][1]['owned_faces_note']='Bounding rectangle only; subtract the central owned rectangle in 2D.'
+          'legend':{'pink':'coarse-fine overlap; dashed line is integration partition',
+                    'fine_seams':'green; exchange post-collision halos then stream'}}
+for b in blocks:
+    area=0.; positive=0; dx=b['dx']
+    for j in range(b['computed_nodes'][1]):
+        y=b['first_computed_node'][1]+j*dx
+        for i in range(b['computed_nodes'][0]):
+            x=b['first_computed_node'][0]+i*dx
+            cut=max(0,min(x+dx/2,xr)-max(x-dx/2,xl))*max(0,min(y+dx/2,yt)-max(y-dx/2,yb))
+            weight=cut if b['array']=='coarse' else 1-cut
+            assert weight>=0
+            area+=weight; positive+=int(weight>0)
+    b['integration_area']=area
+    b['positive_area_node_count']=positive
+assert sum(b['integration_area'] for b in blocks)==nx*ny
+manifest['active_node_total']=manifest['computed_node_total']
+manifest['integration_sample_total']=sum(b['positive_area_node_count'] for b in blocks)
+manifest['fine_node_total']=sum(b['computed_nodes'][0]*b['computed_nodes'][1] for b in blocks[1:])
 (HERE/'layout_parameters.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')
 print(json.dumps(manifest,ensure_ascii=False,indent=2))

@@ -1,5 +1,5 @@
 {
-  "source_sha256": "e17e17c4971a8f384ae789d5f74350db2b53b05cb35ffa22e72a3dbd59cc7296",
+  "source_sha256": "4fcc2dfbb00e6e4ed7fbae30fabe7e0b9a71c16cd1b44bca2bd45e576cc57e2e",
   "nx": 1024,
   "ny": 1024,
   "refineRatio": 2,
@@ -8,25 +8,21 @@
   "fineLayerCellsBottom": 128,
   "fineLayerCellsTop": 129,
   "overlapCells": 2,
+  "fineOverlapCells": 2,
   "interfaces": {
     "xLeft": 127.5,
     "xRight": 895.5,
     "yBottom": 127.5,
     "yTop": 895.5
   },
-  "extension_from_reference_node": 4,
-  "shared_node_span": 8,
+  "coarse_extension_in_fine_units": 4,
+  "fine_extension_in_fine_units": 2,
+  "shared_node_span": 6,
   "interfaceSkin": 2,
   "blocks": [
     {
-      "block": "1 中心",
-      "owned_faces": [
-        127.5,
-        895.5,
-        127.5,
-        895.5
-      ],
-      "h": 2,
+      "array": "coarse",
+      "dx": 2,
       "first_computed_node": [
         123.5,
         123.5
@@ -35,50 +31,112 @@
         899.5,
         899.5
       ],
-      "integration_nodes": [
-        385,
-        385
-      ],
       "computed_nodes": [
         389,
         389
-      ]
+      ],
+      "offset": [
+        122.5,
+        122.5
+      ],
+      "integration_area": 589824.0,
+      "positive_area_node_count": 148225
     },
     {
-      "block": "2 连通细环",
-      "owned_faces": [
-        0,
-        1024,
-        0,
-        1024
-      ],
-      "h": 1,
+      "array": "left",
+      "dx": 1,
       "first_computed_node": [
         0.5,
+        0.5
+      ],
+      "last_computed_node": [
+        129.5,
+        1023.5
+      ],
+      "computed_nodes": [
+        130,
+        1024
+      ],
+      "offset": [
+        0.0,
+        0.0
+      ],
+      "integration_area": 131200.0,
+      "positive_area_node_count": 131586
+    },
+    {
+      "array": "right",
+      "dx": 1,
+      "first_computed_node": [
+        893.5,
         0.5
       ],
       "last_computed_node": [
         1023.5,
         1023.5
       ],
-      "integration_nodes": [
-        1024,
+      "computed_nodes": [
+        131,
         1024
+      ],
+      "offset": [
+        893.0,
+        0.0
+      ],
+      "integration_area": 132224.0,
+      "positive_area_node_count": 132610
+    },
+    {
+      "array": "bottom",
+      "dx": 1,
+      "first_computed_node": [
+        130.5,
+        0.5
+      ],
+      "last_computed_node": [
+        892.5,
+        129.5
       ],
       "computed_nodes": [
-        1024,
-        1024
+        763,
+        130
       ],
-      "active_node_count": 472495,
-      "positive_area_node_count": 460287,
-      "owned_faces_note": "Bounding rectangle only; subtract the central owned rectangle in 2D."
+      "offset": [
+        130.0,
+        0.0
+      ],
+      "integration_area": 97282.5,
+      "positive_area_node_count": 97664
+    },
+    {
+      "array": "top",
+      "dx": 1,
+      "first_computed_node": [
+        130.5,
+        893.5
+      ],
+      "last_computed_node": [
+        892.5,
+        1023.5
+      ],
+      "computed_nodes": [
+        763,
+        131
+      ],
+      "offset": [
+        130.0,
+        893.0
+      ],
+      "integration_area": 98045.5,
+      "positive_area_node_count": 98427
     }
   ],
-  "computed_node_total": 1199897,
+  "computed_node_total": 617728,
   "integration_sample_total": 608512,
   "legend": {
-    "pink": "coarse-fine interface and overlap",
-    "fine_seams": "none; direct neighbor streaming within one ring"
+    "pink": "coarse-fine overlap; dashed line is integration partition",
+    "fine_seams": "green; exchange post-collision halos then stream"
   },
-  "active_node_total": 623816
+  "active_node_total": 617728,
+  "fine_node_total": 466407
 }

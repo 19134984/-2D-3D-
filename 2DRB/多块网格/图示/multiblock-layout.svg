@@ -1,38 +1,46 @@
 <?xml version='1.0' encoding='utf-8'?>
 <svg xmlns="http://www.w3.org/2000/svg" width="1500" height="1500" viewBox="0 0 1500 1500" role="img">
-  <title>中心粗网格和连通细网格环：仅在两级之间保留接口。</title>
+  <title>中心粗网格与四套紧凑细数组；粗细两侧按各自格距延伸。</title>
   <rect x="0" y="0" width="1500" height="1500" fill="#ffffff" stroke="none" stroke-width="1" />
-  <text x="750" y="48" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="44" fill="#243147" text-anchor="middle" dominant-baseline="central">连通细网格环：只保留粗细接口</text>
+  <text x="750" y="48" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="44" fill="#243147" text-anchor="middle" dominant-baseline="central">五套数组：粗细网格采用非对称重叠</text>
   <text x="750" y="105" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="29" fill="#536277" text-anchor="middle" dominant-baseline="central">nx=1024，ny=1024  ·  粗细比 2  ·  坐标以细格距计</text>
   <rect x="175" y="150" width="28" height="24" fill="#e8f0fc" stroke="#d7dee8" stroke-width="1" />
   <text x="218" y="162" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="27" fill="#243147" text-anchor="start" dominant-baseline="central">中心粗网格</text>
   <rect x="620" y="150" width="28" height="24" fill="#fff1de" stroke="#d7dee8" stroke-width="1" />
-  <text x="663" y="162" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="27" fill="#243147" text-anchor="start" dominant-baseline="central">一个连通细环</text>
+  <text x="663" y="162" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="27" fill="#243147" text-anchor="start" dominant-baseline="central">四套细数组</text>
   <rect x="1040" y="150" width="28" height="24" fill="#f5dbe8" stroke="#d7dee8" stroke-width="1" />
   <text x="1083" y="162" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="27" fill="#243147" text-anchor="start" dominant-baseline="central">粗细重叠带</text>
   <rect x="300.0" y="245.0" width="900.0" height="900.0" fill="#fff1de" stroke="none" stroke-width="1" />
   <rect x="412.060546875" y="357.939453125" width="675.0" height="675.0" fill="#e8f0fc" stroke="none" stroke-width="1" />
-  <rect x="408.544921875" y="1029.423828125" width="682.03125" height="7.03125" fill="#f5dbe8" stroke="none" stroke-width="1" />
-  <rect x="408.544921875" y="354.423828125" width="682.03125" height="7.03125" fill="#f5dbe8" stroke="none" stroke-width="1" />
-  <rect x="408.544921875" y="354.423828125" width="7.03125" height="682.03125" fill="#f5dbe8" stroke="none" stroke-width="1" />
-  <rect x="1083.544921875" y="354.423828125" width="7.03125" height="682.03125" fill="#f5dbe8" stroke="none" stroke-width="1" />
+  <rect x="408.544921875" y="1031.181640625" width="682.03125" height="5.2734375" fill="#f5dbe8" stroke="none" stroke-width="1" />
+  <rect x="408.544921875" y="354.423828125" width="682.03125" height="5.2734375" fill="#f5dbe8" stroke="none" stroke-width="1" />
+  <rect x="408.544921875" y="359.697265625" width="5.2734375" height="671.484375" fill="#f5dbe8" stroke="none" stroke-width="1" />
+  <rect x="1085.302734375" y="359.697265625" width="5.2734375" height="671.484375" fill="#f5dbe8" stroke="none" stroke-width="1" />
   <rect x="300.0" y="245.0" width="900.0" height="900.0" fill="none" stroke="#243147" stroke-width="3" />
-  <line x1="412.060546875" y1="1032.939453125" x2="1087.060546875" y2="1032.939453125" stroke="#bd3e78" stroke-width="3" />
-  <line x1="412.060546875" y1="357.939453125" x2="1087.060546875" y2="357.939453125" stroke="#bd3e78" stroke-width="3" />
-  <line x1="412.060546875" y1="1032.939453125" x2="412.060546875" y2="357.939453125" stroke="#bd3e78" stroke-width="3" />
-  <line x1="1087.060546875" y1="1032.939453125" x2="1087.060546875" y2="357.939453125" stroke="#bd3e78" stroke-width="3" />
-  <text x="750.0" y="301.4697265625" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="30" fill="#243147" text-anchor="middle" dominant-baseline="central">2  连通细网格环   h=1，Δt=1</text>
-  <text x="750.0" y="1088.9697265625" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="30" fill="#243147" text-anchor="middle" dominant-baseline="central">同一套 f、g，沿细环直接迁移</text>
-  <text x="356.0302734375" y="632.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="27" fill="#243147" text-anchor="middle" dominant-baseline="central">细环</text>
-  <text x="356.0302734375" y="669.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="27" fill="#243147" text-anchor="middle" dominant-baseline="central">h=1</text>
-  <text x="1143.5302734375" y="632.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="27" fill="#243147" text-anchor="middle" dominant-baseline="central">细环</text>
-  <text x="1143.5302734375" y="669.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="27" fill="#243147" text-anchor="middle" dominant-baseline="central">h=1</text>
-  <text x="749.560546875" y="569.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="43" fill="#243147" text-anchor="middle" dominant-baseline="central">1  中心粗块</text>
-  <text x="749.560546875" y="641.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="32" fill="#243147" text-anchor="middle" dominant-baseline="central">h=2，Δt=2</text>
-  <text x="749.560546875" y="704.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="26" fill="#243147" text-anchor="middle" dominant-baseline="central">基准范围 [127.5, 895.5] × [127.5, 895.5]</text>
+  <line x1="412.060546875" y1="1032.939453125" x2="1087.060546875" y2="1032.939453125" stroke="#bd3e78" stroke-width="3" stroke-dasharray="8 7" />
+  <line x1="412.060546875" y1="357.939453125" x2="1087.060546875" y2="357.939453125" stroke="#bd3e78" stroke-width="3" stroke-dasharray="8 7" />
+  <line x1="412.060546875" y1="1032.939453125" x2="412.060546875" y2="357.939453125" stroke="#bd3e78" stroke-width="3" stroke-dasharray="8 7" />
+  <line x1="1087.060546875" y1="1032.939453125" x2="1087.060546875" y2="357.939453125" stroke="#bd3e78" stroke-width="3" stroke-dasharray="8 7" />
+  <line x1="414.2578125" y1="1145.0" x2="414.2578125" y2="1030.7421875" stroke="#237b69" stroke-width="3" />
+  <line x1="414.2578125" y1="360.13671875" x2="414.2578125" y2="245.0" stroke="#237b69" stroke-width="3" />
+  <line x1="1084.86328125" y1="1145.0" x2="1084.86328125" y2="1030.7421875" stroke="#237b69" stroke-width="3" />
+  <line x1="1084.86328125" y1="360.13671875" x2="1084.86328125" y2="245.0" stroke="#237b69" stroke-width="3" />
+  <text x="750.0" y="301.4697265625" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="29" fill="#243147" text-anchor="middle" dominant-baseline="central">top：763 × 131，dx=1</text>
+  <text x="750.0" y="1088.9697265625" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="29" fill="#243147" text-anchor="middle" dominant-baseline="central">bottom：763 × 130，dx=1</text>
+  <text x="356.0302734375" y="632.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="25" fill="#243147" text-anchor="middle" dominant-baseline="central">left</text>
+  <text x="356.0302734375" y="667.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="25" fill="#243147" text-anchor="middle" dominant-baseline="central">130 ×</text>
+  <text x="356.0302734375" y="702.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="25" fill="#243147" text-anchor="middle" dominant-baseline="central">1024</text>
+  <text x="356.0302734375" y="737.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="25" fill="#243147" text-anchor="middle" dominant-baseline="central">dx=1</text>
+  <text x="1143.5302734375" y="632.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="25" fill="#243147" text-anchor="middle" dominant-baseline="central">right</text>
+  <text x="1143.5302734375" y="667.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="25" fill="#243147" text-anchor="middle" dominant-baseline="central">131 ×</text>
+  <text x="1143.5302734375" y="702.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="25" fill="#243147" text-anchor="middle" dominant-baseline="central">1024</text>
+  <text x="1143.5302734375" y="737.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="25" fill="#243147" text-anchor="middle" dominant-baseline="central">dx=1</text>
+  <text x="749.560546875" y="569.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="40" fill="#243147" text-anchor="middle" dominant-baseline="central">coarse：中心粗网格</text>
+  <text x="749.560546875" y="641.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="32" fill="#243147" text-anchor="middle" dominant-baseline="central">dx=2，Δt=2</text>
+  <text x="749.560546875" y="704.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="26" fill="#243147" text-anchor="middle" dominant-baseline="central">积分范围 [127.5, 895.5] × [127.5, 895.5]</text>
   <text x="749.560546875" y="767.0000000000001" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="29" fill="#243147" text-anchor="middle" dominant-baseline="central">物理宽高 768 × 768</text>
   <text x="749.560546875" y="838.9999999999999" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="28" fill="#243147" text-anchor="middle" dominant-baseline="central">计算节点 389 × 389（含重叠）</text>
-  <text x="749.560546875" y="902.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="27" fill="#536277" text-anchor="middle" dominant-baseline="central">正面积积分节点 385 × 385</text>
+  <text x="749.560546875" y="902.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="25" fill="#536277" text-anchor="middle" dominant-baseline="central">粗向外延伸 2 个粗格距；细向内延伸 2 个细格距</text>
   <text x="300.0" y="1160" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="25" fill="#243147" text-anchor="middle" dominant-baseline="central">0</text>
   <text x="412.060546875" y="1160" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="25" fill="#243147" text-anchor="middle" dominant-baseline="central">127.5</text>
   <text x="1087.060546875" y="1160" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="25" fill="#243147" text-anchor="middle" dominant-baseline="central">895.5</text>
@@ -43,9 +51,10 @@
   <text x="275" y="245.0" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="25" fill="#243147" text-anchor="end" dominant-baseline="central">1024</text>
   <text x="1305" y="1160" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="27" fill="#243147" text-anchor="middle" dominant-baseline="central">x</text>
   <text x="275" y="212" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="27" fill="#243147" text-anchor="middle" dominant-baseline="central">y</text>
-  <line x1="100" y1="1220" x2="155" y2="1220" stroke="#bd3e78" stroke-width="4" />
-  <text x="178" y="1220" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="29" fill="#243147" text-anchor="start" dominant-baseline="central">粉色：粗细接口及重叠带，需要跨级取值与矩重标定</text>
-  <text x="178" y="1275" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="29" fill="#237b69" text-anchor="start" dominant-baseline="central">四角处连续相邻：没有细块拼接线，没有同级缓冲交换</text>
+  <line x1="100" y1="1220" x2="155" y2="1220" stroke="#bd3e78" stroke-width="4" stroke-dasharray="8 7" />
+  <text x="178" y="1220" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="29" fill="#243147" text-anchor="start" dominant-baseline="central">粉色带：粗细共同计算范围；虚线：积分分区线</text>
+  <line x1="100" y1="1275" x2="155" y2="1275" stroke="#237b69" stroke-width="4" />
+  <text x="178" y="1275" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="29" fill="#237b69" text-anchor="start" dominant-baseline="central">绿色短线：细数组接缝，直接交换 f_post / g_post 后迁移</text>
   <text x="750" y="1330" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="28" fill="#243147" text-anchor="middle" dominant-baseline="central">Left=128 → x=127.5     Right=129 → x=895.5</text>
   <text x="750" y="1378" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="28" fill="#243147" text-anchor="middle" dominant-baseline="central">Bottom=128 → y=127.5     Top=129 → y=895.5</text>
   <text x="750" y="1443" font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif" font-size="26" fill="#536277" text-anchor="middle" dominant-baseline="central">Left / Right / Bottom / Top 是从对应墙面数的节点编号，不是物理层厚。</text>

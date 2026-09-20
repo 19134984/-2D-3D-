@@ -1,6 +1,7 @@
 {
   "source_dirs": [
-    "fortls_stubs",
+    "C:/msys64/ucrt64/lib/gcc/x86_64-w64-mingw32/15.2.0/finclude",
+    "\u591a\u5757\u7f51\u683c",
     "\u5747\u5300\u7f51\u683c",
     "ISLBM",
     "STLBM",
