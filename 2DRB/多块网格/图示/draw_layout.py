@@ -19,7 +19,7 @@ def parameter(name):
         raise ValueError('Missing integer parameter: '+name)
     return int(match[1])
 nx, ny, ratio = [parameter(k) for k in ('nx','ny','refineRatio')]
-overlap_cells, fine_ov, skin = [parameter(k) for k in ('overlapCells','fineOverlapCells','interfaceSkin')]
+overlap_cells, fine_ov, skin = [parameter(k) for k in ('coarseOverlapCells','fineOverlapCells','interfaceSkin')]
 left,right,bottom,top = [parameter('fineLayerCells'+k) for k in ('Left','Right','Bottom','Top')]
 xl,xr,yb,yt = left-.5,nx-right+.5,bottom-.5,ny-top+.5
 ov = overlap_cells*ratio
@@ -234,7 +234,7 @@ clock.save('multiblock-timestep')
 
 manifest={'source_sha256':hashlib.sha256(SOURCE.read_bytes()).hexdigest(),'nx':nx,'ny':ny,
           'refineRatio':ratio,'fineLayerCellsLeft':left,'fineLayerCellsRight':right,
-          'fineLayerCellsBottom':bottom,'fineLayerCellsTop':top,'overlapCells':overlap_cells,
+          'fineLayerCellsBottom':bottom,'fineLayerCellsTop':top,'coarseOverlapCells':overlap_cells,
           'fineOverlapCells':fine_ov,
           'interfaces':{'xLeft':xl,'xRight':xr,'yBottom':yb,'yTop':yt},
           'coarse_extension_in_fine_units':ov,'fine_extension_in_fine_units':fine_ov,

@@ -23,20 +23,20 @@ def interface_probe():
     for region in ('Left', 'Right', 'Bottom', 'Top'):
         p = 'coarseTo'+region
         code += f'''
-    do ii=1,{p}Count
-        x=xOffset{region}+{p}Ti(ii)-0.5d0
-        y=yOffset{region}+{p}Tj(ii)-0.5d0
+    do ii=1,{p}NodeCount
+        x=xOffset{region}+{p}TargetIndexX(ii)-0.5d0
+        y=yOffset{region}+{p}TargetIndexY(ii)-0.5d0
         expected=(x/nx)**3*(y/ny)**3
         value=0.0d0
-        if ({p}Same(ii)) then
-            value=((xOffsetCoarse+({p}Si(ii)-0.5d0)*dxCoarse)/nx)**3 &
-                 *((yOffsetCoarse+({p}Sj(ii)-0.5d0)*dxCoarse)/ny)**3
+        if ({p}SamePosition(ii)) then
+            value=((xOffsetCoarse+({p}SourceIndexX(ii)-0.5d0)*dxCoarse)/nx)**3 &
+                 *((yOffsetCoarse+({p}SourceIndexY(ii)-0.5d0)*dxCoarse)/ny)**3
         else
             do b=1,4
                 do a=1,4
-                    value=value+{p}Wx(a,ii)*{p}Wy(b,ii) &
-                      *((xOffsetCoarse+({p}Si(ii)+a-1.5d0)*dxCoarse)/nx)**3 &
-                      *((yOffsetCoarse+({p}Sj(ii)+b-1.5d0)*dxCoarse)/ny)**3
+                    value=value+{p}InterpWeightX(a,ii)*{p}InterpWeightY(b,ii) &
+                      *((xOffsetCoarse+({p}SourceIndexX(ii)+a-1.5d0)*dxCoarse)/nx)**3 &
+                      *((yOffsetCoarse+({p}SourceIndexY(ii)+b-1.5d0)*dxCoarse)/ny)**3
                 enddo
             enddo
         endif

@@ -1,4 +1,4 @@
-"""Convert a connected-ring v10 checkpoint to compact named-array v11 storage.
+"""Convert a connected-ring v10 checkpoint to current compact named-array storage.
 
 Usage: python convert_restart_v10.py INPUT.bin OUTPUT.bin
 The input, latest.meta and history files are never modified. Choose a new output
@@ -57,7 +57,6 @@ def convert(source, destination):
     head[-1] = 1 if ratio == 1 else 5
     # Exclusive creation prevents replacing either an existing output or the input.
     with destination.open('xb') as output:
-        output.write(b'MB2DRESTART0011'.ljust(16))
         output.write(head.tobytes())
         output.write(data[52:coarse_end])
         for x0, x1, y0, y1 in cuts:

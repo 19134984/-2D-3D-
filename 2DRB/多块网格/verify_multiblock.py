@@ -681,15 +681,15 @@ def main():
         bad=subprocess.run([str(texe),'40'],cwd=target,env=ENV,capture_output=True)
         assert bad.returncode!=0 and b'Restart mesh/refinement mismatch' in bad.stderr
     REPORT['checks'].append({'independent_right_top_restart_mismatch_rejected':True})
-    # Previous layouts/statistics must fail before reading arrays (v5 used the old integration partition).
+    # A legacy text-prefixed header must fail the numeric mesh check before reading arrays.
     latest=(split/'reloadFile2DOpenaccMultiblock-latest.meta').read_text().strip()
     old=split/'old-layout.bin'
     state=(split/latest).read_bytes()
     for version in (3,4,5,6,7):
-        old.write_bytes(f'MB2DRESTART{version:04d}'.encode().ljust(16,b' ')+state[16:])
+        old.write_bytes(f'MB2DRESTART{version:04d}'.encode().ljust(16,b' ')+state)
         (split/'reloadFile2DOpenaccMultiblock-latest.meta').write_text('old-layout.bin\n')
         bad=subprocess.run([str(split/'resume.exe'),'40'],cwd=split,env=ENV,capture_output=True)
-        if bad.returncode==0 or b'Wrong checkpoint format' not in bad.stderr:
+        if bad.returncode==0 or b'Restart mesh/refinement mismatch' not in bad.stderr:
             raise AssertionError(f'Old checkpoint v{version} was not rejected')
     REPORT['checks'].append({'old_layout_restart_rejected':[3,4,5,6,7]})
 
@@ -711,7 +711,6 @@ def main():
     if 'INCOMPLETE' in stats or 'relative half-window difference:' not in stats:
         raise AssertionError('Main statistics window is not covered')
     with next(whole.glob('*Snapshot-*.bin')).open('rb') as f:
-        assert f.read(16)==b'MB2DSNAPSHOT0002'
         nb,nx,ny,_=np.fromfile(f,dtype='<i4',count=4)
         np.fromfile(f,dtype='<f8',count=2)
         area=0.0
@@ -721,10 +720,12 @@ def main():
             dx=np.fromfile(f,dtype='<f8',count=ni); dy=np.fromfile(f,dtype='<f8',count=nj)
             assert np.all(np.mod(first_x+np.arange(ni)*h-.5,1)==0)
             assert np.all(np.mod(first_y+np.arange(nj)*h-.5,1)==0)
-            area+=dx.sum()*dy.sum()
+            weights=np.fromfile(f,dtype='<f8',count=ni*nj)
+            assert weights.size==ni*nj and np.all(weights>=0)
+            area+=weights.sum()
             assert np.fromfile(f,dtype='<f8',count=4*ni*nj).size==4*ni*nj
         assert area==nx*ny and not f.read(1)
-    REPORT['checks'].append({'aligned_snapshot_v2_area_and_coordinates':'passed'})
+    REPORT['checks'].append({'snapshot_area_and_coordinates':'passed'})
     REPORT['checks'].append({'main_smoke_and_history_restart':True,'samples':len(hfull),'target_t_ff':0.1})
     for flag,pattern in [('outputSnapshotFile','*Snapshot-*.bin'),('outputPltFile','*Tecplot-*.dat'),
                          ('outputReloadFile','reloadFile2DOpenaccMultiblock-*')]:

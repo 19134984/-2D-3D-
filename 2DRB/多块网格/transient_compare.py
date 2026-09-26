@@ -21,17 +21,13 @@ u,vel,tt,rho=[raw[k*n*n:(k+1)*n*n].reshape((n,n),order='F') for k in range(14,18
 ref=[u,vel,tt,rho]
 num=np.zeros(4); denom=np.zeros(4); maxerr=np.zeros(4)
 with next(md.glob('*Snapshot-*.bin')).open('rb') as f:
-    magic=f.read(16)
-    assert magic in (b'MB2DSNAPSHOT0002',b'MB2DSNAPSHOT0003')
     nb,nx,ny,itc=np.fromfile(f,dtype='<i4',count=4)
     tff,L=np.fromfile(f,dtype='<f8',count=2)
     for b in range(nb):
         ni,nj=np.fromfile(f,dtype='<i4',count=2)
         first_x,first_y,h,*owned_box=np.fromfile(f,dtype='<f8',count=7)
         dx=np.fromfile(f,dtype='<f8',count=ni); dy=np.fromfile(f,dtype='<f8',count=nj)
-        area_weights=dx[:,None]*dy[None,:]
-        if magic==b'MB2DSNAPSHOT0003':
-            area_weights=np.fromfile(f,dtype='<f8',count=ni*nj).reshape((ni,nj),order='F')
+        area_weights=np.fromfile(f,dtype='<f8',count=ni*nj).reshape((ni,nj),order='F')
         arr=np.fromfile(f,dtype='<f8',count=4*ni*nj).reshape((ni,nj,4),order='F')
         xx=first_x+np.arange(ni)*h-.5
         yy=first_y+np.arange(nj)*h-.5
@@ -63,7 +59,7 @@ wide_history=np.loadtxt(wd/'NuRe_2DOpenaccMultiblock.dat')
 assert np.all(np.isfinite(wide_history))
 wide_metrics=wide_history[1:5]
 result={'case':'side-heated, EnableUseG, Ra=1e4, Pr=0.7, Ma=0.1',
-        'layout':'pre-collision buffers, overlapCells=2, aligned nested nodes, connected fine ring, snapshot v3 explicit 2D area',
+        'layout':'pre-collision buffers, overlapCells=2, aligned nested nodes, connected fine ring, snapshot explicit 2D area without text header',
         'fine_equivalent_grid':[n,n],'fine_steps':steps,'t_ff':float(tff),
         'field_order':['u','v','T','rho'],'field_relative_l2':np.sqrt(num/denom).tolist(),
         'field_max_abs':maxerr.tolist(),'metric_order':['NuVolAvg','ReVolRMS','Nu_hot','Nu_cold'],

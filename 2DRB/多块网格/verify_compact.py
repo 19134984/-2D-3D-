@@ -25,7 +25,7 @@ def node_record(region, i='i', j='j', nh='0'):
 
 
 def driver(compact, steps=40):
-    ni, nj, nh = ('nxCoarse', 'nyCoarse', 'historyLastCoarse') if compact else (
+    ni, nj, nh = ('nxCoarse', 'nyCoarse', 'coarseHistoryMaxTimeIndex') if compact else (
         'xLocalCount(1)', 'yLocalCount(1)', 'historyLast(1)')
     body = f'''program main
     use commondata
@@ -100,9 +100,9 @@ def compare_baseline(old, new, report):
         for filename in ['NuRe_2DOpenaccMultiblock.dat']+(['Convergence_2DOpenaccMultiblock.dat'] if steady else []):
             a,b=[np.loadtxt(f/filename) for f in results]
             np.testing.assert_allclose(a,b,rtol=2e-12,atol=2e-12)
-        converted=convert(checkpoint(results[0]),results[0]/'converted-v11.bin')
+        converted=convert(checkpoint(results[0]),results[0]/'converted-current.bin')
         # Header includes convergence sums, whose summation order has changed.
-        assert converted.read_bytes()[272:]==checkpoint(results[1]).read_bytes()[272:]
+        assert converted.read_bytes()[256:]==checkpoint(results[1]).read_bytes()[256:]
         validate_snapshot(next(results[1].glob('*Snapshot-*.bin')))
         report['checks'].append(dict(case=label,fine_steps=40,fields_and_history_bitwise_equal=True,
                                      diagnostics_tolerance=2e-12,converted_v10_payload_bitwise_equal=True))
@@ -115,8 +115,8 @@ def checkpoint(folder):
 
 def validate_snapshot(path):
     with path.open('rb') as f:
-        assert f.read(16).rstrip()==b'MB2DSNAPSHOT0003'
         count,nx,ny,itc=np.fromfile(f,dtype='<i4',count=4)
+        assert count in (1,5) and nx>0 and ny>0 and itc>=0
         np.fromfile(f,dtype='<f8',count=2)
         area=0.
         for _ in range(count):
@@ -153,11 +153,11 @@ def actual_main(new,report):
         v.run([exe],split)
         _,exe=v.compile_source('main_'+label+'_resume',settings(steady,full,True),**dims)
         v.run([exe],split)
-        assert checkpoint(continuous).read_bytes()[272:]==checkpoint(split).read_bytes()[272:]
+        assert checkpoint(continuous).read_bytes()[256:]==checkpoint(split).read_bytes()[256:]
         for filename in ['NuRe_2DOpenaccMultiblock.dat']+(['Convergence_2DOpenaccMultiblock.dat'] if steady else []):
             assert (continuous/filename).read_bytes()==(split/filename).read_bytes()
         for path in split.glob('*Snapshot-*.bin'): validate_snapshot(path)
-        report['checks'].append(dict(actual_main_v11_restart=label,fields_history_and_diagnostics_exact=True))
+        report['checks'].append(dict(actual_main_restart=label,fields_history_and_diagnostics_exact=True))
         print('PASS actual main continuous versus resumed:',label,flush=True)
     # The diagnostic history is independent of all three file-output switches.
     reference=(continuous/'NuRe_2DOpenaccMultiblock.dat').read_bytes()

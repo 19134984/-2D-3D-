@@ -1,5 +1,5 @@
 {
-  "source_sha256": "4fcc2dfbb00e6e4ed7fbae30fabe7e0b9a71c16cd1b44bca2bd45e576cc57e2e",
+  "source_sha256": "c40d934ffb09c9a9f014232915b37f18915982faa1b465b143ae397ad8b7a58e",
   "nx": 1024,
   "ny": 1024,
   "refineRatio": 2,
@@ -7,7 +7,7 @@
   "fineLayerCellsRight": 129,
   "fineLayerCellsBottom": 128,
   "fineLayerCellsTop": 129,
-  "overlapCells": 2,
+  "coarseOverlapCells": 2,
   "fineOverlapCells": 2,
   "interfaces": {
     "xLeft": 127.5,
