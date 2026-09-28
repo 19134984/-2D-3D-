@@ -25,7 +25,7 @@ def node_record(region, i='i', j='j', nh='0'):
 
 
 def driver(compact, steps=40):
-    ni, nj, nh = ('nxCoarse', 'nyCoarse', 'coarseHistoryMaxTimeIndex') if compact else (
+    ni, nj, nh = ('nxCoarse', 'nyCoarse', 'timeInterpMaxIndexCoarse') if compact else (
         'xLocalCount(1)', 'yLocalCount(1)', 'historyLast(1)')
     body = f'''program main
     use commondata
@@ -141,6 +141,8 @@ def actual_main(new,report):
             s=re.sub(r'(::\s*eps[UT]\s*=)\s*[^\n]+',r'\1 0.0d0',s)
             # Keep the short convergence-check cadence independent of source formatting.
             s=re.sub(r'\bmod\s*\(\s*itc\s*,\s*2000\s*\)', 'mod(itc, 20)', s, flags=re.I)
+            s=re.sub(r'(^[ \t]*checkIntervalItc[ \t]*=[ \t]*)[^\n]+',
+                     r'\g<1> ((20 + refineRatio - 1) / refineRatio) * refineRatio',s,flags=re.M)
         else:
             s=re.sub(r'(::\s*unsteadyRunDuration\s*=)\s*[^\n!]+',r'\1 '+str(end)+'d0 ',s)
         return s
@@ -154,7 +156,10 @@ def actual_main(new,report):
         _,exe=v.compile_source('main_'+label+'_resume',settings(steady,full,True),**dims)
         v.run([exe],split)
         assert checkpoint(continuous).read_bytes()[256:]==checkpoint(split).read_bytes()[256:]
-        for filename in ['NuRe_2DOpenaccMultiblock.dat']+(['Convergence_2DOpenaccMultiblock.dat'] if steady else []):
+        diagnostics = ['Convergence_2DOpenaccMultiblock.dat'] if steady else []
+        if steady and 'subroutine output_final_NuRe' in new:
+            diagnostics += ['SteadyMonitor_2DOpenaccMultiblock.dat', 'FinalNuRe_2DOpenaccMultiblock.dat']
+        for filename in ['NuRe_2DOpenaccMultiblock.dat']+diagnostics:
             assert (continuous/filename).read_bytes()==(split/filename).read_bytes()
         for path in split.glob('*Snapshot-*.bin'): validate_snapshot(path)
         report['checks'].append(dict(actual_main_restart=label,fields_history_and_diagnostics_exact=True))

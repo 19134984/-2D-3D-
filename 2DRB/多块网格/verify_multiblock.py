@@ -110,7 +110,7 @@ def compile_source(name, src, driver=None, n=96, ra=1000, syntax=False, ny=None,
     if driver:
         if 'allocatable :: f_coarse' in src:
             driver = plain_array_driver(driver)
-        if 'allocatable :: rhoHistory_coarse' in src:
+        if 'allocatable :: rhoHistory_coarse' in src or 'allocatable :: rhoTimeInterp_coarse' in src:
             # Preserve the original diagnostic stream order for comparisons
             # with both packed-history and named-history solver versions.
             histories = ['rhoHistory','uHistory','vHistory','THistory',
@@ -122,6 +122,15 @@ def compile_source(name, src, driver=None, n=96, ra=1000, syntax=False, ny=None,
                     arrays = [a+'_'+suffix+'('+(':,:,:,historyIndex' if a in histories[6:] else ':,:,historyIndex')+')'
                               for a in histories]
                     driver = re.sub(r'\bp_'+suffix+r'\b', '('+', '.join(arrays)+', historyIndex=0,'+bound+')', driver)
+        if 'allocatable :: rhoTimeInterp_coarse' in src:
+            # Keep legacy diagnostic drivers usable with renamed exchange arrays.
+            for region in ('coarse', 'left', 'right', 'bottom', 'top'):
+                if 'allocatable :: rhoTimeInterp_'+region not in src:
+                    continue
+                for name in ('rho', 'u', 'v', 'T', 'Fx', 'Fy', 'flowNeq', 'thermalNeq'):
+                    target = name + ('OverDx' if name in ('Fx', 'Fy') and
+                                     'allocatable :: FxOverDxTimeInterp_'+region in src else '') + 'TimeInterp_'+region
+                    driver = re.sub(r'\b'+name+r'History_'+region+r'\b', target, driver)
         src = re.sub(r'^\s*program main\b.*?^\s*end program main\b', driver, src, flags=re.S|re.M|re.I)
     # Multiblock parameters are edited only in this temporary source; the parent still uses -D overrides.
     if '#define NX_OVERRIDE' not in src:
@@ -223,12 +232,12 @@ CONDUCTION = '''program main
                 exact=Thot+(Tcold-Thot)*y/dble(ny)
 #endif
                 T(i,j)=exact
-                m=[exact,0.0d0,0.0d0,thermalA*exact,0.0d0]
+                m=[exact,0.0d0,0.0d0,paraA*exact,0.0d0]
                 ! 精确线性导热的迁移前非平衡热流矩；适用于两种原 D2Q5 分支。
 #ifdef SideHeatedCell
-                m(1)=-(thermalA+4.0d0)/10.0d0*blockH(b)/blockQk(b)*(Tcold-Thot)/dble(nx)
+                m(1)=-(paraA+4.0d0)/10.0d0*blockH(b)/blockQk(b)*(Tcold-Thot)/dble(nx)
 #else
-                m(2)=-(thermalA+4.0d0)/10.0d0*blockH(b)/blockQk(b)*(Tcold-Thot)/dble(ny)
+                m(2)=-(paraA+4.0d0)/10.0d0*blockH(b)/blockQk(b)*(Tcold-Thot)/dble(ny)
 #endif
                 call thermal_populations(m,gv)
                 g(i,j,:)=gv

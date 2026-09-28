@@ -23,9 +23,9 @@ def interface_probe():
     for region in ('Left', 'Right', 'Bottom', 'Top'):
         p = 'coarseTo'+region
         code += f'''
-    do ii=1,{p}NodeCount
-        x=xOffset{region}+{p}TargetIndexX(ii)-0.5d0
-        y=yOffset{region}+{p}TargetIndexY(ii)-0.5d0
+    do ii=1,{p}ReceiveNodeCount
+        x=xOffset{region}+{p}ReceiveIndexX(ii)-0.5d0
+        y=yOffset{region}+{p}ReceiveIndexY(ii)-0.5d0
         expected=(x/nx)**3*(y/ny)**3
         value=0.0d0
         if ({p}SamePosition(ii)) then
@@ -34,7 +34,7 @@ def interface_probe():
         else
             do b=1,4
                 do a=1,4
-                    value=value+{p}InterpWeightX(a,ii)*{p}InterpWeightY(b,ii) &
+                    value=value+{p}SpaceInterpWeightX(a,ii)*{p}SpaceInterpWeightY(b,ii) &
                       *((xOffsetCoarse+({p}SourceIndexX(ii)+a-1.5d0)*dxCoarse)/nx)**3 &
                       *((yOffsetCoarse+({p}SourceIndexY(ii)+b-1.5d0)*dxCoarse)/ny)**3
                 enddo
