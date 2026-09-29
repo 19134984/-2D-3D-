@@ -141,7 +141,7 @@ def actual_main(new,report):
             s=re.sub(r'(::\s*eps[UT]\s*=)\s*[^\n]+',r'\1 0.0d0',s)
             # Keep the short convergence-check cadence independent of source formatting.
             s=re.sub(r'\bmod\s*\(\s*itc\s*,\s*2000\s*\)', 'mod(itc, 20)', s, flags=re.I)
-            s=re.sub(r'(^[ \t]*checkIntervalItc[ \t]*=[ \t]*)[^\n]+',
+            s=re.sub(r'(^[ \t]*steadyCheckIntervalItc[ \t]*=[ \t]*)[^\n]+',
                      r'\g<1> ((20 + refineRatio - 1) / refineRatio) * refineRatio',s,flags=re.M)
         else:
             s=re.sub(r'(::\s*unsteadyRunDuration\s*=)\s*[^\n!]+',r'\1 '+str(end)+'d0 ',s)

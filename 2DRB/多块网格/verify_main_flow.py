@@ -22,7 +22,7 @@ def settings(source, end, restart=False, converge=False):
                         ('outputPltFileInterval', 7.5)]:
         source = re.sub(r'(::\s*'+name+r'\s*=)\s*[^\n!]+',
                         rf'\g<1> {steps}d0 / timeUnit ', source)
-    source = re.sub(r'(^[ \t]*checkIntervalItc[ \t]*=[ \t]*)[^\n]+',
+    source = re.sub(r'(^[ \t]*steadyCheckIntervalItc[ \t]*=[ \t]*)[^\n]+',
                     r'\g<1> 10', source, flags=re.M)
     # Prove the real main program releases host arrays after device cleanup.
     source = source.replace('    call deallocate_grid_arrays()', '''    call deallocate_grid_arrays()

@@ -210,7 +210,7 @@
         integer(kind=4) :: outputSnapshotIntervalItc
         integer(kind=4) :: reloadFileIntervalItc, outputPltFileIntervalItc
 #ifdef steadyFlow
-        integer(kind=4) :: checkIntervalItc    ! 稳态检查间隔：将原来的 2000 个细步向上对齐到粗细同步步。
+        integer(kind=4) :: steadyCheckIntervalItc    ! 稳态收敛检查及监测间隔，单位为细格子步；将 2000 步向上对齐到粗细同步步。
 #endif
         real(kind=8) :: errorU = 100.0d0, errorT = 100.0d0
 
@@ -524,9 +524,9 @@
     integer(kind=4) :: numAccDevices
     integer(kind=8) :: wallClockStart, wallClockEnd, wallClockRate
     integer(kind=4) :: step, finalStep    ! 多块网格的循环步数和终止步数，按粗细同步步推进。
-    integer(kind=4) :: itcStart    ! 本次运行开始时的累计细步数；性能统计只计算本次新增的步数。
+    integer(kind=4) :: itcStart    ! 本次运行开始时的累计细步数。
     integer(kind=4) :: lastSnapshotItc, lastPltItc, lastReloadItc    ! 本次最近输出的步数，防止结束时重复写同一步。
-    real(kind=8) :: latticeUpdates    ! 本次实际推进的节点次数，计入粗细重叠节点，不计迁移用外围槽位。
+    real(kind=8) :: latticeUpdates    ! 统计实际节点更新次数。
 
     !===============================================================================================
     ! 初始化 OpenACC 设备
@@ -587,7 +587,7 @@
 
 #ifdef steadyFlow
         ! 检查间隔由原来的 2000 个细步向上对齐；粗细比不能整除 2000 时也不会漏掉预定检查。
-        if( MOD(itc, checkIntervalItc) .EQ. 0 ) then
+        if( MOD(itc, steadyCheckIntervalItc) .EQ. 0 ) then
             call check()
             call output_steady_monitor()    ! 输出当前 Nu/Re，不增加正式采样次数。
         endif
@@ -738,19 +738,25 @@
 
     ! 检查输入参数与输出时间间隔。
     if( refineRatio < 1 ) error stop 'refineRatio must be a positive integer'
+
     if( min(nx, ny) < 8 ) error stop 'At least 8 cells per direction are required'
+
     if( loadInitField /= 0 .AND. loadInitField /= 1 ) error stop 'loadInitField must be 0 or 1'
-    if( loadInitField == 0) reloadFileNum = 0
+
+    if( loadInitField == 0) reloadFileNum = 0    !新计算清零续算文件编号
+
     if( min(outputSnapshotInterval, reloadFileInterval, outputPltFileInterval) * timeUnit < dble(refineRatio)) &
-        error stop 'Output intervals must be at least one synchronized coarse step'
+        error stop 'Output intervals must be at least one synchronized coarse step'     !要求最短的间隔也至少覆盖一个粗细同步周期,输出间隔对应的细步数 ≥ refineRatio
+
     if( paraA <= - 4.0d0 .OR. paraA >= 1.0d0 ) error stop 'Legacy paraA must be in (-4,1)'
 
-    ! 将 t_ff 间隔换算为细格子步数，再向上对齐到粗细同步步；主循环用 MOD 判断是否到期。
+    ! 将 t_ff 间隔换算为细格子步数，再向上对齐到粗细同步步。
     outputSnapshotIntervalItc = max(1, ceiling(outputSnapshotInterval * timeUnit / dble(refineRatio))) * refineRatio
     reloadFileIntervalItc = max(1, ceiling(reloadFileInterval * timeUnit / dble(refineRatio))) * refineRatio
     outputPltFileIntervalItc = max(1, ceiling(outputPltFileInterval * timeUnit / dble(refineRatio))) * refineRatio
+
 #ifdef steadyFlow
-    checkIntervalItc = ((2000 + refineRatio - 1) / refineRatio) * refineRatio
+    steadyCheckIntervalItc = ceiling(2000.0d0 / dble(refineRatio)) * refineRatio
 #endif
 
     ! 设置流场和温度场的格子权重。
@@ -776,37 +782,51 @@
 #if defined(VerticalWallsPeriodicalU) || defined(VerticalWallsPeriodicalT)
         error stop 'Multiblock periodic sides require a periodic block topology; use wall BCs or refineRatio=1'
 #endif
-        overlap = coarseOverlapCells * refineRatio
+
+        overlap = coarseOverlapCells * refineRatio    !将粗网格延伸宽度换成细格距单位
+
         if( interfaceSkin < 2 ) error stop 'Split flow/thermal advance requires at least two interface layers'
-        ! 接收层须位于各自延伸区，避免人工边缘推进误差进入本区的积分节点。
+
+        ! 接收层须位于各自延伸区
         if( coarseOverlapCells < interfaceSkin .OR. fineOverlapCells < interfaceSkin ) &
             error stop 'Each grid extension must cover its local interface layers'
-        ! 目标细块最内侧缓冲点必须位于来源粗块可用区内；四点模板另由 donor_stencil 检查。
+
+        ! 目标细块最内侧缓冲点必须位于来源粗块可用区内
         ! 总重叠跨度为 coarseOverlapCells*refineRatio+fineOverlapCells，统一按细格距计。
         if( overlap + fineOverlapCells < interfaceSkin * refineRatio + interfaceSkin - 1) &
             error stop 'Overlap is too narrow for the pre-collision interface layers'
+
+        !检查全域整除，并确定四条分区线    
         if( mod(nx, refineRatio) /= 0 .OR. mod(ny, refineRatio) /= 0) &
             error stop 'nx,ny must be multiples of refineRatio'
-        xLeft = dble(fineLayerCellsLeft) - 0.5d0
+        xLeft = dble(fineLayerCellsLeft) - 0.5d0           !细节点编号换成坐标
         xRight = dble(nx - fineLayerCellsRight) + 0.5d0
         yBottom = dble(fineLayerCellsBottom) - 0.5d0
         yTop = dble(ny - fineLayerCellsTop) + 0.5d0
+
+        ! 检查细块与粗块的重叠区域
         if( min(xLeft, dble(nx) - xRight, yBottom, dble(ny) - yTop) < dble(overlap + refineRatio)) &
             error stop 'Refined wall layer must exceed the overlap width by at least one coarse cell'
-        if( xRight <= xLeft .OR. yTop <= yBottom) &
+
+        if( xRight <= xLeft .OR. yTop <= yBottom) &      !保证中心区域有正宽度和高度
             error stop 'The coarse core must have positive width and height'
-        if( mod(nx - fineLayerCellsLeft - fineLayerCellsRight + 1, refineRatio) /= 0 .OR. &
+
+        if( mod(nx - fineLayerCellsLeft - fineLayerCellsRight + 1, refineRatio) /= 0 .OR. &   !中心宽高必须能被 refineRatio 整除
             mod(ny - fineLayerCellsBottom - fineLayerCellsTop + 1, refineRatio) /= 0) &
             error stop 'Central width and height must be multiples of refineRatio; adjust the four interface indices'
 
-        timeInterpMaxIndexCoarse = 2
+        timeInterpMaxIndexCoarse = 2               !表示使用 0、1、2 三个时间层，以及记录中心积分区域
         centerIntegrationBox = [xLeft, xRight, yBottom, yTop]
+
+        !nint 将实数结果取最近的整数
         nxCoarse = nint((xRight - xLeft) / dxCoarse) + 2 * coarseOverlapCells + 1
         nyCoarse = nint((yTop - yBottom) / dxCoarse) + 2 * coarseOverlapCells + 1
+
+        ! 将坐标偏移换算为细格距单位
         xOffsetCoarse = xLeft - overlap - 0.5d0 * dxCoarse
         yOffsetCoarse = yBottom - overlap - 0.5d0 * dxCoarse
 
-        ! 四个细矩形拼成细环；仅向中心延伸 fineOverlapCells 个细格距，拼接处直接迁移。
+        ! 四个细矩形拼成细环；仅向中心延伸 fineOverlapCells 个细格距，细矩形拼接处直接迁移。
 
         ! 左侧细区：先确定节点数，再设置该区域的坐标偏移。
         nxLeft = fineLayerCellsLeft + fineOverlapCells
@@ -831,37 +851,39 @@
         nyTop = fineLayerCellsTop + fineOverlapCells
         xOffsetTop = dble(nxLeft)
         yOffsetTop = dble(ny - nyTop)
+
+        ! 检查细环中间还有空间
         if( min(nxBottom, ny - nyBottom - nyTop) < 1) &
             error stop 'Compact fine ring requires a positive interior storage hole'
     endif
 
-    ! 单块模式的四边执行选定的物理域边界条件（壁面或周期）；多块模式的粗网格边界是人工边缘。
-    ! 中心粗网格的积分区域直接使用 centerIntegrationBox，不再另存一份。
+    ! 单块模式的四边执行选定的物理域边界条件（壁面或周期）；多块模式的粗网格边界是重叠层边缘。
     coarseIsWall = refineRatio == 1
 
-    ! 把最细网格的输运参数换算为粗网格参数。
+    ! 把细网格的输运参数换算为粗网格参数。
     SnuCoarse = 1.0d0 / (0.5d0 + (1.0d0 / Snu - 0.5d0) / dxCoarse)
     SqCoarse = 1.0d0 / (0.5d0 + (1.0d0 / Sq - 0.5d0) / dxCoarse)
     QkCoarse = 1.0d0 / (0.5d0 + (1.0d0 / Qk - 0.5d0) / dxCoarse)
     QnuCoarse = 1.0d0 / (0.5d0 + (1.0d0 / Qnu - 0.5d0) / dxCoarse)
+
     ! 浮力源项的细网格表达式为 Fy = rho*gBeta*(T-Tref)。
     ! 粗时间步相当于 dxCoarse 个细时间步，故粗网格浮力系数为 gBetaCoarse = dxCoarse*gBeta。
     gBetaCoarse = dxCoarse * gBeta
-    ! 细网格也沿用同一缩放表达式，保持重排存储前后的浮点运算结果一致。
 
+    ! 细网格也沿用同一缩放表达式。
     SnuFine = 1.0d0 / (0.5d0 + (1.0d0 / Snu - 0.5d0) / dxFine)
     SqFine = 1.0d0 / (0.5d0 + (1.0d0 / Sq - 0.5d0) / dxFine)
     QkFine = 1.0d0 / (0.5d0 + (1.0d0 / Qk - 0.5d0) / dxFine)
     QnuFine = 1.0d0 / (0.5d0 + (1.0d0 / Qnu - 0.5d0) / dxFine)
-    if( refineRatio > 1 ) then
 
+    if( refineRatio > 1 ) then
         ! 设置四个细区的统计外框；中心重叠面积在积分时另行扣除。
         leftIntegrationBox = [0.0d0, dble(nxLeft), 0.0d0, dble(ny)]
         rightIntegrationBox = [xOffsetRight, dble(nx), 0.0d0, dble(ny)]
         bottomIntegrationBox = [xOffsetBottom, xOffsetRight, 0.0d0, dble(nyBottom)]
         topIntegrationBox = [xOffsetTop, xOffsetRight, yOffsetTop, dble(ny)]
 
-        ! 左右细区接触三面外墙，上下细区只接触各自的水平外墙。
+        ! 左右细区接触三面外墙，上下细区只接触各自的水平外墙。数组顺序为左、右、下、上
         leftIsWall = [.true., .false., .true., .true.]
         rightIsWall = [.false., .true., .true., .true.]
         bottomIsWall = [.false., .false., .true., .false.]
@@ -988,7 +1010,7 @@
     write(k, *) 'reloadFileIntervalItc =', reloadFileIntervalItc
     write(k, *) 'outputPltFileIntervalItc =', outputPltFileIntervalItc
 #ifdef steadyFlow
-    write(k, *) 'checkIntervalItc =', checkIntervalItc
+    write(k, *) 'steadyCheckIntervalItc =', steadyCheckIntervalItc
 #endif
     write(k, *) 'Fine-node indices left/right/bottom/top:', &
         fineLayerCellsLeft, fineLayerCellsRight, fineLayerCellsBottom, fineLayerCellsTop
