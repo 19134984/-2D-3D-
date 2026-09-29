@@ -14,12 +14,15 @@ HERE = Path(__file__).resolve().parent
 SOURCE = HERE.parent / '2DRBOpenaccMultiblock.F90'
 src = SOURCE.read_text(encoding='utf-8-sig')
 def parameter(name):
-    match = re.search(r'\b'+re.escape(name)+r'\s*=\s*(\d+)\b', '\n'.join(line.split('!')[0] for line in src.splitlines()), re.I)
+    match = re.search(r'\b'+re.escape(name)+r'\s*=\s*(\d+|interfaceSkin)\b', '\n'.join(line.split('!')[0] for line in src.splitlines()), re.I)
     if not match:
         raise ValueError('Missing integer parameter: '+name)
+    if name.lower() in ('coarseoverlapcells', 'fineoverlapcells') and match[1].lower() == 'interfaceskin':
+        return parameter('interfaceSkin')
     return int(match[1])
 nx, ny, ratio = [parameter(k) for k in ('nx','ny','refineRatio')]
-overlap_cells, fine_ov, skin = [parameter(k) for k in ('coarseOverlapCells','fineOverlapCells','interfaceSkin')]
+skin = parameter('interfaceSkin')
+overlap_cells = fine_ov = skin
 left,right,bottom,top = [parameter('fineLayerCells'+k) for k in ('Left','Right','Bottom','Top')]
 xl,xr,yb,yt = left-.5,nx-right+.5,bottom-.5,ny-top+.5
 ov = overlap_cells*ratio

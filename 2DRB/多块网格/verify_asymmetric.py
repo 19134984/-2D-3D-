@@ -46,6 +46,27 @@ def interface_probe():
     return code
 
 
+def symmetric_source(source):
+    """Restore the historical four-cell fine extension in a test copy only."""
+    if re.search(r'\bfineOverlapCells\s*=', source, re.I):
+        restored, changes = re.subn(r'(fineOverlapCells\s*=)\s*(?:2|interfaceSkin)\b',
+                                    r'\1 4', source, count=1, flags=re.I)
+        assert changes == 1, 'Could not restore the symmetric fine overlap width'
+        return restored
+    restored, changes = re.subn(r'(fineLayerCells(?:Left|Right|Bottom|Top)\s*\+)\s*interfaceSkin\b',
+                                r'\1 4', source)
+    assert changes == 4, 'Could not restore the four fine storage extensions'
+    start = restored.index('  subroutine fine_skin(')
+    end = restored.index('  end subroutine fine_skin', start)
+    skin = restored[start:end].replace('dble(interfaceSkin)', '4.0d0')
+    for axis, index, sign, comparison in [('x', 1, '+', '>'), ('x', 2, '-', '<'),
+                                          ('y', 3, '+', '>'), ('y', 4, '-', '<')]:
+        original = f'{axis} {comparison} centerIntegrationBox({index})'
+        assert skin.count(original) == 1
+        skin = skin.replace(original, original + f' {sign} (4 - interfaceSkin)')
+    return restored[:start] + skin + restored[end:]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('baseline', type=Path, nargs='?')
@@ -56,6 +77,12 @@ def main():
     baseline = args.baseline.read_text(encoding='utf-8-sig') if args.baseline else None
     if baseline:
         report['baseline_sha256'] = hashlib.sha256(args.baseline.read_bytes()).hexdigest()
+    # The driver writes one sample after 160 steps; align its checkpoint clock
+    # so the old-layout rejection reaches the geometry check, not the clock check.
+    schedule = r'(::\s*(?:outputSnapshotInterval|reloadFileInterval|outputPltFileInterval)\s*=)\s*[^\n!]+'
+    source = re.sub(schedule, r'\1 159.75d0 / timeUnit ', source)
+    if baseline:
+        baseline = re.sub(schedule, r'\1 159.75d0 / timeUnit ', baseline)
     driver = c.driver(True, steps=160)
     driver = driver.replace('integer :: i,j,k,ii,jj,step',
                             'integer :: i,j,k,ii,jj,step,a,b\n    real(8) :: x,y,value,expected')
@@ -89,7 +116,7 @@ def main():
             if ratio==1:
                 assert (oldfolder/'canonical.bin').read_bytes()==(folder/'canonical.bin').read_bytes()
             if ratio==2 and not side:
-                symmetric=re.sub(r'(fineOverlapCells\s*=)\s*2',r'\1 4',source)
+                symmetric = symmetric_source(source)
                 restored, ex=v.compile_source('restored_symmetric',v.variant(symmetric,**settings),
                                                c.driver(True,steps=160),**dims)
                 v.run([ex],restored)

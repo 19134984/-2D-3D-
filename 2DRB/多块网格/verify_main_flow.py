@@ -25,7 +25,14 @@ def settings(source, end, restart=False, converge=False):
     source = re.sub(r'(^[ \t]*steadyCheckIntervalItc[ \t]*=[ \t]*)[^\n]+',
                     r'\g<1> 10', source, flags=re.M)
     # Prove the real main program releases host arrays after device cleanup.
+    source = source.replace('    call initial()', '''    call initial()
+    if( itc /= 0 ) error stop 'Local step counter must start at zero'
+    if( reloadMetadataLoaded .neqv. (loadInitField == 1) ) error stop 'Reload metadata status mismatch'
+    if( reloadDimensionlessTime /= dble(restartItcOffset)/timeUnit ) error stop 'Reload time mismatch' ''')
     source = source.replace('    call deallocate_grid_arrays()', '''    call deallocate_grid_arrays()
+    open(unit=78,file='run_counters.dat',status='replace')
+    write(78,*) itc, restartItcOffset, restartItcOffset+itc
+    close(78)
     if( allocated(f_coarse) .OR. allocated(f_left) .OR. allocated(f_right) .OR. &
         allocated(f_bottom) .OR. allocated(f_top) .OR. allocated(rhoReceive) .OR. &
         allocated(coarseToLeftReceiveIndexX) .OR. allocated(up_coarse) ) error stop 'Host arrays still allocated' ''')
@@ -61,7 +68,8 @@ def main():
     assert (itc, sample_index) == (22, 4)
 
     continuous = run_case(source, 'off_sample_full', 40)
-    run_case(source, 'off_sample_resume', 40, restart=True, folder=split)
+    run_case(source, 'off_sample_resume', 18, restart=True, folder=split)
+    np.testing.assert_array_equal(np.loadtxt(split/'run_counters.dat'), [18, 22, 40])
     assert c.checkpoint(continuous).read_bytes()[256:] == c.checkpoint(split).read_bytes()[256:]
     for name in ('NuRe_2DOpenaccMultiblock.dat', 'SteadyMonitor_2DOpenaccMultiblock.dat',
                  'Convergence_2DOpenaccMultiblock.dat', 'FinalNuRe_2DOpenaccMultiblock.dat'):
@@ -74,6 +82,14 @@ def main():
     assert log.count('End:') == 2
     assert log.count('steady convergence not achieved') == 2
     print('PASS off-sample final diagnostics, exact restart, host cleanup and run-only work count', flush=True)
+
+    # A second restart must absorb both previous runs into the offset.
+    continuous54 = run_case(source, 'full_54', 54)
+    run_case(source, 'second_resume', 14, restart=True, folder=split)
+    np.testing.assert_array_equal(np.loadtxt(split/'run_counters.dat'), [14, 40, 54])
+    assert c.checkpoint(continuous54).read_bytes()[256:] == c.checkpoint(split).read_bytes()[256:]
+    assert (continuous54/'NuRe_2DOpenaccMultiblock.dat').read_bytes() == (split/'NuRe_2DOpenaccMultiblock.dat').read_bytes()
+    print('PASS repeated restart offsets and local steady step budget', flush=True)
 
     aligned = run_case(source, 'aligned_final', 24)
     assert snapshot_steps(aligned) == [6, 12, 18, 24]
