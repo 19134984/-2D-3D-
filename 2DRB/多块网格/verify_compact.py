@@ -138,7 +138,7 @@ def actual_main(new,report):
                  r'\1 0.02d0 ',s)
         if steady:
             s=re.sub(r'(::\s*itc_max\s*=)\s*\d+',r'\g<1> '+str(end),s)
-            s=re.sub(r'(::\s*eps[UT]\s*=)\s*[^\n]+',r'\1 0.0d0',s)
+            s=re.sub(r'(\beps[UT]\s*=)\s*[^,\n!]+',r'\1 0.0d0',s)
             # Keep the short convergence-check cadence independent of source formatting.
             s=re.sub(r'\bmod\s*\(\s*itc\s*,\s*2000\s*\)', 'mod(itc, 20)', s, flags=re.I)
             s=re.sub(r'(^[ \t]*steadyCheckIntervalItc[ \t]*=[ \t]*)[^\n]+',
@@ -170,7 +170,7 @@ def actual_main(new,report):
     reference=(continuous/'NuRe_2DOpenaccMultiblock.dat').read_bytes()
     for flag,pattern in [('outputSnapshotFile','*Snapshot-*.bin'),('outputPltFile','*Tecplot-*.dat'),
                          ('outputReloadFile','reloadFile2DOpenaccMultiblock-*')]:
-        s=settings(True,160).replace(flag+' = 1',flag+' = 0')
+        s=re.sub(r'(\b'+flag+r'\s*=\s*)1\b',r'\g<1>0',settings(True,160))
         folder,exe=v.compile_source('disabled_'+flag,s,**dims)
         v.run([exe],folder)
         assert not list(folder.glob(pattern))

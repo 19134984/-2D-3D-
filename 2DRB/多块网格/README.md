@@ -12,6 +12,8 @@
 
 主程序沿用基准的 `string`、`numAccDevices`、`unsteadyItcRemaining`，以及稳态在循环入口判断收敛、非稳态按剩余步数推进的组织。续算参数集中在 `loadInitField/reloadFileNum` 后。多块子程序统一使用 `integer(kind=4)`、`real(kind=8)` 和 `character(len=...)` 的声明风格；基准已有变量不因使用次数少而删除。
 
+共享参数段的注释、排列和声明格式直接参照基准：包括重启设置、无量纲参数、输运系数、高阶矩、浮力、松弛率、输出/备份设置及文件前缀。主程序及共用碰撞、迁移、边界处理中的相同语句沿用原书写和适用注释。仅在检查点数据来源、粗细同步及固定旧温度算法等实际差异处注明多块实现。
+
 多块新增的 `gBetaCoarse`、`coarseOverlapCells`、`fineOverlapCells` 不再另存，使用处直接写 `dxCoarse*gBeta` 或 `interfaceSkin`。其余清理包括换算宽度、循环边界、中线位置和输出中转量；重叠宽度重复检查已删除，实际网格尺寸和插值模板检查保留。
 
 格距、粗松弛率、几何尺寸、运行状态、累加器和多次使用的复杂表达式仍保留。两个接口插值子程序的 `timeWeight0/1/2` 是 NVHPC 标量捕获所需，保留其 `firstprivate` 写法。
@@ -78,6 +80,10 @@ python convert_restart_v10.py old-v10.bin converted-current.bin
 稳态误差检查、非稳态 Nu/Re 窗口统计、独立输出间隔和开关均保留。原均匀代码中此前尚未移植的流函数/涡量等后处理不属于此次新增功能。
 
 ## 验证
+
+全文注释与格式整理记录见 `whole_style_verification.json`：保留用户确认的续算参数段，统一其余代码的书写格式与用途说明。修改前后全部 39447 个代码词法单元一致（含字符串、预处理和 OpenACC 指令），OpenACC 指令行原样保留，语法检查通过。本轮未重跑数值算例。
+
+上一轮注释与格式对齐结果见 `reference_comments_verification.json`，对照修改前版本检查场量、接口历史、Nu/Re、快照及旧检查点读取；测试参数替换支持基准的紧凑写法和同一行声明多个参数。
 
 最新风格对齐记录见 `baseline_style_verification.json`：75 个子程序除类型声明写法外保持一致；检查实际主程序的稳态多次续算、本次计数、连续与续算对照、非稳态剩余时长、输出开关和最终输出。此前数值与计步检查按下面的报告哈希追溯。
 

@@ -70,141 +70,149 @@
         !===============================================================================================
         ! 网格参数
         !===============================================================================================
-        ! nx,ny 为按细格距离计算的全域格子长度
+        ! nx,ny 为按细格距计算的全域格子长度
         ! 物理壁面在 x=0、nx 和 y=0、ny；最细块 dx=dt=1，中心粗块 dx=dt=refineRatio。
         ! 默认交界面为 x/y=127.5、895.5；粗细块共用这些基准边界，积分也用这些基准边界。
-        ! 中心宽度 nx-Left-Right+1、高度 ny-Bottom-Top+1 需要能被 refineRatio 整除，确保粗网格是完全覆盖的，不然会出现不连续。
-        ! 右=左+1、上=下+1 时，中心宽高为 nx-2*Left、ny-2*Bottom肯定能被2整除，较大粗细比仍须检查整除。
-        ! 增加粗细比和四个分区位置
-        integer(kind=4), parameter :: nx = 1024, ny = 1024    ! 细网格，必须被refineRatio整除以得到粗网格间距
-        integer(kind=4), parameter :: refineRatio = 2    ! 粗/细格距之比，取2、4、8等2的幂
-        integer(kind=4), parameter :: fineLayerCellsLeft = 128    ! 从左墙向内的细节点编号，x = Left-0.5
-        integer(kind=4), parameter :: fineLayerCellsRight = 129    ! 从右墙向内的细节点编号，x = nx-Right+0.5
-        integer(kind=4), parameter :: fineLayerCellsBottom = 128    ! 从下墙向内的细节点编号，y = Bottom-0.5
-        integer(kind=4), parameter :: fineLayerCellsTop = 129    ! 从上墙向内的细节点编号，y = ny-Top+0.5
-
-
-        !===============================================================================================
-        ! 是否从本程序检查点精确续算
-        !===============================================================================================
-        integer(kind=4), parameter :: loadInitField = 0    ! 0: 重新初始化；1: 按 latest.meta 指向的检查点续算
-        ! 正常续算只设置 loadInitField=1；优先读取 <reloadFilePrefix>-latest.meta。
-        ! 只有 latest.meta 缺失时，才手动填写 reloadFileNum，选择同前缀的编号 .bin 文件。
-        ! 时间、输出计数及粗块历史都从 .bin 精确恢复，不按文件编号推断累计时间。
-        integer(kind=4) :: reloadFileNum = 0    ! 非稳态为独立输出编号；稳态为累计细格子步数
-        real(kind=8) :: reloadDimensionlessTime = 0.0d0    ! 续算前已累计的 t_ff，由检查点步数换算。
-        integer(kind=4) :: restartItcOffset = 0    ! 续算前已累计的细格子步数，从检查点读取。
-        logical :: reloadMetadataLoaded = .false.    ! 检查点元数据及场量完整读取并核对成功后为真。
+        ! 中心宽高 nx-Left-Right+1、ny-Bottom-Top+1 必须能被 refineRatio 整除。
+        ! 右=左+1、上=下+1 时，中心宽高为 nx-2*Left、ny-2*Bottom；初始化时检查整除。
+        ! 粗细比和四个分区位置
+        integer(kind=4), parameter :: nx=1024, ny=1024    ! 全域格子长度，必须能被 refineRatio 整除
+        integer(kind=4), parameter :: refineRatio=2    ! 粗/细格距之比，取2、4、8等2的幂
+        integer(kind=4), parameter :: fineLayerCellsLeft=128    ! 从左墙向内的细节点编号，x = Left-0.5
+        integer(kind=4), parameter :: fineLayerCellsRight=129    ! 从右墙向内的细节点编号，x = nx-Right+0.5
+        integer(kind=4), parameter :: fineLayerCellsBottom=128    ! 从下墙向内的细节点编号，y = Bottom-0.5
+        integer(kind=4), parameter :: fineLayerCellsTop=129    ! 从上墙向内的细节点编号，y = ny-Top+0.5
 
         !===============================================================================================
-        ! 无量纲参数及物理壁面温度
-        !===============================================================================================
-        real(kind=8), parameter :: Rayleigh = 1.0d7
-        real(kind=8), parameter :: Prandtl = 0.7d0
-        real(kind=8), parameter :: Mach = 0.1d0
-        real(kind=8), parameter :: Thot = 0.5d0
-        real(kind=8), parameter :: Tcold = - 0.5d0
-        real(kind=8), parameter :: Tref = 0.5d0 * (Thot + Tcold)
-        real(kind=8), parameter :: pi = acos( - 1.0d0)
+        ! 是否在计算前从旧算例重启
+        integer(kind=4), parameter :: loadInitField=0   ! 0: 不重启；1: 按 latest .meta 自动续算
 
+        ! 正常断电续算只需要设置 loadInitField=1；
+        ! 代码只读取 <reloadFilePrefix>-latest.meta，并从里面找到最新的 .bin。
+        ! 正常续算不用改 reloadFileNum；只有 latest .meta 缺失时，
+        ! 才手动设置 reloadFileNum 作为手工兜底编号。重启文件的编号
+        integer(kind=4) :: reloadFileNum=0              ! latest .meta 存在时会被覆盖；meta 缺失时作为手工兜底编号
+        !===============================================================================================
+        ! 多块检查点的步数和时间信息保存在 .bin 中；.meta 只记录文件名，无需按编号推断。
+        real(kind=8) :: reloadDimensionlessTime=0.0d0   ! 续算前已累计的 t_ff；由检查点累计步数换算
+        integer(kind=4) :: restartItcOffset=0           ! 续算前已累计的格子步数；从检查点读取
+        logical :: reloadMetadataLoaded=.false.         ! 标记是否成功读取 reload 元数据
+        !===============================================================================================
+
+        !===============================================================================================
+        ! 无量纲参数
+        !===============================================================================================
 #ifdef SideHeatedCell
-        real(kind=8), parameter :: lengthUnit = dble(nx)   !细格子间距作为 x 方向的单位长度
+        real(kind=8), parameter :: lengthUnit=dble(nx)    !侧壁差温：特征长度取 x 方向长度
 #else
-        real(kind=8), parameter :: lengthUnit = dble(ny)
+        real(kind=8), parameter :: lengthUnit=dble(ny)    !上下差温：特征长度取 y 方向长度
+#endif
+        real(kind=8), parameter :: pi=acos(-1.0d0)
+
+        real(kind=8), parameter :: Rayleigh=1.0d7
+        real(kind=8), parameter :: Prandtl=0.7d0
+        real(kind=8), parameter :: Mach=0.1d0
+        real(kind=8), parameter :: Thot=0.5d0, Tcold=-0.5d0
+        real(kind=8), parameter :: Tref=0.5d0*(Thot+Tcold)
+        ! 多块网格：以下输运参数采用最细格子单位。
+        real(kind=8), parameter :: tauf=0.5d0+Mach*lengthUnit*sqrt(3.0d0*Prandtl/Rayleigh)
+        real(kind=8), parameter :: viscosity=(tauf-0.5d0)/3.0d0
+        real(kind=8), parameter :: diffusivity=viscosity/Prandtl
+
+        ! velocityScaleCompare is used only in velocity-related post-processing to convert lattice velocity
+        ! to the nondimensional velocity scale adopted by the reference paper being compared.
+        ! 多块快照当前保存格子速度，尚未使用下面的后处理比较标度。
+        real(kind=8), parameter :: velocityScaleCompare=lengthUnit/diffusivity    ! 默认采用热扩散标度 UL/kappa；若要按自由落体标度比较，可改为 1.0d0/velocityUnit
+
+#ifdef  SideHeatedHa
+        real(kind=8), parameter :: Ha=20.0d0    !磁场强度
+        real(kind=8), parameter :: phi=0.0d0*pi/180.0d0    !磁场角度，以水平向右为0，修改0.0d0即可
+        real(kind=8), parameter :: B2sigemarho=Ha**2*viscosity/lengthUnit**2    !动量方程上的源项系数
 #endif
 
+        ! 高阶矩参数修正
+        real(kind=8), parameter :: paraA=20.0d0*sqrt(3.0d0)*diffusivity-4.0d0
+
+        ! 浮力项参数
+        real(kind=8), parameter :: gBeta1=Rayleigh*viscosity*diffusivity/lengthUnit
+        real(kind=8), parameter :: gBeta=gBeta1/lengthUnit/lengthUnit    !gbetaΔT
+
+        real(kind=8), parameter :: timeUnit=sqrt(lengthUnit/gBeta)    !无量纲时间
+        real(kind=8), parameter :: velocityUnit=sqrt(gBeta*lengthUnit)    !无量纲速度
+
+        real(kind=8), parameter :: Snu=1.0d0/tauf, Sq=8.0d0*(2.0d0*tauf-1.0d0)/(8.0d0*tauf-1.0d0)    !动量的多松弛系数
+
+        ! 多块网格当前固定使用基准的旧温度算法。
+        real(kind=8), parameter :: Qk=3.0d0-sqrt(3.0d0), Qnu=4.0d0*sqrt(3.0d0)-6.0d0    !旧温度算法的多松弛系数
+        real(kind=8), parameter :: thermalGeqCoeff=10.0d0/(4.0d0+paraA)
         !===============================================================================================
-        ! 输运系数：沿用最细格子单位
-        !===============================================================================================
-        ! 以下参数全部沿用原文件的最细格子单位，不按块重新定义 Ra、Pr、Ma 或 paraA。
-        real(kind=8), parameter :: tauf = 0.5d0 + Mach * lengthUnit * sqrt(3.0d0 * Prandtl / Rayleigh)  !这里是细网格的参数
-        real(kind=8), parameter :: viscosity = (tauf - 0.5d0) / 3.0d0
-        real(kind=8), parameter :: diffusivity = viscosity / Prandtl
-
-        ! 浮力项及无量纲时间，采用细网格单位。
-        real(kind=8), parameter :: gBeta1 = Rayleigh * viscosity * diffusivity / lengthUnit
-        real(kind=8), parameter :: gBeta = gBeta1 / lengthUnit / lengthUnit
-        real(kind=8), parameter :: timeUnit = sqrt(lengthUnit / gBeta)
-        real(kind=8), parameter :: velocityUnit = sqrt(gBeta * lengthUnit)
-        ! 沿用基准的速度比较标度，默认 UL/kappa；自由落体标度可用 1.0d0/velocityUnit。
-        real(kind=8), parameter :: velocityScaleCompare = lengthUnit / diffusivity
-
-        ! 流场和温度场的多松弛系数
-        real(kind=8), parameter :: Snu = 1.0d0 / tauf                                            !这里是细网格的参数
-        real(kind=8), parameter :: Sq = 8.0d0 * (2.0d0 * tauf - 1.0d0) / (8.0d0 * tauf - 1.0d0)
-        real(kind=8), parameter :: paraA = 20.0d0 * sqrt(3.0d0) * diffusivity - 4.0d0
-        real(kind=8), parameter :: Qk = 3.0d0 - sqrt(3.0d0)
-        real(kind=8), parameter :: Qnu = 4.0d0 * sqrt(3.0d0) - 6.0d0
-        real(kind=8), parameter :: thermalGeqCoeff = 10.0d0 / (4.0d0 + paraA)
-
-#ifdef SideHeatedHa
-        real(kind=8), parameter :: Ha = 20.0d0
-        real(kind=8), parameter :: phi = 0.0d0 * pi / 180.0d0
-        real(kind=8), parameter :: B2sigemarho = Ha ** 2 * viscosity / lengthUnit ** 2
-#endif
 
         !===============================================================================================
-        ! 收敛阈值、计算时间及输出间隔
-        !===============================================================================================
-        real(kind=8), parameter :: epsU = 1.0d-7
-        real(kind=8), parameter :: epsT = 1.0d-7
+        ! 输出/备份相关设置（以自由落体时间 t_ff 为单位）
+        real(kind=8), parameter :: epsU=1.0d-7, epsT=1.0d-7    ! 稳态收敛阈值
 
 #ifdef steadyFlow
-        real(kind=8), parameter :: outputSnapshotInterval = 10.0d0    ! 快照与 Nu/Re 采样间隔，单位 t_ff
-        real(kind=8), parameter :: reloadFileInterval = 100.0d0    ! 完整重启文件输出间隔，单位 t_ff
-        real(kind=8), parameter :: outputPltFileInterval = 100.0d0    ! Tecplot 输出间隔，单位 t_ff
-        integer(kind=4), parameter :: outputSnapshotFile = 1    ! 0: 不输出快照；1: 输出，Nu/Re 仍独立采样
-        integer(kind=4), parameter :: outputPltFile = 1    ! 0: 不输出 Tecplot；1: 输出
-        integer(kind=4), parameter :: outputReloadFile = 1    ! 0: 不输出重启文件；1: 输出
-        integer(kind=4), parameter :: itc_max = 20000000    ! 本次运行最大细格子步数，收敛后可提前停止
+        real(kind=8), parameter :: outputSnapshotInterval=10.0d0    ! 快照和 Nu/Re 时间序列采样间隔（单位：t_ff）
+        real(kind=8), parameter :: reloadFileInterval=100.0d0    ! f/g 重启文件输出间隔（单位：t_ff）
+        real(kind=8), parameter :: outputPltFileInterval=100.0d0    ! Tecplot 文件输出间隔（单位：t_ff）
+        integer(kind=4), parameter :: outputSnapshotFile=1    ! 是否输出后处理快照文件：0=不输出，1=输出
+        integer(kind=4), parameter :: outputPltFile=1    ! 是否输出 plt 文件：0=不输出，1=输出
+        integer(kind=4), parameter :: outputReloadFile=1    ! 是否周期输出 f/g 重启文件：0=不输出，1=输出
+        integer(kind=4), parameter :: itc_max=20000000    ! 稳态：最大格子步，实际仍由 errorU/errorT 提前停止
 #endif
 
 #ifdef unsteadyFlow
-        real(kind=8), parameter :: outputSnapshotInterval = 0.5d0    ! 快照与 Nu/Re 采样间隔，单位 t_ff
-        real(kind=8), parameter :: reloadFileInterval = 100.0d0    ! 完整重启文件输出间隔，单位 t_ff
-        real(kind=8), parameter :: outputPltFileInterval = 100.0d0    ! Tecplot 输出间隔，单位 t_ff
-        real(kind=8), parameter :: unsteadyRunDuration = 1000.0d0    ! 绝对总目标 t_ff；续算只补足剩余时间
-        ! 统计窗口起点、终点和半窗口分界。
-        real(kind=8), parameter :: unsteadyAverageStartTf = 0.5d0 * unsteadyRunDuration
-        real(kind=8), parameter :: unsteadyAverageEndTf = unsteadyRunDuration
-        real(kind=8), parameter :: unsteadyAverageMidTf = 0.5d0 * (unsteadyAverageStartTf + unsteadyAverageEndTf)
-        integer(kind=4), parameter :: outputSnapshotFile = 1    ! 0: 不输出快照；1: 输出，Nu/Re 仍独立采样
-        integer(kind=4), parameter :: outputPltFile = 1    ! 0: 不输出 Tecplot；1: 输出
-        integer(kind=4), parameter :: outputReloadFile = 1    ! 0: 不输出重启文件；1: 输出
-        integer(kind=4), parameter :: itc_max = max(1, &
-            ceiling(unsteadyRunDuration * timeUnit))    !ceiling 是向上取整函数，返回不小于输入值的最小整数
+        real(kind=8), parameter :: outputSnapshotInterval=0.5d0    ! uvTrho 快照和 Nu/Re 时间序列采样间隔（单位：t_ff）
+        real(kind=8), parameter :: reloadFileInterval=100.0d0    ! f/g 重启文件输出间隔（单位：t_ff）
+        real(kind=8), parameter :: outputPltFileInterval=100.0d0    ! Tecplot 文件周期输出间隔（单位：t_ff）
+        real(kind=8), parameter :: unsteadyRunDuration=1000.0d0    ! 非稳态总目标时长，续算时只补足到该 t_ff
+        ! 以下三个参数只控制非稳态结束后的 Nu/Re 统计平均窗口，不改变推进时长或采样频率。
+        ! 时间以整个非稳态算例的绝对 t_ff 计，续算统计会包含旧文件中已有的历史数据。
+        real(kind=8), parameter :: unsteadyAverageStartTf=0.5d0*unsteadyRunDuration    ! 平均窗口起点
+        real(kind=8), parameter :: unsteadyAverageEndTf=unsteadyRunDuration    ! 平均窗口终点
+        real(kind=8), parameter :: unsteadyAverageMidTf=0.5d0*(unsteadyAverageStartTf+unsteadyAverageEndTf)    ! 前/后半分界
+        integer(kind=4), parameter :: outputSnapshotFile=1    ! 是否输出后处理快照文件：0=不输出，1=输出
+        integer(kind=4), parameter :: outputPltFile=1    ! 是否输出 plt 文件：0=不输出，1=输出
+        integer(kind=4), parameter :: outputReloadFile=1    ! 是否周期输出 f/g 重启文件：0=不输出，1=输出
+        integer(kind=4), parameter :: itc_max=max(1,ceiling(unsteadyRunDuration*timeUnit))    ! 非稳态：由总 t_ff 自动换算格子步
 #endif
+
         ! 最终输出时刻以粗步为准，只有粗步下才有完整的全场数据，各间隔至少为一个粗步。
 
-        ! 输出文件命名
-        character( *), parameter :: settingsFile = 'SimulationSettings2DOpenaccMultiblock.txt'
-        character( *), parameter :: snapshotFilePrefix = 'buoyancyCavity2DOpenaccMultiblockSnapshot'
-        character( *), parameter :: pltFolderPrefix = 'buoyancyCavity2DOpenaccMultiblockTecplot'
-        character( *), parameter :: reloadFilePrefix = 'reloadFile2DOpenaccMultiblock'
-        character( *), parameter :: NuReHistoryFile = 'NuRe_2DOpenaccMultiblock.dat'    ! 按采样时间记录 Nu、Re 及场量统计，续算时追加
+        character(len=*), parameter :: snapshotFilePrefix="buoyancyCavity2DOpenaccMultiblockSnapshot"
+        ! 快照输出文件前缀（实际文件名形如：<snapshotFilePrefix>-<编号>.bin）
+
+        character(len=*), parameter :: pltFolderPrefix="buoyancyCavity2DOpenaccMultiblockTecplot"
+        ! plt 输出文件前缀（实际文件名形如：<pltFolderPrefix>-<编号>.plt）
+
+        character(len=*), parameter :: reloadFilePrefix="reloadFile2DOpenaccMultiblock"
+        ! 重启读取文件的前缀；latest meta 模式实际读取 meta 中记录的 <reloadFilePrefix>-<编号>.bin
+
+        character(len=*), parameter :: settingsFile="SimulationSettings2DOpenaccMultiblock.txt"
+        character(*), parameter :: NuReHistoryFile='NuRe_2DOpenaccMultiblock.dat'    ! 按采样时间记录 Nu、Re 及场量统计，续算时追加
 
         !===============================================================================================
         ! 格子方向、块数据与接口交换数据
         !===============================================================================================
-        ! 流场/温度推进需要接收节点，目前设置是2层；粗、细网格各延伸 interfaceSkin 个本地格距。
+        ! 流场更新速度后再推进温度，粗细接口中途不补数据，因此接收层取2层。
+        ! 粗、细网格各延伸 interfaceSkin 个本地格距。
         ! 换成细格距单位时，粗网格延伸宽度为 interfaceSkin*refineRatio，细网格为 interfaceSkin。
-        integer(kind=4), parameter :: interfaceSkin = 2
+        integer(kind=4), parameter :: interfaceSkin=2
 
-        integer(kind=4) :: ex(0:8) = [0, 1, 0, - 1, 0, 1, - 1, - 1, 1]
-        integer(kind=4) :: ey(0:8) = [0, 0, 1, 0, - 1, 1, 1, - 1, - 1]
+        integer(kind=4) :: ex(0:8)=[0,1,0,-1,0,1,-1,-1,1]
+        integer(kind=4) :: ey(0:8)=[0,0,1,0,-1,1,1,-1,-1]
         real(kind=8) :: omega(0:8), omegaT(0:4)
 
         ! itc 为本次运行已完成的细时间步数，每次启动从 0 开始。
         ! restartItcOffset 为续算前累计细步数；总步数为 restartItcOffset+itc。
         ! 粗细比为 r 时，每个粗步使 itc 增加 r。
         ! snapshotFileNum、pltFileNum 分别为快照和 Tecplot 文件编号，仅在实际输出相应文件时增加 1。
-        integer(kind=4) :: itc = 0
-        integer(kind=4) :: snapshotFileNum = 0, pltFileNum = 0
-
+        integer(kind=4) :: itc=0
+        integer(kind=4) :: snapshotFileNum=0, pltFileNum=0
 
         ! dimensionlessTime 是已完成的 Nu/Re 采样次数，不是物理时间。
         ! 初值为 0，每次 calNuRe 增加 1；续算时恢复累计次数，实际 t_ff 为 (restartItcOffset+itc)/timeUnit。
-        integer(kind=4) :: dimensionlessTime = 0
+        integer(kind=4) :: dimensionlessTime=0
 
         ! 以下三个量分别为 Nu/Re 与快照、续算文件、Tecplot 的固定输出间隔，单位为细格子步。
         ! 间隔须向上对齐到 refineRatio 的整数倍，保证输出时粗细网格的时间是同步的。
@@ -213,17 +221,15 @@
 #ifdef steadyFlow
         integer(kind=4) :: steadyCheckIntervalItc    ! 稳态收敛检查及监测间隔，单位为细格子步；将 2000 步向上对齐到粗细同步步。
 #endif
-        real(kind=8) :: errorU = 100.0d0, errorT = 100.0d0
-
+        real(kind=8) :: errorU=100.0d0, errorT=100.0d0
 
         ! 粗细网格相应的信息。
         ! 左右细区贯穿全高，包含四角区域；上下细区仅存左右细区之间的节点，避免细区之间重复存储。
         ! 各场量的 i,j 索引编号从 1 开始，物理坐标为 xOffset+(i-0.5)*dx、yOffset+(j-0.5)*dx。
         ! f_post/g_post 另留 0 和 n+1 外围位置，用于相邻细区的迁移数据交换。
         real(kind=8) :: dxCoarse
-        real(kind=8), parameter :: dxFine = 1.0d0
+        real(kind=8), parameter :: dxFine=1.0d0
         real(kind=8) :: SnuCoarse, SqCoarse, QkCoarse, QnuCoarse
-
 
         ! 粗网格时间插值的最大时间层下标，多块模式设为 2，对应 0、1、2 三层。
         ! 一个粗步内：0=上一粗时刻，1=本轮粗步起点，2=本轮粗步预测终点。
@@ -231,11 +237,9 @@
         ! refineRatio=1 时不做粗细时间插值，设为 0，数组仅分配 0:0 一层。
         integer(kind=4) :: timeInterpMaxIndexCoarse
 
-
         ! 中心粗网格负责积分的矩形边界，依次为 xmin,xmax,ymin,ymax。
         ! 默认其值为 [127.5,895.5,127.5,895.5]。不包含重叠层
         real(kind=8) :: centerIntegrationBox(4)
-
 
         ! 中心粗网格，由细网格尺寸、分区位置和粗细比自动计算，无需手动设置；包含两侧重叠层。
         integer(kind=4) :: nxCoarse, nyCoarse    ! 粗网格实际存储的 x、y 方向节点数，包含重叠层。
@@ -248,7 +252,6 @@
 
         ! 粗网格坐标偏移
         real(kind=8) :: xOffsetCoarse, yOffsetCoarse
-
 
         logical :: coarseIsWall(4)    ! 粗网格左、右、下、上是否执行物理域边界条件；周期边界也为真。
         real(kind=8), allocatable :: f_coarse(:,:,:)    ! 粗网格 D2Q9 流场分布函数；第三维 0:8 为速度方向。
@@ -274,7 +277,6 @@
         real(kind=8), allocatable :: flowNeqTimeInterp_coarse(:,:,:,:)    ! 时间插值用的流场非平衡矩；第三维是矩编号。
         real(kind=8), allocatable :: thermalNeqTimeInterp_coarse(:,:,:,:)    ! 时间插值用的温度非平衡矩；第三维是矩编号。
 
-
 #ifdef steadyFlow
         real(kind=8), allocatable :: up_coarse(:,:)    ! 上一次稳态检查时的 x 方向速度。
         real(kind=8), allocatable :: vp_coarse(:,:)    ! 上一次稳态检查时的 y 方向速度。
@@ -284,8 +286,7 @@
         ! 四个细区直接遍历 1:nxRegion、1:nyRegion；Offset 保存坐标偏移。
         ! 细区交换数组沿用粗区的 TimeInterp 命名，但时间维仅保留当前层 0，不做三时间层插值。
         ! 力交换数组中的 OverDx 表示保存 Fx/dxFine、Fy/dxFine，与粗区采用相同尺度。
-        ! 细物理分区由中心矩形四边确定，无需另外保存四套积分外框和一维权重。
-
+        ! 细区积分范围由中心矩形四边确定，节点面积在积分时计算。
 
         ! 左侧细网格
         integer(kind=4) :: nxLeft, nyLeft    ! 左侧细数组的 x、y 方向节点数，含重叠节点，自动计算。
@@ -311,7 +312,6 @@
         real(kind=8), allocatable :: FyOverDxTimeInterp_left(:,:,:)    ! 接口交换用的 Fy_left/dxFine；第三维仅为 0:0，dxFine=1。
         real(kind=8), allocatable :: flowNeqTimeInterp_left(:,:,:,:)    ! 接口交换用的缩放流场非平衡矩；第三维为矩编号 0:8，第四维仅为 0:0。
         real(kind=8), allocatable :: thermalNeqTimeInterp_left(:,:,:,:)    ! 接口交换用的缩放温度非平衡矩；第三维为矩编号 0:4，第四维仅为 0:0。
-
 
 #ifdef steadyFlow
         real(kind=8), allocatable :: up_left(:,:)    ! 上一次稳态检查时的 x 方向速度，用于计算收敛误差。
@@ -344,7 +344,6 @@
         real(kind=8), allocatable :: flowNeqTimeInterp_right(:,:,:,:)    ! 接口交换用的缩放流场非平衡矩；第三维为矩编号 0:8，第四维仅为 0:0。
         real(kind=8), allocatable :: thermalNeqTimeInterp_right(:,:,:,:)    ! 接口交换用的缩放温度非平衡矩；第三维为矩编号 0:4，第四维仅为 0:0。
 
-
 #ifdef steadyFlow
         real(kind=8), allocatable :: up_right(:,:)    ! 上一次稳态检查时的 x 方向速度，用于计算收敛误差。
         real(kind=8), allocatable :: vp_right(:,:)    ! 上一次稳态检查时的 y 方向速度，用于计算收敛误差。
@@ -375,7 +374,6 @@
         real(kind=8), allocatable :: FyOverDxTimeInterp_bottom(:,:,:)    ! 接口交换用的 Fy_bottom/dxFine；第三维仅为 0:0，dxFine=1。
         real(kind=8), allocatable :: flowNeqTimeInterp_bottom(:,:,:,:)    ! 接口交换用的缩放流场非平衡矩；第三维为矩编号 0:8，第四维仅为 0:0。
         real(kind=8), allocatable :: thermalNeqTimeInterp_bottom(:,:,:,:)    ! 接口交换用的缩放温度非平衡矩；第三维为矩编号 0:4，第四维仅为 0:0。
-
 
 #ifdef steadyFlow
         real(kind=8), allocatable :: up_bottom(:,:)    ! 上一次稳态检查时的 x 方向速度，用于计算收敛误差。
@@ -408,7 +406,6 @@
         real(kind=8), allocatable :: flowNeqTimeInterp_top(:,:,:,:)    ! 接口交换用的缩放流场非平衡矩；第三维为矩编号 0:8，第四维仅为 0:0。
         real(kind=8), allocatable :: thermalNeqTimeInterp_top(:,:,:,:)    ! 接口交换用的缩放温度非平衡矩；第三维为矩编号 0:4，第四维仅为 0:0。
 
-
 #ifdef steadyFlow
         real(kind=8), allocatable :: up_top(:,:)    ! 上一次稳态检查时的 x 方向速度，用于计算收敛误差。
         real(kind=8), allocatable :: vp_top(:,:)    ! 上一次稳态检查时的 y 方向速度，用于计算收敛误差。
@@ -425,7 +422,7 @@
         ! SourceIndexX/Y 粗、细节点的实际坐标完全相同时是来源节点下标；
         ! 不相同时，接收节点的位置上，没有恰好重合的来源节点时是四点模板来空间插值。
         ! SpaceInterpWeightX/Y 保存 x、y 方向的四点空间插值权重，与 timeInterpWeight 的时间插值权重区分。
-        ! SamePosition 表示接收节点与来源网格中的某个节点，是否具有完全相同的 x、y 坐标，逻辑判断符号
+        ! SamePosition 为真表示接收节点和来源节点的 x、y 坐标相同，可直接取值。
         integer(kind=4) :: coarseToLeftReceiveNodeCount    ! 中心粗网格向左侧细网格传值的接收节点总数。
         integer(kind=4), allocatable :: coarseToLeftReceiveIndexX(:), coarseToLeftReceiveIndexY(:)    ! 左侧细网格中第 c 个接收节点的 x、y 数组下标。
         integer(kind=4), allocatable :: coarseToLeftSourceIndexX(:), coarseToLeftSourceIndexY(:)    ! 中心粗网格中的来源下标；非共址时为各方向四点模板的首下标。
@@ -510,21 +507,21 @@
 
     !===============================================================================================
     ! 初始化 OpenACC 设备
-    if( loadInitField .EQ. 1 ) then
-        open(unit=00, file=trim(settingsFile), status='unknown', position='append')
-        write(00, *) " "
-        write(00, *) "================ Restart continuation begins ================"
+    if(loadInitField.EQ.1) then
+        open(unit=00,file=trim(settingsFile),status='unknown',position='append')
+        write(00,*) " "
+        write(00,*) "================ Restart continuation begins ================"
     else
-        open(unit=00, file=trim(settingsFile), status='replace')
+        open(unit=00,file=trim(settingsFile),status='replace')
     endif
 
-    string = ctime( time() )    ! 将时间戳转换为可读字符串，沿用基准写法。
-    write(00, *) 'Start: ', string
-    write(00, *) "Starting OpenACC >>>>>>"
+    string=ctime(time())    !ctime把 time() 返回的时间戳转换成可读的字符串
+    write(00,*) 'Start: ',string    !什么时候开始计算
+    write(00,*) "Starting OpenACC >>>>>>"
     call acc_init(acc_device_default)
 
-    numAccDevices = acc_get_num_devices(acc_device_default)
-    write(00, *) "Visible OpenACC devices:", numAccDevices
+    numAccDevices=acc_get_num_devices(acc_device_default)
+    write(00,*) "Visible OpenACC devices:",numAccDevices
     close(00)
     !===============================================================================================
 
@@ -534,21 +531,21 @@
     call initial()
     call enter_data_2d_openacc()
 #ifdef unsteadyFlow
-    ! 沿用基准的剩余步数变量；多块网格的总目标先向上对齐到粗细同步步。
-    unsteadyItcRemaining = max(0, ((itc_max + refineRatio - 1) / refineRatio) * refineRatio - restartItcOffset)
+    ! 本次剩余步数；总目标先向上对齐到粗细网格同步时刻。
+    unsteadyItcRemaining=max(0,((itc_max+refineRatio-1)/refineRatio)*refineRatio-restartItcOffset)
 #endif
-    lastSnapshotItc = - 1
-    lastPltItc = - 1
-    lastReloadItc = - 1
+    lastSnapshotItc=-1
+    lastPltItc=-1
+    lastReloadItc=-1
     !===============================================================================================
 
     !===============================================================================================
     ! 开始计时
-    call CPU_TIME(timeStart)         ! 当前进程累计消耗的 CPU 时间，包括 CPU 并行计算。
+    call CPU_TIME(timeStart)    !当前进程累计消耗的 CPU 时间,包括并行
     ! system_clock 返回墙钟计数器和每秒计数率；
     ! 下面用 counter/rate 把它换算成实际经过的秒数，GPU 计算耗时以墙钟时间为准。
-    call system_clock(wallClockStart, wallClockRate)
-    timeStart2 = dble(wallClockStart) / dble(max(wallClockRate, 1_8))
+    call system_clock(wallClockStart,wallClockRate)
+    timeStart2=dble(wallClockStart)/dble(max(wallClockRate,1_8))
 
     !===============================================================================================
 
@@ -556,13 +553,13 @@
     ! 时间推进
     ! itc 在 advance_multiblock 中增加，终止步数向上对齐到粗细同步时刻。
 #ifdef steadyFlow
-    ! 沿用基准：稳态 itc_max 限制本次运行的步数。
-    do while( ((errorU .GT. epsU) .OR. (errorT .GT. epsT)) .AND. &
-        (itc .LT. ((itc_max + refineRatio - 1) / refineRatio) * refineRatio) )
+    ! 稳态 itc_max 限制本次运行的步数，速度和温度误差均达标时提前停止。
+    do while(((errorU .GT. epsU) .OR. (errorT .GT. epsT)) .AND. &
+        (itc .LT. ((itc_max+refineRatio-1)/refineRatio)*refineRatio))
 #endif
 #ifdef unsteadyFlow
     ! 非稳态 itc_max 为整个算例的总目标，续算只补足剩余步数。
-    do while( itc .LT. unsteadyItcRemaining )
+    do while(itc.LT.unsteadyItcRemaining)    !非稳态：续算时只推进到 unsteadyRunDuration 对应的总格子步
 #endif
 
         ! 一次循环推进一个粗时间步，内部完成 refineRatio 个细步和接口交换。
@@ -570,7 +567,7 @@
 
 #ifdef steadyFlow
         ! 检查间隔由原来的 2000 个细步向上对齐；粗细比不能整除 2000 时也不会漏掉预定检查。
-        if( MOD(restartItcOffset + itc, steadyCheckIntervalItc) .EQ. 0 ) then
+        if(MOD(restartItcOffset+itc,steadyCheckIntervalItc) .EQ. 0) then
             call check()
             call output_steady_monitor()    ! 输出当前 Nu/Re，不增加正式采样次数。
         endif
@@ -583,30 +580,30 @@
         ! 非稳态按 restartItcOffset+itc 的累计细步采样，接续原来的输出时刻。
 #endif
         ! 两种模式都按固定格子步间隔采样；关闭快照文件不停止 Nu/Re 采样。
-        if( MOD(restartItcOffset + itc, outputSnapshotIntervalItc) .EQ. 0 ) then
+        if(MOD(restartItcOffset+itc,outputSnapshotIntervalItc) .EQ. 0) then
 
             call calNuRe()
 
-            if( outputSnapshotFile .EQ. 1 ) then
+            if(outputSnapshotFile.EQ.1) then
                 call output_SnapshotFile()
-                lastSnapshotItc = itc
+                lastSnapshotItc=itc
             endif
 
         endif
 
-        ! 输出子程序内部已同步五套设备数组，此处不用再调用单网格的 update_host_*。
-        if( (outputPltFile .EQ. 1) .AND. (MOD(restartItcOffset + itc, outputPltFileIntervalItc) .EQ. 0) ) then
+        ! 输出子程序内部将所需场量从设备同步到主机。
+        if((outputPltFile.EQ.1).AND.(MOD(restartItcOffset+itc,outputPltFileIntervalItc).EQ.0)) then
 
             call output_Tecplot()
-            lastPltItc = itc
+            lastPltItc=itc
 
         endif
 
         ! 续算文件按自己的格子步间隔输出，保存粗细同步时刻的完整状态。
-        if( (outputReloadFile .EQ. 1) .AND. (MOD(restartItcOffset + itc, reloadFileIntervalItc) .EQ. 0) ) then
+        if((outputReloadFile.EQ.1).AND.(MOD(restartItcOffset+itc,reloadFileIntervalItc).EQ.0)) then
 
             call output_ReloadFile()
-            lastReloadItc = itc
+            lastReloadItc=itc
 
         endif
 
@@ -617,38 +614,38 @@
     ! 等待设备计算完成，记录实际经过的时间
     !$acc wait(1)
 
-    call CPU_TIME(timeEnd)         ! 当前进程累计消耗的 CPU 时间，包括 CPU 并行计算。
+    call CPU_TIME(timeEnd)    !当前进程累计消耗的 CPU 时间,包括并行
     ! 等待 GPU 完成后再读墙钟结束计数器；计时区间不包含下面的最终后处理。
-    call system_clock(wallClockEnd, wallClockRate)
-    timeEnd2 = dble(wallClockEnd) / dble(max(wallClockRate, 1_8))
+    call system_clock(wallClockEnd,wallClockRate)
+    timeEnd2=dble(wallClockEnd)/dble(max(wallClockRate,1_8))
 
     ! 一个同步周期中粗网格推进一次，四个细区各推进 refineRatio 次；续算只计本次新增步数。
-    latticeUpdates = dble(nxCoarse) * dble(nyCoarse) * dble(itc / refineRatio)
-    if( refineRatio > 1 ) then
-        latticeUpdates = latticeUpdates + dble(itc) * &
-            (dble(nxLeft) * dble(nyLeft) + dble(nxRight) * dble(nyRight) + &
-             dble(nxBottom) * dble(nyBottom) + dble(nxTop) * dble(nyTop))
+    latticeUpdates=dble(nxCoarse)*dble(nyCoarse)*dble(itc/refineRatio)
+    if(refineRatio > 1) then
+        latticeUpdates=latticeUpdates+dble(itc)*&
+            (dble(nxLeft)*dble(nyLeft)+dble(nxRight)*dble(nyRight)+&
+             dble(nxBottom)*dble(nyBottom)+dble(nxTop)*dble(nyTop))
     endif
 
-    open(unit=00, file=trim(settingsFile), status='unknown', position='append')
-    write(00, *) "======================================================================"
-    write(00, *) "Time (CPU) = ", timeEnd - timeStart, "s"
-    if( timeEnd > timeStart ) then
-        write(00, *) "MLUPS = ", latticeUpdates / (timeEnd - timeStart) / 1.0d6
+    open(unit=00,file=trim(settingsFile),status='unknown',position='append')
+    write(00,*) "======================================================================"
+    write(00,*) "Time (CPU) = ",timeEnd-timeStart,"s"
+    if(timeEnd > timeStart) then
+        write(00,*) "MLUPS = ",latticeUpdates/(timeEnd-timeStart)/1.0d6
     else
-        write(00, *) "MLUPS = unavailable (CPU timer resolution)"
+        write(00,*) "MLUPS = unavailable (CPU timer resolution)"
     endif
-    write(00, *) "Time (ACC) = ", timeEnd2 - timeStart2, "s"
-    if( timeEnd2 > timeStart2 ) then
-        write(00, *) "MLUPS (ACC) = ", latticeUpdates / (timeEnd2 - timeStart2) / 1.0d6
+    write(00,*) "Time (ACC) = ",timeEnd2-timeStart2,"s"
+    if(timeEnd2 > timeStart2) then
+        write(00,*) "MLUPS (ACC) = ",latticeUpdates/(timeEnd2-timeStart2)/1.0d6
     else
-        write(00, *) "MLUPS (ACC) = unavailable (wall timer resolution)"
+        write(00,*) "MLUPS (ACC) = unavailable (wall timer resolution)"
     endif
-    write(00, *) "Fine steps in this run = ", itc
-    write(00, *) "Lattice updates in this run = ", latticeUpdates
+    write(00,*) "Fine steps in this run = ",itc
+    write(00,*) "Lattice updates in this run = ",latticeUpdates
     close(00)
 
-    write( *, *) 'Elapsed seconds:', timeEnd2 - timeStart2
+    write(*,*) 'Elapsed seconds:',timeEnd2-timeStart2
     !===============================================================================================
 
     !===============================================================================================
@@ -663,40 +660,40 @@
 #endif
 
     ! 保留各输出开关；若最后一步已做过周期输出，就不再重复写同一时刻。
-    if( (outputPltFile .EQ. 1) .AND. (lastPltItc /= itc) ) call output_Tecplot()
+    if((outputPltFile .EQ. 1) .AND. (lastPltItc/=itc)) call output_Tecplot()
 
-    if( (outputSnapshotFile .EQ. 1) .AND. (lastSnapshotItc /= itc) ) call output_SnapshotFile()
+    if((outputSnapshotFile .EQ. 1) .AND. (lastSnapshotItc/=itc)) call output_SnapshotFile()
 
     ! 续算文件最后写，保存最终快照和 Tecplot 输出之后的文件编号。
     ! 若刚新增了最终快照/图形文件，也需更新检查点，避免续算时重复使用文件编号。
-    if( outputReloadFile .EQ. 1 ) then
-        if( lastReloadItc /= itc .OR. &
-            ((outputPltFile .EQ. 1) .AND. (lastPltItc /= itc)) .OR. &
-            ((outputSnapshotFile .EQ. 1) .AND. (lastSnapshotItc /= itc)) ) call output_ReloadFile()
+    if(outputReloadFile .EQ. 1) then
+        if(lastReloadItc/=itc .OR. &
+            ((outputPltFile .EQ. 1) .AND. (lastPltItc/=itc)) .OR. &
+            ((outputSnapshotFile .EQ. 1) .AND. (lastSnapshotItc/=itc))) call output_ReloadFile()
     endif
     !===============================================================================================
 
     !===============================================================================================
     ! 先释放设备数组，再释放主机上的五套网格、时间层和接口数组。
-    open(unit=00, file=trim(settingsFile), status='unknown', position='append')
-    write(00, *) "Deallocate Array......"
+    open(unit=00,file=trim(settingsFile),status='unknown',position='append')
+    write(00,*) "Deallocate Array......"
     call exit_data_2d_openacc()
     call deallocate_grid_arrays()
 
 #ifdef steadyFlow
-    if( errorU .LE. epsU .AND. errorT .LE. epsT ) then
-        write(00, *) "Steady calculation converged."
+    if(errorU .LE. epsU .AND. errorT .LE. epsT) then
+        write(00,*) "Steady calculation converged."
     else
-        write(00, *) "Maximum synchronized step reached; steady convergence not achieved."
+        write(00,*) "Maximum synchronized step reached; steady convergence not achieved."
     endif
 #endif
 #ifdef unsteadyFlow
-    write(00, *) "Unsteady target duration completed at a synchronized step."
+    write(00,*) "Unsteady target duration completed at a synchronized step."
 #endif
-    write(00, *) "Final cumulative fine step = ", restartItcOffset + itc
-    write(00, *) "Final t_ff = ", dble(restartItcOffset + itc) / timeUnit
-    string = ctime( time() )
-    write(00, *) 'End:   ', string    ! 记录包括最终后处理和数组释放在内的结束时间。
+    write(00,*) "Final cumulative fine step = ",restartItcOffset+itc
+    write(00,*) "Final t_ff = ",dble(restartItcOffset+itc)/timeUnit
+    string=ctime(time())
+    write(00,*) 'End:   ',string    !什么时候算完
     close(00)
     !===============================================================================================
 
@@ -712,57 +709,57 @@
     use commondata
     implicit none
 
-    ! 与均匀网格不同：先确定五个区域各自的尺寸、坐标偏移和积分分区，再分配数组。
+    ! 先确定五个区域的尺寸、坐标偏移和积分范围，再分配数组。
     ! nx/ny 是按最细格距计的全域长度；各区域的本地下标都从 1 开始。
     ! 节点坐标为 xOffset+(i-0.5)*dx；centerIntegrationBox 是积分分界，不是粗网格最外层计算节点。
 
     integer(kind=4) :: k, i, j
     real(kind=8) :: totalArea, cellArea, xLeft, xRight, yBottom, yTop
 
-    itc = 0
-    restartItcOffset = 0
-    reloadDimensionlessTime = 0.0d0
-    reloadMetadataLoaded = .false.
+    itc=0
+    restartItcOffset=0
+    reloadDimensionlessTime=0.0d0
+    reloadMetadataLoaded=.false.
 
     ! 检查输入参数。
-    if( refineRatio < 1 ) error stop 'refineRatio must be a positive integer'
+    if(refineRatio < 1) error stop 'refineRatio must be a positive integer'
 
-    if( min(nx, ny) < 8 ) error stop 'At least 8 cells per direction are required'
+    if(min(nx,ny) < 8) error stop 'At least 8 cells per direction are required'
 
-    if( loadInitField /= 0 .AND. loadInitField /= 1 ) error stop 'loadInitField must be 0 or 1'
+    if(loadInitField/=0 .AND. loadInitField/=1) error stop 'loadInitField must be 0 or 1'
 
-    if( loadInitField == 0) reloadFileNum = 0    !判断loadInitField是否为0，新计算清零续算文件编号
+    if(loadInitField==0) reloadFileNum=0    !判断loadInitField是否为0，新计算清零续算文件编号
 
-    if( min(outputSnapshotInterval, reloadFileInterval, outputPltFileInterval) * timeUnit < dble(refineRatio)) &
-        error stop 'Output intervals must be at least one synchronized coarse step'     !要求最短的间隔也至少覆盖一个粗细同步周期,输出间隔对应的细步数 ≥ refineRatio
+    if(min(outputSnapshotInterval,reloadFileInterval,outputPltFileInterval)*timeUnit < dble(refineRatio)) &
+        error stop 'Output intervals must be at least one synchronized coarse step'    !要求最短的间隔也至少覆盖一个粗细同步周期,输出间隔对应的细步数 ≥ refineRatio
 
-    if( paraA <= - 4.0d0 .OR. paraA >= 1.0d0 ) error stop 'Legacy paraA must be in (-4,1)'
+    if(paraA <=-4.0d0 .OR. paraA >=1.0d0) error stop 'Legacy paraA must be in (-4,1)'
 
     ! 将 t_ff 间隔换算为细格子步数，再向上对齐到粗细同步步。
-    outputSnapshotIntervalItc = max(1, ceiling(outputSnapshotInterval * timeUnit / dble(refineRatio))) * refineRatio
-    reloadFileIntervalItc = max(1, ceiling(reloadFileInterval * timeUnit / dble(refineRatio))) * refineRatio
-    outputPltFileIntervalItc = max(1, ceiling(outputPltFileInterval * timeUnit / dble(refineRatio))) * refineRatio
+    outputSnapshotIntervalItc=max(1,ceiling(outputSnapshotInterval*timeUnit/dble(refineRatio)))*refineRatio
+    reloadFileIntervalItc=max(1,ceiling(reloadFileInterval*timeUnit/dble(refineRatio)))*refineRatio
+    outputPltFileIntervalItc=max(1,ceiling(outputPltFileInterval*timeUnit/dble(refineRatio)))*refineRatio
 
 #ifdef steadyFlow
-    steadyCheckIntervalItc = ceiling(2000.0d0 / dble(refineRatio)) * refineRatio
+    steadyCheckIntervalItc=ceiling(2000.0d0/dble(refineRatio))*refineRatio
 #endif
 
     ! 设置流场和温度场的格子权重。
-    omega(0) = 4.0d0 / 9.0d0
-    omega(1:4) = 1.0d0 / 9.0d0
-    omega(5:8) = 1.0d0 / 36.0d0
-    omegaT(0) = (1.0d0 - paraA) / 5.0d0
-    omegaT(1:4) = (paraA + 4.0d0) / 20.0d0
+    omega(0)=4.0d0/9.0d0
+    omega(1:4)=1.0d0/9.0d0
+    omega(5:8)=1.0d0/36.0d0
+    omegaT(0)=(1.0d0-paraA)/5.0d0
+    omegaT(1:4)=(paraA+4.0d0)/20.0d0
 
     ! 确定粗格距、粗时间步及需要保存的历史层数。
-    dxCoarse = dble(refineRatio)
-    timeInterpMaxIndexCoarse = 0
-    if( refineRatio == 1 ) then
-        centerIntegrationBox = [0.0d0, dble(nx), 0.0d0, dble(ny)]
-        nxCoarse = nx
-        nyCoarse = ny
-        xOffsetCoarse = 0.0d0
-        yOffsetCoarse = 0.0d0
+    dxCoarse=dble(refineRatio)
+    timeInterpMaxIndexCoarse=0
+    if(refineRatio==1) then
+        centerIntegrationBox=[0.0d0,dble(nx),0.0d0,dble(ny)]
+        nxCoarse=nx
+        nyCoarse=ny
+        xOffsetCoarse=0.0d0
+        yOffsetCoarse=0.0d0
     else
         ! || 表示“或者”。
         ! 左右速度或温度任一周期宏开启时，保留下面的报错语句；都未开启时将其去掉。
@@ -771,255 +768,255 @@
         error stop 'Multiblock periodic sides require a periodic block topology; use wall BCs or refineRatio=1'
 #endif
 
-        if( interfaceSkin < 2 ) error stop 'Split flow/thermal advance requires at least two interface layers'
+        if(interfaceSkin < 2) error stop 'Split flow/thermal advance requires at least two interface layers'
 
-        !检查全域整除，并确定四条分区线    
-        if( mod(nx, refineRatio) /= 0 .OR. mod(ny, refineRatio) /= 0) &
+        !检查全域整除，并确定四条分区线
+        if(mod(nx,refineRatio)/=0 .OR. mod(ny,refineRatio)/=0) &
             error stop 'nx,ny must be multiples of refineRatio'
-        xLeft = dble(fineLayerCellsLeft) - 0.5d0           !细节点编号换成坐标
-        xRight = dble(nx - fineLayerCellsRight) + 0.5d0
-        yBottom = dble(fineLayerCellsBottom) - 0.5d0
-        yTop = dble(ny - fineLayerCellsTop) + 0.5d0
+        xLeft=dble(fineLayerCellsLeft)-0.5d0    !细节点编号换成坐标
+        xRight=dble(nx-fineLayerCellsRight)+0.5d0
+        yBottom=dble(fineLayerCellsBottom)-0.5d0
+        yTop=dble(ny-fineLayerCellsTop)+0.5d0
 
         ! 检查细块与粗块的重叠区域
-        if( min(xLeft, dble(nx) - xRight, yBottom, dble(ny) - yTop) < dble(interfaceSkin * refineRatio + refineRatio)) &
+        if(min(xLeft,dble(nx)-xRight,yBottom,dble(ny)-yTop) < dble(interfaceSkin*refineRatio+refineRatio)) &
             error stop 'Refined wall layer must exceed the overlap width by at least one coarse cell'
 
-        if( xRight <= xLeft .OR. yTop <= yBottom) &      !保证中心区域有正宽度和高度
+        if(xRight <=xLeft .OR. yTop <=yBottom) &    !保证中心区域有正宽度和高度
             error stop 'The coarse core must have positive width and height'
 
-        if( mod(nx - fineLayerCellsLeft - fineLayerCellsRight + 1, refineRatio) /= 0 .OR. &   !中心宽高必须能被 refineRatio 整除
-            mod(ny - fineLayerCellsBottom - fineLayerCellsTop + 1, refineRatio) /= 0) &
+        if(mod(nx-fineLayerCellsLeft-fineLayerCellsRight+1,refineRatio)/=0 .OR. &    !中心宽高必须能被 refineRatio 整除
+            mod(ny-fineLayerCellsBottom-fineLayerCellsTop+1,refineRatio)/=0) &
             error stop 'Central width and height must be multiples of refineRatio; adjust the four interface indices'
 
-        timeInterpMaxIndexCoarse = 2               !表示使用 0、1、2 三个时间层，以及记录中心积分区域
-        centerIntegrationBox = [xLeft, xRight, yBottom, yTop]
+        timeInterpMaxIndexCoarse=2    !表示使用 0、1、2 三个时间层，以及记录中心积分区域
+        centerIntegrationBox=[xLeft,xRight,yBottom,yTop]
 
         !nint 将实数结果取最近的整数
-        nxCoarse = nint((xRight - xLeft) / dxCoarse) + 2 * interfaceSkin + 1
-        nyCoarse = nint((yTop - yBottom) / dxCoarse) + 2 * interfaceSkin + 1
+        nxCoarse=nint((xRight-xLeft)/dxCoarse)+2*interfaceSkin+1
+        nyCoarse=nint((yTop-yBottom)/dxCoarse)+2*interfaceSkin+1
 
         ! 将坐标偏移换算为细格距单位
-        xOffsetCoarse = xLeft - interfaceSkin * refineRatio - 0.5d0 * dxCoarse
-        yOffsetCoarse = yBottom - interfaceSkin * refineRatio - 0.5d0 * dxCoarse
+        xOffsetCoarse=xLeft-interfaceSkin*refineRatio-0.5d0*dxCoarse
+        yOffsetCoarse=yBottom-interfaceSkin*refineRatio-0.5d0*dxCoarse
 
         ! 四个细矩形拼成细环；仅向中心延伸 interfaceSkin 个细格距，细矩形拼接处直接迁移。
 
         ! 左侧细区：先确定节点数，再设置该区域的坐标偏移。
-        nxLeft = fineLayerCellsLeft + interfaceSkin
-        nyLeft = ny
-        xOffsetLeft = 0.0d0
-        yOffsetLeft = 0.0d0
+        nxLeft=fineLayerCellsLeft+interfaceSkin
+        nyLeft=ny
+        xOffsetLeft=0.0d0
+        yOffsetLeft=0.0d0
 
         ! 右侧细区：先确定节点数，再设置该区域的坐标偏移。
-        nxRight = fineLayerCellsRight + interfaceSkin
-        nyRight = ny
-        xOffsetRight = dble(nx - nxRight)
-        yOffsetRight = 0.0d0
+        nxRight=fineLayerCellsRight+interfaceSkin
+        nyRight=ny
+        xOffsetRight=dble(nx-nxRight)
+        yOffsetRight=0.0d0
 
         ! 下侧细区：先确定节点数，再设置该区域的坐标偏移。
-        nxBottom = nx - nxLeft - nxRight
-        nyBottom = fineLayerCellsBottom + interfaceSkin
-        xOffsetBottom = dble(nxLeft)
-        yOffsetBottom = 0.0d0
+        nxBottom=nx-nxLeft-nxRight
+        nyBottom=fineLayerCellsBottom+interfaceSkin
+        xOffsetBottom=dble(nxLeft)
+        yOffsetBottom=0.0d0
 
         ! 上侧细区：先确定节点数，再设置该区域的坐标偏移。
-        nxTop = nxBottom
-        nyTop = fineLayerCellsTop + interfaceSkin
-        xOffsetTop = dble(nxLeft)
-        yOffsetTop = dble(ny - nyTop)
+        nxTop=nxBottom
+        nyTop=fineLayerCellsTop+interfaceSkin
+        xOffsetTop=dble(nxLeft)
+        yOffsetTop=dble(ny-nyTop)
 
         ! 检查细环中间还有空间
-        if( min(nxBottom, ny - nyBottom - nyTop) < 1) &
+        if(min(nxBottom,ny-nyBottom-nyTop) < 1) &
             error stop 'Compact fine ring requires a positive interior storage hole'
     endif
 
     ! 单块模式的四边执行选定的物理域边界条件（壁面或周期）；多块模式的粗网格边界是重叠层边缘。
-    coarseIsWall = refineRatio == 1
+    coarseIsWall=refineRatio==1
 
     ! 把细网格的输运参数换算为粗网格参数。
-    SnuCoarse = 1.0d0 / (0.5d0 + (1.0d0 / Snu - 0.5d0) / dxCoarse)
-    SqCoarse = 1.0d0 / (0.5d0 + (1.0d0 / Sq - 0.5d0) / dxCoarse)
-    QkCoarse = 1.0d0 / (0.5d0 + (1.0d0 / Qk - 0.5d0) / dxCoarse)
-    QnuCoarse = 1.0d0 / (0.5d0 + (1.0d0 / Qnu - 0.5d0) / dxCoarse)
+    SnuCoarse=1.0d0/(0.5d0+(1.0d0/Snu-0.5d0)/dxCoarse)
+    SqCoarse=1.0d0/(0.5d0+(1.0d0/Sq-0.5d0)/dxCoarse)
+    QkCoarse=1.0d0/(0.5d0+(1.0d0/Qk-0.5d0)/dxCoarse)
+    QnuCoarse=1.0d0/(0.5d0+(1.0d0/Qnu-0.5d0)/dxCoarse)
 
     ! 浮力源项的细网格表达式为 Fy = rho*gBeta*(T-Tref)。
     ! 粗时间步相当于 dxCoarse 个细时间步，调用时直接传 dxCoarse*gBeta。
 
     ! 细网格 dx=1，直接使用基准 Snu、Sq、Qk、Qnu。
 
-    if( refineRatio > 1 ) then
+    if(refineRatio > 1) then
 
         ! 左右细区接触三面外墙，上下细区只接触各自的水平外墙。数组顺序为左、右、下、上
-        leftIsWall = [.true., .false., .true., .true.]
-        rightIsWall = [.false., .true., .true., .true.]
-        bottomIsWall = [.false., .false., .true., .false.]
-        topIsWall = [.false., .false., .false., .true.]
+        leftIsWall=[.true.,.false.,.true.,.true.]
+        rightIsWall=[.false.,.true.,.true.,.true.]
+        bottomIsWall=[.false.,.false.,.true.,.false.]
+        topIsWall=[.false.,.false.,.false.,.true.]
     endif
 
     ! 单网格使用全域；多块粗区只遍历分区线之间的节点（含端点）。
-    xStartIntegrationCoarse = 1
-    yStartIntegrationCoarse = 1
-    if( refineRatio > 1 ) then
-        xStartIntegrationCoarse = interfaceSkin + 1
-        yStartIntegrationCoarse = interfaceSkin + 1
+    xStartIntegrationCoarse=1
+    yStartIntegrationCoarse=1
+    if(refineRatio > 1) then
+        xStartIntegrationCoarse=interfaceSkin+1
+        yStartIntegrationCoarse=interfaceSkin+1
     endif
-    xEndIntegrationCoarse = nxCoarse - xStartIntegrationCoarse + 1
-    yEndIntegrationCoarse = nyCoarse - yStartIntegrationCoarse + 1
+    xEndIntegrationCoarse=nxCoarse-xStartIntegrationCoarse+1
+    yEndIntegrationCoarse=nyCoarse-yStartIntegrationCoarse+1
 
     call allocate_grid_arrays()
 
     ! 初始化各区域，并核对全部实际积分面积之和。
-    totalArea = 0.0d0
+    totalArea=0.0d0
 
-    call initial_grid(nxCoarse, nyCoarse, timeInterpMaxIndexCoarse, dxCoarse, xOffsetCoarse, yOffsetCoarse, &
-        f_coarse, g_coarse, &
-        f_post_coarse, g_post_coarse, rho_coarse, u_coarse, v_coarse, T_coarse, Fx_coarse, Fy_coarse, &
-        rhoTimeInterp_coarse, uTimeInterp_coarse, vTimeInterp_coarse, TTimeInterp_coarse, FxOverDxTimeInterp_coarse, &
-        FyOverDxTimeInterp_coarse, flowNeqTimeInterp_coarse, thermalNeqTimeInterp_coarse &
+    call initial_grid(nxCoarse,nyCoarse,timeInterpMaxIndexCoarse,dxCoarse,xOffsetCoarse,yOffsetCoarse,&
+        f_coarse,g_coarse,&
+        f_post_coarse,g_post_coarse,rho_coarse,u_coarse,v_coarse,T_coarse,Fx_coarse,Fy_coarse,&
+        rhoTimeInterp_coarse,uTimeInterp_coarse,vTimeInterp_coarse,TTimeInterp_coarse,FxOverDxTimeInterp_coarse,&
+        FyOverDxTimeInterp_coarse,flowNeqTimeInterp_coarse,thermalNeqTimeInterp_coarse &
 #ifdef steadyFlow
-        , up_coarse, vp_coarse, Tp_coarse &
+        ,up_coarse,vp_coarse,Tp_coarse &
 #endif
         )
-    do j = 1, nyCoarse
-        do i = 1, nxCoarse
-            call owned_cell_area(xOffsetCoarse + (i - 0.5d0) * dxCoarse, &
-                yOffsetCoarse + (j - 0.5d0) * dxCoarse, dxCoarse, centerIntegrationBox, cellArea)
-            totalArea = totalArea + cellArea
+    do j=1,nyCoarse
+        do i=1,nxCoarse
+            call owned_cell_area(xOffsetCoarse+(i-0.5d0)*dxCoarse,&
+                yOffsetCoarse+(j-0.5d0)*dxCoarse,dxCoarse,centerIntegrationBox,cellArea)
+            totalArea=totalArea+cellArea
         enddo
     enddo
 
-    if( refineRatio > 1 ) then
+    if(refineRatio > 1) then
 
-        call initial_grid(nxLeft, nyLeft, 0, dxFine, xOffsetLeft, yOffsetLeft, &
-            f_left, g_left, f_post_left, &
-            g_post_left, rho_left, &
-            u_left, v_left, T_left, Fx_left, Fy_left, rhoTimeInterp_left, uTimeInterp_left, vTimeInterp_left, &
-            TTimeInterp_left, FxOverDxTimeInterp_left, FyOverDxTimeInterp_left, flowNeqTimeInterp_left, thermalNeqTimeInterp_left &
+        call initial_grid(nxLeft,nyLeft,0,dxFine,xOffsetLeft,yOffsetLeft,&
+            f_left,g_left,f_post_left,&
+            g_post_left,rho_left,&
+            u_left,v_left,T_left,Fx_left,Fy_left,rhoTimeInterp_left,uTimeInterp_left,vTimeInterp_left,&
+            TTimeInterp_left,FxOverDxTimeInterp_left,FyOverDxTimeInterp_left,flowNeqTimeInterp_left,thermalNeqTimeInterp_left &
 #ifdef steadyFlow
-            , up_left, vp_left, Tp_left &
+            ,up_left,vp_left,Tp_left &
 #endif
             )
-        do j = 1, nyLeft
-            do i = 1, nxLeft
-                call owned_cell_area(xOffsetLeft + (i - 0.5d0) * dxFine, &
-                    yOffsetLeft + (j - 0.5d0) * dxFine, dxFine, [xOffsetLeft, xOffsetLeft+nxLeft, yOffsetLeft, &
-                    yOffsetLeft+nyLeft], cellArea)
-                totalArea = totalArea + cellArea
+        do j=1,nyLeft
+            do i=1,nxLeft
+                call owned_cell_area(xOffsetLeft+(i-0.5d0)*dxFine,&
+                    yOffsetLeft+(j-0.5d0)*dxFine,dxFine,[xOffsetLeft,xOffsetLeft+nxLeft,yOffsetLeft,&
+                    yOffsetLeft+nyLeft],cellArea)
+                totalArea=totalArea+cellArea
             enddo
         enddo
 
-        call initial_grid(nxRight, nyRight, 0, dxFine, xOffsetRight, yOffsetRight, &
-            f_right, g_right, f_post_right, g_post_right, &
-            rho_right, u_right, v_right, T_right, Fx_right, Fy_right, rhoTimeInterp_right, uTimeInterp_right, &
-            vTimeInterp_right, TTimeInterp_right, FxOverDxTimeInterp_right, FyOverDxTimeInterp_right, flowNeqTimeInterp_right, &
+        call initial_grid(nxRight,nyRight,0,dxFine,xOffsetRight,yOffsetRight,&
+            f_right,g_right,f_post_right,g_post_right,&
+            rho_right,u_right,v_right,T_right,Fx_right,Fy_right,rhoTimeInterp_right,uTimeInterp_right,&
+            vTimeInterp_right,TTimeInterp_right,FxOverDxTimeInterp_right,FyOverDxTimeInterp_right,flowNeqTimeInterp_right,&
             thermalNeqTimeInterp_right &
 #ifdef steadyFlow
-            , up_right, vp_right, Tp_right &
+            ,up_right,vp_right,Tp_right &
 #endif
             )
-        do j = 1, nyRight
-            do i = 1, nxRight
-                call owned_cell_area(xOffsetRight + (i - 0.5d0) * dxFine, &
-                    yOffsetRight + (j - 0.5d0) * dxFine, dxFine, [xOffsetRight, xOffsetRight+nxRight, yOffsetRight, &
-                    yOffsetRight+nyRight], cellArea)
-                totalArea = totalArea + cellArea
+        do j=1,nyRight
+            do i=1,nxRight
+                call owned_cell_area(xOffsetRight+(i-0.5d0)*dxFine,&
+                    yOffsetRight+(j-0.5d0)*dxFine,dxFine,[xOffsetRight,xOffsetRight+nxRight,yOffsetRight,&
+                    yOffsetRight+nyRight],cellArea)
+                totalArea=totalArea+cellArea
             enddo
         enddo
 
-        call initial_grid(nxBottom, nyBottom, 0, dxFine, xOffsetBottom, yOffsetBottom, &
-            f_bottom, &
-            g_bottom, f_post_bottom, &
-            g_post_bottom, rho_bottom, u_bottom, v_bottom, T_bottom, Fx_bottom, Fy_bottom, &
-            rhoTimeInterp_bottom, uTimeInterp_bottom, vTimeInterp_bottom, TTimeInterp_bottom, FxOverDxTimeInterp_bottom, &
-            FyOverDxTimeInterp_bottom, flowNeqTimeInterp_bottom, thermalNeqTimeInterp_bottom &
+        call initial_grid(nxBottom,nyBottom,0,dxFine,xOffsetBottom,yOffsetBottom,&
+            f_bottom,&
+            g_bottom,f_post_bottom,&
+            g_post_bottom,rho_bottom,u_bottom,v_bottom,T_bottom,Fx_bottom,Fy_bottom,&
+            rhoTimeInterp_bottom,uTimeInterp_bottom,vTimeInterp_bottom,TTimeInterp_bottom,FxOverDxTimeInterp_bottom,&
+            FyOverDxTimeInterp_bottom,flowNeqTimeInterp_bottom,thermalNeqTimeInterp_bottom &
 #ifdef steadyFlow
-            , up_bottom, vp_bottom, Tp_bottom &
+            ,up_bottom,vp_bottom,Tp_bottom &
 #endif
             )
-        do j = 1, nyBottom
-            do i = 1, nxBottom
-                call owned_cell_area(xOffsetBottom + (i - 0.5d0) * dxFine, &
-                    yOffsetBottom + (j - 0.5d0) * dxFine, dxFine, [xOffsetBottom, xOffsetBottom+nxBottom, &
-                    yOffsetBottom, yOffsetBottom+nyBottom], cellArea)
-                totalArea = totalArea + cellArea
+        do j=1,nyBottom
+            do i=1,nxBottom
+                call owned_cell_area(xOffsetBottom+(i-0.5d0)*dxFine,&
+                    yOffsetBottom+(j-0.5d0)*dxFine,dxFine,[xOffsetBottom,xOffsetBottom+nxBottom,&
+                    yOffsetBottom,yOffsetBottom+nyBottom],cellArea)
+                totalArea=totalArea+cellArea
             enddo
         enddo
 
-        call initial_grid(nxTop, nyTop, 0, dxFine, xOffsetTop, yOffsetTop, &
-            f_top, g_top, f_post_top, g_post_top, rho_top, u_top, v_top, T_top, &
-            Fx_top, Fy_top, rhoTimeInterp_top, uTimeInterp_top, vTimeInterp_top, TTimeInterp_top, FxOverDxTimeInterp_top, &
-            FyOverDxTimeInterp_top, flowNeqTimeInterp_top, thermalNeqTimeInterp_top &
+        call initial_grid(nxTop,nyTop,0,dxFine,xOffsetTop,yOffsetTop,&
+            f_top,g_top,f_post_top,g_post_top,rho_top,u_top,v_top,T_top,&
+            Fx_top,Fy_top,rhoTimeInterp_top,uTimeInterp_top,vTimeInterp_top,TTimeInterp_top,FxOverDxTimeInterp_top,&
+            FyOverDxTimeInterp_top,flowNeqTimeInterp_top,thermalNeqTimeInterp_top &
 #ifdef steadyFlow
-            , up_top, vp_top, Tp_top &
+            ,up_top,vp_top,Tp_top &
 #endif
             )
-        do j = 1, nyTop
-            do i = 1, nxTop
-                call owned_cell_area(xOffsetTop + (i - 0.5d0) * dxFine, &
-                    yOffsetTop + (j - 0.5d0) * dxFine, dxFine, [xOffsetTop, xOffsetTop+nxTop, yOffsetTop, &
-                    yOffsetTop+nyTop], cellArea)
-                totalArea = totalArea + cellArea
+        do j=1,nyTop
+            do i=1,nxTop
+                call owned_cell_area(xOffsetTop+(i-0.5d0)*dxFine,&
+                    yOffsetTop+(j-0.5d0)*dxFine,dxFine,[xOffsetTop,xOffsetTop+nxTop,yOffsetTop,&
+                    yOffsetTop+nyTop],cellArea)
+                totalArea=totalArea+cellArea
             enddo
         enddo
     endif
 
     ! 总面积检查通过后，再恢复续算数据和建立接口。
-    if( abs(totalArea - dble(nx) * ny) > 1.0d-8 ) error stop 'Grid ownership does not tile the physical domain'
-    if( loadInitField == 1 ) call read_restart()
+    if(abs(totalArea-dble(nx)*ny) > 1.0d-8) error stop 'Grid ownership does not tile the physical domain'
+    if(loadInitField==1) call read_restart()
 
     call build_interfaces()
 
     ! 写出本次算例的参数与各区域几何信息。
     ! 主程序已记录开始时间和设备信息，此处追加参数，续算时保留此前日志。
-    open(newunit=k, file=settingsFile, status='unknown', position='append')
-    write(k, *) 'Parent: uniform-grid 2DRBOpenacc.F90; D2Q9 MRT / D2Q5 MRT unchanged inside blocks'
-    write(k, *) 'Huang (2014): force-aware MRT scaling and four-point Lagrange; original D2Q5 adaptation.'
-    write(k, *) 'Yu (2002): aligned two-way coupling and acoustic subcycling; cubic spline is not used.'
-    write(k, *) 'Chen (2016): pre-collision buffer states; received f,g participate in the next collision.'
-    write(k, *) 'Fine-equivalent nx,ny; refinement ratio:', nx, ny, refineRatio
-    write(k, *) 'Rayleigh, Prandtl, Mach:', Rayleigh, Prandtl, Mach
-    write(k, *) 'Fine tauf, Snu, Sq, Qk, Qnu, paraA:', tauf, Snu, Sq, Qk, Qnu, paraA
-    write(k, *) 'Fine viscosity, diffusivity, gBeta, timeUnit:', viscosity, diffusivity, gBeta, timeUnit
-    write(k, *) 'Restart offset itc =', restartItcOffset
-    write(k, *) 'Reload dimensionless time =', reloadDimensionlessTime
-    write(k, *) 'Reload metadata loaded =', reloadMetadataLoaded
-    write(k, *) 'outputSnapshotIntervalItc =', outputSnapshotIntervalItc
-    write(k, *) 'reloadFileIntervalItc =', reloadFileIntervalItc
-    write(k, *) 'outputPltFileIntervalItc =', outputPltFileIntervalItc
+    open(newunit=k,file=settingsFile,status='unknown',position='append')
+    write(k,*) 'Parent: uniform-grid 2DRBOpenacc.F90; D2Q9 MRT / D2Q5 MRT unchanged inside blocks'
+    write(k,*) 'Huang (2014): force-aware MRT scaling and four-point Lagrange; original D2Q5 adaptation.'
+    write(k,*) 'Yu (2002): aligned two-way coupling and acoustic subcycling; cubic spline is not used.'
+    write(k,*) 'Chen (2016): pre-collision buffer states; received f,g participate in the next collision.'
+    write(k,*) 'Fine-equivalent nx,ny; refinement ratio:',nx,ny,refineRatio
+    write(k,*) 'Rayleigh, Prandtl, Mach:',Rayleigh,Prandtl,Mach
+    write(k,*) 'Fine tauf, Snu, Sq, Qk, Qnu, paraA:',tauf,Snu,Sq,Qk,Qnu,paraA
+    write(k,*) 'Fine viscosity, diffusivity, gBeta, timeUnit:',viscosity,diffusivity,gBeta,timeUnit
+    write(k,*) 'Restart offset itc =',restartItcOffset
+    write(k,*) 'Reload dimensionless time =',reloadDimensionlessTime
+    write(k,*) 'Reload metadata loaded =',reloadMetadataLoaded
+    write(k,*) 'outputSnapshotIntervalItc =',outputSnapshotIntervalItc
+    write(k,*) 'reloadFileIntervalItc =',reloadFileIntervalItc
+    write(k,*) 'outputPltFileIntervalItc =',outputPltFileIntervalItc
 #ifdef steadyFlow
-    write(k, *) 'steadyCheckIntervalItc =', steadyCheckIntervalItc
+    write(k,*) 'steadyCheckIntervalItc =',steadyCheckIntervalItc
 #endif
-    write(k, *) 'Fine-node indices left/right/bottom/top:', &
-        fineLayerCellsLeft, fineLayerCellsRight, fineLayerCellsBottom, fineLayerCellsTop
-    write(k, *) 'Coarse extension (coarse spacings); fine extension (fine spacings); interface layers:', &
-        interfaceSkin, interfaceSkin, interfaceSkin
-    write(k, *) 'Owned physical area:', totalArea
-    write(k, *) 'Geometry: central coarse rectangle and four compact fine rectangles.'
-    write(k, *) 'Fine seams exchange post-collision populations directly, including diagonal links.'
-    write(k, *) 'Coordinates: x=xOffset+(i-0.5)*dx, y=yOffset+(j-0.5)*dx; local i,j start at 1.'
-    write(k, *) 'Interfaces preserve the connected-ring time interpolation and MRT scaling; dt=dx.'
-    write(k, *) 'Restart stores coarse,left,right,bottom,top arrays without a text format header.'
-    write(k, *) 'coarse: nx,ny,dx,xOffset,yOffset:', nxCoarse, nyCoarse, dxCoarse, xOffsetCoarse, yOffsetCoarse
-    if( refineRatio > 1 ) then
-        write(k, *) 'left: nx,ny,dx,xOffset,yOffset:', nxLeft, nyLeft, dxFine, xOffsetLeft, yOffsetLeft
-        write(k, *) 'right: nx,ny,dx,xOffset,yOffset:', nxRight, nyRight, dxFine, xOffsetRight, yOffsetRight
-        write(k, *) 'bottom: nx,ny,dx,xOffset,yOffset:', nxBottom, nyBottom, dxFine, xOffsetBottom, &
+    write(k,*) 'Fine-node indices left/right/bottom/top:',&
+        fineLayerCellsLeft,fineLayerCellsRight,fineLayerCellsBottom,fineLayerCellsTop
+    write(k,*) 'Coarse extension (coarse spacings); fine extension (fine spacings); interface layers:',&
+        interfaceSkin,interfaceSkin,interfaceSkin
+    write(k,*) 'Owned physical area:',totalArea
+    write(k,*) 'Geometry: central coarse rectangle and four compact fine rectangles.'
+    write(k,*) 'Fine seams exchange post-collision populations directly, including diagonal links.'
+    write(k,*) 'Coordinates: x=xOffset+(i-0.5)*dx, y=yOffset+(j-0.5)*dx; local i,j start at 1.'
+    write(k,*) 'Interfaces preserve the connected-ring time interpolation and MRT scaling; dt=dx.'
+    write(k,*) 'Restart stores coarse,left,right,bottom,top arrays without a text format header.'
+    write(k,*) 'coarse: nx,ny,dx,xOffset,yOffset:',nxCoarse,nyCoarse,dxCoarse,xOffsetCoarse,yOffsetCoarse
+    if(refineRatio > 1) then
+        write(k,*) 'left: nx,ny,dx,xOffset,yOffset:',nxLeft,nyLeft,dxFine,xOffsetLeft,yOffsetLeft
+        write(k,*) 'right: nx,ny,dx,xOffset,yOffset:',nxRight,nyRight,dxFine,xOffsetRight,yOffsetRight
+        write(k,*) 'bottom: nx,ny,dx,xOffset,yOffset:',nxBottom,nyBottom,dxFine,xOffsetBottom,&
             yOffsetBottom
-        write(k, *) 'top: nx,ny,dx,xOffset,yOffset:', nxTop, nyTop, dxFine, xOffsetTop, yOffsetTop
+        write(k,*) 'top: nx,ny,dx,xOffset,yOffset:',nxTop,nyTop,dxFine,xOffsetTop,yOffsetTop
     endif
 
     close(k)
-    if( loadInitField == 0 ) then
-        open(newunit=k, file=NuReHistoryFile, status='replace')
-        write(k, '(a)') '# t_ff NuVolAvg ReVolRMS Nu_hot Nu_cold Nu_middle mass meanT Tmin Tmax rhoMin rhoMax'
+    if(loadInitField==0) then
+        open(newunit=k,file=NuReHistoryFile,status='replace')
+        write(k,'(a)') '# t_ff NuVolAvg ReVolRMS Nu_hot Nu_cold Nu_middle mass meanT Tmin Tmax rhoMin rhoMax'
         close(k)
 #ifdef steadyFlow
         ! 新算例清空旧收敛记录；续算保留原文件，并从恢复的累计步数继续追加。
-        open(newunit=k, file='Convergence_2DOpenaccMultiblock.dat', status='replace')
+        open(newunit=k,file='Convergence_2DOpenaccMultiblock.dat',status='replace')
         close(k)
-        open(newunit=k, file='SteadyMonitor_2DOpenaccMultiblock.dat', status='replace')
-        write(k, '(a)') '# itc t_ff errorU errorT NuVolAvg ReVolRMS Nu_hot Nu_cold Nu_middle'
+        open(newunit=k,file='SteadyMonitor_2DOpenaccMultiblock.dat',status='replace')
+        write(k,'(a)') '# itc t_ff errorU errorT NuVolAvg ReVolRMS Nu_hot Nu_cold Nu_middle'
         close(k)
 #endif
     else
@@ -1037,144 +1034,144 @@
     use commondata
     implicit none
 
-    ! 与原来的全域 f/g 数组不同：本程序分别分配 coarse、left、right、bottom、top。
+    ! 分别为 coarse、left、right、bottom、top 分配数组。
     ! 场量空间范围是 1:ni、1:nj；只有 f_post/g_post 为迁移额外保留 0 和 n+1。
-    ! 粗历史的最后下标是 0:2；细历史只有 0:0。这与稳态检查用的 up/vp/Tp 不同。
+    ! 粗网格交换历史保存 0:2 三层，细网格保存 0:0 当前层；up/vp/Tp 保存上次稳态检查的场量。
 
     ! 分配中心粗网格的计算数组。
-    allocate(f_coarse(nxCoarse, nyCoarse, 0:8))
-    allocate(g_coarse(nxCoarse, nyCoarse, 0:4))
-    allocate(f_post_coarse(0:nxCoarse + 1, 0:nyCoarse + 1, 0:8))
-    allocate(g_post_coarse(0:nxCoarse + 1, 0:nyCoarse + 1, 0:4))
-    allocate(rho_coarse(nxCoarse, nyCoarse))
-    allocate(u_coarse(nxCoarse, nyCoarse))
-    allocate(v_coarse(nxCoarse, nyCoarse))
-    allocate(T_coarse(nxCoarse, nyCoarse))
-    allocate(Fx_coarse(nxCoarse, nyCoarse))
-    allocate(Fy_coarse(nxCoarse, nyCoarse))
+    allocate(f_coarse(nxCoarse,nyCoarse,0:8))
+    allocate(g_coarse(nxCoarse,nyCoarse,0:4))
+    allocate(f_post_coarse(0:nxCoarse+1,0:nyCoarse+1,0:8))
+    allocate(g_post_coarse(0:nxCoarse+1,0:nyCoarse+1,0:4))
+    allocate(rho_coarse(nxCoarse,nyCoarse))
+    allocate(u_coarse(nxCoarse,nyCoarse))
+    allocate(v_coarse(nxCoarse,nyCoarse))
+    allocate(T_coarse(nxCoarse,nyCoarse))
+    allocate(Fx_coarse(nxCoarse,nyCoarse))
+    allocate(Fy_coarse(nxCoarse,nyCoarse))
 
     ! 分配中心粗网格的接口交换历史。
-    allocate(rhoTimeInterp_coarse(nxCoarse, nyCoarse, 0:timeInterpMaxIndexCoarse))
-    allocate(uTimeInterp_coarse(nxCoarse, nyCoarse, 0:timeInterpMaxIndexCoarse))
-    allocate(vTimeInterp_coarse(nxCoarse, nyCoarse, 0:timeInterpMaxIndexCoarse))
-    allocate(TTimeInterp_coarse(nxCoarse, nyCoarse, 0:timeInterpMaxIndexCoarse))
-    allocate(FxOverDxTimeInterp_coarse(nxCoarse, nyCoarse, 0:timeInterpMaxIndexCoarse))
-    allocate(FyOverDxTimeInterp_coarse(nxCoarse, nyCoarse, 0:timeInterpMaxIndexCoarse))
-    allocate(flowNeqTimeInterp_coarse(nxCoarse, nyCoarse, 0:8, 0:timeInterpMaxIndexCoarse))
-    allocate(thermalNeqTimeInterp_coarse(nxCoarse, nyCoarse, 0:4, 0:timeInterpMaxIndexCoarse))
+    allocate(rhoTimeInterp_coarse(nxCoarse,nyCoarse,0:timeInterpMaxIndexCoarse))
+    allocate(uTimeInterp_coarse(nxCoarse,nyCoarse,0:timeInterpMaxIndexCoarse))
+    allocate(vTimeInterp_coarse(nxCoarse,nyCoarse,0:timeInterpMaxIndexCoarse))
+    allocate(TTimeInterp_coarse(nxCoarse,nyCoarse,0:timeInterpMaxIndexCoarse))
+    allocate(FxOverDxTimeInterp_coarse(nxCoarse,nyCoarse,0:timeInterpMaxIndexCoarse))
+    allocate(FyOverDxTimeInterp_coarse(nxCoarse,nyCoarse,0:timeInterpMaxIndexCoarse))
+    allocate(flowNeqTimeInterp_coarse(nxCoarse,nyCoarse,0:8,0:timeInterpMaxIndexCoarse))
+    allocate(thermalNeqTimeInterp_coarse(nxCoarse,nyCoarse,0:4,0:timeInterpMaxIndexCoarse))
 #ifdef steadyFlow
-    allocate(up_coarse(nxCoarse, nyCoarse))
-    allocate(vp_coarse(nxCoarse, nyCoarse))
-    allocate(Tp_coarse(nxCoarse, nyCoarse))
+    allocate(up_coarse(nxCoarse,nyCoarse))
+    allocate(vp_coarse(nxCoarse,nyCoarse))
+    allocate(Tp_coarse(nxCoarse,nyCoarse))
 #endif
-    if( refineRatio > 1 ) then
+    if(refineRatio > 1) then
 
         ! 分配左侧细网格的计算数组。
-        allocate(f_left(nxLeft, nyLeft, 0:8))
-        allocate(g_left(nxLeft, nyLeft, 0:4))
-        allocate(f_post_left(0:nxLeft + 1, 0:nyLeft + 1, 0:8))
-        allocate(g_post_left(0:nxLeft + 1, 0:nyLeft + 1, 0:4))
-        allocate(rho_left(nxLeft, nyLeft))
-        allocate(u_left(nxLeft, nyLeft))
-        allocate(v_left(nxLeft, nyLeft))
-        allocate(T_left(nxLeft, nyLeft))
-        allocate(Fx_left(nxLeft, nyLeft))
-        allocate(Fy_left(nxLeft, nyLeft))
+        allocate(f_left(nxLeft,nyLeft,0:8))
+        allocate(g_left(nxLeft,nyLeft,0:4))
+        allocate(f_post_left(0:nxLeft+1,0:nyLeft+1,0:8))
+        allocate(g_post_left(0:nxLeft+1,0:nyLeft+1,0:4))
+        allocate(rho_left(nxLeft,nyLeft))
+        allocate(u_left(nxLeft,nyLeft))
+        allocate(v_left(nxLeft,nyLeft))
+        allocate(T_left(nxLeft,nyLeft))
+        allocate(Fx_left(nxLeft,nyLeft))
+        allocate(Fy_left(nxLeft,nyLeft))
 
         ! 分配左侧细网格的接口交换历史。
-        allocate(rhoTimeInterp_left(nxLeft, nyLeft, 0:0))
-        allocate(uTimeInterp_left(nxLeft, nyLeft, 0:0))
-        allocate(vTimeInterp_left(nxLeft, nyLeft, 0:0))
-        allocate(TTimeInterp_left(nxLeft, nyLeft, 0:0))
-        allocate(FxOverDxTimeInterp_left(nxLeft, nyLeft, 0:0))
-        allocate(FyOverDxTimeInterp_left(nxLeft, nyLeft, 0:0))
-        allocate(flowNeqTimeInterp_left(nxLeft, nyLeft, 0:8, 0:0))
-        allocate(thermalNeqTimeInterp_left(nxLeft, nyLeft, 0:4, 0:0))
+        allocate(rhoTimeInterp_left(nxLeft,nyLeft,0:0))
+        allocate(uTimeInterp_left(nxLeft,nyLeft,0:0))
+        allocate(vTimeInterp_left(nxLeft,nyLeft,0:0))
+        allocate(TTimeInterp_left(nxLeft,nyLeft,0:0))
+        allocate(FxOverDxTimeInterp_left(nxLeft,nyLeft,0:0))
+        allocate(FyOverDxTimeInterp_left(nxLeft,nyLeft,0:0))
+        allocate(flowNeqTimeInterp_left(nxLeft,nyLeft,0:8,0:0))
+        allocate(thermalNeqTimeInterp_left(nxLeft,nyLeft,0:4,0:0))
 #ifdef steadyFlow
-        allocate(up_left(nxLeft, nyLeft))
-        allocate(vp_left(nxLeft, nyLeft))
-        allocate(Tp_left(nxLeft, nyLeft))
+        allocate(up_left(nxLeft,nyLeft))
+        allocate(vp_left(nxLeft,nyLeft))
+        allocate(Tp_left(nxLeft,nyLeft))
 #endif
 
         ! 分配右侧细网格的计算数组。
-        allocate(f_right(nxRight, nyRight, 0:8))
-        allocate(g_right(nxRight, nyRight, 0:4))
-        allocate(f_post_right(0:nxRight + 1, 0:nyRight + 1, 0:8))
-        allocate(g_post_right(0:nxRight + 1, 0:nyRight + 1, 0:4))
-        allocate(rho_right(nxRight, nyRight))
-        allocate(u_right(nxRight, nyRight))
-        allocate(v_right(nxRight, nyRight))
-        allocate(T_right(nxRight, nyRight))
-        allocate(Fx_right(nxRight, nyRight))
-        allocate(Fy_right(nxRight, nyRight))
+        allocate(f_right(nxRight,nyRight,0:8))
+        allocate(g_right(nxRight,nyRight,0:4))
+        allocate(f_post_right(0:nxRight+1,0:nyRight+1,0:8))
+        allocate(g_post_right(0:nxRight+1,0:nyRight+1,0:4))
+        allocate(rho_right(nxRight,nyRight))
+        allocate(u_right(nxRight,nyRight))
+        allocate(v_right(nxRight,nyRight))
+        allocate(T_right(nxRight,nyRight))
+        allocate(Fx_right(nxRight,nyRight))
+        allocate(Fy_right(nxRight,nyRight))
 
         ! 分配右侧细网格的接口交换历史。
-        allocate(rhoTimeInterp_right(nxRight, nyRight, 0:0))
-        allocate(uTimeInterp_right(nxRight, nyRight, 0:0))
-        allocate(vTimeInterp_right(nxRight, nyRight, 0:0))
-        allocate(TTimeInterp_right(nxRight, nyRight, 0:0))
-        allocate(FxOverDxTimeInterp_right(nxRight, nyRight, 0:0))
-        allocate(FyOverDxTimeInterp_right(nxRight, nyRight, 0:0))
-        allocate(flowNeqTimeInterp_right(nxRight, nyRight, 0:8, 0:0))
-        allocate(thermalNeqTimeInterp_right(nxRight, nyRight, 0:4, 0:0))
+        allocate(rhoTimeInterp_right(nxRight,nyRight,0:0))
+        allocate(uTimeInterp_right(nxRight,nyRight,0:0))
+        allocate(vTimeInterp_right(nxRight,nyRight,0:0))
+        allocate(TTimeInterp_right(nxRight,nyRight,0:0))
+        allocate(FxOverDxTimeInterp_right(nxRight,nyRight,0:0))
+        allocate(FyOverDxTimeInterp_right(nxRight,nyRight,0:0))
+        allocate(flowNeqTimeInterp_right(nxRight,nyRight,0:8,0:0))
+        allocate(thermalNeqTimeInterp_right(nxRight,nyRight,0:4,0:0))
 #ifdef steadyFlow
-        allocate(up_right(nxRight, nyRight))
-        allocate(vp_right(nxRight, nyRight))
-        allocate(Tp_right(nxRight, nyRight))
+        allocate(up_right(nxRight,nyRight))
+        allocate(vp_right(nxRight,nyRight))
+        allocate(Tp_right(nxRight,nyRight))
 #endif
 
         ! 分配下侧细网格的计算数组。
-        allocate(f_bottom(nxBottom, nyBottom, 0:8))
-        allocate(g_bottom(nxBottom, nyBottom, 0:4))
-        allocate(f_post_bottom(0:nxBottom + 1, 0:nyBottom + 1, 0:8))
-        allocate(g_post_bottom(0:nxBottom + 1, 0:nyBottom + 1, 0:4))
-        allocate(rho_bottom(nxBottom, nyBottom))
-        allocate(u_bottom(nxBottom, nyBottom))
-        allocate(v_bottom(nxBottom, nyBottom))
-        allocate(T_bottom(nxBottom, nyBottom))
-        allocate(Fx_bottom(nxBottom, nyBottom))
-        allocate(Fy_bottom(nxBottom, nyBottom))
+        allocate(f_bottom(nxBottom,nyBottom,0:8))
+        allocate(g_bottom(nxBottom,nyBottom,0:4))
+        allocate(f_post_bottom(0:nxBottom+1,0:nyBottom+1,0:8))
+        allocate(g_post_bottom(0:nxBottom+1,0:nyBottom+1,0:4))
+        allocate(rho_bottom(nxBottom,nyBottom))
+        allocate(u_bottom(nxBottom,nyBottom))
+        allocate(v_bottom(nxBottom,nyBottom))
+        allocate(T_bottom(nxBottom,nyBottom))
+        allocate(Fx_bottom(nxBottom,nyBottom))
+        allocate(Fy_bottom(nxBottom,nyBottom))
 
         ! 分配下侧细网格的接口交换历史。
-        allocate(rhoTimeInterp_bottom(nxBottom, nyBottom, 0:0))
-        allocate(uTimeInterp_bottom(nxBottom, nyBottom, 0:0))
-        allocate(vTimeInterp_bottom(nxBottom, nyBottom, 0:0))
-        allocate(TTimeInterp_bottom(nxBottom, nyBottom, 0:0))
-        allocate(FxOverDxTimeInterp_bottom(nxBottom, nyBottom, 0:0))
-        allocate(FyOverDxTimeInterp_bottom(nxBottom, nyBottom, 0:0))
-        allocate(flowNeqTimeInterp_bottom(nxBottom, nyBottom, 0:8, 0:0))
-        allocate(thermalNeqTimeInterp_bottom(nxBottom, nyBottom, 0:4, 0:0))
+        allocate(rhoTimeInterp_bottom(nxBottom,nyBottom,0:0))
+        allocate(uTimeInterp_bottom(nxBottom,nyBottom,0:0))
+        allocate(vTimeInterp_bottom(nxBottom,nyBottom,0:0))
+        allocate(TTimeInterp_bottom(nxBottom,nyBottom,0:0))
+        allocate(FxOverDxTimeInterp_bottom(nxBottom,nyBottom,0:0))
+        allocate(FyOverDxTimeInterp_bottom(nxBottom,nyBottom,0:0))
+        allocate(flowNeqTimeInterp_bottom(nxBottom,nyBottom,0:8,0:0))
+        allocate(thermalNeqTimeInterp_bottom(nxBottom,nyBottom,0:4,0:0))
 #ifdef steadyFlow
-        allocate(up_bottom(nxBottom, nyBottom))
-        allocate(vp_bottom(nxBottom, nyBottom))
-        allocate(Tp_bottom(nxBottom, nyBottom))
+        allocate(up_bottom(nxBottom,nyBottom))
+        allocate(vp_bottom(nxBottom,nyBottom))
+        allocate(Tp_bottom(nxBottom,nyBottom))
 #endif
 
         ! 分配上侧细网格的计算数组。
-        allocate(f_top(nxTop, nyTop, 0:8))
-        allocate(g_top(nxTop, nyTop, 0:4))
-        allocate(f_post_top(0:nxTop + 1, 0:nyTop + 1, 0:8))
-        allocate(g_post_top(0:nxTop + 1, 0:nyTop + 1, 0:4))
-        allocate(rho_top(nxTop, nyTop))
-        allocate(u_top(nxTop, nyTop))
-        allocate(v_top(nxTop, nyTop))
-        allocate(T_top(nxTop, nyTop))
-        allocate(Fx_top(nxTop, nyTop))
-        allocate(Fy_top(nxTop, nyTop))
+        allocate(f_top(nxTop,nyTop,0:8))
+        allocate(g_top(nxTop,nyTop,0:4))
+        allocate(f_post_top(0:nxTop+1,0:nyTop+1,0:8))
+        allocate(g_post_top(0:nxTop+1,0:nyTop+1,0:4))
+        allocate(rho_top(nxTop,nyTop))
+        allocate(u_top(nxTop,nyTop))
+        allocate(v_top(nxTop,nyTop))
+        allocate(T_top(nxTop,nyTop))
+        allocate(Fx_top(nxTop,nyTop))
+        allocate(Fy_top(nxTop,nyTop))
 
         ! 分配上侧细网格的接口交换历史。
-        allocate(rhoTimeInterp_top(nxTop, nyTop, 0:0))
-        allocate(uTimeInterp_top(nxTop, nyTop, 0:0))
-        allocate(vTimeInterp_top(nxTop, nyTop, 0:0))
-        allocate(TTimeInterp_top(nxTop, nyTop, 0:0))
-        allocate(FxOverDxTimeInterp_top(nxTop, nyTop, 0:0))
-        allocate(FyOverDxTimeInterp_top(nxTop, nyTop, 0:0))
-        allocate(flowNeqTimeInterp_top(nxTop, nyTop, 0:8, 0:0))
-        allocate(thermalNeqTimeInterp_top(nxTop, nyTop, 0:4, 0:0))
+        allocate(rhoTimeInterp_top(nxTop,nyTop,0:0))
+        allocate(uTimeInterp_top(nxTop,nyTop,0:0))
+        allocate(vTimeInterp_top(nxTop,nyTop,0:0))
+        allocate(TTimeInterp_top(nxTop,nyTop,0:0))
+        allocate(FxOverDxTimeInterp_top(nxTop,nyTop,0:0))
+        allocate(FyOverDxTimeInterp_top(nxTop,nyTop,0:0))
+        allocate(flowNeqTimeInterp_top(nxTop,nyTop,0:8,0:0))
+        allocate(thermalNeqTimeInterp_top(nxTop,nyTop,0:4,0:0))
 #ifdef steadyFlow
-        allocate(up_top(nxTop, nyTop))
-        allocate(vp_top(nxTop, nyTop))
-        allocate(Tp_top(nxTop, nyTop))
+        allocate(up_top(nxTop,nyTop))
+        allocate(vp_top(nxTop,nyTop))
+        allocate(Tp_top(nxTop,nyTop))
 #endif
     endif
   end subroutine allocate_grid_arrays
@@ -1184,16 +1181,16 @@
 ! 子程序: initial_grid
 ! 作用: 初始化传入区域的宏观量、分布函数和交换历史。
 !===================================================================================================
-  subroutine initial_grid(ni, nj, nh, dx, xOffset, yOffset, &
-      f, g, &
-      f_post, g_post, rho, u, v, T, Fx, Fy, rhoHistory, uHistory, &
-      vHistory, THistory, FxHistory, FyHistory, flowNeqHistory, thermalNeqHistory &
+  subroutine initial_grid(ni,nj,nh,dx,xOffset,yOffset,&
+      f,g,&
+      f_post,g_post,rho,u,v,T,Fx,Fy,rhoHistory,uHistory,&
+      vHistory,THistory,FxHistory,FyHistory,flowNeqHistory,thermalNeqHistory &
 #ifdef steadyFlow
-      , up, vp, Tp &
+      ,up,vp,Tp &
 #endif
       )
 
-    use commondata, only: nx, ny, Thot, Tcold, pi, lengthUnit, omega, omegaT
+    use commondata,only: nx,ny,Thot,Tcold,pi,lengthUnit,omega,omegaT
     implicit none
 
     ! ni/nj 是传入数组的本地节点数，nh 是历史时间层最大下标。
@@ -1202,79 +1199,78 @@
     integer(kind=4) :: ni, nj, nh
     real(kind=8) :: dx, xOffset, yOffset
 
-    real(kind=8) :: f(ni, nj, 0:8)
-    real(kind=8) :: g(ni, nj, 0:4)
-    real(kind=8) :: f_post(0:ni + 1, 0:nj + 1, 0:8)
-    real(kind=8) :: g_post(0:ni + 1, 0:nj + 1, 0:4)
-    real(kind=8) :: rho(ni, nj)
-    real(kind=8) :: u(ni, nj)
-    real(kind=8) :: v(ni, nj)
-    real(kind=8) :: T(ni, nj)
-    real(kind=8) :: Fx(ni, nj)
-    real(kind=8) :: Fy(ni, nj)
-    real(kind=8) :: rhoHistory(ni, nj, 0:nh)
-    real(kind=8) :: uHistory(ni, nj, 0:nh)
-    real(kind=8) :: vHistory(ni, nj, 0:nh)
-    real(kind=8) :: THistory(ni, nj, 0:nh)
-    real(kind=8) :: FxHistory(ni, nj, 0:nh)
-    real(kind=8) :: FyHistory(ni, nj, 0:nh)
-    real(kind=8) :: flowNeqHistory(ni, nj, 0:8, 0:nh)
-    real(kind=8) :: thermalNeqHistory(ni, nj, 0:4, 0:nh)
+    real(kind=8) :: f(ni,nj,0:8)
+    real(kind=8) :: g(ni,nj,0:4)
+    real(kind=8) :: f_post(0:ni+1,0:nj+1,0:8)
+    real(kind=8) :: g_post(0:ni+1,0:nj+1,0:4)
+    real(kind=8) :: rho(ni,nj)
+    real(kind=8) :: u(ni,nj)
+    real(kind=8) :: v(ni,nj)
+    real(kind=8) :: T(ni,nj)
+    real(kind=8) :: Fx(ni,nj)
+    real(kind=8) :: Fy(ni,nj)
+    real(kind=8) :: rhoHistory(ni,nj,0:nh)
+    real(kind=8) :: uHistory(ni,nj,0:nh)
+    real(kind=8) :: vHistory(ni,nj,0:nh)
+    real(kind=8) :: THistory(ni,nj,0:nh)
+    real(kind=8) :: FxHistory(ni,nj,0:nh)
+    real(kind=8) :: FyHistory(ni,nj,0:nh)
+    real(kind=8) :: flowNeqHistory(ni,nj,0:8,0:nh)
+    real(kind=8) :: thermalNeqHistory(ni,nj,0:4,0:nh)
 #ifdef steadyFlow
-    real(kind=8) :: up(ni, nj)
-    real(kind=8) :: vp(ni, nj)
-    real(kind=8) :: Tp(ni, nj)
+    real(kind=8) :: up(ni,nj)
+    real(kind=8) :: vp(ni,nj)
+    real(kind=8) :: Tp(ni,nj)
 #endif
     integer(kind=4) :: i, j, a
     real(kind=8) :: x, y
 
-
     ! 初始化宏观量和碰撞后数组。
-    u = 0.0d0
-    v = 0.0d0
-    rho = 1.0d0
-    Fx = 0.0d0
-    Fy = 0.0d0
-    f_post = 0.0d0
-    g_post = 0.0d0
+    u=0.0d0
+    v=0.0d0
+    rho=1.0d0
+    Fx=0.0d0
+    Fy=0.0d0
+    f_post=0.0d0
+    g_post=0.0d0
 
     ! 先清空交换历史；首次设备交换前再由场量生成有效时间层。
-    rhoHistory = 0.0d0
-    uHistory = 0.0d0
-    vHistory = 0.0d0
-    THistory = 0.0d0
-    FxHistory = 0.0d0
-    FyHistory = 0.0d0
-    flowNeqHistory = 0.0d0
-    thermalNeqHistory = 0.0d0
+    rhoHistory=0.0d0
+    uHistory=0.0d0
+    vHistory=0.0d0
+    THistory=0.0d0
+    FxHistory=0.0d0
+    FyHistory=0.0d0
+    flowNeqHistory=0.0d0
+    thermalNeqHistory=0.0d0
 
     ! 根据节点物理坐标构造初始温度，并设置平衡分布函数。
-    do j = 1, nj
-        y = (yOffset + (dble(j) - 0.5d0) * dx) / lengthUnit
-        do i = 1, ni
-            x = (xOffset + (dble(i) - 0.5d0) * dx) / lengthUnit
+    do j=1,nj
+        y=(yOffset+(dble(j)-0.5d0)*dx)/lengthUnit
+        do i=1,ni
+            x=(xOffset+(dble(i)-0.5d0)*dx)/lengthUnit
 #ifdef SideHeatedCell
-            T(i, j) = Thot + x / (dble(nx) / lengthUnit) * (Tcold - Thot)
+            T(i,j)=Thot+x/(dble(nx)/lengthUnit)*(Tcold-Thot)
 #else
-            T(i, j) = Thot + y / (dble(ny) / lengthUnit) * (Tcold - Thot)
-            T(i, j) = T(i, j) + 1.0d-3 * (Thot - Tcold) * sin(2.0d0 * pi * x / (dble(nx) / lengthUnit)) * &
-                sin(pi * y / (dble(ny) / lengthUnit))
+            T(i,j)=Thot+y/(dble(ny)/lengthUnit)*(Tcold-Thot)
+            T(i,j)=T(i,j)+1.0d-3*(Thot-Tcold)*sin(2.0d0*pi*x/(dble(nx)/lengthUnit))*&
+                sin(pi*y/(dble(ny)/lengthUnit))
 #endif
-            do a = 0, 8
-                f(i, j, a) = omega(a)
+            do a=0,8
+                f(i,j,a)=omega(a)
             enddo
 
-            do a = 0, 4
-                g(i, j, a) = omegaT(a) * T(i, j)
+            do a=0,4
+                g(i,j,a)=omegaT(a)*T(i,j)
             enddo
         enddo
     enddo
 #ifdef steadyFlow
 
     ! 稳态检查的初始参考场。
-    up = u
-    vp = v
-    Tp = T
+    up=u
+    vp=v
+    Tp=T
 #endif
   end subroutine initial_grid
 !===================================================================================================
@@ -1292,12 +1288,12 @@
 
     logical, intent(in) :: entering
 
-    if( entering ) then
+    if(entering) then
         !$acc enter data copyin(f_coarse, g_coarse, f_post_coarse, g_post_coarse, rho_coarse, u_coarse,  &
         !$acc& v_coarse, T_coarse, Fx_coarse, Fy_coarse, rhoTimeInterp_coarse, uTimeInterp_coarse,  &
         !$acc& vTimeInterp_coarse, TTimeInterp_coarse, FxOverDxTimeInterp_coarse, FyOverDxTimeInterp_coarse, flowNeqTimeInterp_coarse,  &
         !$acc& thermalNeqTimeInterp_coarse)
-        if( refineRatio > 1 ) then
+        if(refineRatio > 1) then
             !$acc enter data copyin(f_left, g_left, f_post_left, g_post_left, rho_left, u_left, v_left, T_left,  &
             !$acc& Fx_left, Fy_left, rhoTimeInterp_left, uTimeInterp_left, vTimeInterp_left, TTimeInterp_left,  &
             !$acc& FxOverDxTimeInterp_left, FyOverDxTimeInterp_left, flowNeqTimeInterp_left, thermalNeqTimeInterp_left)
@@ -1318,7 +1314,7 @@
         !$acc& v_coarse, T_coarse, Fx_coarse, Fy_coarse, rhoTimeInterp_coarse, uTimeInterp_coarse,  &
         !$acc& vTimeInterp_coarse, TTimeInterp_coarse, FxOverDxTimeInterp_coarse, FyOverDxTimeInterp_coarse, flowNeqTimeInterp_coarse,  &
         !$acc& thermalNeqTimeInterp_coarse)
-        if( refineRatio > 1 ) then
+        if(refineRatio > 1) then
             !$acc exit data delete(f_left, g_left, f_post_left, g_post_left, rho_left, u_left, v_left, T_left,  &
             !$acc& Fx_left, Fy_left, rhoTimeInterp_left, uTimeInterp_left, vTimeInterp_left, TTimeInterp_left,  &
             !$acc& FxOverDxTimeInterp_left, FyOverDxTimeInterp_left, flowNeqTimeInterp_left, thermalNeqTimeInterp_left)
@@ -1353,60 +1349,60 @@
     call grid_device_data(.true.)
 
     call interface_device_data(.true.)
-    if( loadInitField == 0 ) then
+    if(loadInitField==0) then
 
-        call save_exchange_history(nxCoarse, nyCoarse, timeInterpMaxIndexCoarse, min(1, timeInterpMaxIndexCoarse), &
-            dxCoarse, SnuCoarse, SqCoarse, QkCoarse, QnuCoarse, f_coarse, g_coarse, rho_coarse, u_coarse, &
-            v_coarse, T_coarse, Fx_coarse, Fy_coarse, rhoTimeInterp_coarse, uTimeInterp_coarse, vTimeInterp_coarse, &
-            TTimeInterp_coarse, FxOverDxTimeInterp_coarse, FyOverDxTimeInterp_coarse, flowNeqTimeInterp_coarse, thermalNeqTimeInterp_coarse)
-        if( refineRatio > 1 ) then
+        call save_exchange_history(nxCoarse,nyCoarse,timeInterpMaxIndexCoarse,min(1,timeInterpMaxIndexCoarse),&
+            dxCoarse,SnuCoarse,SqCoarse,QkCoarse,QnuCoarse,f_coarse,g_coarse,rho_coarse,u_coarse,&
+            v_coarse,T_coarse,Fx_coarse,Fy_coarse,rhoTimeInterp_coarse,uTimeInterp_coarse,vTimeInterp_coarse,&
+            TTimeInterp_coarse,FxOverDxTimeInterp_coarse,FyOverDxTimeInterp_coarse,flowNeqTimeInterp_coarse,thermalNeqTimeInterp_coarse)
+        if(refineRatio > 1) then
 
-            call save_exchange_history(nxLeft, nyLeft, 0, 0, dxFine, Snu, Sq, Qk, Qnu, f_left, &
-                g_left, rho_left, u_left, v_left, T_left, Fx_left, Fy_left, rhoTimeInterp_left, uTimeInterp_left, &
-                vTimeInterp_left, TTimeInterp_left, FxOverDxTimeInterp_left, FyOverDxTimeInterp_left, flowNeqTimeInterp_left, &
+            call save_exchange_history(nxLeft,nyLeft,0,0,dxFine,Snu,Sq,Qk,Qnu,f_left,&
+                g_left,rho_left,u_left,v_left,T_left,Fx_left,Fy_left,rhoTimeInterp_left,uTimeInterp_left,&
+                vTimeInterp_left,TTimeInterp_left,FxOverDxTimeInterp_left,FyOverDxTimeInterp_left,flowNeqTimeInterp_left,&
                 thermalNeqTimeInterp_left)
 
-            call save_exchange_history(nxRight, nyRight, 0, 0, dxFine, Snu, Sq, Qk, Qnu, &
-                f_right, g_right, rho_right, u_right, v_right, T_right, Fx_right, Fy_right, rhoTimeInterp_right, &
-                uTimeInterp_right, vTimeInterp_right, TTimeInterp_right, FxOverDxTimeInterp_right, FyOverDxTimeInterp_right, &
-                flowNeqTimeInterp_right, thermalNeqTimeInterp_right)
+            call save_exchange_history(nxRight,nyRight,0,0,dxFine,Snu,Sq,Qk,Qnu,&
+                f_right,g_right,rho_right,u_right,v_right,T_right,Fx_right,Fy_right,rhoTimeInterp_right,&
+                uTimeInterp_right,vTimeInterp_right,TTimeInterp_right,FxOverDxTimeInterp_right,FyOverDxTimeInterp_right,&
+                flowNeqTimeInterp_right,thermalNeqTimeInterp_right)
 
-            call save_exchange_history(nxBottom, nyBottom, 0, 0, dxFine, Snu, Sq, Qk, Qnu, &
-                f_bottom, g_bottom, rho_bottom, u_bottom, v_bottom, T_bottom, Fx_bottom, Fy_bottom, &
-                rhoTimeInterp_bottom, uTimeInterp_bottom, vTimeInterp_bottom, TTimeInterp_bottom, FxOverDxTimeInterp_bottom, &
-                FyOverDxTimeInterp_bottom, flowNeqTimeInterp_bottom, thermalNeqTimeInterp_bottom)
+            call save_exchange_history(nxBottom,nyBottom,0,0,dxFine,Snu,Sq,Qk,Qnu,&
+                f_bottom,g_bottom,rho_bottom,u_bottom,v_bottom,T_bottom,Fx_bottom,Fy_bottom,&
+                rhoTimeInterp_bottom,uTimeInterp_bottom,vTimeInterp_bottom,TTimeInterp_bottom,FxOverDxTimeInterp_bottom,&
+                FyOverDxTimeInterp_bottom,flowNeqTimeInterp_bottom,thermalNeqTimeInterp_bottom)
 
-            call save_exchange_history(nxTop, nyTop, 0, 0, dxFine, Snu, Sq, Qk, Qnu, f_top, &
-                g_top, rho_top, u_top, v_top, T_top, Fx_top, Fy_top, rhoTimeInterp_top, uTimeInterp_top, &
-                vTimeInterp_top, TTimeInterp_top, FxOverDxTimeInterp_top, FyOverDxTimeInterp_top, flowNeqTimeInterp_top, thermalNeqTimeInterp_top)
+            call save_exchange_history(nxTop,nyTop,0,0,dxFine,Snu,Sq,Qk,Qnu,f_top,&
+                g_top,rho_top,u_top,v_top,T_top,Fx_top,Fy_top,rhoTimeInterp_top,uTimeInterp_top,&
+                vTimeInterp_top,TTimeInterp_top,FxOverDxTimeInterp_top,FyOverDxTimeInterp_top,flowNeqTimeInterp_top,thermalNeqTimeInterp_top)
 
             call fine_to_coarse()
 
-            call coarse_to_fine([0.0d0, 1.0d0, 0.0d0])
+            call coarse_to_fine([0.0d0,1.0d0,0.0d0])
 
-            call save_exchange_history(nxCoarse, nyCoarse, timeInterpMaxIndexCoarse, 1, dxCoarse, SnuCoarse, SqCoarse, &
-                QkCoarse, QnuCoarse, f_coarse, g_coarse, rho_coarse, u_coarse, v_coarse, T_coarse, Fx_coarse, &
-                Fy_coarse, rhoTimeInterp_coarse, uTimeInterp_coarse, vTimeInterp_coarse, TTimeInterp_coarse, &
-                FxOverDxTimeInterp_coarse, FyOverDxTimeInterp_coarse, flowNeqTimeInterp_coarse, thermalNeqTimeInterp_coarse)
+            call save_exchange_history(nxCoarse,nyCoarse,timeInterpMaxIndexCoarse,1,dxCoarse,SnuCoarse,SqCoarse,&
+                QkCoarse,QnuCoarse,f_coarse,g_coarse,rho_coarse,u_coarse,v_coarse,T_coarse,Fx_coarse,&
+                Fy_coarse,rhoTimeInterp_coarse,uTimeInterp_coarse,vTimeInterp_coarse,TTimeInterp_coarse,&
+                FxOverDxTimeInterp_coarse,FyOverDxTimeInterp_coarse,flowNeqTimeInterp_coarse,thermalNeqTimeInterp_coarse)
 
-            call save_exchange_history(nxLeft, nyLeft, 0, 0, dxFine, Snu, Sq, Qk, Qnu, f_left, &
-                g_left, rho_left, u_left, v_left, T_left, Fx_left, Fy_left, rhoTimeInterp_left, uTimeInterp_left, &
-                vTimeInterp_left, TTimeInterp_left, FxOverDxTimeInterp_left, FyOverDxTimeInterp_left, flowNeqTimeInterp_left, &
+            call save_exchange_history(nxLeft,nyLeft,0,0,dxFine,Snu,Sq,Qk,Qnu,f_left,&
+                g_left,rho_left,u_left,v_left,T_left,Fx_left,Fy_left,rhoTimeInterp_left,uTimeInterp_left,&
+                vTimeInterp_left,TTimeInterp_left,FxOverDxTimeInterp_left,FyOverDxTimeInterp_left,flowNeqTimeInterp_left,&
                 thermalNeqTimeInterp_left)
 
-            call save_exchange_history(nxRight, nyRight, 0, 0, dxFine, Snu, Sq, Qk, Qnu, &
-                f_right, g_right, rho_right, u_right, v_right, T_right, Fx_right, Fy_right, rhoTimeInterp_right, &
-                uTimeInterp_right, vTimeInterp_right, TTimeInterp_right, FxOverDxTimeInterp_right, FyOverDxTimeInterp_right, &
-                flowNeqTimeInterp_right, thermalNeqTimeInterp_right)
+            call save_exchange_history(nxRight,nyRight,0,0,dxFine,Snu,Sq,Qk,Qnu,&
+                f_right,g_right,rho_right,u_right,v_right,T_right,Fx_right,Fy_right,rhoTimeInterp_right,&
+                uTimeInterp_right,vTimeInterp_right,TTimeInterp_right,FxOverDxTimeInterp_right,FyOverDxTimeInterp_right,&
+                flowNeqTimeInterp_right,thermalNeqTimeInterp_right)
 
-            call save_exchange_history(nxBottom, nyBottom, 0, 0, dxFine, Snu, Sq, Qk, Qnu, &
-                f_bottom, g_bottom, rho_bottom, u_bottom, v_bottom, T_bottom, Fx_bottom, Fy_bottom, &
-                rhoTimeInterp_bottom, uTimeInterp_bottom, vTimeInterp_bottom, TTimeInterp_bottom, FxOverDxTimeInterp_bottom, &
-                FyOverDxTimeInterp_bottom, flowNeqTimeInterp_bottom, thermalNeqTimeInterp_bottom)
+            call save_exchange_history(nxBottom,nyBottom,0,0,dxFine,Snu,Sq,Qk,Qnu,&
+                f_bottom,g_bottom,rho_bottom,u_bottom,v_bottom,T_bottom,Fx_bottom,Fy_bottom,&
+                rhoTimeInterp_bottom,uTimeInterp_bottom,vTimeInterp_bottom,TTimeInterp_bottom,FxOverDxTimeInterp_bottom,&
+                FyOverDxTimeInterp_bottom,flowNeqTimeInterp_bottom,thermalNeqTimeInterp_bottom)
 
-            call save_exchange_history(nxTop, nyTop, 0, 0, dxFine, Snu, Sq, Qk, Qnu, f_top, &
-                g_top, rho_top, u_top, v_top, T_top, Fx_top, Fy_top, rhoTimeInterp_top, uTimeInterp_top, &
-                vTimeInterp_top, TTimeInterp_top, FxOverDxTimeInterp_top, FyOverDxTimeInterp_top, flowNeqTimeInterp_top, thermalNeqTimeInterp_top)
+            call save_exchange_history(nxTop,nyTop,0,0,dxFine,Snu,Sq,Qk,Qnu,f_top,&
+                g_top,rho_top,u_top,v_top,T_top,Fx_top,Fy_top,rhoTimeInterp_top,uTimeInterp_top,&
+                vTimeInterp_top,TTimeInterp_top,FxOverDxTimeInterp_top,FyOverDxTimeInterp_top,flowNeqTimeInterp_top,thermalNeqTimeInterp_top)
         endif
     endif
   end subroutine enter_data_2d_openacc
@@ -1416,8 +1412,8 @@
 ! 子程序: update_host_grid
 ! 作用: 将指定区域的宏观量或完整状态从设备同步到主机。
 !===================================================================================================
-  subroutine update_host_grid(ni, nj, nh, full, f, g, rho, u, v, T, Fx, Fy, rhoHistory, uHistory, vHistory, &
-      THistory, FxHistory, FyHistory, flowNeqHistory, thermalNeqHistory)
+  subroutine update_host_grid(ni,nj,nh,full,f,g,rho,u,v,T,Fx,Fy,rhoHistory,uHistory,vHistory,&
+      THistory,FxHistory,FyHistory,flowNeqHistory,thermalNeqHistory)
 
     implicit none
 
@@ -1426,26 +1422,26 @@
 
     integer(kind=4) :: ni, nj, nh
 
-    real(kind=8) :: f(ni, nj, 0:8)
-    real(kind=8) :: g(ni, nj, 0:4)
-    real(kind=8) :: rho(ni, nj)
-    real(kind=8) :: u(ni, nj)
-    real(kind=8) :: v(ni, nj)
-    real(kind=8) :: T(ni, nj)
-    real(kind=8) :: Fx(ni, nj)
-    real(kind=8) :: Fy(ni, nj)
-    real(kind=8) :: rhoHistory(ni, nj, 0:nh)
-    real(kind=8) :: uHistory(ni, nj, 0:nh)
-    real(kind=8) :: vHistory(ni, nj, 0:nh)
-    real(kind=8) :: THistory(ni, nj, 0:nh)
-    real(kind=8) :: FxHistory(ni, nj, 0:nh)
-    real(kind=8) :: FyHistory(ni, nj, 0:nh)
-    real(kind=8) :: flowNeqHistory(ni, nj, 0:8, 0:nh)
-    real(kind=8) :: thermalNeqHistory(ni, nj, 0:4, 0:nh)
+    real(kind=8) :: f(ni,nj,0:8)
+    real(kind=8) :: g(ni,nj,0:4)
+    real(kind=8) :: rho(ni,nj)
+    real(kind=8) :: u(ni,nj)
+    real(kind=8) :: v(ni,nj)
+    real(kind=8) :: T(ni,nj)
+    real(kind=8) :: Fx(ni,nj)
+    real(kind=8) :: Fy(ni,nj)
+    real(kind=8) :: rhoHistory(ni,nj,0:nh)
+    real(kind=8) :: uHistory(ni,nj,0:nh)
+    real(kind=8) :: vHistory(ni,nj,0:nh)
+    real(kind=8) :: THistory(ni,nj,0:nh)
+    real(kind=8) :: FxHistory(ni,nj,0:nh)
+    real(kind=8) :: FyHistory(ni,nj,0:nh)
+    real(kind=8) :: flowNeqHistory(ni,nj,0:8,0:nh)
+    real(kind=8) :: thermalNeqHistory(ni,nj,0:4,0:nh)
     logical, intent(in) :: full
 
     !$acc update self(u, v, T, rho) async(1)
-    if( full ) then
+    if(full) then
         !$acc update self(f, g, Fx, Fy, rhoHistory, uHistory, vHistory, THistory, FxHistory, FyHistory, &
         !$acc& flowNeqHistory, thermalNeqHistory) async(1)
     endif
@@ -1461,28 +1457,28 @@
     implicit none
     logical, intent(in) :: full
 
-    call update_host_grid(nxCoarse, nyCoarse, timeInterpMaxIndexCoarse, full, f_coarse, g_coarse, rho_coarse, &
-        u_coarse, v_coarse, T_coarse, Fx_coarse, Fy_coarse, rhoTimeInterp_coarse, uTimeInterp_coarse, &
-        vTimeInterp_coarse, TTimeInterp_coarse, FxOverDxTimeInterp_coarse, FyOverDxTimeInterp_coarse, flowNeqTimeInterp_coarse, &
+    call update_host_grid(nxCoarse,nyCoarse,timeInterpMaxIndexCoarse,full,f_coarse,g_coarse,rho_coarse,&
+        u_coarse,v_coarse,T_coarse,Fx_coarse,Fy_coarse,rhoTimeInterp_coarse,uTimeInterp_coarse,&
+        vTimeInterp_coarse,TTimeInterp_coarse,FxOverDxTimeInterp_coarse,FyOverDxTimeInterp_coarse,flowNeqTimeInterp_coarse,&
         thermalNeqTimeInterp_coarse)
-    if( refineRatio > 1 ) then
+    if(refineRatio > 1) then
 
-        call update_host_grid(nxLeft, nyLeft, 0, full, f_left, g_left, rho_left, u_left, v_left, T_left, &
-            Fx_left, Fy_left, rhoTimeInterp_left, uTimeInterp_left, vTimeInterp_left, TTimeInterp_left, FxOverDxTimeInterp_left, &
-            FyOverDxTimeInterp_left, flowNeqTimeInterp_left, thermalNeqTimeInterp_left)
+        call update_host_grid(nxLeft,nyLeft,0,full,f_left,g_left,rho_left,u_left,v_left,T_left,&
+            Fx_left,Fy_left,rhoTimeInterp_left,uTimeInterp_left,vTimeInterp_left,TTimeInterp_left,FxOverDxTimeInterp_left,&
+            FyOverDxTimeInterp_left,flowNeqTimeInterp_left,thermalNeqTimeInterp_left)
 
-        call update_host_grid(nxRight, nyRight, 0, full, f_right, g_right, rho_right, u_right, v_right, &
-            T_right, Fx_right, Fy_right, rhoTimeInterp_right, uTimeInterp_right, vTimeInterp_right, TTimeInterp_right, &
-            FxOverDxTimeInterp_right, FyOverDxTimeInterp_right, flowNeqTimeInterp_right, thermalNeqTimeInterp_right)
+        call update_host_grid(nxRight,nyRight,0,full,f_right,g_right,rho_right,u_right,v_right,&
+            T_right,Fx_right,Fy_right,rhoTimeInterp_right,uTimeInterp_right,vTimeInterp_right,TTimeInterp_right,&
+            FxOverDxTimeInterp_right,FyOverDxTimeInterp_right,flowNeqTimeInterp_right,thermalNeqTimeInterp_right)
 
-        call update_host_grid(nxBottom, nyBottom, 0, full, f_bottom, g_bottom, rho_bottom, u_bottom, &
-            v_bottom, T_bottom, Fx_bottom, Fy_bottom, rhoTimeInterp_bottom, uTimeInterp_bottom, vTimeInterp_bottom, &
-            TTimeInterp_bottom, FxOverDxTimeInterp_bottom, FyOverDxTimeInterp_bottom, flowNeqTimeInterp_bottom, &
+        call update_host_grid(nxBottom,nyBottom,0,full,f_bottom,g_bottom,rho_bottom,u_bottom,&
+            v_bottom,T_bottom,Fx_bottom,Fy_bottom,rhoTimeInterp_bottom,uTimeInterp_bottom,vTimeInterp_bottom,&
+            TTimeInterp_bottom,FxOverDxTimeInterp_bottom,FyOverDxTimeInterp_bottom,flowNeqTimeInterp_bottom,&
             thermalNeqTimeInterp_bottom)
 
-        call update_host_grid(nxTop, nyTop, 0, full, f_top, g_top, rho_top, u_top, v_top, T_top, Fx_top, &
-            Fy_top, rhoTimeInterp_top, uTimeInterp_top, vTimeInterp_top, TTimeInterp_top, FxOverDxTimeInterp_top, FyOverDxTimeInterp_top, &
-            flowNeqTimeInterp_top, thermalNeqTimeInterp_top)
+        call update_host_grid(nxTop,nyTop,0,full,f_top,g_top,rho_top,u_top,v_top,T_top,Fx_top,&
+            Fy_top,rhoTimeInterp_top,uTimeInterp_top,vTimeInterp_top,TTimeInterp_top,FxOverDxTimeInterp_top,FyOverDxTimeInterp_top,&
+            flowNeqTimeInterp_top,thermalNeqTimeInterp_top)
     endif
     !$acc wait(1)
   end subroutine update_host_all
@@ -1515,182 +1511,182 @@
     ! 单网格模式不分配四个细区和接口，先检查 allocated 再释放。
 
     ! 中心粗网格：分布函数、场量、交换时间层和稳态检查场。
-    if( allocated(f_coarse) ) deallocate(f_coarse)
-    if( allocated(g_coarse) ) deallocate(g_coarse)
-    if( allocated(f_post_coarse) ) deallocate(f_post_coarse)
-    if( allocated(g_post_coarse) ) deallocate(g_post_coarse)
-    if( allocated(rho_coarse) ) deallocate(rho_coarse)
-    if( allocated(u_coarse) ) deallocate(u_coarse)
-    if( allocated(v_coarse) ) deallocate(v_coarse)
-    if( allocated(T_coarse) ) deallocate(T_coarse)
-    if( allocated(Fx_coarse) ) deallocate(Fx_coarse)
-    if( allocated(Fy_coarse) ) deallocate(Fy_coarse)
-    if( allocated(rhoTimeInterp_coarse) ) deallocate(rhoTimeInterp_coarse)
-    if( allocated(uTimeInterp_coarse) ) deallocate(uTimeInterp_coarse)
-    if( allocated(vTimeInterp_coarse) ) deallocate(vTimeInterp_coarse)
-    if( allocated(TTimeInterp_coarse) ) deallocate(TTimeInterp_coarse)
-    if( allocated(FxOverDxTimeInterp_coarse) ) deallocate(FxOverDxTimeInterp_coarse)
-    if( allocated(FyOverDxTimeInterp_coarse) ) deallocate(FyOverDxTimeInterp_coarse)
-    if( allocated(flowNeqTimeInterp_coarse) ) deallocate(flowNeqTimeInterp_coarse)
-    if( allocated(thermalNeqTimeInterp_coarse) ) deallocate(thermalNeqTimeInterp_coarse)
+    if(allocated(f_coarse)) deallocate(f_coarse)
+    if(allocated(g_coarse)) deallocate(g_coarse)
+    if(allocated(f_post_coarse)) deallocate(f_post_coarse)
+    if(allocated(g_post_coarse)) deallocate(g_post_coarse)
+    if(allocated(rho_coarse)) deallocate(rho_coarse)
+    if(allocated(u_coarse)) deallocate(u_coarse)
+    if(allocated(v_coarse)) deallocate(v_coarse)
+    if(allocated(T_coarse)) deallocate(T_coarse)
+    if(allocated(Fx_coarse)) deallocate(Fx_coarse)
+    if(allocated(Fy_coarse)) deallocate(Fy_coarse)
+    if(allocated(rhoTimeInterp_coarse)) deallocate(rhoTimeInterp_coarse)
+    if(allocated(uTimeInterp_coarse)) deallocate(uTimeInterp_coarse)
+    if(allocated(vTimeInterp_coarse)) deallocate(vTimeInterp_coarse)
+    if(allocated(TTimeInterp_coarse)) deallocate(TTimeInterp_coarse)
+    if(allocated(FxOverDxTimeInterp_coarse)) deallocate(FxOverDxTimeInterp_coarse)
+    if(allocated(FyOverDxTimeInterp_coarse)) deallocate(FyOverDxTimeInterp_coarse)
+    if(allocated(flowNeqTimeInterp_coarse)) deallocate(flowNeqTimeInterp_coarse)
+    if(allocated(thermalNeqTimeInterp_coarse)) deallocate(thermalNeqTimeInterp_coarse)
 #ifdef steadyFlow
-    if( allocated(up_coarse) ) deallocate(up_coarse)
-    if( allocated(vp_coarse) ) deallocate(vp_coarse)
-    if( allocated(Tp_coarse) ) deallocate(Tp_coarse)
+    if(allocated(up_coarse)) deallocate(up_coarse)
+    if(allocated(vp_coarse)) deallocate(vp_coarse)
+    if(allocated(Tp_coarse)) deallocate(Tp_coarse)
 #endif
 
     ! 左侧细网格：分布函数、场量、交换时间层和稳态检查场。
-    if( allocated(f_left) ) deallocate(f_left)
-    if( allocated(g_left) ) deallocate(g_left)
-    if( allocated(f_post_left) ) deallocate(f_post_left)
-    if( allocated(g_post_left) ) deallocate(g_post_left)
-    if( allocated(rho_left) ) deallocate(rho_left)
-    if( allocated(u_left) ) deallocate(u_left)
-    if( allocated(v_left) ) deallocate(v_left)
-    if( allocated(T_left) ) deallocate(T_left)
-    if( allocated(Fx_left) ) deallocate(Fx_left)
-    if( allocated(Fy_left) ) deallocate(Fy_left)
-    if( allocated(rhoTimeInterp_left) ) deallocate(rhoTimeInterp_left)
-    if( allocated(uTimeInterp_left) ) deallocate(uTimeInterp_left)
-    if( allocated(vTimeInterp_left) ) deallocate(vTimeInterp_left)
-    if( allocated(TTimeInterp_left) ) deallocate(TTimeInterp_left)
-    if( allocated(FxOverDxTimeInterp_left) ) deallocate(FxOverDxTimeInterp_left)
-    if( allocated(FyOverDxTimeInterp_left) ) deallocate(FyOverDxTimeInterp_left)
-    if( allocated(flowNeqTimeInterp_left) ) deallocate(flowNeqTimeInterp_left)
-    if( allocated(thermalNeqTimeInterp_left) ) deallocate(thermalNeqTimeInterp_left)
+    if(allocated(f_left)) deallocate(f_left)
+    if(allocated(g_left)) deallocate(g_left)
+    if(allocated(f_post_left)) deallocate(f_post_left)
+    if(allocated(g_post_left)) deallocate(g_post_left)
+    if(allocated(rho_left)) deallocate(rho_left)
+    if(allocated(u_left)) deallocate(u_left)
+    if(allocated(v_left)) deallocate(v_left)
+    if(allocated(T_left)) deallocate(T_left)
+    if(allocated(Fx_left)) deallocate(Fx_left)
+    if(allocated(Fy_left)) deallocate(Fy_left)
+    if(allocated(rhoTimeInterp_left)) deallocate(rhoTimeInterp_left)
+    if(allocated(uTimeInterp_left)) deallocate(uTimeInterp_left)
+    if(allocated(vTimeInterp_left)) deallocate(vTimeInterp_left)
+    if(allocated(TTimeInterp_left)) deallocate(TTimeInterp_left)
+    if(allocated(FxOverDxTimeInterp_left)) deallocate(FxOverDxTimeInterp_left)
+    if(allocated(FyOverDxTimeInterp_left)) deallocate(FyOverDxTimeInterp_left)
+    if(allocated(flowNeqTimeInterp_left)) deallocate(flowNeqTimeInterp_left)
+    if(allocated(thermalNeqTimeInterp_left)) deallocate(thermalNeqTimeInterp_left)
 #ifdef steadyFlow
-    if( allocated(up_left) ) deallocate(up_left)
-    if( allocated(vp_left) ) deallocate(vp_left)
-    if( allocated(Tp_left) ) deallocate(Tp_left)
+    if(allocated(up_left)) deallocate(up_left)
+    if(allocated(vp_left)) deallocate(vp_left)
+    if(allocated(Tp_left)) deallocate(Tp_left)
 #endif
 
     ! 右侧细网格：分布函数、场量、交换时间层和稳态检查场。
-    if( allocated(f_right) ) deallocate(f_right)
-    if( allocated(g_right) ) deallocate(g_right)
-    if( allocated(f_post_right) ) deallocate(f_post_right)
-    if( allocated(g_post_right) ) deallocate(g_post_right)
-    if( allocated(rho_right) ) deallocate(rho_right)
-    if( allocated(u_right) ) deallocate(u_right)
-    if( allocated(v_right) ) deallocate(v_right)
-    if( allocated(T_right) ) deallocate(T_right)
-    if( allocated(Fx_right) ) deallocate(Fx_right)
-    if( allocated(Fy_right) ) deallocate(Fy_right)
-    if( allocated(rhoTimeInterp_right) ) deallocate(rhoTimeInterp_right)
-    if( allocated(uTimeInterp_right) ) deallocate(uTimeInterp_right)
-    if( allocated(vTimeInterp_right) ) deallocate(vTimeInterp_right)
-    if( allocated(TTimeInterp_right) ) deallocate(TTimeInterp_right)
-    if( allocated(FxOverDxTimeInterp_right) ) deallocate(FxOverDxTimeInterp_right)
-    if( allocated(FyOverDxTimeInterp_right) ) deallocate(FyOverDxTimeInterp_right)
-    if( allocated(flowNeqTimeInterp_right) ) deallocate(flowNeqTimeInterp_right)
-    if( allocated(thermalNeqTimeInterp_right) ) deallocate(thermalNeqTimeInterp_right)
+    if(allocated(f_right)) deallocate(f_right)
+    if(allocated(g_right)) deallocate(g_right)
+    if(allocated(f_post_right)) deallocate(f_post_right)
+    if(allocated(g_post_right)) deallocate(g_post_right)
+    if(allocated(rho_right)) deallocate(rho_right)
+    if(allocated(u_right)) deallocate(u_right)
+    if(allocated(v_right)) deallocate(v_right)
+    if(allocated(T_right)) deallocate(T_right)
+    if(allocated(Fx_right)) deallocate(Fx_right)
+    if(allocated(Fy_right)) deallocate(Fy_right)
+    if(allocated(rhoTimeInterp_right)) deallocate(rhoTimeInterp_right)
+    if(allocated(uTimeInterp_right)) deallocate(uTimeInterp_right)
+    if(allocated(vTimeInterp_right)) deallocate(vTimeInterp_right)
+    if(allocated(TTimeInterp_right)) deallocate(TTimeInterp_right)
+    if(allocated(FxOverDxTimeInterp_right)) deallocate(FxOverDxTimeInterp_right)
+    if(allocated(FyOverDxTimeInterp_right)) deallocate(FyOverDxTimeInterp_right)
+    if(allocated(flowNeqTimeInterp_right)) deallocate(flowNeqTimeInterp_right)
+    if(allocated(thermalNeqTimeInterp_right)) deallocate(thermalNeqTimeInterp_right)
 #ifdef steadyFlow
-    if( allocated(up_right) ) deallocate(up_right)
-    if( allocated(vp_right) ) deallocate(vp_right)
-    if( allocated(Tp_right) ) deallocate(Tp_right)
+    if(allocated(up_right)) deallocate(up_right)
+    if(allocated(vp_right)) deallocate(vp_right)
+    if(allocated(Tp_right)) deallocate(Tp_right)
 #endif
 
     ! 下侧细网格：分布函数、场量、交换时间层和稳态检查场。
-    if( allocated(f_bottom) ) deallocate(f_bottom)
-    if( allocated(g_bottom) ) deallocate(g_bottom)
-    if( allocated(f_post_bottom) ) deallocate(f_post_bottom)
-    if( allocated(g_post_bottom) ) deallocate(g_post_bottom)
-    if( allocated(rho_bottom) ) deallocate(rho_bottom)
-    if( allocated(u_bottom) ) deallocate(u_bottom)
-    if( allocated(v_bottom) ) deallocate(v_bottom)
-    if( allocated(T_bottom) ) deallocate(T_bottom)
-    if( allocated(Fx_bottom) ) deallocate(Fx_bottom)
-    if( allocated(Fy_bottom) ) deallocate(Fy_bottom)
-    if( allocated(rhoTimeInterp_bottom) ) deallocate(rhoTimeInterp_bottom)
-    if( allocated(uTimeInterp_bottom) ) deallocate(uTimeInterp_bottom)
-    if( allocated(vTimeInterp_bottom) ) deallocate(vTimeInterp_bottom)
-    if( allocated(TTimeInterp_bottom) ) deallocate(TTimeInterp_bottom)
-    if( allocated(FxOverDxTimeInterp_bottom) ) deallocate(FxOverDxTimeInterp_bottom)
-    if( allocated(FyOverDxTimeInterp_bottom) ) deallocate(FyOverDxTimeInterp_bottom)
-    if( allocated(flowNeqTimeInterp_bottom) ) deallocate(flowNeqTimeInterp_bottom)
-    if( allocated(thermalNeqTimeInterp_bottom) ) deallocate(thermalNeqTimeInterp_bottom)
+    if(allocated(f_bottom)) deallocate(f_bottom)
+    if(allocated(g_bottom)) deallocate(g_bottom)
+    if(allocated(f_post_bottom)) deallocate(f_post_bottom)
+    if(allocated(g_post_bottom)) deallocate(g_post_bottom)
+    if(allocated(rho_bottom)) deallocate(rho_bottom)
+    if(allocated(u_bottom)) deallocate(u_bottom)
+    if(allocated(v_bottom)) deallocate(v_bottom)
+    if(allocated(T_bottom)) deallocate(T_bottom)
+    if(allocated(Fx_bottom)) deallocate(Fx_bottom)
+    if(allocated(Fy_bottom)) deallocate(Fy_bottom)
+    if(allocated(rhoTimeInterp_bottom)) deallocate(rhoTimeInterp_bottom)
+    if(allocated(uTimeInterp_bottom)) deallocate(uTimeInterp_bottom)
+    if(allocated(vTimeInterp_bottom)) deallocate(vTimeInterp_bottom)
+    if(allocated(TTimeInterp_bottom)) deallocate(TTimeInterp_bottom)
+    if(allocated(FxOverDxTimeInterp_bottom)) deallocate(FxOverDxTimeInterp_bottom)
+    if(allocated(FyOverDxTimeInterp_bottom)) deallocate(FyOverDxTimeInterp_bottom)
+    if(allocated(flowNeqTimeInterp_bottom)) deallocate(flowNeqTimeInterp_bottom)
+    if(allocated(thermalNeqTimeInterp_bottom)) deallocate(thermalNeqTimeInterp_bottom)
 #ifdef steadyFlow
-    if( allocated(up_bottom) ) deallocate(up_bottom)
-    if( allocated(vp_bottom) ) deallocate(vp_bottom)
-    if( allocated(Tp_bottom) ) deallocate(Tp_bottom)
+    if(allocated(up_bottom)) deallocate(up_bottom)
+    if(allocated(vp_bottom)) deallocate(vp_bottom)
+    if(allocated(Tp_bottom)) deallocate(Tp_bottom)
 #endif
 
     ! 上侧细网格：分布函数、场量、交换时间层和稳态检查场。
-    if( allocated(f_top) ) deallocate(f_top)
-    if( allocated(g_top) ) deallocate(g_top)
-    if( allocated(f_post_top) ) deallocate(f_post_top)
-    if( allocated(g_post_top) ) deallocate(g_post_top)
-    if( allocated(rho_top) ) deallocate(rho_top)
-    if( allocated(u_top) ) deallocate(u_top)
-    if( allocated(v_top) ) deallocate(v_top)
-    if( allocated(T_top) ) deallocate(T_top)
-    if( allocated(Fx_top) ) deallocate(Fx_top)
-    if( allocated(Fy_top) ) deallocate(Fy_top)
-    if( allocated(rhoTimeInterp_top) ) deallocate(rhoTimeInterp_top)
-    if( allocated(uTimeInterp_top) ) deallocate(uTimeInterp_top)
-    if( allocated(vTimeInterp_top) ) deallocate(vTimeInterp_top)
-    if( allocated(TTimeInterp_top) ) deallocate(TTimeInterp_top)
-    if( allocated(FxOverDxTimeInterp_top) ) deallocate(FxOverDxTimeInterp_top)
-    if( allocated(FyOverDxTimeInterp_top) ) deallocate(FyOverDxTimeInterp_top)
-    if( allocated(flowNeqTimeInterp_top) ) deallocate(flowNeqTimeInterp_top)
-    if( allocated(thermalNeqTimeInterp_top) ) deallocate(thermalNeqTimeInterp_top)
+    if(allocated(f_top)) deallocate(f_top)
+    if(allocated(g_top)) deallocate(g_top)
+    if(allocated(f_post_top)) deallocate(f_post_top)
+    if(allocated(g_post_top)) deallocate(g_post_top)
+    if(allocated(rho_top)) deallocate(rho_top)
+    if(allocated(u_top)) deallocate(u_top)
+    if(allocated(v_top)) deallocate(v_top)
+    if(allocated(T_top)) deallocate(T_top)
+    if(allocated(Fx_top)) deallocate(Fx_top)
+    if(allocated(Fy_top)) deallocate(Fy_top)
+    if(allocated(rhoTimeInterp_top)) deallocate(rhoTimeInterp_top)
+    if(allocated(uTimeInterp_top)) deallocate(uTimeInterp_top)
+    if(allocated(vTimeInterp_top)) deallocate(vTimeInterp_top)
+    if(allocated(TTimeInterp_top)) deallocate(TTimeInterp_top)
+    if(allocated(FxOverDxTimeInterp_top)) deallocate(FxOverDxTimeInterp_top)
+    if(allocated(FyOverDxTimeInterp_top)) deallocate(FyOverDxTimeInterp_top)
+    if(allocated(flowNeqTimeInterp_top)) deallocate(flowNeqTimeInterp_top)
+    if(allocated(thermalNeqTimeInterp_top)) deallocate(thermalNeqTimeInterp_top)
 #ifdef steadyFlow
-    if( allocated(up_top) ) deallocate(up_top)
-    if( allocated(vp_top) ) deallocate(vp_top)
-    if( allocated(Tp_top) ) deallocate(Tp_top)
+    if(allocated(up_top)) deallocate(up_top)
+    if(allocated(vp_top)) deallocate(vp_top)
+    if(allocated(Tp_top)) deallocate(Tp_top)
 #endif
 
     ! Left：该细区与中心粗区之间的双向接口下标、共址标志和空间权重。
-    if( allocated(coarseToLeftReceiveIndexX) ) deallocate(coarseToLeftReceiveIndexX, coarseToLeftReceiveIndexY)
-    if( allocated(coarseToLeftSourceIndexX) ) deallocate(coarseToLeftSourceIndexX, coarseToLeftSourceIndexY)
-    if( allocated(coarseToLeftSamePosition) ) deallocate(coarseToLeftSamePosition)
-    if( allocated(coarseToLeftSpaceInterpWeightX) ) deallocate( &
-        coarseToLeftSpaceInterpWeightX, coarseToLeftSpaceInterpWeightY)
-    if( allocated(leftToCoarseReceiveIndexX) ) deallocate(leftToCoarseReceiveIndexX, leftToCoarseReceiveIndexY)
-    if( allocated(leftToCoarseSourceIndexX) ) deallocate(leftToCoarseSourceIndexX, leftToCoarseSourceIndexY)
-    if( allocated(leftToCoarseSamePosition) ) deallocate(leftToCoarseSamePosition)
-    if( allocated(leftToCoarseSpaceInterpWeightX) ) deallocate( &
-        leftToCoarseSpaceInterpWeightX, leftToCoarseSpaceInterpWeightY)
+    if(allocated(coarseToLeftReceiveIndexX)) deallocate(coarseToLeftReceiveIndexX,coarseToLeftReceiveIndexY)
+    if(allocated(coarseToLeftSourceIndexX)) deallocate(coarseToLeftSourceIndexX,coarseToLeftSourceIndexY)
+    if(allocated(coarseToLeftSamePosition)) deallocate(coarseToLeftSamePosition)
+    if(allocated(coarseToLeftSpaceInterpWeightX)) deallocate(&
+        coarseToLeftSpaceInterpWeightX,coarseToLeftSpaceInterpWeightY)
+    if(allocated(leftToCoarseReceiveIndexX)) deallocate(leftToCoarseReceiveIndexX,leftToCoarseReceiveIndexY)
+    if(allocated(leftToCoarseSourceIndexX)) deallocate(leftToCoarseSourceIndexX,leftToCoarseSourceIndexY)
+    if(allocated(leftToCoarseSamePosition)) deallocate(leftToCoarseSamePosition)
+    if(allocated(leftToCoarseSpaceInterpWeightX)) deallocate(&
+        leftToCoarseSpaceInterpWeightX,leftToCoarseSpaceInterpWeightY)
 
     ! Right：该细区与中心粗区之间的双向接口下标、共址标志和空间权重。
-    if( allocated(coarseToRightReceiveIndexX) ) deallocate(coarseToRightReceiveIndexX, coarseToRightReceiveIndexY)
-    if( allocated(coarseToRightSourceIndexX) ) deallocate(coarseToRightSourceIndexX, coarseToRightSourceIndexY)
-    if( allocated(coarseToRightSamePosition) ) deallocate(coarseToRightSamePosition)
-    if( allocated(coarseToRightSpaceInterpWeightX) ) deallocate( &
-        coarseToRightSpaceInterpWeightX, coarseToRightSpaceInterpWeightY)
-    if( allocated(rightToCoarseReceiveIndexX) ) deallocate(rightToCoarseReceiveIndexX, rightToCoarseReceiveIndexY)
-    if( allocated(rightToCoarseSourceIndexX) ) deallocate(rightToCoarseSourceIndexX, rightToCoarseSourceIndexY)
-    if( allocated(rightToCoarseSamePosition) ) deallocate(rightToCoarseSamePosition)
-    if( allocated(rightToCoarseSpaceInterpWeightX) ) deallocate( &
-        rightToCoarseSpaceInterpWeightX, rightToCoarseSpaceInterpWeightY)
+    if(allocated(coarseToRightReceiveIndexX)) deallocate(coarseToRightReceiveIndexX,coarseToRightReceiveIndexY)
+    if(allocated(coarseToRightSourceIndexX)) deallocate(coarseToRightSourceIndexX,coarseToRightSourceIndexY)
+    if(allocated(coarseToRightSamePosition)) deallocate(coarseToRightSamePosition)
+    if(allocated(coarseToRightSpaceInterpWeightX)) deallocate(&
+        coarseToRightSpaceInterpWeightX,coarseToRightSpaceInterpWeightY)
+    if(allocated(rightToCoarseReceiveIndexX)) deallocate(rightToCoarseReceiveIndexX,rightToCoarseReceiveIndexY)
+    if(allocated(rightToCoarseSourceIndexX)) deallocate(rightToCoarseSourceIndexX,rightToCoarseSourceIndexY)
+    if(allocated(rightToCoarseSamePosition)) deallocate(rightToCoarseSamePosition)
+    if(allocated(rightToCoarseSpaceInterpWeightX)) deallocate(&
+        rightToCoarseSpaceInterpWeightX,rightToCoarseSpaceInterpWeightY)
 
     ! Bottom：该细区与中心粗区之间的双向接口下标、共址标志和空间权重。
-    if( allocated(coarseToBottomReceiveIndexX) ) deallocate(coarseToBottomReceiveIndexX, coarseToBottomReceiveIndexY)
-    if( allocated(coarseToBottomSourceIndexX) ) deallocate(coarseToBottomSourceIndexX, coarseToBottomSourceIndexY)
-    if( allocated(coarseToBottomSamePosition) ) deallocate(coarseToBottomSamePosition)
-    if( allocated(coarseToBottomSpaceInterpWeightX) ) deallocate( &
-        coarseToBottomSpaceInterpWeightX, coarseToBottomSpaceInterpWeightY)
-    if( allocated(bottomToCoarseReceiveIndexX) ) deallocate(bottomToCoarseReceiveIndexX, bottomToCoarseReceiveIndexY)
-    if( allocated(bottomToCoarseSourceIndexX) ) deallocate(bottomToCoarseSourceIndexX, bottomToCoarseSourceIndexY)
-    if( allocated(bottomToCoarseSamePosition) ) deallocate(bottomToCoarseSamePosition)
-    if( allocated(bottomToCoarseSpaceInterpWeightX) ) deallocate( &
-        bottomToCoarseSpaceInterpWeightX, bottomToCoarseSpaceInterpWeightY)
+    if(allocated(coarseToBottomReceiveIndexX)) deallocate(coarseToBottomReceiveIndexX,coarseToBottomReceiveIndexY)
+    if(allocated(coarseToBottomSourceIndexX)) deallocate(coarseToBottomSourceIndexX,coarseToBottomSourceIndexY)
+    if(allocated(coarseToBottomSamePosition)) deallocate(coarseToBottomSamePosition)
+    if(allocated(coarseToBottomSpaceInterpWeightX)) deallocate(&
+        coarseToBottomSpaceInterpWeightX,coarseToBottomSpaceInterpWeightY)
+    if(allocated(bottomToCoarseReceiveIndexX)) deallocate(bottomToCoarseReceiveIndexX,bottomToCoarseReceiveIndexY)
+    if(allocated(bottomToCoarseSourceIndexX)) deallocate(bottomToCoarseSourceIndexX,bottomToCoarseSourceIndexY)
+    if(allocated(bottomToCoarseSamePosition)) deallocate(bottomToCoarseSamePosition)
+    if(allocated(bottomToCoarseSpaceInterpWeightX)) deallocate(&
+        bottomToCoarseSpaceInterpWeightX,bottomToCoarseSpaceInterpWeightY)
 
     ! Top：该细区与中心粗区之间的双向接口下标、共址标志和空间权重。
-    if( allocated(coarseToTopReceiveIndexX) ) deallocate(coarseToTopReceiveIndexX, coarseToTopReceiveIndexY)
-    if( allocated(coarseToTopSourceIndexX) ) deallocate(coarseToTopSourceIndexX, coarseToTopSourceIndexY)
-    if( allocated(coarseToTopSamePosition) ) deallocate(coarseToTopSamePosition)
-    if( allocated(coarseToTopSpaceInterpWeightX) ) deallocate( &
-        coarseToTopSpaceInterpWeightX, coarseToTopSpaceInterpWeightY)
-    if( allocated(topToCoarseReceiveIndexX) ) deallocate(topToCoarseReceiveIndexX, topToCoarseReceiveIndexY)
-    if( allocated(topToCoarseSourceIndexX) ) deallocate(topToCoarseSourceIndexX, topToCoarseSourceIndexY)
-    if( allocated(topToCoarseSamePosition) ) deallocate(topToCoarseSamePosition)
-    if( allocated(topToCoarseSpaceInterpWeightX) ) deallocate( &
-        topToCoarseSpaceInterpWeightX, topToCoarseSpaceInterpWeightY)
+    if(allocated(coarseToTopReceiveIndexX)) deallocate(coarseToTopReceiveIndexX,coarseToTopReceiveIndexY)
+    if(allocated(coarseToTopSourceIndexX)) deallocate(coarseToTopSourceIndexX,coarseToTopSourceIndexY)
+    if(allocated(coarseToTopSamePosition)) deallocate(coarseToTopSamePosition)
+    if(allocated(coarseToTopSpaceInterpWeightX)) deallocate(&
+        coarseToTopSpaceInterpWeightX,coarseToTopSpaceInterpWeightY)
+    if(allocated(topToCoarseReceiveIndexX)) deallocate(topToCoarseReceiveIndexX,topToCoarseReceiveIndexY)
+    if(allocated(topToCoarseSourceIndexX)) deallocate(topToCoarseSourceIndexX,topToCoarseSourceIndexY)
+    if(allocated(topToCoarseSamePosition)) deallocate(topToCoarseSamePosition)
+    if(allocated(topToCoarseSpaceInterpWeightX)) deallocate(&
+        topToCoarseSpaceInterpWeightX,topToCoarseSpaceInterpWeightY)
 
     ! 八组接口共用的接收临时数组。
-    if( allocated(rhoReceive) ) deallocate(rhoReceive, uReceive, vReceive, TReceive)
-    if( allocated(FxOverDxReceive) ) deallocate(FxOverDxReceive, FyOverDxReceive)
-    if( allocated(flowNeqReceive) ) deallocate(flowNeqReceive, thermalNeqReceive)
+    if(allocated(rhoReceive)) deallocate(rhoReceive,uReceive,vReceive,TReceive)
+    if(allocated(FxOverDxReceive)) deallocate(FxOverDxReceive,FyOverDxReceive)
+    if(allocated(flowNeqReceive)) deallocate(flowNeqReceive,thermalNeqReceive)
   end subroutine deallocate_grid_arrays
 !===================================================================================================
 
@@ -1698,56 +1694,56 @@
 ! 子程序: advance_grid
 ! 作用: 按原均匀网格算法次序，推进传入数组的流场和温度场。
 !===================================================================================================
-  subroutine advance_grid(ni, nj, dx, Snu, Sq, Qk, Qnu, gBeta, wall, f, g, f_post, g_post, rho, u, v, T, Fx, Fy)
+  subroutine advance_grid(ni,nj,dx,Snu,Sq,Qk,Qnu,gBeta,wall,f,g,f_post,g_post,rho,u,v,T,Fx,Fy)
 
 #ifdef SideHeatedHa
-    use commondata, only: B2sigemarho
+    use commondata,only: B2sigemarho
 #endif
     implicit none
 
-    ! 沿用均匀网格的流热推进顺序。区别是通过实参传入当前区域的数组及松弛率。
+    ! 先推进流场，再用更新后的速度推进温度场；数组和松弛率由调用处传入。
     ! wall(1:4) 依次表示左、右、下、上是否为真实墙面；粗细人工接口不能当墙面反弹。
 
     integer(kind=4) :: ni, nj
     real(kind=8) :: dx, Snu, Sq, Qk, Qnu, gBeta
     logical :: wall(4)
 
-    real(kind=8) :: f(ni, nj, 0:8)
-    real(kind=8) :: g(ni, nj, 0:4)
-    real(kind=8) :: f_post(0:ni + 1, 0:nj + 1, 0:8)
-    real(kind=8) :: g_post(0:ni + 1, 0:nj + 1, 0:4)
-    real(kind=8) :: rho(ni, nj)
-    real(kind=8) :: u(ni, nj)
-    real(kind=8) :: v(ni, nj)
-    real(kind=8) :: T(ni, nj)
-    real(kind=8) :: Fx(ni, nj)
-    real(kind=8) :: Fy(ni, nj)
+    real(kind=8) :: f(ni,nj,0:8)
+    real(kind=8) :: g(ni,nj,0:4)
+    real(kind=8) :: f_post(0:ni+1,0:nj+1,0:8)
+    real(kind=8) :: g_post(0:ni+1,0:nj+1,0:4)
+    real(kind=8) :: rho(ni,nj)
+    real(kind=8) :: u(ni,nj)
+    real(kind=8) :: v(ni,nj)
+    real(kind=8) :: T(ni,nj)
+    real(kind=8) :: Fx(ni,nj)
+    real(kind=8) :: Fy(ni,nj)
 
-    ! 原文件的执行次序保持不变。粗块的 dt 已吸收到松弛率及力增量中。
-    ! 入口：人工边界已重建为本时刻的碰撞前状态；缓冲节点与内部节点一样参与碰撞。
-    ! 出口：最外两层只作为待重建缓冲，不允许充当 donor；原算法的内部结果保留。
-    call collision(ni, nj, f, f_post, rho, u, v, Fx, Fy, T, Snu, Sq, &
+    ! 粗网格的时间步长已计入松弛率和力增量。
+    ! 推进前，人工边界已补成本时刻的碰撞前状态，接收节点也参加碰撞。
+    ! 推进后，最外两层等待下次接口重建，不能作为反向插值的数据来源。
+    call collision(ni,nj,f,f_post,rho,u,v,Fx,Fy,T,Snu,Sq,&
         gBeta &
 #ifdef SideHeatedHa
-        , dx * B2sigemarho &
+        ,dx*B2sigemarho &
 #endif
         )
 
-    call streaming(ni, nj, f, f_post)
+    call streaming(ni,nj,f,f_post)
 
-    call bounceback(ni, nj, f, f_post, wall(1), wall(2), &
-        wall(3), wall(4))
+    call bounceback(ni,nj,f,f_post,wall(1),wall(2),&
+        wall(3),wall(4))
 
-    call macro(ni, nj, f, rho, u, v, Fx, Fy)
+    call macro(ni,nj,f,rho,u,v,Fx,Fy)
 
-    call collisionT(ni, nj, g, g_post, u, v, T, Qk, Qnu)
+    call collisionT(ni,nj,g,g_post,u,v,T,Qk,Qnu)
 
-    call streamingT(ni, nj, g, g_post)
+    call streamingT(ni,nj,g,g_post)
 
-    call bouncebackT(ni, nj, g, g_post, wall(1), wall(2), &
-        wall(3), wall(4))
+    call bouncebackT(ni,nj,g,g_post,wall(1),wall(2),&
+        wall(3),wall(4))
 
-    call macroT(ni, nj, g, T)
+    call macroT(ni,nj,g,T)
   end subroutine advance_grid
 !===================================================================================================
 
@@ -1759,9 +1755,9 @@
     use commondata
     implicit none
 
-    call advance_grid(nxCoarse, nyCoarse, dxCoarse, SnuCoarse, SqCoarse, QkCoarse, QnuCoarse, &
-        (dxCoarse * gBeta), coarseIsWall, f_coarse, g_coarse, f_post_coarse, g_post_coarse, rho_coarse, &
-        u_coarse, v_coarse, T_coarse, Fx_coarse, Fy_coarse)
+    call advance_grid(nxCoarse,nyCoarse,dxCoarse,SnuCoarse,SqCoarse,QkCoarse,QnuCoarse,&
+        (dxCoarse*gBeta),coarseIsWall,f_coarse,g_coarse,f_post_coarse,g_post_coarse,rho_coarse,&
+        u_coarse,v_coarse,T_coarse,Fx_coarse,Fy_coarse)
   end subroutine advance_coarse
 !===================================================================================================
 
@@ -1773,105 +1769,105 @@
     use commondata
     implicit none
 
-    ! 与一套完整细数组不同：四区必须先全部碰撞，再复制相邻区碰撞后的数据，最后迁移。
+    ! 四个细区先全部碰撞，再交换相邻区的碰撞后分布，最后迁移。
     ! 流场和温度场各有一次同级交换，保证温度碰撞使用已经更新的速度。
     ! 细区拼接线只改变存储位置，不引入物理边界、空间插值或时间插值。
 
     ! 四个细区先全部碰撞，再交换迁移外圈；避免读取另一细区尚未更新的数据。
-    call collision(nxLeft, nyLeft, f_left, f_post_left, rho_left, u_left, v_left, Fx_left, Fy_left, &
-        T_left, Snu, Sq, gBeta &
+    call collision(nxLeft,nyLeft,f_left,f_post_left,rho_left,u_left,v_left,Fx_left,Fy_left,&
+        T_left,Snu,Sq,gBeta &
 #ifdef SideHeatedHa
-        , B2sigemarho &
+        ,B2sigemarho &
 #endif
         )
 
-    call collision(nxRight, nyRight, f_right, f_post_right, rho_right, u_right, v_right, Fx_right, &
-        Fy_right, T_right, Snu, Sq, gBeta &
+    call collision(nxRight,nyRight,f_right,f_post_right,rho_right,u_right,v_right,Fx_right,&
+        Fy_right,T_right,Snu,Sq,gBeta &
 #ifdef SideHeatedHa
-        , B2sigemarho &
+        ,B2sigemarho &
 #endif
         )
 
-    call collision(nxBottom, nyBottom, f_bottom, f_post_bottom, rho_bottom, u_bottom, v_bottom, &
-        Fx_bottom, Fy_bottom, T_bottom, Snu, Sq, gBeta &
+    call collision(nxBottom,nyBottom,f_bottom,f_post_bottom,rho_bottom,u_bottom,v_bottom,&
+        Fx_bottom,Fy_bottom,T_bottom,Snu,Sq,gBeta &
 #ifdef SideHeatedHa
-        , B2sigemarho &
+        ,B2sigemarho &
 #endif
         )
 
-    call collision(nxTop, nyTop, f_top, f_post_top, rho_top, u_top, v_top, Fx_top, Fy_top, T_top, &
-        Snu, Sq, gBeta &
+    call collision(nxTop,nyTop,f_top,f_post_top,rho_top,u_top,v_top,Fx_top,Fy_top,T_top,&
+        Snu,Sq,gBeta &
 #ifdef SideHeatedHa
-        , B2sigemarho &
+        ,B2sigemarho &
 #endif
         )
 
     ! 四区流场碰撞完成后，复制相邻细区的 f_post，再开始迁移。
     call exchange_fine_flow_halos()
 
-    call streaming(nxLeft, nyLeft, f_left, f_post_left)
+    call streaming(nxLeft,nyLeft,f_left,f_post_left)
 
-    call bounceback(nxLeft, nyLeft, f_left, f_post_left, leftIsWall(1), leftIsWall(2), leftIsWall(3), leftIsWall(4))
+    call bounceback(nxLeft,nyLeft,f_left,f_post_left,leftIsWall(1),leftIsWall(2),leftIsWall(3),leftIsWall(4))
 
-    call macro(nxLeft, nyLeft, f_left, rho_left, u_left, v_left, Fx_left, Fy_left)
+    call macro(nxLeft,nyLeft,f_left,rho_left,u_left,v_left,Fx_left,Fy_left)
 
-    call streaming(nxRight, nyRight, f_right, f_post_right)
+    call streaming(nxRight,nyRight,f_right,f_post_right)
 
-    call bounceback(nxRight, nyRight, f_right, f_post_right, rightIsWall(1), rightIsWall(2), rightIsWall(3), &
+    call bounceback(nxRight,nyRight,f_right,f_post_right,rightIsWall(1),rightIsWall(2),rightIsWall(3),&
         rightIsWall(4))
 
-    call macro(nxRight, nyRight, f_right, rho_right, u_right, v_right, Fx_right, Fy_right)
+    call macro(nxRight,nyRight,f_right,rho_right,u_right,v_right,Fx_right,Fy_right)
 
-    call streaming(nxBottom, nyBottom, f_bottom, f_post_bottom)
+    call streaming(nxBottom,nyBottom,f_bottom,f_post_bottom)
 
-    call bounceback(nxBottom, nyBottom, f_bottom, f_post_bottom, bottomIsWall(1), bottomIsWall(2), &
-        bottomIsWall(3), bottomIsWall(4))
+    call bounceback(nxBottom,nyBottom,f_bottom,f_post_bottom,bottomIsWall(1),bottomIsWall(2),&
+        bottomIsWall(3),bottomIsWall(4))
 
-    call macro(nxBottom, nyBottom, f_bottom, rho_bottom, u_bottom, v_bottom, Fx_bottom, Fy_bottom)
+    call macro(nxBottom,nyBottom,f_bottom,rho_bottom,u_bottom,v_bottom,Fx_bottom,Fy_bottom)
 
-    call streaming(nxTop, nyTop, f_top, f_post_top)
+    call streaming(nxTop,nyTop,f_top,f_post_top)
 
-    call bounceback(nxTop, nyTop, f_top, f_post_top, topIsWall(1), topIsWall(2), topIsWall(3), topIsWall(4))
+    call bounceback(nxTop,nyTop,f_top,f_post_top,topIsWall(1),topIsWall(2),topIsWall(3),topIsWall(4))
 
-    call macro(nxTop, nyTop, f_top, rho_top, u_top, v_top, Fx_top, Fy_top)
+    call macro(nxTop,nyTop,f_top,rho_top,u_top,v_top,Fx_top,Fy_top)
 
     ! 四区速度已经更新，开始温度碰撞；此处使用更新后的 u/v。
-    call collisionT(nxLeft, nyLeft, g_left, g_post_left, u_left, v_left, T_left, Qk, Qnu)
+    call collisionT(nxLeft,nyLeft,g_left,g_post_left,u_left,v_left,T_left,Qk,Qnu)
 
-    call collisionT(nxRight, nyRight, g_right, g_post_right, u_right, v_right, T_right, Qk, Qnu)
+    call collisionT(nxRight,nyRight,g_right,g_post_right,u_right,v_right,T_right,Qk,Qnu)
 
-    call collisionT(nxBottom, nyBottom, g_bottom, g_post_bottom, u_bottom, v_bottom, T_bottom, Qk, Qnu)
+    call collisionT(nxBottom,nyBottom,g_bottom,g_post_bottom,u_bottom,v_bottom,T_bottom,Qk,Qnu)
 
-    call collisionT(nxTop, nyTop, g_top, g_post_top, u_top, v_top, T_top, Qk, Qnu)
+    call collisionT(nxTop,nyTop,g_top,g_post_top,u_top,v_top,T_top,Qk,Qnu)
 
     ! 四区温度碰撞完成后，复制相邻细区的 g_post，再开始温度迁移。
     call exchange_fine_thermal_halos()
 
-    call streamingT(nxLeft, nyLeft, g_left, g_post_left)
+    call streamingT(nxLeft,nyLeft,g_left,g_post_left)
 
-    call bouncebackT(nxLeft, nyLeft, g_left, g_post_left, leftIsWall(1), leftIsWall(2), leftIsWall(3), leftIsWall(4))
+    call bouncebackT(nxLeft,nyLeft,g_left,g_post_left,leftIsWall(1),leftIsWall(2),leftIsWall(3),leftIsWall(4))
 
-    call macroT(nxLeft, nyLeft, g_left, T_left)
+    call macroT(nxLeft,nyLeft,g_left,T_left)
 
-    call streamingT(nxRight, nyRight, g_right, g_post_right)
+    call streamingT(nxRight,nyRight,g_right,g_post_right)
 
-    call bouncebackT(nxRight, nyRight, g_right, g_post_right, rightIsWall(1), rightIsWall(2), rightIsWall(3), &
+    call bouncebackT(nxRight,nyRight,g_right,g_post_right,rightIsWall(1),rightIsWall(2),rightIsWall(3),&
         rightIsWall(4))
 
-    call macroT(nxRight, nyRight, g_right, T_right)
+    call macroT(nxRight,nyRight,g_right,T_right)
 
-    call streamingT(nxBottom, nyBottom, g_bottom, g_post_bottom)
+    call streamingT(nxBottom,nyBottom,g_bottom,g_post_bottom)
 
-    call bouncebackT(nxBottom, nyBottom, g_bottom, g_post_bottom, bottomIsWall(1), bottomIsWall(2), &
-        bottomIsWall(3), bottomIsWall(4))
+    call bouncebackT(nxBottom,nyBottom,g_bottom,g_post_bottom,bottomIsWall(1),bottomIsWall(2),&
+        bottomIsWall(3),bottomIsWall(4))
 
-    call macroT(nxBottom, nyBottom, g_bottom, T_bottom)
+    call macroT(nxBottom,nyBottom,g_bottom,T_bottom)
 
-    call streamingT(nxTop, nyTop, g_top, g_post_top)
+    call streamingT(nxTop,nyTop,g_top,g_post_top)
 
-    call bouncebackT(nxTop, nyTop, g_top, g_post_top, topIsWall(1), topIsWall(2), topIsWall(3), topIsWall(4))
+    call bouncebackT(nxTop,nyTop,g_top,g_post_top,topIsWall(1),topIsWall(2),topIsWall(3),topIsWall(4))
 
-    call macroT(nxTop, nyTop, g_top, T_top)
+    call macroT(nxTop,nyTop,g_top,T_top)
   end subroutine advance_fine
 !===================================================================================================
 
@@ -1883,29 +1879,29 @@
     use commondata
     implicit none
 
-    call copy_fine_halo(9, nxLeft, nyLeft, nint(xOffsetLeft), nint(yOffsetLeft), f_post_left, nxBottom, &
-        nyBottom, nint(xOffsetBottom), nint(yOffsetBottom), f_post_bottom)
+    call copy_fine_halo(9,nxLeft,nyLeft,nint(xOffsetLeft),nint(yOffsetLeft),f_post_left,nxBottom,&
+        nyBottom,nint(xOffsetBottom),nint(yOffsetBottom),f_post_bottom)
 
-    call copy_fine_halo(9, nxBottom, nyBottom, nint(xOffsetBottom), nint(yOffsetBottom), f_post_bottom, &
-        nxLeft, nyLeft, nint(xOffsetLeft), nint(yOffsetLeft), f_post_left)
+    call copy_fine_halo(9,nxBottom,nyBottom,nint(xOffsetBottom),nint(yOffsetBottom),f_post_bottom,&
+        nxLeft,nyLeft,nint(xOffsetLeft),nint(yOffsetLeft),f_post_left)
 
-    call copy_fine_halo(9, nxLeft, nyLeft, nint(xOffsetLeft), nint(yOffsetLeft), f_post_left, nxTop, &
-        nyTop, nint(xOffsetTop), nint(yOffsetTop), f_post_top)
+    call copy_fine_halo(9,nxLeft,nyLeft,nint(xOffsetLeft),nint(yOffsetLeft),f_post_left,nxTop,&
+        nyTop,nint(xOffsetTop),nint(yOffsetTop),f_post_top)
 
-    call copy_fine_halo(9, nxTop, nyTop, nint(xOffsetTop), nint(yOffsetTop), f_post_top, nxLeft, &
-        nyLeft, nint(xOffsetLeft), nint(yOffsetLeft), f_post_left)
+    call copy_fine_halo(9,nxTop,nyTop,nint(xOffsetTop),nint(yOffsetTop),f_post_top,nxLeft,&
+        nyLeft,nint(xOffsetLeft),nint(yOffsetLeft),f_post_left)
 
-    call copy_fine_halo(9, nxRight, nyRight, nint(xOffsetRight), nint(yOffsetRight), f_post_right, &
-        nxBottom, nyBottom, nint(xOffsetBottom), nint(yOffsetBottom), f_post_bottom)
+    call copy_fine_halo(9,nxRight,nyRight,nint(xOffsetRight),nint(yOffsetRight),f_post_right,&
+        nxBottom,nyBottom,nint(xOffsetBottom),nint(yOffsetBottom),f_post_bottom)
 
-    call copy_fine_halo(9, nxBottom, nyBottom, nint(xOffsetBottom), nint(yOffsetBottom), f_post_bottom, &
-        nxRight, nyRight, nint(xOffsetRight), nint(yOffsetRight), f_post_right)
+    call copy_fine_halo(9,nxBottom,nyBottom,nint(xOffsetBottom),nint(yOffsetBottom),f_post_bottom,&
+        nxRight,nyRight,nint(xOffsetRight),nint(yOffsetRight),f_post_right)
 
-    call copy_fine_halo(9, nxRight, nyRight, nint(xOffsetRight), nint(yOffsetRight), f_post_right, &
-        nxTop, nyTop, nint(xOffsetTop), nint(yOffsetTop), f_post_top)
+    call copy_fine_halo(9,nxRight,nyRight,nint(xOffsetRight),nint(yOffsetRight),f_post_right,&
+        nxTop,nyTop,nint(xOffsetTop),nint(yOffsetTop),f_post_top)
 
-    call copy_fine_halo(9, nxTop, nyTop, nint(xOffsetTop), nint(yOffsetTop), f_post_top, nxRight, &
-        nyRight, nint(xOffsetRight), nint(yOffsetRight), f_post_right)
+    call copy_fine_halo(9,nxTop,nyTop,nint(xOffsetTop),nint(yOffsetTop),f_post_top,nxRight,&
+        nyRight,nint(xOffsetRight),nint(yOffsetRight),f_post_right)
   end subroutine exchange_fine_flow_halos
 !===================================================================================================
 
@@ -1917,29 +1913,29 @@
     use commondata
     implicit none
 
-    call copy_fine_halo(5, nxLeft, nyLeft, nint(xOffsetLeft), nint(yOffsetLeft), g_post_left, nxBottom, &
-        nyBottom, nint(xOffsetBottom), nint(yOffsetBottom), g_post_bottom)
+    call copy_fine_halo(5,nxLeft,nyLeft,nint(xOffsetLeft),nint(yOffsetLeft),g_post_left,nxBottom,&
+        nyBottom,nint(xOffsetBottom),nint(yOffsetBottom),g_post_bottom)
 
-    call copy_fine_halo(5, nxBottom, nyBottom, nint(xOffsetBottom), nint(yOffsetBottom), g_post_bottom, &
-        nxLeft, nyLeft, nint(xOffsetLeft), nint(yOffsetLeft), g_post_left)
+    call copy_fine_halo(5,nxBottom,nyBottom,nint(xOffsetBottom),nint(yOffsetBottom),g_post_bottom,&
+        nxLeft,nyLeft,nint(xOffsetLeft),nint(yOffsetLeft),g_post_left)
 
-    call copy_fine_halo(5, nxLeft, nyLeft, nint(xOffsetLeft), nint(yOffsetLeft), g_post_left, nxTop, &
-        nyTop, nint(xOffsetTop), nint(yOffsetTop), g_post_top)
+    call copy_fine_halo(5,nxLeft,nyLeft,nint(xOffsetLeft),nint(yOffsetLeft),g_post_left,nxTop,&
+        nyTop,nint(xOffsetTop),nint(yOffsetTop),g_post_top)
 
-    call copy_fine_halo(5, nxTop, nyTop, nint(xOffsetTop), nint(yOffsetTop), g_post_top, nxLeft, &
-        nyLeft, nint(xOffsetLeft), nint(yOffsetLeft), g_post_left)
+    call copy_fine_halo(5,nxTop,nyTop,nint(xOffsetTop),nint(yOffsetTop),g_post_top,nxLeft,&
+        nyLeft,nint(xOffsetLeft),nint(yOffsetLeft),g_post_left)
 
-    call copy_fine_halo(5, nxRight, nyRight, nint(xOffsetRight), nint(yOffsetRight), g_post_right, &
-        nxBottom, nyBottom, nint(xOffsetBottom), nint(yOffsetBottom), g_post_bottom)
+    call copy_fine_halo(5,nxRight,nyRight,nint(xOffsetRight),nint(yOffsetRight),g_post_right,&
+        nxBottom,nyBottom,nint(xOffsetBottom),nint(yOffsetBottom),g_post_bottom)
 
-    call copy_fine_halo(5, nxBottom, nyBottom, nint(xOffsetBottom), nint(yOffsetBottom), g_post_bottom, &
-        nxRight, nyRight, nint(xOffsetRight), nint(yOffsetRight), g_post_right)
+    call copy_fine_halo(5,nxBottom,nyBottom,nint(xOffsetBottom),nint(yOffsetBottom),g_post_bottom,&
+        nxRight,nyRight,nint(xOffsetRight),nint(yOffsetRight),g_post_right)
 
-    call copy_fine_halo(5, nxRight, nyRight, nint(xOffsetRight), nint(yOffsetRight), g_post_right, &
-        nxTop, nyTop, nint(xOffsetTop), nint(yOffsetTop), g_post_top)
+    call copy_fine_halo(5,nxRight,nyRight,nint(xOffsetRight),nint(yOffsetRight),g_post_right,&
+        nxTop,nyTop,nint(xOffsetTop),nint(yOffsetTop),g_post_top)
 
-    call copy_fine_halo(5, nxTop, nyTop, nint(xOffsetTop), nint(yOffsetTop), g_post_top, nxRight, &
-        nyRight, nint(xOffsetRight), nint(yOffsetRight), g_post_right)
+    call copy_fine_halo(5,nxTop,nyTop,nint(xOffsetTop),nint(yOffsetTop),g_post_top,nxRight,&
+        nyRight,nint(xOffsetRight),nint(yOffsetRight),g_post_right)
   end subroutine exchange_fine_thermal_halos
 !===================================================================================================
 
@@ -1947,7 +1943,7 @@
 ! 子程序: copy_fine_halo
 ! 作用: 根据坐标偏移，复制相邻细区域内部与接收区域迁移外圈的交集。
 !===================================================================================================
-  subroutine copy_fine_halo(nq, ni, nj, targetIndexX, targetIndexY, receiver, mi, mj, sourceIndexX, sourceIndexY, donor)
+  subroutine copy_fine_halo(nq,ni,nj,targetIndexX,targetIndexY,receiver,mi,mj,sourceIndexX,sourceIndexY,donor)
     implicit none
 
     ! nq 为方向数：流场 9，温度场 5；ni/nj 属于接收区，mi/mj 属于来源区。
@@ -1955,16 +1951,16 @@
     ! 仅复制 donor 的内部节点；receiver 的交集在 0 或 n+1 外圈，包含对角迁移需要的位置。
 
     integer(kind=4), intent(in) :: nq, ni, nj, targetIndexX, targetIndexY, mi, mj, sourceIndexX, sourceIndexY
-    real(kind=8) :: receiver(0:ni + 1, 0:nj + 1, 0:nq - 1), donor(0:mi + 1, 0:mj + 1, 0:nq - 1)
+    real(kind=8) :: receiver(0:ni+1,0:nj+1,0:nq-1), donor(0:mi+1,0:mj+1,0:nq-1)
     integer(kind=4) :: i, j, a
 
     ! 全局细节点编号 = 偏移量 + 本地编号。只取 receiver 外圈与 donor 内部的交集。
 
     !$acc parallel loop collapse(3) present(receiver,donor) async(1)
-    do a = 0, nq - 1
-        do j = max(0, sourceIndexY + 1 - targetIndexY), min(nj + 1, sourceIndexY + mj - targetIndexY)
-            do i = max(0, sourceIndexX + 1 - targetIndexX), min(ni + 1, sourceIndexX + mi - targetIndexX)
-                receiver(i, j, a) = donor(targetIndexX + i - sourceIndexX, targetIndexY + j - sourceIndexY, a)
+    do a=0,nq-1
+        do j=max(0,sourceIndexY+1-targetIndexY),min(nj+1,sourceIndexY+mj-targetIndexY)
+            do i=max(0,sourceIndexX+1-targetIndexX),min(ni+1,sourceIndexX+mi-targetIndexX)
+                receiver(i,j,a)=donor(targetIndexX+i-sourceIndexX,targetIndexY+j-sourceIndexY,a)
             enddo
         enddo
     enddo
@@ -1979,68 +1975,68 @@
     use commondata
     implicit none
 
-    ! 与均匀网格每轮只走一步不同：本轮粗网格走一步，四个细区各走 refineRatio 步。
+    ! 每轮粗网格推进一步，四个细区各推进 refineRatio 步。
     ! 粗网格先预测到 t+dtCoarse，细子步用粗历史取得自身起始时刻的边界数据。
     ! 细网格追上粗时刻后才做双向同步、滚动粗历史和增加 itc；输出与续算均在同步点进行。
 
     integer(kind=4) :: k
     real(kind=8) :: timeInterpWeight(0:2)
 
-    if( refineRatio == 1 ) then
+    if(refineRatio==1) then
 
         call advance_coarse()
-        itc = itc + 1
+        itc=itc+1
         return
     endif
 
     ! 粗网格先预测一个粗步；History 的 0/1/2 层保存过去、当前、预测时刻。
     call advance_coarse()
 
-    call save_exchange_history(nxCoarse, nyCoarse, timeInterpMaxIndexCoarse, 2, dxCoarse, SnuCoarse, SqCoarse, &
-        QkCoarse, QnuCoarse, f_coarse, g_coarse, rho_coarse, u_coarse, v_coarse, T_coarse, Fx_coarse, &
-        Fy_coarse, rhoTimeInterp_coarse, uTimeInterp_coarse, vTimeInterp_coarse, TTimeInterp_coarse, &
-        FxOverDxTimeInterp_coarse, FyOverDxTimeInterp_coarse, flowNeqTimeInterp_coarse, thermalNeqTimeInterp_coarse)
-    do k = 1, refineRatio
+    call save_exchange_history(nxCoarse,nyCoarse,timeInterpMaxIndexCoarse,2,dxCoarse,SnuCoarse,SqCoarse,&
+        QkCoarse,QnuCoarse,f_coarse,g_coarse,rho_coarse,u_coarse,v_coarse,T_coarse,Fx_coarse,&
+        Fy_coarse,rhoTimeInterp_coarse,uTimeInterp_coarse,vTimeInterp_coarse,TTimeInterp_coarse,&
+        FxOverDxTimeInterp_coarse,FyOverDxTimeInterp_coarse,flowNeqTimeInterp_coarse,thermalNeqTimeInterp_coarse)
+    do k=1,refineRatio
 
-        call coarse_time_weights(dble(k - 1) / dble(refineRatio), timeInterpWeight)
+        call coarse_time_weights(dble(k-1)/dble(refineRatio),timeInterpWeight)
 
         call coarse_to_fine(timeInterpWeight)
 
         call advance_fine()
 
-        call save_exchange_history(nxLeft, nyLeft, 0, 0, dxFine, Snu, Sq, Qk, Qnu, f_left, &
-            g_left, rho_left, u_left, v_left, T_left, Fx_left, Fy_left, rhoTimeInterp_left, uTimeInterp_left, &
-            vTimeInterp_left, TTimeInterp_left, FxOverDxTimeInterp_left, FyOverDxTimeInterp_left, flowNeqTimeInterp_left, &
+        call save_exchange_history(nxLeft,nyLeft,0,0,dxFine,Snu,Sq,Qk,Qnu,f_left,&
+            g_left,rho_left,u_left,v_left,T_left,Fx_left,Fy_left,rhoTimeInterp_left,uTimeInterp_left,&
+            vTimeInterp_left,TTimeInterp_left,FxOverDxTimeInterp_left,FyOverDxTimeInterp_left,flowNeqTimeInterp_left,&
             thermalNeqTimeInterp_left)
 
-        call save_exchange_history(nxRight, nyRight, 0, 0, dxFine, Snu, Sq, Qk, Qnu, &
-            f_right, g_right, rho_right, u_right, v_right, T_right, Fx_right, Fy_right, rhoTimeInterp_right, &
-            uTimeInterp_right, vTimeInterp_right, TTimeInterp_right, FxOverDxTimeInterp_right, FyOverDxTimeInterp_right, &
-            flowNeqTimeInterp_right, thermalNeqTimeInterp_right)
+        call save_exchange_history(nxRight,nyRight,0,0,dxFine,Snu,Sq,Qk,Qnu,&
+            f_right,g_right,rho_right,u_right,v_right,T_right,Fx_right,Fy_right,rhoTimeInterp_right,&
+            uTimeInterp_right,vTimeInterp_right,TTimeInterp_right,FxOverDxTimeInterp_right,FyOverDxTimeInterp_right,&
+            flowNeqTimeInterp_right,thermalNeqTimeInterp_right)
 
-        call save_exchange_history(nxBottom, nyBottom, 0, 0, dxFine, Snu, Sq, Qk, Qnu, &
-            f_bottom, g_bottom, rho_bottom, u_bottom, v_bottom, T_bottom, Fx_bottom, Fy_bottom, &
-            rhoTimeInterp_bottom, uTimeInterp_bottom, vTimeInterp_bottom, TTimeInterp_bottom, FxOverDxTimeInterp_bottom, &
-            FyOverDxTimeInterp_bottom, flowNeqTimeInterp_bottom, thermalNeqTimeInterp_bottom)
+        call save_exchange_history(nxBottom,nyBottom,0,0,dxFine,Snu,Sq,Qk,Qnu,&
+            f_bottom,g_bottom,rho_bottom,u_bottom,v_bottom,T_bottom,Fx_bottom,Fy_bottom,&
+            rhoTimeInterp_bottom,uTimeInterp_bottom,vTimeInterp_bottom,TTimeInterp_bottom,FxOverDxTimeInterp_bottom,&
+            FyOverDxTimeInterp_bottom,flowNeqTimeInterp_bottom,thermalNeqTimeInterp_bottom)
 
-        call save_exchange_history(nxTop, nyTop, 0, 0, dxFine, Snu, Sq, Qk, Qnu, f_top, &
-            g_top, rho_top, u_top, v_top, T_top, Fx_top, Fy_top, rhoTimeInterp_top, uTimeInterp_top, &
-            vTimeInterp_top, TTimeInterp_top, FxOverDxTimeInterp_top, FyOverDxTimeInterp_top, flowNeqTimeInterp_top, thermalNeqTimeInterp_top)
+        call save_exchange_history(nxTop,nyTop,0,0,dxFine,Snu,Sq,Qk,Qnu,f_top,&
+            g_top,rho_top,u_top,v_top,T_top,Fx_top,Fy_top,rhoTimeInterp_top,uTimeInterp_top,&
+            vTimeInterp_top,TTimeInterp_top,FxOverDxTimeInterp_top,FyOverDxTimeInterp_top,flowNeqTimeInterp_top,thermalNeqTimeInterp_top)
     enddo
 
     ! 同步时先细到粗，再用修正后的粗状态补细接口，最后滚动粗时间历史。
     call fine_to_coarse()
 
-    call save_exchange_history(nxCoarse, nyCoarse, timeInterpMaxIndexCoarse, 2, dxCoarse, SnuCoarse, SqCoarse, &
-        QkCoarse, QnuCoarse, f_coarse, g_coarse, rho_coarse, u_coarse, v_coarse, T_coarse, Fx_coarse, &
-        Fy_coarse, rhoTimeInterp_coarse, uTimeInterp_coarse, vTimeInterp_coarse, TTimeInterp_coarse, &
-        FxOverDxTimeInterp_coarse, FyOverDxTimeInterp_coarse, flowNeqTimeInterp_coarse, thermalNeqTimeInterp_coarse)
+    call save_exchange_history(nxCoarse,nyCoarse,timeInterpMaxIndexCoarse,2,dxCoarse,SnuCoarse,SqCoarse,&
+        QkCoarse,QnuCoarse,f_coarse,g_coarse,rho_coarse,u_coarse,v_coarse,T_coarse,Fx_coarse,&
+        Fy_coarse,rhoTimeInterp_coarse,uTimeInterp_coarse,vTimeInterp_coarse,TTimeInterp_coarse,&
+        FxOverDxTimeInterp_coarse,FyOverDxTimeInterp_coarse,flowNeqTimeInterp_coarse,thermalNeqTimeInterp_coarse)
 
-    call coarse_to_fine([0.0d0, 0.0d0, 1.0d0])
+    call coarse_to_fine([0.0d0,0.0d0,1.0d0])
 
-    call rotate_coarse_history(nxCoarse, nyCoarse, rhoTimeInterp_coarse, uTimeInterp_coarse, vTimeInterp_coarse, &
-        TTimeInterp_coarse, FxOverDxTimeInterp_coarse, FyOverDxTimeInterp_coarse, flowNeqTimeInterp_coarse, thermalNeqTimeInterp_coarse)
-    itc = itc + refineRatio
+    call rotate_coarse_history(nxCoarse,nyCoarse,rhoTimeInterp_coarse,uTimeInterp_coarse,vTimeInterp_coarse,&
+        TTimeInterp_coarse,FxOverDxTimeInterp_coarse,FyOverDxTimeInterp_coarse,flowNeqTimeInterp_coarse,thermalNeqTimeInterp_coarse)
+    itc=itc+refineRatio
   end subroutine advance_multiblock
 !===================================================================================================
 
@@ -2048,9 +2044,9 @@
 ! 子程序: coarse_time_weights
 ! 作用: 计算细子步起始时刻在粗网格时间历史中的插值权重。
 !===================================================================================================
-  subroutine coarse_time_weights(theta, timeInterpWeight)
+  subroutine coarse_time_weights(theta,timeInterpWeight)
 
-    use commondata, only: itc, restartItcOffset
+    use commondata,only: itc,restartItcOffset
     implicit none
 
     ! theta=(细子步起点-t)/dtCoarse，范围从 0 到 (refineRatio-1)/refineRatio。
@@ -2060,10 +2056,10 @@
     real(kind=8), intent(out) :: timeInterpWeight(0:2)
 
     ! theta 是当前细子步起点相对粗步起点的时间，不能使用子步终点时间。
-    if( restartItcOffset + itc == 0 ) then
-        timeInterpWeight = [0.0d0, 1.0d0 - theta, theta]    ! 缺少负时间层时线性启动
+    if(restartItcOffset+itc==0) then
+        timeInterpWeight=[0.0d0,1.0d0-theta,theta]    ! 缺少负时间层时线性启动
     else
-        timeInterpWeight = [0.5d0 * theta * (theta - 1.0d0), 1.0d0 - theta ** 2, 0.5d0 * theta * (theta + 1.0d0)]
+        timeInterpWeight=[0.5d0*theta*(theta-1.0d0),1.0d0-theta**2,0.5d0*theta*(theta+1.0d0)]
     endif
   end subroutine coarse_time_weights
 !===================================================================================================
@@ -2072,49 +2068,49 @@
 ! 子程序: rotate_coarse_history
 ! 作用: 在粗细同步后滚动粗历史，准备下一轮时间插值。
 !===================================================================================================
-  subroutine rotate_coarse_history(ni, nj, rhoHistory, uHistory, vHistory, THistory, FxHistory, FyHistory, &
-      flowNeqHistory, thermalNeqHistory)
+  subroutine rotate_coarse_history(ni,nj,rhoHistory,uHistory,vHistory,THistory,FxHistory,FyHistory,&
+      flowNeqHistory,thermalNeqHistory)
     implicit none
 
     ! 第 1 层复制到第 0 层，第 2 层复制到第 1 层；下一粗预测会重写第 2 层。
     ! 这里只滚动交换数据的历史，不改变正在计算的 f/g 或 u/v/T。
 
     integer(kind=4), intent(in) :: ni, nj
-    real(kind=8), intent(inout) :: rhoHistory(ni, nj, 0:2)
-    real(kind=8), intent(inout) :: uHistory(ni, nj, 0:2)
-    real(kind=8), intent(inout) :: vHistory(ni, nj, 0:2)
-    real(kind=8), intent(inout) :: THistory(ni, nj, 0:2)
-    real(kind=8), intent(inout) :: FxHistory(ni, nj, 0:2)
-    real(kind=8), intent(inout) :: FyHistory(ni, nj, 0:2)
-    real(kind=8), intent(inout) :: flowNeqHistory(ni, nj, 0:8, 0:2)
-    real(kind=8), intent(inout) :: thermalNeqHistory(ni, nj, 0:4, 0:2)
+    real(kind=8), intent(inout) :: rhoHistory(ni,nj,0:2)
+    real(kind=8), intent(inout) :: uHistory(ni,nj,0:2)
+    real(kind=8), intent(inout) :: vHistory(ni,nj,0:2)
+    real(kind=8), intent(inout) :: THistory(ni,nj,0:2)
+    real(kind=8), intent(inout) :: FxHistory(ni,nj,0:2)
+    real(kind=8), intent(inout) :: FyHistory(ni,nj,0:2)
+    real(kind=8), intent(inout) :: flowNeqHistory(ni,nj,0:8,0:2)
+    real(kind=8), intent(inout) :: thermalNeqHistory(ni,nj,0:4,0:2)
     integer(kind=4) :: i, j, a
 
     ! 预测层转为当前层，原当前层转为过去层；下一个粗步会重新计算第 2 层。
     !$acc parallel loop collapse(2) present(rhoHistory, uHistory, vHistory, THistory, FxHistory, FyHistory, &
     !$acc& flowNeqHistory, thermalNeqHistory) async(1) private(a)
-    do j = 1, nj
-        do i = 1, ni
-            rhoHistory(i, j, 0) = rhoHistory(i, j, 1)
-            rhoHistory(i, j, 1) = rhoHistory(i, j, 2)
-            uHistory(i, j, 0) = uHistory(i, j, 1)
-            uHistory(i, j, 1) = uHistory(i, j, 2)
-            vHistory(i, j, 0) = vHistory(i, j, 1)
-            vHistory(i, j, 1) = vHistory(i, j, 2)
-            THistory(i, j, 0) = THistory(i, j, 1)
-            THistory(i, j, 1) = THistory(i, j, 2)
-            FxHistory(i, j, 0) = FxHistory(i, j, 1)
-            FxHistory(i, j, 1) = FxHistory(i, j, 2)
-            FyHistory(i, j, 0) = FyHistory(i, j, 1)
-            FyHistory(i, j, 1) = FyHistory(i, j, 2)
-            do a = 0, 8
-                flowNeqHistory(i, j, a, 0) = flowNeqHistory(i, j, a, 1)
-                flowNeqHistory(i, j, a, 1) = flowNeqHistory(i, j, a, 2)
+    do j=1,nj
+        do i=1,ni
+            rhoHistory(i,j,0)=rhoHistory(i,j,1)
+            rhoHistory(i,j,1)=rhoHistory(i,j,2)
+            uHistory(i,j,0)=uHistory(i,j,1)
+            uHistory(i,j,1)=uHistory(i,j,2)
+            vHistory(i,j,0)=vHistory(i,j,1)
+            vHistory(i,j,1)=vHistory(i,j,2)
+            THistory(i,j,0)=THistory(i,j,1)
+            THistory(i,j,1)=THistory(i,j,2)
+            FxHistory(i,j,0)=FxHistory(i,j,1)
+            FxHistory(i,j,1)=FxHistory(i,j,2)
+            FyHistory(i,j,0)=FyHistory(i,j,1)
+            FyHistory(i,j,1)=FyHistory(i,j,2)
+            do a=0,8
+                flowNeqHistory(i,j,a,0)=flowNeqHistory(i,j,a,1)
+                flowNeqHistory(i,j,a,1)=flowNeqHistory(i,j,a,2)
             enddo
 
-            do a = 0, 4
-                thermalNeqHistory(i, j, a, 0) = thermalNeqHistory(i, j, a, 1)
-                thermalNeqHistory(i, j, a, 1) = thermalNeqHistory(i, j, a, 2)
+            do a=0,4
+                thermalNeqHistory(i,j,a,0)=thermalNeqHistory(i,j,a,1)
+                thermalNeqHistory(i,j,a,1)=thermalNeqHistory(i,j,a,2)
             enddo
         enddo
     enddo
@@ -2125,7 +2121,7 @@
 ! 子程序: lagrange_weights
 ! 作用: 计算相邻四个等距节点的拉格朗日插值权重。
 !===================================================================================================
-  subroutine lagrange_weights(q, w)
+  subroutine lagrange_weights(q,w)
 
     implicit none
 
@@ -2136,10 +2132,10 @@
     real(kind=8), intent(out) :: w(4)
     integer(kind=4) :: a, k
 
-    w = 1.0d0
-    do a = 0, 3
-        do k = 0, 3
-            if( a /= k) w(a + 1) = w(a + 1) * (q - dble(k)) / dble(a - k)
+    w=1.0d0
+    do a=0,3
+        do k=0,3
+            if(a/=k) w(a+1)=w(a+1)*(q-dble(k))/dble(a-k)
         enddo
     enddo
   end subroutine lagrange_weights
@@ -2149,7 +2145,7 @@
 ! 子程序: section_weights
 ! 作用: 定位中线诊断的四点模板，计算函数值及导数的插值权重。
 !===================================================================================================
-  subroutine section_weights(q, n, first, w, dw)
+  subroutine section_weights(q,n,first,w,dw)
 
     implicit none
 
@@ -2163,20 +2159,20 @@
     real(kind=8) :: z, term
     integer(kind=4) :: a, k, l
 
-    first = max(1, min(floor(q) - 1, n - 3))
-    z = q - dble(first)
+    first=max(1,min(floor(q)-1,n-3))
+    z=q-dble(first)
 
-    call lagrange_weights(z, w)
-    dw = 0.0d0
-    do a = 0, 3
-        do k = 0, 3
-            if( k == a ) cycle
-            term = 1.0d0 / dble(a - k)
-            do l = 0, 3
-                if( l /= a .AND. l /= k) term = term * (z - dble(l)) / dble(a - l)
+    call lagrange_weights(z,w)
+    dw=0.0d0
+    do a=0,3
+        do k=0,3
+            if(k==a) cycle
+            term=1.0d0/dble(a-k)
+            do l=0,3
+                if(l/=a .AND. l/=k) term=term*(z-dble(l))/dble(a-l)
             enddo
 
-            dw(a + 1) = dw(a + 1) + term
+            dw(a+1)=dw(a+1)+term
         enddo
     enddo
   end subroutine section_weights
@@ -2186,25 +2182,25 @@
 ! 子程序: equilibrium_moments
 ! 作用: 根据密度、速度和温度，构造接口重建所需的平衡矩。
 !===================================================================================================
-  subroutine equilibrium_moments(rh, ux, uy, temp, meq, neq)
+  subroutine equilibrium_moments(rh,ux,uy,temp,meq,neq)
 
-    use commondata, only: paraA
+    use commondata,only: paraA
     implicit none
 
     !$acc routine seq
     real(kind=8), intent(in) :: rh, ux, uy, temp
     real(kind=8), intent(out) :: meq(0:8), neq(0:4)
 
-    meq(0) = rh
-    meq(1) = rh * ( - 2.0d0 + 3.0d0 * (ux * ux + uy * uy))
-    meq(2) = rh * (1.0d0 - 3.0d0 * (ux * ux + uy * uy))
-    meq(3) = rh * ux
-    meq(4) = - rh * ux
-    meq(5) = rh * uy
-    meq(6) = - rh * uy
-    meq(7) = rh * (ux * ux - uy * uy)
-    meq(8) = rh * ux * uy
-    neq = [temp, temp * ux, temp * uy, paraA * temp, 0.0d0]
+    meq(0)=rh
+    meq(1)=rh*(-2.0d0+3.0d0*(ux*ux+uy*uy))
+    meq(2)=rh*(1.0d0-3.0d0*(ux*ux+uy*uy))
+    meq(3)=rh*ux
+    meq(4)=-rh*ux
+    meq(5)=rh*uy
+    meq(6)=-rh*uy
+    meq(7)=rh*(ux*ux-uy*uy)
+    meq(8)=rh*ux*uy
+    neq=[temp,temp*ux,temp*uy,paraA*temp,0.0d0]
   end subroutine equilibrium_moments
 !===================================================================================================
 
@@ -2212,7 +2208,7 @@
 ! 子程序: force_moments
 ! 作用: 将宏观力转换成流场矩空间中的力项。
 !===================================================================================================
-  subroutine force_moments(ux, uy, fx, fy, fm)
+  subroutine force_moments(ux,uy,fx,fy,fm)
 
     implicit none
 
@@ -2220,8 +2216,8 @@
     real(kind=8), intent(in) :: ux, uy, fx, fy
     real(kind=8), intent(out) :: fm(0:8)
 
-    fm = [0.0d0, 6.0d0 * (ux * fx + uy * fy), - 6.0d0 * (ux * fx + uy * fy), fx, - fx, fy, - fy, &
-        2.0d0 * (ux * fx - uy * fy), ux * fy + uy * fx]
+    fm=[0.0d0,6.0d0*(ux*fx+uy*fy),-6.0d0*(ux*fx+uy*fy),fx,-fx,fy,-fy,&
+        2.0d0*(ux*fx-uy*fy),ux*fy+uy*fx]
   end subroutine force_moments
 !===================================================================================================
 
@@ -2229,8 +2225,8 @@
 ! 子程序: save_exchange_history
 ! 作用: 保存指定时刻的宏观量、统一时间尺度的力和缩放非平衡矩。
 !===================================================================================================
-  subroutine save_exchange_history(ni, nj, nh, slot, dx, Snu, Sq, Qk, Qnu, f, g, rho, u, v, T, Fx, Fy, &
-      rhoHistory, uHistory, vHistory, THistory, FxHistory, FyHistory, flowNeqHistory, thermalNeqHistory)
+  subroutine save_exchange_history(ni,nj,nh,slot,dx,Snu,Sq,Qk,Qnu,f,g,rho,u,v,T,Fx,Fy,&
+      rhoHistory,uHistory,vHistory,THistory,FxHistory,FyHistory,flowNeqHistory,thermalNeqHistory)
 
     implicit none
 
@@ -2240,59 +2236,59 @@
     ! flowNeqHistory 的第三下标是矩分量，不能直接当作 f 的速度方向。
 
     integer(kind=4), intent(in) :: ni, nj, nh, slot
-    real(kind=8), intent(in) :: dx, Snu, Sq, Qk, Qnu, f(ni, nj, 0:8), g(ni, nj, 0:4)
-    real(kind=8), intent(in) :: rho(ni, nj), u(ni, nj), v(ni, nj), T(ni, nj), Fx(ni, nj), Fy(ni, nj)
-    real(kind=8), intent(inout) :: rhoHistory(ni, nj, 0:nh)
-    real(kind=8), intent(inout) :: uHistory(ni, nj, 0:nh)
-    real(kind=8), intent(inout) :: vHistory(ni, nj, 0:nh)
-    real(kind=8), intent(inout) :: THistory(ni, nj, 0:nh)
-    real(kind=8), intent(inout) :: FxHistory(ni, nj, 0:nh)
-    real(kind=8), intent(inout) :: FyHistory(ni, nj, 0:nh)
-    real(kind=8), intent(inout) :: flowNeqHistory(ni, nj, 0:8, 0:nh)
-    real(kind=8), intent(inout) :: thermalNeqHistory(ni, nj, 0:4, 0:nh)
+    real(kind=8), intent(in) :: dx, Snu, Sq, Qk, Qnu, f(ni,nj,0:8), g(ni,nj,0:4)
+    real(kind=8), intent(in) :: rho(ni,nj), u(ni,nj), v(ni,nj), T(ni,nj), Fx(ni,nj), Fy(ni,nj)
+    real(kind=8), intent(inout) :: rhoHistory(ni,nj,0:nh)
+    real(kind=8), intent(inout) :: uHistory(ni,nj,0:nh)
+    real(kind=8), intent(inout) :: vHistory(ni,nj,0:nh)
+    real(kind=8), intent(inout) :: THistory(ni,nj,0:nh)
+    real(kind=8), intent(inout) :: FxHistory(ni,nj,0:nh)
+    real(kind=8), intent(inout) :: FyHistory(ni,nj,0:nh)
+    real(kind=8), intent(inout) :: flowNeqHistory(ni,nj,0:8,0:nh)
+    real(kind=8), intent(inout) :: thermalNeqHistory(ni,nj,0:4,0:nh)
     integer(kind=4) :: i, j, a
     real(kind=8) :: m(0:8), meq(0:8), fm(0:8), n(0:4), neq(0:4), s(0:8), q(0:4), fv(0:8), gv(0:4)
 
     !$acc parallel loop collapse(2) present(f, g, rho, u, v, T, Fx, Fy, rhoHistory, uHistory, vHistory, &
     !$acc& THistory, FxHistory, FyHistory, flowNeqHistory, thermalNeqHistory) async(1) &
     !$acc& private(a, m, meq, fm, n, neq, s, q, fv, gv)
-    do j = 1, nj
-        do i = 1, ni
-            do a = 0, 8
-                fv(a) = f(i, j, a)
+    do j=1,nj
+        do i=1,ni
+            do a=0,8
+                fv(a)=f(i,j,a)
             enddo
 
-            do a = 0, 4
-                gv(a) = g(i, j, a)
+            do a=0,4
+                gv(a)=g(i,j,a)
             enddo
 
-            call flow_moments(fv, m)
+            call flow_moments(fv,m)
 
-            call thermal_moments(gv, n)
+            call thermal_moments(gv,n)
 
-            call equilibrium_moments(rho(i, j), u(i, j), v(i, j), T(i, j), meq, neq)
+            call equilibrium_moments(rho(i,j),u(i,j),v(i,j),T(i,j),meq,neq)
 
-            call force_moments(u(i, j), v(i, j), Fx(i, j), Fy(i, j), fm)
-            s = [0.0d0, Snu, Snu, 0.0d0, Sq, 0.0d0, Sq, Snu, Snu]
-            q = [0.0d0, Qk, Qk, Qnu, Qnu]
+            call force_moments(u(i,j),v(i,j),Fx(i,j),Fy(i,j),fm)
+            s=[0.0d0,Snu,Snu,0.0d0,Sq,0.0d0,Sq,Snu,Snu]
+            q=[0.0d0,Qk,Qk,Qnu,Qnu]
 
             ! 直接保存宏观量；力除以本区 dx，换算到统一时间尺度。
-            rhoHistory(i, j, slot) = rho(i, j)
-            uHistory(i, j, slot) = u(i, j)
-            vHistory(i, j, slot) = v(i, j)
-            THistory(i, j, slot) = T(i, j)
-            FxHistory(i, j, slot) = Fx(i, j) / dx
-            FyHistory(i, j, slot) = Fy(i, j) / dx
-            do a = 0, 8
+            rhoHistory(i,j,slot)=rho(i,j)
+            uHistory(i,j,slot)=u(i,j)
+            vHistory(i,j,slot)=v(i,j)
+            THistory(i,j,slot)=T(i,j)
+            FxHistory(i,j,slot)=Fx(i,j)/dx
+            FyHistory(i,j,slot)=Fy(i,j)/dx
+            do a=0,8
 
                 ! 保存缩放后的流场非平衡矩，并保留半步力修正。
-                flowNeqHistory(i, j, a, slot) = s(a) / dx * (m(a) - meq(a) + 0.5d0 * fm(a))
+                flowNeqHistory(i,j,a,slot)=s(a)/dx*(m(a)-meq(a)+0.5d0*fm(a))
             enddo
 
-            do a = 0, 4
+            do a=0,4
 
                 ! 温度矩使用本区温度松弛率和 dx 进行同样的尺度处理。
-                thermalNeqHistory(i, j, a, slot) = q(a) / dx * (n(a) - neq(a))
+                thermalNeqHistory(i,j,a,slot)=q(a)/dx*(n(a)-neq(a))
             enddo
         enddo
     enddo
@@ -2303,61 +2299,61 @@
 ! 子程序: interpolate_exchange_history
 ! 作用: 分别插值各宏观量、力及两组非平衡矩，写入接收临时数组。
 !===================================================================================================
-  subroutine interpolate_exchange_history(ni, nj, nh, rhoHistory, uHistory, vHistory, THistory, FxHistory, &
-      FyHistory, flowNeqHistory, thermalNeqHistory, count, sourceIndexX, sourceIndexY, spaceInterpWeightX, &
-      spaceInterpWeightY, samePosition, timeInterpWeight, rhoReceive, &
-      uReceive, vReceive, TReceive, FxOverDxReceive, FyOverDxReceive, flowNeqReceive, thermalNeqReceive)
+  subroutine interpolate_exchange_history(ni,nj,nh,rhoHistory,uHistory,vHistory,THistory,FxHistory,&
+      FyHistory,flowNeqHistory,thermalNeqHistory,count,sourceIndexX,sourceIndexY,spaceInterpWeightX,&
+      spaceInterpWeightY,samePosition,timeInterpWeight,rhoReceive,&
+      uReceive,vReceive,TReceive,FxOverDxReceive,FyOverDxReceive,flowNeqReceive,thermalNeqReceive)
     implicit none
 
     ! 每个物理量独立插值到对应 Receive 数组；不使用 packetSize 或数字分量偏移。
     ! 来源是 History 数组，接收结果随后由 apply_interface_data 还原为 f/g。
 
     integer(kind=4), intent(in) :: ni, nj, nh, count, sourceIndexX(count), sourceIndexY(count)
-    real(kind=8), intent(in) :: spaceInterpWeightX(4, count), spaceInterpWeightY(4, count), timeInterpWeight(0:2)
+    real(kind=8), intent(in) :: spaceInterpWeightX(4,count), spaceInterpWeightY(4,count), timeInterpWeight(0:2)
     logical, intent(in) :: samePosition(count)
-    real(kind=8), intent(in) :: rhoHistory(ni, nj, 0:nh)
-    real(kind=8), intent(in) :: uHistory(ni, nj, 0:nh)
-    real(kind=8), intent(in) :: vHistory(ni, nj, 0:nh)
-    real(kind=8), intent(in) :: THistory(ni, nj, 0:nh)
-    real(kind=8), intent(in) :: FxHistory(ni, nj, 0:nh)
-    real(kind=8), intent(in) :: FyHistory(ni, nj, 0:nh)
-    real(kind=8), intent(in) :: flowNeqHistory(ni, nj, 0:8, 0:nh)
-    real(kind=8), intent(in) :: thermalNeqHistory(ni, nj, 0:4, 0:nh)
+    real(kind=8), intent(in) :: rhoHistory(ni,nj,0:nh)
+    real(kind=8), intent(in) :: uHistory(ni,nj,0:nh)
+    real(kind=8), intent(in) :: vHistory(ni,nj,0:nh)
+    real(kind=8), intent(in) :: THistory(ni,nj,0:nh)
+    real(kind=8), intent(in) :: FxHistory(ni,nj,0:nh)
+    real(kind=8), intent(in) :: FyHistory(ni,nj,0:nh)
+    real(kind=8), intent(in) :: flowNeqHistory(ni,nj,0:8,0:nh)
+    real(kind=8), intent(in) :: thermalNeqHistory(ni,nj,0:4,0:nh)
     real(kind=8), intent(out) :: rhoReceive(count)
     real(kind=8), intent(out) :: uReceive(count)
     real(kind=8), intent(out) :: vReceive(count)
     real(kind=8), intent(out) :: TReceive(count)
     real(kind=8), intent(out) :: FxOverDxReceive(count)
     real(kind=8), intent(out) :: FyOverDxReceive(count)
-    real(kind=8), intent(out) :: flowNeqReceive(0:8, count)
-    real(kind=8), intent(out) :: thermalNeqReceive(0:4, count)
+    real(kind=8), intent(out) :: flowNeqReceive(0:8,count)
+    real(kind=8), intent(out) :: thermalNeqReceive(0:4,count)
 
     ! 每个宏观量分别插值；矩数组的额外下标只表示物理矩编号。
-    call interpolate_scalar_history(ni, nj, nh, rhoHistory, count, sourceIndexX, sourceIndexY, spaceInterpWeightX, &
-        spaceInterpWeightY, samePosition, timeInterpWeight, &
+    call interpolate_scalar_history(ni,nj,nh,rhoHistory,count,sourceIndexX,sourceIndexY,spaceInterpWeightX,&
+        spaceInterpWeightY,samePosition,timeInterpWeight,&
         rhoReceive)
 
-    call interpolate_scalar_history(ni, nj, nh, uHistory, count, sourceIndexX, sourceIndexY, spaceInterpWeightX, &
-        spaceInterpWeightY, samePosition, timeInterpWeight, uReceive)
+    call interpolate_scalar_history(ni,nj,nh,uHistory,count,sourceIndexX,sourceIndexY,spaceInterpWeightX,&
+        spaceInterpWeightY,samePosition,timeInterpWeight,uReceive)
 
-    call interpolate_scalar_history(ni, nj, nh, vHistory, count, sourceIndexX, sourceIndexY, spaceInterpWeightX, &
-        spaceInterpWeightY, samePosition, timeInterpWeight, vReceive)
+    call interpolate_scalar_history(ni,nj,nh,vHistory,count,sourceIndexX,sourceIndexY,spaceInterpWeightX,&
+        spaceInterpWeightY,samePosition,timeInterpWeight,vReceive)
 
-    call interpolate_scalar_history(ni, nj, nh, THistory, count, sourceIndexX, sourceIndexY, spaceInterpWeightX, &
-        spaceInterpWeightY, samePosition, timeInterpWeight, TReceive)
+    call interpolate_scalar_history(ni,nj,nh,THistory,count,sourceIndexX,sourceIndexY,spaceInterpWeightX,&
+        spaceInterpWeightY,samePosition,timeInterpWeight,TReceive)
 
-    call interpolate_scalar_history(ni, nj, nh, FxHistory, count, sourceIndexX, sourceIndexY, spaceInterpWeightX, &
-        spaceInterpWeightY, samePosition, timeInterpWeight, FxOverDxReceive)
+    call interpolate_scalar_history(ni,nj,nh,FxHistory,count,sourceIndexX,sourceIndexY,spaceInterpWeightX,&
+        spaceInterpWeightY,samePosition,timeInterpWeight,FxOverDxReceive)
 
-    call interpolate_scalar_history(ni, nj, nh, FyHistory, count, sourceIndexX, sourceIndexY, spaceInterpWeightX, &
-        spaceInterpWeightY, samePosition, timeInterpWeight, FyOverDxReceive)
+    call interpolate_scalar_history(ni,nj,nh,FyHistory,count,sourceIndexX,sourceIndexY,spaceInterpWeightX,&
+        spaceInterpWeightY,samePosition,timeInterpWeight,FyOverDxReceive)
 
-    call interpolate_moment_history(ni, nj, nh, 9, flowNeqHistory, count, sourceIndexX, sourceIndexY, &
-        spaceInterpWeightX, spaceInterpWeightY, samePosition, timeInterpWeight, &
+    call interpolate_moment_history(ni,nj,nh,9,flowNeqHistory,count,sourceIndexX,sourceIndexY,&
+        spaceInterpWeightX,spaceInterpWeightY,samePosition,timeInterpWeight,&
         flowNeqReceive)
 
-    call interpolate_moment_history(ni, nj, nh, 5, thermalNeqHistory, count, sourceIndexX, sourceIndexY, &
-        spaceInterpWeightX, spaceInterpWeightY, samePosition, timeInterpWeight, &
+    call interpolate_moment_history(ni,nj,nh,5,thermalNeqHistory,count,sourceIndexX,sourceIndexY,&
+        spaceInterpWeightX,spaceInterpWeightY,samePosition,timeInterpWeight,&
         thermalNeqReceive)
   end subroutine interpolate_exchange_history
 !===================================================================================================
@@ -2366,8 +2362,8 @@
 ! 子程序: interpolate_scalar_history
 ! 作用: 对一个标量历史场进行空间及时间插值。
 !===================================================================================================
-  subroutine interpolate_scalar_history(ni, nj, nh, fieldHistory, count, sourceIndexX, sourceIndexY, spaceInterpWeightX, &
-      spaceInterpWeightY, samePosition, timeInterpWeight, &
+  subroutine interpolate_scalar_history(ni,nj,nh,fieldHistory,count,sourceIndexX,sourceIndexY,spaceInterpWeightX,&
+      spaceInterpWeightY,samePosition,timeInterpWeight,&
       fieldReceive)
 
     implicit none
@@ -2377,7 +2373,7 @@
     ! nh=2 时使用三个时间权重；nh=0 时读取细网格当前层，不再做时间插值。
 
     integer(kind=4), intent(in) :: ni, nj, nh, count, sourceIndexX(count), sourceIndexY(count)
-    real(kind=8), intent(in) :: fieldHistory(ni, nj, 0:nh), spaceInterpWeightX(4, count), spaceInterpWeightY(4, count), &
+    real(kind=8), intent(in) :: fieldHistory(ni,nj,0:nh), spaceInterpWeightX(4,count), spaceInterpWeightY(4,count), &
         timeInterpWeight(0:2)
     logical, intent(in) :: samePosition(count)
     real(kind=8), intent(out) :: fieldReceive(count)
@@ -2386,39 +2382,39 @@
 
     ! NVHPC 24.3/P100 上数组形参 firstprivate(timeInterpWeight) 会在设备读取 timeInterpWeight(k) 时非法访问。
     ! 在主机端取出三个时间权重，按标量值捕获；保持原三时间层插值及 async(1) 次序。
-    timeWeight0 = timeInterpWeight(0)
-    timeWeight1 = timeInterpWeight(1)
-    timeWeight2 = timeInterpWeight(2)
+    timeWeight0=timeInterpWeight(0)
+    timeWeight1=timeInterpWeight(1)
+    timeWeight2=timeInterpWeight(2)
     !$acc parallel loop present(fieldHistory, sourceIndexX, sourceIndexY, spaceInterpWeightX, spaceInterpWeightY, samePosition, &
     !$acc& fieldReceive) firstprivate(timeWeight0, timeWeight1, timeWeight2) async(1) private(ix, iy, k, value, wk)
-    do c = 1, count
-        value = 0.0d0
-        do k = 0, nh
-            wk = 1.0d0
-            if( nh == 2 ) then
+    do c=1,count
+        value=0.0d0
+        do k=0,nh
+            wk=1.0d0
+            if(nh==2) then
                 select case(k)
                 case(0)
-                    wk = timeWeight0
+                    wk=timeWeight0
                 case(1)
-                    wk = timeWeight1
+                    wk=timeWeight1
                 case(2)
-                    wk = timeWeight2
+                    wk=timeWeight2
                 end select
             endif
 
-            if( samePosition(c) ) then
-                value = value + wk * fieldHistory(sourceIndexX(c), sourceIndexY(c), k)
+            if(samePosition(c)) then
+                value=value+wk*fieldHistory(sourceIndexX(c),sourceIndexY(c),k)
             else
-                do iy = 1, 4
-                    do ix = 1, 4
-                        value = value + wk * spaceInterpWeightX(ix, c) * spaceInterpWeightY(iy, c) * &
-                            fieldHistory(sourceIndexX(c) + ix - 1, sourceIndexY(c) + iy - 1, k)
+                do iy=1,4
+                    do ix=1,4
+                        value=value+wk*spaceInterpWeightX(ix,c)*spaceInterpWeightY(iy,c)*&
+                            fieldHistory(sourceIndexX(c)+ix-1,sourceIndexY(c)+iy-1,k)
                     enddo
                 enddo
             endif
         enddo
 
-        fieldReceive(c) = value
+        fieldReceive(c)=value
     enddo
   end subroutine interpolate_scalar_history
 !===================================================================================================
@@ -2427,61 +2423,61 @@
 ! 子程序: interpolate_moment_history
 ! 作用: 对非平衡矩的各个分量进行空间及时间插值。
 !===================================================================================================
-  subroutine interpolate_moment_history(ni, nj, nh, momentCount, fieldHistory, count, sourceIndexX, sourceIndexY, &
-      spaceInterpWeightX, spaceInterpWeightY, &
-      samePosition, timeInterpWeight, fieldReceive)
+  subroutine interpolate_moment_history(ni,nj,nh,momentCount,fieldHistory,count,sourceIndexX,sourceIndexY,&
+      spaceInterpWeightX,spaceInterpWeightY,&
+      samePosition,timeInterpWeight,fieldReceive)
 
     implicit none
 
-    ! 与标量插值使用同样的空间和时间权重，另外逐个处理矩分量 a。
+    ! 每个矩分量 a 使用相同的空间、时间插值权重。
     ! momentCount 为 9 或 5；接收矩仍保持归一化状态，尚未换成接收区分布函数。
 
     integer(kind=4), intent(in) :: ni, nj, nh, momentCount, count, sourceIndexX(count), sourceIndexY(count)
-    real(kind=8), intent(in) :: fieldHistory(ni, nj, 0:momentCount - 1, 0:nh), spaceInterpWeightX(4, count), spaceInterpWeightY(4, &
-        count), timeInterpWeight(0:2)
+    real(kind=8), intent(in) :: fieldHistory(ni,nj,0:momentCount-1,0:nh), spaceInterpWeightX(4,count), spaceInterpWeightY(4,&
+        count),timeInterpWeight(0:2)
     logical, intent(in) :: samePosition(count)
-    real(kind=8), intent(out) :: fieldReceive(0:momentCount - 1, count)
+    real(kind=8), intent(out) :: fieldReceive(0:momentCount-1,count)
     integer(kind=4) :: c, a, ix, iy, k
     real(kind=8) :: value, wk, timeWeight0, timeWeight1, timeWeight2
 
     ! NVHPC 24.3/P100 上数组形参 firstprivate(timeInterpWeight) 会在设备读取 timeInterpWeight(k) 时非法访问。
     ! 在主机端取出三个时间权重，按标量值捕获；保持原三时间层插值及 async(1) 次序。
-    timeWeight0 = timeInterpWeight(0)
-    timeWeight1 = timeInterpWeight(1)
-    timeWeight2 = timeInterpWeight(2)
+    timeWeight0=timeInterpWeight(0)
+    timeWeight1=timeInterpWeight(1)
+    timeWeight2=timeInterpWeight(2)
     !$acc parallel loop collapse(2) present(fieldHistory, sourceIndexX, sourceIndexY, spaceInterpWeightX, spaceInterpWeightY, &
     !$acc& samePosition, &
     !$acc& fieldReceive) firstprivate(timeWeight0, timeWeight1, timeWeight2) async(1) private(ix, iy, k, value, wk)
-    do c = 1, count
-        do a = 0, momentCount - 1
-            value = 0.0d0
-            do k = 0, nh
-                wk = 1.0d0
-                if( nh == 2 ) then
+    do c=1,count
+        do a=0,momentCount-1
+            value=0.0d0
+            do k=0,nh
+                wk=1.0d0
+                if(nh==2) then
                     select case(k)
                     case(0)
-                        wk = timeWeight0
+                        wk=timeWeight0
                     case(1)
-                        wk = timeWeight1
+                        wk=timeWeight1
                     case(2)
-                        wk = timeWeight2
+                        wk=timeWeight2
                     end select
                 endif
 
-                if( samePosition(c) ) then
-                    value = value + wk * fieldHistory(sourceIndexX(c), sourceIndexY(c), a, k)
+                if(samePosition(c)) then
+                    value=value+wk*fieldHistory(sourceIndexX(c),sourceIndexY(c),a,k)
                 else
-                    do iy = 1, 4
-                        do ix = 1, 4
-                            value = value + wk * spaceInterpWeightX(ix, c) * spaceInterpWeightY(iy, c) * &
-                                fieldHistory(sourceIndexX(c) + ix - 1, sourceIndexY(c) + &
-                                iy - 1, a, k)
+                    do iy=1,4
+                        do ix=1,4
+                            value=value+wk*spaceInterpWeightX(ix,c)*spaceInterpWeightY(iy,c)*&
+                                fieldHistory(sourceIndexX(c)+ix-1,sourceIndexY(c)+&
+                                iy-1,a,k)
                         enddo
                     enddo
                 endif
             enddo
 
-            fieldReceive(a, c) = value
+            fieldReceive(a,c)=value
         enddo
     enddo
   end subroutine interpolate_moment_history
@@ -2491,8 +2487,8 @@
 ! 子程序: apply_interface_data
 ! 作用: 按接收区域参数还原力及非平衡矩，并重建接口节点的分布函数。
 !===================================================================================================
-  subroutine apply_interface_data(ni, nj, dx, Snu, Sq, Qk, Qnu, f, g, rho, u, v, T, Fx, Fy, count, targetIndexX, &
-      targetIndexY, rhoReceive, uReceive, vReceive, TReceive, FxOverDxReceive, FyOverDxReceive, flowNeqReceive, thermalNeqReceive)
+  subroutine apply_interface_data(ni,nj,dx,Snu,Sq,Qk,Qnu,f,g,rho,u,v,T,Fx,Fy,count,targetIndexX,&
+      targetIndexY,rhoReceive,uReceive,vReceive,TReceive,FxOverDxReceive,FyOverDxReceive,flowNeqReceive,thermalNeqReceive)
 
     implicit none
 
@@ -2508,59 +2504,59 @@
     real(kind=8), intent(in) :: TReceive(count)
     real(kind=8), intent(in) :: FxOverDxReceive(count)
     real(kind=8), intent(in) :: FyOverDxReceive(count)
-    real(kind=8), intent(in) :: flowNeqReceive(0:8, count)
-    real(kind=8), intent(in) :: thermalNeqReceive(0:4, count)
-    real(kind=8), intent(inout) :: f(ni, nj, 0:8), g(ni, nj, 0:4), rho(ni, nj), u(ni, nj), v(ni, nj), T(ni, nj)
-    real(kind=8), intent(inout) :: Fx(ni, nj), Fy(ni, nj)
+    real(kind=8), intent(in) :: flowNeqReceive(0:8,count)
+    real(kind=8), intent(in) :: thermalNeqReceive(0:4,count)
+    real(kind=8), intent(inout) :: f(ni,nj,0:8), g(ni,nj,0:4), rho(ni,nj), u(ni,nj), v(ni,nj), T(ni,nj)
+    real(kind=8), intent(inout) :: Fx(ni,nj), Fy(ni,nj)
     integer(kind=4) :: c, i, j, a
     real(kind=8) :: m(0:8), meq(0:8), fm(0:8), n(0:4), neq(0:4), s(0:8), q(0:4), fv(0:8), gv(0:4)
 
     !$acc parallel loop present(f, g, rho, u, v, T, Fx, Fy, targetIndexX, targetIndexY, rhoReceive, uReceive, vReceive, &
     !$acc& TReceive, FxOverDxReceive, FyOverDxReceive, flowNeqReceive, thermalNeqReceive) async(1) &
     !$acc& private(i, j, a, m, meq, fm, n, neq, s, q, fv, gv)
-    do c = 1, count
-        i = targetIndexX(c)
-        j = targetIndexY(c)
-        rho(i, j) = rhoReceive(c)
-        u(i, j) = uReceive(c)
-        v(i, j) = vReceive(c)
-        T(i, j) = TReceive(c)
-        Fx(i, j) = dx * FxOverDxReceive(c)
-        Fy(i, j) = dx * FyOverDxReceive(c)
+    do c=1,count
+        i=targetIndexX(c)
+        j=targetIndexY(c)
+        rho(i,j)=rhoReceive(c)
+        u(i,j)=uReceive(c)
+        v(i,j)=vReceive(c)
+        T(i,j)=TReceive(c)
+        Fx(i,j)=dx*FxOverDxReceive(c)
+        Fy(i,j)=dx*FyOverDxReceive(c)
 
-        call equilibrium_moments(rho(i, j), u(i, j), v(i, j), T(i, j), meq, neq)
+        call equilibrium_moments(rho(i,j),u(i,j),v(i,j),T(i,j),meq,neq)
 
-        call force_moments(u(i, j), v(i, j), Fx(i, j), Fy(i, j), fm)
-        s = [0.0d0, Snu, Snu, 0.0d0, Sq, 0.0d0, Sq, Snu, Snu]
-        q = [0.0d0, Qk, Qk, Qnu, Qnu]
+        call force_moments(u(i,j),v(i,j),Fx(i,j),Fy(i,j),fm)
+        s=[0.0d0,Snu,Snu,0.0d0,Sq,0.0d0,Sq,Snu,Snu]
+        q=[0.0d0,Qk,Qk,Qnu,Qnu]
 
         ! 从平衡矩出发，逐项加回按接收区尺度还原的非平衡部分。
-        m = meq
-        n = neq
-        do a = 0, 8
-            if( s(a) > 0.0d0) m(a) = meq(a) + dx / s(a) * flowNeqReceive(a, c) - 0.5d0 * fm(a)
+        m=meq
+        n=neq
+        do a=0,8
+            if(s(a) > 0.0d0) m(a)=meq(a)+dx/s(a)*flowNeqReceive(a,c)-0.5d0*fm(a)
         enddo
 
         ! Eq. (21)：守恒矩直接用宏观量和半步力重建，不除以零松弛率。
-        m(0) = rho(i, j)
-        m(3) = rho(i, j) * u(i, j) - 0.5d0 * Fx(i, j)
-        m(5) = rho(i, j) * v(i, j) - 0.5d0 * Fy(i, j)
-        do a = 1, 4
-            n(a) = neq(a) + dx / q(a) * thermalNeqReceive(a, c)
+        m(0)=rho(i,j)
+        m(3)=rho(i,j)*u(i,j)-0.5d0*Fx(i,j)
+        m(5)=rho(i,j)*v(i,j)-0.5d0*Fy(i,j)
+        do a=1,4
+            n(a)=neq(a)+dx/q(a)*thermalNeqReceive(a,c)
         enddo
 
-        n(0) = T(i, j)
+        n(0)=T(i,j)
 
         ! 把重建后的矩逆变换为分布函数，再写入当前接收节点。
-        call flow_populations(m, fv)
+        call flow_populations(m,fv)
 
-        call thermal_populations(n, gv)
-        do a = 0, 8
-            f(i, j, a) = fv(a)
+        call thermal_populations(n,gv)
+        do a=0,8
+            f(i,j,a)=fv(a)
         enddo
 
-        do a = 0, 4
-            g(i, j, a) = gv(a)
+        do a=0,4
+            g(i,j,a)=gv(a)
         enddo
     enddo
   end subroutine apply_interface_data
@@ -2580,108 +2576,108 @@
 
     integer(kind=4) :: n
 
-    if( refineRatio == 1 ) return
+    if(refineRatio==1) return
 
     ! 粗到左细区：计数、分配索引和权重，再填入来源模板。
-    call count_fine_interface(nxLeft, nyLeft, xOffsetLeft, yOffsetLeft, coarseToLeftReceiveNodeCount)
-    allocate(coarseToLeftReceiveIndexX(coarseToLeftReceiveNodeCount), coarseToLeftReceiveIndexY(coarseToLeftReceiveNodeCount), &
-        coarseToLeftSourceIndexX(coarseToLeftReceiveNodeCount), coarseToLeftSourceIndexY(coarseToLeftReceiveNodeCount))
+    call count_fine_interface(nxLeft,nyLeft,xOffsetLeft,yOffsetLeft,coarseToLeftReceiveNodeCount)
+    allocate(coarseToLeftReceiveIndexX(coarseToLeftReceiveNodeCount),coarseToLeftReceiveIndexY(coarseToLeftReceiveNodeCount),&
+        coarseToLeftSourceIndexX(coarseToLeftReceiveNodeCount),coarseToLeftSourceIndexY(coarseToLeftReceiveNodeCount))
     allocate(coarseToLeftSamePosition(coarseToLeftReceiveNodeCount))
-    allocate(coarseToLeftSpaceInterpWeightX(4, coarseToLeftReceiveNodeCount), coarseToLeftSpaceInterpWeightY(4, coarseToLeftReceiveNodeCount))
+    allocate(coarseToLeftSpaceInterpWeightX(4,coarseToLeftReceiveNodeCount),coarseToLeftSpaceInterpWeightY(4,coarseToLeftReceiveNodeCount))
 
-    call fill_fine_interface(nxLeft, nyLeft, xOffsetLeft, yOffsetLeft, coarseToLeftReceiveNodeCount, &
-        coarseToLeftReceiveIndexX, coarseToLeftReceiveIndexY, coarseToLeftSourceIndexX, coarseToLeftSourceIndexY, &
-        coarseToLeftSpaceInterpWeightX, coarseToLeftSpaceInterpWeightY, &
+    call fill_fine_interface(nxLeft,nyLeft,xOffsetLeft,yOffsetLeft,coarseToLeftReceiveNodeCount,&
+        coarseToLeftReceiveIndexX,coarseToLeftReceiveIndexY,coarseToLeftSourceIndexX,coarseToLeftSourceIndexY,&
+        coarseToLeftSpaceInterpWeightX,coarseToLeftSpaceInterpWeightY,&
         coarseToLeftSamePosition)
 
     ! 左细区到粗：记录粗边缘上的共址接收点及其细来源下标。
-    call count_coarse_interface(nxLeft, nyLeft, xOffsetLeft, yOffsetLeft, leftToCoarseReceiveNodeCount)
-    allocate(leftToCoarseReceiveIndexX(leftToCoarseReceiveNodeCount), leftToCoarseReceiveIndexY(leftToCoarseReceiveNodeCount), &
-        leftToCoarseSourceIndexX(leftToCoarseReceiveNodeCount), leftToCoarseSourceIndexY(leftToCoarseReceiveNodeCount))
+    call count_coarse_interface(nxLeft,nyLeft,xOffsetLeft,yOffsetLeft,leftToCoarseReceiveNodeCount)
+    allocate(leftToCoarseReceiveIndexX(leftToCoarseReceiveNodeCount),leftToCoarseReceiveIndexY(leftToCoarseReceiveNodeCount),&
+        leftToCoarseSourceIndexX(leftToCoarseReceiveNodeCount),leftToCoarseSourceIndexY(leftToCoarseReceiveNodeCount))
     allocate(leftToCoarseSamePosition(leftToCoarseReceiveNodeCount))
-    allocate(leftToCoarseSpaceInterpWeightX(4, leftToCoarseReceiveNodeCount), leftToCoarseSpaceInterpWeightY(4, leftToCoarseReceiveNodeCount))
+    allocate(leftToCoarseSpaceInterpWeightX(4,leftToCoarseReceiveNodeCount),leftToCoarseSpaceInterpWeightY(4,leftToCoarseReceiveNodeCount))
 
-    call fill_coarse_interface(nxLeft, nyLeft, xOffsetLeft, yOffsetLeft, leftToCoarseReceiveNodeCount, &
-        leftToCoarseReceiveIndexX, leftToCoarseReceiveIndexY, leftToCoarseSourceIndexX, leftToCoarseSourceIndexY, &
-        leftToCoarseSpaceInterpWeightX, leftToCoarseSpaceInterpWeightY, &
+    call fill_coarse_interface(nxLeft,nyLeft,xOffsetLeft,yOffsetLeft,leftToCoarseReceiveNodeCount,&
+        leftToCoarseReceiveIndexX,leftToCoarseReceiveIndexY,leftToCoarseSourceIndexX,leftToCoarseSourceIndexY,&
+        leftToCoarseSpaceInterpWeightX,leftToCoarseSpaceInterpWeightY,&
         leftToCoarseSamePosition)
 
     ! 粗到右细区：计数、分配索引和权重，再填入来源模板。
-    call count_fine_interface(nxRight, nyRight, xOffsetRight, yOffsetRight, coarseToRightReceiveNodeCount)
-    allocate(coarseToRightReceiveIndexX(coarseToRightReceiveNodeCount), coarseToRightReceiveIndexY(coarseToRightReceiveNodeCount), &
-        coarseToRightSourceIndexX(coarseToRightReceiveNodeCount), coarseToRightSourceIndexY(coarseToRightReceiveNodeCount))
+    call count_fine_interface(nxRight,nyRight,xOffsetRight,yOffsetRight,coarseToRightReceiveNodeCount)
+    allocate(coarseToRightReceiveIndexX(coarseToRightReceiveNodeCount),coarseToRightReceiveIndexY(coarseToRightReceiveNodeCount),&
+        coarseToRightSourceIndexX(coarseToRightReceiveNodeCount),coarseToRightSourceIndexY(coarseToRightReceiveNodeCount))
     allocate(coarseToRightSamePosition(coarseToRightReceiveNodeCount))
-    allocate(coarseToRightSpaceInterpWeightX(4, coarseToRightReceiveNodeCount), coarseToRightSpaceInterpWeightY(4, coarseToRightReceiveNodeCount))
+    allocate(coarseToRightSpaceInterpWeightX(4,coarseToRightReceiveNodeCount),coarseToRightSpaceInterpWeightY(4,coarseToRightReceiveNodeCount))
 
-    call fill_fine_interface(nxRight, nyRight, xOffsetRight, yOffsetRight, coarseToRightReceiveNodeCount, &
-        coarseToRightReceiveIndexX, coarseToRightReceiveIndexY, coarseToRightSourceIndexX, coarseToRightSourceIndexY, &
-        coarseToRightSpaceInterpWeightX, &
-        coarseToRightSpaceInterpWeightY, coarseToRightSamePosition)
+    call fill_fine_interface(nxRight,nyRight,xOffsetRight,yOffsetRight,coarseToRightReceiveNodeCount,&
+        coarseToRightReceiveIndexX,coarseToRightReceiveIndexY,coarseToRightSourceIndexX,coarseToRightSourceIndexY,&
+        coarseToRightSpaceInterpWeightX,&
+        coarseToRightSpaceInterpWeightY,coarseToRightSamePosition)
 
     ! 右细区到粗：记录粗边缘上的共址接收点及其细来源下标。
-    call count_coarse_interface(nxRight, nyRight, xOffsetRight, yOffsetRight, rightToCoarseReceiveNodeCount)
-    allocate(rightToCoarseReceiveIndexX(rightToCoarseReceiveNodeCount), rightToCoarseReceiveIndexY(rightToCoarseReceiveNodeCount), &
-        rightToCoarseSourceIndexX(rightToCoarseReceiveNodeCount), rightToCoarseSourceIndexY(rightToCoarseReceiveNodeCount))
+    call count_coarse_interface(nxRight,nyRight,xOffsetRight,yOffsetRight,rightToCoarseReceiveNodeCount)
+    allocate(rightToCoarseReceiveIndexX(rightToCoarseReceiveNodeCount),rightToCoarseReceiveIndexY(rightToCoarseReceiveNodeCount),&
+        rightToCoarseSourceIndexX(rightToCoarseReceiveNodeCount),rightToCoarseSourceIndexY(rightToCoarseReceiveNodeCount))
     allocate(rightToCoarseSamePosition(rightToCoarseReceiveNodeCount))
-    allocate(rightToCoarseSpaceInterpWeightX(4, rightToCoarseReceiveNodeCount), rightToCoarseSpaceInterpWeightY(4, rightToCoarseReceiveNodeCount))
+    allocate(rightToCoarseSpaceInterpWeightX(4,rightToCoarseReceiveNodeCount),rightToCoarseSpaceInterpWeightY(4,rightToCoarseReceiveNodeCount))
 
-    call fill_coarse_interface(nxRight, nyRight, xOffsetRight, yOffsetRight, rightToCoarseReceiveNodeCount, &
-        rightToCoarseReceiveIndexX, rightToCoarseReceiveIndexY, rightToCoarseSourceIndexX, rightToCoarseSourceIndexY, &
-        rightToCoarseSpaceInterpWeightX, &
-        rightToCoarseSpaceInterpWeightY, rightToCoarseSamePosition)
+    call fill_coarse_interface(nxRight,nyRight,xOffsetRight,yOffsetRight,rightToCoarseReceiveNodeCount,&
+        rightToCoarseReceiveIndexX,rightToCoarseReceiveIndexY,rightToCoarseSourceIndexX,rightToCoarseSourceIndexY,&
+        rightToCoarseSpaceInterpWeightX,&
+        rightToCoarseSpaceInterpWeightY,rightToCoarseSamePosition)
 
     ! 粗到下细区：计数、分配索引和权重，再填入来源模板。
-    call count_fine_interface(nxBottom, nyBottom, xOffsetBottom, yOffsetBottom, coarseToBottomReceiveNodeCount)
-    allocate(coarseToBottomReceiveIndexX(coarseToBottomReceiveNodeCount), coarseToBottomReceiveIndexY(coarseToBottomReceiveNodeCount), &
-        coarseToBottomSourceIndexX(coarseToBottomReceiveNodeCount), coarseToBottomSourceIndexY(coarseToBottomReceiveNodeCount))
+    call count_fine_interface(nxBottom,nyBottom,xOffsetBottom,yOffsetBottom,coarseToBottomReceiveNodeCount)
+    allocate(coarseToBottomReceiveIndexX(coarseToBottomReceiveNodeCount),coarseToBottomReceiveIndexY(coarseToBottomReceiveNodeCount),&
+        coarseToBottomSourceIndexX(coarseToBottomReceiveNodeCount),coarseToBottomSourceIndexY(coarseToBottomReceiveNodeCount))
     allocate(coarseToBottomSamePosition(coarseToBottomReceiveNodeCount))
-    allocate(coarseToBottomSpaceInterpWeightX(4, coarseToBottomReceiveNodeCount), coarseToBottomSpaceInterpWeightY(4, coarseToBottomReceiveNodeCount))
+    allocate(coarseToBottomSpaceInterpWeightX(4,coarseToBottomReceiveNodeCount),coarseToBottomSpaceInterpWeightY(4,coarseToBottomReceiveNodeCount))
 
-    call fill_fine_interface(nxBottom, nyBottom, xOffsetBottom, yOffsetBottom, coarseToBottomReceiveNodeCount, &
-        coarseToBottomReceiveIndexX, coarseToBottomReceiveIndexY, coarseToBottomSourceIndexX, &
-        coarseToBottomSourceIndexY, coarseToBottomSpaceInterpWeightX, &
-        coarseToBottomSpaceInterpWeightY, coarseToBottomSamePosition)
+    call fill_fine_interface(nxBottom,nyBottom,xOffsetBottom,yOffsetBottom,coarseToBottomReceiveNodeCount,&
+        coarseToBottomReceiveIndexX,coarseToBottomReceiveIndexY,coarseToBottomSourceIndexX,&
+        coarseToBottomSourceIndexY,coarseToBottomSpaceInterpWeightX,&
+        coarseToBottomSpaceInterpWeightY,coarseToBottomSamePosition)
 
     ! 下细区到粗：记录粗边缘上的共址接收点及其细来源下标。
-    call count_coarse_interface(nxBottom, nyBottom, xOffsetBottom, yOffsetBottom, bottomToCoarseReceiveNodeCount)
-    allocate(bottomToCoarseReceiveIndexX(bottomToCoarseReceiveNodeCount), bottomToCoarseReceiveIndexY(bottomToCoarseReceiveNodeCount), &
-        bottomToCoarseSourceIndexX(bottomToCoarseReceiveNodeCount), bottomToCoarseSourceIndexY(bottomToCoarseReceiveNodeCount))
+    call count_coarse_interface(nxBottom,nyBottom,xOffsetBottom,yOffsetBottom,bottomToCoarseReceiveNodeCount)
+    allocate(bottomToCoarseReceiveIndexX(bottomToCoarseReceiveNodeCount),bottomToCoarseReceiveIndexY(bottomToCoarseReceiveNodeCount),&
+        bottomToCoarseSourceIndexX(bottomToCoarseReceiveNodeCount),bottomToCoarseSourceIndexY(bottomToCoarseReceiveNodeCount))
     allocate(bottomToCoarseSamePosition(bottomToCoarseReceiveNodeCount))
-    allocate(bottomToCoarseSpaceInterpWeightX(4, bottomToCoarseReceiveNodeCount), bottomToCoarseSpaceInterpWeightY(4, bottomToCoarseReceiveNodeCount))
+    allocate(bottomToCoarseSpaceInterpWeightX(4,bottomToCoarseReceiveNodeCount),bottomToCoarseSpaceInterpWeightY(4,bottomToCoarseReceiveNodeCount))
 
-    call fill_coarse_interface(nxBottom, nyBottom, xOffsetBottom, yOffsetBottom, bottomToCoarseReceiveNodeCount, &
-        bottomToCoarseReceiveIndexX, bottomToCoarseReceiveIndexY, bottomToCoarseSourceIndexX, &
-        bottomToCoarseSourceIndexY, bottomToCoarseSpaceInterpWeightX, &
-        bottomToCoarseSpaceInterpWeightY, bottomToCoarseSamePosition)
+    call fill_coarse_interface(nxBottom,nyBottom,xOffsetBottom,yOffsetBottom,bottomToCoarseReceiveNodeCount,&
+        bottomToCoarseReceiveIndexX,bottomToCoarseReceiveIndexY,bottomToCoarseSourceIndexX,&
+        bottomToCoarseSourceIndexY,bottomToCoarseSpaceInterpWeightX,&
+        bottomToCoarseSpaceInterpWeightY,bottomToCoarseSamePosition)
 
     ! 粗到上细区：计数、分配索引和权重，再填入来源模板。
-    call count_fine_interface(nxTop, nyTop, xOffsetTop, yOffsetTop, coarseToTopReceiveNodeCount)
-    allocate(coarseToTopReceiveIndexX(coarseToTopReceiveNodeCount), coarseToTopReceiveIndexY(coarseToTopReceiveNodeCount), &
-        coarseToTopSourceIndexX(coarseToTopReceiveNodeCount), coarseToTopSourceIndexY(coarseToTopReceiveNodeCount))
+    call count_fine_interface(nxTop,nyTop,xOffsetTop,yOffsetTop,coarseToTopReceiveNodeCount)
+    allocate(coarseToTopReceiveIndexX(coarseToTopReceiveNodeCount),coarseToTopReceiveIndexY(coarseToTopReceiveNodeCount),&
+        coarseToTopSourceIndexX(coarseToTopReceiveNodeCount),coarseToTopSourceIndexY(coarseToTopReceiveNodeCount))
     allocate(coarseToTopSamePosition(coarseToTopReceiveNodeCount))
-    allocate(coarseToTopSpaceInterpWeightX(4, coarseToTopReceiveNodeCount), coarseToTopSpaceInterpWeightY(4, coarseToTopReceiveNodeCount))
+    allocate(coarseToTopSpaceInterpWeightX(4,coarseToTopReceiveNodeCount),coarseToTopSpaceInterpWeightY(4,coarseToTopReceiveNodeCount))
 
-    call fill_fine_interface(nxTop, nyTop, xOffsetTop, yOffsetTop, coarseToTopReceiveNodeCount, coarseToTopReceiveIndexX, &
-        coarseToTopReceiveIndexY, coarseToTopSourceIndexX, coarseToTopSourceIndexY, coarseToTopSpaceInterpWeightX, &
-        coarseToTopSpaceInterpWeightY, coarseToTopSamePosition)
+    call fill_fine_interface(nxTop,nyTop,xOffsetTop,yOffsetTop,coarseToTopReceiveNodeCount,coarseToTopReceiveIndexX,&
+        coarseToTopReceiveIndexY,coarseToTopSourceIndexX,coarseToTopSourceIndexY,coarseToTopSpaceInterpWeightX,&
+        coarseToTopSpaceInterpWeightY,coarseToTopSamePosition)
 
     ! 上细区到粗：记录粗边缘上的共址接收点及其细来源下标。
-    call count_coarse_interface(nxTop, nyTop, xOffsetTop, yOffsetTop, topToCoarseReceiveNodeCount)
-    allocate(topToCoarseReceiveIndexX(topToCoarseReceiveNodeCount), topToCoarseReceiveIndexY(topToCoarseReceiveNodeCount), &
-        topToCoarseSourceIndexX(topToCoarseReceiveNodeCount), topToCoarseSourceIndexY(topToCoarseReceiveNodeCount))
+    call count_coarse_interface(nxTop,nyTop,xOffsetTop,yOffsetTop,topToCoarseReceiveNodeCount)
+    allocate(topToCoarseReceiveIndexX(topToCoarseReceiveNodeCount),topToCoarseReceiveIndexY(topToCoarseReceiveNodeCount),&
+        topToCoarseSourceIndexX(topToCoarseReceiveNodeCount),topToCoarseSourceIndexY(topToCoarseReceiveNodeCount))
     allocate(topToCoarseSamePosition(topToCoarseReceiveNodeCount))
-    allocate(topToCoarseSpaceInterpWeightX(4, topToCoarseReceiveNodeCount), topToCoarseSpaceInterpWeightY(4, topToCoarseReceiveNodeCount))
+    allocate(topToCoarseSpaceInterpWeightX(4,topToCoarseReceiveNodeCount),topToCoarseSpaceInterpWeightY(4,topToCoarseReceiveNodeCount))
 
-    call fill_coarse_interface(nxTop, nyTop, xOffsetTop, yOffsetTop, topToCoarseReceiveNodeCount, topToCoarseReceiveIndexX, &
-        topToCoarseReceiveIndexY, topToCoarseSourceIndexX, topToCoarseSourceIndexY, topToCoarseSpaceInterpWeightX, &
-        topToCoarseSpaceInterpWeightY, topToCoarseSamePosition)
-    if( leftToCoarseReceiveNodeCount + rightToCoarseReceiveNodeCount + bottomToCoarseReceiveNodeCount + topToCoarseReceiveNodeCount /= &
-        nxCoarse * nyCoarse - (nxCoarse - 2 * interfaceSkin) * (nyCoarse - 2 * interfaceSkin)) &
+    call fill_coarse_interface(nxTop,nyTop,xOffsetTop,yOffsetTop,topToCoarseReceiveNodeCount,topToCoarseReceiveIndexX,&
+        topToCoarseReceiveIndexY,topToCoarseSourceIndexX,topToCoarseSourceIndexY,topToCoarseSpaceInterpWeightX,&
+        topToCoarseSpaceInterpWeightY,topToCoarseSamePosition)
+    if(leftToCoarseReceiveNodeCount+rightToCoarseReceiveNodeCount+bottomToCoarseReceiveNodeCount+topToCoarseReceiveNodeCount/=&
+        nxCoarse*nyCoarse-(nxCoarse-2*interfaceSkin)*(nyCoarse-2*interfaceSkin)) &
         error stop 'Four fine arrays do not cover the complete coarse interface'
-    n = max(coarseToLeftReceiveNodeCount, leftToCoarseReceiveNodeCount, coarseToRightReceiveNodeCount, rightToCoarseReceiveNodeCount, &
-        coarseToBottomReceiveNodeCount, bottomToCoarseReceiveNodeCount, coarseToTopReceiveNodeCount, topToCoarseReceiveNodeCount)
-    allocate(rhoReceive(n), uReceive(n), vReceive(n), TReceive(n), FxOverDxReceive(n), FyOverDxReceive(n))
-    allocate(flowNeqReceive(0:8, n), thermalNeqReceive(0:4, n))
+    n=max(coarseToLeftReceiveNodeCount,leftToCoarseReceiveNodeCount,coarseToRightReceiveNodeCount,rightToCoarseReceiveNodeCount,&
+        coarseToBottomReceiveNodeCount,bottomToCoarseReceiveNodeCount,coarseToTopReceiveNodeCount,topToCoarseReceiveNodeCount)
+    allocate(rhoReceive(n),uReceive(n),vReceive(n),TReceive(n),FxOverDxReceive(n),FyOverDxReceive(n))
+    allocate(flowNeqReceive(0:8,n),thermalNeqReceive(0:4,n))
   end subroutine build_interfaces
 !===================================================================================================
 
@@ -2698,8 +2694,8 @@
 
     logical, intent(in) :: entering
 
-    if( refineRatio == 1 ) return
-    if( entering ) then
+    if(refineRatio==1) return
+    if(entering) then
         !$acc enter data copyin(coarseToLeftReceiveIndexX, coarseToLeftReceiveIndexY, coarseToLeftSourceIndexX, &
         !$acc& coarseToLeftSourceIndexY,  &
         !$acc& coarseToLeftSpaceInterpWeightX, coarseToLeftSpaceInterpWeightY, coarseToLeftSamePosition)
@@ -2770,52 +2766,52 @@
 
     real(kind=8), intent(in) :: timeInterpWeight(0:2)
 
-    call interpolate_exchange_history(nxCoarse, nyCoarse, timeInterpMaxIndexCoarse, rhoTimeInterp_coarse, &
-        uTimeInterp_coarse, vTimeInterp_coarse, TTimeInterp_coarse, FxOverDxTimeInterp_coarse, FyOverDxTimeInterp_coarse, &
-        flowNeqTimeInterp_coarse, thermalNeqTimeInterp_coarse, coarseToLeftReceiveNodeCount, coarseToLeftSourceIndexX, &
-        coarseToLeftSourceIndexY, coarseToLeftSpaceInterpWeightX, coarseToLeftSpaceInterpWeightY, coarseToLeftSamePosition, &
-        timeInterpWeight, rhoReceive, uReceive, &
-        vReceive, TReceive, FxOverDxReceive, FyOverDxReceive, flowNeqReceive, thermalNeqReceive)
+    call interpolate_exchange_history(nxCoarse,nyCoarse,timeInterpMaxIndexCoarse,rhoTimeInterp_coarse,&
+        uTimeInterp_coarse,vTimeInterp_coarse,TTimeInterp_coarse,FxOverDxTimeInterp_coarse,FyOverDxTimeInterp_coarse,&
+        flowNeqTimeInterp_coarse,thermalNeqTimeInterp_coarse,coarseToLeftReceiveNodeCount,coarseToLeftSourceIndexX,&
+        coarseToLeftSourceIndexY,coarseToLeftSpaceInterpWeightX,coarseToLeftSpaceInterpWeightY,coarseToLeftSamePosition,&
+        timeInterpWeight,rhoReceive,uReceive,&
+        vReceive,TReceive,FxOverDxReceive,FyOverDxReceive,flowNeqReceive,thermalNeqReceive)
 
-    call apply_interface_data(nxLeft, nyLeft, dxFine, Snu, Sq, Qk, Qnu, f_left, g_left, &
-        rho_left, u_left, v_left, T_left, Fx_left, Fy_left, coarseToLeftReceiveNodeCount, coarseToLeftReceiveIndexX, &
-        coarseToLeftReceiveIndexY, rhoReceive, uReceive, vReceive, TReceive, FxOverDxReceive, FyOverDxReceive, flowNeqReceive, &
+    call apply_interface_data(nxLeft,nyLeft,dxFine,Snu,Sq,Qk,Qnu,f_left,g_left,&
+        rho_left,u_left,v_left,T_left,Fx_left,Fy_left,coarseToLeftReceiveNodeCount,coarseToLeftReceiveIndexX,&
+        coarseToLeftReceiveIndexY,rhoReceive,uReceive,vReceive,TReceive,FxOverDxReceive,FyOverDxReceive,flowNeqReceive,&
         thermalNeqReceive)
 
-    call interpolate_exchange_history(nxCoarse, nyCoarse, timeInterpMaxIndexCoarse, rhoTimeInterp_coarse, &
-        uTimeInterp_coarse, vTimeInterp_coarse, TTimeInterp_coarse, FxOverDxTimeInterp_coarse, FyOverDxTimeInterp_coarse, &
-        flowNeqTimeInterp_coarse, thermalNeqTimeInterp_coarse, coarseToRightReceiveNodeCount, coarseToRightSourceIndexX, &
-        coarseToRightSourceIndexY, coarseToRightSpaceInterpWeightX, coarseToRightSpaceInterpWeightY, &
-        coarseToRightSamePosition, timeInterpWeight, rhoReceive, uReceive, &
-        vReceive, TReceive, FxOverDxReceive, FyOverDxReceive, flowNeqReceive, thermalNeqReceive)
+    call interpolate_exchange_history(nxCoarse,nyCoarse,timeInterpMaxIndexCoarse,rhoTimeInterp_coarse,&
+        uTimeInterp_coarse,vTimeInterp_coarse,TTimeInterp_coarse,FxOverDxTimeInterp_coarse,FyOverDxTimeInterp_coarse,&
+        flowNeqTimeInterp_coarse,thermalNeqTimeInterp_coarse,coarseToRightReceiveNodeCount,coarseToRightSourceIndexX,&
+        coarseToRightSourceIndexY,coarseToRightSpaceInterpWeightX,coarseToRightSpaceInterpWeightY,&
+        coarseToRightSamePosition,timeInterpWeight,rhoReceive,uReceive,&
+        vReceive,TReceive,FxOverDxReceive,FyOverDxReceive,flowNeqReceive,thermalNeqReceive)
 
-    call apply_interface_data(nxRight, nyRight, dxFine, Snu, Sq, Qk, Qnu, f_right, &
-        g_right, rho_right, u_right, v_right, T_right, Fx_right, Fy_right, coarseToRightReceiveNodeCount, &
-        coarseToRightReceiveIndexX, coarseToRightReceiveIndexY, rhoReceive, uReceive, vReceive, TReceive, FxOverDxReceive, &
-        FyOverDxReceive, flowNeqReceive, thermalNeqReceive)
+    call apply_interface_data(nxRight,nyRight,dxFine,Snu,Sq,Qk,Qnu,f_right,&
+        g_right,rho_right,u_right,v_right,T_right,Fx_right,Fy_right,coarseToRightReceiveNodeCount,&
+        coarseToRightReceiveIndexX,coarseToRightReceiveIndexY,rhoReceive,uReceive,vReceive,TReceive,FxOverDxReceive,&
+        FyOverDxReceive,flowNeqReceive,thermalNeqReceive)
 
-    call interpolate_exchange_history(nxCoarse, nyCoarse, timeInterpMaxIndexCoarse, rhoTimeInterp_coarse, &
-        uTimeInterp_coarse, vTimeInterp_coarse, TTimeInterp_coarse, FxOverDxTimeInterp_coarse, FyOverDxTimeInterp_coarse, &
-        flowNeqTimeInterp_coarse, thermalNeqTimeInterp_coarse, coarseToBottomReceiveNodeCount, coarseToBottomSourceIndexX, &
-        coarseToBottomSourceIndexY, coarseToBottomSpaceInterpWeightX, coarseToBottomSpaceInterpWeightY, &
-        coarseToBottomSamePosition, timeInterpWeight, rhoReceive, &
-        uReceive, vReceive, TReceive, FxOverDxReceive, FyOverDxReceive, flowNeqReceive, thermalNeqReceive)
+    call interpolate_exchange_history(nxCoarse,nyCoarse,timeInterpMaxIndexCoarse,rhoTimeInterp_coarse,&
+        uTimeInterp_coarse,vTimeInterp_coarse,TTimeInterp_coarse,FxOverDxTimeInterp_coarse,FyOverDxTimeInterp_coarse,&
+        flowNeqTimeInterp_coarse,thermalNeqTimeInterp_coarse,coarseToBottomReceiveNodeCount,coarseToBottomSourceIndexX,&
+        coarseToBottomSourceIndexY,coarseToBottomSpaceInterpWeightX,coarseToBottomSpaceInterpWeightY,&
+        coarseToBottomSamePosition,timeInterpWeight,rhoReceive,&
+        uReceive,vReceive,TReceive,FxOverDxReceive,FyOverDxReceive,flowNeqReceive,thermalNeqReceive)
 
-    call apply_interface_data(nxBottom, nyBottom, dxFine, Snu, Sq, Qk, Qnu, f_bottom, &
-        g_bottom, rho_bottom, u_bottom, v_bottom, T_bottom, Fx_bottom, Fy_bottom, coarseToBottomReceiveNodeCount, &
-        coarseToBottomReceiveIndexX, coarseToBottomReceiveIndexY, rhoReceive, uReceive, vReceive, TReceive, FxOverDxReceive, &
-        FyOverDxReceive, flowNeqReceive, thermalNeqReceive)
+    call apply_interface_data(nxBottom,nyBottom,dxFine,Snu,Sq,Qk,Qnu,f_bottom,&
+        g_bottom,rho_bottom,u_bottom,v_bottom,T_bottom,Fx_bottom,Fy_bottom,coarseToBottomReceiveNodeCount,&
+        coarseToBottomReceiveIndexX,coarseToBottomReceiveIndexY,rhoReceive,uReceive,vReceive,TReceive,FxOverDxReceive,&
+        FyOverDxReceive,flowNeqReceive,thermalNeqReceive)
 
-    call interpolate_exchange_history(nxCoarse, nyCoarse, timeInterpMaxIndexCoarse, rhoTimeInterp_coarse, &
-        uTimeInterp_coarse, vTimeInterp_coarse, TTimeInterp_coarse, FxOverDxTimeInterp_coarse, FyOverDxTimeInterp_coarse, &
-        flowNeqTimeInterp_coarse, thermalNeqTimeInterp_coarse, coarseToTopReceiveNodeCount, coarseToTopSourceIndexX, &
-        coarseToTopSourceIndexY, coarseToTopSpaceInterpWeightX, coarseToTopSpaceInterpWeightY, coarseToTopSamePosition, &
-        timeInterpWeight, rhoReceive, uReceive, &
-        vReceive, TReceive, FxOverDxReceive, FyOverDxReceive, flowNeqReceive, thermalNeqReceive)
+    call interpolate_exchange_history(nxCoarse,nyCoarse,timeInterpMaxIndexCoarse,rhoTimeInterp_coarse,&
+        uTimeInterp_coarse,vTimeInterp_coarse,TTimeInterp_coarse,FxOverDxTimeInterp_coarse,FyOverDxTimeInterp_coarse,&
+        flowNeqTimeInterp_coarse,thermalNeqTimeInterp_coarse,coarseToTopReceiveNodeCount,coarseToTopSourceIndexX,&
+        coarseToTopSourceIndexY,coarseToTopSpaceInterpWeightX,coarseToTopSpaceInterpWeightY,coarseToTopSamePosition,&
+        timeInterpWeight,rhoReceive,uReceive,&
+        vReceive,TReceive,FxOverDxReceive,FyOverDxReceive,flowNeqReceive,thermalNeqReceive)
 
-    call apply_interface_data(nxTop, nyTop, dxFine, Snu, Sq, Qk, Qnu, f_top, g_top, &
-        rho_top, u_top, v_top, T_top, Fx_top, Fy_top, coarseToTopReceiveNodeCount, coarseToTopReceiveIndexX, coarseToTopReceiveIndexY, &
-        rhoReceive, uReceive, vReceive, TReceive, FxOverDxReceive, FyOverDxReceive, flowNeqReceive, thermalNeqReceive)
+    call apply_interface_data(nxTop,nyTop,dxFine,Snu,Sq,Qk,Qnu,f_top,g_top,&
+        rho_top,u_top,v_top,T_top,Fx_top,Fy_top,coarseToTopReceiveNodeCount,coarseToTopReceiveIndexX,coarseToTopReceiveIndexY,&
+        rhoReceive,uReceive,vReceive,TReceive,FxOverDxReceive,FyOverDxReceive,flowNeqReceive,thermalNeqReceive)
   end subroutine coarse_to_fine
 !===================================================================================================
 
@@ -2830,54 +2826,54 @@
     ! 仅在粗细到达同一时间时调用，来源是四套细历史的第 0 层。
     ! 粗节点与细节点共址，空间上直接取值，但仍通过 apply_interface_data 完成尺度转换。
 
-    call interpolate_exchange_history(nxLeft, nyLeft, 0, rhoTimeInterp_left, uTimeInterp_left, vTimeInterp_left, &
-        TTimeInterp_left, FxOverDxTimeInterp_left, FyOverDxTimeInterp_left, flowNeqTimeInterp_left, thermalNeqTimeInterp_left, &
-        leftToCoarseReceiveNodeCount, leftToCoarseSourceIndexX, leftToCoarseSourceIndexY, leftToCoarseSpaceInterpWeightX, &
-        leftToCoarseSpaceInterpWeightY, &
-        leftToCoarseSamePosition, [1.0d0, 0.0d0, 0.0d0], rhoReceive, uReceive, vReceive, TReceive, FxOverDxReceive, &
-        FyOverDxReceive, flowNeqReceive, thermalNeqReceive)
+    call interpolate_exchange_history(nxLeft,nyLeft,0,rhoTimeInterp_left,uTimeInterp_left,vTimeInterp_left,&
+        TTimeInterp_left,FxOverDxTimeInterp_left,FyOverDxTimeInterp_left,flowNeqTimeInterp_left,thermalNeqTimeInterp_left,&
+        leftToCoarseReceiveNodeCount,leftToCoarseSourceIndexX,leftToCoarseSourceIndexY,leftToCoarseSpaceInterpWeightX,&
+        leftToCoarseSpaceInterpWeightY,&
+        leftToCoarseSamePosition,[1.0d0,0.0d0,0.0d0],rhoReceive,uReceive,vReceive,TReceive,FxOverDxReceive,&
+        FyOverDxReceive,flowNeqReceive,thermalNeqReceive)
 
-    call apply_interface_data(nxCoarse, nyCoarse, dxCoarse, SnuCoarse, SqCoarse, QkCoarse, QnuCoarse, &
-        f_coarse, g_coarse, rho_coarse, u_coarse, v_coarse, T_coarse, Fx_coarse, Fy_coarse, &
-        leftToCoarseReceiveNodeCount, leftToCoarseReceiveIndexX, leftToCoarseReceiveIndexY, rhoReceive, uReceive, vReceive, TReceive, &
-        FxOverDxReceive, FyOverDxReceive, flowNeqReceive, thermalNeqReceive)
+    call apply_interface_data(nxCoarse,nyCoarse,dxCoarse,SnuCoarse,SqCoarse,QkCoarse,QnuCoarse,&
+        f_coarse,g_coarse,rho_coarse,u_coarse,v_coarse,T_coarse,Fx_coarse,Fy_coarse,&
+        leftToCoarseReceiveNodeCount,leftToCoarseReceiveIndexX,leftToCoarseReceiveIndexY,rhoReceive,uReceive,vReceive,TReceive,&
+        FxOverDxReceive,FyOverDxReceive,flowNeqReceive,thermalNeqReceive)
 
-    call interpolate_exchange_history(nxRight, nyRight, 0, rhoTimeInterp_right, uTimeInterp_right, &
-        vTimeInterp_right, TTimeInterp_right, FxOverDxTimeInterp_right, FyOverDxTimeInterp_right, flowNeqTimeInterp_right, &
-        thermalNeqTimeInterp_right, rightToCoarseReceiveNodeCount, rightToCoarseSourceIndexX, rightToCoarseSourceIndexY, &
-        rightToCoarseSpaceInterpWeightX, &
-        rightToCoarseSpaceInterpWeightY, rightToCoarseSamePosition, [1.0d0, 0.0d0, 0.0d0], rhoReceive, uReceive, vReceive, &
-        TReceive, FxOverDxReceive, FyOverDxReceive, flowNeqReceive, thermalNeqReceive)
+    call interpolate_exchange_history(nxRight,nyRight,0,rhoTimeInterp_right,uTimeInterp_right,&
+        vTimeInterp_right,TTimeInterp_right,FxOverDxTimeInterp_right,FyOverDxTimeInterp_right,flowNeqTimeInterp_right,&
+        thermalNeqTimeInterp_right,rightToCoarseReceiveNodeCount,rightToCoarseSourceIndexX,rightToCoarseSourceIndexY,&
+        rightToCoarseSpaceInterpWeightX,&
+        rightToCoarseSpaceInterpWeightY,rightToCoarseSamePosition,[1.0d0,0.0d0,0.0d0],rhoReceive,uReceive,vReceive,&
+        TReceive,FxOverDxReceive,FyOverDxReceive,flowNeqReceive,thermalNeqReceive)
 
-    call apply_interface_data(nxCoarse, nyCoarse, dxCoarse, SnuCoarse, SqCoarse, QkCoarse, QnuCoarse, &
-        f_coarse, g_coarse, rho_coarse, u_coarse, v_coarse, T_coarse, Fx_coarse, Fy_coarse, &
-        rightToCoarseReceiveNodeCount, rightToCoarseReceiveIndexX, rightToCoarseReceiveIndexY, rhoReceive, uReceive, &
-        vReceive, TReceive, &
-        FxOverDxReceive, FyOverDxReceive, flowNeqReceive, thermalNeqReceive)
+    call apply_interface_data(nxCoarse,nyCoarse,dxCoarse,SnuCoarse,SqCoarse,QkCoarse,QnuCoarse,&
+        f_coarse,g_coarse,rho_coarse,u_coarse,v_coarse,T_coarse,Fx_coarse,Fy_coarse,&
+        rightToCoarseReceiveNodeCount,rightToCoarseReceiveIndexX,rightToCoarseReceiveIndexY,rhoReceive,uReceive,&
+        vReceive,TReceive,&
+        FxOverDxReceive,FyOverDxReceive,flowNeqReceive,thermalNeqReceive)
 
-    call interpolate_exchange_history(nxBottom, nyBottom, 0, rhoTimeInterp_bottom, uTimeInterp_bottom, &
-        vTimeInterp_bottom, TTimeInterp_bottom, FxOverDxTimeInterp_bottom, FyOverDxTimeInterp_bottom, flowNeqTimeInterp_bottom, &
-        thermalNeqTimeInterp_bottom, bottomToCoarseReceiveNodeCount, bottomToCoarseSourceIndexX, bottomToCoarseSourceIndexY, &
-        bottomToCoarseSpaceInterpWeightX, bottomToCoarseSpaceInterpWeightY, bottomToCoarseSamePosition, [1.0d0, 0.0d0, &
-        0.0d0], rhoReceive, &
-        uReceive, vReceive, TReceive, FxOverDxReceive, FyOverDxReceive, flowNeqReceive, thermalNeqReceive)
+    call interpolate_exchange_history(nxBottom,nyBottom,0,rhoTimeInterp_bottom,uTimeInterp_bottom,&
+        vTimeInterp_bottom,TTimeInterp_bottom,FxOverDxTimeInterp_bottom,FyOverDxTimeInterp_bottom,flowNeqTimeInterp_bottom,&
+        thermalNeqTimeInterp_bottom,bottomToCoarseReceiveNodeCount,bottomToCoarseSourceIndexX,bottomToCoarseSourceIndexY,&
+        bottomToCoarseSpaceInterpWeightX,bottomToCoarseSpaceInterpWeightY,bottomToCoarseSamePosition,[1.0d0,0.0d0,&
+        0.0d0],rhoReceive,&
+        uReceive,vReceive,TReceive,FxOverDxReceive,FyOverDxReceive,flowNeqReceive,thermalNeqReceive)
 
-    call apply_interface_data(nxCoarse, nyCoarse, dxCoarse, SnuCoarse, SqCoarse, QkCoarse, QnuCoarse, &
-        f_coarse, g_coarse, rho_coarse, u_coarse, v_coarse, T_coarse, Fx_coarse, Fy_coarse, &
-        bottomToCoarseReceiveNodeCount, bottomToCoarseReceiveIndexX, bottomToCoarseReceiveIndexY, rhoReceive, uReceive, vReceive, &
-        TReceive, FxOverDxReceive, FyOverDxReceive, flowNeqReceive, thermalNeqReceive)
+    call apply_interface_data(nxCoarse,nyCoarse,dxCoarse,SnuCoarse,SqCoarse,QkCoarse,QnuCoarse,&
+        f_coarse,g_coarse,rho_coarse,u_coarse,v_coarse,T_coarse,Fx_coarse,Fy_coarse,&
+        bottomToCoarseReceiveNodeCount,bottomToCoarseReceiveIndexX,bottomToCoarseReceiveIndexY,rhoReceive,uReceive,vReceive,&
+        TReceive,FxOverDxReceive,FyOverDxReceive,flowNeqReceive,thermalNeqReceive)
 
-    call interpolate_exchange_history(nxTop, nyTop, 0, rhoTimeInterp_top, uTimeInterp_top, vTimeInterp_top, &
-        TTimeInterp_top, FxOverDxTimeInterp_top, FyOverDxTimeInterp_top, flowNeqTimeInterp_top, thermalNeqTimeInterp_top, &
-        topToCoarseReceiveNodeCount, topToCoarseSourceIndexX, topToCoarseSourceIndexY, topToCoarseSpaceInterpWeightX, &
-        topToCoarseSpaceInterpWeightY, topToCoarseSamePosition, &
-        [1.0d0, 0.0d0, 0.0d0], rhoReceive, uReceive, vReceive, TReceive, FxOverDxReceive, FyOverDxReceive, &
-        flowNeqReceive, thermalNeqReceive)
+    call interpolate_exchange_history(nxTop,nyTop,0,rhoTimeInterp_top,uTimeInterp_top,vTimeInterp_top,&
+        TTimeInterp_top,FxOverDxTimeInterp_top,FyOverDxTimeInterp_top,flowNeqTimeInterp_top,thermalNeqTimeInterp_top,&
+        topToCoarseReceiveNodeCount,topToCoarseSourceIndexX,topToCoarseSourceIndexY,topToCoarseSpaceInterpWeightX,&
+        topToCoarseSpaceInterpWeightY,topToCoarseSamePosition,&
+        [1.0d0,0.0d0,0.0d0],rhoReceive,uReceive,vReceive,TReceive,FxOverDxReceive,FyOverDxReceive,&
+        flowNeqReceive,thermalNeqReceive)
 
-    call apply_interface_data(nxCoarse, nyCoarse, dxCoarse, SnuCoarse, SqCoarse, QkCoarse, QnuCoarse, &
-        f_coarse, g_coarse, rho_coarse, u_coarse, v_coarse, T_coarse, Fx_coarse, Fy_coarse, &
-        topToCoarseReceiveNodeCount, topToCoarseReceiveIndexX, topToCoarseReceiveIndexY, rhoReceive, uReceive, vReceive, TReceive, &
-        FxOverDxReceive, FyOverDxReceive, flowNeqReceive, thermalNeqReceive)
+    call apply_interface_data(nxCoarse,nyCoarse,dxCoarse,SnuCoarse,SqCoarse,QkCoarse,QnuCoarse,&
+        f_coarse,g_coarse,rho_coarse,u_coarse,v_coarse,T_coarse,Fx_coarse,Fy_coarse,&
+        topToCoarseReceiveNodeCount,topToCoarseReceiveIndexX,topToCoarseReceiveIndexY,rhoReceive,uReceive,vReceive,TReceive,&
+        FxOverDxReceive,FyOverDxReceive,flowNeqReceive,thermalNeqReceive)
   end subroutine fine_to_coarse
 !===================================================================================================
 
@@ -2885,8 +2881,8 @@
 ! 子程序: coarse_skin
 ! 作用: 判断粗节点是否处于需要由细网格重建的人工边缘层。
 !===================================================================================================
-  subroutine coarse_skin(i, j, isInterfaceNode)
-    use commondata, only: nxCoarse, nyCoarse, interfaceSkin, refineRatio
+  subroutine coarse_skin(i,j,isInterfaceNode)
+    use commondata,only: nxCoarse,nyCoarse,interfaceSkin,refineRatio
     implicit none
 
     logical, intent(out) :: isInterfaceNode    ! 输出：该粗节点是否属于需要接收细网格数据的人工边缘层。
@@ -2895,8 +2891,8 @@
 
     integer(kind=4), intent(in) :: i, j
 
-    isInterfaceNode = refineRatio > 1 .AND. (i <= interfaceSkin .OR. i > nxCoarse - interfaceSkin .OR. &
-        j <= interfaceSkin .OR. j > nyCoarse - interfaceSkin)
+    isInterfaceNode=refineRatio > 1 .AND. (i <=interfaceSkin .OR. i > nxCoarse-interfaceSkin .OR. &
+        j <=interfaceSkin .OR. j > nyCoarse-interfaceSkin)
   end subroutine coarse_skin
 !===================================================================================================
 
@@ -2904,8 +2900,8 @@
 ! 子程序: fine_skin
 ! 作用: 按全局坐标判断细节点是否处于细环内侧的人工边缘层。
 !===================================================================================================
-  subroutine fine_skin(x, y, isInterfaceNode)
-    use commondata, only: centerIntegrationBox, interfaceSkin
+  subroutine fine_skin(x,y,isInterfaceNode)
+    use commondata,only: centerIntegrationBox,interfaceSkin
     implicit none
 
     logical, intent(out) :: isInterfaceNode    ! 输出：该细节点是否属于需要接收粗网格数据的人工边缘层。
@@ -2915,10 +2911,10 @@
 
     real(kind=8), intent(in) :: x, y
 
-    isInterfaceNode = (x <= centerIntegrationBox(1) + dble(interfaceSkin) .OR. &
-        x >= centerIntegrationBox(2) - dble(interfaceSkin) .OR. &
-        y <= centerIntegrationBox(3) + dble(interfaceSkin) .OR. &
-        y >= centerIntegrationBox(4) - dble(interfaceSkin)) .AND. &
+    isInterfaceNode=(x <=centerIntegrationBox(1)+dble(interfaceSkin) .OR. &
+        x >=centerIntegrationBox(2)-dble(interfaceSkin) .OR. &
+        y <=centerIntegrationBox(3)+dble(interfaceSkin) .OR. &
+        y >=centerIntegrationBox(4)-dble(interfaceSkin)) .AND. &
         x > centerIntegrationBox(1) .AND. &
         x < centerIntegrationBox(2) .AND. &
         y > centerIntegrationBox(3) .AND. &
@@ -2930,7 +2926,7 @@
 ! 子程序: count_fine_interface
 ! 作用: 统计当前细矩形中需要接收粗网格数据的节点数。
 !===================================================================================================
-  subroutine count_fine_interface(ni, nj, xOffset, yOffset, count)
+  subroutine count_fine_interface(ni,nj,xOffset,yOffset,count)
     implicit none
     logical :: isFineSkin
     integer(kind=4), intent(in) :: ni, nj
@@ -2938,11 +2934,11 @@
     integer(kind=4), intent(out) :: count
     integer(kind=4) :: i, j
 
-    count = 0
-    do j = 1, nj
-        do i = 1, ni
-            call fine_skin(xOffset + i - .5d0, yOffset + j - .5d0, isFineSkin)
-            if( isFineSkin ) count = count + 1
+    count=0
+    do j=1,nj
+        do i=1,ni
+            call fine_skin(xOffset+i-.5d0,yOffset+j-.5d0,isFineSkin)
+            if(isFineSkin) count=count+1
         enddo
     enddo
   end subroutine count_fine_interface
@@ -2952,35 +2948,35 @@
 ! 子程序: fill_fine_interface
 ! 作用: 填写细接收节点及对应的粗来源模板和空间插值权重。
 !===================================================================================================
-  subroutine fill_fine_interface(ni, nj, xOffset, yOffset, count, targetIndexX, targetIndexY, sourceIndexX, &
-      sourceIndexY, spaceInterpWeightX, spaceInterpWeightY, samePosition)
+  subroutine fill_fine_interface(ni,nj,xOffset,yOffset,count,targetIndexX,targetIndexY,sourceIndexX,&
+      sourceIndexY,spaceInterpWeightX,spaceInterpWeightY,samePosition)
     implicit none
     logical :: isFineSkin
     integer(kind=4), intent(in) :: ni, nj, count
     real(kind=8), intent(in) :: xOffset, yOffset
     integer(kind=4), intent(out) :: targetIndexX(count), targetIndexY(count), sourceIndexX(count), sourceIndexY(count)
-    real(kind=8), intent(out) :: spaceInterpWeightX(4, count), spaceInterpWeightY(4, count)
+    real(kind=8), intent(out) :: spaceInterpWeightX(4,count), spaceInterpWeightY(4,count)
     logical, intent(out) :: samePosition(count)
     integer(kind=4) :: i, j, c
     real(kind=8) :: x, y
 
-    c = 0
-    do j = 1, nj
-        y = yOffset + j - .5d0
-        do i = 1, ni
-            x = xOffset + i - .5d0
-            call fine_skin(x, y, isFineSkin)
-            if( .NOT. isFineSkin ) cycle
-            c = c + 1
-            targetIndexX(c) = i
-            targetIndexY(c) = j
+    c=0
+    do j=1,nj
+        y=yOffset+j-.5d0
+        do i=1,ni
+            x=xOffset+i-.5d0
+            call fine_skin(x,y,isFineSkin)
+            if(.NOT. isFineSkin) cycle
+            c=c+1
+            targetIndexX(c)=i
+            targetIndexY(c)=j
 
-            call coarse_donor_stencil(x, y, sourceIndexX(c), sourceIndexY(c), spaceInterpWeightX(:, c), spaceInterpWeightY(:, &
-                c), samePosition(c))
+            call coarse_donor_stencil(x,y,sourceIndexX(c),sourceIndexY(c),spaceInterpWeightX(:,c),spaceInterpWeightY(:,&
+                c),samePosition(c))
         enddo
     enddo
 
-    if( c /= count ) error stop 'Fine interface count mismatch'
+    if(c/=count) error stop 'Fine interface count mismatch'
   end subroutine fill_fine_interface
 !===================================================================================================
 
@@ -2988,8 +2984,8 @@
 ! 子程序: coarse_donor_stencil
 ! 作用: 根据目标坐标选择粗来源节点或四点模板，并检查来源范围。
 !===================================================================================================
-  subroutine coarse_donor_stencil(x, y, sourceIndexX, sourceIndexY, spaceInterpWeightX, spaceInterpWeightY, samePosition)
-    use commondata, only: nxCoarse, nyCoarse, xOffsetCoarse, yOffsetCoarse, dxCoarse, interfaceSkin
+  subroutine coarse_donor_stencil(x,y,sourceIndexX,sourceIndexY,spaceInterpWeightX,spaceInterpWeightY,samePosition)
+    use commondata,only: nxCoarse,nyCoarse,xOffsetCoarse,yOffsetCoarse,dxCoarse,interfaceSkin
     implicit none
 
     ! continuousIndexX/Y = (坐标-Offset)/dxCoarse+0.5，是坐标对应的连续数组下标。
@@ -3003,26 +2999,26 @@
     logical, intent(out) :: samePosition
     real(kind=8) :: continuousIndexX, continuousIndexY
 
-    continuousIndexX = (x - xOffsetCoarse) / dxCoarse + .5d0
-    continuousIndexY = (y - yOffsetCoarse) / dxCoarse + .5d0
-    if( continuousIndexX < (1 + interfaceSkin) .OR. continuousIndexX > (nxCoarse - interfaceSkin) .OR. &
-        continuousIndexY < (1 + interfaceSkin) .OR. continuousIndexY > (nyCoarse - interfaceSkin) .OR. &
-        min((nxCoarse - interfaceSkin) - (1 + interfaceSkin), (nyCoarse - interfaceSkin) - (1 + interfaceSkin)) < 3) &
+    continuousIndexX=(x-xOffsetCoarse)/dxCoarse+.5d0
+    continuousIndexY=(y-yOffsetCoarse)/dxCoarse+.5d0
+    if(continuousIndexX < (1+interfaceSkin) .OR. continuousIndexX > (nxCoarse-interfaceSkin) .OR. &
+        continuousIndexY < (1+interfaceSkin) .OR. continuousIndexY > (nyCoarse-interfaceSkin) .OR. &
+        min((nxCoarse-interfaceSkin)-(1+interfaceSkin),(nyCoarse-interfaceSkin)-(1+interfaceSkin)) < 3) &
         error stop 'Invalid overlap: no interior four-point coarse donor stencil'
-    samePosition = abs(continuousIndexX - nint(continuousIndexX)) < 1d-12 .AND. abs(continuousIndexY - &
+    samePosition=abs(continuousIndexX-nint(continuousIndexX)) < 1d-12 .AND. abs(continuousIndexY-&
         nint(continuousIndexY)) < 1d-12
-    if( samePosition ) then
-        sourceIndexX = nint(continuousIndexX)
-        sourceIndexY = nint(continuousIndexY)
-        spaceInterpWeightX = [1d0, 0d0, 0d0, 0d0]
-        spaceInterpWeightY = spaceInterpWeightX
+    if(samePosition) then
+        sourceIndexX=nint(continuousIndexX)
+        sourceIndexY=nint(continuousIndexY)
+        spaceInterpWeightX=[1d0,0d0,0d0,0d0]
+        spaceInterpWeightY=spaceInterpWeightX
     else
-        sourceIndexX = max((1 + interfaceSkin), min(floor(continuousIndexX) - 1, (nxCoarse - interfaceSkin) - 3))
-        sourceIndexY = max((1 + interfaceSkin), min(floor(continuousIndexY) - 1, (nyCoarse - interfaceSkin) - 3))
+        sourceIndexX=max((1+interfaceSkin),min(floor(continuousIndexX)-1,(nxCoarse-interfaceSkin)-3))
+        sourceIndexY=max((1+interfaceSkin),min(floor(continuousIndexY)-1,(nyCoarse-interfaceSkin)-3))
 
-        call lagrange_weights(continuousIndexX - sourceIndexX, spaceInterpWeightX)
+        call lagrange_weights(continuousIndexX-sourceIndexX,spaceInterpWeightX)
 
-        call lagrange_weights(continuousIndexY - sourceIndexY, spaceInterpWeightY)
+        call lagrange_weights(continuousIndexY-sourceIndexY,spaceInterpWeightY)
     endif
   end subroutine coarse_donor_stencil
 !===================================================================================================
@@ -3031,8 +3027,8 @@
 ! 子程序: count_coarse_interface
 ! 作用: 统计粗人工边缘中落入当前细矩形的共址节点数。
 !===================================================================================================
-  subroutine count_coarse_interface(ni, nj, xOffset, yOffset, count)
-    use commondata, only: nxCoarse, nyCoarse, xOffsetCoarse, yOffsetCoarse, dxCoarse
+  subroutine count_coarse_interface(ni,nj,xOffset,yOffset,count)
+    use commondata,only: nxCoarse,nyCoarse,xOffsetCoarse,yOffsetCoarse,dxCoarse
     implicit none
     logical :: isCoarseSkin
     integer(kind=4), intent(in) :: ni, nj
@@ -3040,17 +3036,17 @@
     integer(kind=4), intent(out) :: count
     integer(kind=4) :: i, j, sourceIndexX, sourceIndexY
 
-    count = 0
-    do j = 1, nyCoarse
+    count=0
+    do j=1,nyCoarse
 
-        do i = 1, nxCoarse
-            call coarse_skin(i, j, isCoarseSkin)
-            if( .NOT. isCoarseSkin ) cycle
+        do i=1,nxCoarse
+            call coarse_skin(i,j,isCoarseSkin)
+            if(.NOT. isCoarseSkin) cycle
 
-            sourceIndexX = nint((xOffsetCoarse + (i - .5d0) * dxCoarse) - xOffset + .5d0)
-            sourceIndexY = nint((yOffsetCoarse + (j - .5d0) * dxCoarse) - yOffset + .5d0)
-            if( sourceIndexX < 1 .OR. sourceIndexX > ni .OR. sourceIndexY < 1 .OR. sourceIndexY > nj ) cycle
-            count = count + 1
+            sourceIndexX=nint((xOffsetCoarse+(i-.5d0)*dxCoarse)-xOffset+.5d0)
+            sourceIndexY=nint((yOffsetCoarse+(j-.5d0)*dxCoarse)-yOffset+.5d0)
+            if(sourceIndexX < 1 .OR. sourceIndexX > ni .OR. sourceIndexY < 1 .OR. sourceIndexY > nj) cycle
+            count=count+1
         enddo
     enddo
   end subroutine count_coarse_interface
@@ -3060,9 +3056,9 @@
 ! 子程序: fill_coarse_interface
 ! 作用: 填写粗接收节点及其共址细来源节点，并检查来源有效性。
 !===================================================================================================
-  subroutine fill_coarse_interface(ni, nj, xOffset, yOffset, count, targetIndexX, targetIndexY, sourceIndexX, &
-      sourceIndexY, spaceInterpWeightX, spaceInterpWeightY, samePosition)
-    use commondata, only: nxCoarse, nyCoarse, xOffsetCoarse, yOffsetCoarse, dxCoarse
+  subroutine fill_coarse_interface(ni,nj,xOffset,yOffset,count,targetIndexX,targetIndexY,sourceIndexX,&
+      sourceIndexY,spaceInterpWeightX,spaceInterpWeightY,samePosition)
+    use commondata,only: nxCoarse,nyCoarse,xOffsetCoarse,yOffsetCoarse,dxCoarse
     implicit none
     logical :: isCoarseSkin, isFineSkin
 
@@ -3072,38 +3068,38 @@
     integer(kind=4), intent(in) :: ni, nj, count
     real(kind=8), intent(in) :: xOffset, yOffset
     integer(kind=4), intent(out) :: targetIndexX(count), targetIndexY(count), sourceIndexX(count), sourceIndexY(count)
-    real(kind=8), intent(out) :: spaceInterpWeightX(4, count), spaceInterpWeightY(4, count)
+    real(kind=8), intent(out) :: spaceInterpWeightX(4,count), spaceInterpWeightY(4,count)
     logical, intent(out) :: samePosition(count)
     integer(kind=4) :: i, j, c, sourceNodeIndexX, sourceNodeIndexY
     real(kind=8) :: x, y, qx, qy
 
-    c = 0
-    do j = 1, nyCoarse
-        y = yOffsetCoarse + (j - .5d0) * dxCoarse
-        do i = 1, nxCoarse
-            call coarse_skin(i, j, isCoarseSkin)
-            if( .NOT. isCoarseSkin ) cycle
-            x = xOffsetCoarse + (i - .5d0) * dxCoarse
-            qx = x - xOffset + .5d0
-            qy = y - yOffset + .5d0
-            sourceNodeIndexX = nint(qx)
-            sourceNodeIndexY = nint(qy)
-            if( sourceNodeIndexX < 1 .OR. sourceNodeIndexX > ni .OR. sourceNodeIndexY < 1 .OR. sourceNodeIndexY > nj ) cycle
-            call fine_skin(x, y, isFineSkin)
-            if( abs(qx - sourceNodeIndexX) > 1d-12 .OR. abs(qy - sourceNodeIndexY) > 1d-12 .OR. isFineSkin) &
+    c=0
+    do j=1,nyCoarse
+        y=yOffsetCoarse+(j-.5d0)*dxCoarse
+        do i=1,nxCoarse
+            call coarse_skin(i,j,isCoarseSkin)
+            if(.NOT. isCoarseSkin) cycle
+            x=xOffsetCoarse+(i-.5d0)*dxCoarse
+            qx=x-xOffset+.5d0
+            qy=y-yOffset+.5d0
+            sourceNodeIndexX=nint(qx)
+            sourceNodeIndexY=nint(qy)
+            if(sourceNodeIndexX < 1 .OR. sourceNodeIndexX > ni .OR. sourceNodeIndexY < 1 .OR. sourceNodeIndexY > nj) cycle
+            call fine_skin(x,y,isFineSkin)
+            if(abs(qx-sourceNodeIndexX) > 1d-12 .OR. abs(qy-sourceNodeIndexY) > 1d-12 .OR. isFineSkin) &
                 error stop 'Coarse receiver must coincide with an interior fine donor'
-            c = c + 1
-            targetIndexX(c) = i
-            targetIndexY(c) = j
-            sourceIndexX(c) = sourceNodeIndexX
-            sourceIndexY(c) = sourceNodeIndexY
-            spaceInterpWeightX(:, c) = [1d0, 0d0, 0d0, 0d0]
-            spaceInterpWeightY(:, c) = spaceInterpWeightX(:, c)
-            samePosition(c) = .true.
+            c=c+1
+            targetIndexX(c)=i
+            targetIndexY(c)=j
+            sourceIndexX(c)=sourceNodeIndexX
+            sourceIndexY(c)=sourceNodeIndexY
+            spaceInterpWeightX(:,c)=[1d0,0d0,0d0,0d0]
+            spaceInterpWeightY(:,c)=spaceInterpWeightX(:,c)
+            samePosition(c)=.true.
         enddo
     enddo
 
-    if( c /= count ) error stop 'Coarse interface count mismatch'
+    if(c/=count) error stop 'Coarse interface count mismatch'
   end subroutine fill_coarse_interface
 !===================================================================================================
 
@@ -3111,24 +3107,24 @@
 ! 子程序: collision
 ! 作用: 执行 D2Q9 流场矩空间碰撞，生成碰撞后分布函数。
 !===================================================================================================
-  subroutine collision(nx, ny, f, f_post, rho, u, v, Fx, Fy, T, Snu, Sq, gBeta &
+  subroutine collision(nx,ny,f,f_post,rho,u,v,Fx,Fy,T,Snu,Sq,gBeta &
 #ifdef SideHeatedHa
-      , B2sigemarho &
+      ,B2sigemarho &
 #endif
       )
 
-    use commondata, only: Tref
+    use commondata,only: Tref
 #ifdef SideHeatedHa
-    use commondata, only: phi
+    use commondata,only: phi
 #endif
     implicit none
 
-    ! 沿用原 D2Q9 碰撞公式；新增的区别是 nx/ny、场数组和松弛参数均由调用处传入。
+    ! D2Q9 流场碰撞；nx/ny、场数组和松弛参数均对应当前区域。
     ! 本子程序只生成 f_post，不负责同级细区交换或粗细插值。
 
     integer(kind=4), intent(in) :: nx, ny
-    real(kind=8), intent(inout) :: f(nx, ny, 0:8), f_post(0:nx + 1, 0:ny + 1, 0:8)
-    real(kind=8), intent(inout) :: u(nx, ny), v(nx, ny), T(nx, ny), rho(nx, ny), Fx(nx, ny), Fy(nx, ny)
+    real(kind=8), intent(inout) :: f(nx,ny,0:8), f_post(0:nx+1,0:ny+1,0:8)
+    real(kind=8), intent(inout) :: u(nx,ny), v(nx,ny), T(nx,ny), rho(nx,ny), Fx(nx,ny), Fy(nx,ny)
     real(kind=8), intent(in) :: Snu, Sq, gBeta
 #ifdef SideHeatedHa
     real(kind=8), intent(in) :: B2sigemarho
@@ -3142,96 +3138,96 @@
 
     !$acc parallel loop gang vector collapse(2) present(f, f_post, rho, u, v, Fx, Fy, T) async(1) &
     !$acc& private(alpha, s, m, m_post, meq, fSource)
-    do j = 1, ny
-        do i = 1, nx
+    do j=1,ny
+        do i=1,nx
 
-            m(0) = f(i, j, 0) + f(i, j, 1) + f(i, j, 2) + f(i, j, 3) + f(i, j, 4) + f(i, j, 5) + f(i, j, 6) + f(i, j, &
-                7) + f(i, j, 8)
-            m(1) = - 4.0d0 * f(i, j, 0) - f(i, j, 1) - f(i, j, 2) - f(i, j, 3) - f(i, j, 4) + 2.0d0 * (f(i, j, &
-                5) + f(i, j, &
-                6) + f(i, j, 7) + f(i, j, 8))
-            m(2) = 4.0d0 * f(i, j, 0) - 2.0d0 * (f(i, j, 1) + f(i, j, 2) + f(i, j, 3) + f(i, j, 4)) + f(i, j, &
-                5) + f(i, j, &
-                6) + f(i, j, 7) + f(i, j, 8)
-            m(3) = f(i, j, 1) - f(i, j, 3) + f(i, j, 5) - f(i, j, 6) - f(i, j, 7) + f(i, j, 8)
-            m(4) = - 2.0d0 * f(i, j, 1) + 2.0d0 * f(i, j, 3) + f(i, j, 5) - f(i, j, 6) - f(i, j, 7) + f(i, j, 8)
-            m(5) = f(i, j, 2) - f(i, j, 4) + f(i, j, 5) + f(i, j, 6) - f(i, j, 7) - f(i, j, 8)
-            m(6) = - 2.0d0 * f(i, j, 2) + 2.0d0 * f(i, j, 4) + f(i, j, 5) + f(i, j, 6) - f(i, j, 7) - f(i, j, 8)
-            m(7) = f(i, j, 1) - f(i, j, 2) + f(i, j, 3) - f(i, j, 4)
-            m(8) = f(i, j, 5) - f(i, j, 6) + f(i, j, 7) - f(i, j, 8)
+            m(0)=f(i,j,0)+f(i,j,1)+f(i,j,2)+f(i,j,3)+f(i,j,4)+f(i,j,5)+f(i,j,6)+f(i,j,&
+                7)+f(i,j,8)
+            m(1)=-4.0d0*f(i,j,0)-f(i,j,1)-f(i,j,2)-f(i,j,3)-f(i,j,4)+2.0d0*(f(i,j,&
+                5)+f(i,j,&
+                6)+f(i,j,7)+f(i,j,8))
+            m(2)=4.0d0*f(i,j,0)-2.0d0*(f(i,j,1)+f(i,j,2)+f(i,j,3)+f(i,j,4))+f(i,j,&
+                5)+f(i,j,&
+                6)+f(i,j,7)+f(i,j,8)
+            m(3)=f(i,j,1)-f(i,j,3)+f(i,j,5)-f(i,j,6)-f(i,j,7)+f(i,j,8)
+            m(4)=-2.0d0*f(i,j,1)+2.0d0*f(i,j,3)+f(i,j,5)-f(i,j,6)-f(i,j,7)+f(i,j,8)
+            m(5)=f(i,j,2)-f(i,j,4)+f(i,j,5)+f(i,j,6)-f(i,j,7)-f(i,j,8)
+            m(6)=-2.0d0*f(i,j,2)+2.0d0*f(i,j,4)+f(i,j,5)+f(i,j,6)-f(i,j,7)-f(i,j,8)
+            m(7)=f(i,j,1)-f(i,j,2)+f(i,j,3)-f(i,j,4)
+            m(8)=f(i,j,5)-f(i,j,6)+f(i,j,7)-f(i,j,8)
 
-            meq(0) = rho(i, j)
-            meq(1) = rho(i, j) * ( - 2.0d0 + 3.0d0 * (u(i, j) * u(i, j) + v(i, j) * v(i, j)))
-            meq(2) = rho(i, j) * (1.0d0 - 3.0d0 * (u(i, j) * u(i, j) + v(i, j) * v(i, j)))
-            meq(3) = rho(i, j) * u(i, j)
-            meq(4) = - rho(i, j) * u(i, j)
-            meq(5) = rho(i, j) * v(i, j)
-            meq(6) = - rho(i, j) * v(i, j)
-            meq(7) = rho(i, j) * (u(i, j) * u(i, j) - v(i, j) * v(i, j))
-            meq(8) = rho(i, j) * (u(i, j) * v(i, j))
+            meq(0)=rho(i,j)
+            meq(1)=rho(i,j)*(-2.0d0+3.0d0*(u(i,j)*u(i,j)+v(i,j)*v(i,j)))
+            meq(2)=rho(i,j)*(1.0d0-3.0d0*(u(i,j)*u(i,j)+v(i,j)*v(i,j)))
+            meq(3)=rho(i,j)*u(i,j)
+            meq(4)=-rho(i,j)*u(i,j)
+            meq(5)=rho(i,j)*v(i,j)
+            meq(6)=-rho(i,j)*v(i,j)
+            meq(7)=rho(i,j)*(u(i,j)*u(i,j)-v(i,j)*v(i,j))
+            meq(8)=rho(i,j)*(u(i,j)*v(i,j))
 
-            s(0) = 0.0d0    !!s_{\rho}
-            s(1) = Snu    !!s_{e}
-            s(2) = Snu    !!s_{\epsilon}
-            s(3) = 0.0d0    !!s_{j}
-            s(4) = Sq    !!s_{q}
-            s(5) = 0.0d0    !!s_{j}
-            s(6) = Sq    !!s_{q}
-            s(7) = Snu    !!s_{\nu}
-            s(8) = Snu    !!s_{\nu}
+            s(0)=0.0d0    !!s_{\rho}
+            s(1)=Snu    !!s_{e}
+            s(2)=Snu    !!s_{\epsilon}
+            s(3)=0.0d0    !!s_{j}
+            s(4)=Sq    !!s_{q}
+            s(5)=0.0d0    !!s_{j}
+            s(6)=Sq    !!s_{q}
+            s(7)=Snu    !!s_{\nu}
+            s(8)=Snu    !!s_{\nu}
 
-            Fx(i, j) = 0.0d0
-            Fy(i, j) = rho(i, j) * gBeta * (T(i, j) - Tref)    !动量方程上的源项，即浮力项
+            Fx(i,j)=0.0d0
+            Fy(i,j)=rho(i,j)*gBeta*(T(i,j)-Tref)    !动量方程上的源项，即浮力项
 
 #ifdef    SideHeatedHa
-            Fx(i, j) = 0.0d0 + B2sigemarho * (v(i, j) * sin(phi) * cos(phi) - u(i, j) * sin(phi) * sin(phi))
-            Fy(i, j) = rho(i, j) * gBeta * (T(i, j) - Tref) + rho(i, j) * B2sigemarho * (u(i, j) * sin(phi) * cos(phi) &
-                - v(i, j) * cos(phi) * cos(phi))    !动量方程上的源项，即浮力项加磁场
+            Fx(i,j)=0.0d0+B2sigemarho*(v(i,j)*sin(phi)*cos(phi)-u(i,j)*sin(phi)*sin(phi))
+            Fy(i,j)=rho(i,j)*gBeta*(T(i,j)-Tref)+rho(i,j)*B2sigemarho*(u(i,j)*sin(phi)*cos(phi)&
+                -v(i,j)*cos(phi)*cos(phi))    !动量方程上的源项，即浮力项加磁场
 #endif
 
-            fSource(0) = 0.0d0    !将源项F对应的贡献投影到各个矩中，并做半步修正
-            fSource(1) = (6.0d0 - 3.0d0 * s(1)) * (u(i, j) * Fx(i, j) + v(i, j) * Fy(i, j))
-            fSource(2) = - (6.0d0 - 3.0d0 * s(2)) * (u(i, j) * Fx(i, j) + v(i, j) * Fy(i, j))
-            fSource(3) = (1.0d0 - 0.5d0 * s(3)) * Fx(i, j)
-            fSource(4) = - (1.0d0 - 0.5d0 * s(4)) * Fx(i, j)
-            fSource(5) = (1.0d0 - 0.5d0 * s(5)) * Fy(i, j)
-            fSource(6) = - (1.0d0 - 0.5d0 * s(6)) * Fy(i, j)
-            fSource(7) = (2.0d0 - s(7)) * (u(i, j) * Fx(i, j) - v(i, j) * Fy(i, j))
-            fSource(8) = (1.0d0 - 0.5d0 * s(8)) * (u(i, j) * Fy(i, j) + v(i, j) * Fx(i, j))    !这边是乘以M变到矩空间，然后再乘以1-1/2S修正
+            fSource(0)=0.0d0    !将源项F对应的贡献投影到各个矩中，并做半步修正
+            fSource(1)=(6.0d0-3.0d0*s(1))*(u(i,j)*Fx(i,j)+v(i,j)*Fy(i,j))
+            fSource(2)=-(6.0d0-3.0d0*s(2))*(u(i,j)*Fx(i,j)+v(i,j)*Fy(i,j))
+            fSource(3)=(1.0d0-0.5d0*s(3))*Fx(i,j)
+            fSource(4)=-(1.0d0-0.5d0*s(4))*Fx(i,j)
+            fSource(5)=(1.0d0-0.5d0*s(5))*Fy(i,j)
+            fSource(6)=-(1.0d0-0.5d0*s(6))*Fy(i,j)
+            fSource(7)=(2.0d0-s(7))*(u(i,j)*Fx(i,j)-v(i,j)*Fy(i,j))
+            fSource(8)=(1.0d0-0.5d0*s(8))*(u(i,j)*Fy(i,j)+v(i,j)*Fx(i,j))    !这边是乘以M变到矩空间，然后再乘以1-1/2S修正
 
-            do alpha = 0, 8
-                m_post(alpha) = m(alpha) - s(alpha) * (m(alpha) - meq(alpha)) + fSource(alpha)    !矩空间碰撞
+            do alpha=0,8
+                m_post(alpha)=m(alpha)-s(alpha)*(m(alpha)-meq(alpha))+fSource(alpha)    !矩空间碰撞
             enddo
 
-            f_post(i, j, 0) = m_post(0) / 9.0d0 - m_post(1) / 9.0d0 + m_post(2) / 9.0d0    !这边是乘以M逆
-            f_post(i, j, &
-                1) = m_post(0) / 9.0d0 - m_post(1) / 36.0d0 - m_post(2) / 18.0d0 + m_post(3) / 6.0d0 - &
-                m_post(4) / 6.0d0 &
-                + m_post(7) / 4.0d0
-            f_post(i, j, 2) = m_post(0) / 9.0d0 - m_post(1) / 36.0d0 - m_post(2) / 18.0d0 &
-                + m_post(5) / 6.0d0 - m_post(6) / 6.0d0 - m_post(7) / 4.0d0
-            f_post(i, j, &
-                3) = m_post(0) / 9.0d0 - m_post(1) / 36.0d0 - m_post(2) / 18.0d0 - m_post(3) / 6.0d0 + &
-                m_post(4) / 6.0d0 &
-                + m_post(7) / 4.0d0
-            f_post(i, j, 4) = m_post(0) / 9.0d0 - m_post(1) / 36.0d0 - m_post(2) / 18.0d0 &
-                - m_post(5) / 6.0d0 + m_post(6) / 6.0d0 - m_post(7) / 4.0d0
-            f_post(i, j, &
-                5) = m_post(0) / 9.0d0 + m_post(1) / 18.0d0 + m_post(2) / 36.0d0 + m_post(3) / 6.0d0 + &
-                m_post(4) / 12.0d0 &
-                + m_post(5) / 6.0d0 + m_post(6) / 12.0d0 + m_post(8) / 4.0d0
-            f_post(i, j, &
-                6) = m_post(0) / 9.0d0 + m_post(1) / 18.0d0 + m_post(2) / 36.0d0 - m_post(3) / 6.0d0 - &
-                m_post(4) / 12.0d0 &
-                + m_post(5) / 6.0d0 + m_post(6) / 12.0d0 - m_post(8) / 4.0d0
-            f_post(i, j, &
-                7) = m_post(0) / 9.0d0 + m_post(1) / 18.0d0 + m_post(2) / 36.0d0 - m_post(3) / 6.0d0 - &
-                m_post(4) / 12.0d0 &
-                - m_post(5) / 6.0d0 - m_post(6) / 12.0d0 + m_post(8) / 4.0d0
-            f_post(i, j, &
-                8) = m_post(0) / 9.0d0 + m_post(1) / 18.0d0 + m_post(2) / 36.0d0 + m_post(3) / 6.0d0 + &
-                m_post(4) / 12.0d0 &
-                - m_post(5) / 6.0d0 - m_post(6) / 12.0d0 - m_post(8) / 4.0d0
+            f_post(i,j,0)=m_post(0)/9.0d0-m_post(1)/9.0d0+m_post(2)/9.0d0    !这边是乘以M逆
+            f_post(i,j,&
+                1)=m_post(0)/9.0d0-m_post(1)/36.0d0-m_post(2)/18.0d0+m_post(3)/6.0d0-&
+                m_post(4)/6.0d0 &
+                +m_post(7)/4.0d0
+            f_post(i,j,2)=m_post(0)/9.0d0-m_post(1)/36.0d0-m_post(2)/18.0d0 &
+                +m_post(5)/6.0d0-m_post(6)/6.0d0-m_post(7)/4.0d0
+            f_post(i,j,&
+                3)=m_post(0)/9.0d0-m_post(1)/36.0d0-m_post(2)/18.0d0-m_post(3)/6.0d0+&
+                m_post(4)/6.0d0 &
+                +m_post(7)/4.0d0
+            f_post(i,j,4)=m_post(0)/9.0d0-m_post(1)/36.0d0-m_post(2)/18.0d0 &
+                -m_post(5)/6.0d0+m_post(6)/6.0d0-m_post(7)/4.0d0
+            f_post(i,j,&
+                5)=m_post(0)/9.0d0+m_post(1)/18.0d0+m_post(2)/36.0d0+m_post(3)/6.0d0+&
+                m_post(4)/12.0d0 &
+                +m_post(5)/6.0d0+m_post(6)/12.0d0+m_post(8)/4.0d0
+            f_post(i,j,&
+                6)=m_post(0)/9.0d0+m_post(1)/18.0d0+m_post(2)/36.0d0-m_post(3)/6.0d0-&
+                m_post(4)/12.0d0 &
+                +m_post(5)/6.0d0+m_post(6)/12.0d0-m_post(8)/4.0d0
+            f_post(i,j,&
+                7)=m_post(0)/9.0d0+m_post(1)/18.0d0+m_post(2)/36.0d0-m_post(3)/6.0d0-&
+                m_post(4)/12.0d0 &
+                -m_post(5)/6.0d0-m_post(6)/12.0d0+m_post(8)/4.0d0
+            f_post(i,j,&
+                8)=m_post(0)/9.0d0+m_post(1)/18.0d0+m_post(2)/36.0d0+m_post(3)/6.0d0+&
+                m_post(4)/12.0d0 &
+                -m_post(5)/6.0d0-m_post(6)/12.0d0-m_post(8)/4.0d0
 
         enddo
     enddo
@@ -3244,29 +3240,29 @@
 ! 子程序: streaming
 ! 作用: 按照格子方向，从上游节点迁移流场分布函数。
 !===================================================================================================
-  subroutine streaming(nx, ny, f, f_post)    !先迁移，再边界处理
+  subroutine streaming(nx,ny,f,f_post)    !先迁移，再边界处理
 
-    use commondata, only: ex, ey
+    use commondata,only: ex,ey
     implicit none
 
-    ! 沿用原上游迁移公式；四个细区调用前，相邻细区的 f_post 已复制到迁移外圈。
+    ! 从上游节点读取 f_post；相邻细区的数据在调用前已复制到迁移外圈。
     ! 触及真实墙面的入射分布，随后由 bounceback 修正。
 
     integer(kind=4), intent(in) :: nx, ny
-    real(kind=8), intent(inout) :: f(nx, ny, 0:8), f_post(0:nx + 1, 0:ny + 1, 0:8)
+    real(kind=8), intent(inout) :: f(nx,ny,0:8), f_post(0:nx+1,0:ny+1,0:8)
 
     integer(kind=4) :: i, j
     integer(kind=4) :: ip, jp
     integer(kind=4) :: alpha
 
     !$acc parallel loop gang vector collapse(2) present(f, f_post, ex, ey) async(1) private(alpha, ip, jp)
-    do j = 1, ny
-        do i = 1, nx
-            do alpha = 0, 8    !上游格点索引：fα(i,j) <- f_postα(i-exα, j-eyα)
-                ip = i - ex(alpha)    !边界附近 (ip/jp 可能为 0 或 nx+1/ny+1)，需在 bounceback/周期边界处理中覆盖修正边界分布
-                jp = j - ey(alpha)    !ghost 层在初始化中为 0，保证不会出现未初始化垃圾值
+    do j=1,ny
+        do i=1,nx
+            do alpha=0,8    !上游格点索引：fα(i,j) <- f_postα(i-exα, j-eyα)
+                ip=i-ex(alpha)    !边界附近 (ip/jp 可能为 0 或 nx+1/ny+1)，需在 bounceback/周期边界处理中覆盖修正边界分布
+                jp=j-ey(alpha)    !ghost 层在初始化中为 0，保证不会出现未初始化垃圾值
 
-                f(i, j, alpha) = f_post(ip, jp, alpha)
+                f(i,j,alpha)=f_post(ip,jp,alpha)
             enddo
         enddo
     enddo
@@ -3279,15 +3275,15 @@
 ! 子程序: bounceback
 ! 作用: 对接触真实物理墙面的边界执行流场边界处理。
 !===================================================================================================
-  subroutine bounceback(nx, ny, f, f_post, leftWall, rightWall, bottomWall, topWall)
+  subroutine bounceback(nx,ny,f,f_post,leftWall,rightWall,bottomWall,topWall)
 
     implicit none
 
-    ! 沿用物理边界公式；新增四个墙面标志，只在本区确实接触物理墙面时处理。
+    ! 四个墙面标志指定本区实际接触的物理边界，仅在对应边执行边界处理。
     ! 细区拼接处由直接迁移连接，粗细人工边缘由接口重建，均不在这里反弹。
 
     integer(kind=4), intent(in) :: nx, ny
-    real(kind=8), intent(inout) :: f(nx, ny, 0:8), f_post(0:nx + 1, 0:ny + 1, 0:8)
+    real(kind=8), intent(inout) :: f(nx,ny,0:8), f_post(0:nx+1,0:ny+1,0:8)
     logical, intent(in) :: leftWall, rightWall, bottomWall, topWall
 
     integer(kind=4) :: i, j
@@ -3296,48 +3292,48 @@
 #ifdef VerticalWallsPeriodicalU
 
     !$acc parallel loop gang vector present(f, f_post) async(1)
-    do j = 1, ny    !速度边界垂直边界周期，直接方向相同，跨边界的入射分布
+    do j=1,ny    !速度边界垂直边界周期，直接方向相同，跨边界的入射分布
         !Left side (i=1)
-        if( leftWall) f(1, j, 1) = f_post(nx, j, 1)
-        if( leftWall) f(1, j, 5) = f_post(nx, j, 5)
-        if( leftWall) f(1, j, 8) = f_post(nx, j, 8)
+        if(leftWall) f(1,j,1)=f_post(nx,j,1)
+        if(leftWall) f(1,j,5)=f_post(nx,j,5)
+        if(leftWall) f(1,j,8)=f_post(nx,j,8)
 
         !Right side (i=nx)
-        if( rightWall) f(nx, j, 3) = f_post(1, j, 3)
-        if( rightWall) f(nx, j, 6) = f_post(1, j, 6)
-        if( rightWall) f(nx, j, 7) = f_post(1, j, 7)
+        if(rightWall) f(nx,j,3)=f_post(1,j,3)
+        if(rightWall) f(nx,j,6)=f_post(1,j,6)
+        if(rightWall) f(nx,j,7)=f_post(1,j,7)
     enddo
 #endif
 
 #ifdef VerticalWallsNoslip
 
     !$acc parallel loop gang vector present(f, f_post) async(1)
-    do j = 1, ny    !速度边界垂直边界静止壁无滑移，直接反弹，方向相反
+    do j=1,ny    !速度边界垂直边界静止壁无滑移，直接反弹，方向相反
         !Left side (i=1)
-        if( leftWall) f(1, j, 1) = f_post(1, j, 3)
-        if( leftWall) f(1, j, 5) = f_post(1, j, 7)
-        if( leftWall) f(1, j, 8) = f_post(1, j, 6)
+        if(leftWall) f(1,j,1)=f_post(1,j,3)
+        if(leftWall) f(1,j,5)=f_post(1,j,7)
+        if(leftWall) f(1,j,8)=f_post(1,j,6)
 
         !Right side (i=nx)
-        if( rightWall) f(nx, j, 3) = f_post(nx, j, 1)
-        if( rightWall) f(nx, j, 6) = f_post(nx, j, 8)
-        if( rightWall) f(nx, j, 7) = f_post(nx, j, 5)
+        if(rightWall) f(nx,j,3)=f_post(nx,j,1)
+        if(rightWall) f(nx,j,6)=f_post(nx,j,8)
+        if(rightWall) f(nx,j,7)=f_post(nx,j,5)
     enddo
 #endif
 
 #ifdef HorizontalWallsNoslip
 
     !$acc parallel loop gang vector present(f, f_post) async(1)
-    do i = 1, nx    !速度边界水平边界无滑移，直接反弹，方向相反
+    do i=1,nx    !速度边界水平边界无滑移，直接反弹，方向相反
         !Bottom side (j=1)
-        if( bottomWall) f(i, 1, 2) = f_post(i, 1, 4)
-        if( bottomWall) f(i, 1, 5) = f_post(i, 1, 7)
-        if( bottomWall) f(i, 1, 6) = f_post(i, 1, 8)
+        if(bottomWall) f(i,1,2)=f_post(i,1,4)
+        if(bottomWall) f(i,1,5)=f_post(i,1,7)
+        if(bottomWall) f(i,1,6)=f_post(i,1,8)
 
         !Top side (j=ny)
-        if( topWall) f(i, ny, 4) = f_post(i, ny, 2)
-        if( topWall) f(i, ny, 7) = f_post(i, ny, 5)
-        if( topWall) f(i, ny, 8) = f_post(i, ny, 6)
+        if(topWall) f(i,ny,4)=f_post(i,ny,2)
+        if(topWall) f(i,ny,7)=f_post(i,ny,5)
+        if(topWall) f(i,ny,8)=f_post(i,ny,6)
     enddo
 #endif
 
@@ -3349,28 +3345,28 @@
 ! 子程序: macro
 ! 作用: 由流场分布函数及半步力恢复密度和速度。
 !===================================================================================================
-  subroutine macro(nx, ny, f, rho, u, v, Fx, Fy)
+  subroutine macro(nx,ny,f,rho,u,v,Fx,Fy)
 
     implicit none
 
-    ! 沿用原密度和半步力速度恢复公式；只更新显式传入的这一套数组。
+    ! 由分布函数求密度和速度，速度包含半步力修正。
 
     integer(kind=4), intent(in) :: nx, ny
-    real(kind=8), intent(in) :: f(nx, ny, 0:8), Fx(nx, ny), Fy(nx, ny)
-    real(kind=8), intent(inout) :: rho(nx, ny), u(nx, ny), v(nx, ny)
+    real(kind=8), intent(in) :: f(nx,ny,0:8), Fx(nx,ny), Fy(nx,ny)
+    real(kind=8), intent(inout) :: rho(nx,ny), u(nx,ny), v(nx,ny)
 
     integer(kind=4) :: i, j
 
     !$acc parallel loop gang vector collapse(2) present(f, rho, u, v, Fx, Fy) async(1)
-    do j = 1, ny
-        do i = 1, nx
-            rho(i, j) = f(i, j, 0) + f(i, j, 1) + f(i, j, 2) + f(i, j, 3) + f(i, j, 4) + f(i, j, 5) + f(i, j, &
-                6) + f(i, j, &
-                7) + f(i, j, 8)
-            u(i, j) = (f(i, j, 1) - f(i, j, 3) + f(i, j, 5) - f(i, j, 6) - f(i, j, 7) + f(i, j, 8) + 0.5d0 * Fx(i, &
-                j)) / rho(i, j)    !含力LBM的半步动量修正：rho*u = Σ f e + 0.5*F，对应Guo forcing的二阶定义
-            v(i, j) = (f(i, j, 2) - f(i, j, 4) + f(i, j, 5) + f(i, j, 6) - f(i, j, 7) - f(i, j, 8) + 0.5d0 * Fy(i, &
-                j)) / rho(i, j)
+    do j=1,ny
+        do i=1,nx
+            rho(i,j)=f(i,j,0)+f(i,j,1)+f(i,j,2)+f(i,j,3)+f(i,j,4)+f(i,j,5)+f(i,j,&
+                6)+f(i,j,&
+                7)+f(i,j,8)
+            u(i,j)=(f(i,j,1)-f(i,j,3)+f(i,j,5)-f(i,j,6)-f(i,j,7)+f(i,j,8)+0.5d0*Fx(i,&
+                j))/rho(i,j)    !含力LBM的半步动量修正：rho*u = Σ f e + 0.5*F，对应Guo forcing的二阶定义
+            v(i,j)=(f(i,j,2)-f(i,j,4)+f(i,j,5)+f(i,j,6)-f(i,j,7)-f(i,j,8)+0.5d0*Fy(i,&
+                j))/rho(i,j)
         enddo
     enddo
 
@@ -3382,16 +3378,16 @@
 ! 子程序: collisionT
 ! 作用: 执行原 D2Q5 温度碰撞，生成碰撞后温度分布函数。
 !===================================================================================================
-  subroutine collisionT(nx, ny, g, g_post, u, v, T, Qk, Qnu)
+  subroutine collisionT(nx,ny,g,g_post,u,v,T,Qk,Qnu)
 
-    use commondata, only: paraA
+    use commondata,only: paraA
     implicit none
 
-    ! 沿用原温度算法；本区 Qk/Qnu 已在初始化时按格距设置，速度来自本细步更新后的流场。
+    ! Qk/Qnu 已按当前区域格距设置，温度碰撞使用本步更新后的速度。
 
     integer(kind=4), intent(in) :: nx, ny
-    real(kind=8), intent(inout) :: g(nx, ny, 0:4), g_post(0:nx + 1, 0:ny + 1, 0:4)
-    real(kind=8), intent(in) :: u(nx, ny), v(nx, ny), T(nx, ny), Qk, Qnu
+    real(kind=8), intent(inout) :: g(nx,ny,0:4), g_post(0:nx+1,0:ny+1,0:4)
+    real(kind=8), intent(in) :: u(nx,ny), v(nx,ny), T(nx,ny), Qk, Qnu
 
     integer(kind=4) :: i, j
     real(kind=8) :: n(0:4), n_post(0:4), neq(0:4)
@@ -3399,38 +3395,38 @@
 
     !$acc parallel loop gang vector collapse(2) present(g, g_post, u, v, T) async(1) &
     !$acc& private(n, neq, q, n_post)
-    do j = 1, ny
-        do i = 1, nx
+    do j=1,ny
+        do i=1,nx
 
-            n(0) = g(i, j, 0) + g(i, j, 1) + g(i, j, 2) + g(i, j, 3) + g(i, j, 4)
-            n(1) = g(i, j, 1) - g(i, j, 3)
-            n(2) = g(i, j, 2) - g(i, j, 4)
-            n(3) = - 4.0d0 * g(i, j, 0) + g(i, j, 1) + g(i, j, 2) + g(i, j, 3) + g(i, j, 4)
-            n(4) = g(i, j, 1) - g(i, j, 2) + g(i, j, 3) - g(i, j, 4)
+            n(0)=g(i,j,0)+g(i,j,1)+g(i,j,2)+g(i,j,3)+g(i,j,4)
+            n(1)=g(i,j,1)-g(i,j,3)
+            n(2)=g(i,j,2)-g(i,j,4)
+            n(3)=-4.0d0*g(i,j,0)+g(i,j,1)+g(i,j,2)+g(i,j,3)+g(i,j,4)
+            n(4)=g(i,j,1)-g(i,j,2)+g(i,j,3)-g(i,j,4)
 
-            neq(0) = T(i, j)
-            neq(1) = T(i, j) * u(i, j)
-            neq(2) = T(i, j) * v(i, j)
-            neq(3) = T(i, j) * paraA
-            neq(4) = 0.0d0
+            neq(0)=T(i,j)
+            neq(1)=T(i,j)*u(i,j)
+            neq(2)=T(i,j)*v(i,j)
+            neq(3)=T(i,j)*paraA
+            neq(4)=0.0d0
 
-            q(0) = 0.0d0
-            q(1) = Qk
-            q(2) = Qk
-            q(3) = Qnu
-            q(4) = Qnu
+            q(0)=0.0d0
+            q(1)=Qk
+            q(2)=Qk
+            q(3)=Qnu
+            q(4)=Qnu
 
-            n_post(0) = n(0) - q(0) * (n(0) - neq(0))
-            n_post(1) = n(1) - q(1) * (n(1) - neq(1))
-            n_post(2) = n(2) - q(2) * (n(2) - neq(2))
-            n_post(3) = n(3) - q(3) * (n(3) - neq(3))
-            n_post(4) = n(4) - q(4) * (n(4) - neq(4))
+            n_post(0)=n(0)-q(0)*(n(0)-neq(0))
+            n_post(1)=n(1)-q(1)*(n(1)-neq(1))
+            n_post(2)=n(2)-q(2)*(n(2)-neq(2))
+            n_post(3)=n(3)-q(3)*(n(3)-neq(3))
+            n_post(4)=n(4)-q(4)*(n(4)-neq(4))
 
-            g_post(i, j, 0) = 0.2d0 * n_post(0) - 0.2d0 * n_post(3)
-            g_post(i, j, 1) = 0.2d0 * n_post(0) + 0.5d0 * n_post(1) + 0.05d0 * n_post(3) + 0.25d0 * n_post(4)
-            g_post(i, j, 2) = 0.2d0 * n_post(0) + 0.5d0 * n_post(2) + 0.05d0 * n_post(3) - 0.25d0 * n_post(4)
-            g_post(i, j, 3) = 0.2d0 * n_post(0) - 0.5d0 * n_post(1) + 0.05d0 * n_post(3) + 0.25d0 * n_post(4)
-            g_post(i, j, 4) = 0.2d0 * n_post(0) - 0.5d0 * n_post(2) + 0.05d0 * n_post(3) - 0.25d0 * n_post(4)
+            g_post(i,j,0)=0.2d0*n_post(0)-0.2d0*n_post(3)
+            g_post(i,j,1)=0.2d0*n_post(0)+0.5d0*n_post(1)+0.05d0*n_post(3)+0.25d0*n_post(4)
+            g_post(i,j,2)=0.2d0*n_post(0)+0.5d0*n_post(2)+0.05d0*n_post(3)-0.25d0*n_post(4)
+            g_post(i,j,3)=0.2d0*n_post(0)-0.5d0*n_post(1)+0.05d0*n_post(3)+0.25d0*n_post(4)
+            g_post(i,j,4)=0.2d0*n_post(0)-0.5d0*n_post(2)+0.05d0*n_post(3)-0.25d0*n_post(4)
         enddo
     enddo
 
@@ -3442,28 +3438,28 @@
 ! 子程序: streamingT
 ! 作用: 按照格子方向，从上游节点迁移温度分布函数。
 !===================================================================================================
-  subroutine streamingT(nx, ny, g, g_post)
+  subroutine streamingT(nx,ny,g,g_post)
 
-    use commondata, only: ex, ey
+    use commondata,only: ex,ey
     implicit none
 
-    ! 沿用原温度迁移公式；细区调用前，邻区 g_post 已填入迁移外圈。
+    ! 从上游节点读取 g_post；相邻细区的数据在调用前已复制到迁移外圈。
 
     integer(kind=4), intent(in) :: nx, ny
-    real(kind=8), intent(inout) :: g(nx, ny, 0:4), g_post(0:nx + 1, 0:ny + 1, 0:4)
+    real(kind=8), intent(inout) :: g(nx,ny,0:4), g_post(0:nx+1,0:ny+1,0:4)
 
     integer(kind=4) :: i, j
     integer(kind=4) :: ip, jp
     integer(kind=4) :: alpha
 
     !$acc parallel loop gang vector collapse(2) present(g, g_post, ex, ey) async(1) private(alpha, ip, jp)
-    do j = 1, ny
-        do i = 1, nx
-            do alpha = 0, 4
-                ip = i - ex(alpha)
-                jp = j - ey(alpha)
+    do j=1,ny
+        do i=1,nx
+            do alpha=0,4
+                ip=i-ex(alpha)
+                jp=j-ey(alpha)
 
-                g(i, j, alpha) = g_post(ip, jp, alpha)
+                g(i,j,alpha)=g_post(ip,jp,alpha)
             enddo
         enddo
     enddo
@@ -3476,15 +3472,15 @@
 ! 子程序: bouncebackT
 ! 作用: 对接触真实物理墙面的边界执行温度边界处理。
 !===================================================================================================
-  subroutine bouncebackT(nx, ny, g, g_post, leftWall, rightWall, bottomWall, topWall)
+  subroutine bouncebackT(nx,ny,g,g_post,leftWall,rightWall,bottomWall,topWall)
 
-    use commondata, only: Thot, Tcold, paraA, omegaT
+    use commondata,only: Thot,Tcold,paraA,omegaT
     implicit none
 
-    ! 沿用恒温、绝热等温度边界公式；只处理四个标志指出的真实物理墙面。
+    ! 按温度边界宏处理恒温、绝热或周期边界，仅作用于四个标志指定的物理边界。
 
     integer(kind=4), intent(in) :: nx, ny
-    real(kind=8), intent(inout) :: g(nx, ny, 0:4), g_post(0:nx + 1, 0:ny + 1, 0:4)
+    real(kind=8), intent(inout) :: g(nx,ny,0:4), g_post(0:nx+1,0:ny+1,0:4)
     logical, intent(in) :: leftWall, rightWall, bottomWall, topWall
 
     integer(kind=4) :: i, j
@@ -3493,58 +3489,58 @@
 #ifdef VerticalWallsPeriodicalT
 
     !$acc parallel loop gang vector present(g, g_post) async(1)
-    do j = 1, ny
+    do j=1,ny
         !Left boundary
-        if( leftWall) g(1, j, 1) = g_post(nx, j, 1)
+        if(leftWall) g(1,j,1)=g_post(nx,j,1)
 
         !Right boundary
-        if( rightWall) g(nx, j, 3) = g_post(1, j, 3)
+        if(rightWall) g(nx,j,3)=g_post(1,j,3)
     enddo
 #endif
 
 #ifdef VerticalWallsConstT
 
     !$acc parallel loop gang vector present(g, g_post, omegaT) async(1)
-    do j = 1, ny
+    do j=1,ny
         !Left boundary
-        if( leftWall) g(1, j, 1) = - g_post(1, j, 3) + (4.0d0 + paraA) / 10.0d0 * Thot
+        if(leftWall) g(1,j,1)=-g_post(1,j,3)+(4.0d0+paraA)/10.0d0*Thot
         !Right boundary
-        if( rightWall) g(nx, j, 3) = - g_post(nx, j, 1) + (4.0d0 + paraA) / 10.0d0 * Tcold
+        if(rightWall) g(nx,j,3)=-g_post(nx,j,1)+(4.0d0+paraA)/10.0d0*Tcold
     enddo
 #endif
 
 #ifdef VerticalWallsAdiabatic
 
     !$acc parallel loop gang vector present(g, g_post) async(1)
-    do j = 1, ny
+    do j=1,ny
         !Left boundary
-        if( leftWall) g(1, j, 1) = g_post(1, j, 3)
+        if(leftWall) g(1,j,1)=g_post(1,j,3)
 
         !Right boundary
-        if( rightWall) g(nx, j, 3) = g_post(nx, j, 1)
+        if(rightWall) g(nx,j,3)=g_post(nx,j,1)
     enddo
 #endif
 
 #ifdef HorizontalWallsAdiabatic
 
     !$acc parallel loop gang vector present(g, g_post) async(1)
-    do i = 1, nx
+    do i=1,nx
         !Bottom side
-        if( bottomWall) g(i, 1, 2) = g_post(i, 1, 4)
+        if(bottomWall) g(i,1,2)=g_post(i,1,4)
 
         !Top side
-        if( topWall) g(i, ny, 4) = g_post(i, ny, 2)
+        if(topWall) g(i,ny,4)=g_post(i,ny,2)
     enddo
 #endif
 
 #ifdef HorizontalWallsConstT
 
     !$acc parallel loop gang vector present(g, g_post, omegaT) async(1)
-    do i = 1, nx
+    do i=1,nx
         !Bottom side
-        if( bottomWall) g(i, 1, 2) = - g_post(i, 1, 4) + (4.0d0 + paraA) / 10.0d0 * Thot
+        if(bottomWall) g(i,1,2)=-g_post(i,1,4)+(4.0d0+paraA)/10.0d0*Thot
         !Top side
-        if( topWall) g(i, ny, 4) = - g_post(i, ny, 2) + (4.0d0 + paraA) / 10.0d0 * Tcold
+        if(topWall) g(i,ny,4)=-g_post(i,ny,2)+(4.0d0+paraA)/10.0d0*Tcold
     enddo
 #endif
 
@@ -3556,20 +3552,20 @@
 ! 子程序: macroT
 ! 作用: 由温度分布函数恢复宏观温度。
 !===================================================================================================
-  subroutine macroT(nx, ny, g, T)
+  subroutine macroT(nx,ny,g,T)
 
     implicit none
 
     integer(kind=4), intent(in) :: nx, ny
-    real(kind=8), intent(in) :: g(nx, ny, 0:4)
-    real(kind=8), intent(inout) :: T(nx, ny)
+    real(kind=8), intent(in) :: g(nx,ny,0:4)
+    real(kind=8), intent(inout) :: T(nx,ny)
 
     integer(kind=4) :: i, j
 
     !$acc parallel loop gang vector collapse(2) present(g, T) async(1)
-    do j = 1, ny
-        do i = 1, nx
-            T(i, j) = g(i, j, 0) + g(i, j, 1) + g(i, j, 2) + g(i, j, 3) + g(i, j, 4)
+    do j=1,ny
+        do i=1,nx
+            T(i,j)=g(i,j,0)+g(i,j,1)+g(i,j,2)+g(i,j,3)+g(i,j,4)
         enddo
     enddo
 
@@ -3581,7 +3577,7 @@
 ! 子程序: flow_moments
 ! 作用: 将节点的九个流场分布函数转换为九个矩分量。
 !===================================================================================================
-  subroutine flow_moments(fv, m)
+  subroutine flow_moments(fv,m)
 
     implicit none
 
@@ -3589,15 +3585,15 @@
     real(kind=8), intent(in) :: fv(0:8)
     real(kind=8), intent(out) :: m(0:8)
 
-    m(0) = fv(0) + fv(1) + fv(2) + fv(3) + fv(4) + fv(5) + fv(6) + fv(7) + fv(8)
-    m(1) = - 4.0d0 * fv(0) - fv(1) - fv(2) - fv(3) - fv(4) + 2.0d0 * (fv(5) + fv(6) + fv(7) + fv(8))
-    m(2) = 4.0d0 * fv(0) - 2.0d0 * (fv(1) + fv(2) + fv(3) + fv(4)) + fv(5) + fv(6) + fv(7) + fv(8)
-    m(3) = fv(1) - fv(3) + fv(5) - fv(6) - fv(7) + fv(8)
-    m(4) = - 2.0d0 * fv(1) + 2.0d0 * fv(3) + fv(5) - fv(6) - fv(7) + fv(8)
-    m(5) = fv(2) - fv(4) + fv(5) + fv(6) - fv(7) - fv(8)
-    m(6) = - 2.0d0 * fv(2) + 2.0d0 * fv(4) + fv(5) + fv(6) - fv(7) - fv(8)
-    m(7) = fv(1) - fv(2) + fv(3) - fv(4)
-    m(8) = fv(5) - fv(6) + fv(7) - fv(8)
+    m(0)=fv(0)+fv(1)+fv(2)+fv(3)+fv(4)+fv(5)+fv(6)+fv(7)+fv(8)
+    m(1)=-4.0d0*fv(0)-fv(1)-fv(2)-fv(3)-fv(4)+2.0d0*(fv(5)+fv(6)+fv(7)+fv(8))
+    m(2)=4.0d0*fv(0)-2.0d0*(fv(1)+fv(2)+fv(3)+fv(4))+fv(5)+fv(6)+fv(7)+fv(8)
+    m(3)=fv(1)-fv(3)+fv(5)-fv(6)-fv(7)+fv(8)
+    m(4)=-2.0d0*fv(1)+2.0d0*fv(3)+fv(5)-fv(6)-fv(7)+fv(8)
+    m(5)=fv(2)-fv(4)+fv(5)+fv(6)-fv(7)-fv(8)
+    m(6)=-2.0d0*fv(2)+2.0d0*fv(4)+fv(5)+fv(6)-fv(7)-fv(8)
+    m(7)=fv(1)-fv(2)+fv(3)-fv(4)
+    m(8)=fv(5)-fv(6)+fv(7)-fv(8)
 
   end subroutine flow_moments
 !===================================================================================================
@@ -3606,7 +3602,7 @@
 ! 子程序: flow_populations
 ! 作用: 将流场矩分量逆变换为九个方向的分布函数。
 !===================================================================================================
-  subroutine flow_populations(m, fv)
+  subroutine flow_populations(m,fv)
 
     implicit none
 
@@ -3614,23 +3610,23 @@
     real(kind=8), intent(in) :: m(0:8)
     real(kind=8), intent(out) :: fv(0:8)
 
-    fv(0) = m(0) / 9.0d0 - m(1) / 9.0d0 + m(2) / 9.0d0    !这边是乘以M逆
-    fv(1) = m(0) / 9.0d0 - m(1) / 36.0d0 - m(2) / 18.0d0 + m(3) / 6.0d0 - m(4) / 6.0d0 &
-        + m(7) / 4.0d0
-    fv(2) = m(0) / 9.0d0 - m(1) / 36.0d0 - m(2) / 18.0d0 &
-        + m(5) / 6.0d0 - m(6) / 6.0d0 - m(7) / 4.0d0
-    fv(3) = m(0) / 9.0d0 - m(1) / 36.0d0 - m(2) / 18.0d0 - m(3) / 6.0d0 + m(4) / 6.0d0 &
-        + m(7) / 4.0d0
-    fv(4) = m(0) / 9.0d0 - m(1) / 36.0d0 - m(2) / 18.0d0 &
-        - m(5) / 6.0d0 + m(6) / 6.0d0 - m(7) / 4.0d0
-    fv(5) = m(0) / 9.0d0 + m(1) / 18.0d0 + m(2) / 36.0d0 + m(3) / 6.0d0 + m(4) / 12.0d0 &
-        + m(5) / 6.0d0 + m(6) / 12.0d0 + m(8) / 4.0d0
-    fv(6) = m(0) / 9.0d0 + m(1) / 18.0d0 + m(2) / 36.0d0 - m(3) / 6.0d0 - m(4) / 12.0d0 &
-        + m(5) / 6.0d0 + m(6) / 12.0d0 - m(8) / 4.0d0
-    fv(7) = m(0) / 9.0d0 + m(1) / 18.0d0 + m(2) / 36.0d0 - m(3) / 6.0d0 - m(4) / 12.0d0 &
-        - m(5) / 6.0d0 - m(6) / 12.0d0 + m(8) / 4.0d0
-    fv(8) = m(0) / 9.0d0 + m(1) / 18.0d0 + m(2) / 36.0d0 + m(3) / 6.0d0 + m(4) / 12.0d0 &
-        - m(5) / 6.0d0 - m(6) / 12.0d0 - m(8) / 4.0d0
+    fv(0)=m(0)/9.0d0-m(1)/9.0d0+m(2)/9.0d0    !这边是乘以M逆
+    fv(1)=m(0)/9.0d0-m(1)/36.0d0-m(2)/18.0d0+m(3)/6.0d0-m(4)/6.0d0 &
+        +m(7)/4.0d0
+    fv(2)=m(0)/9.0d0-m(1)/36.0d0-m(2)/18.0d0 &
+        +m(5)/6.0d0-m(6)/6.0d0-m(7)/4.0d0
+    fv(3)=m(0)/9.0d0-m(1)/36.0d0-m(2)/18.0d0-m(3)/6.0d0+m(4)/6.0d0 &
+        +m(7)/4.0d0
+    fv(4)=m(0)/9.0d0-m(1)/36.0d0-m(2)/18.0d0 &
+        -m(5)/6.0d0+m(6)/6.0d0-m(7)/4.0d0
+    fv(5)=m(0)/9.0d0+m(1)/18.0d0+m(2)/36.0d0+m(3)/6.0d0+m(4)/12.0d0 &
+        +m(5)/6.0d0+m(6)/12.0d0+m(8)/4.0d0
+    fv(6)=m(0)/9.0d0+m(1)/18.0d0+m(2)/36.0d0-m(3)/6.0d0-m(4)/12.0d0 &
+        +m(5)/6.0d0+m(6)/12.0d0-m(8)/4.0d0
+    fv(7)=m(0)/9.0d0+m(1)/18.0d0+m(2)/36.0d0-m(3)/6.0d0-m(4)/12.0d0 &
+        -m(5)/6.0d0-m(6)/12.0d0+m(8)/4.0d0
+    fv(8)=m(0)/9.0d0+m(1)/18.0d0+m(2)/36.0d0+m(3)/6.0d0+m(4)/12.0d0 &
+        -m(5)/6.0d0-m(6)/12.0d0-m(8)/4.0d0
 
   end subroutine flow_populations
 !===================================================================================================
@@ -3639,7 +3635,7 @@
 ! 子程序: thermal_moments
 ! 作用: 将节点的五个温度分布函数转换为五个矩分量。
 !===================================================================================================
-  subroutine thermal_moments(gv, n)
+  subroutine thermal_moments(gv,n)
 
     implicit none
 
@@ -3647,11 +3643,11 @@
     real(kind=8), intent(in) :: gv(0:4)
     real(kind=8), intent(out) :: n(0:4)
 
-    n(0) = gv(0) + gv(1) + gv(2) + gv(3) + gv(4)
-    n(1) = gv(1) - gv(3)
-    n(2) = gv(2) - gv(4)
-    n(3) = - 4.0d0 * gv(0) + gv(1) + gv(2) + gv(3) + gv(4)
-    n(4) = gv(1) - gv(2) + gv(3) - gv(4)
+    n(0)=gv(0)+gv(1)+gv(2)+gv(3)+gv(4)
+    n(1)=gv(1)-gv(3)
+    n(2)=gv(2)-gv(4)
+    n(3)=-4.0d0*gv(0)+gv(1)+gv(2)+gv(3)+gv(4)
+    n(4)=gv(1)-gv(2)+gv(3)-gv(4)
 
   end subroutine thermal_moments
 !===================================================================================================
@@ -3660,7 +3656,7 @@
 ! 子程序: thermal_populations
 ! 作用: 将温度矩分量逆变换为五个方向的分布函数。
 !===================================================================================================
-  subroutine thermal_populations(n, gv)
+  subroutine thermal_populations(n,gv)
 
     implicit none
 
@@ -3668,11 +3664,11 @@
     real(kind=8), intent(in) :: n(0:4)
     real(kind=8), intent(out) :: gv(0:4)
 
-    gv(0) = 0.2d0 * n(0) - 0.2d0 * n(3)
-    gv(1) = 0.2d0 * n(0) + 0.5d0 * n(1) + 0.05d0 * n(3) + 0.25d0 * n(4)
-    gv(2) = 0.2d0 * n(0) + 0.5d0 * n(2) + 0.05d0 * n(3) - 0.25d0 * n(4)
-    gv(3) = 0.2d0 * n(0) - 0.5d0 * n(1) + 0.05d0 * n(3) + 0.25d0 * n(4)
-    gv(4) = 0.2d0 * n(0) - 0.5d0 * n(2) + 0.05d0 * n(3) - 0.25d0 * n(4)
+    gv(0)=0.2d0*n(0)-0.2d0*n(3)
+    gv(1)=0.2d0*n(0)+0.5d0*n(1)+0.05d0*n(3)+0.25d0*n(4)
+    gv(2)=0.2d0*n(0)+0.5d0*n(2)+0.05d0*n(3)-0.25d0*n(4)
+    gv(3)=0.2d0*n(0)-0.5d0*n(1)+0.05d0*n(3)+0.25d0*n(4)
+    gv(4)=0.2d0*n(0)-0.5d0*n(2)+0.05d0*n(3)-0.25d0*n(4)
 
   end subroutine thermal_populations
 !===================================================================================================
@@ -3683,16 +3679,16 @@
 !===================================================================================================
   subroutine output_steady_monitor()
 #ifdef steadyFlow
-    use commondata, only: itc, restartItcOffset, timeUnit, errorU, errorT
+    use commondata,only: itc,restartItcOffset,timeUnit,errorU,errorT
     implicit none
 
     integer(kind=4) :: k
     real(kind=8) :: nu, re, hot, cold, middle, mass, meanT, tmin, tmax, rmin, rmax
 
-    call calculate_NuRe(nu, re, hot, cold, middle, mass, meanT, tmin, tmax, rmin, rmax)
+    call calculate_NuRe(nu,re,hot,cold,middle,mass,meanT,tmin,tmax,rmin,rmax)
 
-    open(newunit=k, file='SteadyMonitor_2DOpenaccMultiblock.dat', status='unknown', position='append')
-    write(k, '(I12,8(1X,ES24.16E3))') restartItcOffset + itc, dble(restartItcOffset + itc) / timeUnit, errorU, errorT, nu, re, hot, cold, middle
+    open(newunit=k,file='SteadyMonitor_2DOpenaccMultiblock.dat',status='unknown',position='append')
+    write(k,'(I12,8(1X,ES24.16E3))') restartItcOffset+itc,dble(restartItcOffset+itc)/timeUnit,errorU,errorT,nu,re,hot,cold,middle
     close(k)
 #endif
   end subroutine output_steady_monitor
@@ -3704,33 +3700,33 @@
 !===================================================================================================
   subroutine output_final_NuRe()
 #ifdef steadyFlow
-    use commondata, only: itc, restartItcOffset, timeUnit, settingsFile, errorU, errorT, epsU, epsT
+    use commondata,only: itc,restartItcOffset,timeUnit,settingsFile,errorU,errorT,epsU,epsT
     implicit none
 
     integer(kind=4) :: k
     real(kind=8) :: nu, re, hot, cold, middle, mass, meanT, tmin, tmax, rmin, rmax
 
-    ! 与 calNuRe 区别：只计算和输出，不追加 NuReHistoryFile，不增加 dimensionlessTime。
-    call calculate_NuRe(nu, re, hot, cold, middle, mass, meanT, tmin, tmax, rmin, rmax)
+    ! 输出最后一步的诊断，不追加采样历史，也不增加 dimensionlessTime。
+    call calculate_NuRe(nu,re,hot,cold,middle,mass,meanT,tmin,tmax,rmin,rmax)
 
-    open(newunit=k, file='FinalNuRe_2DOpenaccMultiblock.dat', status='replace')
-    write(k, '(a,L1)') '# converged = ', errorU <= epsU .AND. errorT <= epsT
-    write(k, '(a)') '# t_ff NuVolAvg ReVolRMS Nu_hot Nu_cold Nu_middle mass meanT Tmin Tmax rhoMin rhoMax'
-    write(k, '(12(ES24.16E3,1X))') dble(restartItcOffset + itc) / timeUnit, nu, re, hot, cold, middle, &
-        mass, meanT, tmin, tmax, rmin, rmax
+    open(newunit=k,file='FinalNuRe_2DOpenaccMultiblock.dat',status='replace')
+    write(k,'(a,L1)') '# converged = ',errorU <=epsU .AND. errorT <=epsT
+    write(k,'(a)') '# t_ff NuVolAvg ReVolRMS Nu_hot Nu_cold Nu_middle mass meanT Tmin Tmax rhoMin rhoMax'
+    write(k,'(12(ES24.16E3,1X))') dble(restartItcOffset+itc)/timeUnit,nu,re,hot,cold,middle,&
+        mass,meanT,tmin,tmax,rmin,rmax
     close(k)
 
-    open(newunit=k, file=trim(settingsFile), status='unknown', position='append')
-    write(k, *) 'Final diagnostics at cumulative fine step:', restartItcOffset + itc
-    write(k, *) 'Steady converged:', errorU <= epsU .AND. errorT <= epsT
-    write(k, *) 'errorU, errorT:', errorU, errorT
-    write(k, *) 'Nu_global =', nu
-    write(k, *) 'Nu_hot =', hot
-    write(k, *) 'Nu_cold =', cold
-    write(k, *) 'Nu_middle =', middle
-    write(k, *) 'Re_rms =', re
+    open(newunit=k,file=trim(settingsFile),status='unknown',position='append')
+    write(k,*) 'Final diagnostics at cumulative fine step:',restartItcOffset+itc
+    write(k,*) 'Steady converged:',errorU <=epsU .AND. errorT <=epsT
+    write(k,*) 'errorU, errorT:',errorU,errorT
+    write(k,*) 'Nu_global =',nu
+    write(k,*) 'Nu_hot =',hot
+    write(k,*) 'Nu_cold =',cold
+    write(k,*) 'Nu_middle =',middle
+    write(k,*) 'Re_rms =',re
     close(k)
-    write( *, *) 'Final Nu_global, Re_rms:', nu, re
+    write(*,*) 'Final Nu_global, Re_rms:',nu,re
 #endif
   end subroutine output_final_NuRe
 !===================================================================================================
@@ -3741,20 +3737,20 @@
 !===================================================================================================
   subroutine calNuRe()
 
-    use commondata, only: itc, restartItcOffset, timeUnit, NuReHistoryFile, dimensionlessTime
+    use commondata,only: itc,restartItcOffset,timeUnit,NuReHistoryFile,dimensionlessTime
     implicit none
 
     integer(kind=4) :: k
     real(kind=8) :: nu, re, hot, cold, middle, mass, meanT, tmin, tmax, rmin, rmax
 
-    call calculate_NuRe(nu, re, hot, cold, middle, mass, meanT, tmin, tmax, rmin, rmax)
+    call calculate_NuRe(nu,re,hot,cold,middle,mass,meanT,tmin,tmax,rmin,rmax)
 
-    open(newunit=k, file=NuReHistoryFile, status='old', position='append')
-    write(k, '(12(ES24.16E3,1X))') dble(restartItcOffset + itc) / timeUnit, nu, re, hot, cold, middle, &
-        mass, meanT, tmin, tmax, rmin, rmax
+    open(newunit=k,file=NuReHistoryFile,status='old',position='append')
+    write(k,'(12(ES24.16E3,1X))') dble(restartItcOffset+itc)/timeUnit,nu,re,hot,cold,middle,&
+        mass,meanT,tmin,tmax,rmin,rmax
     close(k)
-    dimensionlessTime = dimensionlessTime + 1
-    write( *, '(a,f12.5,a,es13.5,a,es13.5)') 't_ff=', dble(restartItcOffset + itc) / timeUnit, ' NuVolAvg=', nu, ' ReVolRMS=', re
+    dimensionlessTime=dimensionlessTime+1
+    write(*,'(a,f12.5,a,es13.5,a,es13.5)') 't_ff=',dble(restartItcOffset+itc)/timeUnit,' NuVolAvg=',nu,' ReVolRMS=',re
   end subroutine calNuRe
 !===================================================================================================
 
@@ -3762,12 +3758,12 @@
 ! 子程序: calculate_NuRe
 ! 作用: 只计算当前 Nu/Re 及场量统计，不写采样历史，不改变采样次数。
 !===================================================================================================
-  subroutine calculate_NuRe(nu, re, hot, cold, middle, mass, meanT, tmin, tmax, rmin, rmax)
+  subroutine calculate_NuRe(nu,re,hot,cold,middle,mass,meanT,tmin,tmax,rmin,rmax)
 
     use commondata
     implicit none
 
-    ! 与全域单数组求和不同：依次累计五个区域，节点面积由 owned_cell_area 确定。
+    ! 依次累加五个物理分区，节点实际贡献的面积由 owned_cell_area 计算。
     ! Re 使用速度平方的面积平均再开方；不能直接平均各网格各自计算的 Re。
 
     real(kind=8), intent(out) :: nu, re, hot, cold, middle, mass, meanT, tmin, tmax, rmin, rmax
@@ -3775,55 +3771,55 @@
 
     call update_host_all(.false.)
 
-    conv = 0.0d0
-    vel2 = 0.0d0
-    mass = 0.0d0
-    meanT = 0.0d0
-    hot = 0.0d0
-    cold = 0.0d0
-    middle = 0.0d0
-    tmin = huge(1.0d0)
-    tmax = - tmin
-    rmin = tmin
-    rmax = - tmin
+    conv=0.0d0
+    vel2=0.0d0
+    mass=0.0d0
+    meanT=0.0d0
+    hot=0.0d0
+    cold=0.0d0
+    middle=0.0d0
+    tmin=huge(1.0d0)
+    tmax=-tmin
+    rmin=tmin
+    rmax=-tmin
 
-    call calNuRe_grid(nxCoarse, nyCoarse, dxCoarse, xOffsetCoarse, yOffsetCoarse, xStartIntegrationCoarse, &
-        xEndIntegrationCoarse, yStartIntegrationCoarse, yEndIntegrationCoarse, centerIntegrationBox, &
-        conv, vel2, mass, meanT, hot, cold, &
-        middle, tmin, tmax, rmin, rmax, rho_coarse, u_coarse, v_coarse, T_coarse)
-    if( refineRatio > 1 ) then
+    call calNuRe_grid(nxCoarse,nyCoarse,dxCoarse,xOffsetCoarse,yOffsetCoarse,xStartIntegrationCoarse,&
+        xEndIntegrationCoarse,yStartIntegrationCoarse,yEndIntegrationCoarse,centerIntegrationBox,&
+        conv,vel2,mass,meanT,hot,cold,&
+        middle,tmin,tmax,rmin,rmax,rho_coarse,u_coarse,v_coarse,T_coarse)
+    if(refineRatio > 1) then
 
-        call calNuRe_grid(nxLeft, nyLeft, dxFine, xOffsetLeft, yOffsetLeft, 1, nxLeft, &
-            1, nyLeft, [xOffsetLeft, xOffsetLeft+nxLeft, yOffsetLeft, yOffsetLeft+nyLeft], conv, vel2, mass, meanT, hot, cold, &
-            middle, tmin, tmax, &
-            rmin, rmax, rho_left, u_left, v_left, T_left)
+        call calNuRe_grid(nxLeft,nyLeft,dxFine,xOffsetLeft,yOffsetLeft,1,nxLeft,&
+            1,nyLeft,[xOffsetLeft,xOffsetLeft+nxLeft,yOffsetLeft,yOffsetLeft+nyLeft],conv,vel2,mass,meanT,hot,cold,&
+            middle,tmin,tmax,&
+            rmin,rmax,rho_left,u_left,v_left,T_left)
 
-        call calNuRe_grid(nxRight, nyRight, dxFine, xOffsetRight, yOffsetRight, 1, nxRight, &
-            1, nyRight, [xOffsetRight, xOffsetRight+nxRight, yOffsetRight, yOffsetRight+nyRight], conv, vel2, mass, &
-            meanT, hot, cold, &
-            middle, tmin, tmax, &
-            rmin, rmax, rho_right, u_right, v_right, T_right)
+        call calNuRe_grid(nxRight,nyRight,dxFine,xOffsetRight,yOffsetRight,1,nxRight,&
+            1,nyRight,[xOffsetRight,xOffsetRight+nxRight,yOffsetRight,yOffsetRight+nyRight],conv,vel2,mass,&
+            meanT,hot,cold,&
+            middle,tmin,tmax,&
+            rmin,rmax,rho_right,u_right,v_right,T_right)
 
-        call calNuRe_grid(nxBottom, nyBottom, dxFine, xOffsetBottom, yOffsetBottom, 1, &
-            nxBottom, 1, nyBottom, [xOffsetBottom, xOffsetBottom+nxBottom, yOffsetBottom, yOffsetBottom+nyBottom], conv, &
-            vel2, mass, meanT, hot, cold, &
-            middle, tmin, tmax, rmin, rmax, rho_bottom, u_bottom, v_bottom, T_bottom)
+        call calNuRe_grid(nxBottom,nyBottom,dxFine,xOffsetBottom,yOffsetBottom,1,&
+            nxBottom,1,nyBottom,[xOffsetBottom,xOffsetBottom+nxBottom,yOffsetBottom,yOffsetBottom+nyBottom],conv,&
+            vel2,mass,meanT,hot,cold,&
+            middle,tmin,tmax,rmin,rmax,rho_bottom,u_bottom,v_bottom,T_bottom)
 
-        call calNuRe_grid(nxTop, nyTop, dxFine, xOffsetTop, yOffsetTop, 1, nxTop, &
-            1, &
-            nyTop, [xOffsetTop, xOffsetTop+nxTop, yOffsetTop, yOffsetTop+nyTop], conv, vel2, mass, meanT, hot, cold, &
-            middle, tmin, tmax, rmin, rmax, &
-            rho_top, u_top, v_top, T_top)
+        call calNuRe_grid(nxTop,nyTop,dxFine,xOffsetTop,yOffsetTop,1,nxTop,&
+            1,&
+            nyTop,[xOffsetTop,xOffsetTop+nxTop,yOffsetTop,yOffsetTop+nyTop],conv,vel2,mass,meanT,hot,cold,&
+            middle,tmin,tmax,rmin,rmax,&
+            rho_top,u_top,v_top,T_top)
     endif
 
     ! 空间积分等于中心、左、右、下、上五个物理分区之和；接口端点按实际面积计权。
     ! Re 使用速度平方的面积平均再开方，非稳态时间统计也采用同一 RMS 定义。
-    nu = 1.0d0 + conv / (dble(nx) * dble(ny)) * (lengthUnit / (Thot - Tcold)) / diffusivity
-    re = sqrt(vel2 / (dble(nx) * dble(ny))) * lengthUnit / viscosity
-    hot = (lengthUnit / (Thot - Tcold)) * hot
-    cold = (lengthUnit / (Thot - Tcold)) * cold
-    middle = (lengthUnit / (Thot - Tcold)) * middle
-    meanT = meanT / (dble(nx) * dble(ny))
+    nu=1.0d0+conv/(dble(nx)*dble(ny))*(lengthUnit/(Thot-Tcold))/diffusivity
+    re=sqrt(vel2/(dble(nx)*dble(ny)))*lengthUnit/viscosity
+    hot=(lengthUnit/(Thot-Tcold))*hot
+    cold=(lengthUnit/(Thot-Tcold))*cold
+    middle=(lengthUnit/(Thot-Tcold))*middle
+    meanT=meanT/(dble(nx)*dble(ny))
   end subroutine calculate_NuRe
 !===================================================================================================
 
@@ -3831,12 +3827,12 @@
 ! 子程序: calNuRe_grid
 ! 作用: 累计传入区域的体积、壁面及中线统计贡献。
 !===================================================================================================
-  subroutine calNuRe_grid(ni, nj, dx, xOffset, yOffset, xStartIntegration, xEndIntegration, yStartIntegration, &
-      yEndIntegration, integrationBox, conv, &
-      vel2, mass, meanT, hot, cold, middle, tmin, tmax, rmin, rmax, &
-      rho, u, v, T)
+  subroutine calNuRe_grid(ni,nj,dx,xOffset,yOffset,xStartIntegration,xEndIntegration,yStartIntegration,&
+      yEndIntegration,integrationBox,conv,&
+      vel2,mass,meanT,hot,cold,middle,tmin,tmax,rmin,rmax,&
+      rho,u,v,T)
 
-    use commondata, only: nx, ny, Thot, Tcold, diffusivity, itc, restartItcOffset, refineRatio, ieee_is_finite
+    use commondata,only: nx,ny,Thot,Tcold,diffusivity,itc,restartItcOffset,refineRatio,ieee_is_finite
     implicit none
 
     ! integrationBox 为细数组外框或粗区物理矩形；零面积交换节点不参与统计。
@@ -3846,101 +3842,101 @@
     real(kind=8) :: dx, xOffset, yOffset, integrationBox(4)
 
     integer(kind=4) :: i, j, jm, im
-    real(kind=8) :: rho(ni, nj)
-    real(kind=8) :: u(ni, nj)
-    real(kind=8) :: v(ni, nj)
-    real(kind=8) :: T(ni, nj)
+    real(kind=8) :: rho(ni,nj)
+    real(kind=8) :: u(ni,nj)
+    real(kind=8) :: v(ni,nj)
+    real(kind=8) :: T(ni,nj)
     real(kind=8) :: conv, vel2, mass, meanT, hot, cold, middle, dTdx, dTdy, tm, um, vm, cellArea, sectionWeight
     real(kind=8) :: w(4), dw(4)
     real(kind=8) :: tmin, tmax, rmin, rmax
 
-    do j = yStartIntegration, yEndIntegration
-        do i = xStartIntegration, xEndIntegration
-            call owned_cell_area(xOffset + (i - 0.5d0) * dx, yOffset + (j - 0.5d0) * dx, dx, integrationBox, cellArea)
-            if( cellArea <= 0d0 ) cycle
-            if( .NOT. ieee_is_finite(T(i, j)) .OR. .NOT. ieee_is_finite(rho(i, j)) .OR. &
-                .NOT. ieee_is_finite(u(i, j)) .OR. .NOT. ieee_is_finite(v(i, j)) .OR. rho(i, j) <= 0.0d0 ) then
-                write( *, *) 'Invalid state: time, xOffset,yOffset, i,j:', restartItcOffset + itc, xOffset, yOffset, i, j
+    do j=yStartIntegration,yEndIntegration
+        do i=xStartIntegration,xEndIntegration
+            call owned_cell_area(xOffset+(i-0.5d0)*dx,yOffset+(j-0.5d0)*dx,dx,integrationBox,cellArea)
+            if(cellArea <=0d0) cycle
+            if(.NOT. ieee_is_finite(T(i,j)) .OR. .NOT. ieee_is_finite(rho(i,j)) .OR. &
+                .NOT. ieee_is_finite(u(i,j)) .OR. .NOT. ieee_is_finite(v(i,j)) .OR. rho(i,j) <=0.0d0) then
+                write(*,*) 'Invalid state: time, xOffset,yOffset, i,j:',restartItcOffset+itc,xOffset,yOffset,i,j
                 error stop 'Nonfinite or nonpositive density in owned cells'
             endif
 #ifdef SideHeatedCell
-            conv = conv + u(i, j) * T(i, j) * cellArea
+            conv=conv+u(i,j)*T(i,j)*cellArea
 #else
-            conv = conv + v(i, j) * T(i, j) * cellArea
+            conv=conv+v(i,j)*T(i,j)*cellArea
 #endif
-            vel2 = vel2 + (u(i, j) ** 2 + v(i, j) ** 2) * cellArea
-            mass = mass + rho(i, j) * cellArea
-            meanT = meanT + T(i, j) * cellArea
-            tmin = min(tmin, T(i, j))
-            tmax = max(tmax, T(i, j))
-            rmin = min(rmin, rho(i, j))
-            rmax = max(rmax, rho(i, j))
+            vel2=vel2+(u(i,j)**2+v(i,j)**2)*cellArea
+            mass=mass+rho(i,j)*cellArea
+            meanT=meanT+T(i,j)*cellArea
+            tmin=min(tmin,T(i,j))
+            tmax=max(tmax,T(i,j))
+            rmin=min(rmin,rho(i,j))
+            rmax=max(rmax,rho(i,j))
         enddo
     enddo
 
 #ifdef SideHeatedCell
-    if( integrationBox(1) == 0.0d0 ) then
-        do j = yStartIntegration, yEndIntegration
-            hot = hot + (8.0d0 * Thot - 9.0d0 * T(1, j) + T(2, j)) / (3.0d0 * dx) * dx / dble(ny)
+    if(integrationBox(1)==0.0d0) then
+        do j=yStartIntegration,yEndIntegration
+            hot=hot+(8.0d0*Thot-9.0d0*T(1,j)+T(2,j))/(3.0d0*dx)*dx/dble(ny)
         enddo
     endif
 
-    if( integrationBox(2) == dble(nx) ) then
-        do j = yStartIntegration, yEndIntegration
-            cold = cold + ( - 8.0d0 * Tcold + 9.0d0 * T(ni, j) - T(ni - 1, &
-                j)) / (3.0d0 * dx) * dx / dble(ny)
+    if(integrationBox(2)==dble(nx)) then
+        do j=yStartIntegration,yEndIntegration
+            cold=cold+(-8.0d0*Tcold+9.0d0*T(ni,j)-T(ni-1,&
+                j))/(3.0d0*dx)*dx/dble(ny)
         enddo
     endif
 
-    if( (0.5d0 * nx) >= integrationBox(1) .AND. (0.5d0 * nx) < integrationBox(2) ) then
+    if((0.5d0*nx) >=integrationBox(1) .AND. (0.5d0*nx) < integrationBox(2)) then
 
-        call section_weights(((0.5d0 * nx) - xOffset) / dx + 0.5d0, ni, im, w, dw)
-        do j = yStartIntegration, yEndIntegration
-            call section_owned_weight(xOffset, yOffset, dx, integrationBox, j, 1, (0.5d0 * nx), sectionWeight)
-            if( sectionWeight <= 0d0 ) cycle
-            if( dx == 1.0d0 .AND. refineRatio > 1 ) then
+        call section_weights(((0.5d0*nx)-xOffset)/dx+0.5d0,ni,im,w,dw)
+        do j=yStartIntegration,yEndIntegration
+            call section_owned_weight(xOffset,yOffset,dx,integrationBox,j,1,(0.5d0*nx),sectionWeight)
+            if(sectionWeight <=0d0) cycle
+            if(dx==1.0d0 .AND. refineRatio > 1) then
 
-                call fine_section_x((0.5d0 * nx), nint(yOffset) + j, tm, um, dTdx)
+                call fine_section_x((0.5d0*nx),nint(yOffset)+j,tm,um,dTdx)
             else
-                tm = sum(w * T(im:im + 3, j))
-                um = sum(w * u(im:im + 3, j))
-                dTdx = sum(dw * T(im:im + 3, j)) / dx
+                tm=sum(w*T(im:im+3,j))
+                um=sum(w*u(im:im+3,j))
+                dTdx=sum(dw*T(im:im+3,j))/dx
             endif
 
-            middle = middle + (um * tm / diffusivity - dTdx) * sectionWeight / dble(ny)
+            middle=middle+(um*tm/diffusivity-dTdx)*sectionWeight/dble(ny)
         enddo
     endif
 #else
 
-    if( integrationBox(3) == 0.0d0 ) then
-        do i = xStartIntegration, xEndIntegration
-            hot = hot + (8.0d0 * Thot - 9.0d0 * T(i, 1) + T(i, 2)) / (3.0d0 * dx) * dx / dble(nx)
+    if(integrationBox(3)==0.0d0) then
+        do i=xStartIntegration,xEndIntegration
+            hot=hot+(8.0d0*Thot-9.0d0*T(i,1)+T(i,2))/(3.0d0*dx)*dx/dble(nx)
         enddo
     endif
 
-    if( integrationBox(4) == dble(ny) ) then
-        do i = xStartIntegration, xEndIntegration
-            cold = cold + ( - 8.0d0 * Tcold + 9.0d0 * T(i, nj) - T(i, &
-                nj - 1)) / (3.0d0 * dx) * dx / dble(nx)
+    if(integrationBox(4)==dble(ny)) then
+        do i=xStartIntegration,xEndIntegration
+            cold=cold+(-8.0d0*Tcold+9.0d0*T(i,nj)-T(i,&
+                nj-1))/(3.0d0*dx)*dx/dble(nx)
         enddo
     endif
 
-    if( (0.5d0 * ny) >= integrationBox(3) .AND. (0.5d0 * ny) < integrationBox(4) ) then
+    if((0.5d0*ny) >=integrationBox(3) .AND. (0.5d0*ny) < integrationBox(4)) then
 
-        call section_weights(((0.5d0 * ny) - yOffset) / dx + 0.5d0, nj, jm, w, dw)
-        do i = xStartIntegration, xEndIntegration
-            call section_owned_weight(xOffset, yOffset, dx, integrationBox, i, 2, (0.5d0 * ny), sectionWeight)
-            if( sectionWeight <= 0d0 ) cycle
-            if( dx == 1.0d0 .AND. refineRatio > 1 ) then
+        call section_weights(((0.5d0*ny)-yOffset)/dx+0.5d0,nj,jm,w,dw)
+        do i=xStartIntegration,xEndIntegration
+            call section_owned_weight(xOffset,yOffset,dx,integrationBox,i,2,(0.5d0*ny),sectionWeight)
+            if(sectionWeight <=0d0) cycle
+            if(dx==1.0d0 .AND. refineRatio > 1) then
 
-                call fine_section_y(nint(xOffset) + i, (0.5d0 * ny), tm, vm, dTdy)
+                call fine_section_y(nint(xOffset)+i,(0.5d0*ny),tm,vm,dTdy)
             else
-                tm = sum(w * T(i, jm:jm + 3))
-                vm = sum(w * v(i, jm:jm + 3))
-                dTdy = sum(dw * T(i, jm:jm + 3)) / dx
+                tm=sum(w*T(i,jm:jm+3))
+                vm=sum(w*v(i,jm:jm+3))
+                dTdy=sum(dw*T(i,jm:jm+3))/dx
             endif
 
-            middle = middle + (vm * tm / diffusivity - dTdy) * sectionWeight / dble(nx)
+            middle=middle+(vm*tm/diffusivity-dTdy)*sectionWeight/dble(nx)
         enddo
     endif
 #endif
@@ -3960,61 +3956,61 @@
     integer(kind=4) :: k
     real(kind=8) :: du, uu, dt, tt
 
-    du = 0.0d0
-    uu = 0.0d0
-    dt = 0.0d0
-    tt = 0.0d0
+    du=0.0d0
+    uu=0.0d0
+    dt=0.0d0
+    tt=0.0d0
 
     call update_host_all(.false.)
 
-    call check_grid(nxCoarse, nyCoarse, dxCoarse, xOffsetCoarse, yOffsetCoarse, xStartIntegrationCoarse, &
-        xEndIntegrationCoarse, yStartIntegrationCoarse, yEndIntegrationCoarse, centerIntegrationBox, du, uu, dt, tt, &
-        u_coarse, v_coarse, T_coarse &
+    call check_grid(nxCoarse,nyCoarse,dxCoarse,xOffsetCoarse,yOffsetCoarse,xStartIntegrationCoarse,&
+        xEndIntegrationCoarse,yStartIntegrationCoarse,yEndIntegrationCoarse,centerIntegrationBox,du,uu,dt,tt,&
+        u_coarse,v_coarse,T_coarse &
 #ifdef steadyFlow
-        , up_coarse, vp_coarse, Tp_coarse &
+        ,up_coarse,vp_coarse,Tp_coarse &
 #endif
         )
-    if( refineRatio > 1 ) then
+    if(refineRatio > 1) then
 
-        call check_grid(nxLeft, nyLeft, dxFine, xOffsetLeft, yOffsetLeft, 1, nxLeft, &
-            1, nyLeft, [xOffsetLeft, xOffsetLeft+nxLeft, yOffsetLeft, yOffsetLeft+nyLeft], du, uu, dt, tt, u_left, v_left, T_left &
+        call check_grid(nxLeft,nyLeft,dxFine,xOffsetLeft,yOffsetLeft,1,nxLeft,&
+            1,nyLeft,[xOffsetLeft,xOffsetLeft+nxLeft,yOffsetLeft,yOffsetLeft+nyLeft],du,uu,dt,tt,u_left,v_left,T_left &
 #ifdef steadyFlow
-            , up_left, vp_left, Tp_left &
+            ,up_left,vp_left,Tp_left &
 #endif
             )
 
-        call check_grid(nxRight, nyRight, dxFine, xOffsetRight, yOffsetRight, 1, nxRight, &
-            1, nyRight, [xOffsetRight, xOffsetRight+nxRight, yOffsetRight, yOffsetRight+nyRight], du, uu, dt, tt, &
-            u_right, v_right, T_right &
+        call check_grid(nxRight,nyRight,dxFine,xOffsetRight,yOffsetRight,1,nxRight,&
+            1,nyRight,[xOffsetRight,xOffsetRight+nxRight,yOffsetRight,yOffsetRight+nyRight],du,uu,dt,tt,&
+            u_right,v_right,T_right &
 #ifdef steadyFlow
-            , up_right, vp_right, Tp_right &
+            ,up_right,vp_right,Tp_right &
 #endif
             )
 
-        call check_grid(nxBottom, nyBottom, dxFine, xOffsetBottom, yOffsetBottom, 1, &
-            nxBottom, 1, nyBottom, [xOffsetBottom, xOffsetBottom+nxBottom, yOffsetBottom, yOffsetBottom+nyBottom], du, uu, &
-            dt, tt, u_bottom, v_bottom, &
+        call check_grid(nxBottom,nyBottom,dxFine,xOffsetBottom,yOffsetBottom,1,&
+            nxBottom,1,nyBottom,[xOffsetBottom,xOffsetBottom+nxBottom,yOffsetBottom,yOffsetBottom+nyBottom],du,uu,&
+            dt,tt,u_bottom,v_bottom,&
             T_bottom &
 #ifdef steadyFlow
-            , up_bottom, vp_bottom, Tp_bottom &
+            ,up_bottom,vp_bottom,Tp_bottom &
 #endif
             )
 
-        call check_grid(nxTop, nyTop, dxFine, xOffsetTop, yOffsetTop, 1, nxTop, &
-            1, &
-            nyTop, [xOffsetTop, xOffsetTop+nxTop, yOffsetTop, yOffsetTop+nyTop], du, uu, dt, tt, u_top, v_top, T_top &
+        call check_grid(nxTop,nyTop,dxFine,xOffsetTop,yOffsetTop,1,nxTop,&
+            1,&
+            nyTop,[xOffsetTop,xOffsetTop+nxTop,yOffsetTop,yOffsetTop+nyTop],du,uu,dt,tt,u_top,v_top,T_top &
 #ifdef steadyFlow
-            , up_top, vp_top, Tp_top &
+            ,up_top,vp_top,Tp_top &
 #endif
             )
     endif
 
-    errorU = sqrt(du / max(uu, 1.0d-300))
-    errorT = sqrt(dt / max(tt, 1.0d-300))
-    open(newunit=k, file='Convergence_2DOpenaccMultiblock.dat', status='unknown', position='append')
-    write(k, '(I12,2(1X,ES24.16E3))') restartItcOffset + itc, errorU, errorT
+    errorU=sqrt(du/max(uu,1.0d-300))
+    errorT=sqrt(dt/max(tt,1.0d-300))
+    open(newunit=k,file='Convergence_2DOpenaccMultiblock.dat',status='unknown',position='append')
+    write(k,'(I12,2(1X,ES24.16E3))') restartItcOffset+itc,errorU,errorT
     close(k)
-    write( *, *) 'errorU,errorT:', errorU, errorT
+    write(*,*) 'errorU,errorT:',errorU,errorT
 #endif
   end subroutine check
 !===================================================================================================
@@ -4027,11 +4023,11 @@
 ! 子程序: check_grid
 ! 作用: 累计一个区域的收敛误差，并保存本次检查时的宏观场。
 !===================================================================================================
-  subroutine check_grid(ni, nj, dx, xOffset, yOffset, xStartIntegration, xEndIntegration, yStartIntegration, &
-      yEndIntegration, integrationBox, du, uu, dt, &
-      tt, u, v, T &
+  subroutine check_grid(ni,nj,dx,xOffset,yOffset,xStartIntegration,xEndIntegration,yStartIntegration,&
+      yEndIntegration,integrationBox,du,uu,dt,&
+      tt,u,v,T &
 #ifdef steadyFlow
-      , up, vp, Tp &
+      ,up,vp,Tp &
 #endif
       )
 
@@ -4044,29 +4040,29 @@
     real(kind=8) :: dx, xOffset, yOffset, integrationBox(4)
 
     integer(kind=4) :: i, j
-    real(kind=8) :: u(ni, nj)
-    real(kind=8) :: v(ni, nj)
-    real(kind=8) :: T(ni, nj)
+    real(kind=8) :: u(ni,nj)
+    real(kind=8) :: v(ni,nj)
+    real(kind=8) :: T(ni,nj)
 #ifdef steadyFlow
-    real(kind=8) :: up(ni, nj)
-    real(kind=8) :: vp(ni, nj)
-    real(kind=8) :: Tp(ni, nj)
+    real(kind=8) :: up(ni,nj)
+    real(kind=8) :: vp(ni,nj)
+    real(kind=8) :: Tp(ni,nj)
 #endif
     real(kind=8) :: du, uu, dt, tt, cellArea
 
-    do j = yStartIntegration, yEndIntegration
-        do i = xStartIntegration, xEndIntegration
-            call owned_cell_area(xOffset + (i - 0.5d0) * dx, yOffset + (j - 0.5d0) * dx, dx, integrationBox, cellArea)
-            du = du + cellArea * ((u(i, j) - up(i, j)) ** 2 + (v(i, j) - vp(i, j)) ** 2)
-            uu = uu + cellArea * (u(i, j) ** 2 + v(i, j) ** 2)
-            dt = dt + cellArea * (T(i, j) - Tp(i, j)) ** 2
-            tt = tt + cellArea * T(i, j) ** 2
+    do j=yStartIntegration,yEndIntegration
+        do i=xStartIntegration,xEndIntegration
+            call owned_cell_area(xOffset+(i-0.5d0)*dx,yOffset+(j-0.5d0)*dx,dx,integrationBox,cellArea)
+            du=du+cellArea*((u(i,j)-up(i,j))**2+(v(i,j)-vp(i,j))**2)
+            uu=uu+cellArea*(u(i,j)**2+v(i,j)**2)
+            dt=dt+cellArea*(T(i,j)-Tp(i,j))**2
+            tt=tt+cellArea*T(i,j)**2
         enddo
     enddo
 
-    up = u
-    vp = v
-    Tp = T
+    up=u
+    vp=v
+    Tp=T
   end subroutine check_grid
 !===================================================================================================
 
@@ -4086,34 +4082,34 @@
     integer(kind=4) :: k
     character(len=16) :: num
 
-    pltFileNum = pltFileNum + 1
-    write(num, '(I10.10)') pltFileNum
+    pltFileNum=pltFileNum+1
+    write(num,'(I10.10)') pltFileNum
 
     call update_host_all(.false.)
-    open(newunit=k, file=pltFolderPrefix // '-' // trim(num) // '.dat', status='replace')
-    write(k, '(a)') 'VARIABLES="x/L","y/L","u","v","T","rho","dx/L","integration_area/L^2"'
+    open(newunit=k,file=pltFolderPrefix//'-'//trim(num)//'.dat',status='replace')
+    write(k,'(a)') 'VARIABLES="x/L","y/L","u","v","T","rho","dx/L","integration_area/L^2"'
 
-    call output_Tecplot_grid(nxCoarse, nyCoarse, dxCoarse, xOffsetCoarse, yOffsetCoarse, xStartIntegrationCoarse, &
-        xEndIntegrationCoarse, yStartIntegrationCoarse, yEndIntegrationCoarse, centerIntegrationBox, &
-        'coarse', k, rho_coarse, u_coarse, &
-        v_coarse, T_coarse)
-    if( refineRatio > 1 ) then
+    call output_Tecplot_grid(nxCoarse,nyCoarse,dxCoarse,xOffsetCoarse,yOffsetCoarse,xStartIntegrationCoarse,&
+        xEndIntegrationCoarse,yStartIntegrationCoarse,yEndIntegrationCoarse,centerIntegrationBox,&
+        'coarse',k,rho_coarse,u_coarse,&
+        v_coarse,T_coarse)
+    if(refineRatio > 1) then
 
-        call output_Tecplot_grid(nxLeft, nyLeft, dxFine, xOffsetLeft, yOffsetLeft, 1, nxLeft, &
-            1, nyLeft, [xOffsetLeft, xOffsetLeft+nxLeft, yOffsetLeft, yOffsetLeft+nyLeft], 'left', k, rho_left, u_left, v_left, T_left)
+        call output_Tecplot_grid(nxLeft,nyLeft,dxFine,xOffsetLeft,yOffsetLeft,1,nxLeft,&
+            1,nyLeft,[xOffsetLeft,xOffsetLeft+nxLeft,yOffsetLeft,yOffsetLeft+nyLeft],'left',k,rho_left,u_left,v_left,T_left)
 
-        call output_Tecplot_grid(nxRight, nyRight, dxFine, xOffsetRight, yOffsetRight, 1, &
-            nxRight, 1, nyRight, [xOffsetRight, xOffsetRight+nxRight, yOffsetRight, yOffsetRight+nyRight], 'right', k, &
-            rho_right, u_right, &
-            v_right, T_right)
+        call output_Tecplot_grid(nxRight,nyRight,dxFine,xOffsetRight,yOffsetRight,1,&
+            nxRight,1,nyRight,[xOffsetRight,xOffsetRight+nxRight,yOffsetRight,yOffsetRight+nyRight],'right',k,&
+            rho_right,u_right,&
+            v_right,T_right)
 
-        call output_Tecplot_grid(nxBottom, nyBottom, dxFine, xOffsetBottom, yOffsetBottom, 1, &
-            nxBottom, 1, nyBottom, [xOffsetBottom, xOffsetBottom+nxBottom, yOffsetBottom, yOffsetBottom+nyBottom], 'bottom', &
-            k, rho_bottom, u_bottom, &
-            v_bottom, T_bottom)
+        call output_Tecplot_grid(nxBottom,nyBottom,dxFine,xOffsetBottom,yOffsetBottom,1,&
+            nxBottom,1,nyBottom,[xOffsetBottom,xOffsetBottom+nxBottom,yOffsetBottom,yOffsetBottom+nyBottom],'bottom',&
+            k,rho_bottom,u_bottom,&
+            v_bottom,T_bottom)
 
-        call output_Tecplot_grid(nxTop, nyTop, dxFine, xOffsetTop, yOffsetTop, 1, nxTop, &
-            1, nyTop, [xOffsetTop, xOffsetTop+nxTop, yOffsetTop, yOffsetTop+nyTop], 'top', k, rho_top, u_top, v_top, T_top)
+        call output_Tecplot_grid(nxTop,nyTop,dxFine,xOffsetTop,yOffsetTop,1,nxTop,&
+            1,nyTop,[xOffsetTop,xOffsetTop+nxTop,yOffsetTop,yOffsetTop+nyTop],'top',k,rho_top,u_top,v_top,T_top)
     endif
 
     close(k)
@@ -4124,32 +4120,32 @@
 ! 子程序: output_Tecplot_grid
 ! 作用: 向已打开的 Tecplot 文件写入一个区域的坐标及宏观场。
 !===================================================================================================
-  subroutine output_Tecplot_grid(ni, nj, dx, xOffset, yOffset, xStartIntegration, xEndIntegration, &
-      yStartIntegration, yEndIntegration, integrationBox, &
-      gridName, k, rho, u, v, T)
+  subroutine output_Tecplot_grid(ni,nj,dx,xOffset,yOffset,xStartIntegration,xEndIntegration,&
+      yStartIntegration,yEndIntegration,integrationBox,&
+      gridName,k,rho,u,v,T)
 
-    use commondata, only: lengthUnit, timeUnit, itc, restartItcOffset
+    use commondata,only: lengthUnit,timeUnit,itc,restartItcOffset
     implicit none
     integer(kind=4) :: ni, nj, xStartIntegration, xEndIntegration, yStartIntegration, yEndIntegration
     real(kind=8) :: dx, xOffset, yOffset, integrationBox(4)
-    character( *), intent(in) :: gridName
+    character(*), intent(in) :: gridName
 
     integer(kind=4) :: k, i, j
-    real(kind=8) :: rho(ni, nj)
-    real(kind=8) :: u(ni, nj)
-    real(kind=8) :: v(ni, nj)
-    real(kind=8) :: T(ni, nj)
+    real(kind=8) :: rho(ni,nj)
+    real(kind=8) :: u(ni,nj)
+    real(kind=8) :: v(ni,nj)
+    real(kind=8) :: T(ni,nj)
     real(kind=8) :: cellArea
 
-    write(k, '(a,a,a,I0,a,I0,a,ES24.16E3)') 'ZONE T="', trim(gridName), '", I=', xEndIntegration - xStartIntegration + 1, &
-        ', J=', yEndIntegration - yStartIntegration + 1, ', F=POINT, SOLUTIONTIME=', dble(restartItcOffset + itc) / timeUnit
-    do j = yStartIntegration, yEndIntegration
-        do i = xStartIntegration, xEndIntegration
-            call owned_cell_area(xOffset + (i - 0.5d0) * dx, yOffset + (j - 0.5d0) * dx, dx, integrationBox, cellArea)
-            write(k, '(8(ES24.16E3,1X))')((xOffset + (dble(i) - 0.5d0) * dx)) / lengthUnit, &
-                ((yOffset + (dble(j) - 0.5d0) * dx)) / lengthUnit, u(i, j), v(i, j), T(i, j), rho(i, j), &
-                dx / lengthUnit, &
-                cellArea / lengthUnit ** 2
+    write(k,'(a,a,a,I0,a,I0,a,ES24.16E3)') 'ZONE T="',trim(gridName),'", I=',xEndIntegration-xStartIntegration+1,&
+        ', J=',yEndIntegration-yStartIntegration+1,', F=POINT, SOLUTIONTIME=',dble(restartItcOffset+itc)/timeUnit
+    do j=yStartIntegration,yEndIntegration
+        do i=xStartIntegration,xEndIntegration
+            call owned_cell_area(xOffset+(i-0.5d0)*dx,yOffset+(j-0.5d0)*dx,dx,integrationBox,cellArea)
+            write(k,'(8(ES24.16E3,1X))')((xOffset+(dble(i)-0.5d0)*dx))/lengthUnit,&
+                ((yOffset+(dble(j)-0.5d0)*dx))/lengthUnit,u(i,j),v(i,j),T(i,j),rho(i,j),&
+                dx/lengthUnit,&
+                cellArea/lengthUnit**2
         enddo
     enddo
   end subroutine output_Tecplot_grid
@@ -4164,41 +4160,41 @@
     use commondata
     implicit none
 
-    ! 与均匀网格快照不同：文件记录区域数量和每区二维积分面积，多网格时为五区。
+    ! 快照记录区域数量、各区几何和节点积分面积；单网格为一区，多块网格为五区。
     ! 快照用于后处理；完整续算还需要 f/g 和粗历史，应读取续算检查点。
 
     integer(kind=4) :: k
     character(len=16) :: num
 
-    snapshotFileNum = snapshotFileNum + 1
-    write(num, '(I10.10)') snapshotFileNum
+    snapshotFileNum=snapshotFileNum+1
+    write(num,'(I10.10)') snapshotFileNum
 
     call update_host_all(.false.)
-    open(newunit=k, file=snapshotFilePrefix // '-' // trim(num) // '.bin', form='unformatted', &
-        access = 'stream', status = 'replace')
-    write(k) merge(5, 1, refineRatio > 1), nx, ny, restartItcOffset + itc, dble(restartItcOffset + itc) / timeUnit, lengthUnit
+    open(newunit=k,file=snapshotFilePrefix//'-'//trim(num)//'.bin',form='unformatted',&
+        access='stream',status='replace')
+    write(k) merge(5,1,refineRatio > 1),nx,ny,restartItcOffset+itc,dble(restartItcOffset+itc)/timeUnit,lengthUnit
 
-    call output_SnapshotFile_grid(nxCoarse, nyCoarse, dxCoarse, xOffsetCoarse, yOffsetCoarse, &
-        xStartIntegrationCoarse, xEndIntegrationCoarse, yStartIntegrationCoarse, yEndIntegrationCoarse, &
-        centerIntegrationBox, k, rho_coarse, u_coarse, &
-        v_coarse, T_coarse)
-    if( refineRatio > 1 ) then
+    call output_SnapshotFile_grid(nxCoarse,nyCoarse,dxCoarse,xOffsetCoarse,yOffsetCoarse,&
+        xStartIntegrationCoarse,xEndIntegrationCoarse,yStartIntegrationCoarse,yEndIntegrationCoarse,&
+        centerIntegrationBox,k,rho_coarse,u_coarse,&
+        v_coarse,T_coarse)
+    if(refineRatio > 1) then
 
-        call output_SnapshotFile_grid(nxLeft, nyLeft, dxFine, xOffsetLeft, yOffsetLeft, 1, &
-            nxLeft, 1, nyLeft, [xOffsetLeft, xOffsetLeft+nxLeft, yOffsetLeft, yOffsetLeft+nyLeft], k, rho_left, &
-            u_left, v_left, T_left)
+        call output_SnapshotFile_grid(nxLeft,nyLeft,dxFine,xOffsetLeft,yOffsetLeft,1,&
+            nxLeft,1,nyLeft,[xOffsetLeft,xOffsetLeft+nxLeft,yOffsetLeft,yOffsetLeft+nyLeft],k,rho_left,&
+            u_left,v_left,T_left)
 
-        call output_SnapshotFile_grid(nxRight, nyRight, dxFine, xOffsetRight, yOffsetRight, 1, &
-            nxRight, 1, nyRight, [xOffsetRight, xOffsetRight+nxRight, yOffsetRight, yOffsetRight+nyRight], k, rho_right, &
-            u_right, v_right, T_right)
+        call output_SnapshotFile_grid(nxRight,nyRight,dxFine,xOffsetRight,yOffsetRight,1,&
+            nxRight,1,nyRight,[xOffsetRight,xOffsetRight+nxRight,yOffsetRight,yOffsetRight+nyRight],k,rho_right,&
+            u_right,v_right,T_right)
 
-        call output_SnapshotFile_grid(nxBottom, nyBottom, dxFine, xOffsetBottom, yOffsetBottom, &
-            1, nxBottom, 1, nyBottom, &
-            [xOffsetBottom, xOffsetBottom+nxBottom, yOffsetBottom, yOffsetBottom+nyBottom], k, rho_bottom, u_bottom, &
-            v_bottom, T_bottom)
+        call output_SnapshotFile_grid(nxBottom,nyBottom,dxFine,xOffsetBottom,yOffsetBottom,&
+            1,nxBottom,1,nyBottom,&
+            [xOffsetBottom,xOffsetBottom+nxBottom,yOffsetBottom,yOffsetBottom+nyBottom],k,rho_bottom,u_bottom,&
+            v_bottom,T_bottom)
 
-        call output_SnapshotFile_grid(nxTop, nyTop, dxFine, xOffsetTop, yOffsetTop, 1, nxTop, &
-            1, nyTop, [xOffsetTop, xOffsetTop+nxTop, yOffsetTop, yOffsetTop+nyTop], k, rho_top, u_top, v_top, T_top)
+        call output_SnapshotFile_grid(nxTop,nyTop,dxFine,xOffsetTop,yOffsetTop,1,nxTop,&
+            1,nyTop,[xOffsetTop,xOffsetTop+nxTop,yOffsetTop,yOffsetTop+nyTop],k,rho_top,u_top,v_top,T_top)
     endif
 
     close(k)
@@ -4209,41 +4205,41 @@
 ! 子程序: output_SnapshotFile_grid
 ! 作用: 向快照文件写入一个区域的几何、权重和宏观量。
 !===================================================================================================
-  subroutine output_SnapshotFile_grid(ni, nj, dx, xOffset, yOffset, xStartIntegration, xEndIntegration, &
-      yStartIntegration, yEndIntegration, &
-      integrationBox, k, rho, u, v, T)
+  subroutine output_SnapshotFile_grid(ni,nj,dx,xOffset,yOffset,xStartIntegration,xEndIntegration,&
+      yStartIntegration,yEndIntegration,&
+      integrationBox,k,rho,u,v,T)
 
     implicit none
     integer(kind=4) :: ni, nj, xStartIntegration, xEndIntegration, yStartIntegration, yEndIntegration
     real(kind=8) :: dx, xOffset, yOffset, integrationBox(4)
 
     integer(kind=4) :: k, i, j
-    real(kind=8) :: rho(ni, nj)
-    real(kind=8) :: u(ni, nj)
-    real(kind=8) :: v(ni, nj)
-    real(kind=8) :: T(ni, nj)
+    real(kind=8) :: rho(ni,nj)
+    real(kind=8) :: u(ni,nj)
+    real(kind=8) :: v(ni,nj)
+    real(kind=8) :: T(ni,nj)
     real(kind=8) :: cellAreaRow(xStartIntegration:xEndIntegration)    ! 暂存一行节点的积分面积，按原 i 快、j 慢顺序写入流文件。
 
-    write(k) xEndIntegration - xStartIntegration + 1, yEndIntegration - yStartIntegration + 1, &
-        xOffset + (dble(xStartIntegration) - 0.5d0) * dx, yOffset + (dble(yStartIntegration) - 0.5d0) * dx, &
-        dx, integrationBox
+    write(k) xEndIntegration-xStartIntegration+1,yEndIntegration-yStartIntegration+1,&
+        xOffset+(dble(xStartIntegration)-0.5d0)*dx,yOffset+(dble(yStartIntegration)-0.5d0)*dx,&
+        dx,integrationBox
     ! 保持已有快照格式；一维宽度仅在写文件时计算，不在 commondata 重复保存。
-    write(k) (max(0.0d0, min(integrationBox(2), xOffset+i*dx) - &
-        max(integrationBox(1), xOffset+(i-1)*dx)), i=xStartIntegration,xEndIntegration), &
-        (max(0.0d0, min(integrationBox(4), yOffset+j*dx) - &
-        max(integrationBox(3), yOffset+(j-1)*dx)), j=yStartIntegration,yEndIntegration)
+    write(k) (max(0.0d0,min(integrationBox(2),xOffset+i*dx)-&
+        max(integrationBox(1),xOffset+(i-1)*dx)),i=xStartIntegration,xEndIntegration),&
+        (max(0.0d0,min(integrationBox(4),yOffset+j*dx)-&
+        max(integrationBox(3),yOffset+(j-1)*dx)),j=yStartIntegration,yEndIntegration)
     ! 一维积分权重之后保存显式的二维积分面积。
-    do j = yStartIntegration, yEndIntegration
-        do i = xStartIntegration, xEndIntegration
-            call owned_cell_area(xOffset + (i - 0.5d0) * dx, yOffset + (j - 0.5d0) * dx, dx, &
-                integrationBox, cellAreaRow(i))
+    do j=yStartIntegration,yEndIntegration
+        do i=xStartIntegration,xEndIntegration
+            call owned_cell_area(xOffset+(i-0.5d0)*dx,yOffset+(j-0.5d0)*dx,dx,&
+                integrationBox,cellAreaRow(i))
         enddo
         write(k) cellAreaRow
     enddo
-    write(k) u(xStartIntegration:xEndIntegration, yStartIntegration:yEndIntegration), &
-        v(xStartIntegration:xEndIntegration, yStartIntegration:yEndIntegration), &
-        T(xStartIntegration:xEndIntegration, yStartIntegration:yEndIntegration), &
-        rho(xStartIntegration:xEndIntegration, yStartIntegration:yEndIntegration)
+    write(k) u(xStartIntegration:xEndIntegration,yStartIntegration:yEndIntegration),&
+        v(xStartIntegration:xEndIntegration,yStartIntegration:yEndIntegration),&
+        T(xStartIntegration:xEndIntegration,yStartIntegration:yEndIntegration),&
+        rho(xStartIntegration:xEndIntegration,yStartIntegration:yEndIntegration)
   end subroutine output_SnapshotFile_grid
 !===================================================================================================
 
@@ -4256,7 +4252,7 @@
     use commondata
     implicit none
 
-    ! 按 coarse、left、right、bottom、top 顺序保存，区域之间没有编号选择器。
+    ! 按 coarse、left、right、bottom、top 的固定顺序保存各区数据。
     ! 粗历史和输出时钟也必须写入，否则恢复后时间插值及采样次序无法保持连续。
 
     integer(kind=4) :: k, currentModel(12)
@@ -4266,85 +4262,85 @@
 
     call update_host_all(.true.)
 #ifdef steadyFlow
-    reloadFileNum = restartItcOffset + itc
+    reloadFileNum=restartItcOffset+itc
 #else
-    reloadFileNum = reloadFileNum + 1
+    reloadFileNum=reloadFileNum+1
 #endif
-    write(num, '(I12.12)') reloadFileNum
-    name = reloadFilePrefix // '-' // trim(num) // '.bin'
-    open(newunit=k, file=trim(name), access='stream', form='unformatted', status='replace')
-    write(k) nx, ny, refineRatio, fineLayerCellsLeft, fineLayerCellsRight, &
-        fineLayerCellsBottom, fineLayerCellsTop, interfaceSkin, merge(5, 1, refineRatio > 1)
+    write(num,'(I12.12)') reloadFileNum
+    name=reloadFilePrefix//'-'//trim(num)//'.bin'
+    open(newunit=k,file=trim(name),access='stream',form='unformatted',status='replace')
+    write(k) nx,ny,refineRatio,fineLayerCellsLeft,fineLayerCellsRight,&
+        fineLayerCellsBottom,fineLayerCellsTop,interfaceSkin,merge(5,1,refineRatio > 1)
 
     ! 保存模型开关和物理参数，使续算能够检查配置是否匹配。
     call model_signature(currentModel)
 
     call physical_signature(currentPhysics)
-    write(k) currentModel, currentPhysics
-    ! 保留原文件中三个输出序号的位置；序号现由采样次数和累计格子步直接计算，无需三个全局时钟。
-    write(k) restartItcOffset + itc, dimensionlessTime + 1, &
-        (restartItcOffset + itc) / reloadFileIntervalItc + 1, &
-        (restartItcOffset + itc) / outputPltFileIntervalItc + 1, &
-        snapshotFileNum, pltFileNum, reloadFileNum, errorU, errorT
+    write(k) currentModel,currentPhysics
+    ! 三个输出序号依次为采样、续算文件和 Tecplot 的下一序号，用于续算时核对输出间隔。
+    write(k) restartItcOffset+itc,dimensionlessTime+1,&
+        (restartItcOffset+itc)/reloadFileIntervalItc+1,&
+        (restartItcOffset+itc)/outputPltFileIntervalItc+1,&
+        snapshotFileNum,pltFileNum,reloadFileNum,errorU,errorT
 
-    call output_ReloadFile_grid(nxCoarse, nyCoarse, timeInterpMaxIndexCoarse, dxCoarse, xOffsetCoarse, &
-        yOffsetCoarse, xStartIntegrationCoarse, xEndIntegrationCoarse, yStartIntegrationCoarse, &
-        yEndIntegrationCoarse, centerIntegrationBox, k, &
-        f_coarse, g_coarse, u_coarse, v_coarse, T_coarse, rho_coarse, Fx_coarse, Fy_coarse, &
-        rhoTimeInterp_coarse, uTimeInterp_coarse, vTimeInterp_coarse, TTimeInterp_coarse, FxOverDxTimeInterp_coarse, &
-        FyOverDxTimeInterp_coarse, flowNeqTimeInterp_coarse, thermalNeqTimeInterp_coarse &
+    call output_ReloadFile_grid(nxCoarse,nyCoarse,timeInterpMaxIndexCoarse,dxCoarse,xOffsetCoarse,&
+        yOffsetCoarse,xStartIntegrationCoarse,xEndIntegrationCoarse,yStartIntegrationCoarse,&
+        yEndIntegrationCoarse,centerIntegrationBox,k,&
+        f_coarse,g_coarse,u_coarse,v_coarse,T_coarse,rho_coarse,Fx_coarse,Fy_coarse,&
+        rhoTimeInterp_coarse,uTimeInterp_coarse,vTimeInterp_coarse,TTimeInterp_coarse,FxOverDxTimeInterp_coarse,&
+        FyOverDxTimeInterp_coarse,flowNeqTimeInterp_coarse,thermalNeqTimeInterp_coarse &
 #ifdef steadyFlow
-        , up_coarse, vp_coarse, Tp_coarse &
+        ,up_coarse,vp_coarse,Tp_coarse &
 #endif
         )
-    if( refineRatio > 1 ) then
+    if(refineRatio > 1) then
 
-        call output_ReloadFile_grid(nxLeft, nyLeft, 0, dxFine, xOffsetLeft, yOffsetLeft, 1, &
-            nxLeft, 1, nyLeft, [xOffsetLeft, xOffsetLeft+nxLeft, yOffsetLeft, yOffsetLeft+nyLeft], k, f_left, g_left, &
-            u_left, v_left, T_left, &
-            rho_left, Fx_left, Fy_left, rhoTimeInterp_left, uTimeInterp_left, vTimeInterp_left, TTimeInterp_left, &
-            FxOverDxTimeInterp_left, FyOverDxTimeInterp_left, flowNeqTimeInterp_left, thermalNeqTimeInterp_left &
+        call output_ReloadFile_grid(nxLeft,nyLeft,0,dxFine,xOffsetLeft,yOffsetLeft,1,&
+            nxLeft,1,nyLeft,[xOffsetLeft,xOffsetLeft+nxLeft,yOffsetLeft,yOffsetLeft+nyLeft],k,f_left,g_left,&
+            u_left,v_left,T_left,&
+            rho_left,Fx_left,Fy_left,rhoTimeInterp_left,uTimeInterp_left,vTimeInterp_left,TTimeInterp_left,&
+            FxOverDxTimeInterp_left,FyOverDxTimeInterp_left,flowNeqTimeInterp_left,thermalNeqTimeInterp_left &
 #ifdef steadyFlow
-            , up_left, vp_left, Tp_left &
+            ,up_left,vp_left,Tp_left &
 #endif
             )
 
-        call output_ReloadFile_grid(nxRight, nyRight, 0, dxFine, xOffsetRight, yOffsetRight, 1, &
-            nxRight, 1, nyRight, [xOffsetRight, xOffsetRight+nxRight, yOffsetRight, yOffsetRight+nyRight], k, f_right, &
-            g_right, u_right, v_right, &
-            T_right, rho_right, Fx_right, Fy_right, rhoTimeInterp_right, uTimeInterp_right, vTimeInterp_right, &
-            TTimeInterp_right, FxOverDxTimeInterp_right, FyOverDxTimeInterp_right, flowNeqTimeInterp_right, thermalNeqTimeInterp_right &
+        call output_ReloadFile_grid(nxRight,nyRight,0,dxFine,xOffsetRight,yOffsetRight,1,&
+            nxRight,1,nyRight,[xOffsetRight,xOffsetRight+nxRight,yOffsetRight,yOffsetRight+nyRight],k,f_right,&
+            g_right,u_right,v_right,&
+            T_right,rho_right,Fx_right,Fy_right,rhoTimeInterp_right,uTimeInterp_right,vTimeInterp_right,&
+            TTimeInterp_right,FxOverDxTimeInterp_right,FyOverDxTimeInterp_right,flowNeqTimeInterp_right,thermalNeqTimeInterp_right &
 #ifdef steadyFlow
-            , up_right, vp_right, Tp_right &
+            ,up_right,vp_right,Tp_right &
 #endif
             )
 
-        call output_ReloadFile_grid(nxBottom, nyBottom, 0, dxFine, xOffsetBottom, yOffsetBottom, &
-            1, nxBottom, 1, nyBottom, &
-            [xOffsetBottom, xOffsetBottom+nxBottom, yOffsetBottom, yOffsetBottom+nyBottom], k, f_bottom, g_bottom, &
-            u_bottom, v_bottom, T_bottom, rho_bottom, Fx_bottom, Fy_bottom, rhoTimeInterp_bottom, &
-            uTimeInterp_bottom, vTimeInterp_bottom, TTimeInterp_bottom, FxOverDxTimeInterp_bottom, FyOverDxTimeInterp_bottom, &
-            flowNeqTimeInterp_bottom, thermalNeqTimeInterp_bottom &
+        call output_ReloadFile_grid(nxBottom,nyBottom,0,dxFine,xOffsetBottom,yOffsetBottom,&
+            1,nxBottom,1,nyBottom,&
+            [xOffsetBottom,xOffsetBottom+nxBottom,yOffsetBottom,yOffsetBottom+nyBottom],k,f_bottom,g_bottom,&
+            u_bottom,v_bottom,T_bottom,rho_bottom,Fx_bottom,Fy_bottom,rhoTimeInterp_bottom,&
+            uTimeInterp_bottom,vTimeInterp_bottom,TTimeInterp_bottom,FxOverDxTimeInterp_bottom,FyOverDxTimeInterp_bottom,&
+            flowNeqTimeInterp_bottom,thermalNeqTimeInterp_bottom &
 #ifdef steadyFlow
-            , up_bottom, vp_bottom, Tp_bottom &
+            ,up_bottom,vp_bottom,Tp_bottom &
 #endif
             )
 
-        call output_ReloadFile_grid(nxTop, nyTop, 0, dxFine, xOffsetTop, yOffsetTop, 1, nxTop, &
-            1, nyTop, [xOffsetTop, xOffsetTop+nxTop, yOffsetTop, yOffsetTop+nyTop], k, f_top, g_top, u_top, v_top, T_top, &
-            rho_top, Fx_top, &
-            Fy_top, rhoTimeInterp_top, uTimeInterp_top, vTimeInterp_top, TTimeInterp_top, FxOverDxTimeInterp_top, FyOverDxTimeInterp_top, &
-            flowNeqTimeInterp_top, thermalNeqTimeInterp_top &
+        call output_ReloadFile_grid(nxTop,nyTop,0,dxFine,xOffsetTop,yOffsetTop,1,nxTop,&
+            1,nyTop,[xOffsetTop,xOffsetTop+nxTop,yOffsetTop,yOffsetTop+nyTop],k,f_top,g_top,u_top,v_top,T_top,&
+            rho_top,Fx_top,&
+            Fy_top,rhoTimeInterp_top,uTimeInterp_top,vTimeInterp_top,TTimeInterp_top,FxOverDxTimeInterp_top,FyOverDxTimeInterp_top,&
+            flowNeqTimeInterp_top,thermalNeqTimeInterp_top &
 #ifdef steadyFlow
-            , up_top, vp_top, Tp_top &
+            ,up_top,vp_top,Tp_top &
 #endif
             )
     endif
 
     close(k)
     ! 完整写完独立编号的 checkpoint 后再更新 latest 指针，旧 checkpoint 仍保留。
-    open(newunit=k, file=reloadFilePrefix // '-latest.meta', status='replace')
-    write(k, '(a)') trim(name)
+    open(newunit=k,file=reloadFilePrefix//'-latest.meta',status='replace')
+    write(k,'(a)') trim(name)
     close(k)
   end subroutine output_ReloadFile
 !===================================================================================================
@@ -4353,12 +4349,12 @@
 ! 子程序: output_ReloadFile_grid
 ! 作用: 向检查点写入一个区域的几何、分布函数、宏观量和历史。
 !===================================================================================================
-  subroutine output_ReloadFile_grid(ni, nj, nh, dx, xOffset, yOffset, xStartIntegration, xEndIntegration, &
-      yStartIntegration, yEndIntegration, &
-      integrationBox, k, f, g, u, v, T, rho, Fx, Fy, rhoHistory, uHistory, vHistory, &
-      THistory, FxHistory, FyHistory, flowNeqHistory, thermalNeqHistory &
+  subroutine output_ReloadFile_grid(ni,nj,nh,dx,xOffset,yOffset,xStartIntegration,xEndIntegration,&
+      yStartIntegration,yEndIntegration,&
+      integrationBox,k,f,g,u,v,T,rho,Fx,Fy,rhoHistory,uHistory,vHistory,&
+      THistory,FxHistory,FyHistory,flowNeqHistory,thermalNeqHistory &
 #ifdef steadyFlow
-      , up, vp, Tp &
+      ,up,vp,Tp &
 #endif
       )
 
@@ -4373,38 +4369,38 @@
     integer(kind=4) :: historyIndex
 
     integer(kind=4) :: k
-    real(kind=8) :: f(ni, nj, 0:8)
-    real(kind=8) :: g(ni, nj, 0:4)
-    real(kind=8) :: u(ni, nj)
-    real(kind=8) :: v(ni, nj)
-    real(kind=8) :: T(ni, nj)
-    real(kind=8) :: rho(ni, nj)
-    real(kind=8) :: Fx(ni, nj)
-    real(kind=8) :: Fy(ni, nj)
-    real(kind=8) :: rhoHistory(ni, nj, 0:nh)
-    real(kind=8) :: uHistory(ni, nj, 0:nh)
-    real(kind=8) :: vHistory(ni, nj, 0:nh)
-    real(kind=8) :: THistory(ni, nj, 0:nh)
-    real(kind=8) :: FxHistory(ni, nj, 0:nh)
-    real(kind=8) :: FyHistory(ni, nj, 0:nh)
-    real(kind=8) :: flowNeqHistory(ni, nj, 0:8, 0:nh)
-    real(kind=8) :: thermalNeqHistory(ni, nj, 0:4, 0:nh)
+    real(kind=8) :: f(ni,nj,0:8)
+    real(kind=8) :: g(ni,nj,0:4)
+    real(kind=8) :: u(ni,nj)
+    real(kind=8) :: v(ni,nj)
+    real(kind=8) :: T(ni,nj)
+    real(kind=8) :: rho(ni,nj)
+    real(kind=8) :: Fx(ni,nj)
+    real(kind=8) :: Fy(ni,nj)
+    real(kind=8) :: rhoHistory(ni,nj,0:nh)
+    real(kind=8) :: uHistory(ni,nj,0:nh)
+    real(kind=8) :: vHistory(ni,nj,0:nh)
+    real(kind=8) :: THistory(ni,nj,0:nh)
+    real(kind=8) :: FxHistory(ni,nj,0:nh)
+    real(kind=8) :: FyHistory(ni,nj,0:nh)
+    real(kind=8) :: flowNeqHistory(ni,nj,0:8,0:nh)
+    real(kind=8) :: thermalNeqHistory(ni,nj,0:4,0:nh)
 #ifdef steadyFlow
-    real(kind=8) :: up(ni, nj)
-    real(kind=8) :: vp(ni, nj)
-    real(kind=8) :: Tp(ni, nj)
+    real(kind=8) :: up(ni,nj)
+    real(kind=8) :: vp(ni,nj)
+    real(kind=8) :: Tp(ni,nj)
 #endif
 
-    write(k) ni, nj, xStartIntegration, xEndIntegration, yStartIntegration, yEndIntegration, nh, &
-        xOffset, yOffset, dx, integrationBox
-    ! 按“每时间层：宏观量、归一化力、流场矩、温度矩”顺序写入，不另建打包数组。
-    write(k) f, g, u, v, T, rho, Fx, Fy, &
-        (rhoHistory(:,:, historyIndex), uHistory(:,:, historyIndex), vHistory(:,:, historyIndex), &
-        THistory(:,:, historyIndex), FxHistory(:,:, historyIndex), FyHistory(:,:, historyIndex), &
-        flowNeqHistory(:,:,:, historyIndex), thermalNeqHistory(:,:,:, historyIndex), historyIndex = 0, &
+    write(k) ni,nj,xStartIntegration,xEndIntegration,yStartIntegration,yEndIntegration,nh,&
+        xOffset,yOffset,dx,integrationBox
+    ! 每个时间层按宏观量、归一化力、流场矩、温度矩的顺序写入。
+    write(k) f,g,u,v,T,rho,Fx,Fy,&
+        (rhoHistory(:,:,historyIndex),uHistory(:,:,historyIndex),vHistory(:,:,historyIndex),&
+        THistory(:,:,historyIndex),FxHistory(:,:,historyIndex),FyHistory(:,:,historyIndex),&
+        flowNeqHistory(:,:,:,historyIndex),thermalNeqHistory(:,:,:,historyIndex),historyIndex=0,&
         nh)
 #ifdef steadyFlow
-    write(k) up, vp, Tp
+    write(k) up,vp,Tp
 #endif
   end subroutine output_ReloadFile_grid
 !===================================================================================================
@@ -4430,102 +4426,102 @@
     character(len=256) :: name
     logical :: metaExists
 
-    inquire(file=reloadFilePrefix // '-latest.meta', exist=metaExists)
+    inquire(file=reloadFilePrefix//'-latest.meta',exist=metaExists)
 
     ! 优先从 latest.meta 找到检查点；文件不存在时使用手动编号。
-    if( metaExists ) then
-        open(newunit=k, file=reloadFilePrefix // '-latest.meta', status='old', iostat=ios)
-        if( ios /= 0 ) error stop 'Cannot open multiblock latest.meta'
-        read(k, '(a)', iostat=ios) name
+    if(metaExists) then
+        open(newunit=k,file=reloadFilePrefix//'-latest.meta',status='old',iostat=ios)
+        if(ios/=0) error stop 'Cannot open multiblock latest.meta'
+        read(k,'(a)',iostat=ios) name
         close(k)
-        if( ios /= 0 .OR. len_trim(name) == 0 ) error stop 'Invalid latest.meta'
+        if(ios/=0 .OR. len_trim(name)==0) error stop 'Invalid latest.meta'
     else
-        if( reloadFileNum <= 0 ) error stop 'Missing latest.meta: set reloadFileNum to a saved checkpoint number'
-        write(num, '(I12.12)') reloadFileNum
-        name = reloadFilePrefix // '-' // trim(num) // '.bin'
+        if(reloadFileNum <=0) error stop 'Missing latest.meta: set reloadFileNum to a saved checkpoint number'
+        write(num,'(I12.12)') reloadFileNum
+        name=reloadFilePrefix//'-'//trim(num)//'.bin'
     endif
 
-    open(newunit=k, file=trim(name), status='old', access='stream', form='unformatted', iostat=ios)
-    if( ios /= 0 ) error stop 'Missing multiblock checkpoint'
-    read(k, iostat=ios) head
-    if( ios /= 0 ) error stop 'Truncated multiblock checkpoint header'
-    if( any(head /= [nx, ny, refineRatio, fineLayerCellsLeft, fineLayerCellsRight, &
-        fineLayerCellsBottom, fineLayerCellsTop, interfaceSkin, merge(5, 1, refineRatio > 1)])) &
+    open(newunit=k,file=trim(name),status='old',access='stream',form='unformatted',iostat=ios)
+    if(ios/=0) error stop 'Missing multiblock checkpoint'
+    read(k,iostat=ios) head
+    if(ios/=0) error stop 'Truncated multiblock checkpoint header'
+    if(any(head/=[nx,ny,refineRatio,fineLayerCellsLeft,fineLayerCellsRight,&
+        fineLayerCellsBottom,fineLayerCellsTop,interfaceSkin,merge(5,1,refineRatio > 1)])) &
         error stop 'Restart mesh/refinement mismatch'
-    read(k) sig, phys
+    read(k) sig,phys
 
     call model_signature(currentModel)
 
     call physical_signature(currentPhysics)
-    if( any(sig /= currentModel) .OR. any(phys /= currentPhysics)) &
+    if(any(sig/=currentModel) .OR. any(phys/=currentPhysics)) &
         error stop 'Restart model/physics/output-cadence mismatch'
     ! 文件中的三个序号依次对应采样、续算文件和 Tecplot；仅用于恢复采样次数及检查间隔一致性。
-    read(k) restartItcOffset, savedOutputIndex, snapshotFileNum, pltFileNum, reloadFileNum, errorU, errorT
-    if( restartItcOffset < 0 .OR. mod(restartItcOffset, refineRatio) /= 0 ) error stop 'Restart is not at a synchronized time'
-    if( any(savedOutputIndex /= [restartItcOffset / outputSnapshotIntervalItc + 1, &
-        restartItcOffset / reloadFileIntervalItc + 1, restartItcOffset / outputPltFileIntervalItc + 1]) ) &
+    read(k) restartItcOffset,savedOutputIndex,snapshotFileNum,pltFileNum,reloadFileNum,errorU,errorT
+    if(restartItcOffset < 0 .OR. mod(restartItcOffset,refineRatio)/=0) error stop 'Restart is not at a synchronized time'
+    if(any(savedOutputIndex/=[restartItcOffset/outputSnapshotIntervalItc+1,&
+        restartItcOffset/reloadFileIntervalItc+1,restartItcOffset/outputPltFileIntervalItc+1])) &
         error stop 'Restart output schedule differs from the fixed step intervals'
-    itc = 0
-    dimensionlessTime = savedOutputIndex(1) - 1
+    itc=0
+    dimensionlessTime=savedOutputIndex(1)-1
 
-    call read_restart_grid(nxCoarse, nyCoarse, timeInterpMaxIndexCoarse, dxCoarse, xOffsetCoarse, &
-        yOffsetCoarse, xStartIntegrationCoarse, xEndIntegrationCoarse, yStartIntegrationCoarse, &
-        yEndIntegrationCoarse, centerIntegrationBox, k, &
-        f_coarse, g_coarse, u_coarse, v_coarse, T_coarse, rho_coarse, Fx_coarse, Fy_coarse, &
-        rhoTimeInterp_coarse, uTimeInterp_coarse, vTimeInterp_coarse, TTimeInterp_coarse, FxOverDxTimeInterp_coarse, &
-        FyOverDxTimeInterp_coarse, flowNeqTimeInterp_coarse, thermalNeqTimeInterp_coarse &
+    call read_restart_grid(nxCoarse,nyCoarse,timeInterpMaxIndexCoarse,dxCoarse,xOffsetCoarse,&
+        yOffsetCoarse,xStartIntegrationCoarse,xEndIntegrationCoarse,yStartIntegrationCoarse,&
+        yEndIntegrationCoarse,centerIntegrationBox,k,&
+        f_coarse,g_coarse,u_coarse,v_coarse,T_coarse,rho_coarse,Fx_coarse,Fy_coarse,&
+        rhoTimeInterp_coarse,uTimeInterp_coarse,vTimeInterp_coarse,TTimeInterp_coarse,FxOverDxTimeInterp_coarse,&
+        FyOverDxTimeInterp_coarse,flowNeqTimeInterp_coarse,thermalNeqTimeInterp_coarse &
 #ifdef steadyFlow
-        , up_coarse, vp_coarse, Tp_coarse &
+        ,up_coarse,vp_coarse,Tp_coarse &
 #endif
         )
-    if( refineRatio > 1 ) then
+    if(refineRatio > 1) then
 
-        call read_restart_grid(nxLeft, nyLeft, 0, dxFine, xOffsetLeft, yOffsetLeft, 1, &
-            nxLeft, &
-            1, nyLeft, [xOffsetLeft, xOffsetLeft+nxLeft, yOffsetLeft, yOffsetLeft+nyLeft], k, f_left, g_left, u_left, v_left, &
-            T_left, rho_left, &
-            Fx_left, Fy_left, rhoTimeInterp_left, uTimeInterp_left, vTimeInterp_left, TTimeInterp_left, FxOverDxTimeInterp_left, &
-            FyOverDxTimeInterp_left, flowNeqTimeInterp_left, thermalNeqTimeInterp_left &
+        call read_restart_grid(nxLeft,nyLeft,0,dxFine,xOffsetLeft,yOffsetLeft,1,&
+            nxLeft,&
+            1,nyLeft,[xOffsetLeft,xOffsetLeft+nxLeft,yOffsetLeft,yOffsetLeft+nyLeft],k,f_left,g_left,u_left,v_left,&
+            T_left,rho_left,&
+            Fx_left,Fy_left,rhoTimeInterp_left,uTimeInterp_left,vTimeInterp_left,TTimeInterp_left,FxOverDxTimeInterp_left,&
+            FyOverDxTimeInterp_left,flowNeqTimeInterp_left,thermalNeqTimeInterp_left &
 #ifdef steadyFlow
-            , up_left, vp_left, Tp_left &
+            ,up_left,vp_left,Tp_left &
 #endif
             )
 
-        call read_restart_grid(nxRight, nyRight, 0, dxFine, xOffsetRight, yOffsetRight, 1, &
-            nxRight, 1, nyRight, [xOffsetRight, xOffsetRight+nxRight, yOffsetRight, yOffsetRight+nyRight], k, f_right, &
-            g_right, u_right, v_right, &
-            T_right, rho_right, Fx_right, Fy_right, rhoTimeInterp_right, uTimeInterp_right, vTimeInterp_right, &
-            TTimeInterp_right, FxOverDxTimeInterp_right, FyOverDxTimeInterp_right, flowNeqTimeInterp_right, thermalNeqTimeInterp_right &
+        call read_restart_grid(nxRight,nyRight,0,dxFine,xOffsetRight,yOffsetRight,1,&
+            nxRight,1,nyRight,[xOffsetRight,xOffsetRight+nxRight,yOffsetRight,yOffsetRight+nyRight],k,f_right,&
+            g_right,u_right,v_right,&
+            T_right,rho_right,Fx_right,Fy_right,rhoTimeInterp_right,uTimeInterp_right,vTimeInterp_right,&
+            TTimeInterp_right,FxOverDxTimeInterp_right,FyOverDxTimeInterp_right,flowNeqTimeInterp_right,thermalNeqTimeInterp_right &
 #ifdef steadyFlow
-            , up_right, vp_right, Tp_right &
+            ,up_right,vp_right,Tp_right &
 #endif
             )
 
-        call read_restart_grid(nxBottom, nyBottom, 0, dxFine, xOffsetBottom, yOffsetBottom, 1, &
-            nxBottom, 1, nyBottom, [xOffsetBottom, xOffsetBottom+nxBottom, yOffsetBottom, yOffsetBottom+nyBottom], k, &
-            f_bottom, g_bottom, u_bottom, &
-            v_bottom, T_bottom, rho_bottom, Fx_bottom, Fy_bottom, rhoTimeInterp_bottom, uTimeInterp_bottom, &
-            vTimeInterp_bottom, TTimeInterp_bottom, FxOverDxTimeInterp_bottom, FyOverDxTimeInterp_bottom, flowNeqTimeInterp_bottom, &
+        call read_restart_grid(nxBottom,nyBottom,0,dxFine,xOffsetBottom,yOffsetBottom,1,&
+            nxBottom,1,nyBottom,[xOffsetBottom,xOffsetBottom+nxBottom,yOffsetBottom,yOffsetBottom+nyBottom],k,&
+            f_bottom,g_bottom,u_bottom,&
+            v_bottom,T_bottom,rho_bottom,Fx_bottom,Fy_bottom,rhoTimeInterp_bottom,uTimeInterp_bottom,&
+            vTimeInterp_bottom,TTimeInterp_bottom,FxOverDxTimeInterp_bottom,FyOverDxTimeInterp_bottom,flowNeqTimeInterp_bottom,&
             thermalNeqTimeInterp_bottom &
 #ifdef steadyFlow
-            , up_bottom, vp_bottom, Tp_bottom &
+            ,up_bottom,vp_bottom,Tp_bottom &
 #endif
             )
 
-        call read_restart_grid(nxTop, nyTop, 0, dxFine, xOffsetTop, yOffsetTop, 1, nxTop, &
-            1, nyTop, [xOffsetTop, xOffsetTop+nxTop, yOffsetTop, yOffsetTop+nyTop], k, f_top, g_top, u_top, v_top, T_top, &
-            rho_top, Fx_top, &
-            Fy_top, rhoTimeInterp_top, uTimeInterp_top, vTimeInterp_top, TTimeInterp_top, FxOverDxTimeInterp_top, FyOverDxTimeInterp_top, &
-            flowNeqTimeInterp_top, thermalNeqTimeInterp_top &
+        call read_restart_grid(nxTop,nyTop,0,dxFine,xOffsetTop,yOffsetTop,1,nxTop,&
+            1,nyTop,[xOffsetTop,xOffsetTop+nxTop,yOffsetTop,yOffsetTop+nyTop],k,f_top,g_top,u_top,v_top,T_top,&
+            rho_top,Fx_top,&
+            Fy_top,rhoTimeInterp_top,uTimeInterp_top,vTimeInterp_top,TTimeInterp_top,FxOverDxTimeInterp_top,FyOverDxTimeInterp_top,&
+            flowNeqTimeInterp_top,thermalNeqTimeInterp_top &
 #ifdef steadyFlow
-            , up_top, vp_top, Tp_top &
+            ,up_top,vp_top,Tp_top &
 #endif
             )
     endif
 
     close(k)
-    reloadDimensionlessTime = dble(restartItcOffset) / timeUnit
-    reloadMetadataLoaded = .true.
+    reloadDimensionlessTime=dble(restartItcOffset)/timeUnit
+    reloadMetadataLoaded=.true.
   end subroutine read_restart
 !===================================================================================================
 
@@ -4533,12 +4529,12 @@
 ! 子程序: read_restart_grid
 ! 作用: 核对一个区域的尺寸和坐标，并读取其完整状态与历史。
 !===================================================================================================
-  subroutine read_restart_grid(ni, nj, nh, dx, xOffset, yOffset, xStartIntegration, xEndIntegration, &
-      yStartIntegration, yEndIntegration, integrationBox, &
-      k, f, g, u, v, T, rho, Fx, Fy, rhoHistory, uHistory, vHistory, THistory, &
-      FxHistory, FyHistory, flowNeqHistory, thermalNeqHistory &
+  subroutine read_restart_grid(ni,nj,nh,dx,xOffset,yOffset,xStartIntegration,xEndIntegration,&
+      yStartIntegration,yEndIntegration,integrationBox,&
+      k,f,g,u,v,T,rho,Fx,Fy,rhoHistory,uHistory,vHistory,THistory,&
+      FxHistory,FyHistory,flowNeqHistory,thermalNeqHistory &
 #ifdef steadyFlow
-      , up, vp, Tp &
+      ,up,vp,Tp &
 #endif
       )
 
@@ -4549,40 +4545,40 @@
     integer(kind=4) :: historyIndex
 
     integer(kind=4) :: k, ios, geom(7)
-    real(kind=8) :: f(ni, nj, 0:8)
-    real(kind=8) :: g(ni, nj, 0:4)
-    real(kind=8) :: u(ni, nj)
-    real(kind=8) :: v(ni, nj)
-    real(kind=8) :: T(ni, nj)
-    real(kind=8) :: rho(ni, nj)
-    real(kind=8) :: Fx(ni, nj)
-    real(kind=8) :: Fy(ni, nj)
-    real(kind=8) :: rhoHistory(ni, nj, 0:nh)
-    real(kind=8) :: uHistory(ni, nj, 0:nh)
-    real(kind=8) :: vHistory(ni, nj, 0:nh)
-    real(kind=8) :: THistory(ni, nj, 0:nh)
-    real(kind=8) :: FxHistory(ni, nj, 0:nh)
-    real(kind=8) :: FyHistory(ni, nj, 0:nh)
-    real(kind=8) :: flowNeqHistory(ni, nj, 0:8, 0:nh)
-    real(kind=8) :: thermalNeqHistory(ni, nj, 0:4, 0:nh)
+    real(kind=8) :: f(ni,nj,0:8)
+    real(kind=8) :: g(ni,nj,0:4)
+    real(kind=8) :: u(ni,nj)
+    real(kind=8) :: v(ni,nj)
+    real(kind=8) :: T(ni,nj)
+    real(kind=8) :: rho(ni,nj)
+    real(kind=8) :: Fx(ni,nj)
+    real(kind=8) :: Fy(ni,nj)
+    real(kind=8) :: rhoHistory(ni,nj,0:nh)
+    real(kind=8) :: uHistory(ni,nj,0:nh)
+    real(kind=8) :: vHistory(ni,nj,0:nh)
+    real(kind=8) :: THistory(ni,nj,0:nh)
+    real(kind=8) :: FxHistory(ni,nj,0:nh)
+    real(kind=8) :: FyHistory(ni,nj,0:nh)
+    real(kind=8) :: flowNeqHistory(ni,nj,0:8,0:nh)
+    real(kind=8) :: thermalNeqHistory(ni,nj,0:4,0:nh)
 #ifdef steadyFlow
-    real(kind=8) :: up(ni, nj)
-    real(kind=8) :: vp(ni, nj)
-    real(kind=8) :: Tp(ni, nj)
+    real(kind=8) :: up(ni,nj)
+    real(kind=8) :: vp(ni,nj)
+    real(kind=8) :: Tp(ni,nj)
 #endif
     real(kind=8) :: coord(7)
 
-    read(k) geom, coord
-    if( any(geom /= [ni, nj, xStartIntegration, xEndIntegration, yStartIntegration, yEndIntegration, nh]) .OR. &
-        any(coord /= [xOffset, yOffset, dx, integrationBox]) ) error stop 'Restart block layout mismatch'
-    read(k, iostat=ios) f, g, u, v, T, rho, Fx, Fy, &
-        (rhoHistory(:,:, historyIndex), uHistory(:,:, historyIndex), vHistory(:,:, historyIndex), &
-        THistory(:,:, historyIndex), FxHistory(:,:, historyIndex), FyHistory(:,:, historyIndex), &
-        flowNeqHistory(:,:,:, historyIndex), thermalNeqHistory(:,:,:, historyIndex), historyIndex = 0, &
+    read(k) geom,coord
+    if(any(geom/=[ni,nj,xStartIntegration,xEndIntegration,yStartIntegration,yEndIntegration,nh]) .OR. &
+        any(coord/=[xOffset,yOffset,dx,integrationBox])) error stop 'Restart block layout mismatch'
+    read(k,iostat=ios) f,g,u,v,T,rho,Fx,Fy,&
+        (rhoHistory(:,:,historyIndex),uHistory(:,:,historyIndex),vHistory(:,:,historyIndex),&
+        THistory(:,:,historyIndex),FxHistory(:,:,historyIndex),FyHistory(:,:,historyIndex),&
+        flowNeqHistory(:,:,:,historyIndex),thermalNeqHistory(:,:,:,historyIndex),historyIndex=0,&
         nh)
-    if( ios /= 0 ) error stop 'Incomplete checkpoint state/history'
+    if(ios/=0) error stop 'Incomplete checkpoint state/history'
 #ifdef steadyFlow
-    read(k) up, vp, Tp
+    read(k) up,vp,Tp
 #endif
   end subroutine read_restart_grid
 !===================================================================================================
@@ -4597,39 +4593,39 @@
 
     integer(kind=4), intent(out) :: sig(12)
 
-    sig = 0
+    sig=0
 #ifdef steadyFlow
-    sig(1) = 1
+    sig(1)=1
 #endif
 #ifdef SideHeatedCell
-    sig(3) = 1
+    sig(3)=1
 #endif
 #ifdef HorizontalWallsNoslip
-    sig(4) = 1
+    sig(4)=1
 #endif
 #ifdef VerticalWallsNoslip
-    sig(5) = 1
+    sig(5)=1
 #endif
 #ifdef VerticalWallsPeriodicalU
-    sig(6) = 1
+    sig(6)=1
 #endif
 #ifdef HorizontalWallsConstT
-    sig(7) = 1
+    sig(7)=1
 #endif
 #ifdef HorizontalWallsAdiabatic
-    sig(8) = 1
+    sig(8)=1
 #endif
 #ifdef VerticalWallsConstT
-    sig(9) = 1
+    sig(9)=1
 #endif
 #ifdef VerticalWallsAdiabatic
-    sig(10) = 1
+    sig(10)=1
 #endif
 #ifdef VerticalWallsPeriodicalT
-    sig(11) = 1
+    sig(11)=1
 #endif
 #ifdef SideHeatedHa
-    sig(12) = 1
+    sig(12)=1
 #endif
   end subroutine model_signature
 !===================================================================================================
@@ -4640,20 +4636,20 @@
 !===================================================================================================
   subroutine physical_signature(sig)
 
-    use commondata, only: Rayleigh, Prandtl, Mach, Thot, Tcold, Snu, Sq, Qk, Qnu, paraA, &
-        outputSnapshotInterval, reloadFileInterval, outputPltFileInterval
+    use commondata,only: Rayleigh,Prandtl,Mach,Thot,Tcold,Snu,Sq,Qk,Qnu,paraA,&
+        outputSnapshotInterval,reloadFileInterval,outputPltFileInterval
 #ifdef SideHeatedHa
-    use commondata, only: Ha, phi
+    use commondata,only: Ha,phi
 #endif
     implicit none
 
     real(kind=8), intent(out) :: sig(16)
 
-    sig = [Rayleigh, Prandtl, Mach, Thot, Tcold, Snu, Sq, Qk, Qnu, paraA, outputSnapshotInterval, &
-        reloadFileInterval, outputPltFileInterval, 0.0d0, 0.0d0, 0.0d0]
+    sig=[Rayleigh,Prandtl,Mach,Thot,Tcold,Snu,Sq,Qk,Qnu,paraA,outputSnapshotInterval,&
+        reloadFileInterval,outputPltFileInterval,0.0d0,0.0d0,0.0d0]
 #ifdef SideHeatedHa
-    sig(14) = Ha
-    sig(15) = phi
+    sig(14)=Ha
+    sig(15)=phi
 #endif
   end subroutine physical_signature
 !===================================================================================================
@@ -4664,7 +4660,7 @@
 !===================================================================================================
   subroutine check_history()
 
-    use commondata, only: timeUnit, outputSnapshotIntervalItc, NuReHistoryFile, dimensionlessTime, &
+    use commondata,only: timeUnit,outputSnapshotIntervalItc,NuReHistoryFile,dimensionlessTime,&
         ieee_is_finite
     implicit none
 
@@ -4674,28 +4670,28 @@
     real(kind=8) :: values(12), lastTime
     character(len=512) :: line
 
-    lastTime = - 1.0d0
-    n = 0
-    open(newunit=k, file=NuReHistoryFile, status='old', iostat=ios)
-    if( ios /= 0 ) error stop 'Restart requires the matching Nu/Re history'
+    lastTime=-1.0d0
+    n=0
+    open(newunit=k,file=NuReHistoryFile,status='old',iostat=ios)
+    if(ios/=0) error stop 'Restart requires the matching Nu/Re history'
     do
-        read(k, '(a)', iostat=ios) line
-        if( ios < 0 ) exit
-        if( ios > 0 ) error stop 'Nu/Re history read error'
-        if( len_trim(line) == 0 .OR. line(1:1) == '#' ) cycle
-        read(line, *, iostat=ios) values
-        if( ios /= 0 .OR. .NOT. all(ieee_is_finite(values)) ) error stop 'Invalid Nu/Re history row'
-        if( values(1) <= lastTime ) error stop 'Nonmonotone Nu/Re history'
-        n = n + 1
-        lastTime = values(1)
+        read(k,'(a)',iostat=ios) line
+        if(ios < 0) exit
+        if(ios > 0) error stop 'Nu/Re history read error'
+        if(len_trim(line)==0 .OR. line(1:1)=='#') cycle
+        read(line,*,iostat=ios) values
+        if(ios/=0 .OR. .NOT. all(ieee_is_finite(values))) error stop 'Invalid Nu/Re history row'
+        if(values(1) <=lastTime) error stop 'Nonmonotone Nu/Re history'
+        n=n+1
+        lastTime=values(1)
     enddo
 
     close(k)
-    if( n /= dimensionlessTime ) error stop 'History sample count differs from checkpoint; use the matching history'
-    if( n > 0 ) then
+    if(n/=dimensionlessTime) error stop 'History sample count differs from checkpoint; use the matching history'
+    if(n > 0) then
 
-        if( abs(lastTime - (dble(n) * dble(outputSnapshotIntervalItc) / timeUnit)) > 1.0d-10 * max(1.0d0, &
-            (dble(n) * dble(outputSnapshotIntervalItc) / timeUnit)) ) error stop 'Checkpoint/history time mismatch'
+        if(abs(lastTime-(dble(n)*dble(outputSnapshotIntervalItc)/timeUnit)) > 1.0d-10*max(1.0d0,&
+            (dble(n)*dble(outputSnapshotIntervalItc)/timeUnit))) error stop 'Checkpoint/history time mismatch'
     endif
   end subroutine check_history
 !===================================================================================================
@@ -4704,9 +4700,9 @@
 ! 子程序: average_window
 ! 作用: 对指定时间窗口内的历史数据积分，并检查窗口覆盖情况。
 !===================================================================================================
-  subroutine average_window(t0, t1, result, coverage)
+  subroutine average_window(t0,t1,result,coverage)
 
-    use commondata, only: NuReHistoryFile, ieee_is_finite
+    use commondata,only: NuReHistoryFile,ieee_is_finite
     implicit none
 
     real(kind=8), intent(in) :: t0, t1
@@ -4716,43 +4712,43 @@
     logical :: hasPrev
     character(len=512) :: line
 
-    result = 0.0d0
-    coverage = 0.0d0
-    hasPrev = .false.
-    open(newunit=k, file=NuReHistoryFile, status='old')
+    result=0.0d0
+    coverage=0.0d0
+    hasPrev=.false.
+    open(newunit=k,file=NuReHistoryFile,status='old')
     do
-        read(k, '(a)', iostat=ios) line
-        if( ios < 0 ) exit
-        if( ios > 0 ) error stop 'Nu/Re history read failure'
-        if( len_trim(line) == 0 .OR. line(1:1) == '#' ) cycle
-        read(line, *, iostat=ios) row
-        if( ios /= 0 .OR. .NOT. all(ieee_is_finite(row)) ) error stop 'Invalid history during averaging'
-        if( hasPrev ) then
-            if( row(1) <= prev(1) ) error stop 'Nonmonotone statistics time'
-            aa = max(t0, prev(1))
-            bb = min(t1, row(1))
+        read(k,'(a)',iostat=ios) line
+        if(ios < 0) exit
+        if(ios > 0) error stop 'Nu/Re history read failure'
+        if(len_trim(line)==0 .OR. line(1:1)=='#') cycle
+        read(line,*,iostat=ios) row
+        if(ios/=0 .OR. .NOT. all(ieee_is_finite(row))) error stop 'Invalid history during averaging'
+        if(hasPrev) then
+            if(row(1) <=prev(1)) error stop 'Nonmonotone statistics time'
+            aa=max(t0,prev(1))
+            bb=min(t1,row(1))
 
-            if( bb > aa ) then
+            if(bb > aa) then
                 ! 对 Re^2 积分再开根号，保持 sqrt(<u^2+v^2>_{V,t}) 的定义。
-                left = prev(2:6)
-                right = row(2:6)
-                left(2) = left(2) ** 2
-                right(2) = right(2) ** 2
-                ra = left + (right - left) * (aa - prev(1)) / (row(1) - prev(1))
-                rb = left + (right - left) * (bb - prev(1)) / (row(1) - prev(1))
-                result = result + 0.5d0 * (ra + rb) * (bb - aa)
-                coverage = coverage + bb - aa
+                left=prev(2:6)
+                right=row(2:6)
+                left(2)=left(2)**2
+                right(2)=right(2)**2
+                ra=left+(right-left)*(aa-prev(1))/(row(1)-prev(1))
+                rb=left+(right-left)*(bb-prev(1))/(row(1)-prev(1))
+                result=result+0.5d0*(ra+rb)*(bb-aa)
+                coverage=coverage+bb-aa
             endif
         endif
 
-        prev = row
-        hasPrev = .true.
+        prev=row
+        hasPrev=.true.
     enddo
 
     close(k)
-    if( coverage > 0.0d0 ) then
-        result = result / coverage
-        result(2) = sqrt(max(0.0d0, result(2)))
+    if(coverage > 0.0d0) then
+        result=result/coverage
+        result(2)=sqrt(max(0.0d0,result(2)))
     endif
   end subroutine average_window
 !===================================================================================================
@@ -4764,30 +4760,30 @@
   subroutine output_unsteady_NuRe_postprocess()
 #ifdef unsteadyFlow
 
-    use commondata, only: unsteadyAverageStartTf, unsteadyAverageEndTf, unsteadyAverageMidTf
+    use commondata,only: unsteadyAverageStartTf,unsteadyAverageEndTf,unsteadyAverageMidTf
     implicit none
 
     integer(kind=4) :: k
     real(kind=8) :: allMean(5), firstMean(5), lastMean(5), c0, c1, c2
 
-    call average_window(unsteadyAverageStartTf, unsteadyAverageEndTf, allMean, c0)
+    call average_window(unsteadyAverageStartTf,unsteadyAverageEndTf,allMean,c0)
 
-    call average_window(unsteadyAverageStartTf, unsteadyAverageMidTf, firstMean, c1)
+    call average_window(unsteadyAverageStartTf,unsteadyAverageMidTf,firstMean,c1)
 
-    call average_window(unsteadyAverageMidTf, unsteadyAverageEndTf, lastMean, c2)
-    open(newunit=k, file='NuReStatistics_2DOpenaccMultiblock.dat', status='replace')
-    write(k, *) 'Window t_ff:', unsteadyAverageStartTf, unsteadyAverageEndTf
-    write(k, *) 'Covered durations, full/first/last:', c0, c1, c2
-    if( abs(c0 - (unsteadyAverageEndTf - unsteadyAverageStartTf)) > 1.0d-8 .OR. c1 <= 0.0d0 .OR. c2 <= 0.0d0 ) then
-        write(k, *) 'INCOMPLETE: requested statistics window is not fully covered; no final mean is reported.'
+    call average_window(unsteadyAverageMidTf,unsteadyAverageEndTf,lastMean,c2)
+    open(newunit=k,file='NuReStatistics_2DOpenaccMultiblock.dat',status='replace')
+    write(k,*) 'Window t_ff:',unsteadyAverageStartTf,unsteadyAverageEndTf
+    write(k,*) 'Covered durations, full/first/last:',c0,c1,c2
+    if(abs(c0-(unsteadyAverageEndTf-unsteadyAverageStartTf)) > 1.0d-8 .OR. c1 <=0.0d0 .OR. c2 <=0.0d0) then
+        write(k,*) 'INCOMPLETE: requested statistics window is not fully covered; no final mean is reported.'
     else
 
-        write(k, *) 'Columns: NuVolAvg Re_rms_space_time Nu_hot Nu_cold Nu_middle'
-        write(k, '(a,5ES24.16E3)') 'whole:', allMean
-        write(k, '(a,5ES24.16E3)') 'first:', firstMean
-        write(k, '(a,5ES24.16E3)') 'last :', lastMean
-        write(k, '(a,5ES24.16E3)') 'relative half-window difference:', &
-            abs(lastMean - firstMean) / max(abs(allMean), 1.0d-30)
+        write(k,*) 'Columns: NuVolAvg Re_rms_space_time Nu_hot Nu_cold Nu_middle'
+        write(k,'(a,5ES24.16E3)') 'whole:',allMean
+        write(k,'(a,5ES24.16E3)') 'first:',firstMean
+        write(k,'(a,5ES24.16E3)') 'last :',lastMean
+        write(k,'(a,5ES24.16E3)') 'relative half-window difference:',&
+            abs(lastMean-firstMean)/max(abs(allMean),1.0d-30)
     endif
 
     close(k)
@@ -4799,8 +4795,8 @@
 ! 子程序: owned_cell_area
 ! 作用: 累计节点在互不重叠物理分区中的面积。
 !===================================================================================================
-  subroutine owned_cell_area(x, y, dx, integrationBox, area)
-    use commondata, only: centerIntegrationBox, refineRatio
+  subroutine owned_cell_area(x,y,dx,integrationBox,area)
+    use commondata,only: centerIntegrationBox,refineRatio
     implicit none
 
     real(kind=8), intent(in) :: x, y, dx, integrationBox(4)
@@ -4809,25 +4805,25 @@
 
     ! integrationBox 为当前存储区外框（粗区则为中心物理矩形）。
     ! 节点控制面积只向所属物理分区贡献；交换用的多存节点不另算一个区域。
-    xlo = max(x-dx/2, integrationBox(1))
-    xhi = min(x+dx/2, integrationBox(2))
-    ylo = max(y-dx/2, integrationBox(3))
-    yhi = min(y+dx/2, integrationBox(4))
-    area = 0.0d0
-    if( xhi <= xlo .OR. yhi <= ylo ) return
+    xlo=max(x-dx/2,integrationBox(1))
+    xhi=min(x+dx/2,integrationBox(2))
+    ylo=max(y-dx/2,integrationBox(3))
+    yhi=min(y+dx/2,integrationBox(4))
+    area=0.0d0
+    if(xhi <=xlo .OR. yhi <=ylo) return
 
-    if( refineRatio == 1 .OR. dx > 1.0d0 ) then
-        area = (xhi-xlo)*(yhi-ylo)    ! 单网格全域，或中心粗矩形。
+    if(refineRatio==1 .OR. dx > 1.0d0) then
+        area=(xhi-xlo)*(yhi-ylo)    ! 单网格全域，或中心粗矩形。
         return
     endif
 
     ! 四个互不重叠的细物理矩形：左、右贯穿全高，下、上位于两者之间。
     ! 分别相加；没有“整个存储区积分再扣重叠区”的步骤。
-    area = max(0.0d0, min(xhi,centerIntegrationBox(1))-xlo)*(yhi-ylo)    ! 左
-    area = area + max(0.0d0, xhi-max(xlo,centerIntegrationBox(2)))*(yhi-ylo)    ! 右
-    middleWidth = max(0.0d0, min(xhi,centerIntegrationBox(2))-max(xlo,centerIntegrationBox(1)))
-    area = area + middleWidth*max(0.0d0, min(yhi,centerIntegrationBox(3))-ylo)    ! 下
-    area = area + middleWidth*max(0.0d0, yhi-max(ylo,centerIntegrationBox(4)))    ! 上
+    area=max(0.0d0,min(xhi,centerIntegrationBox(1))-xlo)*(yhi-ylo)    ! 左
+    area=area+max(0.0d0,xhi-max(xlo,centerIntegrationBox(2)))*(yhi-ylo)    ! 右
+    middleWidth=max(0.0d0,min(xhi,centerIntegrationBox(2))-max(xlo,centerIntegrationBox(1)))
+    area=area+middleWidth*max(0.0d0,min(yhi,centerIntegrationBox(3))-ylo)    ! 下
+    area=area+middleWidth*max(0.0d0,yhi-max(ylo,centerIntegrationBox(4)))    ! 上
   end subroutine owned_cell_area
 !===================================================================================================
 
@@ -4835,8 +4831,8 @@
 ! 子程序: section_owned_weight
 ! 作用: 将中线穿过的物理分区线段相加。
 !===================================================================================================
-  subroutine section_owned_weight(xOffset, yOffset, dx, integrationBox, k, axis, position, w)
-    use commondata, only: centerIntegrationBox, refineRatio
+  subroutine section_owned_weight(xOffset,yOffset,dx,integrationBox,k,axis,position,w)
+    use commondata,only: centerIntegrationBox,refineRatio
     implicit none
 
     real(kind=8), intent(out) :: w    ! 输出：本节点在指定中线上实际负责的积分长度。
@@ -4848,31 +4844,31 @@
     integer(kind=4), intent(in) :: k, axis
     real(kind=8) :: q, lo, hi, clo, chi
 
-    if( axis == 1 ) then
-        q = yOffset + (k - .5d0) * dx
-        lo = integrationBox(3)
-        hi = integrationBox(4)
-        clo = centerIntegrationBox(3)
-        chi = centerIntegrationBox(4)
+    if(axis==1) then
+        q=yOffset+(k-.5d0)*dx
+        lo=integrationBox(3)
+        hi=integrationBox(4)
+        clo=centerIntegrationBox(3)
+        chi=centerIntegrationBox(4)
     else
-        q = xOffset + (k - .5d0) * dx
-        lo = integrationBox(1)
-        hi = integrationBox(2)
-        clo = centerIntegrationBox(1)
-        chi = centerIntegrationBox(2)
+        q=xOffset+(k-.5d0)*dx
+        lo=integrationBox(1)
+        hi=integrationBox(2)
+        clo=centerIntegrationBox(1)
+        chi=centerIntegrationBox(2)
     endif
 
-    w = max(0d0, min(q + dx / 2, hi) - max(q - dx / 2, lo))
-    if( refineRatio > 1 .AND. dx == 1d0 ) then
-        if( axis == 1 ) then
-            if( position < centerIntegrationBox(1) .OR. position >= centerIntegrationBox(2) ) return
+    w=max(0d0,min(q+dx/2,hi)-max(q-dx/2,lo))
+    if(refineRatio > 1 .AND. dx==1d0) then
+        if(axis==1) then
+            if(position < centerIntegrationBox(1) .OR. position >=centerIntegrationBox(2)) return
         else
-            if( position < centerIntegrationBox(3) .OR. position >= centerIntegrationBox(4) ) return
+            if(position < centerIntegrationBox(3) .OR. position >=centerIntegrationBox(4)) return
         endif
 
         ! 中心投影内的细中线由两段物理区间相加，不计算交换层长度。
-        w = max(0d0, min(q + dx / 2, hi, clo) - max(q - dx / 2, lo)) &
-            + max(0d0, min(q + dx / 2, hi) - max(q - dx / 2, lo, chi))
+        w=max(0d0,min(q+dx/2,hi,clo)-max(q-dx/2,lo)) &
+            +max(0d0,min(q+dx/2,hi)-max(q-dx/2,lo,chi))
     endif
   end subroutine section_owned_weight
 !===================================================================================================
@@ -4881,7 +4877,7 @@
 ! 子程序: fine_section_x
 ! 作用: 跨具名细数组读取 x 方向四点模板，计算中线温度、速度和温度导数。
 !===================================================================================================
-  subroutine fine_section_x(x, j, tm, um, dTdx)
+  subroutine fine_section_x(x,j,tm,um,dTdx)
     use commondata
     implicit none
 
@@ -4893,15 +4889,15 @@
     real(kind=8) :: w(4), dw(4), temp(4), velocity(4)
     integer(kind=4) :: first, a
 
-    call section_weights(x + 0.5d0, nx, first, w, dw)
-    do a = 1, 4
-        call fine_value(first + a - 1, j, T_left, T_right, T_bottom, T_top, temp(a))
-        call fine_value(first + a - 1, j, u_left, u_right, u_bottom, u_top, velocity(a))
+    call section_weights(x+0.5d0,nx,first,w,dw)
+    do a=1,4
+        call fine_value(first+a-1,j,T_left,T_right,T_bottom,T_top,temp(a))
+        call fine_value(first+a-1,j,u_left,u_right,u_bottom,u_top,velocity(a))
     enddo
 
-    tm = sum(w * temp)
-    um = sum(w * velocity)
-    dTdx = sum(dw * temp)
+    tm=sum(w*temp)
+    um=sum(w*velocity)
+    dTdx=sum(dw*temp)
   end subroutine fine_section_x
 !===================================================================================================
 
@@ -4909,7 +4905,7 @@
 ! 子程序: fine_section_y
 ! 作用: 跨具名细数组读取 y 方向四点模板，计算中线温度、速度和温度导数。
 !===================================================================================================
-  subroutine fine_section_y(i, y, tm, vm, dTdy)
+  subroutine fine_section_y(i,y,tm,vm,dTdy)
     use commondata
     implicit none
 
@@ -4921,15 +4917,15 @@
     real(kind=8) :: w(4), dw(4), temp(4), velocity(4)
     integer(kind=4) :: first, a
 
-    call section_weights(y + 0.5d0, ny, first, w, dw)
-    do a = 1, 4
-        call fine_value(i, first + a - 1, T_left, T_right, T_bottom, T_top, temp(a))
-        call fine_value(i, first + a - 1, v_left, v_right, v_bottom, v_top, velocity(a))
+    call section_weights(y+0.5d0,ny,first,w,dw)
+    do a=1,4
+        call fine_value(i,first+a-1,T_left,T_right,T_bottom,T_top,temp(a))
+        call fine_value(i,first+a-1,v_left,v_right,v_bottom,v_top,velocity(a))
     enddo
 
-    tm = sum(w * temp)
-    vm = sum(w * velocity)
-    dTdy = sum(dw * temp)
+    tm=sum(w*temp)
+    vm=sum(w*velocity)
+    dTdy=sum(dw*temp)
   end subroutine fine_section_y
 !===================================================================================================
 
@@ -4937,9 +4933,9 @@
 ! 子程序: fine_value
 ! 作用: 将全局细节点编号转换成本地下标，读取对应细数组中的标量值。
 !===================================================================================================
-  subroutine fine_value(i, j, left, right, bottom, top, value)
-    use commondata, only: nxLeft, nyLeft, nxRight, nyRight, nxBottom, nyBottom, nxTop, nyTop, &
-        xOffsetRight, xOffsetBottom, xOffsetTop, yOffsetTop
+  subroutine fine_value(i,j,left,right,bottom,top,value)
+    use commondata,only: nxLeft,nyLeft,nxRight,nyRight,nxBottom,nyBottom,nxTop,nyTop,&
+        xOffsetRight,xOffsetBottom,xOffsetTop,yOffsetTop
     implicit none
 
     real(kind=8), intent(out) :: value    ! 输出：指定全局细节点对应的温度或速度等标量值。
@@ -4948,17 +4944,17 @@
     ! 只用于主机端中线后处理；若请求落入未分配的中心空区，立即报错。
 
     integer(kind=4), intent(in) :: i, j
-    real(kind=8), intent(in) :: left(nxLeft, nyLeft), right(nxRight, nyRight), &
-        bottom(nxBottom, nyBottom), top(nxTop, nyTop)
+    real(kind=8), intent(in) :: left(nxLeft,nyLeft), right(nxRight,nyRight), &
+        bottom(nxBottom,nyBottom),top(nxTop,nyTop)
 
-    if( i <= nxLeft ) then
-        value = left(i, j)
-    else if( i > nint(xOffsetRight) ) then
-        value = right(i - nint(xOffsetRight), j)
-    else if( j <= nyBottom ) then
-        value = bottom(i - nint(xOffsetBottom), j)
-    else if( j > nint(yOffsetTop) ) then
-        value = top(i - nint(xOffsetTop), j - nint(yOffsetTop))
+    if(i <=nxLeft) then
+        value=left(i,j)
+    else if(i > nint(xOffsetRight)) then
+        value=right(i-nint(xOffsetRight),j)
+    else if(j <=nyBottom) then
+        value=bottom(i-nint(xOffsetBottom),j)
+    else if(j > nint(yOffsetTop)) then
+        value=top(i-nint(xOffsetTop),j-nint(yOffsetTop))
     else
         error stop 'Fine section requested an inactive central node'
     endif

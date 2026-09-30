@@ -72,7 +72,7 @@ def main():
                      r'\1 0.05d0 ', src)
         if steady:
             src = re.sub(r'(::\s*itc_max\s*=)\s*\d+',r'\1 '+('320' if restart else '160'),src)
-            src = re.sub(r'(::\s*eps[UT]\s*=)\s*[^\n]+',r'\1 0.0d0',src)
+            src = re.sub(r'(\beps[UT]\s*=)\s*[^,\n!]+',r'\1 0.0d0',src)
             src = src.replace('mod(itc, 2000)', 'mod(itc, 20)')
         else:
             src = re.sub(r'(::\s*unsteadyRunDuration\s*=)\s*[^\n!]+',r'\1 '+('0.2d0 ' if restart else '0.1d0 '),src)

@@ -49,7 +49,7 @@ def variant(s, *, ratio=2, legacy=False, side=False, steady=False, ha=False, res
     if ha:
         s = re.sub(r'^!#define SideHeatedHa\s*$', '#define SideHeatedHa', s, flags=re.M)
     if restart:
-        s = s.replace('loadInitField = 0', 'loadInitField = 1')
+        s = re.sub(r'(\bloadInitField\s*=\s*)0\b', r'\g<1>1', s)
     return s
 
 

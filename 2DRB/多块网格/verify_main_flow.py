@@ -17,7 +17,7 @@ def settings(source, end, restart=False, converge=False):
     source = v.variant(source, ratio=2, side=True, steady=True, restart=restart)
     source = re.sub(r'(::\s*itc_max\s*=)\s*\d+', rf'\g<1> {end}', source)
     tolerance = '200.0d0' if converge else '0.0d0'
-    source = re.sub(r'(::\s*eps[UT]\s*=)\s*[^\n]+', rf'\g<1> {tolerance}', source)
+    source = re.sub(r'(\beps[UT]\s*=)\s*[^,\n!]+', rf'\g<1> {tolerance}', source)
     for name, steps in [('outputSnapshotInterval', 5.5), ('reloadFileInterval', 9.5),
                         ('outputPltFileInterval', 7.5)]:
         source = re.sub(r'(::\s*'+name+r'\s*=)\s*[^\n!]+',
