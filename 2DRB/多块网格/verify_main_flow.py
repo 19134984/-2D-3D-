@@ -36,6 +36,9 @@ def settings(source, end, restart=False, converge=False):
     if( allocated(f_coarse) .OR. allocated(f_left) .OR. allocated(f_right) .OR. &
         allocated(f_bottom) .OR. allocated(f_top) .OR. allocated(rhoReceive) .OR. &
         allocated(coarseToLeftReceiveIndexX) .OR. allocated(up_coarse) ) error stop 'Host arrays still allocated' ''')
+    if 'allocatable :: coarseBuffer' in source:
+        source = source.replace('allocated(rhoReceive)', 'allocated(coarseBuffer)')
+        source = source.replace('allocated(coarseToLeftReceiveIndexX) .OR. ', '')
     return source
 
 

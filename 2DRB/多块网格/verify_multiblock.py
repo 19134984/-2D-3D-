@@ -108,6 +108,12 @@ def compile_source(name, src, driver=None, n=96, ra=1000, syntax=False, ny=None,
     folder = BUILD / name
     folder.mkdir(exist_ok=True)
     if driver:
+        if 'integer(kind=4) :: nxCoarse' not in src and 'size(f_coarse,1)' in src:
+            # Geometry now comes from the allocated arrays; keep old probes usable.
+            for region in ('coarse', 'left', 'right', 'bottom', 'top'):
+                for axis, dimension in [('nx', 1), ('ny', 2)]:
+                    driver = re.sub(r'\b'+axis+region.capitalize()+r'\b',
+                                    f'size(f_{region},{dimension})', driver)
         if 'allocatable :: f_coarse' in src:
             driver = plain_array_driver(driver)
         if 'allocatable :: rhoHistory_coarse' in src or 'allocatable :: rhoTimeInterp_coarse' in src:
@@ -132,6 +138,10 @@ def compile_source(name, src, driver=None, n=96, ra=1000, syntax=False, ny=None,
                                      'allocatable :: FxOverDxTimeInterp_'+region in src else '') + 'TimeInterp_'+region
                     driver = re.sub(r'\b'+name+r'History_'+region+r'\b', target, driver)
         src = re.sub(r'^\s*program main\b.*?^\s*end program main\b', driver, src, flags=re.S|re.M|re.I)
+    if re.search(r'::\s*reloadItcOffset\s*=', src):
+        # Instrumentation written for the old names also works with the renamed counters.
+        src = re.sub(r'\brestartItcOffset\b', 'reloadItcOffset', src)
+        src = re.sub(r'\bdimensionlessTime\b', 'NuReSampleCount', src)
     # Multiblock parameters are edited only in this temporary source; the parent still uses -D overrides.
     if '#define NX_OVERRIDE' not in src:
         height = n if ny is None else ny

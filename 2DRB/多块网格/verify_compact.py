@@ -153,7 +153,7 @@ def actual_main(new,report):
         v.run([exe],continuous)
         split,exe=v.compile_source('main_'+label+'_split',settings(steady,half),**dims)
         v.run([exe],split)
-        local_step_counter = bool(re.search(r'::\s*restartItcOffset\s*=', new))
+        local_step_counter = bool(re.search(r'::\s*(?:restart|reload)ItcOffset\s*=', new))
         resume_end = full-half if steady and local_step_counter else full
         _,exe=v.compile_source('main_'+label+'_resume',settings(steady,resume_end,True),**dims)
         v.run([exe],split)
