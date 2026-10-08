@@ -51,38 +51,31 @@ y = yOffsetLeft+(j-0.5d0)*dxFine
 - 细区之间直接复制碰撞后的 f_post/g_post 外圈，含 D2Q9 对角方向；不做空间或时间插值。
 - 每个细步先完成四区流场碰撞，交换 f_post，再迁移、处理墙面和恢复速度；随后完成四区温度碰撞，交换 g_post，再推进温度。
 - 粗→细仍使用四点空间 Lagrange 和三时间层插值，初始粗步线性启动；细→粗使用同步时刻的共址数据。
-- 全局交换存储只保留 `coarseBuffer(i,j,0:19,0:2)`：20 个分量保存宏观量、统一尺度的力和非平衡矩，最后一维为三个粗时间层。四套细历史数组、八组接口下标/权重表和全局 Receive 数组已删除。
-- 粗到细按细接收层坐标直接读取粗缓冲并插值，细到粗直接读取共址细节点。每个线程只用局部 `buffer(0:19)` 暂存结果，随即重建目标节点；不在主机和设备间搬运接口数据。
+- 全局接口历史分为 `coarseHistoryPrevious(:,:)`、`coarseHistoryCurrent(:,:)`、`coarseHistoryNext(:,:)`，分别保存前一、当前和预测粗时刻。每个数组第二维为左/右/下/上，每区编号独立从1开始；每节点20个交换量。已删除共用中转数组。
+- 粗到细在调用处直接给出接收矩形；共址点直接取粗值，其余从粗场做四点Lagrange插值，结果存入指定时间历史。细子步中在节点局部做时间插值、尺度转换和分布函数重建，直接写入细接收层。细到粗只在同步时刻遍历粗数组四条接收带，按整数下标读同坐标细节点并转换。
+- 每份历史第一维为 `20*interfaceSkin*max(ny-fineLayerCellsBottom-fineLayerCellsTop,size(f_bottom,1))`。默认三份历史各为 `(30680,4)`；上下区每列实际使用30520个量，其余尾部保持零。单网格时三份历史各为 `(1,1)`。
 - 原 h 已统一命名为 dx。本程序最细格子单位下 dt=dx；力历史仍为 Fx/dx、Fy/dx，接收端再乘接收网格的 dx。
 - 积分直接累加中心粗矩形与左、右、下、上四个细物理矩形，不再采用细存储区积分后扣除中心面积的表达。重叠存储只用于推进和交换，不另计物理面积；分区线上的节点仍按控制面积取半权，角点取相应乘积权重。中线模板跨细数组接缝时按全局坐标取值。
 
-源码仍为 module commondata → program main → 外部子程序。没有 target、pointer、派生类型、contains、nBlocks 或块编号选择器。通用计算子程序显式接收数组、尺寸和所需几何参数。
+源码仍为 module commondata → program main → 外部子程序。通用计算子程序显式接收数组、尺寸和必要几何参数。已删除 `check_interfaces`、逐区接口扫描、`coarse_receiver_layout`、粗接收节点编号解码及重复的来源检查；保留分区整除、细层厚度、中心正宽高和四点插值最小宽度约束。
 
 ## 续算和输出
 
 快照、Tecplot、检查点分别命名为 `<snapshotFilePrefix>-<时间>tff.bin`、`<pltFolderPrefix>-<时间>tff.dat`、`<reloadFilePrefix>-<时间>tff.bin`。时间取实际累计步数 `(reloadItcOffset+itc)/timeUnit`，保留十二位小数后去掉末尾的零，例如 `-100.5tff.bin`、`-0tff.bin`。粗步对齐造成的小数偏差会反映在文件名中；输出时检查该精度能否区分相邻粗步。按时间排序时应解析数值，不能依赖文件名字典序。
 
-正常续算仍只需 `loadInitField=1`，优先读取固定的 `<reloadFilePrefix>-latest.meta`。只有 meta 缺失时才设置 `reloadFileName`，填写已有检查点的完整文件名（含 `.bin`，也可填写路径）；新时间名称和旧编号名称均可直接使用。程序从二进制数据恢复准确累计步数，不从文件名反推时间。Nu/Re 历史文件保持固定名称。
+正常续算仍只需 `loadInitField=1`，优先读取固定的 `<reloadFilePrefix>-latest.meta`。只有 meta 缺失时才设置 `reloadFileName`，填写已有检查点的完整文件名（含 `.bin`，也可填写路径）；文件名可手动指定，但文件内容必须为当前格式。程序从二进制数据恢复准确累计步数，不从文件名反推时间。Nu/Re 历史文件保持固定名称。
 
 计步沿用基准约定：`itc` 是本次运行已完成的细步数，每次启动为 0；`reloadItcOffset` 是检查点中已有的累计细步数，新算例为 0。总步数为 `reloadItcOffset+itc`，用于采样、输出、物理时间和时间插值启动判断。MLUPS 只计本次 `itc` 对应的工作量，无需额外的 `itcStart`。
 
 `reloadDimensionlessTime=reloadItcOffset/timeUnit` 记录续算前的无量纲时间；`reloadMetadataLoaded` 初始为假，检查点元数据和场量完整读取并核对成功后置真。两者均写入设置日志。当前 `.meta` 仅保存检查点文件名，真实时间元数据来自 `.bin`；手动指定检查点读取成功时，该标记同样为真。输出时间统一用累计步数除以 `timeUnit`，保持连续运行和续算的时间计算一致。
 
-稳态 `itc_max` 限制本次运行步数；非稳态 `itc_max` 对应整个算例的总目标，续算只补剩余步数。两者都向上对齐粗细同步步。检查点和快照中的步数字段仍写累计值；读取检查点时将其放入 `reloadItcOffset`，并把 `itc` 清零，文件布局不变。
+稳态 `itc_max` 限制本次运行步数；非稳态 `itc_max` 对应整个算例的总目标，续算只补剩余步数。两者都向上对齐粗细同步步。检查点和快照中的步数字段仍写累计值；读取检查点时将其放入 `reloadItcOffset`，并把 `itc` 清零。
 
-本次命名修改不改变检查点与快照布局。检查点头部原有的三个文件编号位置保留并写零，读取旧文件时跳过其旧编号值；不再维护 `snapshotFileNum/pltFileNum/reloadFileNum`。检查点直接从网格参数开始，不写入 16 字节的文本格式标识；按 coarse、left、right、bottom、top 固定顺序保存数组及历史，保留物理配置检查、输出时钟和稳态检查场。
+检查点直接读写 `reloadItcOffset,NuReSampleCount,errorU,errorT`，不再保存旧文件编号占位或下一输出序号。文件按 coarse、left、right、bottom、top 顺序保存完整场量，并保留几何、模型、物理参数、输出间隔及稳态历史场检查。
 
-直接交换重构也保留原检查点字节布局：粗缓冲的分量和时间层排列与原八套粗历史写入顺序一致。原细历史在文件中的位置继续保留，新文件写零，读取旧文件时读过这些位置；它们不再作为运行状态使用。读写时仅在主机临时复用一个二维平面，不重新分配常驻细历史。因此本轮减少运行内存，检查点文件大小没有缩小。
+粗区在场量之后按前一、当前、下一时刻写入三个完整接口历史数组；细区不写历史。数组尾部少量零填充也随历史保存，以保持读写直接对应。当前不兼容旧检查点布局，旧历史读取及转换分支已删除；快照格式不变。
 
-带有旧文本格式标识的文件不能直接读取。更早的对称布局会被几何检查拒绝，需使用匹配旧布局的源码续算，不能只修改当前的 `interfaceSkin`。下面的 v10 转换输出当前不带文本标识的检查点，但保留旧布局。
-
-旧连通细环 **v10** 文件可转换；输入不会修改，输出路径必须不存在：
-
-```text
-python convert_restart_v10.py old-v10.bin converted-current.bin
-```
-
-转换后保留与检查点匹配的 NuRe/收敛历史，将 `reloadFile2DOpenaccMultiblock-latest.meta` 内容设为转换后的文件名，再设置 `loadInitField=1`。转换不改变计算时刻、物理参数、输出计数或历史时间层。v9 及更早格式不支持该工具。
+当前代码仍处于检查阶段，按用户要求不保留旧检查点兼容。`convert_restart_v10.py` 及旧格式测试保留为历史资料，其输出不能直接用于当前代码。
 
 快照直接从区域数量开始，不写入 16 字节的文本格式标识。区域数量为 1 或 5；每区含几何、一维权重、显式二维积分面积及 u/v/T/rho。一维权重仅在输出时计算，无需常驻数组。读取器应按文件记录的区域数量循环。Tecplot 区域采用具名标题，零积分面积节点需在物理区域绘图时屏蔽。
 
@@ -90,11 +83,11 @@ python convert_restart_v10.py old-v10.bin converted-current.bin
 
 ## 验证
 
-直接交换的当前对照入口是 `verify_direct_exchange.py`，报告为 `direct_exchange_verification.json`。七组 40 细步算例检查全部分布函数、宏观场、粗时间历史、Nu/Re、收敛误差、积分面积和旧检查点的实际续算；独立解析测试检查三次空间/二次时间插值及非接收节点保持不变。`verify_main_flow.py` 与 `verify_output_names.py` 检查实际主程序、数组释放、文件命名及连续/续算行为。
+当前对照入口为 `python verify_explicit_interfaces.py <修改前源码>`，报告为 `explicit_interfaces_verification.json`。七组短程算例比较五块完整场量、三层接口历史、Nu/Re及当前格式续算，结果逐字节一致；另核对270组几何、50996个粗接收节点无遗漏重复，52个非接口子程序原文未改。验证使用gfortran OpenACC host，尚未验证当前源码的P100 GPU和长期统计收敛。旧共享缓冲及旧格式兼容脚本只用于对应历史版本。
 
 命名及尺寸内联的前后对照见 `geometry_inline_verification.json`：粗细比 1/2/4/8、侧壁差温、磁场和非对称分区共七组短程算例，检查场量、交换历史、Nu/Re、收敛误差、积分面积、旧检查点读取及解析时间统计。该轮未改接口交换数组和时间插值实现。
 
-累计时间命名和旧检查点兼容检查使用 `python verify_output_names.py <修改前源码>`，报告为 `output_names_verification.json`。测试覆盖文件名与二进制时间一致、稳态/非稳态连续与续算对照、手动文件名、meta 优先、旧编号检查点读取、早期检查点保留及零时刻输出；算例和构建保存在临时目录。
+历史版本的累计时间命名和旧检查点兼容检查使用 `python verify_output_names.py <修改前源码>`，报告为 `output_names_verification.json`。测试覆盖文件名与二进制时间一致、稳态/非稳态连续与续算对照、手动文件名、meta 优先、旧编号检查点读取、早期检查点保留及零时刻输出；算例和构建保存在临时目录。
 
 全文注释与格式整理记录见 `whole_style_verification.json`：保留用户确认的续算参数段，统一其余代码的书写格式与用途说明。修改前后全部 39447 个代码词法单元一致（含字符串、预处理和 OpenACC 指令），OpenACC 指令行原样保留，语法检查通过。本轮未重跑数值算例。
 
@@ -105,12 +98,12 @@ python convert_restart_v10.py old-v10.bin converted-current.bin
 计步约定验证见 `restart_counter_verification.json`：语法检查、7 组短程前后对照、旧检查点读取、实际稳态/非稳态主程序连续与续算对比均通过；多次续算的本次步数与偏移量、非稳态已达目标时零步退出、累计输出时刻和本次 MLUPS 计数均检查。场量、历史和诊断对照未发现差异。以下其他报告为此前版本，按源码哈希区分。
 
 ```text
-python verify_direct_exchange.py path/to/pre-direct-exchange.F90
+python verify_shared_buffer.py path/to/pre-shared-buffer.F90
 python verify_main_flow.py
 python verify_output_names.py path/to/pre-tff-naming.F90
 ```
 
-`verify_simplified.py`、`verify_asymmetric.py` 等旧入口中的接口历史探针对应历史存储布局；当前直接交换实现使用上面的专用对照入口。旧报告按各自源码哈希保留，不代表当前版本的执行结果。
+`verify_packed_buffer.py`、`verify_direct_exchange.py`、`verify_simplified.py`、`verify_asymmetric.py` 等旧入口中的接口历史探针对应历史存储布局；当前直接交换实现使用上面的专用对照入口。旧报告按各自源码哈希保留，不代表当前版本的执行结果。
 
 `simplified_verification.json` 保留前一轮参数与积分简化的结果：7 个算例各运行 40 个细步后通过检查，场量及交换历史最大绝对差约 `9.02e-16`，Nu/Re 最大差约 `2.23e-16`，稳态误差记录一致；快照几何和逐节点积分面积精确相同；新源码读取旧检查点后的场量及交换历史逐位相同。该报告以记录的源码哈希为准。
 

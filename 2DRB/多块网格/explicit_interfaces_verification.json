@@ -1,0 +1,132 @@
+{
+  "baseline_sha256": "3639d00dc603c43d976217f968844ee99ea31582208e68c687403cd780df32d8",
+  "device": "gfortran OpenACC host",
+  "build_directory": "C:\\Users\\User\\AppData\\Local\\Temp\\mb2d-verify-ph4a6i6e",
+  "checks": [
+    {
+      "case": "r1_rb",
+      "fields_exact": true,
+      "history_exact": false,
+      "NuRe_exact": true,
+      "restart_exact": true
+    },
+    {
+      "case": "r2_rb",
+      "fields_exact": true,
+      "history_exact": true,
+      "NuRe_exact": true,
+      "restart_exact": true
+    },
+    {
+      "case": "r2_side",
+      "fields_exact": true,
+      "history_exact": true,
+      "NuRe_exact": true,
+      "restart_exact": true
+    },
+    {
+      "case": "r4_side",
+      "fields_exact": true,
+      "history_exact": true,
+      "NuRe_exact": true,
+      "restart_exact": true
+    },
+    {
+      "case": "r8_rb",
+      "fields_exact": true,
+      "history_exact": true,
+      "NuRe_exact": true,
+      "restart_exact": true
+    },
+    {
+      "case": "r2_ha",
+      "fields_exact": true,
+      "history_exact": true,
+      "NuRe_exact": true,
+      "restart_exact": true
+    },
+    {
+      "case": "r2_asymmetric",
+      "fields_exact": true,
+      "history_exact": true,
+      "NuRe_exact": true,
+      "restart_exact": true
+    }
+  ],
+  "geometry_checks": {
+    "cases": 270,
+    "coarse_receivers": 50996,
+    "ratios": [
+      2,
+      4,
+      8
+    ],
+    "interface_skin": [
+      2,
+      3,
+      4
+    ],
+    "exact_unique_coverage": true
+  },
+  "unchanged_subroutines": [
+    "initial_grid",
+    "owned_cell_area",
+    "read_restart",
+    "model_signature",
+    "physical_signature",
+    "update_host_grid",
+    "exit_data_2d_openacc",
+    "advance_grid",
+    "advance_coarse",
+    "advance_fine",
+    "exchange_fine_flow_halos",
+    "exchange_fine_thermal_halos",
+    "copy_fine_halo",
+    "coarse_time_weights",
+    "lagrange_weights",
+    "section_weights",
+    "equilibrium_moments",
+    "force_moments",
+    "coarse_source_stencil",
+    "pack_interface_values",
+    "unpack_interface_values",
+    "collision",
+    "streaming",
+    "bounceback",
+    "macro",
+    "collisionT",
+    "streamingT",
+    "bouncebackT",
+    "macroT",
+    "flow_moments",
+    "flow_populations",
+    "thermal_moments",
+    "thermal_populations",
+    "output_steady_monitor",
+    "output_final_NuRe",
+    "calNuRe",
+    "calculate_NuRe",
+    "calNuRe_grid",
+    "check",
+    "check_grid",
+    "output_time_string",
+    "output_Tecplot",
+    "output_Tecplot_grid",
+    "output_SnapshotFile",
+    "output_SnapshotFile_grid",
+    "check_history",
+    "average_window",
+    "output_unsteady_NuRe_postprocess",
+    "section_owned_weight",
+    "fine_section_x",
+    "fine_section_y",
+    "fine_value"
+  ],
+  "baseline_path": "C:\\Users\\User\\AppData\\Local\\Temp\\mb-interface-candidate-foh1k3di\\before.F90",
+  "candidate_sha256": "07f679a21dc11a55419d448d5df2af259590fb3b663bab0c3399588b57c1dff4",
+  "source_sha256": "07f679a21dc11a55419d448d5df2af259590fb3b663bab0c3399588b57c1dff4",
+  "build_directories": [
+    "C:\\Users\\User\\AppData\\Local\\Temp\\mb2d-verify-ygkl6irx",
+    "C:\\Users\\User\\AppData\\Local\\Temp\\mb2d-verify-ph4a6i6e"
+  ]
+}

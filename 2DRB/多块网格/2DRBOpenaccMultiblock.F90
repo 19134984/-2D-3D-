@@ -234,19 +234,13 @@
         real(kind=8), parameter :: dxFine=1.0d0
         real(kind=8) :: SnuCoarse, SqCoarse, QkCoarse, QnuCoarse
 
-        ! 粗网格时间插值的最大时间层下标，多块模式设为 2，对应 0、1、2 三层。
-        ! 一个粗步内：0=上一粗时刻，1=本轮粗步起点，2=本轮粗步预测终点。
-        ! 各层保存对应时刻的流场交换量；首轮没有上一粗时刻的数据，第 0 层权重取 0。
-        ! refineRatio=1 时不做粗细时间插值，设为 0，数组仅分配 0:0 一层。
-        integer(kind=4) :: timeInterpMaxIndexCoarse
 
         ! 中心粗网格负责积分的矩形边界，依次为 xmin,xmax,ymin,ymax。
         ! 默认其值为 [127.5,895.5,127.5,895.5]。不包含重叠层
+        ! 默认 dxCoarse=2，首末粗节点正好在分区线上：它们的积分权重各为 1，内部节点为 2。
         real(kind=8) :: centerIntegrationBox(4)
 
-        ! 积分严格从分区线 x=127.5 到 895.5、y=127.5 到 895.5（默认参数）。不包含重叠层
-        ! 默认 dxCoarse=2，首末粗节点正好在分区线上：它们的积分权重各为 1，内部节点为 2。
-        ! 积分下标直接去掉两侧 interfaceSkin 层，单网格则使用全部节点；不再单独保存起止编号。
+
 
         ! 粗网格坐标偏移
         real(kind=8) :: xOffsetCoarse, yOffsetCoarse
@@ -376,22 +370,18 @@
         !===============================================================================================
         ! 重叠层保存数组的信息。
         !===============================================================================================
-        ! 只保存粗网格时间插值需要的历史，细网格直接读取当前场。
-        ! 第三维 0:5 为 rho,u,v,T,Fx/dx,Fy/dx；6:14 为缩放流场非平衡矩；15:19 为缩放温度非平衡矩。
-        ! 最后一维 0/1/2 为过去、当前、预测时刻，单网格仅保留第 0 层用于兼容检查点。
-        real(kind=8), allocatable :: coarseBuffer(:,:,:,:)
+        ! 只保存细接收节点所需的三个粗时刻；第二维为左、右、下、上四区，各区编号都从1开始。
+        ! 每节点20个量：rho,u,v,T,Fx/dx,Fy/dx、9个缩放流场非平衡矩、5个缩放温度非平衡矩。
+        ! 空间插值直接读取粗场；时间插值在接收节点内完成，不另设中转数组。
+        real(kind=8), allocatable :: coarseHistoryPrevious(:,:)    ! 前一粗时刻
+        real(kind=8), allocatable :: coarseHistoryCurrent(:,:)     ! 当前粗时刻
+        real(kind=8), allocatable :: coarseHistoryNext(:,:)        ! 下一粗时刻预测数据
         !===============================================================================================
-
-        !===============================================================================================
-        ! 重叠层交换数组的信息。
-        !===============================================================================================
-        ! 交换时直接读取来源数组。每个线程使用 buffer(0:19) 保存局部插值结果，随即重建目标节点。
-        ! 不再分配接口下标表、权重表、全局接收数组或细网格历史副本。
     end module commondata
 
 !===================================================================================================
 
-!===================================================================================================
+
 
 !=============================================================
 !   主程序
@@ -417,11 +407,11 @@
     !===============================================================================================
     ! 初始化 OpenACC 设备
     if(loadInitField.EQ.1) then
-        open(unit=00,file=trim(settingsFile),status='unknown',position='append')
+        open(unit=00,file=trim(settingsFile),status='unknown',position='append')  !append,继续往后保存
         write(00,*) " "
         write(00,*) "================ Restart continuation begins ================"
     else
-        open(unit=00,file=trim(settingsFile),status='replace')
+        open(unit=00,file=trim(settingsFile),status='replace')  !replace,覆盖原有内容
     endif
 
     string=ctime(time())    !ctime把 time() 返回的时间戳转换成可读的字符串
@@ -441,7 +431,8 @@
     call enter_data_2d_openacc()
 #ifdef unsteadyFlow
     ! 本次剩余步数；总目标先向上对齐到粗细网格同步时刻。
-    unsteadyItcRemaining=max(0,((itc_max+refineRatio-1)/refineRatio)*refineRatio-reloadItcOffset)
+    ! ceiling 向上取整，再乘 refineRatio 得到同步步数；dble 避免整数除法丢失小数部分。
+    unsteadyItcRemaining=max(0,ceiling(dble(itc_max)/refineRatio)*refineRatio-reloadItcOffset)
 #endif
     lastSnapshotItc=-1
     lastPltItc=-1
@@ -630,16 +621,20 @@
     reloadDimensionlessTime=0.0d0
     reloadMetadataLoaded=.false.
 
-    ! 检查输入参数。
+    ! 粗细比不能小于1
     if(refineRatio < 1) error stop 'refineRatio must be a positive integer'
 
+    ! 网格尺寸不能小于8
     if(min(nx,ny) < 8) error stop 'At least 8 cells per direction are required'
 
+    ! 初始场加载只能为0或1
     if(loadInitField/=0 .AND. loadInitField/=1) error stop 'loadInitField must be 0 or 1'
 
+    ! 输出间隔的细格子步数需要大于粗细比，全场数据只有粗步下才有
     if(min(outputSnapshotInterval,reloadFileInterval,outputPltFileInterval)*timeUnit < dble(refineRatio)) &
         error stop 'Output intervals must be at least one synchronized coarse step'    !要求最短的间隔也至少覆盖一个粗细同步周期,输出间隔对应的细步数 ≥ refineRatio
 
+    ! 参数a范围检查
     if(paraA <=-4.0d0 .OR. paraA >=1.0d0) error stop 'Legacy paraA must be in (-4,1)'
 
     ! 将 t_ff 间隔换算为细格子步数，再向上对齐到粗细同步步。
@@ -648,7 +643,7 @@
     outputPltFileIntervalItc=max(1,ceiling(outputPltFileInterval*timeUnit/dble(refineRatio)))*refineRatio
 
 #ifdef steadyFlow
-    steadyCheckIntervalItc=ceiling(2000.0d0/dble(refineRatio))*refineRatio
+    steadyCheckIntervalItc=ceiling(2000.0d0/dble(refineRatio))*refineRatio  ! 2000 的细格子步数,向上对齐到粗细同步步。
 #endif
 
     ! 设置流场和温度场的格子权重。
@@ -658,49 +653,63 @@
     omegaT(0)=(1.0d0-paraA)/5.0d0
     omegaT(1:4)=(paraA+4.0d0)/20.0d0
 
-    ! 确定粗格距、粗时间步及需要保存的历史层数。
+    ! 粗格距和粗时间步均为细网格的 refineRatio 倍。
     dxCoarse=dble(refineRatio)
-    timeInterpMaxIndexCoarse=0
+
     if(refineRatio==1) then
         centerIntegrationBox=[0.0d0,dble(nx),0.0d0,dble(ny)]
-
         xOffsetCoarse=0.0d0
         yOffsetCoarse=0.0d0
-    else
+    else       !下面是多块网格的情况
         ! || 表示“或者”。
         ! 左右速度或温度任一周期宏开启时，保留下面的报错语句；都未开启时将其去掉。
         ! 此处位于多块网格分支，目前尚未实现左右周期连接及数据交换，因此初始化时停止。
 #if defined(VerticalWallsPeriodicalU) || defined(VerticalWallsPeriodicalT)
         error stop 'Multiblock periodic sides require a periodic block topology; use wall BCs or refineRatio=1'
 #endif
-
+        ! 检查界面层数
         if(interfaceSkin < 2) error stop 'Split flow/thermal advance requires at least two interface layers'
 
-        !检查全域整除，并确定四条分区线
+        !检查全域网格整除
         if(mod(nx,refineRatio)/=0 .OR. mod(ny,refineRatio)/=0) &
             error stop 'nx,ny must be multiples of refineRatio'
-        xLeft=dble(fineLayerCellsLeft)-0.5d0    !细节点编号换成坐标
-        xRight=dble(nx-fineLayerCellsRight)+0.5d0
-        yBottom=dble(fineLayerCellsBottom)-0.5d0
-        yTop=dble(ny-fineLayerCellsTop)+0.5d0
 
-        ! 检查细块与粗块的重叠区域
-        if(min(xLeft,dble(nx)-xRight,yBottom,dble(ny)-yTop) < dble(interfaceSkin*refineRatio+refineRatio)) &
-            error stop 'Refined wall layer must exceed the overlap width by at least one coarse cell'
+        ! 确定四条分区线
+        xLeft=dble(fineLayerCellsLeft)-0.5d0    !细节点层数编号换成坐标，xLeft=127.5
+        xRight=dble(nx-fineLayerCellsRight)+0.5d0    !细节点层数编号换成坐标，xRight=895.5
+        yBottom=dble(fineLayerCellsBottom)-0.5d0    !细节点层数编号换成坐标，yBottom=127.5
+        yTop=dble(ny-fineLayerCellsTop)+0.5d0    !细节点层数编号换成坐标，yTop=895.5
 
-        if(xRight <=xLeft .OR. yTop <=yBottom) &    !保证中心区域有正宽度和高度
+        ! 检查四周细网格区域够不够厚；0.5 是壁面到首个细节点的距离，保证最外层粗接收节点仍在细网格内。
+        if(min(xLeft,dble(nx)-xRight,yBottom,dble(ny)-yTop) < dble(interfaceSkin*refineRatio)+0.5d0) &
+            error stop 'Refined wall layer must cover the coarse overlap plus half a fine spacing'
+        
+        !保证中心区域有正宽度和高度
+        if(xRight <=xLeft .OR. yTop <=yBottom) &    
             error stop 'The coarse core must have positive width and height'
-
-        if(mod(nx-fineLayerCellsLeft-fineLayerCellsRight+1,refineRatio)/=0 .OR. &    !中心宽高必须能被 refineRatio 整除
+        
+        !中心宽高必须能被 refineRatio 整除
+        if(mod(nx-fineLayerCellsLeft-fineLayerCellsRight+1,refineRatio)/=0 .OR. &    
             mod(ny-fineLayerCellsBottom-fineLayerCellsTop+1,refineRatio)/=0) &
             error stop 'Central width and height must be multiples of refineRatio; adjust the four interface indices'
 
-        timeInterpMaxIndexCoarse=2    !表示使用 0、1、2 三个时间层，以及记录中心积分区域
-        centerIntegrationBox=[xLeft,xRight,yBottom,yTop]
+        ! 直接传输的共址关系由分区编号和整除条件保证；四点插值还要求粗区每方向至少4个节点。
+        if(min(nx-fineLayerCellsLeft-fineLayerCellsRight+1, &
+            ny-fineLayerCellsBottom-fineLayerCellsTop+1)/refineRatio < 3) &
+            error stop 'Central coarse region needs at least four nodes per direction'
+        centerIntegrationBox=[xLeft,xRight,yBottom,yTop]    ! [127.5,895.5,127.5,895.5]
 
-        ! 将坐标偏移换算为细格距单位
-        xOffsetCoarse=xLeft-interfaceSkin*refineRatio-0.5d0*dxCoarse
-        yOffsetCoarse=yBottom-interfaceSkin*refineRatio-0.5d0*dxCoarse
+        ! 将坐标偏移换算为细格距单位,为了坐标统一
+        !xOffsetCoarse = 122.5
+        !粗节点下标：    1       2       3       4
+        !坐标：        123.5   125.5   127.5   129.5
+        !用途：        接收层   接收层   分区线   中心内部
+        !yOffsetCoarse = 122.5
+        !y方向粗节点下标： 1       2       3       4
+        !y坐标：        123.5   125.5   127.5   129.5
+        !用途：         接收层   接收层   分区线   中心内部
+        xOffsetCoarse=xLeft-interfaceSkin*refineRatio-0.5d0*dxCoarse  !!xOffsetCoarse = 122.5
+        yOffsetCoarse=yBottom-interfaceSkin*refineRatio-0.5d0*dxCoarse    !yOffsetCoarse = 122.5
 
         ! 四个细矩形拼成细环；仅向中心延伸 interfaceSkin 个细格距，细矩形拼接处直接迁移。
 
@@ -709,35 +718,36 @@
         yOffsetLeft=0.0d0
 
         ! 右侧细区的坐标偏移，包含向中心延伸的 interfaceSkin 层。
-        xOffsetRight=dble(nx-(fineLayerCellsRight+interfaceSkin))
+        xOffsetRight=dble(nx-(fineLayerCellsRight+interfaceSkin))    !xOffsetRight = 893.0
         yOffsetRight=0.0d0
 
         ! 下侧细区从左侧存储区之后开始。
-        xOffsetBottom=dble((fineLayerCellsLeft+interfaceSkin))
+        xOffsetBottom=dble((fineLayerCellsLeft+interfaceSkin))    !xOffsetBottom = 130.0
         yOffsetBottom=0.0d0
 
         ! 上侧细区从左侧存储区之后开始，并向下延伸 interfaceSkin 层。
-        xOffsetTop=dble((fineLayerCellsLeft+interfaceSkin))
-        yOffsetTop=dble(ny-(fineLayerCellsTop+interfaceSkin))
+        xOffsetTop=dble((fineLayerCellsLeft+interfaceSkin))    !xOffsetTop = 130.0
+        yOffsetTop=dble(ny-(fineLayerCellsTop+interfaceSkin))    !yOffsetTop = 893.0
 
-        ! 检查细环中间还有空间
-        if(min((nx-fineLayerCellsLeft-fineLayerCellsRight-2*interfaceSkin),ny-(fineLayerCellsBottom+interfaceSkin)-(fineLayerCellsTop+interfaceSkin)) < 1) &
+        ! 检查细环中间还有空间，确保重叠层有足够的空间
+        if(min((nx-fineLayerCellsLeft-fineLayerCellsRight-2*interfaceSkin), &
+            ny-(fineLayerCellsBottom+interfaceSkin)-(fineLayerCellsTop+interfaceSkin)) < 1) &
             error stop 'Compact fine ring requires a positive interior storage hole'
     endif
 
-    ! 单块模式的四边执行选定的物理域边界条件（壁面或周期）；多块模式的粗网格边界是重叠层边缘。
+    ! 右侧 refineRatio==1 是判断；判断结果统一赋给 coarseIsWall 的四个元素（左、右、下、上）。
+    ! refineRatio=1 时全部为 .true.，四边执行物理边界条件（壁面或周期）。
+    ! refineRatio>1 时全部为 .false.，粗网格四边是重叠接收层，通过接口交换处理。
     coarseIsWall=refineRatio==1
 
     ! 把细网格的输运参数换算为粗网格参数。
+    ! 细网格 dx=1，直接使用基准 Snu、Sq、Qk、Qnu。
     SnuCoarse=1.0d0/(0.5d0+(1.0d0/Snu-0.5d0)/dxCoarse)
     SqCoarse=1.0d0/(0.5d0+(1.0d0/Sq-0.5d0)/dxCoarse)
     QkCoarse=1.0d0/(0.5d0+(1.0d0/Qk-0.5d0)/dxCoarse)
     QnuCoarse=1.0d0/(0.5d0+(1.0d0/Qnu-0.5d0)/dxCoarse)
 
-    ! 浮力源项的细网格表达式为 Fy = rho*gBeta*(T-Tref)。
-    ! 粗时间步相当于 dxCoarse 个细时间步，调用时直接传 dxCoarse*gBeta。
 
-    ! 细网格 dx=1，直接使用基准 Snu、Sq、Qk、Qnu。
 
     if(refineRatio > 1) then
 
@@ -748,13 +758,15 @@
         topIsWall=[.false.,.false.,.false.,.true.]
     endif
 
-    ! 单网格使用全域；多块粗区只遍历分区线之间的节点（含端点）。
 
+    ! 按各区尺寸分配分布函数、宏观场和迁移临时数组；多块模式还分配四个细区，稳态模式另分配检查用的旧场。
+    ! 同时分配并清零前一、当前、下一粗时刻的接口历史
     call allocate_grid_arrays()
 
     ! 初始化各区域，并核对全部实际积分面积之和。
     totalArea=0.0d0
 
+    ! 中心粗网格数组，包括它的重叠接收层的初始化
     call initial_grid(size(f_coarse,1),size(f_coarse,2),dxCoarse,xOffsetCoarse,yOffsetCoarse,&
         f_coarse,g_coarse,&
         f_post_coarse,g_post_coarse,rho_coarse,u_coarse,v_coarse,T_coarse,Fx_coarse,Fy_coarse &
@@ -762,16 +774,18 @@
         ,up_coarse,vp_coarse,Tp_coarse &
 #endif
         )
+
+    !累加中心粗网格负责的物理积分面积，不含重叠层    
     do j=1,size(f_coarse,2)
         do i=1,size(f_coarse,1)
             call owned_cell_area(xOffsetCoarse+(i-0.5d0)*dxCoarse,&
                 yOffsetCoarse+(j-0.5d0)*dxCoarse,dxCoarse,centerIntegrationBox,cellArea)
-            totalArea=totalArea+cellArea
+            totalArea=totalArea+cellArea    !中心粗网格负责的物理积分面积
         enddo
     enddo
 
-    if(refineRatio > 1) then
-
+    if(refineRatio > 1) then  !多块细网格
+        ! 初始化左侧细网格，包括重叠层
         call initial_grid(size(f_left,1),size(f_left,2),dxFine,xOffsetLeft,yOffsetLeft,&
             f_left,g_left,f_post_left,&
             g_post_left,rho_left,&
@@ -780,8 +794,16 @@
             ,up_left,vp_left,Tp_left &
 #endif
             )
+
+        !累加左细网格负责的物理积分面积，含上下细区的两个小的重叠层
         do j=1,size(f_left,2)
             do i=1,size(f_left,1)
+                ! 此处传入左细数组的完整存储范围 [0,130,0,1024]，其中包含粗到细接收层。
+                ! 不能直接将右边界缩至 127.5，因为上下细数组从 x=130 开始覆盖，
+                ! 因此 x=127.5:130 在 y=0:127.5 和 y=895.5:1024 内仍由左细数组负责积分。
+                ! owned_cell_area 先将节点控制面积裁剪到存储范围，再累加与四个细物理矩形的交集，
+                ! 排除中心粗物理区 [127.5,895.5,127.5,895.5] 内的面积，同时保留上下两端的有效面积。
+                ! 例如 (128,128) 的面积为 0.75，(129,128) 为 0.5，中心区接收节点 (129,129) 为 0。
                 call owned_cell_area(xOffsetLeft+(i-0.5d0)*dxFine,&
                     yOffsetLeft+(j-0.5d0)*dxFine,dxFine,[xOffsetLeft,xOffsetLeft+size(f_left,1),yOffsetLeft,&
                     yOffsetLeft+size(f_left,2)],cellArea)
@@ -789,6 +811,7 @@
             enddo
         enddo
 
+        ! 初始化右侧细网格，包括重叠层
         call initial_grid(size(f_right,1),size(f_right,2),dxFine,xOffsetRight,yOffsetRight,&
             f_right,g_right,f_post_right,g_post_right,&
             rho_right,u_right,v_right,T_right,Fx_right,Fy_right &
@@ -796,6 +819,8 @@
             ,up_right,vp_right,Tp_right &
 #endif
             )
+
+        !累加右细网格负责的物理积分面积，含上下细区的两个x方向的小的重叠层
         do j=1,size(f_right,2)
             do i=1,size(f_right,1)
                 call owned_cell_area(xOffsetRight+(i-0.5d0)*dxFine,&
@@ -805,6 +830,7 @@
             enddo
         enddo
 
+        ! 初始化下侧细网格，包括重叠层
         call initial_grid(size(f_bottom,1),size(f_bottom,2),dxFine,xOffsetBottom,yOffsetBottom,&
             f_bottom,&
             g_bottom,f_post_bottom,&
@@ -813,6 +839,8 @@
             ,up_bottom,vp_bottom,Tp_bottom &
 #endif
             )
+
+        !累加下细网格负责的物理积分面积，x方向没有重叠层了
         do j=1,size(f_bottom,2)
             do i=1,size(f_bottom,1)
                 call owned_cell_area(xOffsetBottom+(i-0.5d0)*dxFine,&
@@ -822,6 +850,7 @@
             enddo
         enddo
 
+        ! 初始化上侧细网格，包括重叠层
         call initial_grid(size(f_top,1),size(f_top,2),dxFine,xOffsetTop,yOffsetTop,&
             f_top,g_top,f_post_top,g_post_top,rho_top,u_top,v_top,T_top,&
             Fx_top,Fy_top &
@@ -829,6 +858,8 @@
             ,up_top,vp_top,Tp_top &
 #endif
             )
+
+        !累加上细网格负责的物理积分面积，x方向没有重叠层了
         do j=1,size(f_top,2)
             do i=1,size(f_top,1)
                 call owned_cell_area(xOffsetTop+(i-0.5d0)*dxFine,&
@@ -839,11 +870,13 @@
         enddo
     endif
 
-    ! 总面积检查通过后，再恢复续算数据和建立接口。
+    ! 总面积检查
     if(abs(totalArea-dble(nx)*ny) > 1.0d-8) error stop 'Grid ownership does not tile the physical domain'
+
+    ! 续算下，恢复各个区域的数据
     if(loadInitField==1) call read_restart()
 
-    call check_interfaces()
+    ! 接口范围由分区编号及 interfaceSkin 直接确定；参数约束已在前面检查。  !检查粗细网格之间的数据来源是否正确、接收节点是否被完整覆盖
 
     ! 写出本次算例的参数与各区域几何信息。
     ! 主程序已记录开始时间和设备信息，此处追加参数，续算时保留此前日志。
@@ -911,19 +944,23 @@
   subroutine allocate_grid_arrays()
     use commondata
     implicit none
+    integer(kind=4) :: bufferLength
 
     ! 分别为 coarse、left、right、bottom、top 分配数组，尺寸直接由分区位置和重叠厚度计算。
     ! 先分配 f，其余场量用 size(f,1/2) 取得同一区域的尺寸，不另存尺寸变量。
-    ! 场量空间范围是 1:ni、1:nj；只有 f_post/g_post 为迁移额外保留 0 和 n+1。
-    ! 粗网格缓冲数组保存 0:2 三层；up/vp/Tp 保存上次稳态检查的场量。
+    ! 场量空间范围是 1:ni、1:nj；左右细区在x方向加 interfaceSkin，上下细区在y方向加 interfaceSkin。
+    ! 壁面在坐标0，首个流体节点在0.5；迁移数组的下标0是幽灵层，不是壁面流体节点。
+    ! f_post/g_post 为迁移额外保留 0 和 n+1，延续基准代码的半格壁面处理。
+    ! 三个小数组保存接口时间历史；up/vp/Tp 保存上次稳态检查的场量。
 
     ! 分配中心粗网格的计算数组。
     if(refineRatio==1) then
         allocate(f_coarse(nx,ny,0:8))
-    else
+    else     !多块模式下，x 方向的节点数，带有重叠层的节点数
+        ! f_coarse(1:389,1:389,0:8)
         allocate(f_coarse((nx-fineLayerCellsLeft-fineLayerCellsRight+1)/refineRatio+1+2*interfaceSkin,&
             (ny-fineLayerCellsBottom-fineLayerCellsTop+1)/refineRatio+1+2*interfaceSkin,0:8))
-    endif
+    endif      !size 返回的是数某个维度的元素个数
     allocate(g_coarse(size(f_coarse,1),size(f_coarse,2),0:4))
     allocate(f_post_coarse(0:size(f_coarse,1)+1,0:size(f_coarse,2)+1,0:8))
     allocate(g_post_coarse(0:size(f_coarse,1)+1,0:size(f_coarse,2)+1,0:4))
@@ -934,18 +971,16 @@
     allocate(Fx_coarse(size(f_coarse,1),size(f_coarse,2)))
     allocate(Fy_coarse(size(f_coarse,1),size(f_coarse,2)))
 
-    ! 粗时间层合并为一个数组；分量次序保持原检查点中的存储顺序。
-    allocate(coarseBuffer(size(f_coarse,1),size(f_coarse,2),0:19,0:timeInterpMaxIndexCoarse))
-    coarseBuffer=0.0d0
-
 #ifdef steadyFlow
     allocate(up_coarse(size(f_coarse,1),size(f_coarse,2)))
     allocate(vp_coarse(size(f_coarse,1),size(f_coarse,2)))
     allocate(Tp_coarse(size(f_coarse,1),size(f_coarse,2)))
 #endif
-    if(refineRatio > 1) then
 
-        ! 分配左侧细网格的计算数组。
+
+    if(refineRatio > 1) then
+        ! 分配左侧细网格的计算数组。带有重叠层的节点数
+        ! f_left(1:130,1:1024,0:8)
         allocate(f_left((fineLayerCellsLeft+interfaceSkin),ny,0:8))
         allocate(g_left(size(f_left,1),size(f_left,2),0:4))
         allocate(f_post_left(0:size(f_left,1)+1,0:size(f_left,2)+1,0:8))
@@ -963,7 +998,8 @@
         allocate(Tp_left(size(f_left,1),size(f_left,2)))
 #endif
 
-        ! 分配右侧细网格的计算数组。
+        ! 分配右侧细网格的计算数组。带有重叠层的节点数
+        ! f_right(1:131,1:1024,0:8)
         allocate(f_right((fineLayerCellsRight+interfaceSkin),ny,0:8))
         allocate(g_right(size(f_right,1),size(f_right,2),0:4))
         allocate(f_post_right(0:size(f_right,1)+1,0:size(f_right,2)+1,0:8))
@@ -981,7 +1017,8 @@
         allocate(Tp_right(size(f_right,1),size(f_right,2)))
 #endif
 
-        ! 分配下侧细网格的计算数组。
+        ! 分配下侧细网格的计算数组。y方向带有重叠层的节点数， x 方向只占左右细数组之间剩下的空隙，不再向左右增加重叠层
+        ! f_bottom(1:763,1:130,0:8)
         allocate(f_bottom((nx-fineLayerCellsLeft-fineLayerCellsRight-2*interfaceSkin),(fineLayerCellsBottom+interfaceSkin),0:8))
         allocate(g_bottom(size(f_bottom,1),size(f_bottom,2),0:4))
         allocate(f_post_bottom(0:size(f_bottom,1)+1,0:size(f_bottom,2)+1,0:8))
@@ -999,7 +1036,8 @@
         allocate(Tp_bottom(size(f_bottom,1),size(f_bottom,2)))
 #endif
 
-        ! 分配上侧细网格的计算数组。
+        ! 分配上侧细网格的计算数组。y方向带有重叠层的节点数， x 方向只占左右细数组之间剩下的空隙，不再向左右增加重叠层
+        ! f_top(1:763,1:131,0:8)
         allocate(f_top((nx-fineLayerCellsLeft-fineLayerCellsRight-2*interfaceSkin),(fineLayerCellsTop+interfaceSkin),0:8))
         allocate(g_top(size(f_top,1),size(f_top,2),0:4))
         allocate(f_post_top(0:size(f_top,1)+1,0:size(f_top,2)+1,0:8))
@@ -1017,6 +1055,20 @@
         allocate(Tp_top(size(f_top,1),size(f_top,2)))
 #endif
     endif
+    
+    ! 左右接收区各 interfaceSkin*(ny-Bottom-Top) 个节点；上下各 interfaceSkin*size(f_bottom,1)。
+    ! 默认左右1534、上下1526个节点，每节点20个量，最长30680；四区分别占一列，不拼接编号。
+    if(refineRatio>1) then
+        bufferLength=20*interfaceSkin*max(ny-fineLayerCellsBottom-fineLayerCellsTop,size(f_bottom,1))
+        allocate(coarseHistoryPrevious(bufferLength,4),coarseHistoryCurrent(bufferLength,4), &
+            coarseHistoryNext(bufferLength,4))
+    else
+        ! 单网格不交换，各留一个位置，统一设备分配和释放。
+        allocate(coarseHistoryPrevious(1,1),coarseHistoryCurrent(1,1),coarseHistoryNext(1,1))
+    endif
+    coarseHistoryPrevious=0.0d0
+    coarseHistoryCurrent=0.0d0
+    coarseHistoryNext=0.0d0
   end subroutine allocate_grid_arrays
 !===================================================================================================
 
@@ -1032,7 +1084,7 @@
 #endif
       )
 
-    use commondata,only: nx,ny,Thot,Tcold,pi,lengthUnit,omega,omegaT
+    use commondata,only: nx,ny,Thot,Tcold,lengthUnit,omega,omegaT,ex,ey,thermalGeqCoeff
     implicit none
 
     ! ni/nj 是传入数组的本地节点数。
@@ -1058,7 +1110,7 @@
     real(kind=8) :: Tp(ni,nj)
 #endif
     integer(kind=4) :: i, j, a
-    real(kind=8) :: x, y
+    real(kind=8) :: x, y, us2, un(0:8)
 
     ! 初始化宏观量和碰撞后数组。
     u=0.0d0
@@ -1078,27 +1130,325 @@
             T(i,j)=Thot+x/(dble(nx)/lengthUnit)*(Tcold-Thot)
 #else
             T(i,j)=Thot+y/(dble(ny)/lengthUnit)*(Tcold-Thot)
-            T(i,j)=T(i,j)+1.0d-3*(Thot-Tcold)*sin(2.0d0*pi*x/(dble(nx)/lengthUnit))*&
-                sin(pi*y/(dble(ny)/lengthUnit))
 #endif
+            us2=u(i,j)*u(i,j)+v(i,j)*v(i,j)
             do a=0,8
-                f(i,j,a)=omega(a)
+                un(a)=u(i,j)*ex(a)+v(i,j)*ey(a)
+                f(i,j,a)=rho(i,j)*omega(a)*(1.0d0+3.0d0*un(a)+4.5d0*un(a)*un(a)-1.5d0*us2)  !D2Q9标准feq
             enddo
 
             do a=0,4
-                g(i,j,a)=omegaT(a)*T(i,j)
+                un(a)=u(i,j)*ex(a)+v(i,j)*ey(a)
+                g(i,j,a)=omegaT(a)*T(i,j)*(1.0d0+thermalGeqCoeff*un(a))
             enddo
         enddo
     enddo
-#ifdef steadyFlow
 
+
+#ifdef steadyFlow
     ! 稳态检查的初始参考场。
     up=u
     vp=v
     Tp=T
 #endif
+
   end subroutine initial_grid
 !===================================================================================================
+
+!===================================================================================================
+! 子程序: owned_cell_area
+! 作用: 累计节点在互不重叠物理分区中的面积。
+!===================================================================================================
+  subroutine owned_cell_area(x,y,dx,integrationBox,area)
+    use commondata,only: centerIntegrationBox,refineRatio
+    implicit none
+
+    real(kind=8), intent(in) :: x, y, dx, integrationBox(4)
+    real(kind=8), intent(out) :: area
+    real(kind=8) :: xlo, xhi, ylo, yhi, middleWidth
+
+    ! integrationBox 粗网格时为当前存储区外框，不含重叠层。细网格时含重叠层，下面有对于细网格的优化
+    ! 为了节省内存，所以细网格时含重叠层。
+    ! 一个节点代表以自身为中心、边长为 dx 的正方形
+    ! 节点控制面积只向所属物理分区贡献
+    xlo=max(x-dx/2,integrationBox(1))  !交集,把控制面积限制在中心矩形内
+    xhi=min(x+dx/2,integrationBox(2))
+    ylo=max(y-dx/2,integrationBox(3))
+    yhi=min(y+dx/2,integrationBox(4))
+    area=0.0d0
+    if(xhi <=xlo .OR. yhi <=ylo) return  !如果没有面积交集，就返回零
+
+    if(refineRatio==1 .OR. dx > 1.0d0) then
+        area=(xhi-xlo)*(yhi-ylo)    ! 单网格全域，或中心粗矩形，不含重叠层。
+        return   !内部节点=4,左分区线上=2,左下分区交角=1,左侧重叠接收节点=0
+    endif
+
+    ! 四个细物理矩形：左、右贯穿全高，下、上位于两者之间。
+    ! 分别相加
+    area=max(0.0d0,min(xhi,centerIntegrationBox(1))-xlo)*(yhi-ylo)    ! 左
+    area=area+max(0.0d0,xhi-max(xlo,centerIntegrationBox(2)))*(yhi-ylo)    ! 右
+    middleWidth=max(0.0d0,min(xhi,centerIntegrationBox(2))-max(xlo,centerIntegrationBox(1)))
+    area=area+middleWidth*max(0.0d0,min(yhi,centerIntegrationBox(3))-ylo)    ! 下
+    area=area+middleWidth*max(0.0d0,yhi-max(ylo,centerIntegrationBox(4)))    ! 上
+  end subroutine owned_cell_area
+!===================================================================================================
+
+!===================================================================================================
+! 子程序: read_restart
+! 作用: 检查网格及物理配置，恢复时间计数和五套网格状态。
+!===================================================================================================
+  subroutine read_restart()
+
+    use commondata
+    implicit none
+
+
+    integer(kind=4) :: k, ios, head(9), sig(12), currentModel(12)
+    real(kind=8) :: phys(16), currentPhysics(16)
+    character(len=256) :: name
+    logical :: metaExists
+    
+    ! inquire 是查询文件是否存在,//表示字符串拼接
+    inquire(file=reloadFilePrefix//'-latest.meta',exist=metaExists)
+
+    ! 优先从 latest.meta 找到检查点；meta 不存在时使用手动填写的文件名。
+    if(metaExists) then
+        open(newunit=k,file=reloadFilePrefix//'-latest.meta',status='old',iostat=ios)
+        if(ios/=0) error stop 'Cannot open multiblock latest.meta' !如果 .meta 打开失败就停止，检查能否打开该文件
+        read(k,'(a)',iostat=ios) name   !'(a)'表示按字符格式读取
+        close(k)
+        if(ios/=0 .OR. len_trim(name)==0) error stop 'Invalid latest.meta' !len_trim计算去掉末尾空格后的字符串长度，检查读取结果
+    else
+        if(len_trim(reloadFileName)==0) error stop 'Missing latest.meta: set reloadFileName to a saved checkpoint filename'
+        name=reloadFileName    !检查手动文件名是否有效
+    endif
+
+    ! 读取meta中记录的二进制文件
+    !trim去掉文件名末尾多余空格。unformatted按二进制数据读取。stream按照文件中字节的排列顺序连续读取。
+    open(newunit=k,file=trim(name),status='old',access='stream',form='unformatted',iostat=ios)
+    if(ios/=0) error stop 'Missing multiblock checkpoint' !检查是否能打开
+    read(k,iostat=ios) head    !把文件开头的9个整数读入 head
+    if(ios/=0) error stop 'Truncated multiblock checkpoint header' !检查是否能读取
+    !核对网格、物理参数及输出间隔
+    !merge(5,1,refineRatio > 1),表示条件成立取 5，否则取 1
+    !any(head/=...)表示“只要有任何一项不相等”就成立
+    if(any(head/=[nx,ny,refineRatio,fineLayerCellsLeft,fineLayerCellsRight,&
+        fineLayerCellsBottom,fineLayerCellsTop,interfaceSkin,merge(5,1,refineRatio > 1)])) &
+        error stop 'Restart mesh/refinement mismatch'
+    read(k) sig,phys
+
+    call model_signature(currentModel) !记录编译开关
+
+    call physical_signature(currentPhysics) !记录物理参数
+
+    !文件与当前程序的模型、物理参数或者输出间隔不一致，就停止。
+    if(any(sig/=currentModel) .OR. any(phys/=currentPhysics)) &
+        error stop 'Restart model/physics/output-cadence mismatch' 
+    
+    ! 直接恢复累计步数、已完成的 Nu/Re 采样次数及误差；输出文件名由累计步数换算的 t_ff 决定。
+    read(k) reloadItcOffset,NuReSampleCount,errorU,errorT
+
+    ! 检查步数是否合法，以及是否处在粗细网格同步时刻
+    if(reloadItcOffset < 0 .OR. mod(reloadItcOffset,refineRatio)/=0) error stop 'Restart is not at a synchronized time'
+
+    ! 输出间隔已由 physical_signature 核对；这里检查已完成的采样次数与累计步数是否一致。
+    if(NuReSampleCount/=reloadItcOffset/outputSnapshotIntervalItc) &
+        error stop 'Restart sample count differs from the fixed step interval'
+    
+    itc=0   !本次运行完成的步数,所以都是先设为0
+
+    !merge(5,1,refineRatio > 1),表示条件成立取 5，否则取 1
+    !这里恢复粗网格数据
+    call read_restart_grid(size(f_coarse,1),size(f_coarse,2),dxCoarse,xOffsetCoarse,&
+        yOffsetCoarse,(1+merge(interfaceSkin,0,refineRatio>1)),(size(f_coarse,1)-merge(interfaceSkin,0,refineRatio>1)),(1+merge(interfaceSkin,0,refineRatio>1)),&
+        (size(f_coarse,2)-merge(interfaceSkin,0,refineRatio>1)),centerIntegrationBox,k,&
+        f_coarse,g_coarse,u_coarse,v_coarse,T_coarse,rho_coarse,Fx_coarse,Fy_coarse &
+#ifdef steadyFlow
+        ,up_coarse,vp_coarse,Tp_coarse &
+#endif
+        )
+
+
+    if(refineRatio > 1) then
+
+    !这里恢复左细网格数据
+        call read_restart_grid(size(f_left,1),size(f_left,2),dxFine,xOffsetLeft,yOffsetLeft,1,&
+            size(f_left,1),&
+            1,size(f_left,2),[xOffsetLeft,xOffsetLeft+size(f_left,1),yOffsetLeft,yOffsetLeft+size(f_left,2)],k,f_left,g_left,u_left,v_left,&
+            T_left,rho_left,&
+            Fx_left,Fy_left &
+#ifdef steadyFlow
+            ,up_left,vp_left,Tp_left &
+#endif
+            )
+
+    !这里恢复右细网格数据
+        call read_restart_grid(size(f_right,1),size(f_right,2),dxFine,xOffsetRight,yOffsetRight,1,&
+            size(f_right,1),1,size(f_right,2),[xOffsetRight,xOffsetRight+size(f_right,1),yOffsetRight,yOffsetRight+size(f_right,2)],k,f_right,&
+            g_right,u_right,v_right,&
+            T_right,rho_right,Fx_right,Fy_right &
+#ifdef steadyFlow
+            ,up_right,vp_right,Tp_right &
+#endif
+            )
+
+    !这里恢复下细网格数据
+        call read_restart_grid(size(f_bottom,1),size(f_bottom,2),dxFine,xOffsetBottom,yOffsetBottom,1,&
+            size(f_bottom,1),1,size(f_bottom,2),[xOffsetBottom,xOffsetBottom+size(f_bottom,1),yOffsetBottom,yOffsetBottom+size(f_bottom,2)],k,&
+            f_bottom,g_bottom,u_bottom,&
+            v_bottom,T_bottom,rho_bottom,Fx_bottom,Fy_bottom &
+#ifdef steadyFlow
+            ,up_bottom,vp_bottom,Tp_bottom &
+#endif
+            )
+
+    !这里恢复上细网格数据
+        call read_restart_grid(size(f_top,1),size(f_top,2),dxFine,xOffsetTop,yOffsetTop,1,size(f_top,1),&
+            1,size(f_top,2),[xOffsetTop,xOffsetTop+size(f_top,1),yOffsetTop,yOffsetTop+size(f_top,2)],k,f_top,g_top,u_top,v_top,T_top,&
+            rho_top,Fx_top,&
+            Fy_top &
+#ifdef steadyFlow
+            ,up_top,vp_top,Tp_top &
+#endif
+            )
+    endif
+
+    close(k)
+
+    reloadDimensionlessTime=dble(reloadItcOffset)/timeUnit
+    reloadMetadataLoaded=.true.
+  end subroutine read_restart
+!===================================================================================================
+
+!===================================================================================================
+! 子程序: model_signature
+! 作用: 将当前物理模型和边界宏配置写入检查点配置标识。
+!===================================================================================================
+  subroutine model_signature(sig)
+
+    implicit none
+
+    integer(kind=4), intent(out) :: sig(12)
+
+    sig=0     !将数组的12个元素全部置零
+#ifdef steadyFlow
+    sig(1)=1     !根据编译开关，把对应元素设成1
+#endif
+#ifdef SideHeatedCell
+    sig(3)=1
+#endif
+#ifdef HorizontalWallsNoslip
+    sig(4)=1
+#endif
+#ifdef VerticalWallsNoslip
+    sig(5)=1
+#endif
+#ifdef VerticalWallsPeriodicalU
+    sig(6)=1
+#endif
+#ifdef HorizontalWallsConstT
+    sig(7)=1
+#endif
+#ifdef HorizontalWallsAdiabatic
+    sig(8)=1
+#endif
+#ifdef VerticalWallsConstT
+    sig(9)=1
+#endif
+#ifdef VerticalWallsAdiabatic
+    sig(10)=1
+#endif
+#ifdef VerticalWallsPeriodicalT
+    sig(11)=1
+#endif
+#ifdef SideHeatedHa
+    sig(12)=1
+#endif
+  end subroutine model_signature
+!===================================================================================================
+
+!===================================================================================================
+! 子程序: physical_signature
+! 作用: 记录物理参数和输出间隔，供续算时核对兼容性。
+!===================================================================================================
+  subroutine physical_signature(sig)
+
+    use commondata,only: Rayleigh,Prandtl,Mach,Thot,Tcold,Snu,Sq,Qk,Qnu,paraA,&
+        outputSnapshotInterval,reloadFileInterval,outputPltFileInterval
+#ifdef SideHeatedHa
+    use commondata,only: Ha,phi
+#endif
+    implicit none
+
+    real(kind=8), intent(out) :: sig(16)
+
+    sig=[Rayleigh,Prandtl,Mach,Thot,Tcold,Snu,Sq,Qk,Qnu,paraA,outputSnapshotInterval,&
+        reloadFileInterval,outputPltFileInterval,0.0d0,0.0d0,0.0d0]  !用数组构造物理信息
+#ifdef SideHeatedHa
+    sig(14)=Ha
+    sig(15)=phi
+#endif
+  end subroutine physical_signature
+!===================================================================================================
+
+!===================================================================================================
+! 子程序: read_restart_grid
+! 作用: 核对一个区域的尺寸和坐标，并读取其完整状态与历史。
+!===================================================================================================
+  subroutine read_restart_grid(ni,nj,dx,xOffset,yOffset,xStartIntegration,xEndIntegration,&
+      yStartIntegration,yEndIntegration,integrationBox,&
+      k,f,g,u,v,T,rho,Fx,Fy &
+#ifdef steadyFlow
+      ,up,vp,Tp &
+#endif
+      )
+
+    use commondata,only: coarseHistoryPrevious,coarseHistoryCurrent,coarseHistoryNext,dxCoarse
+    implicit none
+    integer(kind=4) :: ni, nj, xStartIntegration, xEndIntegration, yStartIntegration, yEndIntegration
+    real(kind=8) :: dx, xOffset, yOffset, integrationBox(4)
+
+    integer(kind=4) :: k, ios, geom(7)
+    real(kind=8) :: f(ni,nj,0:8)
+    real(kind=8) :: g(ni,nj,0:4)
+    real(kind=8) :: u(ni,nj)
+    real(kind=8) :: v(ni,nj)
+    real(kind=8) :: T(ni,nj)
+    real(kind=8) :: rho(ni,nj)
+    real(kind=8) :: Fx(ni,nj)
+    real(kind=8) :: Fy(ni,nj)
+    real(kind=8) :: coord(7)
+
+#ifdef steadyFlow
+    real(kind=8) :: up(ni,nj)
+    real(kind=8) :: vp(ni,nj)
+    real(kind=8) :: Tp(ni,nj)
+#endif
+
+
+    read(k) geom,coord  !读取整数布局信息与实数坐标信息
+
+    ! 最后一项-1 是当前紧凑历史存储格式的标记，不是节点编号，也不是时间层下标。
+    if(any(geom(1:6)/=[ni,nj,xStartIntegration,xEndIntegration,yStartIntegration,yEndIntegration]) .OR. &
+        geom(7)/=-1 .OR. &
+        any(coord/=[xOffset,yOffset,dx,integrationBox])) error stop 'Restart block layout mismatch'
+
+    read(k,iostat=ios) f,g,u,v,T,rho,Fx,Fy   !从二进制文件中得到之前的数据，读的是完整的 389×389 数组，包括接重叠层
+
+    if(ios/=0) error stop 'Incomplete checkpoint state'
+    
+    ! 粗区按前一、当前、下一时刻保存三个接口小数组；细区只存场量。
+    if(dx==dxCoarse) then
+        read(k,iostat=ios) coarseHistoryPrevious,coarseHistoryCurrent,coarseHistoryNext
+        if(ios/=0) error stop 'Incomplete coarse interface history'
+    endif
+#ifdef steadyFlow
+    read(k) up,vp,Tp
+#endif
+  end subroutine read_restart_grid
+!===================================================================================================
+
+
 
 !===================================================================================================
 ! 子程序: grid_device_data
@@ -1112,7 +1462,7 @@
     ! 场量和粗时间层常驻设备；全部交换在同一设备内直接读取来源数组。
     if(entering) then
         !$acc enter data copyin(f_coarse, g_coarse, f_post_coarse, g_post_coarse, rho_coarse, u_coarse, &
-        !$acc& v_coarse, T_coarse, Fx_coarse, Fy_coarse, coarseBuffer)
+        !$acc& v_coarse, T_coarse, Fx_coarse, Fy_coarse, coarseHistoryPrevious,coarseHistoryCurrent,coarseHistoryNext)
         if(refineRatio > 1) then
             !$acc enter data copyin(f_left, g_left, f_post_left, g_post_left, rho_left, u_left, &
             !$acc& v_left, T_left, Fx_left, Fy_left)
@@ -1125,7 +1475,7 @@
         endif
     else
         !$acc exit data delete(f_coarse, g_coarse, f_post_coarse, g_post_coarse, rho_coarse, u_coarse, &
-        !$acc& v_coarse, T_coarse, Fx_coarse, Fy_coarse, coarseBuffer)
+        !$acc& v_coarse, T_coarse, Fx_coarse, Fy_coarse, coarseHistoryPrevious,coarseHistoryCurrent,coarseHistoryNext)
         if(refineRatio > 1) then
             !$acc exit data delete(f_left, g_left, f_post_left, g_post_left, rho_left, u_left, &
             !$acc& v_left, T_left, Fx_left, Fy_left)
@@ -1152,11 +1502,10 @@
     call grid_device_data(.true.)
     ! 新算例先保存起点，再双向补齐接口；续算直接使用读入的粗时间层。
     if(loadInitField==0) then
-        call save_coarse_buffer(min(1,timeInterpMaxIndexCoarse))
+        call save_coarse_history(coarseHistoryCurrent)
         if(refineRatio > 1) then
             call fine_to_coarse()
             call coarse_to_fine([0.0d0,1.0d0,0.0d0])
-            call save_coarse_buffer(1)
         endif
     endif
   end subroutine enter_data_2d_openacc
@@ -1215,7 +1564,7 @@
             u_top,v_top,T_top,Fx_top,Fy_top)
     endif
     if(full) then
-        !$acc update self(coarseBuffer) async(1)
+        !$acc update self(coarseHistoryPrevious,coarseHistoryCurrent,coarseHistoryNext) async(1)
     endif
     !$acc wait(1)
   end subroutine update_host_all
@@ -1244,7 +1593,7 @@
     use commondata
     implicit none
 
-    deallocate(coarseBuffer)
+    deallocate(coarseHistoryPrevious,coarseHistoryCurrent,coarseHistoryNext)
     deallocate(f_coarse,g_coarse,f_post_coarse,g_post_coarse,rho_coarse,u_coarse,v_coarse,T_coarse,Fx_coarse,Fy_coarse)
 #ifdef steadyFlow
     deallocate(up_coarse,vp_coarse,Tp_coarse)
@@ -1565,7 +1914,7 @@
 
     ! 粗网格预测终点；细子步读取过去、起点和预测终点三个时间层。
     call advance_coarse()
-    call save_coarse_buffer(2)
+    call save_coarse_history(coarseHistoryNext)
     do k=1,refineRatio
         call coarse_time_weights(dble(k-1)/dble(refineRatio),timeInterpWeight)
         call coarse_to_fine(timeInterpWeight)
@@ -1574,7 +1923,6 @@
 
     ! 同步时直接读细网格修正粗接收层，再补细接收层，最后滚动粗时间层。
     call fine_to_coarse()
-    call save_coarse_buffer(2)
     call coarse_to_fine([0.0d0,0.0d0,1.0d0])
     call rotate_coarse_history()
     itc=itc+refineRatio
@@ -1612,15 +1960,13 @@
   subroutine rotate_coarse_history()
     use commondata
     implicit none
-    integer(kind=4) :: i, j, a
+    integer(kind=4) :: p,region
 
-    !$acc parallel loop collapse(3) present(coarseBuffer) async(1)
-    do a=0,19
-        do j=1,size(coarseBuffer,2)
-            do i=1,size(coarseBuffer,1)
-                coarseBuffer(i,j,a,0)=coarseBuffer(i,j,a,1)
-                coarseBuffer(i,j,a,1)=coarseBuffer(i,j,a,2)
-            enddo
+    !$acc parallel loop collapse(2) present(coarseHistoryPrevious,coarseHistoryCurrent,coarseHistoryNext) async(1)
+    do region=1,4
+        do p=1,size(coarseHistoryCurrent,1)
+            coarseHistoryPrevious(p,region)=coarseHistoryCurrent(p,region)
+            coarseHistoryCurrent(p,region)=coarseHistoryNext(p,region)
         enddo
     enddo
   end subroutine rotate_coarse_history
@@ -1731,37 +2077,113 @@
   end subroutine force_moments
 !===================================================================================================
 
+
 !===================================================================================================
-! 子程序: save_coarse_buffer
-! 作用: 保存指定时刻的宏观量、统一时间尺度的力和缩放非平衡矩。
+! 子程序: coarse_source_stencil
+! 作用: 由目标坐标找到共址粗节点或四乘四空间插值模板。
 !===================================================================================================
-  subroutine save_coarse_buffer(slot)
+  subroutine coarse_source_stencil(qx,qy,ni,nj,skin,sourceX,sourceY,width,wx,wy)
+    implicit none
+    !$acc routine seq
+    real(kind=8), intent(in) :: qx,qy
+    integer(kind=4), intent(in) :: ni,nj,skin
+    integer(kind=4), intent(out) :: sourceX,sourceY,width
+    real(kind=8), intent(out) :: wx(4),wy(4)
+
+    if(abs(qx-nint(qx))<1.0d-12 .AND. abs(qy-nint(qy))<1.0d-12) then
+        sourceX=nint(qx)
+        sourceY=nint(qy)
+        width=1
+        wx=0.0d0
+        wy=0.0d0
+        wx(1)=1.0d0
+        wy(1)=1.0d0
+    else
+        sourceX=max(1+skin,min(floor(qx)-1,ni-skin-3))
+        sourceY=max(1+skin,min(floor(qy)-1,nj-skin-3))
+        width=4
+        call lagrange_weights(qx-sourceX,wx)
+        call lagrange_weights(qy-sourceY,wy)
+    endif
+  end subroutine coarse_source_stencil
+!===================================================================================================
+
+
+!===================================================================================================
+! 子程序: save_coarse_history
+! 作用: 从当前粗场完成空间插值，分别保存四区所需的时间历史，各区编号都从 1 开始。
+!===================================================================================================
+  subroutine save_coarse_history(history)
     use commondata
     implicit none
-    integer(kind=4), intent(in) :: slot
-    integer(kind=4) :: i, j, a
-    real(kind=8) :: fv(0:8), gv(0:4), buffer(0:19)
+    real(kind=8), intent(inout) :: history(size(coarseHistoryCurrent,1),size(coarseHistoryCurrent,2))
 
-    !$acc parallel loop collapse(2) present(f_coarse, g_coarse, rho_coarse, u_coarse, v_coarse, &
-    !$acc& T_coarse, Fx_coarse, Fy_coarse, coarseBuffer) async(1) private(a, fv, gv, buffer) &
-    !$acc& firstprivate(dxCoarse, SnuCoarse, SqCoarse, QkCoarse, QnuCoarse)
-    do j=1,size(f_coarse,2)
-        do i=1,size(f_coarse,1)
-            do a=0,8
-                fv(a)=f_coarse(i,j,a)
+    if(refineRatio==1) return
+    ! 接收范围直接由分区编号加减 interfaceSkin 得到，不再用坐标扫描。
+    ! 默认左i=129:130,j=129:895；右i=1:2,j=129:895；下i=1:763,j=129:130；上i=1:763,j=1:2。
+    call save_coarse_history_grid(history,1,fineLayerCellsLeft+1,fineLayerCellsLeft+interfaceSkin, &
+        fineLayerCellsBottom+1,ny-fineLayerCellsTop,xOffsetLeft,yOffsetLeft)
+    call save_coarse_history_grid(history,2,1,interfaceSkin, &
+        fineLayerCellsBottom+1,ny-fineLayerCellsTop,xOffsetRight,yOffsetRight)
+    call save_coarse_history_grid(history,3,1,size(f_bottom,1), &
+        fineLayerCellsBottom+1,fineLayerCellsBottom+interfaceSkin,xOffsetBottom,yOffsetBottom)
+    call save_coarse_history_grid(history,4,1,size(f_top,1), &
+        1,interfaceSkin,xOffsetTop,yOffsetTop)
+  end subroutine save_coarse_history
+!===================================================================================================
+
+!===================================================================================================
+! 子程序: save_coarse_history_grid
+! 作用: 直接从粗场取共址值或空间插值，只保存给定细接收矩形所需的20个交换量。
+!===================================================================================================
+  subroutine save_coarse_history_grid(history,region,iStart,iEnd,jStart,jEnd,xOffset,yOffset)
+    use commondata
+    implicit none
+    real(kind=8), intent(inout) :: history(size(coarseHistoryCurrent,1),size(coarseHistoryCurrent,2))
+    integer(kind=4), intent(in) :: region,iStart,iEnd,jStart,jEnd
+    real(kind=8), intent(in) :: xOffset,yOffset
+    integer(kind=4) :: i,j,a,ix,iy,ii,jj,sourceX,sourceY,width,p,ni,nj
+    real(kind=8) :: qx,qy,wx(4),wy(4),fv(0:8),gv(0:4),buffer(0:19),value(0:19)
+
+    ni=size(f_coarse,1)
+    nj=size(f_coarse,2)
+    !$acc parallel loop collapse(2) present(f_coarse,g_coarse,rho_coarse,u_coarse,v_coarse, &
+    !$acc& T_coarse,Fx_coarse,Fy_coarse,history) async(1) &
+    !$acc& firstprivate(region,iStart,iEnd,jStart,xOffset,yOffset,ni,nj, &
+    !$acc& xOffsetCoarse,yOffsetCoarse,dxCoarse,SnuCoarse,SqCoarse,QkCoarse,QnuCoarse) &
+    !$acc& private(a,ix,iy,ii,jj,sourceX,sourceY,width,p,qx,qy,wx,wy,fv,gv,buffer,value)
+    do j=jStart,jEnd
+        do i=iStart,iEnd
+            qx=(xOffset+(i-0.5d0)-xOffsetCoarse)/dxCoarse+0.5d0
+            qy=(yOffset+(j-0.5d0)-yOffsetCoarse)/dxCoarse+0.5d0
+            call coarse_source_stencil(qx,qy,ni,nj,interfaceSkin,sourceX,sourceY,width,wx,wy)
+            buffer=0.0d0
+            do iy=1,width
+                jj=sourceY+iy-1
+                do ix=1,width
+                    ii=sourceX+ix-1
+                    do a=0,8
+                        fv(a)=f_coarse(ii,jj,a)
+                    enddo
+                    do a=0,4
+                        gv(a)=g_coarse(ii,jj,a)
+                    enddo
+                    call pack_interface_values(dxCoarse,SnuCoarse,SqCoarse,QkCoarse,QnuCoarse,fv,gv, &
+                        rho_coarse(ii,jj),u_coarse(ii,jj),v_coarse(ii,jj),T_coarse(ii,jj), &
+                        Fx_coarse(ii,jj),Fy_coarse(ii,jj),value)
+                    do a=0,19
+                        buffer(a)=buffer(a)+wx(ix)*wy(iy)*value(a)
+                    enddo
+                enddo
             enddo
-            do a=0,4
-                gv(a)=g_coarse(i,j,a)
-            enddo
-            call pack_interface_values(dxCoarse,SnuCoarse,SqCoarse,QkCoarse,QnuCoarse,fv,gv,&
-                rho_coarse(i,j),u_coarse(i,j),v_coarse(i,j),T_coarse(i,j),&
-                Fx_coarse(i,j),Fy_coarse(i,j),buffer)
+            ! 每个节点连续放 20 个分量；区内 i 先变，j 后变。
+            p=20*((j-jStart)*(iEnd-iStart+1)+i-iStart)
             do a=0,19
-                coarseBuffer(i,j,a,slot)=buffer(a)
+                history(p+a+1,region)=buffer(a)
             enddo
         enddo
     enddo
-  end subroutine save_coarse_buffer
+  end subroutine save_coarse_history_grid
 !===================================================================================================
 
 !===================================================================================================
@@ -1834,96 +2256,60 @@
 
 !===================================================================================================
 ! 子程序: coarse_to_fine
-! 作用: 四个细区直接从粗时间层插值，结果写入各自的接收节点。
+! 作用: 四个细区按打包顺序读取粗时间层，结果写入各自的接收节点。
 !===================================================================================================
   subroutine coarse_to_fine(timeInterpWeight)
     use commondata
     implicit none
     real(kind=8), intent(in) :: timeInterpWeight(0:2)
 
-    call interpolate_coarse_to_fine(size(f_left,1),size(f_left,2),xOffsetLeft,yOffsetLeft,&
+    call interpolate_coarse_to_fine(1,size(f_left,1),size(f_left,2), &
+        fineLayerCellsLeft+1,fineLayerCellsLeft+interfaceSkin,fineLayerCellsBottom+1,ny-fineLayerCellsTop, &
         f_left,g_left,rho_left,u_left,v_left,T_left,Fx_left,Fy_left,timeInterpWeight)
-    call interpolate_coarse_to_fine(size(f_right,1),size(f_right,2),xOffsetRight,yOffsetRight,&
+    call interpolate_coarse_to_fine(2,size(f_right,1),size(f_right,2), &
+        1,interfaceSkin,fineLayerCellsBottom+1,ny-fineLayerCellsTop, &
         f_right,g_right,rho_right,u_right,v_right,T_right,Fx_right,Fy_right,timeInterpWeight)
-    call interpolate_coarse_to_fine(size(f_bottom,1),size(f_bottom,2),xOffsetBottom,yOffsetBottom,&
+    call interpolate_coarse_to_fine(3,size(f_bottom,1),size(f_bottom,2), &
+        1,size(f_bottom,1),fineLayerCellsBottom+1,fineLayerCellsBottom+interfaceSkin, &
         f_bottom,g_bottom,rho_bottom,u_bottom,v_bottom,T_bottom,Fx_bottom,Fy_bottom,timeInterpWeight)
-    call interpolate_coarse_to_fine(size(f_top,1),size(f_top,2),xOffsetTop,yOffsetTop,&
+    call interpolate_coarse_to_fine(4,size(f_top,1),size(f_top,2), &
+        1,size(f_top,1),1,interfaceSkin, &
         f_top,g_top,rho_top,u_top,v_top,T_top,Fx_top,Fy_top,timeInterpWeight)
   end subroutine coarse_to_fine
 !===================================================================================================
 
 !===================================================================================================
 ! 子程序: interpolate_coarse_to_fine
-! 作用: 在实际细接收层内逐点计算来源下标和权重，无需保存接口列表或插值权重表。
+! 作用: 对指定接收矩形做时间插值，直接转换并写入细网格。
 !===================================================================================================
-  subroutine interpolate_coarse_to_fine(ni,nj,xOffset,yOffset,f,g,rho,u,v,T,Fx,Fy,timeInterpWeight)
-    use commondata,only: coarseBuffer,dxCoarse,xOffsetCoarse,yOffsetCoarse,centerIntegrationBox,&
-        interfaceSkin,Snu,Sq,Qk,Qnu
+  subroutine interpolate_coarse_to_fine(region,ni,nj,iStart,iEnd,jStart,jEnd, &
+      f,g,rho,u,v,T,Fx,Fy,timeInterpWeight)
+    use commondata,only: coarseHistoryPrevious,coarseHistoryCurrent,coarseHistoryNext,Snu,Sq,Qk,Qnu
     implicit none
-    integer(kind=4), intent(in) :: ni, nj
-    real(kind=8), intent(in) :: xOffset, yOffset, timeInterpWeight(0:2)
-    real(kind=8), intent(inout) :: f(ni,nj,0:8), g(ni,nj,0:4), rho(ni,nj), u(ni,nj), v(ni,nj)
-    real(kind=8), intent(inout) :: T(ni,nj), Fx(ni,nj), Fy(ni,nj)
-    integer(kind=4) :: i, j, a, k, ix, iy, sourceX, sourceY, iStart, iEnd, jStart, jEnd, mi, mj
-    real(kind=8) :: qx, qy, wx(4), wy(4), wk, buffer(0:19), fv(0:8), gv(0:4)
-    real(kind=8) :: timeWeight0, timeWeight1, timeWeight2, x0, y0, dx
-    logical :: samePosition
+    integer(kind=4), intent(in) :: region,ni,nj,iStart,iEnd,jStart,jEnd
+    real(kind=8), intent(in) :: timeInterpWeight(0:2)
+    real(kind=8), intent(inout) :: f(ni,nj,0:8),g(ni,nj,0:4),rho(ni,nj),u(ni,nj),v(ni,nj)
+    real(kind=8), intent(inout) :: T(ni,nj),Fx(ni,nj),Fy(ni,nj)
+    integer(kind=4) :: i,j,a,p
+    real(kind=8) :: buffer(0:19),fv(0:8),gv(0:4)
+    real(kind=8) :: timeWeight0,timeWeight1,timeWeight2
 
-    ! 四个紧凑细矩形在中心物理矩形内的部分，恰好是要重建的接收层。
-    iStart=max(1,floor(centerIntegrationBox(1)-xOffset+0.5d0)+1)
-    iEnd=min(ni,ceiling(centerIntegrationBox(2)-xOffset+0.5d0)-1)
-    jStart=max(1,floor(centerIntegrationBox(3)-yOffset+0.5d0)+1)
-    jEnd=min(nj,ceiling(centerIntegrationBox(4)-yOffset+0.5d0)-1)
-    mi=size(coarseBuffer,1)
-    mj=size(coarseBuffer,2)
-    x0=xOffsetCoarse
-    y0=yOffsetCoarse
-    dx=dxCoarse
     ! 保留 NVHPC 所需的标量捕获，不能改为 firstprivate(timeInterpWeight) 数组形参。
     timeWeight0=timeInterpWeight(0)
     timeWeight1=timeInterpWeight(1)
     timeWeight2=timeInterpWeight(2)
-    !$acc parallel loop collapse(2) present(coarseBuffer, f, g, rho, u, v, T, Fx, Fy) async(1) &
-    !$acc& firstprivate(timeWeight0, timeWeight1, timeWeight2, x0, y0, dx, mi, mj) &
-    !$acc& private(a, k, ix, iy, sourceX, sourceY, qx, qy, wx, wy, wk, buffer, fv, gv, samePosition)
+    ! 时间插值直接放入当前线程的局部buffer，转换后写入细接收层，不需中转数组。
+    !$acc parallel loop collapse(2) present(coarseHistoryPrevious,coarseHistoryCurrent,coarseHistoryNext, &
+    !$acc& f,g,rho,u,v,T,Fx,Fy) async(1) &
+    !$acc& firstprivate(region,iStart,iEnd,jStart,timeWeight0,timeWeight1,timeWeight2) private(a,p,buffer,fv,gv)
     do j=jStart,jEnd
         do i=iStart,iEnd
-            qx=(xOffset+(i-0.5d0)-x0)/dx+0.5d0
-            qy=(yOffset+(j-0.5d0)-y0)/dx+0.5d0
-            samePosition=abs(qx-nint(qx))<1.0d-12 .AND. abs(qy-nint(qy))<1.0d-12
-            if(samePosition) then
-                sourceX=nint(qx)
-                sourceY=nint(qy)
-            else
-                sourceX=max(1+interfaceSkin,min(floor(qx)-1,mi-interfaceSkin-3))
-                sourceY=max(1+interfaceSkin,min(floor(qy)-1,mj-interfaceSkin-3))
-                call lagrange_weights(qx-sourceX,wx)
-                call lagrange_weights(qy-sourceY,wy)
-            endif
+            p=20*((j-jStart)*(iEnd-iStart+1)+i-iStart)
             do a=0,19
-                buffer(a)=0.0d0
-                do k=0,2
-                    select case(k)
-                    case(0)
-                        wk=timeWeight0
-                    case(1)
-                        wk=timeWeight1
-                    case(2)
-                        wk=timeWeight2
-                    end select
-                    if(samePosition) then
-                        buffer(a)=buffer(a)+wk*coarseBuffer(sourceX,sourceY,a,k)
-                    else
-                        do iy=1,4
-                            do ix=1,4
-                                buffer(a)=buffer(a)+wk*wx(ix)*wy(iy)*&
-                                    coarseBuffer(sourceX+ix-1,sourceY+iy-1,a,k)
-                            enddo
-                        enddo
-                    endif
-                enddo
+                buffer(a)=timeWeight0*coarseHistoryPrevious(p+a+1,region)+ &
+                    timeWeight1*coarseHistoryCurrent(p+a+1,region)+timeWeight2*coarseHistoryNext(p+a+1,region)
             enddo
-            call unpack_interface_values(1.0d0,Snu,Sq,Qk,Qnu,buffer,fv,gv,&
+            call unpack_interface_values(1.0d0,Snu,Sq,Qk,Qnu,buffer,fv,gv, &
                 rho(i,j),u(i,j),v(i,j),T(i,j),Fx(i,j),Fy(i,j))
             do a=0,8
                 f(i,j,a)=fv(a)
@@ -1944,223 +2330,113 @@
     use commondata
     implicit none
 
-    call copy_fine_to_coarse(size(f_left,1),size(f_left,2),xOffsetLeft,yOffsetLeft,&
-        f_left,g_left,rho_left,u_left,v_left,T_left,Fx_left,Fy_left)
-    call copy_fine_to_coarse(size(f_right,1),size(f_right,2),xOffsetRight,yOffsetRight,&
-        f_right,g_right,rho_right,u_right,v_right,T_right,Fx_right,Fy_right)
-    call copy_fine_to_coarse(size(f_bottom,1),size(f_bottom,2),xOffsetBottom,yOffsetBottom,&
-        f_bottom,g_bottom,rho_bottom,u_bottom,v_bottom,T_bottom,Fx_bottom,Fy_bottom)
-    call copy_fine_to_coarse(size(f_top,1),size(f_top,2),xOffsetTop,yOffsetTop,&
-        f_top,g_top,rho_top,u_top,v_top,T_top,Fx_top,Fy_top)
+    ! 仅在粗细同步时传输：左右各 interfaceSkin 列贯穿全高，上下行去掉已由左右覆盖的角点。
+    ! 默认左i=1:2，右i=388:389；下j=1:2，上j=388:389，二者i=3:387。
+    call copy_fine_to_coarse(1,interfaceSkin,1,size(f_coarse,2))
+    call copy_fine_to_coarse(size(f_coarse,1)-interfaceSkin+1,size(f_coarse,1),1,size(f_coarse,2))
+    call copy_fine_to_coarse(interfaceSkin+1,size(f_coarse,1)-interfaceSkin,1,interfaceSkin)
+    call copy_fine_to_coarse(interfaceSkin+1,size(f_coarse,1)-interfaceSkin, &
+        size(f_coarse,2)-interfaceSkin+1,size(f_coarse,2))
   end subroutine fine_to_coarse
 !===================================================================================================
 
-!===================================================================================================
-! 子程序: coarse_interface_node
-! 作用: 把粗外圈的循环编号换成下标，顺序为下边、上边及左右两边，不保存节点表。
-!===================================================================================================
-  subroutine coarse_interface_node(c,ni,nj,i,j)
-    use commondata,only: interfaceSkin
-    implicit none
-    !$acc routine seq
-    integer(kind=4), intent(in) :: c, ni, nj
-    integer(kind=4), intent(out) :: i, j
-    integer(kind=4) :: n
-
-    if(c<=ni*interfaceSkin) then
-        i=mod(c-1,ni)+1
-        j=(c-1)/ni+1
-    else if(c<=2*ni*interfaceSkin) then
-        n=c-ni*interfaceSkin-1
-        i=mod(n,ni)+1
-        j=nj-interfaceSkin+n/ni+1
-    else
-        n=c-2*ni*interfaceSkin-1
-        i=mod(n,2*interfaceSkin)+1
-        if(i>interfaceSkin) i=i+ni-2*interfaceSkin
-        j=interfaceSkin+n/(2*interfaceSkin)+1
-    endif
-  end subroutine coarse_interface_node
-!===================================================================================================
 
 !===================================================================================================
 ! 子程序: copy_fine_to_coarse
 ! 作用: 粗接收点与细节点共址，直接从对应细节点构造局部缓冲并写入粗数组。
 !===================================================================================================
-  subroutine copy_fine_to_coarse(ni,nj,xOffset,yOffset,f,g,rho,u,v,T,Fx,Fy)
-    use commondata,only: f_coarse,g_coarse,rho_coarse,u_coarse,v_coarse,T_coarse,Fx_coarse,Fy_coarse,&
-        dxCoarse,xOffsetCoarse,yOffsetCoarse,interfaceSkin,Snu,Sq,Qk,Qnu,SnuCoarse,SqCoarse,QkCoarse,QnuCoarse
+  subroutine copy_fine_to_coarse(iStart,iEnd,jStart,jEnd)
+    use commondata
     implicit none
-    integer(kind=4), intent(in) :: ni, nj
-    real(kind=8), intent(in) :: xOffset, yOffset, f(ni,nj,0:8), g(ni,nj,0:4)
-    real(kind=8), intent(in) :: rho(ni,nj), u(ni,nj), v(ni,nj), T(ni,nj), Fx(ni,nj), Fy(ni,nj)
-    integer(kind=4) :: c, i, j, a, sourceX, sourceY, mi, mj
-    real(kind=8) :: fv(0:8), gv(0:4), buffer(0:19), x0, y0, dx
+    integer(kind=4), intent(in) :: iStart,iEnd,jStart,jEnd
+    integer(kind=4) :: i,j,a,sourceX,sourceY
+    real(kind=8) :: fv(0:8),gv(0:4),buffer(0:19),rh,ux,uy,temp,fx,fy
 
-    mi=size(f_coarse,1)
-    mj=size(f_coarse,2)
-    x0=xOffsetCoarse
-    y0=yOffsetCoarse
-    dx=dxCoarse
-    !$acc parallel loop present(f, g, rho, u, v, T, Fx, Fy, f_coarse, g_coarse, rho_coarse, &
-    !$acc& u_coarse, v_coarse, T_coarse, Fx_coarse, Fy_coarse) async(1) &
-    !$acc& firstprivate(mi, mj, x0, y0, dx, SnuCoarse, SqCoarse, QkCoarse, QnuCoarse) &
-    !$acc& private(i, j, a, sourceX, sourceY, fv, gv, buffer)
-    do c=1,2*interfaceSkin*(mi+mj-2*interfaceSkin)
-        call coarse_interface_node(c,mi,mj,i,j)
-        sourceX=nint((x0+(i-0.5d0)*dx)-xOffset+0.5d0)
-        sourceY=nint((y0+(j-0.5d0)*dx)-yOffset+0.5d0)
-        if(sourceX<1 .OR. sourceX>ni .OR. sourceY<1 .OR. sourceY>nj) cycle
-        do a=0,8
-            fv(a)=f(sourceX,sourceY,a)
-        enddo
-        do a=0,4
-            gv(a)=g(sourceX,sourceY,a)
-        enddo
-        call pack_interface_values(1.0d0,Snu,Sq,Qk,Qnu,fv,gv,rho(sourceX,sourceY),u(sourceX,sourceY),&
-            v(sourceX,sourceY),T(sourceX,sourceY),Fx(sourceX,sourceY),Fy(sourceX,sourceY),buffer)
-        call unpack_interface_values(dx,SnuCoarse,SqCoarse,QkCoarse,QnuCoarse,buffer,fv,gv,&
-            rho_coarse(i,j),u_coarse(i,j),v_coarse(i,j),T_coarse(i,j),Fx_coarse(i,j),Fy_coarse(i,j))
-        do a=0,8
-            f_coarse(i,j,a)=fv(a)
-        enddo
-        do a=0,4
-            g_coarse(i,j,a)=gv(a)
+    ! 由粗下标直接得到全域细编号；默认粗(1,1)对应细(124,124)。
+    !$acc parallel loop collapse(2) present(f_coarse,g_coarse,rho_coarse,u_coarse,v_coarse,T_coarse, &
+    !$acc& Fx_coarse,Fy_coarse, &
+    !$acc& f_left,g_left,rho_left,u_left,v_left,T_left,Fx_left,Fy_left, &
+    !$acc& f_right,g_right,rho_right,u_right,v_right,T_right,Fx_right,Fy_right, &
+    !$acc& f_bottom,g_bottom,rho_bottom,u_bottom,v_bottom,T_bottom,Fx_bottom,Fy_bottom, &
+    !$acc& f_top,g_top,rho_top,u_top,v_top,T_top,Fx_top,Fy_top) async(1) &
+    !$acc& firstprivate(SnuCoarse,SqCoarse,QkCoarse,QnuCoarse,dxCoarse) &
+    !$acc& private(a,sourceX,sourceY,fv,gv,buffer,rh,ux,uy,temp,fx,fy)
+    do j=jStart,jEnd
+        do i=iStart,iEnd
+            sourceX=fineLayerCellsLeft+(i-1-interfaceSkin)*refineRatio
+            sourceY=fineLayerCellsBottom+(j-1-interfaceSkin)*refineRatio
+            if(sourceX<=fineLayerCellsLeft+interfaceSkin) then
+                do a=0,8
+                    fv(a)=f_left(sourceX,sourceY,a)
+                enddo
+                do a=0,4
+                    gv(a)=g_left(sourceX,sourceY,a)
+                enddo
+                rh=rho_left(sourceX,sourceY)
+                ux=u_left(sourceX,sourceY)
+                uy=v_left(sourceX,sourceY)
+                temp=T_left(sourceX,sourceY)
+                fx=Fx_left(sourceX,sourceY)
+                fy=Fy_left(sourceX,sourceY)
+            else if(sourceX>nx-fineLayerCellsRight-interfaceSkin) then
+                sourceX=sourceX-(nx-fineLayerCellsRight-interfaceSkin)
+                do a=0,8
+                    fv(a)=f_right(sourceX,sourceY,a)
+                enddo
+                do a=0,4
+                    gv(a)=g_right(sourceX,sourceY,a)
+                enddo
+                rh=rho_right(sourceX,sourceY)
+                ux=u_right(sourceX,sourceY)
+                uy=v_right(sourceX,sourceY)
+                temp=T_right(sourceX,sourceY)
+                fx=Fx_right(sourceX,sourceY)
+                fy=Fy_right(sourceX,sourceY)
+            else if(sourceY<=fineLayerCellsBottom+interfaceSkin) then
+                sourceX=sourceX-(fineLayerCellsLeft+interfaceSkin)
+                do a=0,8
+                    fv(a)=f_bottom(sourceX,sourceY,a)
+                enddo
+                do a=0,4
+                    gv(a)=g_bottom(sourceX,sourceY,a)
+                enddo
+                rh=rho_bottom(sourceX,sourceY)
+                ux=u_bottom(sourceX,sourceY)
+                uy=v_bottom(sourceX,sourceY)
+                temp=T_bottom(sourceX,sourceY)
+                fx=Fx_bottom(sourceX,sourceY)
+                fy=Fy_bottom(sourceX,sourceY)
+            else
+                sourceX=sourceX-(fineLayerCellsLeft+interfaceSkin)
+                sourceY=sourceY-(ny-fineLayerCellsTop-interfaceSkin)
+                do a=0,8
+                    fv(a)=f_top(sourceX,sourceY,a)
+                enddo
+                do a=0,4
+                    gv(a)=g_top(sourceX,sourceY,a)
+                enddo
+                rh=rho_top(sourceX,sourceY)
+                ux=u_top(sourceX,sourceY)
+                uy=v_top(sourceX,sourceY)
+                temp=T_top(sourceX,sourceY)
+                fx=Fx_top(sourceX,sourceY)
+                fy=Fy_top(sourceX,sourceY)
+            endif
+            call pack_interface_values(1.0d0,Snu,Sq,Qk,Qnu,fv,gv,rh,ux,uy,temp,fx,fy,buffer)
+            call unpack_interface_values(dxCoarse,SnuCoarse,SqCoarse,QkCoarse,QnuCoarse,buffer,fv,gv, &
+                rho_coarse(i,j),u_coarse(i,j),v_coarse(i,j),T_coarse(i,j),Fx_coarse(i,j),Fy_coarse(i,j))
+            do a=0,8
+                f_coarse(i,j,a)=fv(a)
+            enddo
+            do a=0,4
+                g_coarse(i,j,a)=gv(a)
+            enddo
         enddo
     enddo
   end subroutine copy_fine_to_coarse
 !===================================================================================================
 
-!===================================================================================================
-! 子程序: check_interfaces
-! 作用: 初始化时核对直接坐标映射、来源模板及粗接收层覆盖，不分配接口列表。
-!===================================================================================================
-  subroutine check_interfaces()
-    use commondata
-    implicit none
-    integer(kind=4) :: count
 
-    if(refineRatio==1) return
-    count=0
-    call check_interface_grid(size(f_left,1),size(f_left,2),xOffsetLeft,yOffsetLeft,count)
-    call check_interface_grid(size(f_right,1),size(f_right,2),xOffsetRight,yOffsetRight,count)
-    call check_interface_grid(size(f_bottom,1),size(f_bottom,2),xOffsetBottom,yOffsetBottom,count)
-    call check_interface_grid(size(f_top,1),size(f_top,2),xOffsetTop,yOffsetTop,count)
-    if(count/=2*interfaceSkin*(size(f_coarse,1)+size(f_coarse,2)-2*interfaceSkin)) &
-        error stop 'Four fine arrays do not cover the complete coarse interface'
-  end subroutine check_interfaces
-!===================================================================================================
-
-!===================================================================================================
-! 子程序: check_interface_grid
-! 作用: 检查一个细区的插值范围及其提供的粗接收节点。
-!===================================================================================================
-  subroutine check_interface_grid(ni,nj,xOffset,yOffset,count)
-    use commondata,only: f_coarse,dxCoarse,xOffsetCoarse,yOffsetCoarse,interfaceSkin,centerIntegrationBox
-    implicit none
-    integer(kind=4), intent(in) :: ni, nj
-    real(kind=8), intent(in) :: xOffset, yOffset
-    integer(kind=4), intent(inout) :: count
-    integer(kind=4) :: i, j, c, sourceX, sourceY
-    real(kind=8) :: x, y, qx, qy, wx(4), wy(4)
-    logical :: isFineSkin, samePosition
-
-    do j=max(1,floor(centerIntegrationBox(3)-yOffset+0.5d0)+1),&
-         min(nj,ceiling(centerIntegrationBox(4)-yOffset+0.5d0)-1)
-        do i=max(1,floor(centerIntegrationBox(1)-xOffset+0.5d0)+1),&
-             min(ni,ceiling(centerIntegrationBox(2)-xOffset+0.5d0)-1)
-            x=xOffset+i-0.5d0
-            y=yOffset+j-0.5d0
-            call fine_skin(x,y,isFineSkin)
-            if(.NOT.isFineSkin) error stop 'Fine receiver rectangle exceeds interface layers'
-            call coarse_donor_stencil(x,y,sourceX,sourceY,wx,wy,samePosition)
-        enddo
-    enddo
-    do c=1,2*interfaceSkin*(size(f_coarse,1)+size(f_coarse,2)-2*interfaceSkin)
-        call coarse_interface_node(c,size(f_coarse,1),size(f_coarse,2),i,j)
-        x=xOffsetCoarse+(i-0.5d0)*dxCoarse
-        y=yOffsetCoarse+(j-0.5d0)*dxCoarse
-        qx=x-xOffset+0.5d0
-        qy=y-yOffset+0.5d0
-        sourceX=nint(qx)
-        sourceY=nint(qy)
-        if(sourceX<1 .OR. sourceX>ni .OR. sourceY<1 .OR. sourceY>nj) cycle
-        call fine_skin(x,y,isFineSkin)
-        if(abs(qx-sourceX)>1.0d-12 .OR. abs(qy-sourceY)>1.0d-12 .OR. isFineSkin) &
-            error stop 'Coarse receiver must coincide with an interior fine donor'
-        count=count+1
-    enddo
-  end subroutine check_interface_grid
-!===================================================================================================
-
-!===================================================================================================
-! 子程序: fine_skin
-! 作用: 按全局坐标判断细节点是否处于细环内侧的人工边缘层。
-!===================================================================================================
-  subroutine fine_skin(x,y,isInterfaceNode)
-    use commondata,only: centerIntegrationBox,interfaceSkin
-    implicit none
-
-    logical, intent(out) :: isInterfaceNode    ! 输出：该细节点是否属于需要接收粗网格数据的人工边缘层。
-
-    ! 这里检查的是整个细环的内缘；四个细矩形之间的存储接缝不属于粗细人工边界。
-    ! 细接收节点位于中心分区线内侧的 interfaceSkin 层，按细格距定位。
-
-    real(kind=8), intent(in) :: x, y
-
-    isInterfaceNode=(x <=centerIntegrationBox(1)+dble(interfaceSkin) .OR. &
-        x >=centerIntegrationBox(2)-dble(interfaceSkin) .OR. &
-        y <=centerIntegrationBox(3)+dble(interfaceSkin) .OR. &
-        y >=centerIntegrationBox(4)-dble(interfaceSkin)) .AND. &
-        x > centerIntegrationBox(1) .AND. &
-        x < centerIntegrationBox(2) .AND. &
-        y > centerIntegrationBox(3) .AND. &
-        y < centerIntegrationBox(4)
-  end subroutine fine_skin
-!===================================================================================================
-
-!===================================================================================================
-! 子程序: coarse_donor_stencil
-! 作用: 根据目标坐标选择粗来源节点或四点模板，并检查来源范围。
-!===================================================================================================
-  subroutine coarse_donor_stencil(x,y,sourceIndexX,sourceIndexY,spaceInterpWeightX,spaceInterpWeightY,samePosition)
-    use commondata,only: f_coarse,xOffsetCoarse,yOffsetCoarse,dxCoarse,interfaceSkin
-    implicit none
-
-    ! continuousIndexX/Y = (坐标-Offset)/dxCoarse+0.5，是坐标对应的连续数组下标。
-    ! 例如默认 x=127.5 对应粗下标 3；x=128.5 对应 3.5，需要在附近粗节点间插值。
-    ! 来源范围为 1+interfaceSkin 到 nCoarse-interfaceSkin，排除四周接收层。
-    ! 共址时直接记录整数节点；非共址时记录四点首下标与两个方向权重。
-
-    real(kind=8), intent(in) :: x, y
-    integer(kind=4), intent(out) :: sourceIndexX, sourceIndexY
-    real(kind=8), intent(out) :: spaceInterpWeightX(4), spaceInterpWeightY(4)
-    logical, intent(out) :: samePosition
-    real(kind=8) :: continuousIndexX, continuousIndexY
-
-    continuousIndexX=(x-xOffsetCoarse)/dxCoarse+.5d0
-    continuousIndexY=(y-yOffsetCoarse)/dxCoarse+.5d0
-    if(continuousIndexX < (1+interfaceSkin) .OR. continuousIndexX > (size(f_coarse,1)-interfaceSkin) .OR. &
-        continuousIndexY < (1+interfaceSkin) .OR. continuousIndexY > (size(f_coarse,2)-interfaceSkin) .OR. &
-        min((size(f_coarse,1)-interfaceSkin)-(1+interfaceSkin),(size(f_coarse,2)-interfaceSkin)-(1+interfaceSkin)) < 3) &
-        error stop 'Invalid overlap: no interior four-point coarse donor stencil'
-    samePosition=abs(continuousIndexX-nint(continuousIndexX)) < 1d-12 .AND. abs(continuousIndexY-&
-        nint(continuousIndexY)) < 1d-12
-    if(samePosition) then
-        sourceIndexX=nint(continuousIndexX)
-        sourceIndexY=nint(continuousIndexY)
-        spaceInterpWeightX=[1d0,0d0,0d0,0d0]
-        spaceInterpWeightY=spaceInterpWeightX
-    else
-        sourceIndexX=max((1+interfaceSkin),min(floor(continuousIndexX)-1,(size(f_coarse,1)-interfaceSkin)-3))
-        sourceIndexY=max((1+interfaceSkin),min(floor(continuousIndexY)-1,(size(f_coarse,2)-interfaceSkin)-3))
-
-        call lagrange_weights(continuousIndexX-sourceIndexX,spaceInterpWeightX)
-
-        call lagrange_weights(continuousIndexY-sourceIndexY,spaceInterpWeightY)
-    endif
-  end subroutine coarse_donor_stencil
-!===================================================================================================
 
 !===================================================================================================
 ! 子程序: collision
@@ -3355,14 +3631,10 @@
 
     call physical_signature(currentPhysics)
     write(k) currentModel,currentPhysics
-    ! 三个输出序号依次为采样、续算文件和 Tecplot 的下一序号，用于续算时核对输出间隔。
-    ! 旧文件的三个命名计数位置保留并写零，保持检查点布局兼容。
-    write(k) reloadItcOffset+itc,NuReSampleCount+1,&
-        (reloadItcOffset+itc)/reloadFileIntervalItc+1,&
-        (reloadItcOffset+itc)/outputPltFileIntervalItc+1,&
-        0,0,0,errorU,errorT
+    ! 保存累计步数、已完成的 Nu/Re 采样次数及误差，与 read_restart 的读取顺序一致。
+    write(k) reloadItcOffset+itc,NuReSampleCount,errorU,errorT
 
-    call output_ReloadFile_grid(size(f_coarse,1),size(f_coarse,2),timeInterpMaxIndexCoarse,dxCoarse,xOffsetCoarse,&
+    call output_ReloadFile_grid(size(f_coarse,1),size(f_coarse,2),dxCoarse,xOffsetCoarse,&
         yOffsetCoarse,(1+merge(interfaceSkin,0,refineRatio>1)),(size(f_coarse,1)-merge(interfaceSkin,0,refineRatio>1)),(1+merge(interfaceSkin,0,refineRatio>1)),&
         (size(f_coarse,2)-merge(interfaceSkin,0,refineRatio>1)),centerIntegrationBox,k,&
         f_coarse,g_coarse,u_coarse,v_coarse,T_coarse,rho_coarse,Fx_coarse,Fy_coarse &
@@ -3372,7 +3644,7 @@
         )
     if(refineRatio > 1) then
 
-        call output_ReloadFile_grid(size(f_left,1),size(f_left,2),0,dxFine,xOffsetLeft,yOffsetLeft,1,&
+        call output_ReloadFile_grid(size(f_left,1),size(f_left,2),dxFine,xOffsetLeft,yOffsetLeft,1,&
             size(f_left,1),1,size(f_left,2),[xOffsetLeft,xOffsetLeft+size(f_left,1),yOffsetLeft,yOffsetLeft+size(f_left,2)],k,f_left,g_left,&
             u_left,v_left,T_left,&
             rho_left,Fx_left,Fy_left &
@@ -3381,7 +3653,7 @@
 #endif
             )
 
-        call output_ReloadFile_grid(size(f_right,1),size(f_right,2),0,dxFine,xOffsetRight,yOffsetRight,1,&
+        call output_ReloadFile_grid(size(f_right,1),size(f_right,2),dxFine,xOffsetRight,yOffsetRight,1,&
             size(f_right,1),1,size(f_right,2),[xOffsetRight,xOffsetRight+size(f_right,1),yOffsetRight,yOffsetRight+size(f_right,2)],k,f_right,&
             g_right,u_right,v_right,&
             T_right,rho_right,Fx_right,Fy_right &
@@ -3390,7 +3662,7 @@
 #endif
             )
 
-        call output_ReloadFile_grid(size(f_bottom,1),size(f_bottom,2),0,dxFine,xOffsetBottom,yOffsetBottom,&
+        call output_ReloadFile_grid(size(f_bottom,1),size(f_bottom,2),dxFine,xOffsetBottom,yOffsetBottom,&
             1,size(f_bottom,1),1,size(f_bottom,2),&
             [xOffsetBottom,xOffsetBottom+size(f_bottom,1),yOffsetBottom,yOffsetBottom+size(f_bottom,2)],k,f_bottom,g_bottom,&
             u_bottom,v_bottom,T_bottom,rho_bottom,Fx_bottom,Fy_bottom &
@@ -3399,7 +3671,7 @@
 #endif
             )
 
-        call output_ReloadFile_grid(size(f_top,1),size(f_top,2),0,dxFine,xOffsetTop,yOffsetTop,1,size(f_top,1),&
+        call output_ReloadFile_grid(size(f_top,1),size(f_top,2),dxFine,xOffsetTop,yOffsetTop,1,size(f_top,1),&
             1,size(f_top,2),[xOffsetTop,xOffsetTop+size(f_top,1),yOffsetTop,yOffsetTop+size(f_top,2)],k,f_top,g_top,u_top,v_top,T_top,&
             rho_top,Fx_top,&
             Fy_top &
@@ -3421,7 +3693,7 @@
 ! 子程序: output_ReloadFile_grid
 ! 作用: 向检查点写入一个区域的几何、分布函数、宏观量和历史。
 !===================================================================================================
-  subroutine output_ReloadFile_grid(ni,nj,nh,dx,xOffset,yOffset,xStartIntegration,xEndIntegration,&
+  subroutine output_ReloadFile_grid(ni,nj,dx,xOffset,yOffset,xStartIntegration,xEndIntegration,&
       yStartIntegration,yEndIntegration,&
       integrationBox,k,f,g,u,v,T,rho,Fx,Fy &
 #ifdef steadyFlow
@@ -3429,17 +3701,15 @@
 #endif
       )
 
-    use commondata,only: coarseBuffer,dxCoarse
+    use commondata,only: coarseHistoryPrevious,coarseHistoryCurrent,coarseHistoryNext,dxCoarse
     implicit none
 
-    ! 每个时间层按宏观量、归一化力、流场矩、温度矩的固定顺序写入。
+    ! 历史标记 -1 表示接口打包格式；细区不再写无用的历史占位。
     ! 读写顺序与 read_restart_grid 完全对应；稳态模式另存 up/vp/Tp。
 
-    integer(kind=4) :: ni, nj, nh, xStartIntegration, xEndIntegration, yStartIntegration, yEndIntegration
+    integer(kind=4) :: ni, nj, xStartIntegration, xEndIntegration, yStartIntegration, yEndIntegration
     real(kind=8) :: dx, xOffset, yOffset, integrationBox(4)
 
-    integer(kind=4) :: a
-    real(kind=8) :: unusedHistory(ni,nj)
 
     integer(kind=4) :: k
     real(kind=8) :: f(ni,nj,0:8)
@@ -3457,264 +3727,17 @@
     real(kind=8) :: Tp(ni,nj)
 #endif
 
-    write(k) ni,nj,xStartIntegration,xEndIntegration,yStartIntegration,yEndIntegration,nh,&
+    write(k) ni,nj,xStartIntegration,xEndIntegration,yStartIntegration,yEndIntegration,-1,&
         xOffset,yOffset,dx,integrationBox
-    ! 每个时间层按宏观量、归一化力、流场矩、温度矩的顺序写入。
     write(k) f,g,u,v,T,rho,Fx,Fy
+    ! 粗区按前一、当前、下一时刻保存三个接口小数组；细区只存场量。
     if(dx==dxCoarse) then
-        write(k) coarseBuffer
-    else
-        ! 仅在主机写文件时复用一个平面，保留旧细历史在检查点中的位置。
-        unusedHistory=0.0d0
-        do a=0,19
-            write(k) unusedHistory
-        enddo
+        write(k) coarseHistoryPrevious,coarseHistoryCurrent,coarseHistoryNext
     endif
 #ifdef steadyFlow
     write(k) up,vp,Tp
 #endif
   end subroutine output_ReloadFile_grid
-!===================================================================================================
-
-!===================================================================================================
-! 子程序: read_restart
-! 作用: 检查网格及物理配置，恢复时间计数和五套网格状态。
-!===================================================================================================
-  subroutine read_restart()
-
-    use commondata
-    implicit none
-
-    ! 文件直接从网格参数开始；核对网格、物理参数及输出间隔后才恢复场量。
-    ! 旧 v10 连通细环文件需先用 convert_restart_v10.py 转换，不能按五套数组直接读取。
-    ! interfaceSkin 决定各细数组尺寸和偏移，由 read_restart_grid 核对；旧对称布局不可直接续算。
-    ! 历史对称布局需使用匹配该布局的源码，不能只修改当前的接收层数。
-
-    integer(kind=4) :: k, ios, head(9), sig(12), currentModel(12)
-    integer(kind=4) :: savedOutputIndex(3), unusedFileNumbers(3)
-    real(kind=8) :: phys(16), currentPhysics(16)
-    character(len=256) :: name
-    logical :: metaExists
-
-    inquire(file=reloadFilePrefix//'-latest.meta',exist=metaExists)
-
-    ! 优先从 latest.meta 找到检查点；meta 不存在时使用手动填写的文件名。
-    if(metaExists) then
-        open(newunit=k,file=reloadFilePrefix//'-latest.meta',status='old',iostat=ios)
-        if(ios/=0) error stop 'Cannot open multiblock latest.meta'
-        read(k,'(a)',iostat=ios) name
-        close(k)
-        if(ios/=0 .OR. len_trim(name)==0) error stop 'Invalid latest.meta'
-    else
-        if(len_trim(reloadFileName)==0) error stop 'Missing latest.meta: set reloadFileName to a saved checkpoint filename'
-        name=reloadFileName
-    endif
-
-    open(newunit=k,file=trim(name),status='old',access='stream',form='unformatted',iostat=ios)
-    if(ios/=0) error stop 'Missing multiblock checkpoint'
-    read(k,iostat=ios) head
-    if(ios/=0) error stop 'Truncated multiblock checkpoint header'
-    if(any(head/=[nx,ny,refineRatio,fineLayerCellsLeft,fineLayerCellsRight,&
-        fineLayerCellsBottom,fineLayerCellsTop,interfaceSkin,merge(5,1,refineRatio > 1)])) &
-        error stop 'Restart mesh/refinement mismatch'
-    read(k) sig,phys
-
-    call model_signature(currentModel)
-
-    call physical_signature(currentPhysics)
-    if(any(sig/=currentModel) .OR. any(phys/=currentPhysics)) &
-        error stop 'Restart model/physics/output-cadence mismatch'
-    ! 文件中的三个序号依次对应采样、续算文件和 Tecplot；仅用于恢复采样次数及检查间隔一致性。
-    ! 兼容读取旧命名计数；输出文件名只由累计步数换算的 t_ff 决定。
-    read(k) reloadItcOffset,savedOutputIndex,unusedFileNumbers,errorU,errorT
-    if(reloadItcOffset < 0 .OR. mod(reloadItcOffset,refineRatio)/=0) error stop 'Restart is not at a synchronized time'
-    if(any(savedOutputIndex/=[reloadItcOffset/outputSnapshotIntervalItc+1,&
-        reloadItcOffset/reloadFileIntervalItc+1,reloadItcOffset/outputPltFileIntervalItc+1])) &
-        error stop 'Restart output schedule differs from the fixed step intervals'
-    itc=0
-    NuReSampleCount=savedOutputIndex(1)-1
-
-    call read_restart_grid(size(f_coarse,1),size(f_coarse,2),timeInterpMaxIndexCoarse,dxCoarse,xOffsetCoarse,&
-        yOffsetCoarse,(1+merge(interfaceSkin,0,refineRatio>1)),(size(f_coarse,1)-merge(interfaceSkin,0,refineRatio>1)),(1+merge(interfaceSkin,0,refineRatio>1)),&
-        (size(f_coarse,2)-merge(interfaceSkin,0,refineRatio>1)),centerIntegrationBox,k,&
-        f_coarse,g_coarse,u_coarse,v_coarse,T_coarse,rho_coarse,Fx_coarse,Fy_coarse &
-#ifdef steadyFlow
-        ,up_coarse,vp_coarse,Tp_coarse &
-#endif
-        )
-    if(refineRatio > 1) then
-
-        call read_restart_grid(size(f_left,1),size(f_left,2),0,dxFine,xOffsetLeft,yOffsetLeft,1,&
-            size(f_left,1),&
-            1,size(f_left,2),[xOffsetLeft,xOffsetLeft+size(f_left,1),yOffsetLeft,yOffsetLeft+size(f_left,2)],k,f_left,g_left,u_left,v_left,&
-            T_left,rho_left,&
-            Fx_left,Fy_left &
-#ifdef steadyFlow
-            ,up_left,vp_left,Tp_left &
-#endif
-            )
-
-        call read_restart_grid(size(f_right,1),size(f_right,2),0,dxFine,xOffsetRight,yOffsetRight,1,&
-            size(f_right,1),1,size(f_right,2),[xOffsetRight,xOffsetRight+size(f_right,1),yOffsetRight,yOffsetRight+size(f_right,2)],k,f_right,&
-            g_right,u_right,v_right,&
-            T_right,rho_right,Fx_right,Fy_right &
-#ifdef steadyFlow
-            ,up_right,vp_right,Tp_right &
-#endif
-            )
-
-        call read_restart_grid(size(f_bottom,1),size(f_bottom,2),0,dxFine,xOffsetBottom,yOffsetBottom,1,&
-            size(f_bottom,1),1,size(f_bottom,2),[xOffsetBottom,xOffsetBottom+size(f_bottom,1),yOffsetBottom,yOffsetBottom+size(f_bottom,2)],k,&
-            f_bottom,g_bottom,u_bottom,&
-            v_bottom,T_bottom,rho_bottom,Fx_bottom,Fy_bottom &
-#ifdef steadyFlow
-            ,up_bottom,vp_bottom,Tp_bottom &
-#endif
-            )
-
-        call read_restart_grid(size(f_top,1),size(f_top,2),0,dxFine,xOffsetTop,yOffsetTop,1,size(f_top,1),&
-            1,size(f_top,2),[xOffsetTop,xOffsetTop+size(f_top,1),yOffsetTop,yOffsetTop+size(f_top,2)],k,f_top,g_top,u_top,v_top,T_top,&
-            rho_top,Fx_top,&
-            Fy_top &
-#ifdef steadyFlow
-            ,up_top,vp_top,Tp_top &
-#endif
-            )
-    endif
-
-    close(k)
-    reloadDimensionlessTime=dble(reloadItcOffset)/timeUnit
-    reloadMetadataLoaded=.true.
-  end subroutine read_restart
-!===================================================================================================
-
-!===================================================================================================
-! 子程序: read_restart_grid
-! 作用: 核对一个区域的尺寸和坐标，并读取其完整状态与历史。
-!===================================================================================================
-  subroutine read_restart_grid(ni,nj,nh,dx,xOffset,yOffset,xStartIntegration,xEndIntegration,&
-      yStartIntegration,yEndIntegration,integrationBox,&
-      k,f,g,u,v,T,rho,Fx,Fy &
-#ifdef steadyFlow
-      ,up,vp,Tp &
-#endif
-      )
-
-    use commondata,only: coarseBuffer,dxCoarse
-    implicit none
-    integer(kind=4) :: ni, nj, nh, xStartIntegration, xEndIntegration, yStartIntegration, yEndIntegration
-    real(kind=8) :: dx, xOffset, yOffset, integrationBox(4)
-
-    integer(kind=4) :: a
-    real(kind=8) :: unusedHistory(ni,nj)
-
-    integer(kind=4) :: k, ios, geom(7)
-    real(kind=8) :: f(ni,nj,0:8)
-    real(kind=8) :: g(ni,nj,0:4)
-    real(kind=8) :: u(ni,nj)
-    real(kind=8) :: v(ni,nj)
-    real(kind=8) :: T(ni,nj)
-    real(kind=8) :: rho(ni,nj)
-    real(kind=8) :: Fx(ni,nj)
-    real(kind=8) :: Fy(ni,nj)
-
-#ifdef steadyFlow
-    real(kind=8) :: up(ni,nj)
-    real(kind=8) :: vp(ni,nj)
-    real(kind=8) :: Tp(ni,nj)
-#endif
-    real(kind=8) :: coord(7)
-
-    read(k) geom,coord
-    if(any(geom/=[ni,nj,xStartIntegration,xEndIntegration,yStartIntegration,yEndIntegration,nh]) .OR. &
-        any(coord/=[xOffset,yOffset,dx,integrationBox])) error stop 'Restart block layout mismatch'
-    read(k,iostat=ios) f,g,u,v,T,rho,Fx,Fy
-    if(ios/=0) error stop 'Incomplete checkpoint state'
-    if(dx==dxCoarse) then
-        read(k,iostat=ios) coarseBuffer
-        if(ios/=0) error stop 'Incomplete coarse history'
-    else
-        ! 读完旧细历史占用的位置；推进直接使用细网格当前场。
-        do a=0,19
-            read(k,iostat=ios) unusedHistory
-            if(ios/=0) error stop 'Incomplete legacy fine history'
-        enddo
-    endif
-#ifdef steadyFlow
-    read(k) up,vp,Tp
-#endif
-  end subroutine read_restart_grid
-!===================================================================================================
-
-!===================================================================================================
-! 子程序: model_signature
-! 作用: 将当前物理模型和边界宏配置写入检查点配置标识。
-!===================================================================================================
-  subroutine model_signature(sig)
-
-    implicit none
-
-    integer(kind=4), intent(out) :: sig(12)
-
-    sig=0
-#ifdef steadyFlow
-    sig(1)=1
-#endif
-#ifdef SideHeatedCell
-    sig(3)=1
-#endif
-#ifdef HorizontalWallsNoslip
-    sig(4)=1
-#endif
-#ifdef VerticalWallsNoslip
-    sig(5)=1
-#endif
-#ifdef VerticalWallsPeriodicalU
-    sig(6)=1
-#endif
-#ifdef HorizontalWallsConstT
-    sig(7)=1
-#endif
-#ifdef HorizontalWallsAdiabatic
-    sig(8)=1
-#endif
-#ifdef VerticalWallsConstT
-    sig(9)=1
-#endif
-#ifdef VerticalWallsAdiabatic
-    sig(10)=1
-#endif
-#ifdef VerticalWallsPeriodicalT
-    sig(11)=1
-#endif
-#ifdef SideHeatedHa
-    sig(12)=1
-#endif
-  end subroutine model_signature
-!===================================================================================================
-
-!===================================================================================================
-! 子程序: physical_signature
-! 作用: 记录物理参数和输出间隔，供续算时核对兼容性。
-!===================================================================================================
-  subroutine physical_signature(sig)
-
-    use commondata,only: Rayleigh,Prandtl,Mach,Thot,Tcold,Snu,Sq,Qk,Qnu,paraA,&
-        outputSnapshotInterval,reloadFileInterval,outputPltFileInterval
-#ifdef SideHeatedHa
-    use commondata,only: Ha,phi
-#endif
-    implicit none
-
-    real(kind=8), intent(out) :: sig(16)
-
-    sig=[Rayleigh,Prandtl,Mach,Thot,Tcold,Snu,Sq,Qk,Qnu,paraA,outputSnapshotInterval,&
-        reloadFileInterval,outputPltFileInterval,0.0d0,0.0d0,0.0d0]
-#ifdef SideHeatedHa
-    sig(14)=Ha
-    sig(15)=phi
-#endif
-  end subroutine physical_signature
 !===================================================================================================
 
 !===================================================================================================
@@ -3852,42 +3875,6 @@
     close(k)
 #endif
   end subroutine output_unsteady_NuRe_postprocess
-!===================================================================================================
-
-!===================================================================================================
-! 子程序: owned_cell_area
-! 作用: 累计节点在互不重叠物理分区中的面积。
-!===================================================================================================
-  subroutine owned_cell_area(x,y,dx,integrationBox,area)
-    use commondata,only: centerIntegrationBox,refineRatio
-    implicit none
-
-    real(kind=8), intent(in) :: x, y, dx, integrationBox(4)
-    real(kind=8), intent(out) :: area
-    real(kind=8) :: xlo, xhi, ylo, yhi, middleWidth
-
-    ! integrationBox 为当前存储区外框（粗区则为中心物理矩形）。
-    ! 节点控制面积只向所属物理分区贡献；交换用的多存节点不另算一个区域。
-    xlo=max(x-dx/2,integrationBox(1))
-    xhi=min(x+dx/2,integrationBox(2))
-    ylo=max(y-dx/2,integrationBox(3))
-    yhi=min(y+dx/2,integrationBox(4))
-    area=0.0d0
-    if(xhi <=xlo .OR. yhi <=ylo) return
-
-    if(refineRatio==1 .OR. dx > 1.0d0) then
-        area=(xhi-xlo)*(yhi-ylo)    ! 单网格全域，或中心粗矩形。
-        return
-    endif
-
-    ! 四个互不重叠的细物理矩形：左、右贯穿全高，下、上位于两者之间。
-    ! 分别相加；没有“整个存储区积分再扣重叠区”的步骤。
-    area=max(0.0d0,min(xhi,centerIntegrationBox(1))-xlo)*(yhi-ylo)    ! 左
-    area=area+max(0.0d0,xhi-max(xlo,centerIntegrationBox(2)))*(yhi-ylo)    ! 右
-    middleWidth=max(0.0d0,min(xhi,centerIntegrationBox(2))-max(xlo,centerIntegrationBox(1)))
-    area=area+middleWidth*max(0.0d0,min(yhi,centerIntegrationBox(3))-ylo)    ! 下
-    area=area+middleWidth*max(0.0d0,yhi-max(ylo,centerIntegrationBox(4)))    ! 上
-  end subroutine owned_cell_area
 !===================================================================================================
 
 !===================================================================================================

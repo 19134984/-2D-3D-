@@ -1,9 +1,9 @@
 {
-  "source_sha256": "9b2fff98673e1c262531161e5e3867007b896a311ead5081e02ad6d845f3f5fd",
+  "source_sha256": "03f1a0f74f69f5dfab856662f36694cac6fcf6d47568a011b88bd06185bb2c30",
   "baseline_sha256": "e16fbf1a91faf6f2f7266f07a89b1f56c59c30d38f4ce3d52f6f6e8b813d33cd",
   "compiler": "C:\\msys64\\ucrt64\\bin\\gfortran.EXE",
   "device": "OpenACC host",
-  "build_directory": "C:\\Users\\User\\AppData\\Local\\Temp\\mb2d-verify-k0i737n0",
+  "build_directory": "C:\\Users\\User\\AppData\\Local\\Temp\\mb2d-verify-jr9k992r",
   "checks": [
     {
       "mode": "steady",
@@ -18,8 +18,8 @@
     },
     {
       "mode": "steady",
-      "old_numbered_checkpoint_exact": true,
-      "old_manual_filename_exact": true,
+      "old_numbered_checkpoint_max_abs_error": 5.329070518200751e-15,
+      "old_manual_filename_max_abs_error": 5.329070518200751e-15,
       "meta_priority": true
     },
     {
@@ -35,8 +35,8 @@
     },
     {
       "mode": "unsteady",
-      "old_numbered_checkpoint_exact": true,
-      "old_manual_filename_exact": true,
+      "old_numbered_checkpoint_max_abs_error": 1.6325153983634197e-15,
+      "old_manual_filename_max_abs_error": 1.6325153983634197e-15,
       "meta_priority": true
     },
     {

@@ -11,6 +11,8 @@ import re
 import shutil
 import struct
 
+import numpy as np
+
 import verify_compact as c
 import verify_main_flow as m
 import verify_multiblock as v
@@ -81,13 +83,59 @@ def check_names(folder):
     return dict(snapshots=len(snapshots), checkpoints=len(checkpoints), plots=len(plots))
 
 
-def compare_final(full, resumed):
+def packed_checkpoint(path):
+    """Separate exact layout/clock data from floating state in packed checkpoints."""
+    with path.open('rb') as stream:
+        def read(dtype, count):
+            value = np.fromfile(stream, dtype=dtype, count=count)
+            assert value.size == count, 'Truncated checkpoint'
+            return value
+        head = read('<i4', 9)
+        model = read('<i4', 12)
+        physics = read('<f8', 16)
+        clocks = read('<i4', 7)
+        values = [read('<f8', 2)]
+        layout = [head, model, physics, clocks[:4]]
+        nx, ny, ratio, left, right, bottom, top, skin, blocks = head
+        # Four strips: left/right include the corner receivers; bottom/top fill the gap.
+        receivers = 2*skin*((nx-left-right+1)+(ny-bottom-top+1)-2-2*skin)
+        for region in range(blocks):
+            geom = read('<i4', 7)
+            coord = read('<f8', 7)
+            assert geom[6] == -1, 'Expected packed checkpoint layout'
+            layout += [geom, coord]
+            ni, nj = geom[:2]
+            count = 20*ni*nj
+            if region == 0:
+                count += 20*receivers*3 if ratio > 1 else 1
+            if model[0]:
+                count += 3*ni*nj
+            values.append(read('<f8', count))
+        assert not stream.read(1), 'Unexpected checkpoint tail'
+    return layout, np.concatenate(values)
+
+
+def compare_final(full, resumed, exact=True):
     # The three retired naming counters occupy bytes 228:240; all other bytes agree.
     a, b = c.checkpoint(full).read_bytes(), c.checkpoint(resumed).read_bytes()
-    assert a[:228] == b[:228] and a[240:] == b[240:]
-    assert (full/'NuRe_2DOpenaccMultiblock.dat').read_bytes() == (
-        resumed/'NuRe_2DOpenaccMultiblock.dat').read_bytes()
+    if exact:
+        assert a[:228] == b[:228] and a[240:] == b[240:]
+        assert (full/'NuRe_2DOpenaccMultiblock.dat').read_bytes() == (
+            resumed/'NuRe_2DOpenaccMultiblock.dat').read_bytes()
+        error = 0.0
+    else:
+        # Moving space interpolation before time interpolation changes rounding.
+        x, y = packed_checkpoint(c.checkpoint(full)), packed_checkpoint(c.checkpoint(resumed))
+        for first, second in zip(x[0], y[0]):
+            np.testing.assert_array_equal(first, second)
+        assert np.isfinite(x[1]).all() and np.isfinite(y[1]).all()
+        np.testing.assert_allclose(x[1], y[1], rtol=1e-12, atol=1e-12)
+        np.testing.assert_allclose(np.loadtxt(full/'NuRe_2DOpenaccMultiblock.dat'),
+                                   np.loadtxt(resumed/'NuRe_2DOpenaccMultiblock.dat'),
+                                   rtol=1e-12, atol=1e-12)
+        error = float(np.max(np.abs(x[1]-y[1])))
     assert c.checkpoint(full).name == c.checkpoint(resumed).name
+    return error
 
 
 def main():
@@ -136,10 +184,10 @@ def main():
         v.run([automatic], legacy)
         _, manual_exe = build(source, mode+'_legacy_resume', resume_end, steady, True, legacy_name)
         v.run([manual_exe], legacy_manual)
-        for folder in (legacy, legacy_manual):
-            compare_final(full, folder)
-        report['checks'].append(dict(mode=mode, old_numbered_checkpoint_exact=True,
-                                     old_manual_filename_exact=True, meta_priority=True))
+        packed = 'coarseBuffer(:,:)' in source or 'coarseHistory(:,:,:)' in source
+        errors = [compare_final(full, folder, exact=not packed) for folder in (legacy, legacy_manual)]
+        report['checks'].append(dict(mode=mode, old_numbered_checkpoint_max_abs_error=errors[0],
+                                     old_manual_filename_max_abs_error=errors[1], meta_priority=True))
         print('PASS old numbered checkpoints and latest.meta priority:', mode, flush=True)
 
     zero, exe = build(source, 'zero_time', 0)
