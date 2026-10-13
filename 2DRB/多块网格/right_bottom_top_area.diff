@@ -1,0 +1,109 @@
+--- before/2DRBOpenaccMultiblock.F90
++++ after/2DRBOpenaccMultiblock.F90
+@@ -1078,22 +1078,22 @@
+         !累加右细网格负责的物理积分面积，含上下细区的两个x方向的小的重叠层
+         do j=1,size(f_right,2)
+             do i=1,size(f_right,1)
+-                ! 节点控制面积先裁剪到本区范围；这里的坐标仍以细格距为单位。
+-                x=xOffsetRight+(i-0.5d0)*dxFine
+-                y=yOffsetRight+(j-0.5d0)*dxFine
+-                xlo=max(x-dxFine/2,xOffsetRight)
+-                xhi=min(x+dxFine/2,xOffsetRight+size(f_right,1))
+-                ylo=max(y-dxFine/2,yOffsetRight)
+-                yhi=min(y+dxFine/2,yOffsetRight+size(f_right,2))
+-                cellArea=0.0d0
+-                if(xhi > xlo .AND. yhi > ylo) then
+-                    ! 分别累加左、右、下、上四个细物理矩形内的面积。
+-                    cellArea=max(0.0d0,min(xhi,centerIntegrationBox(1))-xlo)*(yhi-ylo)    ! 左
+-                    cellArea=cellArea+max(0.0d0,xhi-max(xlo,centerIntegrationBox(2)))*(yhi-ylo)    ! 右
+-                    middleWidth=max(0.0d0,min(xhi,centerIntegrationBox(2))-max(xlo,centerIntegrationBox(1)))
+-                    cellArea=cellArea+middleWidth*max(0.0d0,min(yhi,centerIntegrationBox(3))-ylo)    ! 下
+-                    cellArea=cellArea+middleWidth*max(0.0d0,yhi-max(ylo,centerIntegrationBox(4)))    ! 上
+-                endif
++                ! 右细区格距为1，默认xOffsetRight=893、yOffsetRight=0。
++                ! 节点(i,j)的控制面积为[893+i-1,893+i]×[j-1,j]，数组存储范围为[893,1024]×[0,1024]。
++                ! 本区负责三个矩形：[895.5,1024]×[0,1024]，
++                ! 以及[893,895.5]×[0,127.5]、[893,895.5]×[895.5,1024]。
++                ! x=893:895.5在y=127.5:895.5内属于中心粗物理区，不计入右细区积分。
++                ! 例如(3,128)的面积为0.75，(2,128)为0.5，中心区接收节点(2,129)为0。
++                xlo=xOffsetRight+dble(i-1)
++                xhi=xOffsetRight+dble(i)
++                ylo=dble(j-1)
++                yhi=dble(j)
++                ! 右侧主体：x>=895.5，贯穿全高。
++                cellArea=max(0.0d0,xhi-max(xlo,centerIntegrationBox(2)))*(yhi-ylo)
++                ! 节点伸入x<=895.5部分的宽度，仅累计它在下、上两端的面积。
++                middleWidth=max(0.0d0,min(xhi,centerIntegrationBox(2))-xlo)
++                cellArea=cellArea+middleWidth*max(0.0d0,min(yhi,centerIntegrationBox(3))-ylo)    ! 下端
++                cellArea=cellArea+middleWidth*max(0.0d0,yhi-max(ylo,centerIntegrationBox(4)))    ! 上端
+                 totalArea=totalArea+cellArea
+             enddo
+         enddo
+@@ -1140,25 +1140,16 @@
+         Tp_bottom=T_bottom
+ #endif
+ 
+-        !累加下细网格负责的物理积分面积，x方向没有重叠层了
++        ! 下细区格距为1，默认xOffsetBottom=130、yOffsetBottom=0。
++        ! 节点(i,j)的控制面积为[130+i-1,130+i]×[j-1,j]，数组存储范围为[130,893]×[0,130]。
++        ! 本区只负责[130,893]×[0,127.5]；y=127.5:130属于中心粗物理区，不计入下细区积分。
++        ! x方向全部位于中心宽度内，每个节点的宽度为1，同一行的节点面积相同。
++        ! 例如(1,127)的面积为1，(1,128)为0.5，接收节点(1,129)、(1,130)为0。
+         do j=1,size(f_bottom,2)
++            ylo=dble(j-1)
++            yhi=dble(j)
++            cellArea=max(0.0d0,min(yhi,centerIntegrationBox(3))-ylo)
+             do i=1,size(f_bottom,1)
+-                ! 节点控制面积先裁剪到本区范围；这里的坐标仍以细格距为单位。
+-                x=xOffsetBottom+(i-0.5d0)*dxFine
+-                y=yOffsetBottom+(j-0.5d0)*dxFine
+-                xlo=max(x-dxFine/2,xOffsetBottom)
+-                xhi=min(x+dxFine/2,xOffsetBottom+size(f_bottom,1))
+-                ylo=max(y-dxFine/2,yOffsetBottom)
+-                yhi=min(y+dxFine/2,yOffsetBottom+size(f_bottom,2))
+-                cellArea=0.0d0
+-                if(xhi > xlo .AND. yhi > ylo) then
+-                    ! 分别累加左、右、下、上四个细物理矩形内的面积。
+-                    cellArea=max(0.0d0,min(xhi,centerIntegrationBox(1))-xlo)*(yhi-ylo)    ! 左
+-                    cellArea=cellArea+max(0.0d0,xhi-max(xlo,centerIntegrationBox(2)))*(yhi-ylo)    ! 右
+-                    middleWidth=max(0.0d0,min(xhi,centerIntegrationBox(2))-max(xlo,centerIntegrationBox(1)))
+-                    cellArea=cellArea+middleWidth*max(0.0d0,min(yhi,centerIntegrationBox(3))-ylo)    ! 下
+-                    cellArea=cellArea+middleWidth*max(0.0d0,yhi-max(ylo,centerIntegrationBox(4)))    ! 上
+-                endif
+                 totalArea=totalArea+cellArea
+             enddo
+         enddo
+@@ -1206,25 +1197,16 @@
+ #endif
+ 
+ 
+-        !累加上细网格负责的物理积分面积，x方向没有重叠层了
++        ! 上细区格距为1，默认xOffsetTop=130、yOffsetTop=893。
++        ! 节点(i,j)的控制面积为[130+i-1,130+i]×[893+j-1,893+j]，数组存储范围为[130,893]×[893,1024]。
++        ! 本区只负责[130,893]×[895.5,1024]；y=893:895.5属于中心粗物理区，不计入上细区积分。
++        ! x方向全部位于中心宽度内，每个节点的宽度为1，同一行的节点面积相同。
++        ! 例如接收节点(1,1)、(1,2)的面积为0，(1,3)为0.5，(1,4)为1。
+         do j=1,size(f_top,2)
++            ylo=yOffsetTop+dble(j-1)
++            yhi=yOffsetTop+dble(j)
++            cellArea=max(0.0d0,yhi-max(ylo,centerIntegrationBox(4)))
+             do i=1,size(f_top,1)
+-                ! 节点控制面积先裁剪到本区范围；这里的坐标仍以细格距为单位。
+-                x=xOffsetTop+(i-0.5d0)*dxFine
+-                y=yOffsetTop+(j-0.5d0)*dxFine
+-                xlo=max(x-dxFine/2,xOffsetTop)
+-                xhi=min(x+dxFine/2,xOffsetTop+size(f_top,1))
+-                ylo=max(y-dxFine/2,yOffsetTop)
+-                yhi=min(y+dxFine/2,yOffsetTop+size(f_top,2))
+-                cellArea=0.0d0
+-                if(xhi > xlo .AND. yhi > ylo) then
+-                    ! 分别累加左、右、下、上四个细物理矩形内的面积。
+-                    cellArea=max(0.0d0,min(xhi,centerIntegrationBox(1))-xlo)*(yhi-ylo)    ! 左
+-                    cellArea=cellArea+max(0.0d0,xhi-max(xlo,centerIntegrationBox(2)))*(yhi-ylo)    ! 右
+-                    middleWidth=max(0.0d0,min(xhi,centerIntegrationBox(2))-max(xlo,centerIntegrationBox(1)))
+-                    cellArea=cellArea+middleWidth*max(0.0d0,min(yhi,centerIntegrationBox(3))-ylo)    ! 下
+-                    cellArea=cellArea+middleWidth*max(0.0d0,yhi-max(ylo,centerIntegrationBox(4)))    ! 上
+-                endif
+                 totalArea=totalArea+cellArea
+             enddo
+         enddo

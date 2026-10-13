@@ -24,6 +24,7 @@ def config(source,ratio,side,steady,ha,end,restart=False):
                     ('RayleighBenardCell',not side),('HorizontalWallsConstT',not side),
                     ('VerticalWallsAdiabatic',not side),('HorizontalWallsAdiabatic',side),
                     ('VerticalWallsConstT',side),('SideHeatedHa',ha)]: source=macro(source,key,val)
+    source=re.sub(r'(::\s*itc_max\s*=\s*ceiling\()\d+\.0d0',rf'\g<1>{end}.0d0',source)
     source=re.sub(r'(::\s*itc_max\s*=)\s*\d+',rf'\g<1> {end}',source)
     source=re.sub(r'(::\s*unsteadyRunDuration\s*=)\s*[^\n!]+',rf'\g<1> {end}.0d0/timeUnit ',source)
     source=re.sub(r'(\beps[UT]\s*=)\s*[^,\n!]+',r'\g<1> 0.0d0',source)

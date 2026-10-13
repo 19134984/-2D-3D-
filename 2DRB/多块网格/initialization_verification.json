@@ -1,0 +1,91 @@
+{
+  "source_sha256": "909a9ae6527a963dbf9096f770a1ef15bda02468e6335285111ae617adf98335",
+  "baseline_sha256": "f6e133e0b5a74138a89b478048f589b6f30c15d65608420483ebedee37608136",
+  "device": "gfortran OpenACC host",
+  "build_directory": "C:\\Users\\User\\AppData\\Local\\Temp\\mb2d-verify-gt5j552j",
+  "checks": [
+    {
+      "case": "r1_rb",
+      "fields_exact": true,
+      "history_exact": true,
+      "NuRe_exact": true,
+      "restart_exact": true
+    },
+    {
+      "case": "r2_rb",
+      "fields_exact": true,
+      "history_exact": true,
+      "NuRe_exact": true,
+      "restart_exact": true
+    },
+    {
+      "case": "r2_side",
+      "fields_exact": true,
+      "history_exact": true,
+      "NuRe_exact": true,
+      "restart_exact": true
+    },
+    {
+      "case": "r4_side",
+      "fields_exact": true,
+      "history_exact": true,
+      "NuRe_exact": true,
+      "restart_exact": true
+    },
+    {
+      "case": "r8_rb",
+      "fields_exact": true,
+      "history_exact": true,
+      "NuRe_exact": true,
+      "restart_exact": true
+    },
+    {
+      "case": "r2_ha",
+      "fields_exact": true,
+      "history_exact": true,
+      "NuRe_exact": true,
+      "restart_exact": true
+    },
+    {
+      "case": "r2_asymmetric",
+      "fields_exact": true,
+      "history_exact": true,
+      "NuRe_exact": true,
+      "restart_exact": true
+    }
+  ],
+  "additional_checks": [
+    {
+      "case": "skin_too_small",
+      "rejected_before_parameter_setup": true
+    },
+    {
+      "case": "bad_core_width",
+      "rejected_before_parameter_setup": true
+    },
+    {
+      "case": "output_too_frequent",
+      "rejected_before_parameter_setup": true
+    },
+    {
+      "case": "completed_unsteady_restart",
+      "zero_advance_exact": true
+    }
+  ],
+  "input_check_build_directory": "C:\\Users\\User\\AppData\\Local\\Temp\\mb2d-verify-a9j33r1l",
+  "unchanged_subroutine_count": 62,
+  "modified_subroutines": [
+    "enter_data_2d_openacc",
+    "exit_data_2d_openacc",
+    "initial"
+  ],
+  "removed_subroutines": [
+    "allocate_grid_arrays",
+    "check_history",
+    "deallocate_grid_arrays",
+    "grid_device_data"
+  ],
+  "tested_source_sha256": "9b25fd7e68e77584b0e87f26d10f13e900d6996e4b64edaab240f31df11d2964",
+  "post_test_changes": "Trailing whitespace removed and two parameter comments moved above declarations; executable statements unchanged.",
+  "subroutine_comparison": "Ignoring trailing whitespace only"
+}

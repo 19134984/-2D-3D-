@@ -1,6 +1,6 @@
 # 2DRBOpenaccMultiblock：中心粗网格与四套紧凑细数组
 
-当前版本（2026-10-02）直接使用 `_coarse、_left、_right、_bottom、_top` 五套普通数组，不再通过块编号选择数据。参数与积分已简化，输出文件按累计 `t_ff` 命名；基准为 `均匀网格/2DRBOpenacc.F90` 与 `ISLBM/2DRBOpenaccISLBM.F90`，两份基准源码未修改。变量和计算次序见 [代码逻辑说明](代码逻辑说明.md)。
+当前版本（2026-10-09）直接使用 `_coarse、_left、_right、_bottom、_top` 五套普通数组，不再通过块编号选择数据。参数与积分已简化，输出文件按累计 `t_ff` 命名；基准为 `均匀网格/2DRBOpenacc.F90` 与 `ISLBM/2DRBOpenaccISLBM.F90`，两份基准源码未修改。变量和计算次序见 [代码逻辑说明](代码逻辑说明.md)。
 
 ## 参数
 
@@ -10,7 +10,7 @@
 
 细网格直接复用 `Snu、Sq、Qk、Qnu`，粗网格保留按格距换算后的松弛率。前一轮已删除 34 个重复的全局量：4 个细网格松弛率、16 个细区积分起止下标、4 个细区积分外框及 10 个一维积分权重数组。
 
-全文件检查以保留基准参数约定为前提，主要清理多块新增的重复量和临时别名。`gBeta1/gBeta`、`velocityUnit`、`velocityScaleCompare`、`thermalGeqCoeff` 和 `unsteadyAverageStartTf/EndTf/MidTf` 保留原名及公式；多块子程序也使用 `Snu、Sq、Qk、Qnu、gBeta` 传参。初始速度为零，当前温度初始化直接写成 `omegaT*T`；快照仍保存格子速度，因此不为使用参数而改变输出单位。
+全文件检查以保留基准参数约定为前提，主要清理多块新增的重复量和临时别名。`gBeta1/gBeta`、`velocityUnit`、`velocityScaleCompare`、`thermalGeqCoeff` 和 `unsteadyAverageStartTf/EndTf/MidTf` 保留原名及公式；多块子程序也使用 `Snu、Sq、Qk、Qnu、gBeta` 传参。初始速度为零，f/g 初始化保留完整的平衡分布公式；快照仍保存格子速度，因此不为使用参数而改变输出单位。
 
 主程序沿用基准的 `string`、`numAccDevices`、`unsteadyItcRemaining`，以及稳态在循环入口判断收敛、非稳态按剩余步数推进的组织。续算参数集中在 `loadInitField/reloadFileName` 后。多块子程序统一使用 `integer(kind=4)`、`real(kind=8)` 和 `character(len=...)` 的声明风格；基准已有变量不因使用次数少而删除。输出命名按用户要求改用累计 `t_ff`，因此不再维护三个文件编号。
 
@@ -19,6 +19,14 @@
 多块新增的 `gBetaCoarse`、`coarseOverlapCells`、`fineOverlapCells` 不再另存，使用处直接写 `dxCoarse*gBeta` 或 `interfaceSkin`。其余清理包括换算宽度、循环边界、中线位置和输出中转量；重叠宽度重复检查已删除，实际网格尺寸和插值模板检查保留。
 
 格距、粗松弛率、物理坐标、运行状态、累加器和多次使用的复杂表达式仍保留。直接插值子程序中的 `timeWeight0/1/2` 使用 NVHPC 所需的标量 `firstprivate` 捕获方式。
+
+## 初始化与时间控制
+
+`itc_max` 在参数定义处一次性用 `ceiling` 向上取为 `refineRatio` 的倍数；三个输出间隔和稳态检查间隔在 `initial` 中一次性换算。非稳态的 `unsteadyItcRemaining=max(0,itc_max-reloadItcOffset)` 在续算恢复后计算，主循环直接比较终止步数，按 `MOD(累计步数,间隔)==0` 决定是否输出或检查收敛。细网格每个子步仍为1，完成 `refineRatio` 个细步后才结束一个粗步。
+
+`initial` 按六个阶段排列：输入检查、计数与参数赋值、五套数组及三份历史分配、各区初始场和积分面积、面积与续算文件检查、运行日志和新算例输出文件。原 `allocate_grid_arrays` 和 `check_history` 已直接并入；数组构建和文件读取后的检查集中在后面的数据检查阶段。
+
+`enter_data_2d_openacc` 直接建立设备数据，随后仅在全新多块计算时保存当前粗接口历史、细到粗赋值、粗到细赋值。续算使用已读入的接口和三层历史。原 `grid_device_data` 的建立/释放分支分别放入 enter/exit，主机数组的释放直接放在主程序结尾。五个区域的初始化已直接展开在 `initial` 中，原 `initial_grid` 已删除。`owned_cell_area` 也已在初始化、Nu/Re、稳态误差和输出的全部9处调用位置展开并删除；独立的续算读取和每步使用的推进/插值子程序保留。详细顺序见 [代码逻辑说明](代码逻辑说明.md)。
 
 ## 数组与坐标
 
@@ -52,12 +60,14 @@ y = yOffsetLeft+(j-0.5d0)*dxFine
 - 每个细步先完成四区流场碰撞，交换 f_post，再迁移、处理墙面和恢复速度；随后完成四区温度碰撞，交换 g_post，再推进温度。
 - 粗→细仍使用四点空间 Lagrange 和三时间层插值，初始粗步线性启动；细→粗使用同步时刻的共址数据。
 - 全局接口历史分为 `coarseHistoryPrevious(:,:)`、`coarseHistoryCurrent(:,:)`、`coarseHistoryNext(:,:)`，分别保存前一、当前和预测粗时刻。每个数组第二维为左/右/下/上，每区编号独立从1开始；每节点20个交换量。已删除共用中转数组。
-- 粗到细在调用处直接给出接收矩形；共址点直接取粗值，其余从粗场做四点Lagrange插值，结果存入指定时间历史。细子步中在节点局部做时间插值、尺度转换和分布函数重建，直接写入细接收层。细到粗只在同步时刻遍历粗数组四条接收带，按整数下标读同坐标细节点并转换。
+- 粗到细在调用处直接给出接收矩形；共址点直接取粗值，其余从粗场做四点Lagrange插值，结果存入指定时间历史。细子步中在节点局部做时间插值和尺度转换，把完整的碰撞前矩写入细接收层，随后直接进入矩空间碰撞。细到粗只在同步时刻遍历粗数组四条接收带，按整数下标读同坐标细节点并转换。
 - 每份历史第一维为 `20*interfaceSkin*max(ny-fineLayerCellsBottom-fineLayerCellsTop,size(f_bottom,1))`。默认三份历史各为 `(30680,4)`；上下区每列实际使用30520个量，其余尾部保持零。单网格时三份历史各为 `(1,1)`。
-- 原 h 已统一命名为 dx。本程序最细格子单位下 dt=dx；力历史仍为 Fx/dx、Fy/dx，接收端再乘接收网格的 dx。
+- 接口推进使用 `keepMoments=.true.`：只在接收层复用 f/g 存储 m/n，碰撞通过 `grid` 区分接收节点与普通节点，每节点仍只碰撞一次。流场迁移后 f 恢复为分布函数；温度矩保留到速度更新后的温度碰撞，随后 g 也恢复为分布函数。没有新增整块矩数组。
+- 初始化和粗细同步点使用 `keepMoments=.false.` 重建完整 f/g，输出及检查点格式不变。粗步开始时重新从同刻细场准备粗接收矩；细子步开始时由粗时间历史准备细接收矩。这个调整消除推进路径中的矩往返变换，尚未测量 GPU 性能收益。
+- 五个区域的 Fx/Fy 及接口力历史统一保存单位时间力，不含 dt。碰撞、速度恢复、接口矩转换显式传入 dt；当前 dt=dx，粗块传 dxCoarse、细块传 dxFine=1。fSource 表示单位时间源项，碰撞时显式乘 dt。
 - 积分直接累加中心粗矩形与左、右、下、上四个细物理矩形，不再采用细存储区积分后扣除中心面积的表达。重叠存储只用于推进和交换，不另计物理面积；分区线上的节点仍按控制面积取半权，角点取相应乘积权重。中线模板跨细数组接缝时按全局坐标取值。
 
-源码仍为 module commondata → program main → 外部子程序。通用计算子程序显式接收数组、尺寸和必要几何参数。已删除 `check_interfaces`、逐区接口扫描、`coarse_receiver_layout`、粗接收节点编号解码及重复的来源检查；保留分区整除、细层厚度、中心正宽高和四点插值最小宽度约束。
+源码仍为 module commondata → program main → 外部子程序。通用计算子程序显式接收数组、尺寸和必要几何参数。已删除 `check_interfaces`、逐区接口扫描、`coarse_receiver_layout`、粗接收节点编号解码及重复的来源检查；保留分区整除、细层厚度、中心存储空区和四点插值最小宽度约束；中心正宽高已由这些约束保证，不再重复检查。
 
 ## 续算和输出
 
@@ -71,6 +81,10 @@ y = yOffsetLeft+(j-0.5d0)*dxFine
 
 稳态 `itc_max` 限制本次运行步数；非稳态 `itc_max` 对应整个算例的总目标，续算只补剩余步数。两者都向上对齐粗细同步步。检查点和快照中的步数字段仍写累计值；读取检查点时将其放入 `reloadItcOffset`，并把 `itc` 清零。
 
+`physical_signature` 固定保存15个实数：前13项为公共物理参数和输出间隔，第14、15项分别为Ha、phi；非磁场模式这两项保持0。原第16项没有用途，已从读取、写入及比较数组中删除，检查点因此减少8字节，不提供旧16项格式兼容。
+
+`read_restart_grid` 已展开并删除，`read_restart` 依次直接读取中心、左、右、下、上五个区域：先核对 `geom(6)/coord(7)`，再读完整场数组；粗区还读取三份接口历史，稳态模式另读各区 `up/vp/Tp`。写入顺序保持对应。验证见 `restart_read_inline_verification.json`：七组场量、输出和连续/续算对照通过；删除未用实数后检查点其余字节一致，Ha、phi与粗区布局不匹配的检查仍有效。
+
 检查点直接读写 `reloadItcOffset,NuReSampleCount,errorU,errorT`，不再保存旧文件编号占位或下一输出序号。文件按 coarse、left、right、bottom、top 顺序保存完整场量，并保留几何、模型、物理参数、输出间隔及稳态历史场检查。
 
 粗区在场量之后按前一、当前、下一时刻写入三个完整接口历史数组；细区不写历史。数组尾部少量零填充也随历史保存，以保持读写直接对应。当前不兼容旧检查点布局，旧历史读取及转换分支已删除；快照格式不变。
@@ -83,7 +97,9 @@ y = yOffsetLeft+(j-0.5d0)*dxFine
 
 ## 验证
 
-当前对照入口为 `python verify_explicit_interfaces.py <修改前源码>`，报告为 `explicit_interfaces_verification.json`。七组短程算例比较五块完整场量、三层接口历史、Nu/Re及当前格式续算，结果逐字节一致；另核对270组几何、50996个粗接收节点无遗漏重复，52个非接口子程序原文未改。验证使用gfortran OpenACC host，尚未验证当前源码的P100 GPU和长期统计收敛。旧共享缓冲及旧格式兼容脚本只用于对应历史版本。
+初始化与面积展开的最新对照见 `inline_initial_area_verification.json`：七组短程算例的完整场量、接口历史、Nu/Re、收敛记录、快照（含面积）、Tecplot输出和续算检查点均与展开前一致。使用现有 `verify_initialization.py <修改前源码> --report inline_initial_area_verification.json` 可重跑这组对照；构建使用 gfortran OpenACC host，未验证GPU和长期收敛。
+
+本次初始化整理的对照入口为 `python verify_initialization.py <本次修改前源码>`，报告为 `initialization_verification.json`，覆盖七组完整场量、三份历史、Nu/Re、检查点及连续/续算对照，终止目标刻意设置为未对齐的39个细步。此前接口整理的报告为 `explicit_interfaces_verification.json`。七组短程算例比较五块完整场量、三层接口历史、Nu/Re及当前格式续算，结果逐字节一致；另核对270组几何、50996个粗接收节点无遗漏重复，52个非接口子程序原文未改。验证使用gfortran OpenACC host，尚未验证当前源码的P100 GPU和长期统计收敛。旧共享缓冲及旧格式兼容脚本只用于对应历史版本。
 
 命名及尺寸内联的前后对照见 `geometry_inline_verification.json`：粗细比 1/2/4/8、侧壁差温、磁场和非对称分区共七组短程算例，检查场量、交换历史、Nu/Re、收敛误差、积分面积、旧检查点读取及解析时间统计。该轮未改接口交换数组和时间插值实现。
 
@@ -120,3 +136,9 @@ python verify_output_names.py path/to/pre-tff-naming.F90
 ## 当前图示
 
 [图示目录](图示/README.md) 中的总体布局、接口放大、同级交换和时间推进图已按当前五套数组与非对称重叠更新。运行 `python 图示/draw_layout.py` 可从源码参数重新生成 PNG、SVG 和带源码哈希的几何记录。图示是代码说明，不代表数值验证。
+
+删除每区固定几何标记 `-1` 的验证见 `remove_geom_marker_verification.json`：四组 OpenACC host 短程对照通过，场量、接口历史、诊断和输出一致，新格式连续计算与续算一致。每区检查点减少4字节；不兼容此前含该标记的格式。
+
+单位时间力改造的差异见 `unit_force_explicit_dt.diff`，验证见 `unit_force_verification.json`。七组短程对照中，旧粗力除以粗时间步后与新力一致，其余场量和输出一致；新约定续算通过。新检查点直接存F，不兼容旧dt*F检查点。
+
+本次接口矩直接碰撞的对照入口为 `python verify_interface_moments.py <修改前源码>`，报告为 `interface_moments_verification.json`。七组 OpenACC host 短程算例覆盖粗细比1/2/4/8、稳态/非稳态、磁场和非对称分区；场量及历史最大绝对差约1.9e-15，Nu/Re约2.8e-12，新版本连续/续算逐字节一致。差异来自省去矩与分布函数往返变换的舍入；未验证 P100 GPU、性能和长期收敛。

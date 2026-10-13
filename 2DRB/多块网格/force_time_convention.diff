@@ -1,0 +1,98 @@
+--- a/2DRBOpenaccMultiblock.F90
++++ b/2DRBOpenaccMultiblock.F90
+@@ -260,7 +260,9 @@
+         real(kind=8), allocatable :: u_coarse(:,:)    ! 粗网格当前 x 方向速度。
+         real(kind=8), allocatable :: v_coarse(:,:)    ! 粗网格当前 y 方向速度。
+         real(kind=8), allocatable :: T_coarse(:,:)    ! 粗网格当前温度。
+-        real(kind=8), allocatable :: Fx_coarse(:,:)    ! Fx_coarse(i,j) = 0.0d0。
++        ! 力数组沿用基准约定：保存dt*F_x、dt*F_y；粗块dt=dxCoarse，细块dt=1。
++        ! 它们是两个方向的步内力增量，不是论文式(8a)的九分量F_m，也不含(1-s/2)。
++        real(kind=8), allocatable :: Fx_coarse(:,:)    ! 无磁场时为0；SideHeatedHa模式另含磁场贡献。
+         real(kind=8), allocatable :: Fy_coarse(:,:)    ! Fy_coarse(i,j) = rho_coarse(i,j)*(dxCoarse * gBeta)*(T_coarse(i,j)-Tref)。
+ 
+ #ifdef steadyFlow
+@@ -1789,9 +1791,11 @@
+     meq(8)=rh*ux*uy
+     neq=[temp,temp*ux,temp*uy,paraA*temp,0.0d0]
+ 
+-    ! 4. 将来源节点的力写成矩分量；流场打包加半步力，接收端恢复时再减去接收端半步力。
++    ! 4. Huang式(8a)：fm为单位时间的力矩F_m，不含dt，也不含碰撞系数(1-s/2)。
++    ! 输入fx/fy沿用基准数组约定，已含当前块dt：fx=dt*F_x、fy=dt*F_y；本代码dt=dx。
++    ! 下式先对步内力增量做矩变换，再整体除以dx，得到论文的F_m（该变换对力是线性的）。
+     fm=[0.0d0,6.0d0*(ux*fx+uy*fy),-6.0d0*(ux*fx+uy*fy),fx,-fx,fy,-fy,&
+-        2.0d0*(ux*fx-uy*fy),ux*fy+uy*fx]
++        2.0d0*(ux*fx-uy*fy),ux*fy+uy*fx]/dx
+ 
+     ! 5. 各矩对应的松弛率；密度、动量和温度守恒矩的松弛率置零，由单独保存的宏观量重建。
+     s=[0.0d0,Snu,Snu,0.0d0,Sq,0.0d0,Sq,Snu,Snu]
+@@ -1801,10 +1805,12 @@
+     ! 本算法dt=dx，力先除以来源步长；接收端再乘以自己的步长。
+     buffer(0:5)=[rh,ux,uy,temp,fx/dx,fy/dx]
+ 
+-    ! 7. buffer(6:14)保存9个缩放后的流场非平衡矩，含+0.5*fm的力修正。
++    ! 7. Huang式(19)：buffer(6+a)=(s_a/dt)*(m_a-meq_a+dt*F_m,a/2)，这里dt=dx。
++    ! 论文式(5)的碰撞源项为dt*(1-s_a/2)*F_m,a；接口式(19)不能再乘(1-s_a/2)。
++    ! 本例粗块dt=2，括号内为m_a-meq_a+F_m,a；细块dt=1时为m_a-meq_a+F_m,a/2。
+     ! 粗来源的缩放系数为s(a)/2；buffer(6)、buffer(9)、buffer(11)对应守恒矩，有限场下为零。
+     do a=0,8
+-        buffer(6+a)=s(a)/dx*(m(a)-meq(a)+0.5d0*fm(a))
++        buffer(6+a)=s(a)/dx*(m(a)-meq(a)+0.5d0*dx*fm(a))
+     enddo
+ 
+     ! 8. buffer(15:19)保存5个缩放后的温度非平衡矩；粗来源缩放系数为q(a)/2。
+@@ -2067,6 +2073,8 @@
+     real(kind=8) :: Fy(ni,nj)
+ 
+     ! 粗网格的时间步长已计入松弛率和力增量。
++    ! 本地gBeta已由advance_coarse传入dxCoarse*gBeta；磁场系数在下方同样乘dx。
++    ! 因而collision写入Fx/Fy的是dt*F，dt=dx；细块dt=1时与均匀网格基准数值一致。
+     ! 推进前，人工边界已补成本时刻的碰撞前状态，接收节点也参加碰撞。
+     ! 推进后，最外两层等待下次接口重建，不能作为反向插值的数据来源。
+     call collision(ni,nj,f,f_post,rho,u,v,Fx,Fy,T,Snu,Sq,&
+@@ -2455,7 +2463,7 @@
+ 
+ !===================================================================================================
+ ! 子程序: force_moments
+-! 作用: 将宏观力转换成流场矩空间中的力项。
++! 作用: 按Huang式(8a)将单位时间的宏观力F转换成F_m，不含dt或(1-s/2)。
+ !===================================================================================================
+   subroutine force_moments(ux,uy,fx,fy,fm)
+ 
+@@ -2486,18 +2494,22 @@
+     ux=buffer(1)
+     uy=buffer(2)
+     temp=buffer(3)
++    ! 恢复基准数组使用的步内力增量：fx=dt*F_x，fy=dt*F_y，当前块dt=dx。
+     fx=dx*buffer(4)
+     fy=dx*buffer(5)
+     call equilibrium_moments(rh,ux,uy,temp,meq,neq)
+-    call force_moments(ux,uy,fx,fy,fm)
++    ! buffer(4:5)存单位时间的F_x/F_y，按式(8a)得到单位时间的F_m。
++    ! 上面的fx/fy已乘接收块dt=dx，供该块碰撞和宏观量计算使用。
++    call force_moments(ux,uy,buffer(4),buffer(5),fm)
+     s=[0.0d0,Snu,Snu,0.0d0,Sq,0.0d0,Sq,Snu,Snu]
+     q=[0.0d0,Qk,Qk,Qnu,Qnu]
+     m=meq
+     n=neq
+     do a=0,8
+-        if(s(a)>0.0d0) m(a)=meq(a)+dx/s(a)*buffer(6+a)-0.5d0*fm(a)
++        ! 式(19)反解：m_a=meq_a+(dt/s_a)*buffer(6+a)-dt*F_m,a/2。
++        if(s(a)>0.0d0) m(a)=meq(a)+dx/s(a)*buffer(6+a)-0.5d0*dx*fm(a)
+     enddo
+-    ! 守恒矩由宏观量和半步力重建，不除以零松弛率。
++    ! 守恒矩按式(21)重建，不除以零松弛率；fx/fy已含dt，所以这里用0.5*fx、0.5*fy。
+     m(0)=rh
+     m(3)=rh*ux-0.5d0*fx
+     m(5)=rh*uy-0.5d0*fy
+@@ -2637,7 +2649,10 @@
+                 -v(i,j)*cos(phi)*cos(phi))    !动量方程上的源项，即浮力项加磁场
+ #endif
+ 
+-            fSource(0)=0.0d0    !将源项F对应的贡献投影到各个矩中，并做半步修正
++            ! Huang式(5)：fSource(a)=dt*(1-s(a)/2)*F_m,a，是完整碰撞源项。
++            ! Fx/Fy已含dt；下面系数已含(1-s/2)，例如6-3*s=6*(1-s/2)。
++            ! 此fSource不能作为接口式(19)中的F_m；接口需要单位时间且未乘(1-s/2)的力矩。
++            fSource(0)=0.0d0
+             fSource(1)=(6.0d0-3.0d0*s(1))*(u(i,j)*Fx(i,j)+v(i,j)*Fy(i,j))
+             fSource(2)=-(6.0d0-3.0d0*s(2))*(u(i,j)*Fx(i,j)+v(i,j)*Fy(i,j))
+             fSource(3)=(1.0d0-0.5d0*s(3))*Fx(i,j)

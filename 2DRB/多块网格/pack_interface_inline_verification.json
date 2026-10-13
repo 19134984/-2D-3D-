@@ -1,0 +1,56 @@
+{
+  "source_sha256": "5ef12f8eef0009c2eee015e3a97ee34dffd4145d6fd5bf8ccb1c118e729be5d5",
+  "baseline_sha256": "594bc9f227a9c9c01d7ba756895927ae00b70ef2b9a27f88c70abf0fd67d1e00",
+  "device": "gfortran OpenACC host",
+  "build_directory": "C:\\Users\\User\\AppData\\Local\\Temp\\mb2d-verify-k3cqmb55",
+  "checks": [
+    {
+      "case": "r2_rb",
+      "fields_exact": true,
+      "history_exact": true,
+      "NuRe_exact": true,
+      "restart_exact": true,
+      "output_files_exact": [
+        "buoyancyCavity2DOpenaccMultiblockSnapshot-0.004330127019tff.bin",
+        "buoyancyCavity2DOpenaccMultiblockSnapshot-0.008660254038tff.bin",
+        "buoyancyCavity2DOpenaccMultiblockSnapshot-0.012990381057tff.bin",
+        "buoyancyCavity2DOpenaccMultiblockSnapshot-0.017320508076tff.bin",
+        "buoyancyCavity2DOpenaccMultiblockSnapshot-0.021650635095tff.bin",
+        "buoyancyCavity2DOpenaccMultiblockSnapshot-0.025980762114tff.bin",
+        "buoyancyCavity2DOpenaccMultiblockSnapshot-0.028867513459tff.bin",
+        "NuReStatistics_2DOpenaccMultiblock.dat",
+        "NuRe_2DOpenaccMultiblock.dat",
+        "buoyancyCavity2DOpenaccMultiblockTecplot-0.005773502692tff.dat",
+        "buoyancyCavity2DOpenaccMultiblockTecplot-0.011547005384tff.dat",
+        "buoyancyCavity2DOpenaccMultiblockTecplot-0.017320508076tff.dat",
+        "buoyancyCavity2DOpenaccMultiblockTecplot-0.023094010768tff.dat",
+        "buoyancyCavity2DOpenaccMultiblockTecplot-0.028867513459tff.dat"
+      ]
+    },
+    {
+      "case": "r2_ha",
+      "fields_exact": true,
+      "history_exact": true,
+      "NuRe_exact": true,
+      "restart_exact": true,
+      "output_files_exact": [
+        "buoyancyCavity2DOpenaccMultiblockSnapshot-0.003608439182tff.bin",
+        "buoyancyCavity2DOpenaccMultiblockSnapshot-0.007216878365tff.bin",
+        "buoyancyCavity2DOpenaccMultiblockSnapshot-0.010825317547tff.bin",
+        "buoyancyCavity2DOpenaccMultiblockSnapshot-0.01443375673tff.bin",
+        "buoyancyCavity2DOpenaccMultiblockSnapshot-0.018042195912tff.bin",
+        "buoyancyCavity2DOpenaccMultiblockSnapshot-0.021650635095tff.bin",
+        "buoyancyCavity2DOpenaccMultiblockSnapshot-0.024056261216tff.bin",
+        "Convergence_2DOpenaccMultiblock.dat",
+        "FinalNuRe_2DOpenaccMultiblock.dat",
+        "NuRe_2DOpenaccMultiblock.dat",
+        "SteadyMonitor_2DOpenaccMultiblock.dat",
+        "buoyancyCavity2DOpenaccMultiblockTecplot-0.004811252243tff.dat",
+        "buoyancyCavity2DOpenaccMultiblockTecplot-0.009622504486tff.dat",
+        "buoyancyCavity2DOpenaccMultiblockTecplot-0.01443375673tff.dat",
+        "buoyancyCavity2DOpenaccMultiblockTecplot-0.019245008973tff.dat",
+        "buoyancyCavity2DOpenaccMultiblockTecplot-0.024056261216tff.dat"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,416 @@
+--- a/2DRBOpenaccMultiblock.F90
++++ b/2DRBOpenaccMultiblock.F90
+@@ -260,10 +260,10 @@
+         real(kind=8), allocatable :: u_coarse(:,:)    ! 粗网格当前 x 方向速度。
+         real(kind=8), allocatable :: v_coarse(:,:)    ! 粗网格当前 y 方向速度。
+         real(kind=8), allocatable :: T_coarse(:,:)    ! 粗网格当前温度。
+-        ! 力数组沿用基准约定：保存dt*F_x、dt*F_y；粗块dt=dxCoarse，细块dt=1。
+-        ! 它们是两个方向的步内力增量，不是论文式(8a)的九分量F_m，也不含(1-s/2)。
++        ! 五个区域统一保存单位时间的F_x、F_y，不含dt或碰撞系数(1-s/2)。
++        ! 时间步在碰撞、速度恢复和接口矩转换中显式相乘；粗块dt=dxCoarse，细块dt=dxFine=1。
+         real(kind=8), allocatable :: Fx_coarse(:,:)    ! 无磁场时为0；SideHeatedHa模式另含磁场贡献。
+-        real(kind=8), allocatable :: Fy_coarse(:,:)    ! Fy_coarse(i,j) = rho_coarse(i,j)*(dxCoarse * gBeta)*(T_coarse(i,j)-Tref)。
++        real(kind=8), allocatable :: Fy_coarse(:,:)    ! 单位时间的y方向力；无磁场时为rho_coarse*gBeta*(T_coarse-Tref)。
+ 
+ #ifdef steadyFlow
+         real(kind=8), allocatable :: up_coarse(:,:)    ! 上一次稳态检查时的 x 方向速度。
+@@ -289,8 +289,8 @@
+         real(kind=8), allocatable :: u_left(:,:)    ! 当前 x 方向速度。
+         real(kind=8), allocatable :: v_left(:,:)    ! 当前 y 方向速度。
+         real(kind=8), allocatable :: T_left(:,:)    ! 当前温度。
+-        real(kind=8), allocatable :: Fx_left(:,:)    ! x 方向力源项；为 0。
+-        real(kind=8), allocatable :: Fy_left(:,:)    ! y 方向力源项；为 rho_left*gBeta*(T_left-Tref)。
++        real(kind=8), allocatable :: Fx_left(:,:)    ! 单位时间的x方向力；无磁场时为0。
++        real(kind=8), allocatable :: Fy_left(:,:)    ! 单位时间的y方向力；无磁场时为rho_left*gBeta*(T_left-Tref)。
+ 
+ #ifdef steadyFlow
+         real(kind=8), allocatable :: up_left(:,:)    ! 上一次稳态检查时的 x 方向速度，用于计算收敛误差。
+@@ -314,8 +314,8 @@
+         real(kind=8), allocatable :: u_right(:,:)    ! 当前 x 方向速度。
+         real(kind=8), allocatable :: v_right(:,:)    ! 当前 y 方向速度。
+         real(kind=8), allocatable :: T_right(:,:)    ! 当前温度。
+-        real(kind=8), allocatable :: Fx_right(:,:)    ! x 方向力源项；为 0。
+-        real(kind=8), allocatable :: Fy_right(:,:)    ! y 方向力源项；为 rho_right*gBeta*(T_right-Tref)。
++        real(kind=8), allocatable :: Fx_right(:,:)    ! 单位时间的x方向力；无磁场时为0。
++        real(kind=8), allocatable :: Fy_right(:,:)    ! 单位时间的y方向力；无磁场时为rho_right*gBeta*(T_right-Tref)。
+ 
+ #ifdef steadyFlow
+         real(kind=8), allocatable :: up_right(:,:)    ! 上一次稳态检查时的 x 方向速度，用于计算收敛误差。
+@@ -339,8 +339,8 @@
+         real(kind=8), allocatable :: u_bottom(:,:)    ! 当前 x 方向速度。
+         real(kind=8), allocatable :: v_bottom(:,:)    ! 当前 y 方向速度。
+         real(kind=8), allocatable :: T_bottom(:,:)    ! 当前温度。
+-        real(kind=8), allocatable :: Fx_bottom(:,:)    ! x 方向力源项；为 0。
+-        real(kind=8), allocatable :: Fy_bottom(:,:)    ! y 方向力源项；为 rho_bottom*gBeta*(T_bottom-Tref)。
++        real(kind=8), allocatable :: Fx_bottom(:,:)    ! 单位时间的x方向力；无磁场时为0。
++        real(kind=8), allocatable :: Fy_bottom(:,:)    ! 单位时间的y方向力；无磁场时为rho_bottom*gBeta*(T_bottom-Tref)。
+ 
+ #ifdef steadyFlow
+         real(kind=8), allocatable :: up_bottom(:,:)    ! 上一次稳态检查时的 x 方向速度，用于计算收敛误差。
+@@ -364,8 +364,8 @@
+         real(kind=8), allocatable :: u_top(:,:)    ! 当前 x 方向速度。
+         real(kind=8), allocatable :: v_top(:,:)    ! 当前 y 方向速度。
+         real(kind=8), allocatable :: T_top(:,:)    ! 当前温度。
+-        real(kind=8), allocatable :: Fx_top(:,:)    ! x 方向力源项；为 0。
+-        real(kind=8), allocatable :: Fy_top(:,:)    ! y 方向力源项；为 rho_top*gBeta*(T_top-Tref)。
++        real(kind=8), allocatable :: Fx_top(:,:)    ! 单位时间的x方向力；无磁场时为0。
++        real(kind=8), allocatable :: Fy_top(:,:)    ! 单位时间的y方向力；无磁场时为rho_top*gBeta*(T_top-Tref)。
+ 
+ #ifdef steadyFlow
+         real(kind=8), allocatable :: up_top(:,:)    ! 上一次稳态检查时的 x 方向速度，用于计算收敛误差。
+@@ -378,7 +378,7 @@
+         ! 重叠层保存数组的信息。
+         !===============================================================================================
+         ! 只保存细接收节点所需的三个粗时刻；第二维为左、右、下、上四区，各区编号都从1开始。
+-        ! 每节点20个量：rho,u,v,T,Fx/dx,Fy/dx、9个缩放流场非平衡矩、5个缩放温度非平衡矩。
++        ! 每节点20个量：rho,u,v,T,Fx,Fy（单位时间力）、9个缩放流场非平衡矩、5个缩放温度非平衡矩。
+         ! 空间插值直接读取粗场；时间插值在接收节点内完成，不另设中转数组。
+         real(kind=8), allocatable :: coarseHistoryPrevious(:,:)    ! 前一粗时刻
+         real(kind=8), allocatable :: coarseHistoryCurrent(:,:)     ! 当前粗时刻
+@@ -1413,6 +1413,7 @@
+         error stop 'Restart coarse block layout mismatch'
+     ! 恢复f_coarse(1:389,1:389,0:8)、g_coarse(1:389,1:389,0:4)。
+     ! u/v/T/rho/Fx/Fy的范围均为(1:389,1:389)；ios/=0表示本次场量读取失败。
++    ! 当前检查点的Fx/Fy统一按单位时间力读写；不兼容此前保存dt*F的检查点。
+     read(k,iostat=ios) f_coarse,g_coarse,u_coarse,v_coarse,T_coarse,rho_coarse,Fx_coarse,Fy_coarse
+     if(ios/=0) error stop 'Incomplete coarse checkpoint state'
+     ! 三份接口历史紧接粗区场量保存
+@@ -1748,18 +1749,18 @@
+ ! 子程序: pack_interface_values
+ ! 作用: 把一个来源节点的宏观量、单位时间力和缩放非平衡矩放入局部缓冲数组。
+ !===================================================================================================
+-  subroutine pack_interface_values(dx,Snu,Sq,Qk,Qnu,fv,gv,rh,ux,uy,temp,fx,fy,buffer)
++  subroutine pack_interface_values(dt,Snu,Sq,Qk,Qnu,fv,gv,rh,ux,uy,temp,fx,fy,buffer)
+     use commondata,only: paraA
+     implicit none
+     !$acc routine seq
+-    real(kind=8), intent(in) :: dx, Snu, Sq, Qk, Qnu, fv(0:8), gv(0:4), rh, ux, uy, temp, fx, fy
++    real(kind=8), intent(in) :: dt, Snu, Sq, Qk, Qnu, fv(0:8), gv(0:4), rh, ux, uy, temp, fx, fy
+     real(kind=8), intent(out) :: buffer(0:19)
+     real(kind=8) :: m(0:8), meq(0:8), fm(0:8), n(0:4), neq(0:4), s(0:8), q(0:4)
+     integer(kind=4) :: a
+ 
+     ! 每次只处理一个来源节点
+     ! 当前refineRatio=2：左细接收节点(129,129)使用粗模板(3:6,3:6)，第一次传入fv/gv为粗节点(3,3)的数据。
+-    ! 此次dx=dxCoarse=2，Snu/Sq/Qk/Qnu均为对应粗松弛率；细到粗调用则传入细网格参数。
++    ! 此次dt=dxCoarse=2，Snu/Sq/Qk/Qnu均为对应粗松弛率；细到粗调用则传入细网格参数。
+ 
+     ! 1. 将当前D2Q9分布函数转换为9个流场矩：m(0)为密度，m(3)、m(5)为动量矩。
+     m(0)=fv(0)+fv(1)+fv(2)+fv(3)+fv(4)+fv(5)+fv(6)+fv(7)+fv(8)
+@@ -1792,31 +1793,30 @@
+     neq=[temp,temp*ux,temp*uy,paraA*temp,0.0d0]
+ 
+     ! 4. Huang式(8a)：fm为单位时间的力矩F_m，不含dt，也不含碰撞系数(1-s/2)。
+-    ! 输入fx/fy沿用基准数组约定，已含当前块dt：fx=dt*F_x、fy=dt*F_y；本代码dt=dx。
+-    ! 下式先对步内力增量做矩变换，再整体除以dx，得到论文的F_m（该变换对力是线性的）。
++    ! fx/fy就是单位时间的F_x/F_y，直接按式(8a)构造F_m，不乘除dt。
++    ! dt显式传入：粗块dt=dxCoarse，细块dt=dxFine=1。
+     fm=[0.0d0,6.0d0*(ux*fx+uy*fy),-6.0d0*(ux*fx+uy*fy),fx,-fx,fy,-fy,&
+-        2.0d0*(ux*fx-uy*fy),ux*fy+uy*fx]/dx
++        2.0d0*(ux*fx-uy*fy),ux*fy+uy*fx]
+ 
+     ! 5. 各矩对应的松弛率；密度、动量和温度守恒矩的松弛率置零，由单独保存的宏观量重建。
+     s=[0.0d0,Snu,Snu,0.0d0,Sq,0.0d0,Sq,Snu,Snu]
+     q=[0.0d0,Qk,Qk,Qnu,Qnu]
+ 
+-    ! 6. 前6项依次保存rho、u、v、T、Fx/dx、Fy/dx；本例粗来源dx=2，细来源dx=1。
+-    ! 本算法dt=dx，力先除以来源步长；接收端再乘以自己的步长。
+-    buffer(0:5)=[rh,ux,uy,temp,fx/dx,fy/dx]
+-
+-    ! 7. Huang式(19)：buffer(6+a)=(s_a/dt)*(m_a-meq_a+dt*F_m,a/2)，这里dt=dx。
++    ! 6. 前6项依次保存rho、u、v、T、F_x、F_y；所有网格直接保存单位时间的力。
++    buffer(0:5)=[rh,ux,uy,temp,fx,fy]
++
++    ! 7. Huang式(19)：buffer(6+a)=(s_a/dt)*(m_a-meq_a+dt*F_m,a/2)，dt为来源网格时间步。
+     ! 论文式(5)的碰撞源项为dt*(1-s_a/2)*F_m,a；接口式(19)不能再乘(1-s_a/2)。
+     ! 本例粗块dt=2，括号内为m_a-meq_a+F_m,a；细块dt=1时为m_a-meq_a+F_m,a/2。
+     ! 粗来源的缩放系数为s(a)/2；buffer(6)、buffer(9)、buffer(11)对应守恒矩，有限场下为零。
+     do a=0,8
+-        buffer(6+a)=s(a)/dx*(m(a)-meq(a)+0.5d0*dx*fm(a))
++        buffer(6+a)=s(a)/dt*(m(a)-meq(a)+0.5d0*dt*fm(a))
+     enddo
+ 
+     ! 8. buffer(15:19)保存5个缩放后的温度非平衡矩；粗来源缩放系数为q(a)/2。
+     ! buffer(15)对应温度守恒矩，有限场下为零；返回后外层再对这20项做空间插值。
+     do a=0,4
+-        buffer(15+a)=q(a)/dx*(n(a)-neq(a))
++        buffer(15+a)=q(a)/dt*(n(a)-neq(a))
+     enddo
+   end subroutine pack_interface_values
+ !===================================================================================================
+@@ -2047,7 +2047,7 @@
+ ! 子程序: advance_grid
+ ! 作用: 按原均匀网格算法次序，推进传入数组的流场和温度场。
+ !===================================================================================================
+-  subroutine advance_grid(ni,nj,dx,Snu,Sq,Qk,Qnu,gBeta,wall,f,g,f_post,g_post,rho,u,v,T,Fx,Fy)
++  subroutine advance_grid(ni,nj,dt,Snu,Sq,Qk,Qnu,gBeta,wall,f,g,f_post,g_post,rho,u,v,T,Fx,Fy)
+ 
+ #ifdef SideHeatedHa
+     use commondata,only: B2sigemarho
+@@ -2058,7 +2058,7 @@
+     ! wall(1:4) 依次表示左、右、下、上是否为真实墙面；粗细人工接口不能当墙面反弹。
+ 
+     integer(kind=4) :: ni, nj
+-    real(kind=8) :: dx, Snu, Sq, Qk, Qnu, gBeta
++    real(kind=8) :: dt, Snu, Sq, Qk, Qnu, gBeta
+     logical :: wall(4)
+ 
+     real(kind=8) :: f(ni,nj,0:8)
+@@ -2072,15 +2072,14 @@
+     real(kind=8) :: Fx(ni,nj)
+     real(kind=8) :: Fy(ni,nj)
+ 
+-    ! 粗网格的时间步长已计入松弛率和力增量。
+-    ! 本地gBeta已由advance_coarse传入dxCoarse*gBeta；磁场系数在下方同样乘dx。
+-    ! 因而collision写入Fx/Fy的是dt*F，dt=dx；细块dt=1时与均匀网格基准数值一致。
++    ! dt显式传入：粗块dt=dxCoarse，细块dt=dxFine=1。
++    ! gBeta和磁场系数不预乘dt；Fx/Fy保存F，碰撞与速度恢复各自显式乘dt。
+     ! 推进前，人工边界已补成本时刻的碰撞前状态，接收节点也参加碰撞。
+     ! 推进后，最外两层等待下次接口重建，不能作为反向插值的数据来源。
+-    call collision(ni,nj,f,f_post,rho,u,v,Fx,Fy,T,Snu,Sq,&
++    call collision(ni,nj,dt,f,f_post,rho,u,v,Fx,Fy,T,Snu,Sq,&
+         gBeta &
+ #ifdef SideHeatedHa
+-        ,dx*B2sigemarho &
++        ,B2sigemarho &
+ #endif
+         )
+ 
+@@ -2089,7 +2088,7 @@
+     call bounceback(ni,nj,f,f_post,wall(1),wall(2),&
+         wall(3),wall(4))
+ 
+-    call macro(ni,nj,f,rho,u,v,Fx,Fy)
++    call macro(ni,nj,dt,f,rho,u,v,Fx,Fy)
+ 
+     call collisionT(ni,nj,g,g_post,u,v,T,Qk,Qnu)
+ 
+@@ -2111,7 +2110,7 @@
+     implicit none
+ 
+     call advance_grid(size(f_coarse,1),size(f_coarse,2),dxCoarse,SnuCoarse,SqCoarse,QkCoarse,QnuCoarse,&
+-        (dxCoarse*gBeta),coarseIsWall,f_coarse,g_coarse,f_post_coarse,g_post_coarse,rho_coarse,&
++        gBeta,coarseIsWall,f_coarse,g_coarse,f_post_coarse,g_post_coarse,rho_coarse,&
+         u_coarse,v_coarse,T_coarse,Fx_coarse,Fy_coarse)
+   end subroutine advance_coarse
+ !===================================================================================================
+@@ -2129,28 +2128,28 @@
+     ! 细区拼接线只改变存储位置，不引入物理边界、空间插值或时间插值。
+ 
+     ! 四个细区先全部碰撞，再交换迁移外圈；避免读取另一细区尚未更新的数据。
+-    call collision(size(f_left,1),size(f_left,2),f_left,f_post_left,rho_left,u_left,v_left,Fx_left,Fy_left,&
++    call collision(size(f_left,1),size(f_left,2),dxFine,f_left,f_post_left,rho_left,u_left,v_left,Fx_left,Fy_left,&
+         T_left,Snu,Sq,gBeta &
+ #ifdef SideHeatedHa
+         ,B2sigemarho &
+ #endif
+         )
+ 
+-    call collision(size(f_right,1),size(f_right,2),f_right,f_post_right,rho_right,u_right,v_right,Fx_right,&
++    call collision(size(f_right,1),size(f_right,2),dxFine,f_right,f_post_right,rho_right,u_right,v_right,Fx_right,&
+         Fy_right,T_right,Snu,Sq,gBeta &
+ #ifdef SideHeatedHa
+         ,B2sigemarho &
+ #endif
+         )
+ 
+-    call collision(size(f_bottom,1),size(f_bottom,2),f_bottom,f_post_bottom,rho_bottom,u_bottom,v_bottom,&
++    call collision(size(f_bottom,1),size(f_bottom,2),dxFine,f_bottom,f_post_bottom,rho_bottom,u_bottom,v_bottom,&
+         Fx_bottom,Fy_bottom,T_bottom,Snu,Sq,gBeta &
+ #ifdef SideHeatedHa
+         ,B2sigemarho &
+ #endif
+         )
+ 
+-    call collision(size(f_top,1),size(f_top,2),f_top,f_post_top,rho_top,u_top,v_top,Fx_top,Fy_top,T_top,&
++    call collision(size(f_top,1),size(f_top,2),dxFine,f_top,f_post_top,rho_top,u_top,v_top,Fx_top,Fy_top,T_top,&
+         Snu,Sq,gBeta &
+ #ifdef SideHeatedHa
+         ,B2sigemarho &
+@@ -2164,27 +2163,27 @@
+ 
+     call bounceback(size(f_left,1),size(f_left,2),f_left,f_post_left,leftIsWall(1),leftIsWall(2),leftIsWall(3),leftIsWall(4))
+ 
+-    call macro(size(f_left,1),size(f_left,2),f_left,rho_left,u_left,v_left,Fx_left,Fy_left)
++    call macro(size(f_left,1),size(f_left,2),dxFine,f_left,rho_left,u_left,v_left,Fx_left,Fy_left)
+ 
+     call streaming(size(f_right,1),size(f_right,2),f_right,f_post_right)
+ 
+     call bounceback(size(f_right,1),size(f_right,2),f_right,f_post_right,rightIsWall(1),rightIsWall(2),rightIsWall(3),&
+         rightIsWall(4))
+ 
+-    call macro(size(f_right,1),size(f_right,2),f_right,rho_right,u_right,v_right,Fx_right,Fy_right)
++    call macro(size(f_right,1),size(f_right,2),dxFine,f_right,rho_right,u_right,v_right,Fx_right,Fy_right)
+ 
+     call streaming(size(f_bottom,1),size(f_bottom,2),f_bottom,f_post_bottom)
+ 
+     call bounceback(size(f_bottom,1),size(f_bottom,2),f_bottom,f_post_bottom,bottomIsWall(1),bottomIsWall(2),&
+         bottomIsWall(3),bottomIsWall(4))
+ 
+-    call macro(size(f_bottom,1),size(f_bottom,2),f_bottom,rho_bottom,u_bottom,v_bottom,Fx_bottom,Fy_bottom)
++    call macro(size(f_bottom,1),size(f_bottom,2),dxFine,f_bottom,rho_bottom,u_bottom,v_bottom,Fx_bottom,Fy_bottom)
+ 
+     call streaming(size(f_top,1),size(f_top,2),f_top,f_post_top)
+ 
+     call bounceback(size(f_top,1),size(f_top,2),f_top,f_post_top,topIsWall(1),topIsWall(2),topIsWall(3),topIsWall(4))
+ 
+-    call macro(size(f_top,1),size(f_top,2),f_top,rho_top,u_top,v_top,Fx_top,Fy_top)
++    call macro(size(f_top,1),size(f_top,2),dxFine,f_top,rho_top,u_top,v_top,Fx_top,Fy_top)
+ 
+     ! 四区速度已经更新，开始温度碰撞；此处使用更新后的 u/v。
+     call collisionT(size(f_left,1),size(f_left,2),g_left,g_post_left,u_left,v_left,T_left,Qk,Qnu)
+@@ -2480,12 +2479,12 @@
+ 
+ !===================================================================================================
+ ! 子程序: unpack_interface_values
+-! 作用: 用接收网格的松弛率和格距，把局部缓冲值还原成分布函数及宏观量。
+-!===================================================================================================
+-  subroutine unpack_interface_values(dx,Snu,Sq,Qk,Qnu,buffer,fv,gv,rh,ux,uy,temp,fx,fy)
++! 作用: 用接收网格的松弛率和显式时间步dt，把局部缓冲值还原成分布函数及宏观量。
++!===================================================================================================
++  subroutine unpack_interface_values(dt,Snu,Sq,Qk,Qnu,buffer,fv,gv,rh,ux,uy,temp,fx,fy)
+     implicit none
+     !$acc routine seq
+-    real(kind=8), intent(in) :: dx, Snu, Sq, Qk, Qnu, buffer(0:19)
++    real(kind=8), intent(in) :: dt, Snu, Sq, Qk, Qnu, buffer(0:19)
+     real(kind=8), intent(out) :: fv(0:8), gv(0:4), rh, ux, uy, temp, fx, fy
+     real(kind=8) :: m(0:8), meq(0:8), fm(0:8), n(0:4), neq(0:4), s(0:8), q(0:4)
+     integer(kind=4) :: a
+@@ -2494,27 +2493,27 @@
+     ux=buffer(1)
+     uy=buffer(2)
+     temp=buffer(3)
+-    ! 恢复基准数组使用的步内力增量：fx=dt*F_x，fy=dt*F_y，当前块dt=dx。
+-    fx=dx*buffer(4)
+-    fy=dx*buffer(5)
++    ! 直接恢复单位时间的F_x/F_y，不乘接收时间步。
++    fx=buffer(4)
++    fy=buffer(5)
+     call equilibrium_moments(rh,ux,uy,temp,meq,neq)
+     ! buffer(4:5)存单位时间的F_x/F_y，按式(8a)得到单位时间的F_m。
+-    ! 上面的fx/fy已乘接收块dt=dx，供该块碰撞和宏观量计算使用。
+-    call force_moments(ux,uy,buffer(4),buffer(5),fm)
++    ! fm、fx、fy都不含dt；下方恢复矩时显式乘接收时间步。
++    call force_moments(ux,uy,fx,fy,fm)
+     s=[0.0d0,Snu,Snu,0.0d0,Sq,0.0d0,Sq,Snu,Snu]
+     q=[0.0d0,Qk,Qk,Qnu,Qnu]
+     m=meq
+     n=neq
+     do a=0,8
+         ! 式(19)反解：m_a=meq_a+(dt/s_a)*buffer(6+a)-dt*F_m,a/2。
+-        if(s(a)>0.0d0) m(a)=meq(a)+dx/s(a)*buffer(6+a)-0.5d0*dx*fm(a)
++        if(s(a)>0.0d0) m(a)=meq(a)+dt/s(a)*buffer(6+a)-0.5d0*dt*fm(a)
+     enddo
+-    ! 守恒矩按式(21)重建，不除以零松弛率；fx/fy已含dt，所以这里用0.5*fx、0.5*fy。
++    ! 守恒矩按式(21)重建，不除以零松弛率；半步动量修正为dt*F/2。
+     m(0)=rh
+-    m(3)=rh*ux-0.5d0*fx
+-    m(5)=rh*uy-0.5d0*fy
++    m(3)=rh*ux-0.5d0*dt*fx
++    m(5)=rh*uy-0.5d0*dt*fy
+     do a=1,4
+-        n(a)=neq(a)+dx/q(a)*buffer(15+a)
++        n(a)=neq(a)+dt/q(a)*buffer(15+a)
+     enddo
+     n(0)=temp
+     call flow_populations(m,fv)
+@@ -2571,7 +2570,7 @@
+ ! 子程序: collision
+ ! 作用: 执行 D2Q9 流场矩空间碰撞，生成碰撞后分布函数。
+ !===================================================================================================
+-  subroutine collision(nx,ny,f,f_post,rho,u,v,Fx,Fy,T,Snu,Sq,gBeta &
++  subroutine collision(nx,ny,dt,f,f_post,rho,u,v,Fx,Fy,T,Snu,Sq,gBeta &
+ #ifdef SideHeatedHa
+       ,B2sigemarho &
+ #endif
+@@ -2585,11 +2584,12 @@
+ 
+     ! D2Q9 流场碰撞；nx/ny、场数组和松弛参数均对应当前区域。
+     ! 本子程序只生成 f_post，不负责同级细区交换或粗细插值。
++    ! Fx/Fy保存单位时间的力；fSource=(I-S/2)*F_m也不含dt，碰撞时显式乘dt。
+ 
+     integer(kind=4), intent(in) :: nx, ny
+     real(kind=8), intent(inout) :: f(nx,ny,0:8), f_post(0:nx+1,0:ny+1,0:8)
+     real(kind=8), intent(inout) :: u(nx,ny), v(nx,ny), T(nx,ny), rho(nx,ny), Fx(nx,ny), Fy(nx,ny)
+-    real(kind=8), intent(in) :: Snu, Sq, gBeta
++    real(kind=8), intent(in) :: dt, Snu, Sq, gBeta
+ #ifdef SideHeatedHa
+     real(kind=8), intent(in) :: B2sigemarho
+ #endif
+@@ -2601,7 +2601,7 @@
+     real(kind=8) :: fSource(0:8)
+ 
+     !$acc parallel loop gang vector collapse(2) present(f, f_post, rho, u, v, Fx, Fy, T) async(1) &
+-    !$acc& private(alpha, s, m, m_post, meq, fSource)
++    !$acc& firstprivate(dt) private(alpha, s, m, m_post, meq, fSource)
+     do j=1,ny
+         do i=1,nx
+ 
+@@ -2649,9 +2649,9 @@
+                 -v(i,j)*cos(phi)*cos(phi))    !动量方程上的源项，即浮力项加磁场
+ #endif
+ 
+-            ! Huang式(5)：fSource(a)=dt*(1-s(a)/2)*F_m,a，是完整碰撞源项。
+-            ! Fx/Fy已含dt；下面系数已含(1-s/2)，例如6-3*s=6*(1-s/2)。
+-            ! 此fSource不能作为接口式(19)中的F_m；接口需要单位时间且未乘(1-s/2)的力矩。
++            ! Huang式(5)：fSource(a)=(1-s(a)/2)*F_m,a，表示单位时间的碰撞源项。
++            ! Fx/Fy和fSource都不含dt；系数6-3*s=6*(1-s/2)，时间步在m_post中显式相乘。
++            ! 接口式(19)使用未乘(1-s/2)的F_m，不能直接代入这里的fSource。
+             fSource(0)=0.0d0
+             fSource(1)=(6.0d0-3.0d0*s(1))*(u(i,j)*Fx(i,j)+v(i,j)*Fy(i,j))
+             fSource(2)=-(6.0d0-3.0d0*s(2))*(u(i,j)*Fx(i,j)+v(i,j)*Fy(i,j))
+@@ -2663,7 +2663,7 @@
+             fSource(8)=(1.0d0-0.5d0*s(8))*(u(i,j)*Fy(i,j)+v(i,j)*Fx(i,j))    !这边是乘以M变到矩空间，然后再乘以1-1/2S修正
+ 
+             do alpha=0,8
+-                m_post(alpha)=m(alpha)-s(alpha)*(m(alpha)-meq(alpha))+fSource(alpha)    !矩空间碰撞
++                m_post(alpha)=m(alpha)-s(alpha)*(m(alpha)-meq(alpha))+dt*fSource(alpha)    !显式加入dt*(I-S/2)*F_m
+             enddo
+ 
+             f_post(i,j,0)=m_post(0)/9.0d0-m_post(1)/9.0d0+m_post(2)/9.0d0    !这边是乘以M逆
+@@ -2812,27 +2812,28 @@
+ ! 子程序: macro
+ ! 作用: 由流场分布函数及半步力恢复密度和速度。
+ !===================================================================================================
+-  subroutine macro(nx,ny,f,rho,u,v,Fx,Fy)
+-
+-    implicit none
+-
+-    ! 由分布函数求密度和速度，速度包含半步力修正。
++  subroutine macro(nx,ny,dt,f,rho,u,v,Fx,Fy)
++
++    implicit none
++
++    ! Fx/Fy为单位时间的力，速度恢复显式包含dt*F/2。
+ 
+     integer(kind=4), intent(in) :: nx, ny
++    real(kind=8), intent(in) :: dt
+     real(kind=8), intent(in) :: f(nx,ny,0:8), Fx(nx,ny), Fy(nx,ny)
+     real(kind=8), intent(inout) :: rho(nx,ny), u(nx,ny), v(nx,ny)
+ 
+     integer(kind=4) :: i, j
+ 
+-    !$acc parallel loop gang vector collapse(2) present(f, rho, u, v, Fx, Fy) async(1)
++    !$acc parallel loop gang vector collapse(2) present(f, rho, u, v, Fx, Fy) firstprivate(dt) async(1)
+     do j=1,ny
+         do i=1,nx
+             rho(i,j)=f(i,j,0)+f(i,j,1)+f(i,j,2)+f(i,j,3)+f(i,j,4)+f(i,j,5)+f(i,j,&
+                 6)+f(i,j,&
+                 7)+f(i,j,8)
+-            u(i,j)=(f(i,j,1)-f(i,j,3)+f(i,j,5)-f(i,j,6)-f(i,j,7)+f(i,j,8)+0.5d0*Fx(i,&
+-                j))/rho(i,j)    !含力LBM的半步动量修正：rho*u = Σ f e + 0.5*F，对应Guo forcing的二阶定义
+-            v(i,j)=(f(i,j,2)-f(i,j,4)+f(i,j,5)+f(i,j,6)-f(i,j,7)-f(i,j,8)+0.5d0*Fy(i,&
++            u(i,j)=(f(i,j,1)-f(i,j,3)+f(i,j,5)-f(i,j,6)-f(i,j,7)+f(i,j,8)+0.5d0*dt*Fx(i,&
++                j))/rho(i,j)    !含力LBM的半步动量修正：rho*u = Σ f e + 0.5*dt*F，对应Guo forcing的二阶定义
++            v(i,j)=(f(i,j,2)-f(i,j,4)+f(i,j,5)+f(i,j,6)-f(i,j,7)-f(i,j,8)+0.5d0*dt*Fy(i,&
+                 j))/rho(i,j)
+         enddo
+     enddo
+@@ -3898,6 +3899,7 @@
+ 
+     write(k) ni,nj,xStartIntegration,xEndIntegration,yStartIntegration,yEndIntegration,&
+         xOffset,yOffset,dx,integrationBox
++    ! Fx/Fy直接保存单位时间力，不在检查点读写时乘除dt。
+     write(k) f,g,u,v,T,rho,Fx,Fy
+     ! 粗区按前一、当前、下一时刻保存三个接口小数组；细区只存场量。
+     if(dx==dxCoarse) then

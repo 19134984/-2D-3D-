@@ -1,0 +1,45 @@
+--- before/2DRBOpenaccMultiblock.F90
++++ after/2DRBOpenaccMultiblock.F90
+@@ -1015,28 +1015,20 @@
+         !累加左细网格负责的物理积分面积，含上下细区的两个小的重叠层
+         do j=1,size(f_left,2)
+             do i=1,size(f_left,1)
+-                ! 这里使用左细数组的完整存储范围 [0,130,0,1024]，其中包含粗到细接收层。
+-                ! 不能直接将右边界缩至 127.5，因为上下细数组从 x=130 开始覆盖，
+-                ! 因此 x=127.5:130 在 y=0:127.5 和 y=895.5:1024 内仍由左细数组负责积分。
+-                ! 下面先将节点控制面积裁剪到存储范围，再累加与四个细物理矩形的交集，
+-                ! 排除中心粗物理区 [127.5,895.5,127.5,895.5] 内的面积，同时保留上下两端的有效面积。
+-                ! 例如 (128,128) 的面积为 0.75，(129,128) 为 0.5，中心区接收节点 (129,129) 为 0。
+-                ! 节点控制面积先裁剪到本区范围；这里的坐标仍以细格距为单位。
+-                x=xOffsetLeft+(i-0.5d0)*dxFine
+-                y=yOffsetLeft+(j-0.5d0)*dxFine
+-                xlo=max(x-dxFine/2,xOffsetLeft)
+-                xhi=min(x+dxFine/2,xOffsetLeft+size(f_left,1))
+-                ylo=max(y-dxFine/2,yOffsetLeft)
+-                yhi=min(y+dxFine/2,yOffsetLeft+size(f_left,2))
+-                cellArea=0.0d0
+-                if(xhi > xlo .AND. yhi > ylo) then
+-                    ! 分别累加左、右、下、上四个细物理矩形内的面积。
+-                    cellArea=max(0.0d0,min(xhi,centerIntegrationBox(1))-xlo)*(yhi-ylo)    ! 左
+-                    cellArea=cellArea+max(0.0d0,xhi-max(xlo,centerIntegrationBox(2)))*(yhi-ylo)    ! 右
+-                    middleWidth=max(0.0d0,min(xhi,centerIntegrationBox(2))-max(xlo,centerIntegrationBox(1)))
+-                    cellArea=cellArea+middleWidth*max(0.0d0,min(yhi,centerIntegrationBox(3))-ylo)    ! 下
+-                    cellArea=cellArea+middleWidth*max(0.0d0,yhi-max(ylo,centerIntegrationBox(4)))    ! 上
+-                endif
++                ! 左细区格距为1、坐标偏移为0，节点(i,j)的控制面积就是[i-1,i]×[j-1,j]。
++                ! 本区负责三个矩形：[0,127.5]×[0,1024]，
++                ! 以及[127.5,130]×[0,127.5]、[127.5,130]×[895.5,1024]。
++                ! 例如(128,128)的面积为0.75，(129,128)为0.5，(129,129)为0。
++                xlo=dble(i-1)
++                xhi=dble(i)
++                ylo=dble(j-1)
++                yhi=dble(j)
++                ! 左侧主体：x<=127.5，贯穿全高。
++                cellArea=max(0.0d0,min(xhi,centerIntegrationBox(1))-xlo)*(yhi-ylo)
++                ! 节点伸入x>=127.5部分的宽度，仅累计它在下、上两端的面积。
++                middleWidth=max(0.0d0,xhi-max(xlo,centerIntegrationBox(1)))
++                cellArea=cellArea+middleWidth*max(0.0d0,min(yhi,centerIntegrationBox(3))-ylo)    ! 下端
++                cellArea=cellArea+middleWidth*max(0.0d0,yhi-max(ylo,centerIntegrationBox(4)))    ! 上端
+                 totalArea=totalArea+cellArea
+             enddo
+         enddo

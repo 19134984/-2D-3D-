@@ -1,0 +1,141 @@
+{
+  "source_sha256": "7e5a85107ea30d61818d3b4a0eaded1a664d2682aa075a3cc14a86e4287a49a0",
+  "baseline_sha256": "e9741219bad4f51384c913b3a54f32e30db9fbb604af7d412d5b04875bd24a1e",
+  "device": "gfortran OpenACC host",
+  "build_directory": "C:\\Users\\User\\AppData\\Local\\Temp\\mb2d-verify-jwo9u2sg",
+  "checks": [
+    {
+      "case": "r2_rb",
+      "fields_exact": true,
+      "history_exact": true,
+      "NuRe_exact": true,
+      "restart_exact": true,
+      "output_files_exact": [
+        "buoyancyCavity2DOpenaccMultiblockSnapshot-0.004330127019tff.bin",
+        "buoyancyCavity2DOpenaccMultiblockSnapshot-0.008660254038tff.bin",
+        "buoyancyCavity2DOpenaccMultiblockSnapshot-0.012990381057tff.bin",
+        "buoyancyCavity2DOpenaccMultiblockSnapshot-0.017320508076tff.bin",
+        "buoyancyCavity2DOpenaccMultiblockSnapshot-0.021650635095tff.bin",
+        "buoyancyCavity2DOpenaccMultiblockSnapshot-0.025980762114tff.bin",
+        "buoyancyCavity2DOpenaccMultiblockSnapshot-0.028867513459tff.bin",
+        "NuReStatistics_2DOpenaccMultiblock.dat",
+        "NuRe_2DOpenaccMultiblock.dat",
+        "buoyancyCavity2DOpenaccMultiblockTecplot-0.005773502692tff.dat",
+        "buoyancyCavity2DOpenaccMultiblockTecplot-0.011547005384tff.dat",
+        "buoyancyCavity2DOpenaccMultiblockTecplot-0.017320508076tff.dat",
+        "buoyancyCavity2DOpenaccMultiblockTecplot-0.023094010768tff.dat",
+        "buoyancyCavity2DOpenaccMultiblockTecplot-0.028867513459tff.dat"
+      ]
+    },
+    {
+      "case": "r2_side",
+      "fields_exact": true,
+      "history_exact": true,
+      "NuRe_exact": true,
+      "restart_exact": true,
+      "output_files_exact": [
+        "buoyancyCavity2DOpenaccMultiblockSnapshot-0.003608439182tff.bin",
+        "buoyancyCavity2DOpenaccMultiblockSnapshot-0.007216878365tff.bin",
+        "buoyancyCavity2DOpenaccMultiblockSnapshot-0.010825317547tff.bin",
+        "buoyancyCavity2DOpenaccMultiblockSnapshot-0.01443375673tff.bin",
+        "buoyancyCavity2DOpenaccMultiblockSnapshot-0.018042195912tff.bin",
+        "buoyancyCavity2DOpenaccMultiblockSnapshot-0.021650635095tff.bin",
+        "buoyancyCavity2DOpenaccMultiblockSnapshot-0.024056261216tff.bin",
+        "Convergence_2DOpenaccMultiblock.dat",
+        "FinalNuRe_2DOpenaccMultiblock.dat",
+        "NuRe_2DOpenaccMultiblock.dat",
+        "SteadyMonitor_2DOpenaccMultiblock.dat",
+        "buoyancyCavity2DOpenaccMultiblockTecplot-0.004811252243tff.dat",
+        "buoyancyCavity2DOpenaccMultiblockTecplot-0.009622504486tff.dat",
+        "buoyancyCavity2DOpenaccMultiblockTecplot-0.01443375673tff.dat",
+        "buoyancyCavity2DOpenaccMultiblockTecplot-0.019245008973tff.dat",
+        "buoyancyCavity2DOpenaccMultiblockTecplot-0.024056261216tff.dat"
+      ]
+    },
+    {
+      "case": "r2_asymmetric",
+      "fields_exact": true,
+      "history_exact": true,
+      "NuRe_exact": true,
+      "restart_exact": true,
+      "output_files_exact": [
+        "buoyancyCavity2DOpenaccMultiblockSnapshot-0.003608439182tff.bin",
+        "buoyancyCavity2DOpenaccMultiblockSnapshot-0.007216878365tff.bin",
+        "buoyancyCavity2DOpenaccMultiblockSnapshot-0.010825317547tff.bin",
+        "buoyancyCavity2DOpenaccMultiblockSnapshot-0.01443375673tff.bin",
+        "buoyancyCavity2DOpenaccMultiblockSnapshot-0.018042195912tff.bin",
+        "buoyancyCavity2DOpenaccMultiblockSnapshot-0.021650635095tff.bin",
+        "buoyancyCavity2DOpenaccMultiblockSnapshot-0.024056261216tff.bin",
+        "NuReStatistics_2DOpenaccMultiblock.dat",
+        "NuRe_2DOpenaccMultiblock.dat",
+        "buoyancyCavity2DOpenaccMultiblockTecplot-0.004811252243tff.dat",
+        "buoyancyCavity2DOpenaccMultiblockTecplot-0.009622504486tff.dat",
+        "buoyancyCavity2DOpenaccMultiblockTecplot-0.01443375673tff.dat",
+        "buoyancyCavity2DOpenaccMultiblockTecplot-0.019245008973tff.dat",
+        "buoyancyCavity2DOpenaccMultiblockTecplot-0.024056261216tff.dat"
+      ]
+    }
+  ],
+  "node_area_checks": [
+    {
+      "nx": 1024,
+      "ny": 1024,
+      "left": 128,
+      "right": 129,
+      "bottom": 128,
+      "top": 129,
+      "skin": 2,
+      "nodes": 133120,
+      "area": 131200.0,
+      "all_node_areas_exact": true
+    },
+    {
+      "nx": 96,
+      "ny": 80,
+      "left": 16,
+      "right": 17,
+      "bottom": 16,
+      "top": 17,
+      "skin": 2,
+      "nodes": 1440,
+      "area": 1320.0,
+      "all_node_areas_exact": true
+    },
+    {
+      "nx": 96,
+      "ny": 80,
+      "left": 44,
+      "right": 13,
+      "bottom": 12,
+      "top": 13,
+      "skin": 2,
+      "nodes": 3680,
+      "area": 3540.0,
+      "all_node_areas_exact": true
+    },
+    {
+      "nx": 128,
+      "ny": 112,
+      "left": 32,
+      "right": 33,
+      "bottom": 32,
+      "top": 33,
+      "skin": 2,
+      "nodes": 3808,
+      "area": 3688.0,
+      "all_node_areas_exact": true
+    },
+    {
+      "nx": 160,
+      "ny": 144,
+      "left": 32,
+      "right": 33,
+      "bottom": 24,
+      "top": 25,
+      "skin": 4,
+      "nodes": 5184,
+      "area": 4752.0,
+      "all_node_areas_exact": true
+    }
+  ]
+}
