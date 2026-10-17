@@ -1,5 +1,7 @@
 # 2DRBOpenaccMultiblock：中心粗网格与四套紧凑细数组
 
+> 清理说明：历史修改补丁（`.diff`）和一次性验证报告（本目录下的 `.json`）已清理。下文提及的报告文件名仅用于说明历史验证记录，文件已不随目录保留；一次性验证脚本（`verify_*.py`）、历史对比脚本 `transient_compare.py` 和旧格式转换脚本 `convert_restart_v10.py` 也已清理。下文涉及这些脚本的命令为历史记录，不能直接运行；历史结果不代表当前源码已通过验证。
+
 当前版本（2026-10-09）直接使用 `_coarse、_left、_right、_bottom、_top` 五套普通数组，不再通过块编号选择数据。参数与积分已简化，输出文件按累计 `t_ff` 命名；基准为 `均匀网格/2DRBOpenacc.F90` 与 `ISLBM/2DRBOpenaccISLBM.F90`，两份基准源码未修改。变量和计算次序见 [代码逻辑说明](代码逻辑说明.md)。
 
 ## 参数
@@ -71,7 +73,7 @@ y = yOffsetLeft+(j-0.5d0)*dxFine
 
 ## 续算和输出
 
-快照、Tecplot、检查点分别命名为 `<snapshotFilePrefix>-<时间>tff.bin`、`<pltFolderPrefix>-<时间>tff.dat`、`<reloadFilePrefix>-<时间>tff.bin`。时间取实际累计步数 `(reloadItcOffset+itc)/timeUnit`，保留十二位小数后去掉末尾的零，例如 `-100.5tff.bin`、`-0tff.bin`。粗步对齐造成的小数偏差会反映在文件名中；输出时检查该精度能否区分相邻粗步。按时间排序时应解析数值，不能依赖文件名字典序。
+快照、Tecplot、检查点分别命名为 `<snapshotFilePrefix>-<时间>tff-<累计细步数>itc.bin`、`<pltFolderPrefix>-<时间>tff-<累计细步数>itc.dat`、`<reloadFilePrefix>-<时间>tff-<累计细步数>itc.bin`。时间取实际累计步数 `(reloadItcOffset+itc)/timeUnit`，保留十二位小数后去掉末尾零；整数步数区分不同保存时刻，时间仅供直观查看。输出索引保存准确步数和完整文件名，后处理直接按索引读取，不能依赖文件名字典序排序。
 
 正常续算仍只需 `loadInitField=1`，优先读取固定的 `<reloadFilePrefix>-latest.meta`。只有 meta 缺失时才设置 `reloadFileName`，填写已有检查点的完整文件名（含 `.bin`，也可填写路径）；文件名可手动指定，但文件内容必须为当前格式。程序从二进制数据恢复准确累计步数，不从文件名反推时间。Nu/Re 历史文件保持固定名称。
 

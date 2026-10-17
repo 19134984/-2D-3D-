@@ -1,0 +1,63 @@
+{
+  "smoke": {
+    "wall": {
+      "code": 0
+    },
+    "periodic": {
+      "code": 0
+    },
+    "uniform_periodic": {
+      "code": 0
+    },
+    "steady": {
+      "code": 0
+    }
+  },
+  "restart_and_snapshot": {
+    "wall_snapshot_max_diff": 0.0,
+    "periodic_snapshot_max_diff": 0.0,
+    "uniform_periodic_snapshot_max_diff": 0.0,
+    "steady_snapshot_max_diff": 0.0,
+    "latest_priority": "latest metadata overrides manual filename/step; initialization preserves it",
+    "wall_restart": "bitwise identical arrays and history",
+    "wall_manual_restart": "missing latest: bitwise identical arrays/history; only latest.meta saved",
+    "corrupt": "rejected before history changes",
+    "truncated": "rejected before history changes",
+    "physics_mismatch": "rejected before history changes",
+    "negative_manual_step": "rejected before history changes",
+    "unsynchronized_manual_step": "rejected before history changes",
+    "missing_manual_file": "rejected before history changes",
+    "zero_advance_restart": "existing snapshot/plt found; no duplicate output rows",
+    "extend_target_and_delete_future": "passed",
+    "periodic_restart": "bitwise identical arrays and history",
+    "periodic_manual_restart": "missing latest: bitwise identical arrays/history; only latest.meta saved",
+    "steady_restart": "bitwise identical arrays and history",
+    "steady_manual_restart": "missing latest: bitwise identical arrays/history; only latest.meta saved"
+  },
+  "periodic_links": "Periodic directions, vertical shifts and wall corners passed.",
+  "variants": {
+    "velocity_periodic": "run and snapshot diagnostics passed",
+    "thermal_periodic": "run and snapshot diagnostics passed",
+    "ratio4": "run and snapshot diagnostics passed",
+    "sideheated": "run and snapshot diagnostics passed",
+    "gfortran_openacc_syntax": {
+      "exit": 0,
+      "log": ""
+    }
+  },
+  "analytic_window": "linear Nu and RMS Re verified; missing sample rejected",
+  "alignment": "61 requested steps -> 66; positive 0.1 step interval -> 2",
+  "rounded_display_time": "identical displayed tff retains distinct snapshots, plt and checkpoints by step",
+  "invalid_checkpoint": "unsynchronized step rejected without rewriting history",
+  "openacc_host": "directives executed; state identical to CPU reference",
+  "source_sha256": {
+    "多块网格/2DRBOpenaccMultiblock.F90": "544b80469b6d21123dd4a2eb67c1032f698565c67135b6e67711933eb70df204",
+    "多块网格/2DRBOpenaccMultiblockPostprocess.F90": "955f6543e5cbdd30dd80fcb0bdbd76f0e01d6da2c7838e2da2f1b764854fc86b",
+    "运行脚本/tools/verify_multiblock_restart_postprocess.py": "6acb322117d56d562a281f8ba3da0960defcae4a6b3737ecb0ffd8f05a64c0c0"
+  },
+  "baseline_sources_unchanged": {
+    "均匀网格/2DRBOpenacc.F90": "68debf94f75f3a70af6bf4f7205e18afc14618d48dd227ccf1d1a8e73d8afd48",
+    "ISLBM/2DRBOpenaccISLBM.F90": "846b843a93e86e5c3a6d66251468854eed0c7b76ad23a03dc1c555c32589b913"
+  },
+  "limits": "Small CPU and gfortran OpenACC-host regression only; no NVHPC/P100 benchmark or statistical-convergence claim."
+}

@@ -53,6 +53,16 @@
 #error "Define one convection case: RayleighBenardCell or SideHeatedCell"
 #endif
 
+! 温度边界各选一种，周期交换后不能再用同一边的恒温或绝热条件覆盖。
+! 该宏已启用，结果就是 1；未启用，结果就是 0。
+! != 1：选择的数量不是一个，就进入下面的报错。
+#if (defined(VerticalWallsConstT) + defined(VerticalWallsAdiabatic) + defined(VerticalWallsPeriodicalT)) != 1
+#error "Choose one vertical temperature BC"
+#endif
+#if (defined(HorizontalWallsConstT) + defined(HorizontalWallsAdiabatic)) != 1
+#error "Choose one horizontal temperature BC"
+#endif
+
 ! 温度算法使用原 D2Q5 TRT 旧算法，平衡矩系数为 paraA。
 
 !   自定义宏结束
@@ -78,6 +88,11 @@
         ! 粗细比和四个分区位置
         integer(kind=4), parameter :: nx=1024, ny=1024    ! 全域格子长度，必须能被 refineRatio 整除
         integer(kind=4), parameter :: refineRatio=2    ! 粗/细格距之比，取2、4、8等2的幂
+        ! 接收层取2层。
+        ! 粗、细网格各延伸 interfaceSkin 个本地格距。
+        ! 换成细格距单位时，粗网格延伸宽度为 interfaceSkin*refineRatio，细网格为 interfaceSkin。
+        integer(kind=4), parameter :: interfaceSkin=2
+
         integer(kind=4), parameter :: fineLayerCellsLeft=128    ! 从左墙向内的细节点编号，x = Left-0.5
         integer(kind=4), parameter :: fineLayerCellsRight=129    ! 从右墙向内的细节点编号，x = nx-Right+0.5
         integer(kind=4), parameter :: fineLayerCellsBottom=128    ! 从下墙向内的细节点编号，y = Bottom-0.5
@@ -87,17 +102,16 @@
         !===============================================================================================
         ! 是否在计算前从旧算例重启
         !===============================================================================================
-        integer(kind=4), parameter :: loadInitField=0   ! 0: 不重启；1: 按 latest .meta 自动续算
+        integer(kind=4), parameter :: loadInitField=0   ! 0: 重新计算；1: 续算，优先读取latest.meta
 
         ! 正常断电续算只需要设置 loadInitField=1；
-        ! 代码只读取 <reloadFilePrefix>-latest.meta，并从里面找到最新的 .bin。
-        ! 正常续算不用改 reloadFileName；只有 latest .meta 缺失时，
-        ! 才手动填写已有检查点的完整文件名，旧编号文件也可以直接填写。
-        character(len=256) :: reloadFileName=""        ! latest .meta 缺失时使用，包含 .bin 后缀
+        ! 优先读取<reloadFilePrefix>-latest.meta，其中直接保存最新bin文件名、配置和累计计数。
+        ! 只有latest.meta不存在时，才使用手工填写的reloadFileName和reloadItcOffset；步数需与所选文件一致。
+        character(len=256) :: reloadFileName=""        ! 手工续算文件名，例如reloadFile2DOpenaccMultiblock-100tff-100000itc.bin
+        integer(kind=4) :: reloadItcOffset=0           ! 续算前累计细格子步数；有latest.meta时读取其中的值，没有时在此手工填写
 
-        ! 多块检查点的步数和时间信息保存在 .bin 中；.meta 只记录文件名，无需按编号推断。
-        real(kind=8) :: reloadDimensionlessTime=0.0d0   ! 续算前已累计的 t_ff；由检查点累计步数换算
-        integer(kind=4) :: reloadItcOffset=0           ! 续算前已累计的格子步数；从检查点读取
+        ! 每次保存bin后覆盖同一个latest.meta，不另存各时刻的meta；bin只存数组。
+        real(kind=8) :: reloadDimensionlessTime=0.0d0   ! 续算前累计t_ff，由reloadItcOffset/timeUnit计算，不需要手工填写
         logical :: reloadMetadataLoaded=.false.         ! 标记是否成功读取 reload 元数据
         !===============================================================================================
 
@@ -145,6 +159,13 @@
         ! 多块网格使用Luo的温度算法。
         real(kind=8), parameter :: Qk=3.0d0-sqrt(3.0d0), Qnu=4.0d0*sqrt(3.0d0)-6.0d0    !温度算法的多松弛系数
         real(kind=8), parameter :: thermalGeqCoeff=10.0d0/(4.0d0+paraA)
+        real(kind=8), parameter :: dxFine=1.0d0
+        ! 粗网格dt=dxCoarse；保持当前松弛率换算，细网格参数仍按基准定义。
+        real(kind=8), parameter :: dxCoarse=dble(refineRatio)
+        real(kind=8), parameter :: SnuCoarse=1.0d0/(0.5d0+(1.0d0/Snu-0.5d0)/dxCoarse)
+        real(kind=8), parameter :: SqCoarse=1.0d0/(0.5d0+(1.0d0/Sq-0.5d0)/dxCoarse)
+        real(kind=8), parameter :: QkCoarse=1.0d0/(0.5d0+(1.0d0/Qk-0.5d0)/dxCoarse)
+        real(kind=8), parameter :: QnuCoarse=1.0d0/(0.5d0+(1.0d0/Qnu-0.5d0)/dxCoarse)
         !===============================================================================================
 
         !===============================================================================================
@@ -162,6 +183,7 @@
         ! ceiling 向上取整，保证终止步数为 refineRatio 的整数倍。
         ! 稳态：最大格子步，实际仍由 errorU/errorT 提前停止
         integer(kind=4), parameter :: itc_max=ceiling(20000000.0d0/dble(refineRatio))*refineRatio
+        integer(kind=4), parameter :: steadyCheckIntervalItc=ceiling(2000.0d0/dble(refineRatio))*refineRatio
 #endif
 
 #ifdef unsteadyFlow
@@ -169,27 +191,32 @@
         real(kind=8), parameter :: reloadFileInterval=100.0d0    ! f/g 重启文件输出间隔（单位：t_ff）
         real(kind=8), parameter :: outputPltFileInterval=100.0d0    ! Tecplot 文件周期输出间隔（单位：t_ff）
         real(kind=8), parameter :: unsteadyRunDuration=1000.0d0    ! 非稳态总目标时长，续算时只补足到该 t_ff
-        ! 以下三个参数只控制非稳态结束后的 Nu/Re 统计平均窗口，不改变推进时长或采样频率。
-        ! 时间以整个非稳态算例的绝对 t_ff 计，续算统计会包含旧文件中已有的历史数据。
-        real(kind=8), parameter :: unsteadyAverageStartTf=0.5d0*unsteadyRunDuration    ! 平均窗口起点
-        real(kind=8), parameter :: unsteadyAverageEndTf=unsteadyRunDuration    ! 平均窗口终点
-        real(kind=8), parameter :: unsteadyAverageMidTf=0.5d0*(unsteadyAverageStartTf+unsteadyAverageEndTf)    ! 前/后半分界
         integer(kind=4), parameter :: outputSnapshotFile=1    ! 是否输出后处理快照文件：0=不输出，1=输出
         integer(kind=4), parameter :: outputPltFile=1    ! 是否输出 plt 文件：0=不输出，1=输出
         integer(kind=4), parameter :: outputReloadFile=1    ! 是否周期输出 f/g 重启文件：0=不输出，1=输出
-        ! t_ff 先换算为粗步数并由 ceiling 向上取整，再换回细格子步数。
-        ! 非稳态：由总 t_ff 自动换算格子步
-        integer(kind=4), parameter :: itc_max=max(1,ceiling(unsteadyRunDuration*timeUnit/dble(refineRatio)))*refineRatio
+#endif
+
+        ! ceiling向上取整：t_ff先换成粗步并向上取整，再换回细步，所有间隔均落在同步时刻。
+        integer(kind=4), parameter :: outputSnapshotIntervalItc= &
+            ceiling(outputSnapshotInterval*timeUnit/dble(refineRatio))*refineRatio
+        integer(kind=4), parameter :: reloadFileIntervalItc= &
+            ceiling(reloadFileInterval*timeUnit/dble(refineRatio))*refineRatio
+        integer(kind=4), parameter :: outputPltFileIntervalItc= &
+            ceiling(outputPltFileInterval*timeUnit/dble(refineRatio))*refineRatio
+#ifdef unsteadyFlow
+        ! 累计目标向上对齐到采样步；可在续算时增大，不属于物理兼容性约束。
+        integer(kind=4), parameter :: itc_max=ceiling(unsteadyRunDuration*timeUnit/ &
+            dble(max(1,outputSnapshotIntervalItc)))*max(1,outputSnapshotIntervalItc)
 #endif
 
         character(len=*), parameter :: snapshotFilePrefix="buoyancyCavity2DOpenaccMultiblockSnapshot"
-        ! 快照输出文件前缀（实际文件名形如：<snapshotFilePrefix>-<累计t_ff>tff.bin）
+        ! 快照输出文件前缀（实际文件名形如：<snapshotFilePrefix>-<累计t_ff>tff-<累计细步数>itc.bin）
 
         character(len=*), parameter :: pltFolderPrefix="buoyancyCavity2DOpenaccMultiblockTecplot"
-        ! Tecplot 输出文件前缀（实际文件名形如：<pltFolderPrefix>-<累计t_ff>tff.dat）
+        ! Tecplot 输出文件前缀（实际文件名形如：<pltFolderPrefix>-<累计t_ff>tff-<累计细步数>itc.dat）
 
         character(len=*), parameter :: reloadFilePrefix="reloadFile2DOpenaccMultiblock"
-        ! 重启文件前缀；latest meta 模式读取 meta 中记录的文件名，新文件以累计 t_ff 命名
+        ! 重启文件前缀；文件名为<prefix>-<累计t_ff>tff-<累计细步数>itc.bin，latest.meta记录最新文件名
 
         character(len=*), parameter :: settingsFile="SimulationSettings2DOpenaccMultiblock.txt"
         character(*), parameter :: NuReHistoryFile='NuRe_2DOpenaccMultiblock.dat'    ! 按采样时间记录 Nu、Re 及场量统计，续算时追加
@@ -198,11 +225,6 @@
         !===============================================================================================
         ! 格子方向
         !===============================================================================================
-        ! 接收层取2层。
-        ! 粗、细网格各延伸 interfaceSkin 个本地格距。
-        ! 换成细格距单位时，粗网格延伸宽度为 interfaceSkin*refineRatio，细网格为 interfaceSkin。
-        integer(kind=4), parameter :: interfaceSkin=2
-
         integer(kind=4) :: ex(0:8)=[0,1,0,-1,0,1,-1,-1,1]
         integer(kind=4) :: ey(0:8)=[0,0,1,0,-1,1,1,-1,-1]
         real(kind=8) :: omega(0:8), omegaT(0:4)
@@ -219,13 +241,6 @@
         ! 初值为 0，每次 calNuRe 增加 1；续算时恢复累计次数，实际 t_ff 为 (reloadItcOffset+itc)/timeUnit。
         integer(kind=4) :: NuReSampleCount=0
 
-        ! 以下三个量分别为 Nu/Re 与快照、续算文件、Tecplot 的固定输出间隔，单位为细格子步。
-        ! 间隔须向上对齐到 refineRatio 的整数倍，保证输出时粗细网格的时间是同步的。
-        integer(kind=4) :: outputSnapshotIntervalItc
-        integer(kind=4) :: reloadFileIntervalItc, outputPltFileIntervalItc
-#ifdef steadyFlow
-        integer(kind=4) :: steadyCheckIntervalItc    ! 稳态收敛检查及监测间隔，单位为细格子步；将 2000 步向上对齐到粗细同步步。
-#endif
         real(kind=8) :: errorU=100.0d0, errorT=100.0d0
         !===============================================================================================
 
@@ -235,9 +250,6 @@
         ! 左右细区贯穿全高，包含四角区域；上下细区仅存左右细区之间的节点。
         ! 各场量的 i,j 索引编号从 1 开始，物理坐标为 xOffset+(i-0.5)*dx、yOffset+(j-0.5)*dx。
         ! f_post/g_post 另留 0 和 n+1 外围位置，用于相邻细区的迁移数据交换。
-        real(kind=8) :: dxCoarse
-        real(kind=8), parameter :: dxFine=1.0d0
-        real(kind=8) :: SnuCoarse, SqCoarse, QkCoarse, QnuCoarse
 
 
         ! 中心粗网格负责积分的矩形边界，依次为 xmin,xmax,ymin,ymax。
@@ -406,9 +418,12 @@
     character(len=24) :: ctime, string
     INTEGER(kind=4) :: time
     integer(kind=4) :: numAccDevices
+    logical :: outputExists
+    character(len=40) :: outputTime
+    character(len=256) :: outputName
     integer(kind=8) :: wallClockStart, wallClockEnd, wallClockRate
     integer(kind=4) :: lastSnapshotItc, lastPltItc, lastReloadItc    ! 本次最近输出的步数，防止结束时重复写同一步。
-    real(kind=8) :: latticeUpdates    ! 统计实际节点更新次数。
+    real(kind=8) :: latticeUpdateCount    ! 统计实际节点更新次数。
 
     !===============================================================================================
     ! 初始化 OpenACC 设备
@@ -438,6 +453,17 @@
     lastSnapshotItc=-1    !记录本次最近一次输出的位置
     lastPltItc=-1         !初始设为 -1，表示本次程序启动后，还没有输出过这一类文件。
     lastReloadItc=-1
+    if(loadInitField==1) then
+        ! 如果无需再推进，避免把恢复时刻已有的文件重复记入输出索引。
+        call output_time_string(outputTime)
+        write(outputName,'(a,a,a,i0,a)') snapshotFilePrefix//'-',trim(outputTime),'tff-',reloadItcOffset+itc,'itc.bin'
+        inquire(file=trim(outputName),exist=outputExists)
+        if(outputExists) lastSnapshotItc=0
+        write(outputName,'(a,a,a,i0,a)') pltFolderPrefix//'-',trim(outputTime),'tff-',reloadItcOffset+itc,'itc.dat'
+        inquire(file=trim(outputName),exist=outputExists)
+        if(outputExists) lastPltItc=0
+        lastReloadItc=0
+    endif
     !===============================================================================================
 
     !===============================================================================================
@@ -471,7 +497,6 @@
         ! 到达检查间隔时计算收敛误差。
         if(MOD(reloadItcOffset+itc,steadyCheckIntervalItc) .EQ. 0) then
             call check()
-            call output_steady_monitor()    ! 输出当前 Nu/Re，不增加正式采样次数。
         endif
 #endif
 
@@ -516,9 +541,9 @@
     timeEnd2=dble(wallClockEnd)/dble(max(wallClockRate,1_8))
 
     ! 一个同步周期中粗网格推进一次，四个细区各推进 refineRatio 次；续算只计本次新增步数。
-    latticeUpdates=dble(size(f_coarse,1))*dble(size(f_coarse,2))*dble(itc/refineRatio) !统计本次粗网格推进了多少个节点
+    latticeUpdateCount=dble(size(f_coarse,1))*dble(size(f_coarse,2))*dble(itc/refineRatio) !统计本次粗网格推进了多少个节点
     if(refineRatio > 1) then
-        latticeUpdates=latticeUpdates+dble(itc)*&
+        latticeUpdateCount=latticeUpdateCount+dble(itc)*&
             (dble(size(f_left,1))*dble(size(f_left,2))+dble(size(f_right,1))*dble(size(f_right,2))+&
              dble(size(f_bottom,1))*dble(size(f_bottom,2))+dble(size(f_top,1))*dble(size(f_top,2)))
     endif   !统计本次实际推进了多少个节点
@@ -527,18 +552,18 @@
     write(00,*) "======================================================================"
     write(00,*) "Time (CPU) = ",timeEnd-timeStart,"s"
     if(timeEnd > timeStart) then
-        write(00,*) "MLUPS = ",latticeUpdates/(timeEnd-timeStart)/1.0d6
+        write(00,*) "MLUPS = ",latticeUpdateCount/(timeEnd-timeStart)/1.0d6
     else
         write(00,*) "MLUPS = unavailable (CPU timer resolution)"
     endif
     write(00,*) "Time (ACC) = ",timeEnd2-timeStart2,"s"
     if(timeEnd2 > timeStart2) then
-        write(00,*) "MLUPS (ACC) = ",latticeUpdates/(timeEnd2-timeStart2)/1.0d6
+        write(00,*) "MLUPS (ACC) = ",latticeUpdateCount/(timeEnd2-timeStart2)/1.0d6
     else
         write(00,*) "MLUPS (ACC) = unavailable (wall timer resolution)"
     endif
     write(00,*) "Fine steps in this run = ",itc   !本次推进的细步数和节点更新次数
-    write(00,*) "Lattice updates in this run = ",latticeUpdates
+    write(00,*) "Lattice updates in this run = ",latticeUpdateCount
     close(00)
 
     write(*,*) 'Elapsed seconds:',timeEnd2-timeStart2
@@ -549,10 +574,6 @@
 #ifdef steadyFlow
     ! 最后一步可能不在采样时刻；单独输出最终诊断，不追加 NuRe 历史，也不增加 NuReSampleCount。
     call output_final_NuRe()
-#endif
-#ifdef unsteadyFlow
-    ! 非稳态按指定窗口统计 Nu/Re，并比较前后半窗口；不把最后一步额外算作正式采样。
-    call output_unsteady_NuRe_postprocess()
 #endif
 
     ! 保留各输出开关；若最后一步已做过周期输出，就不再重复写同一时刻。
@@ -628,36 +649,34 @@
     ! 节点坐标为 xOffset+(i-0.5)*dx；centerIntegrationBox 是积分分界，不是粗网格最外层计算节点。
 
     integer(kind=4) :: k, i, j, alpha, bufferLength, ios, n
-    real(kind=8) :: totalArea, cellArea, xLeft, xRight, yBottom, yTop
+    real(kind=8) :: xLeft, xRight, yBottom, yTop
     real(kind=8) :: x, y, us2, un(0:8)
-    real(kind=8) :: xlo, xhi, ylo, yhi, middleWidth
-    real(kind=8) :: values(12), lastTime
+    real(kind=8) :: values(12)
+    real(kind=8), allocatable :: history(:,:)
+#ifdef steadyFlow
+    real(kind=8), allocatable :: convergence(:,:)
+#endif
+    integer(kind=4) :: sample, step
     character(len=512) :: line
 
     ! 1. 集中检查输入参数。
     ! 粗细比不能小于1
     if(refineRatio < 1) error stop 'refineRatio must be a positive integer'
 
-    ! 网格尺寸不能小于8
-    if(min(nx,ny) < 8) error stop 'At least 8 cells per direction are required'
+    ! 单网格中线诊断使用四点模板；多块分支在下面检查中心节点数和各数组宽度。
+    if(refineRatio==1 .AND. min(nx,ny)<4) error stop 'At least four nodes per direction are required'
 
     ! 初始场加载只能为0或1
     if(loadInitField/=0 .AND. loadInitField/=1) error stop 'loadInitField must be 0 or 1'
 
-    ! 输出间隔至少覆盖一个粗步；下面统一换算为 refineRatio 的整数倍。
-    if(min(outputSnapshotInterval,reloadFileInterval,outputPltFileInterval)*timeUnit < dble(refineRatio)) &
-        error stop 'Output intervals must be at least one synchronized coarse step'    !要求最短的间隔也至少覆盖一个粗细同步周期,输出间隔对应的细步数 ≥ refineRatio
+    ! 正时间间隔由模块中的ceiling保证至少一个粗步。
+    if(min(outputSnapshotInterval,reloadFileInterval,outputPltFileInterval) <= 0.0d0) &
+        error stop 'Output intervals must be positive'
 
     ! 参数a范围检查
     if(paraA <=-4.0d0 .OR. paraA >=1.0d0) error stop 'Legacy paraA must be in (-4,1)'
 
     if(refineRatio > 1) then
-        ! || 表示“或者”。
-        ! 左右速度或温度任一周期宏开启时，保留下面的报错语句；都未开启时将其去掉。
-        ! 此处位于多块网格分支，目前尚未实现左右周期连接及数据交换，因此初始化时停止。
-#if defined(VerticalWallsPeriodicalU) || defined(VerticalWallsPeriodicalT)
-        error stop 'Multiblock periodic sides require a periodic block topology; use wall BCs or refineRatio=1'
-#endif
         ! 检查界面层数
         if(interfaceSkin < 2) error stop 'Split flow/thermal advance requires at least two interface layers'
 
@@ -665,10 +684,10 @@
         if(mod(nx,refineRatio)/=0 .OR. mod(ny,refineRatio)/=0) &
             error stop 'nx,ny must be multiples of refineRatio'
 
-        ! 检查四周细网格区域够不够厚；0.5 是壁面到首个细节点的距离，保证最外层粗接收节点仍在细网格内。
-        if(dble(min(fineLayerCellsLeft,fineLayerCellsRight,fineLayerCellsBottom,fineLayerCellsTop))-0.5d0 < &
-            dble(interfaceSkin*refineRatio)+0.5d0) &
-            error stop 'Refined wall layer must cover the coarse overlap plus half a fine spacing'
+        ! 最外粗接收节点的细网格编号必须>=1，例如Left-interfaceSkin*refineRatio>=1。
+        if(min(fineLayerCellsLeft,fineLayerCellsRight,fineLayerCellsBottom,fineLayerCellsTop) <= &
+            interfaceSkin*refineRatio) &
+            error stop 'Refined layer must contain the outermost coarse receiver node'
 
         ! 检查粗网格还有空间，确保重叠层有足够的空间
         if(min((nx-fineLayerCellsLeft-fineLayerCellsRight-2*interfaceSkin), &
@@ -686,20 +705,15 @@
             error stop 'Central coarse region needs at least four nodes per direction'
     endif
 
-    ! 2. 设置本次计数、输出间隔、格子权重和各区坐标。
+    ! 2. 设置本次计数、格子权重和各区坐标；固定输出步数已在模块中定义。
     itc=0
-    reloadItcOffset=0
+    ! 重新计算时清零累计步数；续算时保留手工设置，若有latest.meta再由其中的值覆盖。
+    if(loadInitField==0) then
+        reloadItcOffset=0
+    endif
     reloadDimensionlessTime=0.0d0
     reloadMetadataLoaded=.false.
 
-    ! 将 t_ff 间隔换算为细格子步数，再向上对齐到粗细同步步。
-    outputSnapshotIntervalItc=ceiling(outputSnapshotInterval*timeUnit/dble(refineRatio))*refineRatio
-    reloadFileIntervalItc=ceiling(reloadFileInterval*timeUnit/dble(refineRatio))*refineRatio
-    outputPltFileIntervalItc=ceiling(outputPltFileInterval*timeUnit/dble(refineRatio))*refineRatio
-
-#ifdef steadyFlow
-    steadyCheckIntervalItc=ceiling(2000.0d0/dble(refineRatio))*refineRatio  ! 2000 的细格子步数,向上对齐到粗细同步步。
-#endif
 
     ! 设置流场和温度场的格子权重。
     omega(0)=4.0d0/9.0d0
@@ -709,7 +723,6 @@
     omegaT(1:4)=(paraA+4.0d0)/20.0d0
 
     ! 粗格距和粗时间步均为细网格的 refineRatio 倍。
-    dxCoarse=dble(refineRatio)
 
     if(refineRatio==1) then    ! 单块网格情况,  centerIntegrationBox 为全域, 不存在细网格了
         centerIntegrationBox=[0.0d0,dble(nx),0.0d0,dble(ny)]
@@ -756,19 +769,12 @@
 
     endif
 
-    ! 右侧 refineRatio==1 是判断；判断结果统一赋给 coarseIsWall 的四个元素（左、右、下、上）。
-    ! refineRatio=1 时全部为 .true.，四边执行物理边界条件（壁面或周期）。
-    ! refineRatio>1 时全部为 .false.，粗网格四边是重叠接收层，通过接口交换处理。
-    coarseIsWall=refineRatio==1
-
-    ! 把细网格的输运参数换算为粗网格参数。
-    ! 细网格 dx=1，直接使用基准 Snu、Sq、Qk、Qnu。
-    SnuCoarse=1.0d0/(0.5d0+(1.0d0/Snu-0.5d0)/dxCoarse)
-    SqCoarse=1.0d0/(0.5d0+(1.0d0/Sq-0.5d0)/dxCoarse)
-    QkCoarse=1.0d0/(0.5d0+(1.0d0/Qk-0.5d0)/dxCoarse)
-    QnuCoarse=1.0d0/(0.5d0+(1.0d0/Qnu-0.5d0)/dxCoarse)
-
-
+    ! 单网格四边为物理边界；多块粗区四边均为接收层。
+    if(refineRatio==1) then
+        coarseIsWall=.true.
+    else
+        coarseIsWall=.false.
+    endif
 
     if(refineRatio > 1) then
 
@@ -907,7 +913,6 @@
     coarseHistoryNext=0.0d0
 
     ! 4. 设置五个区域的初始场，并累计不重复的物理积分面积。
-    totalArea=0.0d0
 
     ! 中心粗网格数组，包括它的重叠接收层的初始化，还有初始温度和初始fg的设置
     ! 初始化宏观量和碰撞后数组。
@@ -949,25 +954,6 @@
     vp_coarse=v_coarse
     Tp_coarse=T_coarse
 #endif
-
-    !累加中心粗网格负责的物理积分面积，不含重叠层
-    do j=1,size(f_coarse,2)
-        do i=1,size(f_coarse,1)
-            ! 节点控制面积先裁剪到本区范围；这里的坐标仍以细格距为单位。
-            x=xOffsetCoarse+(i-0.5d0)*dxCoarse
-            y=yOffsetCoarse+(j-0.5d0)*dxCoarse
-            xlo=max(x-dxCoarse/2,centerIntegrationBox(1))
-            xhi=min(x+dxCoarse/2,centerIntegrationBox(2))
-            ylo=max(y-dxCoarse/2,centerIntegrationBox(3))
-            yhi=min(y+dxCoarse/2,centerIntegrationBox(4))
-            cellArea=0.0d0
-            if(xhi > xlo .AND. yhi > ylo) then
-                cellArea=(xhi-xlo)*(yhi-ylo)    ! 单网格全域或中心粗物理矩形。
-            endif
-            totalArea=totalArea+cellArea    !中心粗网格负责的物理积分面积
-        enddo
-    enddo
- 
 
     !多块细网格
     if(refineRatio > 1) then  
@@ -1012,28 +998,6 @@
         Tp_left=T_left
 #endif
 
-        !累加左细网格负责的物理积分面积，含上下细区的两个小的重叠层
-        do j=1,size(f_left,2)
-            do i=1,size(f_left,1)
-                ! 左细区格距为1、坐标偏移为0，节点(i,j)的控制面积就是[i-1,i]×[j-1,j]。
-                ! 本区负责三个矩形：[0,127.5]×[0,1024]，
-                ! 以及[127.5,130]×[0,127.5]、[127.5,130]×[895.5,1024]。
-                ! 例如(128,128)的面积为0.75，(129,128)为0.5，(129,129)为0。
-                xlo=dble(i-1)
-                xhi=dble(i)
-                ylo=dble(j-1)
-                yhi=dble(j)
-                ! 左侧主体：x<=127.5，贯穿全高。
-                cellArea=max(0.0d0,min(xhi,centerIntegrationBox(1))-xlo)*(yhi-ylo)
-                ! 节点伸入x>=127.5部分的宽度，仅累计它在下、上两端的面积。
-                middleWidth=max(0.0d0,xhi-max(xlo,centerIntegrationBox(1)))
-                cellArea=cellArea+middleWidth*max(0.0d0,min(yhi,centerIntegrationBox(3))-ylo)    ! 下端
-                cellArea=cellArea+middleWidth*max(0.0d0,yhi-max(ylo,centerIntegrationBox(4)))    ! 上端
-                totalArea=totalArea+cellArea
-            enddo
-        enddo
-
-
         ! 初始化右侧细网格，包括重叠层，并设置初始温度和初始fg
         ! 初始化宏观量和碰撞后数组。
         u_right=0.0d0
@@ -1074,30 +1038,6 @@
         vp_right=v_right
         Tp_right=T_right
 #endif
-
-        !累加右细网格负责的物理积分面积，含上下细区的两个x方向的小的重叠层
-        do j=1,size(f_right,2)
-            do i=1,size(f_right,1)
-                ! 右细区格距为1，默认xOffsetRight=893、yOffsetRight=0。
-                ! 节点(i,j)的控制面积为[893+i-1,893+i]×[j-1,j]，数组存储范围为[893,1024]×[0,1024]。
-                ! 本区负责三个矩形：[895.5,1024]×[0,1024]，
-                ! 以及[893,895.5]×[0,127.5]、[893,895.5]×[895.5,1024]。
-                ! x=893:895.5在y=127.5:895.5内属于中心粗物理区，不计入右细区积分。
-                ! 例如(3,128)的面积为0.75，(2,128)为0.5，中心区接收节点(2,129)为0。
-                xlo=xOffsetRight+dble(i-1)
-                xhi=xOffsetRight+dble(i)
-                ylo=dble(j-1)
-                yhi=dble(j)
-                ! 右侧主体：x>=895.5，贯穿全高。
-                cellArea=max(0.0d0,xhi-max(xlo,centerIntegrationBox(2)))*(yhi-ylo)
-                ! 节点伸入x<=895.5部分的宽度，仅累计它在下、上两端的面积。
-                middleWidth=max(0.0d0,min(xhi,centerIntegrationBox(2))-xlo)
-                cellArea=cellArea+middleWidth*max(0.0d0,min(yhi,centerIntegrationBox(3))-ylo)    ! 下端
-                cellArea=cellArea+middleWidth*max(0.0d0,yhi-max(ylo,centerIntegrationBox(4)))    ! 上端
-                totalArea=totalArea+cellArea
-            enddo
-        enddo
-
 
         ! 初始化下侧细网格，包括y方向重叠层，并设置初始温度和初始fg
         ! 初始化宏观量和碰撞后数组。
@@ -1140,21 +1080,6 @@
         Tp_bottom=T_bottom
 #endif
 
-        ! 下细区格距为1，默认xOffsetBottom=130、yOffsetBottom=0。
-        ! 节点(i,j)的控制面积为[130+i-1,130+i]×[j-1,j]，数组存储范围为[130,893]×[0,130]。
-        ! 本区只负责[130,893]×[0,127.5]；y=127.5:130属于中心粗物理区，不计入下细区积分。
-        ! x方向全部位于中心宽度内，每个节点的宽度为1，同一行的节点面积相同。
-        ! 例如(1,127)的面积为1，(1,128)为0.5，接收节点(1,129)、(1,130)为0。
-        do j=1,size(f_bottom,2)
-            ylo=dble(j-1)
-            yhi=dble(j)
-            cellArea=max(0.0d0,min(yhi,centerIntegrationBox(3))-ylo)
-            do i=1,size(f_bottom,1)
-                totalArea=totalArea+cellArea
-            enddo
-        enddo
-
-
         ! 初始化上侧细网格，包括重叠层
         ! 初始化宏观量和碰撞后数组。
         u_top=0.0d0
@@ -1196,65 +1121,86 @@
         Tp_top=T_top
 #endif
 
-        ! 上细区格距为1，默认xOffsetTop=130、yOffsetTop=893。
-        ! 节点(i,j)的控制面积为[130+i-1,130+i]×[893+j-1,893+j]，数组存储范围为[130,893]×[893,1024]。
-        ! 本区只负责[130,893]×[895.5,1024]；y=893:895.5属于中心粗物理区，不计入上细区积分。
-        ! x方向全部位于中心宽度内，每个节点的宽度为1，同一行的节点面积相同。
-        ! 例如接收节点(1,1)、(1,2)的面积为0，(1,3)为0.5，(1,4)为1。
-        do j=1,size(f_top,2)
-            ylo=yOffsetTop+dble(j-1)
-            yhi=yOffsetTop+dble(j)
-            cellArea=max(0.0d0,yhi-max(ylo,centerIntegrationBox(4)))
-            do i=1,size(f_top,1)
-                totalArea=totalArea+cellArea
-            enddo
-        enddo
     endif
 
     ! 5. 检查已构建的网格；续算时在这里读取并检查文件。
-    ! 总面积检查
-    if(abs(totalArea-dble(nx)*ny) > 1.0d-8) error stop 'Grid ownership does not tile the physical domain'
 
     ! 续算下，恢复各个区域的数据
     if(loadInitField==1) then
         call read_restart()    ! 恢复五个区域、三个接口时间层以及累计计数。
 
-        ! 续算只追加新的 Nu/Re 数据；原历史的样本数和时间必须与检查点相符。
-        lastTime=-1.0d0   !初始化计数
+        ! 只保留检查点已经完成的采样。先完整读入并核对前缀，再覆盖原文件；旧尾部直接删除。
+        ! 先把检查点之前需要保留的数据读入内存，确认正确后，再覆盖原文件，从而删除检查点之后的旧记录。
+        allocate(history(12,NuReSampleCount))
+        open(newunit=k,file=NuReHistoryFile,status='old',iostat=ios)   ! Nu/Re 历史
+        if(ios/=0) error stop 'Restart requires the matching Nu/Re history'
+
         n=0
-!---------------------------------------------------------------------------------------------------
-        ! 打开NuRe历史文件
-!---------------------------------------------------------------------------------------------------
-        open(newunit=k,file=NuReHistoryFile,status='old',iostat=ios)
-        if(ios/=0) error stop 'Restart requires the matching Nu/Re history'  !打开失败就停止
-        do                                      !没有预先指定次数的循环。每次从文件读取一行，放入字符串
-            read(k,'(a)',iostat=ios) line
-            if(ios < 0) exit                    !正常情况下表示到达文件末尾，退出do循环
-            if(ios > 0) error stop 'Nu/Re history read error'  !读取出错
-            if(len_trim(line)==0 .OR. line(1:1)=='#') cycle   !忽略空行和注释行,cycle 表示结束本次循环，继续读取下一行
-            read(line,*,iostat=ios) values   !从已经读入的字符串中解析数字,* 表示采用列表导向格式
-            !检查解析数字能否读取，以及是否有非有限值
-            if(ios/=0 .OR. .NOT. all(ieee_is_finite(values))) error stop 'Invalid Nu/Re history row'
-            if(values(1) <=lastTime) error stop 'Nonmonotone Nu/Re history' !检查采样时间是否严格递增
-            n=n+1
-            lastTime=values(1)
+        do while(n<NuReSampleCount)  !循环只读取检查点对应的次数，不要求把整个文件读完
+            read(k,'(a)',iostat=ios) line !# sample itc_total t_ff NuVolAvg ReVolRMS Nu_hot Nu_cold Nu_middle 
+                                          ! mass meanT Tmin Tmax rhoMin rhoMax
+            if(ios/=0) error stop 'History is shorter than checkpoint sample count'
+            if(len_trim(line)==0 .OR. line(1:1)=='#') cycle  !跳过，继续读下一行,不会增加 n，所以标题不算一次采样
+            read(line,*,iostat=ios) sample,step,values !读取的是字符串 line，不是再次从文件读取下一行
+            if(ios/=0 .OR. .NOT.all(ieee_is_finite(values))) error stop 'Invalid retained history row'
+
+            n=n+1  ! 增加有效记录行数，核对采样编号和步数
+            if(sample/=n .OR. step/=n*outputSnapshotIntervalItc) error stop 'History sample/step mismatch'
+            if(abs(values(1)-dble(step)/timeUnit)>1d-12*max(1d0,abs(values(1)))) &
+                error stop 'History time/step mismatch'  ! 再核对这一行的时间
+            history(:,n)=values
         enddo
         close(k)
-!---------------------------------------------------------------------------------------------------
-        ! 检测历史文件是否真实保存上了数据
-!---------------------------------------------------------------------------------------------------
-        !n是实际读到的采样行数，NuReSampleCount是检查点中恢复的已完成采样次数
-        if(n/=NuReSampleCount) error stop 'History sample count differs from checkpoint; use the matching history'
-        ! 按实际采样次数和固定间隔核对最后一次采样时间。
-        if(n > 0) then
-            if(abs(lastTime-(dble(n)*dble(outputSnapshotIntervalItc)/timeUnit)) > 1.0d-10*max(1.0d0,&
-                (dble(n)*dble(outputSnapshotIntervalItc)/timeUnit))) error stop 'Checkpoint/history time mismatch'
-        endif
-    endif
+
+#ifdef steadyFlow
+        ! 收敛检查频率可以不同；按累计检查步数保留对应的误差记录。
+        allocate(convergence(3,reloadItcOffset/steadyCheckIntervalItc))
+        open(newunit=k,file='Convergence_2DOpenaccMultiblock.dat',status='old',iostat=ios)
+        if(ios/=0) error stop 'Restart requires convergence history'
+
+        n=0
+        do while(n<size(convergence,2))
+            read(k,'(a)',iostat=ios) line  !itc_total  t_ff  errorU  errorT
+            if(ios/=0) error stop 'Convergence history is shorter than checkpoint'
+            if(len_trim(line)==0 .OR. line(1:1)=='#') cycle
+            read(line,*,iostat=ios) step,values(1:3)
+            if(ios/=0 .OR. .NOT.all(ieee_is_finite(values(1:3)))) error stop 'Invalid convergence row'
+
+            n=n+1
+            if(step/=n*steadyCheckIntervalItc) error stop 'Convergence step mismatch'
+            if(abs(values(1)-dble(step)/timeUnit)>1d-12*max(1d0,abs(values(1)))) &
+                error stop 'Convergence time mismatch'
+            convergence(:,n)=values(1:3)
+        enddo
+        close(k)
+#endif
+        ! 两类前缀均检查成功才覆盖；次数与步数按整数写入。
+        open(newunit=k,file=NuReHistoryFile,status='replace') !替换原文件
+        write(k,'(a)') '# sample itc_total t_ff NuVolAvg ReVolRMS Nu_hot Nu_cold Nu_middle '// &
+            'mass meanT Tmin Tmax rhoMin rhoMax' !抬头
+        do n=1,NuReSampleCount
+            write(k,'(2(I0,1X),12(ES24.16E3,1X))') n,n*outputSnapshotIntervalItc,history(:,n)
+        enddo
+        close(k)
+        deallocate(history)
+
+#ifdef steadyFlow
+        open(newunit=k,file='Convergence_2DOpenaccMultiblock.dat',status='replace')
+        write(k,'(a)') '# itc_total t_ff errorU errorT'
+        do n=1,size(convergence,2)
+            write(k,'(I0,1X,3(ES24.16E3,1X))') n*steadyCheckIntervalItc,convergence(:,n)
+        enddo
+        close(k)
+        deallocate(convergence)
+#endif
+
+        call truncate_output_files() !截断快照，plt 以及FinalNuRe这三个输出文件到重启时刻
+
+    endif  ! 续算处理结束
 
 #ifdef unsteadyFlow
     ! 总目标 itc_max 已经对齐，且 read_restart 已检查 reloadItcOffset，因此相减后仍为整粗步。
-    unsteadyItcRemaining=max(0,itc_max-reloadItcOffset)
+    unsteadyItcRemaining=max(0,itc_max-reloadItcOffset)  !非稳态本次还需要跑多少步
 #endif
 
     ! 6. 写出运行设置；全新计算建立输出文件，续算保留已有历史。
@@ -1262,14 +1208,11 @@
     open(newunit=k,file=settingsFile,status='unknown',position='append')
     if(loadInitField==0) then
         ! 首次计算记录完整参数及各区域几何信息。
-        write(k,*) 'Parent: uniform-grid 2DRBOpenacc.F90; D2Q9 MRT / D2Q5 MRT unchanged inside blocks'
-        write(k,*) 'Huang (2014): force-aware MRT scaling and four-point Lagrange; original D2Q5 adaptation.'
-        write(k,*) 'Yu (2002): aligned two-way coupling and acoustic subcycling; cubic spline is not used.'
-        write(k,*) 'Chen (2016): pre-collision buffer states; received f,g participate in the next collision.'
         write(k,*) 'Fine-equivalent nx,ny; refinement ratio:',nx,ny,refineRatio
         write(k,*) 'Rayleigh, Prandtl, Mach:',Rayleigh,Prandtl,Mach
         write(k,*) 'Fine tauf, Snu, Sq, Qk, Qnu, paraA:',tauf,Snu,Sq,Qk,Qnu,paraA
         write(k,*) 'Fine viscosity, diffusivity, gBeta, timeUnit:',viscosity,diffusivity,gBeta,timeUnit
+        write(k,*) 'Target itc, actual t_ff =',itc_max,dble(itc_max)/timeUnit
         write(k,*) 'outputSnapshotIntervalItc =',outputSnapshotIntervalItc
         write(k,*) 'reloadFileIntervalItc =',reloadFileIntervalItc
         write(k,*) 'outputPltFileIntervalItc =',outputPltFileIntervalItc
@@ -1280,12 +1223,11 @@
             fineLayerCellsLeft,fineLayerCellsRight,fineLayerCellsBottom,fineLayerCellsTop
         write(k,*) 'Coarse extension (coarse spacings); fine extension (fine spacings); interface layers:',&
             interfaceSkin,interfaceSkin,interfaceSkin
-        write(k,*) 'Owned physical area:',totalArea
         write(k,*) 'Geometry: central coarse rectangle and four compact fine rectangles.'
         write(k,*) 'Fine seams exchange post-collision populations directly, including diagonal links.'
         write(k,*) 'Coordinates: x=xOffset+(i-0.5)*dx, y=yOffset+(j-0.5)*dx; local i,j start at 1.'
         write(k,*) 'Interfaces preserve the connected-ring time interpolation and MRT scaling; dt=dx.'
-        write(k,*) 'Restart stores coarse,left,right,bottom,top arrays without a text format header.'
+        write(k,*) 'Restart: paired meta (configuration/counters) and bin (coarse,left,right,bottom,top arrays).'
         write(k,*) 'coarse: nx,ny,dx,xOffset,yOffset:',size(f_coarse,1),size(f_coarse,2),dxCoarse,xOffsetCoarse,yOffsetCoarse
         if(refineRatio > 1) then
             write(k,*) 'left: nx,ny,dx,xOffset,yOffset:',size(f_left,1),size(f_left,2),dxFine,xOffsetLeft,yOffsetLeft
@@ -1298,18 +1240,22 @@
         ! 续算只记录本次恢复的累计步数和tff，不重复写入完整设置。
         write(k,*) 'Reload offset itc =',reloadItcOffset
         write(k,*) 'Reload dimensionless time =',reloadDimensionlessTime
+#ifdef unsteadyFlow
+        write(k,*) 'Cumulative target itc, t_ff =',itc_max,dble(itc_max)/timeUnit
+        write(k,*) 'Remaining fine steps =',unsteadyItcRemaining
+#endif
     endif
     close(k)
 
-    if(loadInitField==0) then         ! 新算例清空旧收敛记录
+    if(loadInitField==0) then         ! 新算例建立输出索引和历史标题
+        open(newunit=k,file='OutputFiles_2DOpenaccMultiblock.dat',status='replace')
+        close(k)
         open(newunit=k,file=NuReHistoryFile,status='replace')
-        write(k,'(a)') '# t_ff NuVolAvg ReVolRMS Nu_hot Nu_cold Nu_middle mass meanT Tmin Tmax rhoMin rhoMax'
+        write(k,'(a)') '# sample itc_total t_ff NuVolAvg ReVolRMS Nu_hot Nu_cold Nu_middle mass meanT Tmin Tmax rhoMin rhoMax'
         close(k)   
 #ifdef steadyFlow
-        open(newunit=k,file='Convergence_2DOpenaccMultiblock.dat',status='replace')   !稳态下的速度误差errorU    温度误差errorT
-        close(k)
-        open(newunit=k,file='SteadyMonitor_2DOpenaccMultiblock.dat',status='replace')
-        write(k,'(a)') '# itc t_ff errorU errorT NuVolAvg ReVolRMS Nu_hot Nu_cold Nu_middle'  ! 稳态下的NuRe历史记录
+        open(newunit=k,file='Convergence_2DOpenaccMultiblock.dat',status='replace')
+        write(k,'(a)') '# itc_total t_ff errorU errorT'
         close(k)
 #endif
     endif
@@ -1321,257 +1267,315 @@
 ! 作用: 检查网格及物理配置，恢复时间计数和五套网格状态。
 !===================================================================================================
   subroutine read_restart()
-
     use commondata
     implicit none
-
-
-    integer(kind=4) :: k, ios, head(9), sig(12), currentModel(12), geom(6)
-    real(kind=8) :: phys(15), currentPhysics(15), coord(7)
-    character(len=256) :: name
-    logical :: metaExists
-    
-!---------------------------------------------------------------------------------------------------
-    ! 查询文件是否存在
-!---------------------------------------------------------------------------------------------------
-    ! inquire 是查询文件是否存在,//表示字符串拼接
-    inquire(file=reloadFilePrefix//'-latest.meta',exist=metaExists)
-
-    ! 优先从 latest.meta 找到检查点；meta 不存在时使用手动填写的文件名。
-    if(metaExists) then   !文件存在
-        open(newunit=k,file=reloadFilePrefix//'-latest.meta',status='old',iostat=ios)  !打开meta文件
-        if(ios/=0) error stop 'Cannot open multiblock latest.meta' !如果 .meta 打开失败就停止，检查能否打开该文件
-        read(k,'(a)',iostat=ios) name   !'(a)'表示按字符格式读取
-        close(k)
-        ! 检查meta文件name读取结果
-        if(ios/=0 .OR. len_trim(name)==0) error stop 'Invalid latest.meta' !len_trim计算去掉末尾空格后的字符串长度
-    else
-        !没有meta文件，检查手动meta文件名是否有效
-        if(len_trim(reloadFileName)==0) error stop 'Missing latest.meta: set reloadFileName to a saved checkpoint filename'
-        name=reloadFileName
-    endif
-
-!---------------------------------------------------------------------------------------------------
-    ! 读取meta中记录的二进制文件
-!---------------------------------------------------------------------------------------------------
-    !trim去掉文件名末尾多余空格。unformatted按二进制数据读取。stream按照文件中字节的排列顺序连续读取。
-    open(newunit=k,file=trim(name),status='old',access='stream',form='unformatted',iostat=ios)
-    if(ios/=0) error stop 'Missing multiblock checkpoint' !检查是否能打开
-    read(k,iostat=ios) head    !把文件开头的9个整数读入 head
-    if(ios/=0) error stop 'Truncated multiblock checkpoint header' !检查是否能读取到数据
-    !核对网格、物理参数及输出间隔
-    !merge(5,1,refineRatio > 1),表示条件成立取 5，否则取 1
-    !any(head/=...)表示“只要有任何一项不相等”就成立
-    if(any(head/=[nx,ny,refineRatio,fineLayerCellsLeft,fineLayerCellsRight,&
-        fineLayerCellsBottom,fineLayerCellsTop,interfaceSkin,merge(5,1,refineRatio > 1)])) &
-        error stop 'Restart mesh/refinement mismatch'
-    read(k) sig,phys
-
-    call model_signature(currentModel) !记录编译开关
-
-    call physical_signature(currentPhysics) !记录物理参数
-
-    !文件与当前程序的模型、物理参数或者输出间隔不一致，就停止。
-    if(any(sig/=currentModel) .OR. any(phys/=currentPhysics)) &
-        error stop 'Restart model/physics/output-cadence mismatch' 
-    
-    ! 读取累计步数、已完成的 Nu/Re 采样次数及误差；输出文件名由累计步数换算的 t_ff 决定。
-    read(k) reloadItcOffset,NuReSampleCount,errorU,errorT
-
-    ! 检查累计步数是否合法，以及是否处在粗细网格同步时刻
-    if(reloadItcOffset < 0 .OR. mod(reloadItcOffset,refineRatio)/=0) error stop 'Restart is not at a synchronized time'
-
-    ! 输出间隔已由 physical_signature 核对；这里检查已完成的采样次数与累计步数是否一致。
-    if(NuReSampleCount/=reloadItcOffset/outputSnapshotIntervalItc) &
-        error stop 'Restart sample count differs from the fixed step interval'
-    
-    itc=0   !本次运行完成的步数,所以都是先设为0
-
-!---------------------------------------------------------------------------------------------------
-    !恢复网格数据：按中心、左、右、下、上的写入顺序，恢复已分配数组中的完整场量。
-    ! geom(1:6)=[ni,nj,xStartIntegration,xEndIntegration,yStartIntegration,yEndIntegration]。
-    ! coord(1:7)=[xOffset,yOffset,dx,integrationBox(1:4)]，后四项按[x左,x右,y下,y上]排列。
-    ! geom/coord仅用于核对文件与当前网格是否一致
-    ! 每区复用geom/coord读取下一段；read会从上次读完的位置继续，顺序必须与write一致。
-    ! 细区的积分下标和box覆盖整个存储矩形；实际积分还需扣除中心区域，不能把box全算作独占区域。
-    ! 场量恢复整个存储范围（含重叠接收层）
-!---------------------------------------------------------------------------------------------------
-    ! merge(interfaceSkin,0,refineRatio>1)：多块模式去掉接收层，单网格取0。
-    !这里恢复粗网格数据
-    read(k) geom,coord    ! 读取本区6个布局整数和7个坐标实数。
-    ! geom=[389,389,3,387,3,387]，积分下标i=3:387、j=3:387。
-    ! coord=[122.5,122.5,2.0,127.5,895.5,127.5,895.5]，box为中心积分区域。
-    ! 节点坐标x=122.5+(i-0.5)*2、y=122.5+(j-0.5)*2。
-    ! 完整节点范围均为123.5~899.5，两个方向的节点间距均为2。
-    ! any检查是否有任意一项不相等；几何整数或坐标实数不匹配就停止，避免按错误布局续算。
-    if(any(geom/=[size(f_coarse,1),size(f_coarse,2), &
-        1+merge(interfaceSkin,0,refineRatio>1),size(f_coarse,1)-merge(interfaceSkin,0,refineRatio>1), &
-        1+merge(interfaceSkin,0,refineRatio>1),size(f_coarse,2)-merge(interfaceSkin,0,refineRatio>1)]) .OR. &
-        any(coord/=[xOffsetCoarse,yOffsetCoarse,dxCoarse,centerIntegrationBox])) &
-        error stop 'Restart coarse block layout mismatch'
-    ! 恢复f_coarse(1:389,1:389,0:8)、g_coarse(1:389,1:389,0:4)。
-    ! u/v/T/rho/Fx/Fy的范围均为(1:389,1:389)；ios/=0表示本次场量读取失败。
-    ! 当前检查点的Fx/Fy统一按单位时间力读写；不兼容此前保存dt*F的检查点。
-    read(k,iostat=ios) f_coarse,g_coarse,u_coarse,v_coarse,T_coarse,rho_coarse,Fx_coarse,Fy_coarse
-    if(ios/=0) error stop 'Incomplete coarse checkpoint state'
-    ! 三份接口历史紧接粗区场量保存
-    ! Previous/Current/Next各为(1:30680,1:4)，第2维依次对应左、右、下、上接收区。
-    ! 它们保存接口时间插值所需历史，按文件原值恢复；refineRatio=1时各为(1:1,1:1)。
-    read(k,iostat=ios) coarseHistoryPrevious,coarseHistoryCurrent,coarseHistoryNext
-    if(ios/=0) error stop 'Incomplete coarse interface history'
+    integer(kind=4) :: k, m, ios, head(9), sig(12), currentModel(12), geom(6)
+    real(kind=8) :: phys(15), currentPhysics(15), coord(7), savedTime
 #ifdef steadyFlow
-    read(k) up_coarse,vp_coarse,Tp_coarse    ! 恢复上次稳态检查的参考场。
+    integer :: savedCheckInterval
+#endif
+    character(len=256) :: name, metaName, line
+    logical :: exists
+
+    ! latest存在时必须读取并核对；只有不存在时才使用手工设置，读取失败不能转入手工分支。
+    metaName=reloadFilePrefix//'-latest.meta'
+    inquire(file=trim(metaName),exist=exists)  !看文件是否存在
+    if(exists) then   !文件存在
+        open(newunit=m,file=trim(metaName),status='old',iostat=ios)
+        if(ios/=0) error stop 'Cannot open latest.meta' !检查文件是否损坏
+
+        read(m,'(a)',iostat=ios) line     !元数据格式
+        if(ios/=0 .OR. trim(line)/='MB2D_RESTART 1') error stop 'Unsupported checkpoint metadata'
+
+        read(m,'(a)',iostat=ios) name   !例如reloadFile2DOpenaccMultiblock-100tff-100000itc.bin
+        if(ios/=0 .OR. len_trim(name)==0) error stop 'Missing checkpoint array filename'
+
+        read(m,'(a)') line  !'(a)' 表示按字符读取     !# nx ny refineRatio Left Right Bottom Top interfaceSkin blockCount
+        read(m,*,iostat=ios) head   !9个物理参数
+        if(ios/=0) error stop 'Incomplete checkpoint mesh metadata'
+        if(any(head/=[nx,ny,refineRatio,fineLayerCellsLeft,fineLayerCellsRight, & !any只要有一项不一致，就报错。
+            fineLayerCellsBottom,fineLayerCellsTop,interfaceSkin,merge(5,1,refineRatio>1)])) &
+            error stop 'Restart mesh/refinement mismatch'
+
+        read(m,'(a)') line !自定义宏
+        read(m,*,iostat=ios) sig
+        if(ios/=0) error stop 'Incomplete checkpoint model metadata'
+
+        read(m,'(a)') line !# Rayleigh Prandtl Mach Thot Tcold Snu Sq Qk Qnu paraA snapshotInterval reloadInterval pltInterval Ha phi
+        read(m,*,iostat=ios) phys
+        if(ios/=0 .OR. .NOT.all(ieee_is_finite(phys))) error stop 'Invalid checkpoint physics metadata'
+
+        currentModel=0     !将数组的12个元素全部置零
+#ifdef steadyFlow
+        currentModel(1)=1     !根据编译开关，把对应元素设成1
+#endif
+#ifdef SideHeatedCell
+        currentModel(3)=1
+#endif
+#ifdef HorizontalWallsNoslip
+        currentModel(4)=1
+#endif
+#ifdef VerticalWallsNoslip
+        currentModel(5)=1
+#endif
+#ifdef VerticalWallsPeriodicalU
+        currentModel(6)=1
+#endif
+#ifdef HorizontalWallsConstT
+        currentModel(7)=1
+#endif
+#ifdef HorizontalWallsAdiabatic
+        currentModel(8)=1
+#endif
+#ifdef VerticalWallsConstT
+        currentModel(9)=1
+#endif
+#ifdef VerticalWallsAdiabatic
+        currentModel(10)=1
+#endif
+#ifdef VerticalWallsPeriodicalT
+        currentModel(11)=1
+#endif
+#ifdef SideHeatedHa
+        currentModel(12)=1
+#endif
+        ! 前13项为公共物理参数和输出间隔，第14、15项为Ha、phi；非磁场模式保持0。
+        currentPhysics=[Rayleigh,Prandtl,Mach,Thot,Tcold,Snu,Sq,Qk,Qnu,paraA,outputSnapshotInterval,&
+            reloadFileInterval,outputPltFileInterval,0.0d0,0.0d0]  !用数组构造物理信息
+#ifdef SideHeatedHa
+        currentPhysics(14)=Ha
+        currentPhysics(15)=phi
 #endif
 
+        if(any(sig/=currentModel) .OR. any(phys/=currentPhysics)) &
+            error stop 'Restart model/physics/output-cadence mismatch'
 
-    if(refineRatio > 1) then
+        read(m,'(a)') line !# itc_total NuReSampleCount t_ff errorU errorT
+        read(m,*,iostat=ios) reloadItcOffset,NuReSampleCount,savedTime,errorU,errorT
+        if(ios/=0) error stop 'Incomplete checkpoint counters'
+        if(reloadItcOffset<0 .OR. mod(reloadItcOffset,refineRatio)/=0) &  !累计步数必须非负，而且处在粗细同步时刻
+            error stop 'Restart is not at a synchronized time'
+        !采样次数应该与累计步数对应
+        if(NuReSampleCount/=reloadItcOffset/outputSnapshotIntervalItc) error stop 'Invalid restart sample count'
+        !由步数重新计算时间
 
-    !这里恢复左细网格数据
-        ! geom=[130,1024,1,130,1,1024]，积分遍历下标i=1:130、j=1:1024。
-        ! coord=[0.0,0.0,1.0,0.0,130.0,0.0,1024.0]。
-        ! 完整节点范围x=0.5~129.5，y=0.5~1023.5，两个方向的节点间距均为1。
-        ! 恢复f_left(1:130,1:1024,0:8)、g_left(1:130,1:1024,0:4)。
-        ! u/v/T/rho/Fx/Fy及稳态参考场up/vp/Tp的空间范围均为(1:130,1:1024)。
-        read(k) geom,coord    ! 读取本区6个布局整数和7个坐标实数。
-        if(any(geom/=[size(f_left,1),size(f_left,2),1,size(f_left,1),1,size(f_left,2)]) .OR. &
+        reloadDimensionlessTime=dble(reloadItcOffset)/timeUnit
+        !与文件中的 savedTime 比较，确认时间和步数一致
+        if(.NOT.all(ieee_is_finite([savedTime,errorU,errorT]))) error stop 'Nonfinite restart metadata'
+        if(abs(savedTime-reloadDimensionlessTime)>1d-12*max(1d0,abs(savedTime))) error stop 'Restart time mismatch'
+
+#ifdef steadyFlow
+        read(m,'(a)') line !# steadyCheckIntervalItc
+        read(m,*,iostat=ios) savedCheckInterval
+        if(ios/=0) error stop 'Missing steady check interval'
+        if(savedCheckInterval/=steadyCheckIntervalItc) error stop 'Steady check interval mismatch'
+#endif
+        ! 各区几何只在meta中核对；bin只含数组，i最快、j其次、分布方向最后。
+        read(m,'(a)') line  ! 粗网格：ni nj iStart iEnd jStart jEnd
+        read(m,*,iostat=ios) geom
+        if(ios/=0) error stop 'Incomplete coarse geometry'
+
+        read(m,*,iostat=ios) coord ![xOffset, yOffset, dx, xmin, xmax, ymin, ymax]
+        if(ios/=0) error stop 'Incomplete coarse coordinates'
+        if(any(geom/=[size(f_coarse,1),size(f_coarse,2), &
+            1+merge(interfaceSkin,0,refineRatio>1),size(f_coarse,1)-merge(interfaceSkin,0,refineRatio>1), &
+            1+merge(interfaceSkin,0,refineRatio>1),size(f_coarse,2)-merge(interfaceSkin,0,refineRatio>1)]) .OR. &
+            any(coord/=[xOffsetCoarse,yOffsetCoarse,dxCoarse, &
+            centerIntegrationBox])) error stop 'Restart coarse layout mismatch'
+
+
+        if(refineRatio>1) then
+
+        read(m,'(a)') line  ! left: ni nj iStart iEnd jStart jEnd
+        read(m,*,iostat=ios) geom
+        if(ios/=0) error stop 'Incomplete left geometry'
+
+        read(m,*,iostat=ios) coord  ![xOffset, yOffset, dx, xmin, xmax, ymin, ymax]
+        if(ios/=0) error stop 'Incomplete left coordinates'
+        if(any(geom/=[size(f_left,1),size(f_left,2), &
+            1,size(f_left,1),1,size(f_left,2)]) .OR. &
             any(coord/=[xOffsetLeft,yOffsetLeft,dxFine, &
-            xOffsetLeft,xOffsetLeft+size(f_left,1),yOffsetLeft,yOffsetLeft+size(f_left,2)])) &
-            error stop 'Restart left block layout mismatch'
-        read(k,iostat=ios) f_left,g_left,u_left,v_left,T_left,rho_left,Fx_left,Fy_left
-        if(ios/=0) error stop 'Incomplete left checkpoint state'
-#ifdef steadyFlow
-        read(k) up_left,vp_left,Tp_left    ! 恢复上次稳态检查的参考场。
-#endif
+            xOffsetLeft,xOffsetLeft+size(f_left,1),yOffsetLeft,yOffsetLeft+size(f_left,2)])) error stop 'Restart left layout mismatch'
 
-    !这里恢复右细网格数据
-        ! geom=[131,1024,1,131,1,1024]，积分遍历下标i=1:131、j=1:1024。
-        ! coord=[893.0,0.0,1.0,893.0,1024.0,0.0,1024.0]。
-        ! 完整节点范围x=893.5~1023.5，y=0.5~1023.5，两个方向的节点间距均为1。
-        ! 恢复f_right(1:131,1:1024,0:8)、g_right(1:131,1:1024,0:4)。
-        ! u/v/T/rho/Fx/Fy及稳态参考场up/vp/Tp的空间范围均为(1:131,1:1024)。
-        read(k) geom,coord    ! 读取本区6个布局整数和7个坐标实数。
-        if(any(geom/=[size(f_right,1),size(f_right,2),1,size(f_right,1),1,size(f_right,2)]) .OR. &
+        read(m,'(a)') line  ! right: ni nj iStart iEnd jStart jEnd；随后为xOffset yOffset dx及积分外框。
+        read(m,*,iostat=ios) geom
+        if(ios/=0) error stop 'Incomplete right geometry'
+
+        read(m,*,iostat=ios) coord  ![xOffset, yOffset, dx, xmin, xmax, ymin, ymax]
+        if(ios/=0) error stop 'Incomplete right coordinates'
+        if(any(geom/=[size(f_right,1),size(f_right,2), &
+            1,size(f_right,1),1,size(f_right,2)]) .OR. &
             any(coord/=[xOffsetRight,yOffsetRight,dxFine, &
-            xOffsetRight,xOffsetRight+size(f_right,1),yOffsetRight,yOffsetRight+size(f_right,2)])) &
-            error stop 'Restart right block layout mismatch'
-        read(k,iostat=ios) f_right,g_right,u_right,v_right,T_right,rho_right,Fx_right,Fy_right
-        if(ios/=0) error stop 'Incomplete right checkpoint state'
-#ifdef steadyFlow
-        read(k) up_right,vp_right,Tp_right    ! 恢复上次稳态检查的参考场。
-#endif
-
-    !这里恢复下细网格数据
-        ! geom=[763,130,1,763,1,130]，积分遍历下标i=1:763、j=1:130。
-        ! coord=[130.0,0.0,1.0,130.0,893.0,0.0,130.0]。
-        ! 完整节点范围x=130.5~892.5，y=0.5~129.5，两个方向的节点间距均为1。
-        ! 恢复f_bottom(1:763,1:130,0:8)、g_bottom(1:763,1:130,0:4)。
-        ! u/v/T/rho/Fx/Fy及稳态参考场up/vp/Tp的空间范围均为(1:763,1:130)。
-        read(k) geom,coord    ! 读取本区6个布局整数和7个坐标实数。
-        if(any(geom/=[size(f_bottom,1),size(f_bottom,2),1,size(f_bottom,1),1,size(f_bottom,2)]) .OR. &
+            xOffsetRight,xOffsetRight+size(f_right,1),yOffsetRight,yOffsetRight+size(f_right,2)])) error stop 'Restart right layout mismatch'
+        
+        read(m,'(a)') line  ! bottom: ni nj iStart iEnd jStart jEnd；随后为xOffset yOffset dx及积分外框。
+        read(m,*,iostat=ios) geom 
+        if(ios/=0) error stop 'Incomplete bottom geometry'
+        read(m,*,iostat=ios) coord  ![xOffset, yOffset, dx, xmin, xmax, ymin, ymax]
+        if(ios/=0) error stop 'Incomplete bottom coordinates'
+        if(any(geom/=[size(f_bottom,1),size(f_bottom,2), &
+            1,size(f_bottom,1),1,size(f_bottom,2)]) .OR. &
             any(coord/=[xOffsetBottom,yOffsetBottom,dxFine, &
-            xOffsetBottom,xOffsetBottom+size(f_bottom,1),yOffsetBottom,yOffsetBottom+size(f_bottom,2)])) &
-            error stop 'Restart bottom block layout mismatch'
-        read(k,iostat=ios) f_bottom,g_bottom,u_bottom,v_bottom,T_bottom,rho_bottom,Fx_bottom,Fy_bottom
-        if(ios/=0) error stop 'Incomplete bottom checkpoint state'
-#ifdef steadyFlow
-        read(k) up_bottom,vp_bottom,Tp_bottom    ! 恢复上次稳态检查的参考场。
-#endif
-
-    !这里恢复上细网格数据
-        ! 默认geom=[763,131,1,763,1,131]，积分遍历下标i=1:763、j=1:131。
-        ! 默认coord=[130.0,893.0,1.0,130.0,893.0,893.0,1024.0]。
-        ! 完整节点范围x=130.5~892.5，y=893.5~1023.5，两个方向的节点间距均为1。
-        ! 恢复f_top(1:763,1:131,0:8)、g_top(1:763,1:131,0:4)。
-        ! u/v/T/rho/Fx/Fy及稳态参考场up/vp/Tp的空间范围均为(1:763,1:131)。
-        read(k) geom,coord    ! 读取本区6个布局整数和7个坐标实数。
-        if(any(geom/=[size(f_top,1),size(f_top,2),1,size(f_top,1),1,size(f_top,2)]) .OR. &
+            xOffsetBottom,xOffsetBottom+size(f_bottom,1),yOffsetBottom,yOffsetBottom+size(f_bottom,2)])) error stop 'Restart bottom layout mismatch'
+        
+        read(m,'(a)') line  ! top: ni nj iStart iEnd jStart jEnd；随后为xOffset yOffset dx及积分外框。
+        read(m,*,iostat=ios) geom
+        if(ios/=0) error stop 'Incomplete top geometry'
+        read(m,*,iostat=ios) coord  ![xOffset, yOffset, dx, xmin, xmax, ymin, ymax]
+        if(ios/=0) error stop 'Incomplete top coordinates'
+        if(any(geom/=[size(f_top,1),size(f_top,2), &
+            1,size(f_top,1),1,size(f_top,2)]) .OR. &
             any(coord/=[xOffsetTop,yOffsetTop,dxFine, &
-            xOffsetTop,xOffsetTop+size(f_top,1),yOffsetTop,yOffsetTop+size(f_top,2)])) &
-            error stop 'Restart top block layout mismatch'
-        read(k,iostat=ios) f_top,g_top,u_top,v_top,T_top,rho_top,Fx_top,Fy_top
-        if(ios/=0) error stop 'Incomplete top checkpoint state'
-#ifdef steadyFlow
-        read(k) up_top,vp_top,Tp_top    ! 恢复上次稳态检查的参考场。
-#endif
+            xOffsetTop,xOffsetTop+size(f_top,1),yOffsetTop,yOffsetTop+size(f_top,2)])) error stop 'Restart top layout mismatch'
+        endif  ! 细网格下的网格判断
+        close(m)
+        reloadMetadataLoaded=.true.
+    else     !meta文件不存在
+        ! bin只存数组：没有meta时，直接使用手工累计步数，不从时间或文件名反推。
+        name=trim(reloadFileName)
+        if(len_trim(name)==0) error stop 'No latest.meta; set reloadFileName and reloadItcOffset' !文件名不为空
+        if(reloadItcOffset<0 .OR. mod(reloadItcOffset,refineRatio)/=0) &   ! 累计步数必须非负，而且处在粗细同步时刻
+            error stop 'Manual restart step must be nonnegative and synchronized'
+
+        NuReSampleCount=reloadItcOffset/outputSnapshotIntervalItc !反算计数
+        reloadDimensionlessTime=dble(reloadItcOffset)/timeUnit  !反算无量纲时间 tff
+        ! 未读到meta，保留初始errorU/errorT；稳态旧场从bin恢复，下一次check重新计算误差。
     endif
 
-    close(k)
 
-    reloadDimensionlessTime=dble(reloadItcOffset)/timeUnit  !由累计格子步恢复tff
-    reloadMetadataLoaded=.true.
+
+    if(len_trim(name)<5) error stop 'Invalid restart filename'  !bin文件名长度检查
+    if(name(len_trim(name)-3:len_trim(name))/='.bin') error stop 'Restart filename must end in .bin' !取文件名最后四个字符，确认它们是 .bin。
+    
+    ! 恢复完整场量与接口时间历史；手工分支要求使用同一网格、模型和输出间隔生成的bin。
+    ! 'stream'	按连续数据流访问,'unformatted'	读取二进制数据
+    open(newunit=k,file=trim(name),access='stream',form='unformatted',status='old',iostat=ios)
+    if(ios/=0) error stop 'Cannot open checkpoint arrays'
+    ! 粗网格数据
+    read(k,iostat=ios) f_coarse,g_coarse,u_coarse,v_coarse,T_coarse,rho_coarse,Fx_coarse,Fy_coarse
+    if(ios/=0) error stop 'Incomplete coarse state'
+    ! 读取粗网格时间历史，保存的是接口插值所需的数据，不是三个完整粗网格场。
+    read(k,iostat=ios) coarseHistoryPrevious,coarseHistoryCurrent,coarseHistoryNext
+    if(ios/=0) error stop 'Incomplete coarse time history'
+
+    ! 稳态下恢复上一次检查的旧场
+#ifdef steadyFlow
+    read(k,iostat=ios) up_coarse,vp_coarse,Tp_coarse
+    if(ios/=0) error stop 'Incomplete coarse convergence reference'
+#endif
+
+    if(refineRatio>1) then  !依次恢复四个细区域
+    read(k,iostat=ios) f_left,g_left,u_left,v_left,T_left,rho_left,Fx_left,Fy_left
+    if(ios/=0) error stop 'Incomplete left state'
+
+#ifdef steadyFlow
+    read(k,iostat=ios) up_left,vp_left,Tp_left
+    if(ios/=0) error stop 'Incomplete left convergence reference'
+#endif
+
+    read(k,iostat=ios) f_right,g_right,u_right,v_right,T_right,rho_right,Fx_right,Fy_right
+    if(ios/=0) error stop 'Incomplete right state'
+
+#ifdef steadyFlow
+    read(k,iostat=ios) up_right,vp_right,Tp_right
+    if(ios/=0) error stop 'Incomplete right convergence reference'
+#endif
+
+    read(k,iostat=ios) f_bottom,g_bottom,u_bottom,v_bottom,T_bottom,rho_bottom,Fx_bottom,Fy_bottom
+    if(ios/=0) error stop 'Incomplete bottom state'
+
+#ifdef steadyFlow
+    read(k,iostat=ios) up_bottom,vp_bottom,Tp_bottom
+    if(ios/=0) error stop 'Incomplete bottom convergence reference'
+#endif
+
+    read(k,iostat=ios) f_top,g_top,u_top,v_top,T_top,rho_top,Fx_top,Fy_top
+    if(ios/=0) error stop 'Incomplete top state'
+
+#ifdef steadyFlow
+    read(k,iostat=ios) up_top,vp_top,Tp_top
+    if(ios/=0) error stop 'Incomplete top convergence reference'
+#endif
+
+    endif
+    close(k)
+    !有 .meta 时，这个名字来自元数据；没有 .meta 时，它就是你手工填写的名字。
+    reloadFileName=trim(name)
   end subroutine read_restart
 !===================================================================================================
 
 !===================================================================================================
-! 子程序: model_signature
-! 作用: 将当前物理模型和边界宏配置写入检查点配置标识。
+! 子程序: truncate_output_files
+! 作用: 续算回到某个检查点后，删除这个检查点之后的旧快照、plt 等输出，并同步整理输出索引
 !===================================================================================================
-  subroutine model_signature(sig)
-
+  subroutine truncate_output_files()
+    use commondata,only: reloadItcOffset,snapshotFilePrefix,pltFolderPrefix
     implicit none
+    integer :: k, u, ios, n, i, step
+    integer, allocatable :: steps(:)
+    character(len=256), allocatable :: names(:)
+    character(len=512) :: line
+    character(len=256) :: name
+    logical :: exists
 
-    integer(kind=4), intent(out) :: sig(12)
+    open(newunit=k,file='OutputFiles_2DOpenaccMultiblock.dat',status='old',iostat=ios) !打开统计清单
+    if(ios/=0) error stop 'Missing output file index'
 
-    sig=0     !将数组的12个元素全部置零
-#ifdef steadyFlow
-    sig(1)=1     !根据编译开关，把对应元素设成1
-#endif
-#ifdef SideHeatedCell
-    sig(3)=1
-#endif
-#ifdef HorizontalWallsNoslip
-    sig(4)=1
-#endif
-#ifdef VerticalWallsNoslip
-    sig(5)=1
-#endif
-#ifdef VerticalWallsPeriodicalU
-    sig(6)=1
-#endif
-#ifdef HorizontalWallsConstT
-    sig(7)=1
-#endif
-#ifdef HorizontalWallsAdiabatic
-    sig(8)=1
-#endif
-#ifdef VerticalWallsConstT
-    sig(9)=1
-#endif
-#ifdef VerticalWallsAdiabatic
-    sig(10)=1
-#endif
-#ifdef VerticalWallsPeriodicalT
-    sig(11)=1
-#endif
-#ifdef SideHeatedHa
-    sig(12)=1
-#endif
-  end subroutine model_signature
-!===================================================================================================
+    n=0
+    do
+        read(k,'(a)',iostat=ios) line
+        if(ios<0) exit !到文件末尾：退出循环。
+        if(ios>0) error stop 'Output index read error' !读取出错：停止程序。
+        if(len_trim(line)==0) cycle !空行：跳过，不计数。
+        n=n+1   !计数有效行
+    enddo
 
-!===================================================================================================
-! 子程序: physical_signature
-! 作用: 记录物理参数和输出间隔，供续算时核对兼容性。
-!===================================================================================================
-  subroutine physical_signature(sig)
+    allocate(steps(n),names(n)) !分配数组
+    rewind(k) !把文件的读取位置移回开头
 
-    use commondata,only: Rayleigh,Prandtl,Mach,Thot,Tcold,Snu,Sq,Qk,Qnu,paraA,&
-        outputSnapshotInterval,reloadFileInterval,outputPltFileInterval
-#ifdef SideHeatedHa
-    use commondata,only: Ha,phi
-#endif
-    implicit none
+    i=0
+    do while(i<n)
+        read(k,'(a)',iostat=ios) line
+        if(ios/=0) error stop 'Incomplete output index'
+        if(len_trim(line)==0) cycle
 
-    real(kind=8), intent(out) :: sig(15)
+        read(line,*,iostat=ios) step,name !在 line 里面阅读信息
+        if(ios/=0 .OR. step<0) error stop 'Invalid output index row'
 
-    ! 前13项为公共物理参数和输出间隔，第14、15项为Ha、phi；非磁场模式保持0。
-    sig=[Rayleigh,Prandtl,Mach,Thot,Tcold,Snu,Sq,Qk,Qnu,paraA,outputSnapshotInterval,&
-        reloadFileInterval,outputPltFileInterval,0.0d0,0.0d0]  !用数组构造物理信息
-#ifdef SideHeatedHa
-    sig(14)=Ha
-    sig(15)=phi
-#endif
-  end subroutine physical_signature
+        ! index(字符串,要查找的内容) 的作用是查找子字符串：
+        !- 找到：返回第一次出现的位置，从 1 开始计数。
+        !- 找不到：返回 0。
+        !achar(整数) 则把 ASCII 编码转换成对应字符,achar(92) 指的是\，反斜杠 
+        if(index(name,'/')>0 .OR. index(name,achar(92))>0 .OR. index(name,':')>0 .OR. &
+            index(name,'..')>0) error stop 'Output index contains a path'  !如果文件名包含 /、\、: 或 .. 中的任何一种，就报错。
+        !不是以快照前缀开头；不是以 plt 前缀开头；也不是最终 Nu/Re 结果文件，那就报错
+        if(index(name,snapshotFilePrefix//'-')/=1 .AND. index(name,pltFolderPrefix//'-')/=1 .AND. &
+            trim(name)/='FinalNuRe_2DOpenaccMultiblock.dat') error stop 'Unexpected output filename' 
+        i=i+1
+        steps(i)=step
+        names(i)=name
+    enddo
+    close(k)
+
+    ! 前缀已完整读入，删除检查点之后的输出，不保存备份。
+    do i=1,n
+        if(steps(i)<=reloadItcOffset) cycle  !直接跳过，文件保留
+        inquire(file=trim(names(i)),exist=exists) !文件是否存在
+        if(exists) then
+            open(newunit=u,file=trim(names(i)),status='old',iostat=ios)
+            if(ios/=0) error stop 'Cannot open stale output for deletion' !打开失败就停止，手动解决
+            close(u,status='delete',iostat=ios) !关闭并删除这个文件
+            if(ios/=0) error stop 'Cannot delete stale output' !检查能否关闭并删除
+        endif
+    enddo
+
+    open(newunit=k,file='OutputFiles_2DOpenaccMultiblock.dat',status='replace') !'replace' 覆盖原内容
+    do i=1,n
+        if(steps(i)<=reloadItcOffset) write(k,'(I0,1X,A)') steps(i),trim(names(i)) !只把需要保留的记录写回
+    enddo
+    close(k)
+    deallocate(steps,names)
+  end subroutine truncate_output_files
 !===================================================================================================
 
 !===================================================================================================
@@ -1650,7 +1654,7 @@
     !$acc parallel loop collapse(2) present(f_coarse,g_coarse,rho_coarse,u_coarse,v_coarse, &
     !$acc& T_coarse,Fx_coarse,Fy_coarse,history) async(1) &
     !$acc& firstprivate(region,iStart,iEnd,jStart,xOffset,yOffset,ni,nj, &
-    !$acc& xOffsetCoarse,yOffsetCoarse,dxCoarse,SnuCoarse,SqCoarse,QkCoarse,QnuCoarse) &
+    !$acc& xOffsetCoarse,yOffsetCoarse) &
     !$acc& private(a,ix,iy,ii,jj,sourceX,sourceY,width,p,qx,qy,wx,wy,fv,gv,buffer,value)
     do j=jStart,jEnd
         do i=iStart,iEnd
@@ -1859,7 +1863,7 @@
     !$acc& f_right,g_right,rho_right,u_right,v_right,T_right,Fx_right,Fy_right, &
     !$acc& f_bottom,g_bottom,rho_bottom,u_bottom,v_bottom,T_bottom,Fx_bottom,Fy_bottom, &
     !$acc& f_top,g_top,rho_top,u_top,v_top,T_top,Fx_top,Fy_top) async(1) &
-    !$acc& firstprivate(SnuCoarse,SqCoarse,QkCoarse,QnuCoarse,dxCoarse,keepMoments) &
+    !$acc& firstprivate(keepMoments) &
     !$acc& private(a,sourceX,sourceY,fv,gv,buffer,rh,ux,uy,temp,fx,fy)
     do j=jStart,jEnd      !粗网格的数组下标
         do i=iStart,iEnd  !粗节点(1,1) ← 全域细节点(124,124)
@@ -2174,7 +2178,7 @@
     ! 先推进流场，再用更新后的速度推进温度场；数组和松弛率由调用处传入。
     ! wall(1:4) 依次表示左、右、下、上是否为真实墙面；粗细人工接口不能当墙面反弹。
 
-    integer(kind=4) :: ni, nj
+    integer(kind=4) :: ni, nj, j, a
     real(kind=8) :: dt, Snu, Sq, Qk, Qnu, gBeta
     logical :: wall(4)
 
@@ -2200,6 +2204,18 @@
 #endif
         )
 
+#ifdef VerticalWallsPeriodicalU
+    ! 单网格自己左右连接；多块粗区没有物理外边界。
+    if(wall(1) .AND. wall(2)) then
+        !$acc parallel loop collapse(2) present(f_post) async(1)
+        do a=0,8
+            do j=1,nj
+                f_post(0,j,a)=f_post(ni,j,a)
+                f_post(ni+1,j,a)=f_post(1,j,a)
+            enddo
+        enddo
+    endif
+#endif
     call streaming(ni,nj,f,f_post)
 
     call bounceback(ni,nj,f,f_post,wall(1),wall(2),&
@@ -2209,6 +2225,18 @@
 
     call collisionT(merge(1,0,refineRatio>1),ni,nj,g,g_post,u,v,T,Qk,Qnu)
 
+#ifdef VerticalWallsPeriodicalT
+    ! 单网格自己左右连接；多块粗区没有物理外边界。
+    if(wall(1) .AND. wall(2)) then
+        !$acc parallel loop collapse(2) present(g_post) async(1)
+        do a=0,4
+            do j=1,nj
+                g_post(0,j,a)=g_post(ni,j,a)
+                g_post(ni+1,j,a)=g_post(1,j,a)
+            enddo
+        enddo
+    endif
+#endif
     call streamingT(ni,nj,g,g_post)
 
     call bouncebackT(ni,nj,g,g_post,wall(1),wall(2),&
@@ -2431,21 +2459,6 @@
     integer(kind=4) :: i, j
     ! integer(kind=4) :: alpha
 
-#ifdef VerticalWallsPeriodicalU
-
-    !$acc parallel loop gang vector present(f, f_post) async(1)
-    do j=1,ny    !速度边界垂直边界周期，直接方向相同，跨边界的入射分布
-        !Left side (i=1)
-        if(leftWall) f(1,j,1)=f_post(nx,j,1)
-        if(leftWall) f(1,j,5)=f_post(nx,j,5)
-        if(leftWall) f(1,j,8)=f_post(nx,j,8)
-
-        !Right side (i=nx)
-        if(rightWall) f(nx,j,3)=f_post(1,j,3)
-        if(rightWall) f(nx,j,6)=f_post(1,j,6)
-        if(rightWall) f(nx,j,7)=f_post(1,j,7)
-    enddo
-#endif
 
 #ifdef VerticalWallsNoslip
 
@@ -2652,17 +2665,6 @@
     integer(kind=4) :: i, j
     !integer(kind=4) :: alpha
 
-#ifdef VerticalWallsPeriodicalT
-
-    !$acc parallel loop gang vector present(g, g_post) async(1)
-    do j=1,ny
-        !Left boundary
-        if(leftWall) g(1,j,1)=g_post(nx,j,1)
-
-        !Right boundary
-        if(rightWall) g(nx,j,3)=g_post(1,j,3)
-    enddo
-#endif
 
 #ifdef VerticalWallsConstT
 
@@ -2883,6 +2885,7 @@
   subroutine exchange_fine_flow_halos()
     use commondata
     implicit none
+    integer(kind=4) :: j, a
     !参数中先出现的是接收方，后出现的是来源方,nint表示把实数偏移量取最近整数
     call copy_fine_halo(9,size(f_left,1),size(f_left,2),nint(xOffsetLeft),nint(yOffsetLeft),f_post_left,size(f_bottom,1),&
         size(f_bottom,2),nint(xOffsetBottom),nint(yOffsetBottom),f_post_bottom)
@@ -2907,6 +2910,17 @@
 
     call copy_fine_halo(9,size(f_top,1),size(f_top,2),nint(xOffsetTop),nint(yOffsetTop),f_post_top,size(f_right,1),&
         size(f_right,2),nint(xOffsetRight),nint(yOffsetRight),f_post_right)
+#ifdef VerticalWallsPeriodicalU
+    ! 左右细区贯穿全高；只交换外侧迁移列，不涉及中心粗细接收层。
+    ! 斜方向的j偏移由streaming完成；越过上下墙面的方向随后由壁面条件覆盖。
+    !$acc parallel loop collapse(2) present(f_post_left,f_post_right) async(1)
+    do a=0,8
+        do j=1,ny
+            f_post_left(0,j,a)=f_post_right(size(f_post_right,1)-2,j,a)
+            f_post_right(size(f_post_right,1)-1,j,a)=f_post_left(1,j,a)
+        enddo
+    enddo
+#endif
   end subroutine exchange_fine_flow_halos
 !===================================================================================================
 
@@ -2917,6 +2931,7 @@
   subroutine exchange_fine_thermal_halos()
     use commondata
     implicit none
+    integer(kind=4) :: j, a
 
     call copy_fine_halo(5,size(f_left,1),size(f_left,2),nint(xOffsetLeft),nint(yOffsetLeft),g_post_left,size(f_bottom,1),&
         size(f_bottom,2),nint(xOffsetBottom),nint(yOffsetBottom),g_post_bottom)
@@ -2941,6 +2956,17 @@
 
     call copy_fine_halo(5,size(f_top,1),size(f_top,2),nint(xOffsetTop),nint(yOffsetTop),g_post_top,size(f_right,1),&
         size(f_right,2),nint(xOffsetRight),nint(yOffsetRight),g_post_right)
+#ifdef VerticalWallsPeriodicalT
+    ! 左右细区贯穿全高；只交换外侧迁移列，不涉及中心粗细接收层。
+    ! 斜方向的j偏移由streaming完成；越过上下墙面的方向随后由壁面条件覆盖。
+    !$acc parallel loop collapse(2) present(g_post_left,g_post_right) async(1)
+    do a=0,4
+        do j=1,ny
+            g_post_left(0,j,a)=g_post_right(size(g_post_right,1)-2,j,a)
+            g_post_right(size(g_post_right,1)-1,j,a)=g_post_left(1,j,a)
+        enddo
+    enddo
+#endif
   end subroutine exchange_fine_thermal_halos
 !===================================================================================================
 
@@ -3061,7 +3087,7 @@
         errorT=dt
     endif
     open(newunit=k,file='Convergence_2DOpenaccMultiblock.dat',status='unknown',position='append')
-    write(k,'(I12,2(1X,ES24.16E3))') reloadItcOffset+itc,errorU,errorT
+    write(k,'(I0,1X,3(ES24.16E3,1X))') reloadItcOffset+itc,dble(reloadItcOffset+itc)/timeUnit,errorU,errorT
     close(k)
     write(*,*) 'errorU,errorT:',errorU,errorT
 #endif
@@ -3076,23 +3102,32 @@
     use commondata
     implicit none
     logical, intent(in) :: full
+    ! 同一同步步只传一次宏观场；完整检查点需要时再补传f/g、力和接口时间历史。
+    integer(kind=4), save :: macroItc=-1, stateItc=-1
 
-    call update_host_grid(size(f_coarse,1),size(f_coarse,2),full,f_coarse,g_coarse,rho_coarse,&
+    if(full) then
+        if(stateItc==itc) return
+    else
+        if(macroItc==itc) return
+    endif
+    call update_host_grid(size(f_coarse,1),size(f_coarse,2),full,macroItc/=itc,f_coarse,g_coarse,rho_coarse,&
         u_coarse,v_coarse,T_coarse,Fx_coarse,Fy_coarse)
     if(refineRatio > 1) then
-        call update_host_grid(size(f_left,1),size(f_left,2),full,f_left,g_left,rho_left,&
+        call update_host_grid(size(f_left,1),size(f_left,2),full,macroItc/=itc,f_left,g_left,rho_left,&
             u_left,v_left,T_left,Fx_left,Fy_left)
-        call update_host_grid(size(f_right,1),size(f_right,2),full,f_right,g_right,rho_right,&
+        call update_host_grid(size(f_right,1),size(f_right,2),full,macroItc/=itc,f_right,g_right,rho_right,&
             u_right,v_right,T_right,Fx_right,Fy_right)
-        call update_host_grid(size(f_bottom,1),size(f_bottom,2),full,f_bottom,g_bottom,rho_bottom,&
+        call update_host_grid(size(f_bottom,1),size(f_bottom,2),full,macroItc/=itc,f_bottom,g_bottom,rho_bottom,&
             u_bottom,v_bottom,T_bottom,Fx_bottom,Fy_bottom)
-        call update_host_grid(size(f_top,1),size(f_top,2),full,f_top,g_top,rho_top,&
+        call update_host_grid(size(f_top,1),size(f_top,2),full,macroItc/=itc,f_top,g_top,rho_top,&
             u_top,v_top,T_top,Fx_top,Fy_top)
     endif
     if(full) then
         !$acc update self(coarseHistoryPrevious,coarseHistoryCurrent,coarseHistoryNext) async(1)
     endif
     !$acc wait(1)
+    macroItc=itc
+    if(full) stateItc=itc
   end subroutine update_host_all
 !===================================================================================================
 
@@ -3100,7 +3135,7 @@
 ! 子程序: update_host_grid
 ! 作用: 将指定区域的宏观量或完整状态从设备同步到主机。
 !===================================================================================================
-  subroutine update_host_grid(ni,nj,full,f,g,rho,u,v,T,Fx,Fy)
+  subroutine update_host_grid(ni,nj,full,macros,f,g,rho,u,v,T,Fx,Fy)
 
     implicit none
 
@@ -3118,9 +3153,11 @@
     real(kind=8) :: Fx(ni,nj)
     real(kind=8) :: Fy(ni,nj)
 
-    logical, intent(in) :: full
+    logical, intent(in) :: full, macros
 
-    !$acc update self(u, v, T, rho) async(1)
+    if(macros) then
+        !$acc update self(u, v, T, rho) async(1)
+    endif
     if(full) then
         !$acc update self(f, g, Fx, Fy) async(1)
     endif
@@ -3198,26 +3235,6 @@
 #endif
 !===================================================================================================
 
-!===================================================================================================
-! 子程序: output_steady_monitor
-! 作用: 在稳态误差检查时记录当前 Nu/Re，不改变正式采样计数和续算历史。
-!===================================================================================================
-  subroutine output_steady_monitor()
-#ifdef steadyFlow
-    use commondata,only: itc,reloadItcOffset,timeUnit,errorU,errorT
-    implicit none
-
-    integer(kind=4) :: k
-    real(kind=8) :: nu, re, hot, cold, middle, mass, meanT, tmin, tmax, rmin, rmax
-
-    call calculate_NuRe(nu,re,hot,cold,middle,mass,meanT,tmin,tmax,rmin,rmax)
-
-    open(newunit=k,file='SteadyMonitor_2DOpenaccMultiblock.dat',status='unknown',position='append')
-    write(k,'(I12,8(1X,ES24.16E3))') reloadItcOffset+itc,dble(reloadItcOffset+itc)/timeUnit,errorU,errorT,nu,re,hot,cold,middle
-    close(k)
-#endif
-  end subroutine output_steady_monitor
-!===================================================================================================
 
 !===================================================================================================
 ! 子程序: calculate_NuRe
@@ -3497,7 +3514,7 @@
 !===================================================================================================
   subroutine output_final_NuRe()
 #ifdef steadyFlow
-    use commondata,only: itc,reloadItcOffset,timeUnit,settingsFile,errorU,errorT,epsU,epsT
+    use commondata,only: itc,reloadItcOffset,timeUnit,settingsFile,errorU,errorT,epsU,epsT,steadyCheckIntervalItc
     implicit none
 
     integer(kind=4) :: k
@@ -3507,7 +3524,11 @@
     call calculate_NuRe(nu,re,hot,cold,middle,mass,meanT,tmin,tmax,rmin,rmax)
 
     open(newunit=k,file='FinalNuRe_2DOpenaccMultiblock.dat',status='replace')
+    write(k,'(a,I0)') '# itc_total = ',reloadItcOffset+itc
     write(k,'(a,L1)') '# converged = ',errorU <=epsU .AND. errorT <=epsT
+    write(k,'(a,I0)') '# error_check_itc = ', &
+        ((reloadItcOffset+itc)/steadyCheckIntervalItc)*steadyCheckIntervalItc
+    write(k,'(a,2(ES24.16E3,1X))') '# errorU errorT = ',errorU,errorT
     write(k,'(a)') '# t_ff NuVolAvg ReVolRMS Nu_hot Nu_cold Nu_middle mass meanT Tmin Tmax rhoMin rhoMax'
     write(k,'(12(ES24.16E3,1X))') dble(reloadItcOffset+itc)/timeUnit,nu,re,hot,cold,middle,&
         mass,meanT,tmin,tmax,rmin,rmax
@@ -3523,6 +3544,7 @@
     write(k,*) 'Nu_middle =',middle
     write(k,*) 'Re_rms =',re
     close(k)
+    call record_output_file('FinalNuRe_2DOpenaccMultiblock.dat')
     write(*,*) 'Final Nu_global, Re_rms:',nu,re
 #endif
   end subroutine output_final_NuRe
@@ -3543,7 +3565,8 @@
     call calculate_NuRe(nu,re,hot,cold,middle,mass,meanT,tmin,tmax,rmin,rmax)
 
     open(newunit=k,file=NuReHistoryFile,status='old',position='append')
-    write(k,'(12(ES24.16E3,1X))') dble(reloadItcOffset+itc)/timeUnit,nu,re,hot,cold,middle,&
+    write(k,'(2(I0,1X),12(ES24.16E3,1X))') NuReSampleCount+1,reloadItcOffset+itc, &
+        dble(reloadItcOffset+itc)/timeUnit,nu,re,hot,cold,middle,&
         mass,meanT,tmin,tmax,rmin,rmax
     close(k)
     NuReSampleCount=NuReSampleCount+1
@@ -3563,8 +3586,7 @@
     character(len=40), intent(out) :: timeString
     integer(kind=4) :: i
 
-    ! 保留十二位小数；最小输出间隔为一个粗步，检查精度以避免不同时刻重名。
-    if(dble(refineRatio)/timeUnit<=1.0d-12) error stop 'Increase tff filename precision for this timeUnit'
+    ! t_ff保留十二位小数供查看；文件名另含累计整数步数，不同保存步不会因时间舍入而重名。
     write(timeString,'(F40.12)') dble(reloadItcOffset+itc)/timeUnit
     if(index(timeString,'*')/=0) error stop 'tff exceeds filename field width'
     timeString=adjustl(timeString)
@@ -3588,11 +3610,13 @@
 
     integer(kind=4) :: k
     character(len=40) :: timeString
+    character(len=256) :: name
 
     call output_time_string(timeString)
+    write(name,'(a,a,a,i0,a)') pltFolderPrefix//'-',trim(timeString),'tff-',reloadItcOffset+itc,'itc.dat'
 
     call update_host_all(.false.)
-    open(newunit=k,file=pltFolderPrefix//'-'//trim(timeString)//'tff.dat',status='replace')
+    open(newunit=k,file=trim(name),status='replace')
     write(k,'(a)') 'VARIABLES="x/L","y/L","u","v","T","rho","dx/L","integration_area/L^2"'
 
     call output_Tecplot_grid(size(f_coarse,1),size(f_coarse,2),dxCoarse,xOffsetCoarse,yOffsetCoarse,(1+merge(interfaceSkin,0,refineRatio>1)),&
@@ -3619,6 +3643,7 @@
     endif
 
     close(k)
+    call record_output_file(name)
   end subroutine output_Tecplot
 !===================================================================================================
 
@@ -3679,348 +3704,225 @@
 
 !===================================================================================================
 ! 子程序: output_SnapshotFile
-! 作用: 输出包含几何、积分权重及宏观场的快照文件。
+! 作用: 将五区原始节点拼成四个一维数组，输出紧凑快照，不存积分权重。
 !===================================================================================================
   subroutine output_SnapshotFile()
-
     use commondata
     implicit none
-
-    ! 快照记录区域数量、各区几何和节点积分面积；单网格为一区，多块网格为五区。
-    ! 快照用于后处理；完整续算还需要 f/g 和粗历史，应读取续算检查点。
-
-    integer(kind=4) :: k
+    integer(kind=4) :: k, first, last, count, iStart, iEnd, jStart, jEnd
+    real(kind=8), allocatable :: uall(:), vall(:), Tall(:), rhoall(:)
     character(len=40) :: timeString
-
-    call output_time_string(timeString)
+    character(len=256) :: name
 
     call update_host_all(.false.)
-    open(newunit=k,file=snapshotFilePrefix//'-'//trim(timeString)//'tff.bin',form='unformatted',&
-        access='stream',status='replace')
-    write(k) merge(5,1,refineRatio > 1),nx,ny,reloadItcOffset+itc,dble(reloadItcOffset+itc)/timeUnit,lengthUnit
-
-    call output_SnapshotFile_grid(size(f_coarse,1),size(f_coarse,2),dxCoarse,xOffsetCoarse,yOffsetCoarse,&
-        (1+merge(interfaceSkin,0,refineRatio>1)),(size(f_coarse,1)-merge(interfaceSkin,0,refineRatio>1)),(1+merge(interfaceSkin,0,refineRatio>1)),(size(f_coarse,2)-merge(interfaceSkin,0,refineRatio>1)),&
-        centerIntegrationBox,k,rho_coarse,u_coarse,&
-        v_coarse,T_coarse)
-    if(refineRatio > 1) then
-
-        call output_SnapshotFile_grid(size(f_left,1),size(f_left,2),dxFine,xOffsetLeft,yOffsetLeft,1,&
-            size(f_left,1),1,size(f_left,2),[xOffsetLeft,xOffsetLeft+size(f_left,1),yOffsetLeft,yOffsetLeft+size(f_left,2)],k,rho_left,&
-            u_left,v_left,T_left)
-
-        call output_SnapshotFile_grid(size(f_right,1),size(f_right,2),dxFine,xOffsetRight,yOffsetRight,1,&
-            size(f_right,1),1,size(f_right,2),[xOffsetRight,xOffsetRight+size(f_right,1),yOffsetRight,yOffsetRight+size(f_right,2)],k,rho_right,&
-            u_right,v_right,T_right)
-
-        call output_SnapshotFile_grid(size(f_bottom,1),size(f_bottom,2),dxFine,xOffsetBottom,yOffsetBottom,&
-            1,size(f_bottom,1),1,size(f_bottom,2),&
-            [xOffsetBottom,xOffsetBottom+size(f_bottom,1),yOffsetBottom,yOffsetBottom+size(f_bottom,2)],k,rho_bottom,u_bottom,&
-            v_bottom,T_bottom)
-
-        call output_SnapshotFile_grid(size(f_top,1),size(f_top,2),dxFine,xOffsetTop,yOffsetTop,1,size(f_top,1),&
-            1,size(f_top,2),[xOffsetTop,xOffsetTop+size(f_top,1),yOffsetTop,yOffsetTop+size(f_top,2)],k,rho_top,u_top,v_top,T_top)
+    call output_time_string(timeString)
+    write(name,'(a,a,a,i0,a)') snapshotFilePrefix//'-',trim(timeString),'tff-',reloadItcOffset+itc,'itc.bin'
+    ! 中心去掉接收层；四个细矩形保存原始节点，含零积分面积的接口节点。
+    iStart=1+merge(interfaceSkin,0,refineRatio>1)
+    iEnd=size(f_coarse,1)-merge(interfaceSkin,0,refineRatio>1)
+    jStart=iStart
+    jEnd=size(f_coarse,2)-merge(interfaceSkin,0,refineRatio>1)
+    count=(iEnd-iStart+1)*(jEnd-jStart+1)
+    if(refineRatio>1) count=count+size(T_left)+size(T_right)+size(T_bottom)+size(T_top)
+    allocate(uall(count),vall(count),Tall(count),rhoall(count))
+    first=1
+    last=(iEnd-iStart+1)*(jEnd-jStart+1)
+    uall(first:last)=reshape(u_coarse(iStart:iEnd,jStart:jEnd),[last-first+1])
+    vall(first:last)=reshape(v_coarse(iStart:iEnd,jStart:jEnd),[last-first+1])
+    Tall(first:last)=reshape(T_coarse(iStart:iEnd,jStart:jEnd),[last-first+1])
+    rhoall(first:last)=reshape(rho_coarse(iStart:iEnd,jStart:jEnd),[last-first+1])
+    if(refineRatio>1) then
+        first=last+1
+        last=last+size(T_left)
+        uall(first:last)=reshape(u_left,[last-first+1])
+        vall(first:last)=reshape(v_left,[last-first+1])
+        Tall(first:last)=reshape(T_left,[last-first+1])
+        rhoall(first:last)=reshape(rho_left,[last-first+1])
+        first=last+1
+        last=last+size(T_right)
+        uall(first:last)=reshape(u_right,[last-first+1])
+        vall(first:last)=reshape(v_right,[last-first+1])
+        Tall(first:last)=reshape(T_right,[last-first+1])
+        rhoall(first:last)=reshape(rho_right,[last-first+1])
+        first=last+1
+        last=last+size(T_bottom)
+        uall(first:last)=reshape(u_bottom,[last-first+1])
+        vall(first:last)=reshape(v_bottom,[last-first+1])
+        Tall(first:last)=reshape(T_bottom,[last-first+1])
+        rhoall(first:last)=reshape(rho_bottom,[last-first+1])
+        first=last+1
+        last=last+size(T_top)
+        uall(first:last)=reshape(u_top,[last-first+1])
+        vall(first:last)=reshape(v_top,[last-first+1])
+        Tall(first:last)=reshape(T_top,[last-first+1])
+        rhoall(first:last)=reshape(rho_top,[last-first+1])
     endif
-
+    ! 每段内i最快、j其次，段顺序coarse/left/right/bottom/top；不插值成全域均匀网格。
+    ! 只存四个原始场与少量几何/物理信息；后处理由这些信息重建面积。
+    open(newunit=k,file=trim(name),form='unformatted',access='stream',status='replace')
+    write(k) 'MB2DSNAPSHOT0001',merge(5,1,refineRatio>1),nx,ny,reloadItcOffset+itc
+#ifdef SideHeatedCell
+    write(k) 1
+#else
+    write(k) 0
+#endif
+    write(k) dble(reloadItcOffset+itc)/timeUnit,lengthUnit,viscosity,diffusivity,Thot,Tcold,Tref,timeUnit
+    write(k) centerIntegrationBox
+    write(k) iEnd-iStart+1,jEnd-jStart+1,xOffsetCoarse+(iStart-0.5d0)*dxCoarse, &
+        yOffsetCoarse+(jStart-0.5d0)*dxCoarse,dxCoarse
+    if(refineRatio>1) then
+        write(k) size(T_left,1),size(T_left,2),xOffsetLeft+0.5d0,yOffsetLeft+0.5d0,dxFine
+        write(k) size(T_right,1),size(T_right,2),xOffsetRight+0.5d0,yOffsetRight+0.5d0,dxFine
+        write(k) size(T_bottom,1),size(T_bottom,2),xOffsetBottom+0.5d0,yOffsetBottom+0.5d0,dxFine
+        write(k) size(T_top,1),size(T_top,2),xOffsetTop+0.5d0,yOffsetTop+0.5d0,dxFine
+    endif
+    write(k) uall,vall,Tall,rhoall
     close(k)
+    deallocate(uall,vall,Tall,rhoall)
+    call record_output_file(name)
   end subroutine output_SnapshotFile
 !===================================================================================================
 
-!===================================================================================================
-! 子程序: output_SnapshotFile_grid
-! 作用: 向快照文件写入一个区域的几何、权重和宏观量。
-!===================================================================================================
-  subroutine output_SnapshotFile_grid(ni,nj,dx,xOffset,yOffset,xStartIntegration,xEndIntegration,&
-      yStartIntegration,yEndIntegration,&
-      integrationBox,k,rho,u,v,T)
-
-    use commondata,only: centerIntegrationBox,refineRatio
-    implicit none
-    integer(kind=4) :: ni, nj, xStartIntegration, xEndIntegration, yStartIntegration, yEndIntegration
-    real(kind=8) :: dx, xOffset, yOffset, integrationBox(4)
-
-    real(kind=8) :: x, y, xlo, xhi, ylo, yhi, middleWidth
-    integer(kind=4) :: k, i, j
-    real(kind=8) :: rho(ni,nj)
-    real(kind=8) :: u(ni,nj)
-    real(kind=8) :: v(ni,nj)
-    real(kind=8) :: T(ni,nj)
-    real(kind=8) :: cellAreaRow(xStartIntegration:xEndIntegration)    ! 暂存一行节点的积分面积，按原 i 快、j 慢顺序写入流文件。
-
-    write(k) xEndIntegration-xStartIntegration+1,yEndIntegration-yStartIntegration+1,&
-        xOffset+(dble(xStartIntegration)-0.5d0)*dx,yOffset+(dble(yStartIntegration)-0.5d0)*dx,&
-        dx,integrationBox
-    ! 保持已有快照格式；一维宽度仅在写文件时计算，不在 commondata 重复保存。
-    write(k) (max(0.0d0,min(integrationBox(2),xOffset+i*dx)-&
-        max(integrationBox(1),xOffset+(i-1)*dx)),i=xStartIntegration,xEndIntegration),&
-        (max(0.0d0,min(integrationBox(4),yOffset+j*dx)-&
-        max(integrationBox(3),yOffset+(j-1)*dx)),j=yStartIntegration,yEndIntegration)
-    ! 一维积分权重之后保存显式的二维积分面积。
-    do j=yStartIntegration,yEndIntegration
-        do i=xStartIntegration,xEndIntegration
-            ! 节点控制面积先裁剪到本区范围；这里的坐标仍以细格距为单位。
-            x=xOffset+(i-0.5d0)*dx
-            y=yOffset+(j-0.5d0)*dx
-            xlo=max(x-dx/2,integrationBox(1))
-            xhi=min(x+dx/2,integrationBox(2))
-            ylo=max(y-dx/2,integrationBox(3))
-            yhi=min(y+dx/2,integrationBox(4))
-            cellAreaRow(i)=0.0d0
-            if(xhi > xlo .AND. yhi > ylo) then
-                if(refineRatio==1 .OR. dx > 1.0d0) then
-                    cellAreaRow(i)=(xhi-xlo)*(yhi-ylo)    ! 单网格全域或中心粗物理矩形。
-                else
-                    ! 分别累加四个细物理矩形的面积，排除中心粗物理区域。
-                    cellAreaRow(i)=max(0.0d0,min(xhi,centerIntegrationBox(1))-xlo)*(yhi-ylo)    ! 左
-                    cellAreaRow(i)=cellAreaRow(i)+max(0.0d0,xhi-max(xlo,centerIntegrationBox(2)))*(yhi-ylo)    ! 右
-                    middleWidth=max(0.0d0,min(xhi,centerIntegrationBox(2))-max(xlo,centerIntegrationBox(1)))
-                    cellAreaRow(i)=cellAreaRow(i)+middleWidth*max(0.0d0,min(yhi,centerIntegrationBox(3))-ylo)    ! 下
-                    cellAreaRow(i)=cellAreaRow(i)+middleWidth*max(0.0d0,yhi-max(ylo,centerIntegrationBox(4)))    ! 上
-                endif
-            endif
-        enddo
-        write(k) cellAreaRow
-    enddo
-    write(k) u(xStartIntegration:xEndIntegration,yStartIntegration:yEndIntegration),&
-        v(xStartIntegration:xEndIntegration,yStartIntegration:yEndIntegration),&
-        T(xStartIntegration:xEndIntegration,yStartIntegration:yEndIntegration),&
-        rho(xStartIntegration:xEndIntegration,yStartIntegration:yEndIntegration)
-  end subroutine output_SnapshotFile_grid
-!===================================================================================================
 
 !===================================================================================================
 ! 子程序: output_ReloadFile
 ! 作用: 保存完整检查点，并在写入完成后更新 latest.meta。
 !===================================================================================================
   subroutine output_ReloadFile()
-
     use commondata
     implicit none
-
-    ! 按 coarse、left、right、bottom、top 的固定顺序保存各区数据。
-    ! 粗历史和输出时钟也必须写入，否则恢复后时间插值及采样次序无法保持连续。
-
-    integer(kind=4) :: k, currentModel(12)
+    integer(kind=4) :: k, m, currentModel(12)
     real(kind=8) :: currentPhysics(15)
     character(len=40) :: timeString
-    character(len=256) :: name
+    character(len=256) :: name, metaName
 
     call update_host_all(.true.)
     call output_time_string(timeString)
-    name=reloadFilePrefix//'-'//trim(timeString)//'tff.bin'
+    ! 文件名同时记录实际t_ff和累计细格子步数，手工续算直接填写这个整数步数。
+    write(name,'(a,a,a,i0,a)') reloadFilePrefix//'-',trim(timeString),'tff-',reloadItcOffset+itc,'itc.bin'
+    metaName=reloadFilePrefix//'-latest.meta'
     open(newunit=k,file=trim(name),access='stream',form='unformatted',status='replace')
-    write(k) nx,ny,refineRatio,fineLayerCellsLeft,fineLayerCellsRight,&
-        fineLayerCellsBottom,fineLayerCellsTop,interfaceSkin,merge(5,1,refineRatio > 1)
-
-    ! 保存模型开关和物理参数，使续算能够检查配置是否匹配。
-    call model_signature(currentModel)
-
-    call physical_signature(currentPhysics)
-    write(k) currentModel,currentPhysics
-    ! 保存累计步数、已完成的 Nu/Re 采样次数及误差，与 read_restart 的读取顺序一致。
-    write(k) reloadItcOffset+itc,NuReSampleCount,errorU,errorT
-
-    call output_ReloadFile_grid(size(f_coarse,1),size(f_coarse,2),dxCoarse,xOffsetCoarse,&
-        yOffsetCoarse,(1+merge(interfaceSkin,0,refineRatio>1)),(size(f_coarse,1)-merge(interfaceSkin,0,refineRatio>1)),(1+merge(interfaceSkin,0,refineRatio>1)),&
-        (size(f_coarse,2)-merge(interfaceSkin,0,refineRatio>1)),centerIntegrationBox,k,&
-        f_coarse,g_coarse,u_coarse,v_coarse,T_coarse,rho_coarse,Fx_coarse,Fy_coarse &
+    ! 五区顺序固定：coarse、left、right、bottom、top；不在bin中夹入标量或几何信息。
+    write(k) f_coarse,g_coarse,u_coarse,v_coarse,T_coarse,rho_coarse,Fx_coarse,Fy_coarse
+    write(k) coarseHistoryPrevious,coarseHistoryCurrent,coarseHistoryNext
 #ifdef steadyFlow
-        ,up_coarse,vp_coarse,Tp_coarse &
+    write(k) up_coarse,vp_coarse,Tp_coarse
 #endif
-        )
-    if(refineRatio > 1) then
-
-        call output_ReloadFile_grid(size(f_left,1),size(f_left,2),dxFine,xOffsetLeft,yOffsetLeft,1,&
-            size(f_left,1),1,size(f_left,2),[xOffsetLeft,xOffsetLeft+size(f_left,1),yOffsetLeft,yOffsetLeft+size(f_left,2)],k,f_left,g_left,&
-            u_left,v_left,T_left,&
-            rho_left,Fx_left,Fy_left &
+    if(refineRatio>1) then
+    write(k) f_left,g_left,u_left,v_left,T_left,rho_left,Fx_left,Fy_left
 #ifdef steadyFlow
-            ,up_left,vp_left,Tp_left &
+    write(k) up_left,vp_left,Tp_left
 #endif
-            )
-
-        call output_ReloadFile_grid(size(f_right,1),size(f_right,2),dxFine,xOffsetRight,yOffsetRight,1,&
-            size(f_right,1),1,size(f_right,2),[xOffsetRight,xOffsetRight+size(f_right,1),yOffsetRight,yOffsetRight+size(f_right,2)],k,f_right,&
-            g_right,u_right,v_right,&
-            T_right,rho_right,Fx_right,Fy_right &
+    write(k) f_right,g_right,u_right,v_right,T_right,rho_right,Fx_right,Fy_right
 #ifdef steadyFlow
-            ,up_right,vp_right,Tp_right &
+    write(k) up_right,vp_right,Tp_right
 #endif
-            )
-
-        call output_ReloadFile_grid(size(f_bottom,1),size(f_bottom,2),dxFine,xOffsetBottom,yOffsetBottom,&
-            1,size(f_bottom,1),1,size(f_bottom,2),&
-            [xOffsetBottom,xOffsetBottom+size(f_bottom,1),yOffsetBottom,yOffsetBottom+size(f_bottom,2)],k,f_bottom,g_bottom,&
-            u_bottom,v_bottom,T_bottom,rho_bottom,Fx_bottom,Fy_bottom &
+    write(k) f_bottom,g_bottom,u_bottom,v_bottom,T_bottom,rho_bottom,Fx_bottom,Fy_bottom
 #ifdef steadyFlow
-            ,up_bottom,vp_bottom,Tp_bottom &
+    write(k) up_bottom,vp_bottom,Tp_bottom
 #endif
-            )
-
-        call output_ReloadFile_grid(size(f_top,1),size(f_top,2),dxFine,xOffsetTop,yOffsetTop,1,size(f_top,1),&
-            1,size(f_top,2),[xOffsetTop,xOffsetTop+size(f_top,1),yOffsetTop,yOffsetTop+size(f_top,2)],k,f_top,g_top,u_top,v_top,T_top,&
-            rho_top,Fx_top,&
-            Fy_top &
+    write(k) f_top,g_top,u_top,v_top,T_top,rho_top,Fx_top,Fy_top
 #ifdef steadyFlow
-            ,up_top,vp_top,Tp_top &
+    write(k) up_top,vp_top,Tp_top
 #endif
-            )
     endif
-
     close(k)
-    ! 完整写完当前时刻的 checkpoint 后再更新 latest 指针，其他时刻的 checkpoint 仍保留。
-    open(newunit=k,file=reloadFilePrefix//'-latest.meta',status='replace')
-    write(k,'(a)') trim(name)
-    close(k)
+    ! 完整数组落盘后，覆盖唯一的latest.meta，直接记录本次检查点信息。
+    open(newunit=m,file=trim(metaName),status='replace')
+    write(m,'(a)') 'MB2D_RESTART 1'
+    write(m,'(a)') trim(name)
+    write(m,'(a)') '# nx ny refineRatio Left Right Bottom Top interfaceSkin blockCount'
+    write(m,*) nx,ny,refineRatio,fineLayerCellsLeft,fineLayerCellsRight, &
+        fineLayerCellsBottom,fineLayerCellsTop,interfaceSkin,merge(5,1,refineRatio>1)
+    currentModel=0     !将数组的12个元素全部置零
+#ifdef steadyFlow
+    currentModel(1)=1     !根据编译开关，把对应元素设成1
+#endif
+#ifdef SideHeatedCell
+    currentModel(3)=1
+#endif
+#ifdef HorizontalWallsNoslip
+    currentModel(4)=1
+#endif
+#ifdef VerticalWallsNoslip
+    currentModel(5)=1
+#endif
+#ifdef VerticalWallsPeriodicalU
+    currentModel(6)=1
+#endif
+#ifdef HorizontalWallsConstT
+    currentModel(7)=1
+#endif
+#ifdef HorizontalWallsAdiabatic
+    currentModel(8)=1
+#endif
+#ifdef VerticalWallsConstT
+    currentModel(9)=1
+#endif
+#ifdef VerticalWallsAdiabatic
+    currentModel(10)=1
+#endif
+#ifdef VerticalWallsPeriodicalT
+    currentModel(11)=1
+#endif
+#ifdef SideHeatedHa
+    currentModel(12)=1
+#endif
+    ! 前13项为公共物理参数和输出间隔，第14、15项为Ha、phi；非磁场模式保持0。
+    currentPhysics=[Rayleigh,Prandtl,Mach,Thot,Tcold,Snu,Sq,Qk,Qnu,paraA,outputSnapshotInterval,&
+        reloadFileInterval,outputPltFileInterval,0.0d0,0.0d0]  !用数组构造物理信息
+#ifdef SideHeatedHa
+    currentPhysics(14)=Ha
+    currentPhysics(15)=phi
+#endif
+    write(m,'(a)') '# steady unused SideHeated UhorizontalWall UverticalWall Uperiodic '// &
+        'ThorizontalConst ThorizontalAdiabatic TverticalConst TverticalAdiabatic Tperiodic Ha'
+    write(m,*) currentModel
+    write(m,'(a)') '# Rayleigh Prandtl Mach Thot Tcold Snu Sq Qk Qnu paraA '// &
+        'snapshotInterval reloadInterval pltInterval Ha phi'
+    write(m,'(15(ES24.16E3,1X))') currentPhysics
+    write(m,'(a)') '# itc_total NuReSampleCount t_ff errorU errorT'
+    write(m,'(2(I0,1X),3(ES24.16E3,1X))') reloadItcOffset+itc,NuReSampleCount, &
+        dble(reloadItcOffset+itc)/timeUnit,errorU,errorT
+#ifdef steadyFlow
+    write(m,'(a)') '# steadyCheckIntervalItc'
+    write(m,*) steadyCheckIntervalItc
+#endif
+    write(m,'(a)') '# coarse: ni nj iStart iEnd jStart jEnd / xOffset yOffset dx xmin xmax ymin ymax'
+    write(m,*) size(f_coarse,1),size(f_coarse,2), &
+        1+merge(interfaceSkin,0,refineRatio>1),size(f_coarse,1)-merge(interfaceSkin,0,refineRatio>1), &
+        1+merge(interfaceSkin,0,refineRatio>1),size(f_coarse,2)-merge(interfaceSkin,0,refineRatio>1)
+    write(m,'(7(ES24.16E3,1X))') xOffsetCoarse,yOffsetCoarse,dxCoarse, &
+        centerIntegrationBox
+    if(refineRatio>1) then
+    write(m,'(a)') '# left: ni nj iStart iEnd jStart jEnd / xOffset yOffset dx xmin xmax ymin ymax'
+    write(m,*) size(f_left,1),size(f_left,2), &
+        1,size(f_left,1),1,size(f_left,2)
+    write(m,'(7(ES24.16E3,1X))') xOffsetLeft,yOffsetLeft,dxFine, &
+        xOffsetLeft,xOffsetLeft+size(f_left,1),yOffsetLeft,yOffsetLeft+size(f_left,2)
+    write(m,'(a)') '# right: ni nj iStart iEnd jStart jEnd / xOffset yOffset dx xmin xmax ymin ymax'
+    write(m,*) size(f_right,1),size(f_right,2), &
+        1,size(f_right,1),1,size(f_right,2)
+    write(m,'(7(ES24.16E3,1X))') xOffsetRight,yOffsetRight,dxFine, &
+        xOffsetRight,xOffsetRight+size(f_right,1),yOffsetRight,yOffsetRight+size(f_right,2)
+    write(m,'(a)') '# bottom: ni nj iStart iEnd jStart jEnd / xOffset yOffset dx xmin xmax ymin ymax'
+    write(m,*) size(f_bottom,1),size(f_bottom,2), &
+        1,size(f_bottom,1),1,size(f_bottom,2)
+    write(m,'(7(ES24.16E3,1X))') xOffsetBottom,yOffsetBottom,dxFine, &
+        xOffsetBottom,xOffsetBottom+size(f_bottom,1),yOffsetBottom,yOffsetBottom+size(f_bottom,2)
+    write(m,'(a)') '# top: ni nj iStart iEnd jStart jEnd / xOffset yOffset dx xmin xmax ymin ymax'
+    write(m,*) size(f_top,1),size(f_top,2), &
+        1,size(f_top,1),1,size(f_top,2)
+    write(m,'(7(ES24.16E3,1X))') xOffsetTop,yOffsetTop,dxFine, &
+        xOffsetTop,xOffsetTop+size(f_top,1),yOffsetTop,yOffsetTop+size(f_top,2)
+    endif
+    ! 仅记录目标，不把目标作为续算兼容性约束。
+    write(m,'(a)') '# requested_target_itc requested_target_tff'
+    write(m,'(I0,1X,ES24.16E3)') itc_max,dble(itc_max)/timeUnit
+    close(m)
   end subroutine output_ReloadFile
 !===================================================================================================
 
-!===================================================================================================
-! 子程序: output_ReloadFile_grid
-! 作用: 向检查点写入一个区域的几何、分布函数、宏观量和历史。
-!===================================================================================================
-  subroutine output_ReloadFile_grid(ni,nj,dx,xOffset,yOffset,xStartIntegration,xEndIntegration,&
-      yStartIntegration,yEndIntegration,&
-      integrationBox,k,f,g,u,v,T,rho,Fx,Fy &
-#ifdef steadyFlow
-      ,up,vp,Tp &
-#endif
-      )
-
-    use commondata,only: coarseHistoryPrevious,coarseHistoryCurrent,coarseHistoryNext,dxCoarse
-    implicit none
-
-    ! 每区先写6个布局整数，再写7个坐标实数，随后写完整场量。
-    ! 读写顺序与 read_restart 中对应区域的读取段一致；稳态模式另存 up/vp/Tp。
-
-    integer(kind=4) :: ni, nj, xStartIntegration, xEndIntegration, yStartIntegration, yEndIntegration
-    real(kind=8) :: dx, xOffset, yOffset, integrationBox(4)
-
-
-    integer(kind=4) :: k
-    real(kind=8) :: f(ni,nj,0:8)
-    real(kind=8) :: g(ni,nj,0:4)
-    real(kind=8) :: u(ni,nj)
-    real(kind=8) :: v(ni,nj)
-    real(kind=8) :: T(ni,nj)
-    real(kind=8) :: rho(ni,nj)
-    real(kind=8) :: Fx(ni,nj)
-    real(kind=8) :: Fy(ni,nj)
-
-#ifdef steadyFlow
-    real(kind=8) :: up(ni,nj)
-    real(kind=8) :: vp(ni,nj)
-    real(kind=8) :: Tp(ni,nj)
-#endif
-
-    write(k) ni,nj,xStartIntegration,xEndIntegration,yStartIntegration,yEndIntegration,&
-        xOffset,yOffset,dx,integrationBox
-    ! Fx/Fy直接保存单位时间力，不在检查点读写时乘除dt。
-    write(k) f,g,u,v,T,rho,Fx,Fy
-    ! 粗区按前一、当前、下一时刻保存三个接口小数组；细区只存场量。
-    if(dx==dxCoarse) then
-        write(k) coarseHistoryPrevious,coarseHistoryCurrent,coarseHistoryNext
-    endif
-#ifdef steadyFlow
-    write(k) up,vp,Tp
-#endif
-  end subroutine output_ReloadFile_grid
-!===================================================================================================
-
-!===================================================================================================
-! 子程序: average_window
-! 作用: 对指定时间窗口内的历史数据积分，并检查窗口覆盖情况。
-!===================================================================================================
-  subroutine average_window(t0,t1,result,coverage)
-
-    use commondata,only: NuReHistoryFile,ieee_is_finite
-    implicit none
-
-    real(kind=8), intent(in) :: t0, t1
-    real(kind=8), intent(out) :: result(5), coverage
-    integer(kind=4) :: k, ios
-    real(kind=8) :: prev(12), row(12), aa, bb, ra(5), rb(5), left(5), right(5)
-    logical :: hasPrev
-    character(len=512) :: line
-
-    result=0.0d0
-    coverage=0.0d0
-    hasPrev=.false.
-    open(newunit=k,file=NuReHistoryFile,status='old')
-    do
-        read(k,'(a)',iostat=ios) line
-        if(ios < 0) exit
-        if(ios > 0) error stop 'Nu/Re history read failure'
-        if(len_trim(line)==0 .OR. line(1:1)=='#') cycle
-        read(line,*,iostat=ios) row
-        if(ios/=0 .OR. .NOT. all(ieee_is_finite(row))) error stop 'Invalid history during averaging'
-        if(hasPrev) then
-            if(row(1) <=prev(1)) error stop 'Nonmonotone statistics time'
-            aa=max(t0,prev(1))
-            bb=min(t1,row(1))
-
-            if(bb > aa) then
-                ! 对 Re^2 积分再开根号，保持 sqrt(<u^2+v^2>_{V,t}) 的定义。
-                left=prev(2:6)
-                right=row(2:6)
-                left(2)=left(2)**2
-                right(2)=right(2)**2
-                ra=left+(right-left)*(aa-prev(1))/(row(1)-prev(1))
-                rb=left+(right-left)*(bb-prev(1))/(row(1)-prev(1))
-                result=result+0.5d0*(ra+rb)*(bb-aa)
-                coverage=coverage+bb-aa
-            endif
-        endif
-
-        prev=row
-        hasPrev=.true.
-    enddo
-
-    close(k)
-    if(coverage > 0.0d0) then
-        result=result/coverage
-        result(2)=sqrt(max(0.0d0,result(2)))
-    endif
-  end subroutine average_window
-!===================================================================================================
-
-!===================================================================================================
-! 子程序: output_unsteady_NuRe_postprocess
-! 作用: 输出非稳态窗口平均及前后半窗口对比结果。
-!===================================================================================================
-  subroutine output_unsteady_NuRe_postprocess()
-#ifdef unsteadyFlow
-
-    use commondata,only: unsteadyAverageStartTf,unsteadyAverageEndTf,unsteadyAverageMidTf
-    implicit none
-
-    integer(kind=4) :: k
-    real(kind=8) :: allMean(5), firstMean(5), lastMean(5), c0, c1, c2
-
-    call average_window(unsteadyAverageStartTf,unsteadyAverageEndTf,allMean,c0)
-
-    call average_window(unsteadyAverageStartTf,unsteadyAverageMidTf,firstMean,c1)
-
-    call average_window(unsteadyAverageMidTf,unsteadyAverageEndTf,lastMean,c2)
-    open(newunit=k,file='NuReStatistics_2DOpenaccMultiblock.dat',status='replace')
-    write(k,*) 'Window t_ff:',unsteadyAverageStartTf,unsteadyAverageEndTf
-    write(k,*) 'Covered durations, full/first/last:',c0,c1,c2
-    if(abs(c0-(unsteadyAverageEndTf-unsteadyAverageStartTf)) > 1.0d-8 .OR. c1 <=0.0d0 .OR. c2 <=0.0d0) then
-        write(k,*) 'INCOMPLETE: requested statistics window is not fully covered; no final mean is reported.'
-    else
-
-        write(k,*) 'Columns: NuVolAvg Re_rms_space_time Nu_hot Nu_cold Nu_middle'
-        write(k,'(a,5ES24.16E3)') 'whole:',allMean
-        write(k,'(a,5ES24.16E3)') 'first:',firstMean
-        write(k,'(a,5ES24.16E3)') 'last :',lastMean
-        write(k,'(a,5ES24.16E3)') 'relative half-window difference:',&
-            abs(lastMean-firstMean)/max(abs(allMean),1.0d-30)
-    endif
-
-    close(k)
-#endif
-  end subroutine output_unsteady_NuRe_postprocess
-!===================================================================================================
 
 !===================================================================================================
 ! 子程序: section_owned_weight
@@ -4157,3 +4059,20 @@
 !===================================================================================================
 
 !===================================================================================================
+
+!===================================================================================================
+! 输出索引只记录本程序生成的文件和准确整数步数，不依赖目录扫描或文件名时间的舍入。
+! 同时供续算删除未来输出、独立后处理选择有效快照使用。
+!===================================================================================================
+  subroutine record_output_file(name)
+    use commondata,only: reloadItcOffset,itc
+    implicit none
+    character(*), intent(in) :: name
+    integer :: k
+
+    open(newunit=k,file='OutputFiles_2DOpenaccMultiblock.dat',status='unknown',position='append')
+    write(k,'(I0,1X,A)') reloadItcOffset+itc,trim(name)
+    close(k)
+  end subroutine record_output_file
+
+
