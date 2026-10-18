@@ -4,6 +4,21 @@
 !!!    块内 D2Q9/D2Q5 算法保持不变
 !!!    LBM方法
 !!!    MRT-LBE
+!
+! 坐标与下标约定（全文统一使用以下名称）：
+! 1. 局部下标 i,j：当前网格块数组中的整数编号；各场数组从 1 开始，f_post/g_post 另有外圈。
+! 2. 全局物理坐标 x,y：节点在整个计算域中的位置，统一以细格距为长度单位，用实数表示。
+!    x=xOffset+(i-0.5)*dx，y=yOffset+(j-0.5)*dx；这里的坐标尚未除以 lengthUnit。
+!    xOffset/yOffset 是该网格块在全局物理坐标中的偏移量，不是首节点坐标。
+! 3. 全局细网格下标 I,J：统一细网格编号体系中的整数编号，对应 x=I-0.5、y=J-0.5。
+!    当前网格的共址节点满足 I=x+0.5、J=y+0.5；全局细网格下标不等于任意块的局部下标。
+!    大写 I,J 仅用于此处说明，Fortran 不区分大小写；不表示代码中另有一套同名变量。
+! 默认例子：粗网格 dx=2、xOffset=122.5，局部下标 i=1 -> 全局物理坐标 x=123.5 -> I=124。
+!           粗网格局部下标 i=3 与左细区局部下标 i=128 都位于 x=127.5，对应 I=128。
+! 左细区偏移为零且 dx=1，局部下标恰好等于全局细网格下标；其他块需要按偏移和格距换算。
+! 文中不把“局部下标对应的全局物理坐标”简称为“局部坐标”，避免与相对偏移量混淆。
+! 插值另用连续下标 q=(x-xOffset)/dx+0.5；例如 x=128.5 对应粗网格 q=3.5。
+! 连续下标用于定位节点之间的位置，可能不是整数，不能直接作数组下标；y 方向同理。
 !=============================================================
 
 !=============================================================
@@ -248,7 +263,7 @@
         ! 粗网格相应的信息。
         !===============================================================================================
         ! 左右细区贯穿全高，包含四角区域；上下细区仅存左右细区之间的节点。
-        ! 各场量的 i,j 索引编号从 1 开始，物理坐标为 xOffset+(i-0.5)*dx、yOffset+(j-0.5)*dx。
+        ! 各场量的局部下标 i,j 从 1 开始；对应的全局物理坐标为 xOffset+(i-0.5)*dx、yOffset+(j-0.5)*dx。
         ! f_post/g_post 另留 0 和 n+1 外围位置，用于相邻细区的迁移数据交换。
 
 
@@ -259,7 +274,7 @@
 
 
 
-        ! 粗网格坐标偏移
+        ! 粗网格在全局物理坐标中的偏移量；局部下标 i=1 的节点位置还需加 0.5*dxCoarse。
         real(kind=8) :: xOffsetCoarse, yOffsetCoarse
 
         logical :: coarseIsWall(4)    ! 粗网格左、右、下、上是否执行物理域边界条件；周期边界也为真。
@@ -289,10 +304,10 @@
         !===============================================================================================
         ! 左边细网格相应的信息。
         !===============================================================================================
-        ! 四个细区按各自数组尺寸遍历；Offset 保存坐标偏移。
+        ! 四个细区按局部下标遍历各自数组；Offset 保存各区在全局物理坐标中的偏移量。
         ! 细区积分范围由中心矩形四边确定，节点面积在积分时计算。
 
-        real(kind=8) :: xOffsetLeft, yOffsetLeft    ! 本地数组的坐标偏移。
+        real(kind=8) :: xOffsetLeft, yOffsetLeft    ! 当前细区在全局物理坐标中的偏移量。
         logical :: leftIsWall(4)    ! 左、右、下、上是否为物理墙面。
         real(kind=8), allocatable :: f_left(:,:,:)    ! 流场分布函数，第三维为 D2Q9 方向编号 0:8。
         real(kind=8), allocatable :: g_left(:,:,:)    ! 温度分布函数，第三维为 D2Q5 方向编号 0:4。
@@ -317,7 +332,7 @@
         ! 右边细网格相应的信息。
         !===============================================================================================
 
-        real(kind=8) :: xOffsetRight, yOffsetRight    ! 本地数组的坐标偏移。
+        real(kind=8) :: xOffsetRight, yOffsetRight    ! 当前细区在全局物理坐标中的偏移量。
         logical :: rightIsWall(4)    ! 左、右、下、上是否为物理墙面。
         real(kind=8), allocatable :: f_right(:,:,:)    ! 流场分布函数，第三维为 D2Q9 方向编号 0:8。
         real(kind=8), allocatable :: g_right(:,:,:)    ! 温度分布函数，第三维为 D2Q5 方向编号 0:4。
@@ -342,7 +357,7 @@
         ! 下边细网格相应的信息。
         !===============================================================================================
 
-        real(kind=8) :: xOffsetBottom, yOffsetBottom    ! 本地数组的坐标偏移。
+        real(kind=8) :: xOffsetBottom, yOffsetBottom    ! 当前细区在全局物理坐标中的偏移量。
         logical :: bottomIsWall(4)    ! 左、右、下、上是否为物理墙面。
         real(kind=8), allocatable :: f_bottom(:,:,:)    ! 流场分布函数，第三维为 D2Q9 方向编号 0:8。
         real(kind=8), allocatable :: g_bottom(:,:,:)    ! 温度分布函数，第三维为 D2Q5 方向编号 0:4。
@@ -367,7 +382,7 @@
         ! 上边细网格相应的信息。
         !===============================================================================================
 
-        real(kind=8) :: xOffsetTop, yOffsetTop    ! 本地数组的坐标偏移。
+        real(kind=8) :: xOffsetTop, yOffsetTop    ! 当前细区在全局物理坐标中的偏移量。
         logical :: topIsWall(4)    ! 左、右、下、上是否为物理墙面。
         real(kind=8), allocatable :: f_top(:,:,:)    ! 流场分布函数，第三维为 D2Q9 方向编号 0:8。
         real(kind=8), allocatable :: g_top(:,:,:)    ! 温度分布函数，第三维为 D2Q5 方向编号 0:4。
@@ -671,8 +686,8 @@
     implicit none
 
     ! 先确定五个区域的尺寸、坐标偏移和积分范围，再分配数组。
-    ! nx/ny 是按最细格距计的全域长度；各区域的本地下标都从 1 开始。
-    ! 节点坐标为 xOffset+(i-0.5)*dx；centerIntegrationBox 是积分分界，不是粗网格最外层计算节点。
+    ! nx/ny 是按细格距计的全域长度；各区域场数组的局部下标都从 1 开始。
+    ! 局部下标 i 对应的全局物理坐标为 xOffset+(i-0.5)*dx；centerIntegrationBox 保存全局物理坐标分界。
 
     integer(kind=4) :: k, i, j, alpha, bufferLength, ios, n
     real(kind=8) :: xLeft, xRight, yBottom, yTop
@@ -710,7 +725,7 @@
         if(mod(nx,refineRatio)/=0 .OR. mod(ny,refineRatio)/=0) &
             error stop 'nx,ny must be multiples of refineRatio'
 
-        ! 最外粗接收节点的细网格编号必须>=1，例如Left-interfaceSkin*refineRatio>=1。
+        ! 最外粗接收节点对应的全局细网格下标必须>=1，例如Left-interfaceSkin*refineRatio>=1。
         if(min(fineLayerCellsLeft,fineLayerCellsRight,fineLayerCellsBottom,fineLayerCellsTop) <= &
             interfaceSkin*refineRatio) &
             error stop 'Refined layer must contain the outermost coarse receiver node'
@@ -756,21 +771,23 @@
         yOffsetCoarse=0.0d0
     else       !下面是多块网格的情况
         ! 确定四条分区线
-        xLeft=dble(fineLayerCellsLeft)-0.5d0    !细节点层数编号换成物理坐标，xLeft=127.5
-        xRight=dble(nx-fineLayerCellsRight)+0.5d0    !细节点层数编号换成物理坐标，xRight=895.5
-        yBottom=dble(fineLayerCellsBottom)-0.5d0    !细节点层数编号换成物理坐标，yBottom=127.5
-        yTop=dble(ny-fineLayerCellsTop)+0.5d0    !细节点层数编号换成物理坐标，yTop=895.5
+        xLeft=dble(fineLayerCellsLeft)-0.5d0    !左分区线的全局细网格下标 I=128，对应全局物理坐标 xLeft=127.5
+        xRight=dble(nx-fineLayerCellsRight)+0.5d0    !右分区线的全局细网格下标 I=896，对应全局物理坐标 xRight=895.5
+        yBottom=dble(fineLayerCellsBottom)-0.5d0    !下分区线的全局细网格下标 J=128，对应全局物理坐标 yBottom=127.5
+        yTop=dble(ny-fineLayerCellsTop)+0.5d0    !上分区线的全局细网格下标 J=896，对应全局物理坐标 yTop=895.5
 
         centerIntegrationBox=[xLeft,xRight,yBottom,yTop]    ! [127.5,895.5,127.5,895.5]
 
-        ! 将坐标偏移换算为细格距单位,为了坐标统一
+        ! 各区偏移和格距均使用细格距长度单位；以下节点位置均为全局物理坐标。
         !xOffsetCoarse = 122.5
-        !粗节点下标：    1       2       3       4
-        !坐标：        123.5   125.5   127.5   129.5
+        !粗区局部下标 i：  1       2       3       4
+        !全局物理坐标 x： 123.5   125.5   127.5   129.5
+        !全局细网格下标 I：124     126     128     130
         !用途：        接收层   接收层   分区线   中心内部
         !yOffsetCoarse = 122.5
-        !y方向粗节点下标： 1       2       3       4
-        !y坐标：        123.5   125.5   127.5   129.5
+        !粗区局部下标 j：  1       2       3       4
+        !全局物理坐标 y： 123.5   125.5   127.5   129.5
+        !全局细网格下标 J：124     126     128     130
         !用途：         接收层   接收层   分区线   中心内部
         xOffsetCoarse=xLeft-interfaceSkin*refineRatio-0.5d0*dxCoarse  !!xOffsetCoarse = 122.5
         yOffsetCoarse=yBottom-interfaceSkin*refineRatio-0.5d0*dxCoarse    !yOffsetCoarse = 122.5
@@ -817,7 +834,7 @@
     ! 分别为 coarse、left、right、bottom、top 分配数组，尺寸直接由分区位置和重叠厚度计算。
     ! 先分配 f，其余场量用 size(f,1/2) 取得同一区域的尺寸，不另存尺寸变量。
     ! 场量空间范围是 1:ni、1:nj；左右细区在x方向加 interfaceSkin，上下细区在y方向加 interfaceSkin。
-    ! 壁面在坐标0，首个流体节点在0.5
+    ! 壁面的全局物理坐标为0，相邻细网格首个流体节点的全局物理坐标为0.5
     ! f_post/g_post 为迁移额外保留 0 和 n+1，延续基准代码的半格壁面处理。
     ! 三个小数组保存接口时间历史；up/vp/Tp 保存上次稳态检查的场量。
 
@@ -950,7 +967,7 @@
     f_post_coarse=0.0d0
     g_post_coarse=0.0d0
 
-    ! 根据节点物理坐标构造初始温度，并设置平衡分布函数。
+    ! 根据节点的全局物理坐标构造初始温度，并设置平衡分布函数。
     do j=1,size(f_coarse,2)
         y=(yOffsetCoarse+(dble(j)-0.5d0)*dxCoarse)/lengthUnit
         do i=1,size(f_coarse,1)
@@ -993,7 +1010,7 @@
         f_post_left=0.0d0
         g_post_left=0.0d0
 
-        ! 根据节点物理坐标构造初始温度，并设置平衡分布函数。
+        ! 根据节点的全局物理坐标构造初始温度，并设置平衡分布函数。
         do j=1,size(f_left,2)
             y=(yOffsetLeft+(dble(j)-0.5d0)*dxFine)/lengthUnit
             do i=1,size(f_left,1)
@@ -1034,7 +1051,7 @@
         f_post_right=0.0d0
         g_post_right=0.0d0
 
-        ! 根据节点物理坐标构造初始温度，并设置平衡分布函数。
+        ! 根据节点的全局物理坐标构造初始温度，并设置平衡分布函数。
         do j=1,size(f_right,2)
             y=(yOffsetRight+(dble(j)-0.5d0)*dxFine)/lengthUnit
             do i=1,size(f_right,1)
@@ -1075,7 +1092,7 @@
         f_post_bottom=0.0d0
         g_post_bottom=0.0d0
 
-        ! 根据节点物理坐标构造初始温度，并设置平衡分布函数。
+        ! 根据节点的全局物理坐标构造初始温度，并设置平衡分布函数。
         do j=1,size(f_bottom,2)
             y=(yOffsetBottom+(dble(j)-0.5d0)*dxFine)/lengthUnit
             do i=1,size(f_bottom,1)
@@ -1116,7 +1133,7 @@
         f_post_top=0.0d0
         g_post_top=0.0d0
 
-        ! 根据节点物理坐标构造初始温度，并设置平衡分布函数。
+        ! 根据节点的全局物理坐标构造初始温度，并设置平衡分布函数。
         do j=1,size(f_top,2)
             y=(yOffsetTop+(dble(j)-0.5d0)*dxFine)/lengthUnit
             do i=1,size(f_top,1)
@@ -1641,8 +1658,8 @@
 
     if(refineRatio==1) return  !直接返回
 
-    ! 接收范围直接由分区编号加减 interfaceSkin 得到。
-    ! 默认左i=129:130,j=129:895；右i=1:2,j=129:895；下i=1:763,j=129:130；上i=1:763,j=1:2。
+    ! 接收范围由分区设置和 interfaceSkin 得到，传入的是各细区的局部下标范围。
+    ! 默认局部下标：左i=129:130,j=129:895；右i=1:2,j=129:895；下i=1:763,j=129:130；上i=1:763,j=1:2。
     call save_coarse_history_grid(history,1,fineLayerCellsLeft+1,fineLayerCellsLeft+interfaceSkin, &
         fineLayerCellsBottom+1,ny-fineLayerCellsTop,xOffsetLeft,yOffsetLeft)
     call save_coarse_history_grid(history,2,1,interfaceSkin, &
@@ -1676,13 +1693,13 @@
     !$acc& private(a,ix,iy,ii,jj,sourceX,sourceY,width,p,qx,qy,wx,wy,fv,gv,buffer,value)
     do j=jStart,jEnd
         do i=iStart,iEnd
-            qx=(xOffset+(i-0.5d0)-xOffsetCoarse)/dxCoarse+0.5d0   !把目标细节点的位置换成粗网格下标坐标
-            qy=(yOffset+(j-0.5d0)-yOffsetCoarse)/dxCoarse+0.5d0   !把目标细节点的位置换成粗网格下标坐标
+            qx=(xOffset+(i-0.5d0)-xOffsetCoarse)/dxCoarse+0.5d0   !细区局部下标 i -> 全局物理坐标 x -> 粗网格连续下标 qx
+            qy=(yOffset+(j-0.5d0)-yOffsetCoarse)/dxCoarse+0.5d0   !细区局部下标 j -> 全局物理坐标 y -> 粗网格连续下标 qy
             !确定取哪个粗节点，或者用哪些粗节点插值，还有权重
             call coarse_source_stencil(qx,qy,ni,nj,interfaceSkin,sourceX,sourceY,width,wx,wy)
             buffer=0.0d0         !清空当前目标节点的累加数组
             do iy=1,width        !width指的是插值节点数
-                jj=sourceY+iy-1  !对应粗下标 jj=3,4,5,6
+                jj=sourceY+iy-1  !来源粗数组的局部下标；例如 sourceY=3 时 jj=3,4,5,6
                 do ix=1,width
                     ii=sourceX+ix-1
                     do a=0,8     !对每个来源粗节点，先读出分布函数
@@ -1698,7 +1715,7 @@
                         buffer(a)=buffer(a)+wx(ix)*wy(iy)*value(a) !四点拉格朗日插值在xy方向
                     enddo
                 enddo
-            enddo  !当前粗网格节点的空间插值结束
+            enddo  !当前目标细接收节点的空间插值结束
             ! 每个节点连续放 20 个分量；区内 i 先变，j 后变。
             p=20*((j-jStart)*(iEnd-iStart+1)+i-iStart) !当前节点前面的节点总数，再乘以每个节点的 20 个交换量
             do a=0,19
@@ -1711,7 +1728,7 @@
 
 !===================================================================================================
 ! 子程序: coarse_source_stencil
-! 作用: 由目标坐标找到共址粗节点或四乘四空间插值模板。
+! 作用: 由目标的粗网格连续下标 qx/qy，找到共址粗节点或四乘四空间插值模板。
 !===================================================================================================
   subroutine coarse_source_stencil(qx,qy,ni,nj,skin,sourceX,sourceY,width,wx,wy)
     implicit none
@@ -1721,7 +1738,8 @@
     integer(kind=4), intent(out) :: sourceX,sourceY,width
     real(kind=8), intent(out) :: wx(4),wy(4)
     
-    ! nint 是取最近的整数
+    ! qx/qy 是粗网格连续下标，不是全局物理坐标；sourceX/sourceY 是来源粗数组的局部整数下标。
+    ! nint 是取最近的整数。
     if(abs(qx-nint(qx))<1.0d-12 .AND. abs(qy-nint(qy))<1.0d-12) then  !两个方向都是整数粗下标，才能直接取粗节点数值
         sourceX=nint(qx)
         sourceY=nint(qy)
@@ -1730,7 +1748,7 @@
         wy=0.0d0
         wx(1)=1.0d0
         wy(1)=1.0d0
-    else                !至少一个方向都不是整数，floor 表示向下取整
+    else                !至少一个方向的连续下标不是整数，floor 表示向下取整
         sourceX=max(1+skin,min(floor(qx)-1,ni-skin-3))
         sourceY=max(1+skin,min(floor(qy)-1,nj-skin-3))
         width=4
@@ -1851,7 +1869,7 @@
 
     ! 接收层始终保存完整 f/g；初始化及每轮同步后重建，下一轮粗网格直接使用。
     ! 仅在粗细同步时传输：左右各 interfaceSkin 列贯穿全高，上下行去掉已由左右覆盖的角点。
-    ! 默认左i=1:2，右i=388:389；下j=1:2，上j=388:389，二者i=3:387。
+    ! 默认粗区局部下标：左i=1:2，右i=388:389；下j=1:2，上j=388:389，二者i=3:387。
     call copy_fine_to_coarse(1,interfaceSkin,1,size(f_coarse,2))
     call copy_fine_to_coarse(size(f_coarse,1)-interfaceSkin+1,size(f_coarse,1),1,size(f_coarse,2))
     call copy_fine_to_coarse(interfaceSkin+1,size(f_coarse,1)-interfaceSkin,1,interfaceSkin)
@@ -1864,14 +1882,14 @@
 ! 子程序: copy_fine_to_coarse
 ! 作用: 粗接收点与细节点共址，直接从对应细节点构造局部缓冲并写入粗数组。
 !===================================================================================================
-  subroutine copy_fine_to_coarse(iStart,iEnd,jStart,jEnd)  !接收方——粗网格的数组下标
+  subroutine copy_fine_to_coarse(iStart,iEnd,jStart,jEnd)  !接收方——粗区局部下标范围
     use commondata
     implicit none
     integer(kind=4), intent(in) :: iStart,iEnd,jStart,jEnd
     integer(kind=4) :: i,j,a,sourceX,sourceY
     real(kind=8) :: fv(0:8),gv(0:4),buffer(0:19),rh,ux,uy,temp,fx,fy
 
-    ! 由粗下标直接得到全域细编号；默认粗(1,1)对应细(124,124)。
+    ! 由粗区局部下标得到全局细网格下标；默认粗(1,1) -> 全局物理坐标(123.5,123.5) -> (I,J)=(124,124)。
     !$acc parallel loop collapse(2) present(f_coarse,g_coarse,rho_coarse,u_coarse,v_coarse,T_coarse, &
     !$acc& Fx_coarse,Fy_coarse, &
     !$acc& f_left,g_left,rho_left,u_left,v_left,T_left,Fx_left,Fy_left, &
@@ -1879,10 +1897,10 @@
     !$acc& f_bottom,g_bottom,rho_bottom,u_bottom,v_bottom,T_bottom,Fx_bottom,Fy_bottom, &
     !$acc& f_top,g_top,rho_top,u_top,v_top,T_top,Fx_top,Fy_top) async(1) &
     !$acc& private(a,sourceX,sourceY,fv,gv,buffer,rh,ux,uy,temp,fx,fy)
-    do j=jStart,jEnd      !粗网格的数组下标
-        do i=iStart,iEnd  !粗节点(1,1) ← 全域细节点(124,124)
-            sourceX=fineLayerCellsLeft+(i-1-interfaceSkin)*refineRatio  !全域细网格编号
-            sourceY=fineLayerCellsBottom+(j-1-interfaceSkin)*refineRatio !全域细网格编号
+    do j=jStart,jEnd      !粗区局部下标
+        do i=iStart,iEnd  !粗区局部下标(1,1) ← 全局细网格下标(124,124)
+            sourceX=fineLayerCellsLeft+(i-1-interfaceSkin)*refineRatio  !全局细网格下标
+            sourceY=fineLayerCellsBottom+(j-1-interfaceSkin)*refineRatio !全局细网格下标
             if(sourceX<=fineLayerCellsLeft+interfaceSkin) then  !判断这个细节点存在哪个细区数组里
                 do a=0,8                                      !从左细网格读取
                     fv(a)=f_left(sourceX,sourceY,a)
@@ -1897,7 +1915,7 @@
                 fx=Fx_left(sourceX,sourceY)
                 fy=Fy_left(sourceX,sourceY)      !来源细节点的数据
             else if(sourceX>nx-fineLayerCellsRight-interfaceSkin) then  !右细区
-                sourceX=sourceX-(nx-fineLayerCellsRight-interfaceSkin)  !换成右细区局部编号
+                sourceX=sourceX-(nx-fineLayerCellsRight-interfaceSkin)  !全局细网格下标换成右细区局部下标
                 do a=0,8
                     fv(a)=f_right(sourceX,sourceY,a)
                 enddo
@@ -1911,7 +1929,7 @@
                 fx=Fx_right(sourceX,sourceY)
                 fy=Fy_right(sourceX,sourceY)
             else if(sourceY<=fineLayerCellsBottom+interfaceSkin) then  ! 下细区,前两项不满足，且 sourceY<=130
-                sourceX=sourceX-(fineLayerCellsLeft+interfaceSkin)     ! 换成下细区局部编号
+                sourceX=sourceX-(fineLayerCellsLeft+interfaceSkin)     ! 全局细网格下标换成下细区局部下标
                 do a=0,8
                     fv(a)=f_bottom(sourceX,sourceY,a)
                 enddo
@@ -1925,8 +1943,8 @@
                 fx=Fx_bottom(sourceX,sourceY)
                 fy=Fy_bottom(sourceX,sourceY)
             else                                                     !上细区
-                sourceX=sourceX-(fineLayerCellsLeft+interfaceSkin)   !换成上细区局部编号
-                sourceY=sourceY-(ny-fineLayerCellsTop-interfaceSkin) !换成上细区局部编号
+                sourceX=sourceX-(fineLayerCellsLeft+interfaceSkin)   !全局细网格下标换成上细区局部下标
+                sourceY=sourceY-(ny-fineLayerCellsTop-interfaceSkin) !全局细网格下标换成上细区局部下标
                 do a=0,8
                     fv(a)=f_top(sourceX,sourceY,a)
                 enddo
@@ -2056,7 +2074,7 @@
     ! 初始化、细子步开始及同步点均重建接收层 f/g，数组内容始终为分布函数。
     ! 读取时间历史 → 时间取值或插值 → 写入细接收层
     ! 读取历史数组第 1 列，
-    ! 给左细区 i=129:130、j=129:895 的节点恢复数据。
+    ! 给左细区局部下标 i=129:130、j=129:895 的接收节点恢复数据。
     call interpolate_coarse_to_fine(1,size(f_left,1),size(f_left,2), &
         fineLayerCellsLeft+1,fineLayerCellsLeft+interfaceSkin,fineLayerCellsBottom+1,ny-fineLayerCellsTop, &
         f_left,g_left,rho_left,u_left,v_left,T_left,Fx_left,Fy_left,timeInterpWeight)
@@ -2927,14 +2945,14 @@
     implicit none
 
     ! nq 为方向数：流场 9，温度场 5；ni/nj 属于接收区，mi/mj 属于来源区。
-    ! targetIndexX/targetIndexY、sourceIndexX/sourceIndexY 是以细格距计的两区整数偏移；全局细节点编号=偏移+本地编号。
+    ! targetIndexX/targetIndexY、sourceIndexX/sourceIndexY 是两细区的整数下标偏移；dxFine=1 时与坐标偏移数值相同。
     ! 仅复制 donor 的内部节点；receiver 的交集在 0 或 n+1 外圈，包含对角迁移需要的位置。
 
     integer(kind=4), intent(in) :: nq, ni, nj, targetIndexX, targetIndexY, mi, mj, sourceIndexX, sourceIndexY
     real(kind=8) :: receiver(0:ni+1,0:nj+1,0:nq-1), donor(0:mi+1,0:mj+1,0:nq-1)
     integer(kind=4) :: i, j, a
 
-    ! 全局细节点编号 = 偏移量 + 本地编号。只取 receiver 外圈与 donor 内部的交集。
+    ! 全局细网格下标 = 整数下标偏移 + 局部下标。只取 receiver 外圈与 donor 内部的交集。
 
     !$acc parallel loop collapse(3) present(receiver,donor) async(1)
     do a=0,nq-1
@@ -3117,13 +3135,11 @@
 ! 子程序: check_grid
 ! 作用: 累计一个区域的收敛误差，并保存本次检查时的宏观场。
 !===================================================================================================
+! 仅稳态模式编译本子程序；非稳态不使用上一次检查场 up/vp/Tp。
+#ifdef steadyFlow
   subroutine check_grid(ni,nj,dx,xOffset,yOffset,xStartIntegration,xEndIntegration,yStartIntegration,&
       yEndIntegration,integrationBox,du,uu,dt,&
-      tt,u,v,T &
-#ifdef steadyFlow
-      ,up,vp,Tp &
-#endif
-      )
+      tt,u,v,T,up,vp,Tp)
 
     use commondata,only: centerIntegrationBox,refineRatio
     implicit none
@@ -3139,16 +3155,14 @@
     real(kind=8) :: u(ni,nj)
     real(kind=8) :: v(ni,nj)
     real(kind=8) :: T(ni,nj)
-#ifdef steadyFlow
     real(kind=8) :: up(ni,nj)
     real(kind=8) :: vp(ni,nj)
     real(kind=8) :: Tp(ni,nj)
-#endif
     real(kind=8) :: du, uu, dt, tt, cellArea
 
     do j=yStartIntegration,yEndIntegration !先遍历传入的节点范围
         do i=xStartIntegration,xEndIntegration
-            ! 节点控制面积先裁剪到本区范围；这里的坐标仍以细格距为单位。
+            ! 节点控制面积先裁剪到本区范围；x/y 是以细格距为单位的全局物理坐标。
             x=xOffset+(i-0.5d0)*dx
             y=yOffset+(j-0.5d0)*dx
             !一个节点对应的完整控制区域为：
@@ -3184,6 +3198,7 @@
     vp=v
     Tp=T
   end subroutine check_grid
+#endif
 !===================================================================================================
 
 !===================================================================================================
@@ -3295,7 +3310,7 @@
     implicit none
 
     ! integrationBox 为细数组外框或粗区物理矩形；零面积交换节点不参与统计。
-    ! 细中线模板跨存储接缝时由 fine_section_x/y 按全局坐标取值，不能截成单侧模板。
+    ! fine_section_x/y 将目标全局物理坐标换成全局细网格连续下标，再跨细数组读取模板，不能截成单侧模板。
 
     integer(kind=4) :: ni, nj, xStartIntegration, xEndIntegration, yStartIntegration, yEndIntegration
     real(kind=8) :: dx, xOffset, yOffset, integrationBox(4)
@@ -3312,7 +3327,7 @@
 
     do j=yStartIntegration,yEndIntegration
         do i=xStartIntegration,xEndIntegration
-            ! 节点控制面积先裁剪到本区范围；这里的坐标仍以细格距为单位。
+            ! 节点控制面积先裁剪到本区范围；x/y 是以细格距为单位的全局物理坐标。
             x=xOffset+(i-0.5d0)*dx
             y=yOffset+(j-0.5d0)*dx
             xlo=max(x-dx/2,integrationBox(1))
@@ -3430,8 +3445,9 @@
 
     implicit none
 
-    ! q 为连续节点下标，n 为该方向节点数；first 是四点模板的首下标。
-    ! w 用于函数值，dw 是对节点下标的导数权重，换成物理导数时还要除以 dx。
+    ! q 是调用方编号体系中的连续下标：粗区使用粗网格连续下标，fine_section_x/y 使用全局细网格连续下标。
+    ! n 为该编号体系的节点数；first 是同一编号体系中四点模板的首个整数下标。
+    ! w 用于函数值，dw 是对连续下标的导数权重；换成对全局物理坐标的导数时还要除以该网格 dx。
 
     real(kind=8), intent(in) :: q
     integer(kind=4), intent(in) :: n
@@ -3471,6 +3487,7 @@
     real(kind=8), intent(out) :: w    ! 输出：本节点在指定中线上实际负责的积分长度。
 
     ! axis=1 表示固定 x 的竖直中线，axis=2 表示固定 y 的水平中线。
+    ! k 是当前区域沿积分方向的局部下标；q 和 position 都是全局物理坐标，不是连续下标。
     ! 先定位本节点控制区间；细区处于中心投影内时只累加两侧物理线段。
 
     real(kind=8), intent(in) :: xOffset, yOffset, dx, integrationBox(4), position
@@ -3484,7 +3501,7 @@
         clo=centerIntegrationBox(3)
         chi=centerIntegrationBox(4)
     else            !固定 y 的水平中线
-        q=xOffset+(k-.5d0)*dx  !当前节点的物理 x 坐标
+        q=xOffset+(k-.5d0)*dx  !当前节点的全局物理坐标 x
         lo=integrationBox(1)   !当前网格块传入的 x 范围
         hi=integrationBox(2)   !当前网格块传入的 x 范围
         clo=centerIntegrationBox(1)  !中心粗区的 x 范围，即 127.5、895.5
@@ -3515,7 +3532,8 @@
     use commondata
     implicit none
 
-    ! 模板位置按全域 nx 定位；四个温度和速度样本分别从相应具名细数组读取。
+    ! x 为目标全局物理坐标，j 为全局细网格下标；目标 y=j-0.5。
+    ! x+0.5 为全局细网格连续下标；first 为模板首个全局细网格下标，再由 fine_value 换成各区局部下标。
 
     real(kind=8), intent(in) :: x
     integer(kind=4), intent(in) :: j
@@ -3525,7 +3543,7 @@
 
     call section_weights(x+0.5d0,nx,first,w,dw) !找到节点，计算插值系数和和拉格朗日基函数的系数的导数
     do a=1,4
-        call fine_value(first+a-1,j,T_left,T_right,T_bottom,T_top,temp(a)) !根据全局编号，判断该节点存在哪一个细数组，再换成本地下标读取。
+        call fine_value(first+a-1,j,T_left,T_right,T_bottom,T_top,temp(a)) !按全局细网格下标选取细数组，再换成该区局部下标读取。
         call fine_value(first+a-1,j,u_left,u_right,u_bottom,u_top,velocity(a))
     enddo
 
@@ -3543,7 +3561,8 @@
     use commondata
     implicit none
 
-    ! 模板位置按全域 ny 定位；四个温度和速度样本分别从相应具名细数组读取。
+    ! i 为全局细网格下标，y 为目标全局物理坐标；目标 x=i-0.5。
+    ! y+0.5 为全局细网格连续下标；first 为模板首个全局细网格下标，再由 fine_value 换成各区局部下标。
 
     integer(kind=4), intent(in) :: i
     real(kind=8), intent(in) :: y
@@ -3565,16 +3584,17 @@
 
 !===================================================================================================
 ! 子程序: fine_value
-! 作用: 将全局细节点编号转换成本地下标，读取对应细数组中的标量值。
+! 作用: 将全局细网格下标转换成对应细区的局部下标，读取细数组中的标量值。
 !===================================================================================================
   subroutine fine_value(i,j,left,right,bottom,top,value)
     use commondata,only: f_left,f_right,f_bottom,f_top,&
         xOffsetRight,xOffsetBottom,xOffsetTop,yOffsetTop
     implicit none
 
-    real(kind=8), intent(out) :: value    ! 输出：指定全局细节点对应的温度或速度等标量值。
+    real(kind=8), intent(out) :: value    ! 输出：指定全局细网格下标对应节点的温度或速度等标量值。
 
-    ! i/j 是全局细节点编号；减去所选具名数组的整数偏移后才是本地下标。
+    ! 这里的 i/j 是全局细网格下标，对应全局物理坐标 x=i-0.5、y=j-0.5。
+    ! 减去所选细区的整数偏移后才是局部下标；如全局 i=950 对应右细区局部下标 950-893=57。
     ! 只用于主机端中线后处理；若请求落入未分配的中心空区，立即报错。
 
     integer(kind=4), intent(in) :: i, j
@@ -3709,7 +3729,7 @@
         ', J=',yEndIntegration-yStartIntegration+1,', F=POINT, SOLUTIONTIME=',dble(reloadItcOffset+itc)/timeUnit
     do j=yStartIntegration,yEndIntegration
         do i=xStartIntegration,xEndIntegration
-            ! 每个节点写出六列可视化数据；dx 用于计算节点坐标，坐标除以 lengthUnit，场量直接输出原值。
+            ! 局部下标 i/j 经偏移和 dx 换成全局物理坐标，再除以 lengthUnit；另写 u/v/T/rho，共六列。
             write(k,'(6(ES24.16E3,1X))')((xOffset+(dble(i)-0.5d0)*dx))/lengthUnit,&
                 ((yOffset+(dble(j)-0.5d0)*dx))/lengthUnit,u(i,j),v(i,j),T(i,j),rho(i,j)
         enddo
