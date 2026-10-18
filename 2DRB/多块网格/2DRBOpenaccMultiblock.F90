@@ -263,7 +263,7 @@
         real(kind=8) :: xOffsetCoarse, yOffsetCoarse
 
         logical :: coarseIsWall(4)    ! 粗网格左、右、下、上是否执行物理域边界条件；周期边界也为真。
-        ! 推进前仅接口接收层 f/g 暂存 m/n，collision/collisionT 按 grid 直接读取矩。
+        ! 普通节点和接口接收层始终保存 f/g；collision/collisionT 统一由分布函数计算矩。
         ! 各自迁移后恢复分布函数；初始化、同步点、输出及续算时五区 f/g 均为分布函数。
         real(kind=8), allocatable :: f_coarse(:,:,:)    ! 粗网格 D2Q9 流场分布函数；第三维 0:8 为速度方向。
         real(kind=8), allocatable :: g_coarse(:,:,:)    ! 粗网格 D2Q5 温度分布函数；第三维 0:4 为速度方向。
@@ -424,6 +424,8 @@
     integer(kind=8) :: wallClockStart, wallClockEnd, wallClockRate
     integer(kind=4) :: lastSnapshotItc, lastPltItc, lastReloadItc    ! 本次最近输出的步数，防止结束时重复写同一步。
     real(kind=8) :: latticeUpdateCount    ! 统计实际节点更新次数。
+    integer(kind=4) :: k    ! 一个粗时间步内的细网格子步编号。
+    real(kind=8) :: timeInterpWeight(0:2)    ! 粗网格三个时间层的插值权重。
 
     !===============================================================================================
     ! 初始化 OpenACC 设备
@@ -450,18 +452,31 @@
     ! 新算例初始化网格和场量；续算时在 initial 中恢复检查点。
     call initial()
     call enter_data_2d_openacc()
+
+    ! 重新计算首先需要知道粗细网格的接收区的数据
+    ! 多块计算：先从粗场保存 t=0 的接口数据，再填充双方的接收层。
+    ! [0,1,0] 只取 coarseHistoryCurrent，不涉及中间时刻的时间插值。
+    ! 续算直接使用检查点恢复的场量和三个时间层。
+    if(loadInitField==0 .AND. refineRatio > 1) then
+        call save_coarse_history(coarseHistoryCurrent) !四个细网格重叠层区域从粗网格获取的数据，被提前算好并保存起来，宏观量对，非平衡还没转换好。
+        call fine_to_coarse()  !从细网格当前的数据中取值，经过粗细网格转换，填入中心粗网格的接收层，这里返回的是 fg。
+        call coarse_to_fine([0.0d0,1.0d0,0.0d0]) !从粗网格当前的数据中取值，经过粗细网格转换，填入四个细网格的接收层 fg。
+    endif
+
     lastSnapshotItc=-1    !记录本次最近一次输出的位置
     lastPltItc=-1         !初始设为 -1，表示本次程序启动后，还没有输出过这一类文件。
     lastReloadItc=-1
-    if(loadInitField==1) then
+
+    if(loadInitField==1) then   !续算时
         ! 如果无需再推进，避免把恢复时刻已有的文件重复记入输出索引。
-        call output_time_string(outputTime)
+        ! 重启和 plt 的实际输出间隔如果不相同，得做这个检测。
+        call output_time_string(outputTime)  !返回累计 tff 的有效字符串，100，100.5这种，outputTime是字符串
         write(outputName,'(a,a,a,i0,a)') snapshotFilePrefix//'-',trim(outputTime),'tff-',reloadItcOffset+itc,'itc.bin'
-        inquire(file=trim(outputName),exist=outputExists)
-        if(outputExists) lastSnapshotItc=0
+        inquire(file=trim(outputName),exist=outputExists) !检查这个时刻的快照文件是否已经存在
+        if(outputExists) lastSnapshotItc=0 !本次运行的起点 itc=0，已经有对应的快照文件，可以当作这个时刻已经输出过了。
         write(outputName,'(a,a,a,i0,a)') pltFolderPrefix//'-',trim(outputTime),'tff-',reloadItcOffset+itc,'itc.dat'
-        inquire(file=trim(outputName),exist=outputExists)
-        if(outputExists) lastPltItc=0
+        inquire(file=trim(outputName),exist=outputExists) !检查这个时刻的 plt 文件是否已经存在
+        if(outputExists) lastPltItc=0 !本次运行的起点 itc=0，已经有对应的 plt 文件，可以当作这个时刻已经输出过了。
         lastReloadItc=0
     endif
     !===============================================================================================
@@ -478,7 +493,7 @@
 
     !===============================================================================================
     ! 时间推进
-    ! itc 在 advance_multiblock 中增加；各个步数已在参数设置和初始化时确定。
+    ! 每轮粗细同步后更新 itc；各个步数已在参数设置和初始化时确定。
 #ifdef steadyFlow
     ! 稳态 itc_max 限制本次运行的步数，速度和温度误差均达标时提前停止。
     do while(((errorU .GT. epsU) .OR. (errorT .GT. epsT)) .AND. &
@@ -489,9 +504,27 @@
     do while(itc.LT.unsteadyItcRemaining)    !非稳态：续算时只推进到 unsteadyRunDuration 对应的总格子步
 #endif
 
-        ! 一次循环推进一个粗时间步，内部完成 refineRatio 个细步和接口交换。
-        call advance_multiblock() !当它返回时，粗细网格已经到达同一时刻，
-        ! 并且同步点的接收层已恢复为正常 f、g，可以进行后面的诊断和文件输出。
+        ! 一次循环推进一个粗时间步，完成 refineRatio 个细步和接口交换。
+        if(refineRatio==1) then  !单网格情况直接推进
+            call advance_coarse() !中心区域推进
+            itc=itc+refineRatio
+        else
+            ! 粗网格预测终点（以下 t+2 的注释以 refineRatio=2 为例）；细子步读取过去、起点和预测终点三个时间层。
+            call advance_coarse() !粗网格：t+2, 细网格：t
+            call save_coarse_history(coarseHistoryNext) !保存粗网格在 t+2 的接口数据
+            do k=1,refineRatio
+                call coarse_time_weights(dble(k-1)/dble(refineRatio),timeInterpWeight) !计算子步起点的时间权重
+                call coarse_to_fine(timeInterpWeight) !准备当前细子步所需的接收层 f/g
+                call advance_fine()  !细网格推进一步
+            enddo   !此时粗网格：t+2, 细网格：t+2
+
+            ! 同步时更新双方接收层的 f/g，供诊断、续算和下一轮粗网格直接推进。
+            call fine_to_coarse()   !细网格已经到达 t+2，因此从细网格读取当前数据，重新填充粗网格接收层
+            call coarse_to_fine([0.0d0,0.0d0,1.0d0]) !补齐细接收层的完整 f、g
+            call rotate_coarse_history() !把时间历史向前移动一层
+            itc=itc+refineRatio  !更新本次完成的细步数
+        endif
+        ! 此时粗细网格已经到达同一时刻，接收层已恢复为正常 f、g，供后面的诊断和文件输出。
 
 #ifdef steadyFlow
         ! 到达检查间隔时计算收敛误差。
@@ -502,30 +535,23 @@
 
         ! 两种模式都按固定格子步间隔采样；关闭快照文件不停止 Nu/Re 采样。
         if(MOD(reloadItcOffset+itc,outputSnapshotIntervalItc) .EQ. 0) then
-
             call calNuRe()
-
             if(outputSnapshotFile.EQ.1) then
                 call output_SnapshotFile()
                 lastSnapshotItc=itc
             endif
-
         endif
 
         ! 输出子程序内部将所需场量从设备同步到主机。
         if((outputPltFile.EQ.1).AND.(MOD(reloadItcOffset+itc,outputPltFileIntervalItc).EQ.0)) then
-
             call output_Tecplot()
             lastPltItc=itc
-
         endif
 
         ! 到达续算文件的输出间隔时保存当前状态。
         if((outputReloadFile.EQ.1).AND.(MOD(reloadItcOffset+itc,reloadFileIntervalItc).EQ.0)) then
-
             call output_ReloadFile()
             lastReloadItc=itc
-
         endif
 
     enddo
@@ -1580,7 +1606,7 @@
 
 !===================================================================================================
 ! 子程序: enter_data_2d_openacc
-! 作用: 建立设备数据区，并补齐首次碰撞前的粗细接口状态。
+! 作用: 将主机上初始化或恢复的数据复制到设备，建立常驻数据区。
 !===================================================================================================
   subroutine enter_data_2d_openacc()
     use commondata
@@ -1601,14 +1627,6 @@
         !$acc& v_top, T_top, Fx_top, Fy_top)
     endif
 
-    ! 全新多块计算：先从粗场保存 t=0 的接口数据，再填充双方的接收层。
-    ! [0,1,0] 只取 coarseHistoryCurrent，不涉及中间时刻的时间插值。
-    ! 续算直接使用检查点恢复的场量和三个时间层。
-    if(loadInitField==0 .AND. refineRatio > 1) then
-        call save_coarse_history(coarseHistoryCurrent) !四个细网格区域接下来需要从粗网格获取的数据，被提前算好并保存起来。
-        call fine_to_coarse(.false.)  !从细网格当前的数据中取值，经过粗细网格转换，填入中心粗网格的接收层。
-        call coarse_to_fine([0.0d0,1.0d0,0.0d0],.false.) !从粗网格当前的数据中取值，经过粗细网格转换，填入四个细网格的接收层。
-    endif
   end subroutine enter_data_2d_openacc
 !===================================================================================================
 
@@ -1680,7 +1698,7 @@
                         buffer(a)=buffer(a)+wx(ix)*wy(iy)*value(a) !四点拉格朗日插值在xy方向
                     enddo
                 enddo
-            enddo
+            enddo  !当前粗网格节点的空间插值结束
             ! 每个节点连续放 20 个分量；区内 i 先变，j 后变。
             p=20*((j-jStart)*(iEnd-iStart+1)+i-iStart) !当前节点前面的节点总数，再乘以每个节点的 20 个交换量
             do a=0,19
@@ -1827,20 +1845,18 @@
 ! 子程序: fine_to_coarse
 ! 作用: 直接读取四个细区的当前场，重建粗网格接收层。
 !===================================================================================================
-  subroutine fine_to_coarse(keepMoments)
+  subroutine fine_to_coarse()
     use commondata
     implicit none
-    logical, intent(in) :: keepMoments
 
-    ! keepMoments=.true.：推进前在接收层 f/g 中暂存 m/n，碰撞直接读取。
-    ! keepMoments=.false.：初始化及同步后重建完整 f/g，供输出、续算。
+    ! 接收层始终保存完整 f/g；初始化及每轮同步后重建，下一轮粗网格直接使用。
     ! 仅在粗细同步时传输：左右各 interfaceSkin 列贯穿全高，上下行去掉已由左右覆盖的角点。
     ! 默认左i=1:2，右i=388:389；下j=1:2，上j=388:389，二者i=3:387。
-    call copy_fine_to_coarse(1,interfaceSkin,1,size(f_coarse,2),keepMoments)
-    call copy_fine_to_coarse(size(f_coarse,1)-interfaceSkin+1,size(f_coarse,1),1,size(f_coarse,2),keepMoments)
-    call copy_fine_to_coarse(interfaceSkin+1,size(f_coarse,1)-interfaceSkin,1,interfaceSkin,keepMoments)
+    call copy_fine_to_coarse(1,interfaceSkin,1,size(f_coarse,2))
+    call copy_fine_to_coarse(size(f_coarse,1)-interfaceSkin+1,size(f_coarse,1),1,size(f_coarse,2))
+    call copy_fine_to_coarse(interfaceSkin+1,size(f_coarse,1)-interfaceSkin,1,interfaceSkin)
     call copy_fine_to_coarse(interfaceSkin+1,size(f_coarse,1)-interfaceSkin, &
-        size(f_coarse,2)-interfaceSkin+1,size(f_coarse,2),keepMoments)
+        size(f_coarse,2)-interfaceSkin+1,size(f_coarse,2))
   end subroutine fine_to_coarse
 !===================================================================================================
 
@@ -1848,10 +1864,9 @@
 ! 子程序: copy_fine_to_coarse
 ! 作用: 粗接收点与细节点共址，直接从对应细节点构造局部缓冲并写入粗数组。
 !===================================================================================================
-  subroutine copy_fine_to_coarse(iStart,iEnd,jStart,jEnd,keepMoments)  !接收方——粗网格的数组下标
+  subroutine copy_fine_to_coarse(iStart,iEnd,jStart,jEnd)  !接收方——粗网格的数组下标
     use commondata
     implicit none
-    logical, intent(in) :: keepMoments
     integer(kind=4), intent(in) :: iStart,iEnd,jStart,jEnd
     integer(kind=4) :: i,j,a,sourceX,sourceY
     real(kind=8) :: fv(0:8),gv(0:4),buffer(0:19),rh,ux,uy,temp,fx,fy
@@ -1863,7 +1878,6 @@
     !$acc& f_right,g_right,rho_right,u_right,v_right,T_right,Fx_right,Fy_right, &
     !$acc& f_bottom,g_bottom,rho_bottom,u_bottom,v_bottom,T_bottom,Fx_bottom,Fy_bottom, &
     !$acc& f_top,g_top,rho_top,u_top,v_top,T_top,Fx_top,Fy_top) async(1) &
-    !$acc& firstprivate(keepMoments) &
     !$acc& private(a,sourceX,sourceY,fv,gv,buffer,rh,ux,uy,temp,fx,fy)
     do j=jStart,jEnd      !粗网格的数组下标
         do i=iStart,iEnd  !粗节点(1,1) ← 全域细节点(124,124)
@@ -1931,8 +1945,8 @@
             !恢复宏观量及单位时间力，直接写入当前粗接收节点
             !用粗网格参数重建矩；推进前保留矩，初始化及同步后才还原分布函数
             call unpack_interface_values(dxCoarse,SnuCoarse,SqCoarse,QkCoarse,QnuCoarse,buffer,fv,gv, &
-                rho_coarse(i,j),u_coarse(i,j),v_coarse(i,j),T_coarse(i,j),Fx_coarse(i,j),Fy_coarse(i,j),keepMoments)
-            do a=0,8       !写入粗接收层；keepMoments 为真时这里暂存流场矩 m
+                rho_coarse(i,j),u_coarse(i,j),v_coarse(i,j),T_coarse(i,j),Fx_coarse(i,j),Fy_coarse(i,j))
+            do a=0,8       !将换算后的流场分布 f 写入粗接收层
                 f_coarse(i,j,a)=fv(a)
             enddo
             do a=0,4
@@ -1947,7 +1961,7 @@
 ! 子程序: unpack_interface_values
 ! 作用: 用接收网格的松弛率和dt恢复完整矩及宏观量；推进前保留矩，同步点还原f/g。
 !===================================================================================================
-  subroutine unpack_interface_values(dt,Snu,Sq,Qk,Qnu,buffer,fv,gv,rh,ux,uy,temp,fx,fy,keepMoments)
+  subroutine unpack_interface_values(dt,Snu,Sq,Qk,Qnu,buffer,fv,gv,rh,ux,uy,temp,fx,fy)
     use commondata,only: paraA
     implicit none    
     !可以从设备代码中调用
@@ -1955,7 +1969,6 @@
     real(kind=8), intent(in) :: dt, Snu, Sq, Qk, Qnu, buffer(0:19)
     real(kind=8), intent(out) :: fv(0:8), gv(0:4), rh, ux, uy, temp, fx, fy
     real(kind=8) :: m(0:8), meq(0:8), fm(0:8), n(0:4), neq(0:4), s(0:8), q(0:4)
-    logical, intent(in) :: keepMoments
     integer(kind=4) :: a
 
     ! 1. 恢复接收节点的宏观量；本次细到粗调用写入 rho_coarse(i,j) 等数组。
@@ -2002,16 +2015,8 @@
     enddo
     n(0)=temp
 
-    ! 5. 推进前直接返回碰撞前的 m/n，省去 m->f->m 和 n->g->n 的往返变换。
-    ! 调用处只在接收层暂存这些矩；流场碰撞直接读取 m，温度碰撞稍后读取 n。
-    ! 温度碰撞仍需等待流场迁移和速度更新，不能在这里提前碰撞。
-    if(keepMoments) then
-        fv=m
-        gv=n
-        return
-    endif
-
-    ! 6. 初始化及同步后需要完整分布函数，流场矩乘以 M 逆得到 D2Q9 的 f。
+    ! 5. 将换算后的流场矩乘以 M 逆，得到接收网格的 D2Q9 分布 f。
+    ! 初始化、细子步及同步时均返回 f/g；碰撞时再统一由分布函数求矩。
     fv(0)=m(0)/9.0d0-m(1)/9.0d0+m(2)/9.0d0    !这边是乘以M逆
     fv(1)=m(0)/9.0d0-m(1)/36.0d0-m(2)/18.0d0+m(3)/6.0d0-m(4)/6.0d0 &
         +m(7)/4.0d0
@@ -2030,7 +2035,7 @@
     fv(8)=m(0)/9.0d0+m(1)/18.0d0+m(2)/36.0d0+m(3)/6.0d0+m(4)/12.0d0 &
         -m(5)/6.0d0-m(6)/12.0d0-m(8)/4.0d0
 
-    ! 7. 温度矩乘以 N 逆得到 D2Q5 的 g；同步点不会把暂存矩写入检查点。
+    ! 6. 温度矩乘以 N 逆得到 D2Q5 的 g；温度碰撞仍在流场更新速度之后进行。
     gv(0)=0.2d0*n(0)-0.2d0*n(3)
     gv(1)=0.2d0*n(0)+0.5d0*n(1)+0.05d0*n(3)+0.25d0*n(4)
     gv(2)=0.2d0*n(0)+0.5d0*n(2)+0.05d0*n(3)-0.25d0*n(4)
@@ -2043,28 +2048,27 @@
 ! 子程序: coarse_to_fine
 ! 作用: 四个细区按打包顺序读取粗时间层，结果写入各自的接收节点。
 !===================================================================================================
-  subroutine coarse_to_fine(timeInterpWeight,keepMoments)
+  subroutine coarse_to_fine(timeInterpWeight)
     use commondata
     implicit none
-    logical, intent(in) :: keepMoments
     real(kind=8), intent(in) :: timeInterpWeight(0:2)
 
-    ! 细子步开始时保留接收矩；初始化及同步点还原完整 f/g。
+    ! 初始化、细子步开始及同步点均重建接收层 f/g，数组内容始终为分布函数。
     ! 读取时间历史 → 时间取值或插值 → 写入细接收层
     ! 读取历史数组第 1 列，
     ! 给左细区 i=129:130、j=129:895 的节点恢复数据。
     call interpolate_coarse_to_fine(1,size(f_left,1),size(f_left,2), &
         fineLayerCellsLeft+1,fineLayerCellsLeft+interfaceSkin,fineLayerCellsBottom+1,ny-fineLayerCellsTop, &
-        f_left,g_left,rho_left,u_left,v_left,T_left,Fx_left,Fy_left,timeInterpWeight,keepMoments)
+        f_left,g_left,rho_left,u_left,v_left,T_left,Fx_left,Fy_left,timeInterpWeight)
     call interpolate_coarse_to_fine(2,size(f_right,1),size(f_right,2), &
         1,interfaceSkin,fineLayerCellsBottom+1,ny-fineLayerCellsTop, &
-        f_right,g_right,rho_right,u_right,v_right,T_right,Fx_right,Fy_right,timeInterpWeight,keepMoments)
+        f_right,g_right,rho_right,u_right,v_right,T_right,Fx_right,Fy_right,timeInterpWeight)
     call interpolate_coarse_to_fine(3,size(f_bottom,1),size(f_bottom,2), &
         1,size(f_bottom,1),fineLayerCellsBottom+1,fineLayerCellsBottom+interfaceSkin, &
-        f_bottom,g_bottom,rho_bottom,u_bottom,v_bottom,T_bottom,Fx_bottom,Fy_bottom,timeInterpWeight,keepMoments)
+        f_bottom,g_bottom,rho_bottom,u_bottom,v_bottom,T_bottom,Fx_bottom,Fy_bottom,timeInterpWeight)
     call interpolate_coarse_to_fine(4,size(f_top,1),size(f_top,2), &
         1,size(f_top,1),1,interfaceSkin, &
-        f_top,g_top,rho_top,u_top,v_top,T_top,Fx_top,Fy_top,timeInterpWeight,keepMoments)
+        f_top,g_top,rho_top,u_top,v_top,T_top,Fx_top,Fy_top,timeInterpWeight)
   end subroutine coarse_to_fine
 !===================================================================================================
 
@@ -2073,10 +2077,9 @@
 ! 作用: 对指定接收矩形做时间插值，直接转换并写入细网格。
 !===================================================================================================
   subroutine interpolate_coarse_to_fine(region,ni,nj,iStart,iEnd,jStart,jEnd, &
-      f,g,rho,u,v,T,Fx,Fy,timeInterpWeight,keepMoments)
+      f,g,rho,u,v,T,Fx,Fy,timeInterpWeight)
     use commondata,only: coarseHistoryPrevious,coarseHistoryCurrent,coarseHistoryNext,Snu,Sq,Qk,Qnu
     implicit none
-    logical, intent(in) :: keepMoments
     integer(kind=4), intent(in) :: region,ni,nj,iStart,iEnd,jStart,jEnd
     real(kind=8), intent(in) :: timeInterpWeight(0:2)
     real(kind=8), intent(inout) :: f(ni,nj,0:8),g(ni,nj,0:4),rho(ni,nj),u(ni,nj),v(ni,nj)
@@ -2089,19 +2092,19 @@
     timeWeight0=timeInterpWeight(0)
     timeWeight1=timeInterpWeight(1)
     timeWeight2=timeInterpWeight(2)
-    ! 时间插值使用局部 buffer；keepMoments 为真时 f/g 接收层暂存 m/n，随后直接碰撞。
+    ! 时间插值使用局部 buffer；按细网格参数恢复矩后转成 f/g，写入接收层。
     !$acc parallel loop collapse(2) present(coarseHistoryPrevious,coarseHistoryCurrent,coarseHistoryNext, &
     !$acc& f,g,rho,u,v,T,Fx,Fy) async(1) &
-    !$acc& firstprivate(region,iStart,iEnd,jStart,timeWeight0,timeWeight1,timeWeight2,keepMoments) private(a,p,buffer,fv,gv)
+    !$acc& firstprivate(region,iStart,iEnd,jStart,timeWeight0,timeWeight1,timeWeight2) private(a,p,buffer,fv,gv)
     do j=jStart,jEnd      !找到当前细节点在历史数组中的位置
-        do i=iStart,iEnd
+        do i=iStart,iEnd  !被插值的细网格范围
             p=20*((j-jStart)*(iEnd-iStart+1)+i-iStart)
             do a=0,19    !对当前节点的 20 个交换量做时间取值或插值
                 buffer(a)=timeWeight0*coarseHistoryPrevious(p+a+1,region)+ &
                     timeWeight1*coarseHistoryCurrent(p+a+1,region)+timeWeight2*coarseHistoryNext(p+a+1,region)
             enddo
-            call unpack_interface_values(1.0d0,Snu,Sq,Qk,Qnu,buffer,fv,gv, &  !接收方是细网格
-                rho(i,j),u(i,j),v(i,j),T(i,j),Fx(i,j),Fy(i,j),keepMoments)
+            call unpack_interface_values(1.0d0,Snu,Sq,Qk,Qnu,buffer,fv,gv, &  !接收方是细网格 fg
+                rho(i,j),u(i,j),v(i,j),T(i,j),Fx(i,j),Fy(i,j))
             do a=0,8
                 f(i,j,a)=fv(a)
             enddo
@@ -2114,36 +2117,28 @@
 !===================================================================================================
 
 !===================================================================================================
-! 子程序: advance_multiblock
-! 作用: 完成粗网格预测、细网格子步、粗细同步及时间历史滚动。
+! 子程序: output_time_string
+! 作用: 将实际累计 t_ff 写成文件名中的时间，去掉小数末尾多余的零。
 !===================================================================================================
-  subroutine advance_multiblock()
+  subroutine output_time_string(timeString)
+
     use commondata
     implicit none
-    integer(kind=4) :: k
-    real(kind=8) :: timeInterpWeight(0:2)
 
-    if(refineRatio==1) then  !单网格情况直接推进
-        call advance_coarse() !中心区域推进
-        itc=itc+1
-        return
-    endif
+    character(len=40), intent(out) :: timeString
+    integer(kind=4) :: i
 
-    ! 粗网格预测终点；细子步读取过去、起点和预测终点三个时间层。
-    call advance_coarse() !粗网格：t+2, 细网格：t
-    call save_coarse_history(coarseHistoryNext) !保存粗网格在 t+2 的接口数据
-    do k=1,refineRatio
-        call coarse_time_weights(dble(k-1)/dble(refineRatio),timeInterpWeight) !计算子步起点的时间权重
-        call coarse_to_fine(timeInterpWeight,.true.) !细接收矩
-        call advance_fine()  !细网格推进一步
+    ! t_ff保留十二位小数供查看；文件名另含累计整数步数，不同保存步不会因时间舍入而重名。
+    write(timeString,'(F40.12)') dble(reloadItcOffset+itc)/timeUnit  !累计 tff
+    if(index(timeString,'*')/=0) error stop 'tff exceeds filename field width' !检查数字是否超过可容纳的宽度。
+    timeString=adjustl(timeString) !adjustl 将字符串左对齐，前面的空格移到末尾
+    i=len_trim(timeString) !len_trim 返回忽略末尾空格后的长度，因而 i 指向最后一个有效字符。
+    do while(timeString(i:i)=='0')
+        timeString(i:i)=' '  !如果它是 '0'，就改成空格，再向前检查一个字符
+        i=i-1
     enddo
-
-    ! 同步时还原双方接收层的完整 f/g，供诊断和续算；下一步开始时再准备接收矩。
-    call fine_to_coarse(.false.)   !细网格已经到达 t+2，因此从细网格读取当前数据，重新填充粗网格接收层
-    call coarse_to_fine([0.0d0,0.0d0,1.0d0],.false.) !补齐细接收层的完整 f、g
-    call rotate_coarse_history() !把时间历史向前移动一层
-    itc=itc+refineRatio  !更新本次完成的细步数
-  end subroutine advance_multiblock
+    if(timeString(i:i)=='.') timeString(i:i)=' ' !如果只剩一个小数点，也去掉它
+  end subroutine output_time_string
 !===================================================================================================
 
 !===================================================================================================
@@ -2154,9 +2149,8 @@
     use commondata
     implicit none
 
-    ! 此时粗细同刻：重新从细场准备粗接收矩，直接交给碰撞；单网格无需接口转换。
-    ! 同步后保存的 f/g 保持为分布函数，续算也从这一完整状态进入。
-    if(refineRatio>1) call fine_to_coarse(.true.)  !从当前细网格准备粗接收层的矩,保留的是完整的碰撞前矩
+    ! 粗接收层 f/g 已由初始化、续算读取或上一轮同步准备好，此处直接推进，不再重复交换。
+    ! 单网格时同样使用 f/g 推进，所有节点都在碰撞内部转换为矩。
     call advance_grid(size(f_coarse,1),size(f_coarse,2),dxCoarse,SnuCoarse,SqCoarse,QkCoarse,QnuCoarse,&
         gBeta,coarseIsWall,f_coarse,g_coarse,f_post_coarse,g_post_coarse,rho_coarse,&
         u_coarse,v_coarse,T_coarse,Fx_coarse,Fy_coarse)  !把中心粗网格推进一个粗时间步。
@@ -2169,7 +2163,6 @@
 !===================================================================================================
   subroutine advance_grid(ni,nj,dt,Snu,Sq,Qk,Qnu,gBeta,wall,f,g,f_post,g_post,rho,u,v,T,Fx,Fy)
 
-    use commondata,only: refineRatio
 #ifdef SideHeatedHa
     use commondata,only: B2sigemarho
 #endif
@@ -2195,10 +2188,10 @@
 
     ! dt显式传入：粗块dt=dxCoarse，细块dt=dxFine=1。
     ! gBeta和磁场系数不预乘dt；Fx/Fy保存F，碰撞与速度恢复各自显式乘dt。
-    ! 推进前，粗接收层 f/g 暂存碰撞前 m/n；碰撞直接读取，普通节点仍由分布函数求矩。
+    ! 普通节点和粗接收层均保存 f/g，碰撞统一执行 f->m 和 g->n。
     ! 推进后，最外两层等待下次接口重建，不能作为反向插值的数据来源。
-    call collision(merge(1,0,refineRatio>1),ni,nj,dt,f,f_post,rho,u,v,Fx,Fy,T,Snu,Sq,&
-        gBeta &       !merge(1,0,refineRatio>1),条件为真 → 取1,条件为假 → 取0
+    call collision(ni,nj,dt,f,f_post,rho,u,v,Fx,Fy,T,Snu,Sq,&
+        gBeta &
 #ifdef SideHeatedHa
         ,B2sigemarho &
 #endif
@@ -2223,7 +2216,7 @@
 
     call macro(ni,nj,dt,f,rho,u,v,Fx,Fy)
 
-    call collisionT(merge(1,0,refineRatio>1),ni,nj,g,g_post,u,v,T,Qk,Qnu)
+    call collisionT(ni,nj,g,g_post,u,v,T,Qk,Qnu)
 
 #ifdef VerticalWallsPeriodicalT
     ! 单网格自己左右连接；多块粗区没有物理外边界。
@@ -2250,13 +2243,13 @@
 ! 子程序: collision
 ! 作用: 执行 D2Q9 流场矩空间碰撞，生成碰撞后分布函数。
 !===================================================================================================
-  subroutine collision(grid,nx,ny,dt,f,f_post,rho,u,v,Fx,Fy,T,Snu,Sq,gBeta &
+  subroutine collision(nx,ny,dt,f,f_post,rho,u,v,Fx,Fy,T,Snu,Sq,gBeta &
 #ifdef SideHeatedHa
       ,B2sigemarho &
 #endif
       )
 
-    use commondata,only: Tref,interfaceSkin,fineLayerCellsLeft,fineLayerCellsBottom,fineLayerCellsTop
+    use commondata,only: Tref
 #ifdef SideHeatedHa
     use commondata,only: phi
 #endif
@@ -2266,7 +2259,7 @@
     ! 本子程序只生成 f_post，不负责同级细区交换或粗细插值。
     ! Fx/Fy保存单位时间的力；fSource=(I-S/2)*F_m也不含dt，碰撞时显式乘dt。
 
-    integer(kind=4), intent(in) :: grid, nx, ny
+    integer(kind=4), intent(in) :: nx, ny
     real(kind=8), intent(inout) :: f(nx,ny,0:8), f_post(0:nx+1,0:ny+1,0:8)
     real(kind=8), intent(inout) :: u(nx,ny), v(nx,ny), T(nx,ny), rho(nx,ny), Fx(nx,ny), Fy(nx,ny)
     real(kind=8), intent(in) :: dt, Snu, Sq, gBeta
@@ -2276,52 +2269,30 @@
 
     integer(kind=4) :: i, j
     integer(kind=4) :: alpha
-    logical :: receiver
     real(kind=8) :: m(0:8), m_post(0:8), meq(0:8)
     real(kind=8) :: s(0:8)
     real(kind=8) :: fSource(0:8)
 
     !$acc parallel loop gang vector collapse(2) present(f, f_post, rho, u, v, Fx, Fy, T) async(1) &
-    !$acc& firstprivate(dt,grid) private(alpha, receiver, s, m, m_post, meq, fSource)
+    !$acc& firstprivate(dt) private(alpha, s, m, m_post, meq, fSource)
     do j=1,ny
         do i=1,nx
 
-            ! grid=0 单网格，1 中心粗区，2/3/4/5 左/右/下/上细区。
-            ! 只有接口接收层暂存矩；细区拼接线及物理壁面节点仍存分布函数。
-            receiver=.false.
-            select case(grid)
-            case(1)
-                receiver=i<=interfaceSkin .OR. i>nx-interfaceSkin .OR. &
-                    j<=interfaceSkin .OR. j>ny-interfaceSkin  !粗区  i=1:2、388:389 或 j=1:2、388:389
-            case(2)    !左细区	i=129:130，j=129:895
-                receiver=i>fineLayerCellsLeft .AND. j>fineLayerCellsBottom .AND. j<=ny-fineLayerCellsTop
-            case(3)    !右细区	i=1:2，j=129:895
-                receiver=i<=interfaceSkin .AND. j>fineLayerCellsBottom .AND. j<=ny-fineLayerCellsTop
-            case(4)    !下细区	j=129:130，覆盖本区全部 i
-                receiver=j>fineLayerCellsBottom
-            case(5)    !上细区	j=1:2，覆盖本区全部 i
-                receiver=j<=interfaceSkin
-            end select
-            if(receiver) then
-                do alpha=0,8
-                    m(alpha)=f(i,j,alpha)    !接口已恢复完整矩，直接进入下方统一碰撞,接收节点
-                enddo
-            else              !普通节点
-                m(0)=f(i,j,0)+f(i,j,1)+f(i,j,2)+f(i,j,3)+f(i,j,4)+f(i,j,5)+f(i,j,6)+f(i,j,&
-                    7)+f(i,j,8)
-                m(1)=-4.0d0*f(i,j,0)-f(i,j,1)-f(i,j,2)-f(i,j,3)-f(i,j,4)+2.0d0*(f(i,j,&
-                    5)+f(i,j,&
-                    6)+f(i,j,7)+f(i,j,8))
-                m(2)=4.0d0*f(i,j,0)-2.0d0*(f(i,j,1)+f(i,j,2)+f(i,j,3)+f(i,j,4))+f(i,j,&
-                    5)+f(i,j,&
-                    6)+f(i,j,7)+f(i,j,8)
-                m(3)=f(i,j,1)-f(i,j,3)+f(i,j,5)-f(i,j,6)-f(i,j,7)+f(i,j,8)
-                m(4)=-2.0d0*f(i,j,1)+2.0d0*f(i,j,3)+f(i,j,5)-f(i,j,6)-f(i,j,7)+f(i,j,8)
-                m(5)=f(i,j,2)-f(i,j,4)+f(i,j,5)+f(i,j,6)-f(i,j,7)-f(i,j,8)
-                m(6)=-2.0d0*f(i,j,2)+2.0d0*f(i,j,4)+f(i,j,5)+f(i,j,6)-f(i,j,7)-f(i,j,8)
-                m(7)=f(i,j,1)-f(i,j,2)+f(i,j,3)-f(i,j,4)
-                m(8)=f(i,j,5)-f(i,j,6)+f(i,j,7)-f(i,j,8)
-            endif
+            ! 流场所有节点（含接收层）统一由分布 f 计算碰撞前矩 m。
+            m(0)=f(i,j,0)+f(i,j,1)+f(i,j,2)+f(i,j,3)+f(i,j,4)+f(i,j,5)+f(i,j,6)+f(i,j,&
+                7)+f(i,j,8)
+            m(1)=-4.0d0*f(i,j,0)-f(i,j,1)-f(i,j,2)-f(i,j,3)-f(i,j,4)+2.0d0*(f(i,j,&
+                5)+f(i,j,&
+                6)+f(i,j,7)+f(i,j,8))
+            m(2)=4.0d0*f(i,j,0)-2.0d0*(f(i,j,1)+f(i,j,2)+f(i,j,3)+f(i,j,4))+f(i,j,&
+                5)+f(i,j,&
+                6)+f(i,j,7)+f(i,j,8)
+            m(3)=f(i,j,1)-f(i,j,3)+f(i,j,5)-f(i,j,6)-f(i,j,7)+f(i,j,8)
+            m(4)=-2.0d0*f(i,j,1)+2.0d0*f(i,j,3)+f(i,j,5)-f(i,j,6)-f(i,j,7)+f(i,j,8)
+            m(5)=f(i,j,2)-f(i,j,4)+f(i,j,5)+f(i,j,6)-f(i,j,7)-f(i,j,8)
+            m(6)=-2.0d0*f(i,j,2)+2.0d0*f(i,j,4)+f(i,j,5)+f(i,j,6)-f(i,j,7)-f(i,j,8)
+            m(7)=f(i,j,1)-f(i,j,2)+f(i,j,3)-f(i,j,4)
+            m(8)=f(i,j,5)-f(i,j,6)+f(i,j,7)-f(i,j,8)
 
             meq(0)=rho(i,j)
             meq(1)=rho(i,j)*(-2.0d0+3.0d0*(u(i,j)*u(i,j)+v(i,j)*v(i,j)))
@@ -2534,54 +2505,32 @@
 ! 子程序: collisionT
 ! 作用: 执行原 D2Q5 温度碰撞，生成碰撞后温度分布函数。
 !===================================================================================================
-  subroutine collisionT(grid,nx,ny,g,g_post,u,v,T,Qk,Qnu)
+  subroutine collisionT(nx,ny,g,g_post,u,v,T,Qk,Qnu)
 
-    use commondata,only: paraA,interfaceSkin,fineLayerCellsLeft,fineLayerCellsBottom,fineLayerCellsTop
+    use commondata,only: paraA
     implicit none
 
     ! Qk/Qnu 已按当前区域格距设置，温度碰撞使用本步更新后的速度。
 
-    integer(kind=4), intent(in) :: grid, nx, ny
+    integer(kind=4), intent(in) :: nx, ny
     real(kind=8), intent(inout) :: g(nx,ny,0:4), g_post(0:nx+1,0:ny+1,0:4)
     real(kind=8), intent(in) :: u(nx,ny), v(nx,ny), T(nx,ny), Qk, Qnu
 
     integer(kind=4) :: i, j, a
-    logical :: receiver
     real(kind=8) :: n(0:4), n_post(0:4), neq(0:4)
     real(kind=8) :: q(0:4)
 
     !$acc parallel loop gang vector collapse(2) present(g, g_post, u, v, T) async(1) &
-    !$acc& firstprivate(grid) private(a, receiver, n, neq, q, n_post)
+    !$acc& private(a, n, neq, q, n_post)
     do j=1,ny
         do i=1,nx
 
-            ! grid=0 单网格，1 中心粗区，2/3/4/5 左/右/下/上细区。
-            ! 只有接口接收层暂存矩；细区拼接线及物理壁面节点仍存分布函数。
-            receiver=.false.
-            select case(grid)
-            case(1)
-                receiver=i<=interfaceSkin .OR. i>nx-interfaceSkin .OR. &
-                    j<=interfaceSkin .OR. j>ny-interfaceSkin
-            case(2)
-                receiver=i>fineLayerCellsLeft .AND. j>fineLayerCellsBottom .AND. j<=ny-fineLayerCellsTop
-            case(3)
-                receiver=i<=interfaceSkin .AND. j>fineLayerCellsBottom .AND. j<=ny-fineLayerCellsTop
-            case(4)
-                receiver=j>fineLayerCellsBottom
-            case(5)
-                receiver=j<=interfaceSkin
-            end select
-            if(receiver) then
-                do a=0,4
-                    n(a)=g(i,j,a)    !保留的是碰撞前温度矩；下方 neq 使用流场更新后的速度
-                enddo
-            else
-                n(0)=g(i,j,0)+g(i,j,1)+g(i,j,2)+g(i,j,3)+g(i,j,4)
-                n(1)=g(i,j,1)-g(i,j,3)
-                n(2)=g(i,j,2)-g(i,j,4)
-                n(3)=-4.0d0*g(i,j,0)+g(i,j,1)+g(i,j,2)+g(i,j,3)+g(i,j,4)
-                n(4)=g(i,j,1)-g(i,j,2)+g(i,j,3)-g(i,j,4)
-            endif
+            ! 温度所有节点（含接收层）统一由分布 g 计算碰撞前矩 n。
+            n(0)=g(i,j,0)+g(i,j,1)+g(i,j,2)+g(i,j,3)+g(i,j,4)
+            n(1)=g(i,j,1)-g(i,j,3)
+            n(2)=g(i,j,2)-g(i,j,4)
+            n(3)=-4.0d0*g(i,j,0)+g(i,j,1)+g(i,j,2)+g(i,j,3)+g(i,j,4)
+            n(4)=g(i,j,1)-g(i,j,2)+g(i,j,3)-g(i,j,4)
 
             neq(0)=T(i,j)
             neq(1)=T(i,j)*u(i,j)
@@ -2773,36 +2722,36 @@
     use commondata
     implicit none
 
-    ! 调用前 coarse_to_fine(...,.true.) 已在接收层 f/g 中暂存 m/n。
-    ! 接收节点直接用矩碰撞，普通节点由 f/g 求矩；每个节点只碰撞一次。
-    ! 流场迁移后 f 恢复为分布函数，g 中的接收矩保留到更新速度后的温度碰撞。
+    ! 调用前 coarse_to_fine 已按当前子步时刻更新细接收层的 f/g。
+    ! 所有节点统一由 f/g 求矩，再进行矩空间碰撞；每个节点只碰撞一次。
+    ! 先完成流场推进并更新速度，再由原有 g 求温度矩并进行温度碰撞。
     ! 四个细区先全部碰撞，再交换相邻区的碰撞后分布，最后迁移。
     ! 流场和温度场各有一次同级交换，保证温度碰撞使用已经更新的速度。
     ! 细区拼接线只改变存储位置，不引入物理边界、空间插值或时间插值。
 
     ! 四个细区先全部碰撞，再交换迁移外圈；避免读取另一细区尚未更新的数据。
-    call collision(2,size(f_left,1),size(f_left,2),dxFine,f_left,f_post_left,rho_left,u_left,v_left,Fx_left,Fy_left,&
+    call collision(size(f_left,1),size(f_left,2),dxFine,f_left,f_post_left,rho_left,u_left,v_left,Fx_left,Fy_left,&
         T_left,Snu,Sq,gBeta &
 #ifdef SideHeatedHa
         ,B2sigemarho &
 #endif
         )
 
-    call collision(3,size(f_right,1),size(f_right,2),dxFine,f_right,f_post_right,rho_right,u_right,v_right,Fx_right,&
+    call collision(size(f_right,1),size(f_right,2),dxFine,f_right,f_post_right,rho_right,u_right,v_right,Fx_right,&
         Fy_right,T_right,Snu,Sq,gBeta &
 #ifdef SideHeatedHa
         ,B2sigemarho &
 #endif
         )
 
-    call collision(4,size(f_bottom,1),size(f_bottom,2),dxFine,f_bottom,f_post_bottom,rho_bottom,u_bottom,v_bottom,&
+    call collision(size(f_bottom,1),size(f_bottom,2),dxFine,f_bottom,f_post_bottom,rho_bottom,u_bottom,v_bottom,&
         Fx_bottom,Fy_bottom,T_bottom,Snu,Sq,gBeta &
 #ifdef SideHeatedHa
         ,B2sigemarho &
 #endif
         )
 
-    call collision(5,size(f_top,1),size(f_top,2),dxFine,f_top,f_post_top,rho_top,u_top,v_top,Fx_top,Fy_top,T_top,&
+    call collision(size(f_top,1),size(f_top,2),dxFine,f_top,f_post_top,rho_top,u_top,v_top,Fx_top,Fy_top,T_top,&
         Snu,Sq,gBeta &
 #ifdef SideHeatedHa
         ,B2sigemarho &
@@ -2839,13 +2788,13 @@
     call macro(size(f_top,1),size(f_top,2),dxFine,f_top,rho_top,u_top,v_top,Fx_top,Fy_top)
 
     ! 四区速度已经更新，开始温度碰撞；此处使用更新后的 u/v。
-    call collisionT(2,size(f_left,1),size(f_left,2),g_left,g_post_left,u_left,v_left,T_left,Qk,Qnu)
+    call collisionT(size(f_left,1),size(f_left,2),g_left,g_post_left,u_left,v_left,T_left,Qk,Qnu)
 
-    call collisionT(3,size(f_right,1),size(f_right,2),g_right,g_post_right,u_right,v_right,T_right,Qk,Qnu)
+    call collisionT(size(f_right,1),size(f_right,2),g_right,g_post_right,u_right,v_right,T_right,Qk,Qnu)
 
-    call collisionT(4,size(f_bottom,1),size(f_bottom,2),g_bottom,g_post_bottom,u_bottom,v_bottom,T_bottom,Qk,Qnu)
+    call collisionT(size(f_bottom,1),size(f_bottom,2),g_bottom,g_post_bottom,u_bottom,v_bottom,T_bottom,Qk,Qnu)
 
-    call collisionT(5,size(f_top,1),size(f_top,2),g_top,g_post_top,u_top,v_top,T_top,Qk,Qnu)
+    call collisionT(size(f_top,1),size(f_top,2),g_top,g_post_top,u_top,v_top,T_top,Qk,Qnu)
 
     ! 四区温度碰撞完成后，复制相邻细区的 g_post，再开始温度迁移。
     call exchange_fine_thermal_halos()
@@ -2886,7 +2835,7 @@
     use commondata
     implicit none
     integer(kind=4) :: j, a
-    !参数中先出现的是接收方，后出现的是来源方,nint表示把实数偏移量取最近整数
+    !参数中先出现的是接收方，后出现的是来源方,nint表示把实数偏移量取最近整数，交换的是同一级细网格之间的碰撞后分布函数
     call copy_fine_halo(9,size(f_left,1),size(f_left,2),nint(xOffsetLeft),nint(yOffsetLeft),f_post_left,size(f_bottom,1),&
         size(f_bottom,2),nint(xOffsetBottom),nint(yOffsetBottom),f_post_bottom)
 
@@ -3030,12 +2979,12 @@
     integer(kind=4) :: k
     real(kind=8) :: du, uu, dt, tt
 
-    du=0.0d0
-    uu=0.0d0
-    dt=0.0d0
-    tt=0.0d0
+    du=0.0d0 !速度变化的平方积分
+    uu=0.0d0 !当前速度的平方积分
+    dt=0.0d0 !温度变化绝对值的积分
+    tt=0.0d0 !当前温度绝对值的积分
 
-    call update_host_all(.false.)
+    call update_host_all(.false.) !传输数据到 CPU
 
     call check_grid(size(f_coarse,1),size(f_coarse,2),dxCoarse,xOffsetCoarse,yOffsetCoarse,(1+merge(interfaceSkin,0,refineRatio>1)),&
         (size(f_coarse,1)-merge(interfaceSkin,0,refineRatio>1)),(1+merge(interfaceSkin,0,refineRatio>1)),(size(f_coarse,2)-merge(interfaceSkin,0,refineRatio>1)),centerIntegrationBox,du,uu,dt,tt,&
@@ -3089,7 +3038,7 @@
     open(newunit=k,file='Convergence_2DOpenaccMultiblock.dat',status='unknown',position='append')
     write(k,'(I0,1X,3(ES24.16E3,1X))') reloadItcOffset+itc,dble(reloadItcOffset+itc)/timeUnit,errorU,errorT
     close(k)
-    write(*,*) 'errorU,errorT:',errorU,errorT
+    write(*,*) 'itc_total:',reloadItcOffset+itc,' errorU,errorT:',errorU,errorT
 #endif
   end subroutine check
 !===================================================================================================
@@ -3103,26 +3052,26 @@
     implicit none
     logical, intent(in) :: full
     ! 同一同步步只传一次宏观场；完整检查点需要时再补传f/g、力和接口时间历史。
-    integer(kind=4), save :: macroItc=-1, stateItc=-1
+    integer(kind=4), save :: macroItc=-1, stateItc=-1 !save 表示：退出子程序后仍然保留变量的值，下次调用继续使用。
 
     if(full) then
-        if(stateItc==itc) return
+        if(stateItc==itc) return !判断是否跳过已经完成的同步。
     else
         if(macroItc==itc) return
     endif
     call update_host_grid(size(f_coarse,1),size(f_coarse,2),full,macroItc/=itc,f_coarse,g_coarse,rho_coarse,&
-        u_coarse,v_coarse,T_coarse,Fx_coarse,Fy_coarse)
+        u_coarse,v_coarse,T_coarse,Fx_coarse,Fy_coarse) !处理中心区域,传输哪些数据
     if(refineRatio > 1) then
         call update_host_grid(size(f_left,1),size(f_left,2),full,macroItc/=itc,f_left,g_left,rho_left,&
-            u_left,v_left,T_left,Fx_left,Fy_left)
+            u_left,v_left,T_left,Fx_left,Fy_left) !处理左区域,传输哪些数据
         call update_host_grid(size(f_right,1),size(f_right,2),full,macroItc/=itc,f_right,g_right,rho_right,&
-            u_right,v_right,T_right,Fx_right,Fy_right)
+            u_right,v_right,T_right,Fx_right,Fy_right) !处理右区域,传输哪些数据
         call update_host_grid(size(f_bottom,1),size(f_bottom,2),full,macroItc/=itc,f_bottom,g_bottom,rho_bottom,&
-            u_bottom,v_bottom,T_bottom,Fx_bottom,Fy_bottom)
+            u_bottom,v_bottom,T_bottom,Fx_bottom,Fy_bottom) !处理下区域,传输哪些数据
         call update_host_grid(size(f_top,1),size(f_top,2),full,macroItc/=itc,f_top,g_top,rho_top,&
-            u_top,v_top,T_top,Fx_top,Fy_top)
+            u_top,v_top,T_top,Fx_top,Fy_top) !处理上区域,传输哪些数据
     endif
-    if(full) then
+    if(full) then !重启之后，细网格还需要利用这些历史继续做时间插值
         !$acc update self(coarseHistoryPrevious,coarseHistoryCurrent,coarseHistoryNext) async(1)
     endif
     !$acc wait(1)
@@ -3155,10 +3104,10 @@
 
     logical, intent(in) :: full, macros
 
-    if(macros) then
+    if(macros) then !需要传宏观场
         !$acc update self(u, v, T, rho) async(1)
     endif
-    if(full) then
+    if(full) then !需要完整状态
         !$acc update self(f, g, Fx, Fy) async(1)
     endif
   end subroutine update_host_grid
@@ -3168,7 +3117,6 @@
 ! 子程序: check_grid
 ! 作用: 累计一个区域的收敛误差，并保存本次检查时的宏观场。
 !===================================================================================================
-#ifdef steadyFlow
   subroutine check_grid(ni,nj,dx,xOffset,yOffset,xStartIntegration,xEndIntegration,yStartIntegration,&
       yEndIntegration,integrationBox,du,uu,dt,&
       tt,u,v,T &
@@ -3180,7 +3128,7 @@
     use commondata,only: centerIntegrationBox,refineRatio
     implicit none
 
-    ! up/vp/Tp 是上一次收敛检查的场，不是上一时间步，也不是接口插值历史。
+    ! up/vp/Tp 是上一次收敛检查的场。
     ! 先按节点实际面积累计误差，再把当前 u/v/T 保存为下一次检查的参考。
 
     integer(kind=4) :: ni, nj, xStartIntegration, xEndIntegration, yStartIntegration, yEndIntegration
@@ -3198,12 +3146,16 @@
 #endif
     real(kind=8) :: du, uu, dt, tt, cellArea
 
-    do j=yStartIntegration,yEndIntegration
+    do j=yStartIntegration,yEndIntegration !先遍历传入的节点范围
         do i=xStartIntegration,xEndIntegration
             ! 节点控制面积先裁剪到本区范围；这里的坐标仍以细格距为单位。
             x=xOffset+(i-0.5d0)*dx
             y=yOffset+(j-0.5d0)*dx
-            xlo=max(x-dx/2,integrationBox(1))
+            !一个节点对应的完整控制区域为：
+            ![x-\Delta x/2,\ x+\Delta x/2][y-\Delta x/2,\ y+\Delta x/2].
+            !完整粗节点通常按面积 4 加权；
+            !完整细节点按面积 1 加权
+            xlo=max(x-dx/2,integrationBox(1))  !integrationBox取交集
             xhi=min(x+dx/2,integrationBox(2))
             ylo=max(y-dx/2,integrationBox(3))
             yhi=min(y+dx/2,integrationBox(4))
@@ -3220,21 +3172,45 @@
                     cellArea=cellArea+middleWidth*max(0.0d0,yhi-max(ylo,centerIntegrationBox(4)))    ! 上
                 endif
             endif
-            du=du+cellArea*((u(i,j)-up(i,j))**2+(v(i,j)-vp(i,j))**2)
+            du=du+cellArea*((u(i,j)-up(i,j))**2+(v(i,j)-vp(i,j))**2) !面积乘节点误差，再累计
             uu=uu+cellArea*(u(i,j)**2+v(i,j)**2)
-            ! 温度误差按实际面积累加绝对值，与基准代码的 L1 判据一致。
+            ! 温度误差按实际面积累加绝对值。
             dt=dt+cellArea*dABS( T(i,j)-Tp(i,j) )
             tt=tt+cellArea*dABS( T(i,j) )
         enddo
     enddo
 
-    up=u
+    up=u   !最后保存当前场
     vp=v
     Tp=T
   end subroutine check_grid
-#endif
 !===================================================================================================
 
+!===================================================================================================
+! 子程序: calNuRe
+! 作用: 按规定的采样时刻写入 Nu/Re 历史，并将正式采样次数增加 1。
+!===================================================================================================
+  subroutine calNuRe()
+
+    use commondata,only: itc,reloadItcOffset,timeUnit,NuReHistoryFile,NuReSampleCount
+    implicit none
+
+    integer(kind=4) :: k
+    real(kind=8) :: nu, re, hot, cold, middle, mass, meanT, tmin, tmax, rmin, rmax
+    !这里计算的是当前时刻的空间统计结果，不进行时间平均。
+    !mass	密度的全域面积积分,meanT	全域面积平均温度
+    call calculate_NuRe(nu,re,hot,cold,middle,mass,meanT,tmin,tmax,rmin,rmax) !计算当前全域统计量
+
+    !新算例初始化时已经建立文件并写好标题；续算时前面的逻辑已经保留重启时刻之前的有效历史，所以这里直接追加即可。
+    open(newunit=k,file=NuReHistoryFile,status='old',position='append')
+    write(k,'(2(I0,1X),12(ES24.16E3,1X))') NuReSampleCount+1,reloadItcOffset+itc, &
+        dble(reloadItcOffset+itc)/timeUnit,nu,re,hot,cold,middle,&
+        mass,meanT,tmin,tmax,rmin,rmax
+    close(k)
+    NuReSampleCount=NuReSampleCount+1
+    write(*,'(a,f12.5,a,es13.5,a,es13.5)') 't_ff=',dble(reloadItcOffset+itc)/timeUnit,' NuVolAvg=',nu,' ReVolRMS=',re
+  end subroutine calNuRe
+!===================================================================================================
 
 !===================================================================================================
 ! 子程序: calculate_NuRe
@@ -3251,16 +3227,16 @@
     real(kind=8), intent(out) :: nu, re, hot, cold, middle, mass, meanT, tmin, tmax, rmin, rmax
     real(kind=8) :: conv, vel2
 
-    call update_host_all(.false.)
+    call update_host_all(.false.) !确保 CPU 上的 rho/u/v/T 是当前场
 
-    conv=0.0d0
-    vel2=0.0d0
+    conv=0.0d0 !沿传热方向的速度与温度乘积的面积积分
+    vel2=0.0d0 !速度大小平方的面积积分。
     mass=0.0d0
     meanT=0.0d0
     hot=0.0d0
     cold=0.0d0
     middle=0.0d0
-    tmin=huge(1.0d0)
+    tmin=huge(1.0d0) !huge(1.0d0) 返回该双精度实数类型能够表示的最大有限值
     tmax=-tmin
     rmin=tmin
     rmax=-tmin
@@ -3268,8 +3244,9 @@
     call calNuRe_grid(size(f_coarse,1),size(f_coarse,2),dxCoarse,xOffsetCoarse,yOffsetCoarse,(1+merge(interfaceSkin,0,refineRatio>1)),&
         (size(f_coarse,1)-merge(interfaceSkin,0,refineRatio>1)),(1+merge(interfaceSkin,0,refineRatio>1)),(size(f_coarse,2)-merge(interfaceSkin,0,refineRatio>1)),centerIntegrationBox,&
         conv,vel2,mass,meanT,hot,cold,&
-        middle,tmin,tmax,rmin,rmax,rho_coarse,u_coarse,v_coarse,T_coarse)
-    if(refineRatio > 1) then
+        middle,tmin,tmax,rmin,rmax,rho_coarse,u_coarse,v_coarse,T_coarse) !累计中心粗网格的贡献
+    
+    if(refineRatio > 1) then   !多块情况下，再累计四个细区
 
         call calNuRe_grid(size(f_left,1),size(f_left,2),dxFine,xOffsetLeft,yOffsetLeft,1,size(f_left,1),&
             1,size(f_left,2),[xOffsetLeft,xOffsetLeft+size(f_left,1),yOffsetLeft,yOffsetLeft+size(f_left,2)],conv,vel2,mass,meanT,hot,cold,&
@@ -3301,7 +3278,7 @@
     hot=(lengthUnit/(Thot-Tcold))*hot
     cold=(lengthUnit/(Thot-Tcold))*cold
     middle=(lengthUnit/(Thot-Tcold))*middle
-    meanT=meanT/(dble(nx)*dble(ny))
+    meanT=meanT/(dble(nx)*dble(ny))  !平均温度
   end subroutine calculate_NuRe
 !===================================================================================================
 
@@ -3355,11 +3332,11 @@
                     cellArea=cellArea+middleWidth*max(0.0d0,yhi-max(ylo,centerIntegrationBox(4)))    ! 上
                 endif
             endif
-            if(cellArea <=0d0) cycle
+            if(cellArea <=0d0) cycle !跳过没有积分贡献的节点,跳到当前 i 循环的下一次迭代，不是退出整个子程序。
             if(.NOT. ieee_is_finite(T(i,j)) .OR. .NOT. ieee_is_finite(rho(i,j)) .OR. &
                 .NOT. ieee_is_finite(u(i,j)) .OR. .NOT. ieee_is_finite(v(i,j)) .OR. rho(i,j) <=0.0d0) then
                 write(*,*) 'Invalid state: time, xOffset,yOffset, i,j:',reloadItcOffset+itc,xOffset,yOffset,i,j
-                error stop 'Nonfinite or nonpositive density in owned cells'
+                error stop 'Nonfinite or nonpositive density in owned cells' !检查参与统计的节点是否出现异常。
             endif
 #ifdef SideHeatedCell
             conv=conv+u(i,j)*T(i,j)*cellArea
@@ -3377,28 +3354,28 @@
     enddo
 
 #ifdef SideHeatedCell
-    if(integrationBox(1)==0.0d0) then
+    if(integrationBox(1)==0.0d0) then  !判断当前区域是否接触左壁面
         do j=yStartIntegration,yEndIntegration
             hot=hot+(8.0d0*Thot-9.0d0*T(1,j)+T(2,j))/(3.0d0*dx)*dx/dble(ny)
         enddo
     endif
 
-    if(integrationBox(2)==dble(nx)) then
+    if(integrationBox(2)==dble(nx)) then  !判断当前区域是否接触右壁面
         do j=yStartIntegration,yEndIntegration
             cold=cold+(-8.0d0*Tcold+9.0d0*T(ni,j)-T(ni-1,&
                 j))/(3.0d0*dx)*dx/dble(ny)
         enddo
     endif
 
-    if((0.5d0*nx) >=integrationBox(1) .AND. (0.5d0*nx) < integrationBox(2)) then
-
-        call section_weights(((0.5d0*nx)-xOffset)/dx+0.5d0,ni,im,w,dw)
+    if((0.5d0*nx) >=integrationBox(1) .AND. (0.5d0*nx) < integrationBox(2)) then !判断中线是否经过当前区域
+    !细网格传入的是整个细数组对应的矩形范围，包含伸入中心粗区的接收层。粗网格传入的是中心粗区的实际积分范围。
+        call section_weights(((0.5d0*nx)-xOffset)/dx+0.5d0,ni,im,w,dw) !中线未必恰好落在某一行节点上,找到节点，计算插值系数和和拉格朗日基函数的系数的导数
         do j=yStartIntegration,yEndIntegration
-            call section_owned_weight(xOffset,yOffset,dx,integrationBox,j,1,(0.5d0*nx),sectionWeight)
+            call section_owned_weight(xOffset,yOffset,dx,integrationBox,j,1,(0.5d0*nx),sectionWeight) !当前节点在这条中线上实际负责多长的一段
             if(sectionWeight <=0d0) cycle
-            if(dx==1.0d0 .AND. refineRatio > 1) then
 
-                call fine_section_x((0.5d0*nx),nint(yOffset)+j,tm,um,dTdx)
+            if(dx==1.0d0 .AND. refineRatio > 1) then
+                call fine_section_x((0.5d0*nx),nint(yOffset)+j,tm,um,dTdx) !从细数组读取模板数据，算出目标位置的温度、速度和温度导数
             else
                 tm=sum(w*T(im:im+3,j))
                 um=sum(w*u(im:im+3,j))
@@ -3410,65 +3387,39 @@
     endif
 #else
 
-    if(integrationBox(3)==0.0d0) then
+    if(integrationBox(3)==0.0d0) then  !判断当前区域是否接触下壁面
         do i=xStartIntegration,xEndIntegration
             hot=hot+(8.0d0*Thot-9.0d0*T(i,1)+T(i,2))/(3.0d0*dx)*dx/dble(nx)
         enddo
     endif
 
-    if(integrationBox(4)==dble(ny)) then
+    if(integrationBox(4)==dble(ny)) then  !判断当前区域是否接触上壁面
         do i=xStartIntegration,xEndIntegration
             cold=cold+(-8.0d0*Tcold+9.0d0*T(i,nj)-T(i,&
                 nj-1))/(3.0d0*dx)*dx/dble(nx)
         enddo
     endif
 
-    if((0.5d0*ny) >=integrationBox(3) .AND. (0.5d0*ny) < integrationBox(4)) then
+    if((0.5d0*ny) >=integrationBox(3) .AND. (0.5d0*ny) < integrationBox(4)) then !判断中线是否经过当前区域
 
-        call section_weights(((0.5d0*ny)-yOffset)/dx+0.5d0,nj,jm,w,dw)
+        call section_weights(((0.5d0*ny)-yOffset)/dx+0.5d0,nj,jm,w,dw) !中线未必恰好落在某一行节点上,找到节点，计算插值系数和和拉格朗日基函数的系数的导数
         do i=xStartIntegration,xEndIntegration
-            call section_owned_weight(xOffset,yOffset,dx,integrationBox,i,2,(0.5d0*ny),sectionWeight)
-            if(sectionWeight <=0d0) cycle
-            if(dx==1.0d0 .AND. refineRatio > 1) then
+            call section_owned_weight(xOffset,yOffset,dx,integrationBox,i,2,(0.5d0*ny),sectionWeight) !当前节点在这条中线上实际负责多长的一段
+            if(sectionWeight <=0d0) cycle !贡献为零就跳过
 
-                call fine_section_y(nint(xOffset)+i,(0.5d0*ny),tm,vm,dTdy)
+            if(dx==1.0d0 .AND. refineRatio > 1) then !多块细网格
+                call fine_section_y(nint(xOffset)+i,(0.5d0*ny),tm,vm,dTdy) !从细数组读取模板数据，算出目标位置的温度、速度和温度导数
             else
-                tm=sum(w*T(i,jm:jm+3))
-                vm=sum(w*v(i,jm:jm+3))
-                dTdy=sum(dw*T(i,jm:jm+3))/dx
+                tm=sum(w*T(i,jm:jm+3)) !中线温度，粗网格
+                vm=sum(w*v(i,jm:jm+3)) !中线竖直速度，粗网格
+                dTdy=sum(dw*T(i,jm:jm+3))/dx !中线温度的 y 方向导数，粗网格
             endif
 
-            middle=middle+(vm*tm/diffusivity-dTdy)*sectionWeight/dble(nx)
+            middle=middle+(vm*tm/diffusivity-dTdy)*sectionWeight/dble(nx) !计算局部热通量，乘以积分长度并累加
         enddo
     endif
 #endif
   end subroutine calNuRe_grid
-!===================================================================================================
-
-!===================================================================================================
-! 子程序: exit_data_2d_openacc
-! 作用: 等待设备任务结束，释放场量、粗时间层及格子常数的设备存储。
-!===================================================================================================
-  subroutine exit_data_2d_openacc()
-    use commondata
-    implicit none
-
-    !$acc wait(1)
-
-    !$acc exit data delete(f_coarse, g_coarse, f_post_coarse, g_post_coarse, rho_coarse, u_coarse, &
-    !$acc& v_coarse, T_coarse, Fx_coarse, Fy_coarse, coarseHistoryPrevious,coarseHistoryCurrent,coarseHistoryNext)
-    if(refineRatio > 1) then
-        !$acc exit data delete(f_left, g_left, f_post_left, g_post_left, rho_left, u_left, &
-        !$acc& v_left, T_left, Fx_left, Fy_left)
-        !$acc exit data delete(f_right, g_right, f_post_right, g_post_right, rho_right, u_right, &
-        !$acc& v_right, T_right, Fx_right, Fy_right)
-        !$acc exit data delete(f_bottom, g_bottom, f_post_bottom, g_post_bottom, rho_bottom, u_bottom, &
-        !$acc& v_bottom, T_bottom, Fx_bottom, Fy_bottom)
-        !$acc exit data delete(f_top, g_top, f_post_top, g_post_top, rho_top, u_top, &
-        !$acc& v_top, T_top, Fx_top, Fy_top)
-    endif
-    !$acc exit data delete(ex, ey, omega, omegaT)
-  end subroutine exit_data_2d_openacc
 !===================================================================================================
 
 !===================================================================================================
@@ -3489,23 +3440,159 @@
     real(kind=8) :: z, term
     integer(kind=4) :: a, k, l
 
-    first=max(1,min(floor(q)-1,n-3))
-    z=q-dble(first)
+    first=max(1,min(floor(q)-1,n-3))  !floor 向下取整
+    z=q-dble(first) !把目标位置换算成相对于模板首节点的位置
 
-    call lagrange_weights(z,w)
-    dw=0.0d0
+    call lagrange_weights(z,w) !四点拉格朗日插值系数
+    dw=0.0d0   !温度梯度中，四个插值系数对位置的导数
+    ! 对拉格朗日基函数的求导
     do a=0,3
         do k=0,3
             if(k==a) cycle
-            term=1.0d0/dble(a-k)
-            do l=0,3
+            term=1.0d0/dble(a-k) !拉格朗日基函数中第 k 个公式的求导，分子会出现 1
+            do l=0,3             !乘上其余没有求导的因子
                 if(l/=a .AND. l/=k) term=term*(z-dble(l))/dble(a-l)
             enddo
 
-            dw(a+1)=dw(a+1)+term
+            dw(a+1)=dw(a+1)+term !把乘积求导产生的三项加起来
         enddo
     enddo
   end subroutine section_weights
+!===================================================================================================
+
+!===================================================================================================
+! 子程序: section_owned_weight
+! 作用: 将中线穿过的物理分区线段相加。
+!===================================================================================================
+  subroutine section_owned_weight(xOffset,yOffset,dx,integrationBox,k,axis,position,w)
+    use commondata,only: centerIntegrationBox,refineRatio
+    implicit none
+
+    real(kind=8), intent(out) :: w    ! 输出：本节点在指定中线上实际负责的积分长度。
+
+    ! axis=1 表示固定 x 的竖直中线，axis=2 表示固定 y 的水平中线。
+    ! 先定位本节点控制区间；细区处于中心投影内时只累加两侧物理线段。
+
+    real(kind=8), intent(in) :: xOffset, yOffset, dx, integrationBox(4), position
+    integer(kind=4), intent(in) :: k, axis
+    real(kind=8) :: q, lo, hi, clo, chi
+
+    if(axis==1) then  !固定 x 的竖直中线
+        q=yOffset+(k-.5d0)*dx
+        lo=integrationBox(3)
+        hi=integrationBox(4)
+        clo=centerIntegrationBox(3)
+        chi=centerIntegrationBox(4)
+    else            !固定 y 的水平中线
+        q=xOffset+(k-.5d0)*dx  !当前节点的物理 x 坐标
+        lo=integrationBox(1)   !当前网格块传入的 x 范围
+        hi=integrationBox(2)   !当前网格块传入的 x 范围
+        clo=centerIntegrationBox(1)  !中心粗区的 x 范围，即 127.5、895.5
+        chi=centerIntegrationBox(2)  !中心粗区的 x 范围，即 127.5、895.5
+    endif
+
+    w=max(0d0,min(q+dx/2,hi)-max(q-dx/2,lo)) !计算节点控制区间[q-\Delta x/2,\ q+\Delta x/2]与当前积分范围的交集长度
+    !对于粗网格，到这里就算完了。细网格还没处理完，因为它传入的范围包含接收层
+    if(refineRatio > 1 .AND. dx==1d0) then !多块下的细网格
+        if(axis==1) then
+            if(position < centerIntegrationBox(1) .OR. position >=centerIntegrationBox(2)) return
+        else
+            if(position < centerIntegrationBox(3) .OR. position >=centerIntegrationBox(4)) return !判断这条截面是否穿过中心粗区
+        endif  !如果截面在中心粗区的下方或上方，就不用扣除中心部分，保留前面计算的长度直接返回
+
+        ! 如果经过，就从当前节点的控制线段中排除中心粗区负责的部分，只保留该节点落在两侧细物理区的长度
+        w=max(0d0,min(q+dx/2,hi,clo)-max(q-dx/2,lo)) &    !排除重叠层的影响，只计算自己真正区域的长度
+            +max(0d0,min(q+dx/2,hi)-max(q-dx/2,lo,chi))
+    endif
+  end subroutine section_owned_weight
+!===================================================================================================
+
+!===================================================================================================
+! 子程序: fine_section_x
+! 作用: 跨具名细数组读取 x 方向四点模板，计算中线温度、速度和温度导数。
+!===================================================================================================
+  subroutine fine_section_x(x,j,tm,um,dTdx)
+    use commondata
+    implicit none
+
+    ! 模板位置按全域 nx 定位；四个温度和速度样本分别从相应具名细数组读取。
+
+    real(kind=8), intent(in) :: x
+    integer(kind=4), intent(in) :: j
+    real(kind=8), intent(out) :: tm, um, dTdx
+    real(kind=8) :: w(4), dw(4), temp(4), velocity(4)
+    integer(kind=4) :: first, a
+
+    call section_weights(x+0.5d0,nx,first,w,dw) !找到节点，计算插值系数和和拉格朗日基函数的系数的导数
+    do a=1,4
+        call fine_value(first+a-1,j,T_left,T_right,T_bottom,T_top,temp(a)) !根据全局编号，判断该节点存在哪一个细数组，再换成本地下标读取。
+        call fine_value(first+a-1,j,u_left,u_right,u_bottom,u_top,velocity(a))
+    enddo
+
+    tm=sum(w*temp)
+    um=sum(w*velocity)
+    dTdx=sum(dw*temp)
+  end subroutine fine_section_x
+!===================================================================================================
+
+!===================================================================================================
+! 子程序: fine_section_y
+! 作用: 跨具名细数组读取 y 方向四点模板，计算中线温度、速度和温度导数。
+!===================================================================================================
+  subroutine fine_section_y(i,y,tm,vm,dTdy)
+    use commondata
+    implicit none
+
+    ! 模板位置按全域 ny 定位；四个温度和速度样本分别从相应具名细数组读取。
+
+    integer(kind=4), intent(in) :: i
+    real(kind=8), intent(in) :: y
+    real(kind=8), intent(out) :: tm, vm, dTdy
+    real(kind=8) :: w(4), dw(4), temp(4), velocity(4)
+    integer(kind=4) :: first, a
+
+    call section_weights(y+0.5d0,ny,first,w,dw) !找到节点，计算插值系数和和拉格朗日基函数的系数的导数
+    do a=1,4
+        call fine_value(i,first+a-1,T_left,T_right,T_bottom,T_top,temp(a)) !把四个节点的温度和速度读出来
+        call fine_value(i,first+a-1,v_left,v_right,v_bottom,v_top,velocity(a)) !把四个节点的温度和速度读出来
+    enddo
+
+    tm=sum(w*temp)   !用四个样本计算目标位置的数值
+    vm=sum(w*velocity)
+    dTdy=sum(dw*temp)
+  end subroutine fine_section_y
+!===================================================================================================
+
+!===================================================================================================
+! 子程序: fine_value
+! 作用: 将全局细节点编号转换成本地下标，读取对应细数组中的标量值。
+!===================================================================================================
+  subroutine fine_value(i,j,left,right,bottom,top,value)
+    use commondata,only: f_left,f_right,f_bottom,f_top,&
+        xOffsetRight,xOffsetBottom,xOffsetTop,yOffsetTop
+    implicit none
+
+    real(kind=8), intent(out) :: value    ! 输出：指定全局细节点对应的温度或速度等标量值。
+
+    ! i/j 是全局细节点编号；减去所选具名数组的整数偏移后才是本地下标。
+    ! 只用于主机端中线后处理；若请求落入未分配的中心空区，立即报错。
+
+    integer(kind=4), intent(in) :: i, j
+    real(kind=8), intent(in) :: left(size(f_left,1),size(f_left,2)), right(size(f_right,1),size(f_right,2)), &
+        bottom(size(f_bottom,1),size(f_bottom,2)),top(size(f_top,1),size(f_top,2))
+
+    if(i <=size(f_left,1)) then
+        value=left(i,j) 
+    else if(i > nint(xOffsetRight)) then  !nint 取最近整数
+        value=right(i-nint(xOffsetRight),j)
+    else if(j <=size(f_bottom,2)) then
+        value=bottom(i-nint(xOffsetBottom),j)
+    else if(j > nint(yOffsetTop)) then
+        value=top(i-nint(xOffsetTop),j-nint(yOffsetTop))
+    else   !处于四个细数组中间的空缺区域，没有分配细网格数组来保存它的数据
+        error stop 'Fine section requested an inactive central node'
+    endif
+  end subroutine fine_value
 !===================================================================================================
 
 !===================================================================================================
@@ -3551,57 +3638,8 @@
 !===================================================================================================
 
 !===================================================================================================
-! 子程序: calNuRe
-! 作用: 按规定的采样时刻写入 Nu/Re 历史，并将正式采样次数增加 1。
-!===================================================================================================
-  subroutine calNuRe()
-
-    use commondata,only: itc,reloadItcOffset,timeUnit,NuReHistoryFile,NuReSampleCount
-    implicit none
-
-    integer(kind=4) :: k
-    real(kind=8) :: nu, re, hot, cold, middle, mass, meanT, tmin, tmax, rmin, rmax
-
-    call calculate_NuRe(nu,re,hot,cold,middle,mass,meanT,tmin,tmax,rmin,rmax)
-
-    open(newunit=k,file=NuReHistoryFile,status='old',position='append')
-    write(k,'(2(I0,1X),12(ES24.16E3,1X))') NuReSampleCount+1,reloadItcOffset+itc, &
-        dble(reloadItcOffset+itc)/timeUnit,nu,re,hot,cold,middle,&
-        mass,meanT,tmin,tmax,rmin,rmax
-    close(k)
-    NuReSampleCount=NuReSampleCount+1
-    write(*,'(a,f12.5,a,es13.5,a,es13.5)') 't_ff=',dble(reloadItcOffset+itc)/timeUnit,' NuVolAvg=',nu,' ReVolRMS=',re
-  end subroutine calNuRe
-!===================================================================================================
-
-!===================================================================================================
-! 子程序: output_time_string
-! 作用: 将实际累计 t_ff 写成文件名中的时间，去掉小数末尾多余的零。
-!===================================================================================================
-  subroutine output_time_string(timeString)
-
-    use commondata
-    implicit none
-
-    character(len=40), intent(out) :: timeString
-    integer(kind=4) :: i
-
-    ! t_ff保留十二位小数供查看；文件名另含累计整数步数，不同保存步不会因时间舍入而重名。
-    write(timeString,'(F40.12)') dble(reloadItcOffset+itc)/timeUnit
-    if(index(timeString,'*')/=0) error stop 'tff exceeds filename field width'
-    timeString=adjustl(timeString)
-    i=len_trim(timeString)
-    do while(timeString(i:i)=='0')
-        timeString(i:i)=' '
-        i=i-1
-    enddo
-    if(timeString(i:i)=='.') timeString(i:i)=' '
-  end subroutine output_time_string
-!===================================================================================================
-
-!===================================================================================================
 ! 子程序: output_Tecplot
-! 作用: 输出各具名区域的 Tecplot 数据及节点积分面积。
+! 作用: 输出各具名区域的坐标和宏观场，用于 Tecplot 可视化。
 !===================================================================================================
   subroutine output_Tecplot()
 
@@ -3612,38 +3650,38 @@
     character(len=40) :: timeString
     character(len=256) :: name
 
-    call output_time_string(timeString)
+    call output_time_string(timeString) !!返回累计 tff 的有效字符串，100，100.5这种，timeString是字符串
     write(name,'(a,a,a,i0,a)') pltFolderPrefix//'-',trim(timeString),'tff-',reloadItcOffset+itc,'itc.dat'
 
-    call update_host_all(.false.)
+    call update_host_all(.false.)  !传输数据到 CPU
     open(newunit=k,file=trim(name),status='replace')
-    write(k,'(a)') 'VARIABLES="x/L","y/L","u","v","T","rho","dx/L","integration_area/L^2"'
+    write(k,'(a)') 'VARIABLES="x/L","y/L","u","v","T","rho"'
 
     call output_Tecplot_grid(size(f_coarse,1),size(f_coarse,2),dxCoarse,xOffsetCoarse,yOffsetCoarse,(1+merge(interfaceSkin,0,refineRatio>1)),&
-        (size(f_coarse,1)-merge(interfaceSkin,0,refineRatio>1)),(1+merge(interfaceSkin,0,refineRatio>1)),(size(f_coarse,2)-merge(interfaceSkin,0,refineRatio>1)),centerIntegrationBox,&
+        (size(f_coarse,1)-merge(interfaceSkin,0,refineRatio>1)),(1+merge(interfaceSkin,0,refineRatio>1)),(size(f_coarse,2)-merge(interfaceSkin,0,refineRatio>1)),&
         'coarse',k,rho_coarse,u_coarse,&
         v_coarse,T_coarse)
     if(refineRatio > 1) then
 
         call output_Tecplot_grid(size(f_left,1),size(f_left,2),dxFine,xOffsetLeft,yOffsetLeft,1,size(f_left,1),&
-            1,size(f_left,2),[xOffsetLeft,xOffsetLeft+size(f_left,1),yOffsetLeft,yOffsetLeft+size(f_left,2)],'left',k,rho_left,u_left,v_left,T_left)
+            1,size(f_left,2),'left',k,rho_left,u_left,v_left,T_left)
 
         call output_Tecplot_grid(size(f_right,1),size(f_right,2),dxFine,xOffsetRight,yOffsetRight,1,&
-            size(f_right,1),1,size(f_right,2),[xOffsetRight,xOffsetRight+size(f_right,1),yOffsetRight,yOffsetRight+size(f_right,2)],'right',k,&
+            size(f_right,1),1,size(f_right,2),'right',k,&
             rho_right,u_right,&
             v_right,T_right)
 
         call output_Tecplot_grid(size(f_bottom,1),size(f_bottom,2),dxFine,xOffsetBottom,yOffsetBottom,1,&
-            size(f_bottom,1),1,size(f_bottom,2),[xOffsetBottom,xOffsetBottom+size(f_bottom,1),yOffsetBottom,yOffsetBottom+size(f_bottom,2)],'bottom',&
+            size(f_bottom,1),1,size(f_bottom,2),'bottom',&
             k,rho_bottom,u_bottom,&
             v_bottom,T_bottom)
 
         call output_Tecplot_grid(size(f_top,1),size(f_top,2),dxFine,xOffsetTop,yOffsetTop,1,size(f_top,1),&
-            1,size(f_top,2),[xOffsetTop,xOffsetTop+size(f_top,1),yOffsetTop,yOffsetTop+size(f_top,2)],'top',k,rho_top,u_top,v_top,T_top)
+            1,size(f_top,2),'top',k,rho_top,u_top,v_top,T_top)
     endif
 
     close(k)
-    call record_output_file(name)
+    call record_output_file(name)    !OutputFiles输出
   end subroutine output_Tecplot
 !===================================================================================================
 
@@ -3652,51 +3690,28 @@
 ! 作用: 向已打开的 Tecplot 文件写入一个区域的坐标及宏观场。
 !===================================================================================================
   subroutine output_Tecplot_grid(ni,nj,dx,xOffset,yOffset,xStartIntegration,xEndIntegration,&
-      yStartIntegration,yEndIntegration,integrationBox,&
+      yStartIntegration,yEndIntegration,&
       gridName,k,rho,u,v,T)
 
-    use commondata,only: lengthUnit,timeUnit,itc,reloadItcOffset,centerIntegrationBox,refineRatio
+    use commondata,only: lengthUnit,timeUnit,itc,reloadItcOffset
     implicit none
     integer(kind=4) :: ni, nj, xStartIntegration, xEndIntegration, yStartIntegration, yEndIntegration
-    real(kind=8) :: dx, xOffset, yOffset, integrationBox(4)
+    real(kind=8) :: dx, xOffset, yOffset
     character(*), intent(in) :: gridName
 
-    real(kind=8) :: x, y, xlo, xhi, ylo, yhi, middleWidth
     integer(kind=4) :: k, i, j
     real(kind=8) :: rho(ni,nj)
     real(kind=8) :: u(ni,nj)
     real(kind=8) :: v(ni,nj)
     real(kind=8) :: T(ni,nj)
-    real(kind=8) :: cellArea
 
     write(k,'(a,a,a,I0,a,I0,a,ES24.16E3)') 'ZONE T="',trim(gridName),'", I=',xEndIntegration-xStartIntegration+1,&
         ', J=',yEndIntegration-yStartIntegration+1,', F=POINT, SOLUTIONTIME=',dble(reloadItcOffset+itc)/timeUnit
     do j=yStartIntegration,yEndIntegration
         do i=xStartIntegration,xEndIntegration
-            ! 节点控制面积先裁剪到本区范围；这里的坐标仍以细格距为单位。
-            x=xOffset+(i-0.5d0)*dx
-            y=yOffset+(j-0.5d0)*dx
-            xlo=max(x-dx/2,integrationBox(1))
-            xhi=min(x+dx/2,integrationBox(2))
-            ylo=max(y-dx/2,integrationBox(3))
-            yhi=min(y+dx/2,integrationBox(4))
-            cellArea=0.0d0
-            if(xhi > xlo .AND. yhi > ylo) then
-                if(refineRatio==1 .OR. dx > 1.0d0) then
-                    cellArea=(xhi-xlo)*(yhi-ylo)    ! 单网格全域或中心粗物理矩形。
-                else
-                    ! 分别累加四个细物理矩形的面积，排除中心粗物理区域。
-                    cellArea=max(0.0d0,min(xhi,centerIntegrationBox(1))-xlo)*(yhi-ylo)    ! 左
-                    cellArea=cellArea+max(0.0d0,xhi-max(xlo,centerIntegrationBox(2)))*(yhi-ylo)    ! 右
-                    middleWidth=max(0.0d0,min(xhi,centerIntegrationBox(2))-max(xlo,centerIntegrationBox(1)))
-                    cellArea=cellArea+middleWidth*max(0.0d0,min(yhi,centerIntegrationBox(3))-ylo)    ! 下
-                    cellArea=cellArea+middleWidth*max(0.0d0,yhi-max(ylo,centerIntegrationBox(4)))    ! 上
-                endif
-            endif
-            write(k,'(8(ES24.16E3,1X))')((xOffset+(dble(i)-0.5d0)*dx))/lengthUnit,&
-                ((yOffset+(dble(j)-0.5d0)*dx))/lengthUnit,u(i,j),v(i,j),T(i,j),rho(i,j),&
-                dx/lengthUnit,&
-                cellArea/lengthUnit**2
+            ! 每个节点写出六列可视化数据；dx 用于计算节点坐标，坐标除以 lengthUnit，场量直接输出原值。
+            write(k,'(6(ES24.16E3,1X))')((xOffset+(dble(i)-0.5d0)*dx))/lengthUnit,&
+                ((yOffset+(dble(j)-0.5d0)*dx))/lengthUnit,u(i,j),v(i,j),T(i,j),rho(i,j)
         enddo
     enddo
   end subroutine output_Tecplot_grid
@@ -3706,7 +3721,7 @@
 ! 子程序: output_SnapshotFile
 ! 作用: 将五区原始节点拼成四个一维数组，输出紧凑快照，不存积分权重。
 !===================================================================================================
-  subroutine output_SnapshotFile()
+  subroutine output_SnapshotFile()    !四个细数组全部保存，包括部分积分权重为零的接收节点
     use commondata
     implicit none
     integer(kind=4) :: k, first, last, count, iStart, iEnd, jStart, jEnd
@@ -3714,51 +3729,59 @@
     character(len=40) :: timeString
     character(len=256) :: name
 
-    call update_host_all(.false.)
-    call output_time_string(timeString)
+    call update_host_all(.false.)     !传输数据到 CPU
+    call output_time_string(timeString) !返回累计 tff 的有效字符串，100，100.5这种，timeString是字符串
     write(name,'(a,a,a,i0,a)') snapshotFilePrefix//'-',trim(timeString),'tff-',reloadItcOffset+itc,'itc.bin'
     ! 中心去掉接收层；四个细矩形保存原始节点，含零积分面积的接口节点。
-    iStart=1+merge(interfaceSkin,0,refineRatio>1)
+    iStart=1+merge(interfaceSkin,0,refineRatio>1)               !中心粗网格需要保存的节点范围
     iEnd=size(f_coarse,1)-merge(interfaceSkin,0,refineRatio>1)
     jStart=iStart
     jEnd=size(f_coarse,2)-merge(interfaceSkin,0,refineRatio>1)
-    count=(iEnd-iStart+1)*(jEnd-jStart+1)
-    if(refineRatio>1) count=count+size(T_left)+size(T_right)+size(T_bottom)+size(T_top)
+    count=(iEnd-iStart+1)*(jEnd-jStart+1)   !中心粗网格
+    if(refineRatio>1) count=count+size(T_left)+size(T_right)+size(T_bottom)+size(T_top) ! 四周细网格
     allocate(uall(count),vall(count),Tall(count),rhoall(count))
+    !按照“粗、左、右、下、上”的顺序拼接
     first=1
-    last=(iEnd-iStart+1)*(jEnd-jStart+1)
-    uall(first:last)=reshape(u_coarse(iStart:iEnd,jStart:jEnd),[last-first+1])
-    vall(first:last)=reshape(v_coarse(iStart:iEnd,jStart:jEnd),[last-first+1])
+    last=(iEnd-iStart+1)*(jEnd-jStart+1) !Fortran 默认第一个下标变化最快,先遍历 i，再增加 j
+    uall(first:last)=reshape(u_coarse(iStart:iEnd,jStart:jEnd),[last-first+1]) !reshape：把二维数组按规定顺序展开成一维
+    vall(first:last)=reshape(v_coarse(iStart:iEnd,jStart:jEnd),[last-first+1]) ![last-first+1]：指定展开后的一维数组长度
     Tall(first:last)=reshape(T_coarse(iStart:iEnd,jStart:jEnd),[last-first+1])
     rhoall(first:last)=reshape(rho_coarse(iStart:iEnd,jStart:jEnd),[last-first+1])
+
     if(refineRatio>1) then
-        first=last+1
+        first=last+1              !左细区
         last=last+size(T_left)
         uall(first:last)=reshape(u_left,[last-first+1])
         vall(first:last)=reshape(v_left,[last-first+1])
         Tall(first:last)=reshape(T_left,[last-first+1])
         rhoall(first:last)=reshape(rho_left,[last-first+1])
-        first=last+1
+
+        first=last+1              !右细区
         last=last+size(T_right)
         uall(first:last)=reshape(u_right,[last-first+1])
         vall(first:last)=reshape(v_right,[last-first+1])
         Tall(first:last)=reshape(T_right,[last-first+1])
         rhoall(first:last)=reshape(rho_right,[last-first+1])
-        first=last+1
+
+        first=last+1              !下细区
         last=last+size(T_bottom)
         uall(first:last)=reshape(u_bottom,[last-first+1])
         vall(first:last)=reshape(v_bottom,[last-first+1])
         Tall(first:last)=reshape(T_bottom,[last-first+1])
         rhoall(first:last)=reshape(rho_bottom,[last-first+1])
-        first=last+1
+
+        first=last+1              !上细区
         last=last+size(T_top)
         uall(first:last)=reshape(u_top,[last-first+1])
         vall(first:last)=reshape(v_top,[last-first+1])
         Tall(first:last)=reshape(T_top,[last-first+1])
         rhoall(first:last)=reshape(rho_top,[last-first+1])
     endif
+
     ! 每段内i最快、j其次，段顺序coarse/left/right/bottom/top；不插值成全域均匀网格。
     ! 只存四个原始场与少量几何/物理信息；后处理由这些信息重建面积。
+    !'unformatted'：按二进制数据写入，不转换成文本数字。
+    !'stream'：连续写入数据，不添加顺序非格式化文件的记录标记
     open(newunit=k,file=trim(name),form='unformatted',access='stream',status='replace')
     write(k) 'MB2DSNAPSHOT0001',merge(5,1,refineRatio>1),nx,ny,reloadItcOffset+itc
 #ifdef SideHeatedCell
@@ -3779,7 +3802,7 @@
     write(k) uall,vall,Tall,rhoall
     close(k)
     deallocate(uall,vall,Tall,rhoall)
-    call record_output_file(name)
+    call record_output_file(name)  !OutputFiles输出
   end subroutine output_SnapshotFile
 !===================================================================================================
 
@@ -3796,8 +3819,8 @@
     character(len=40) :: timeString
     character(len=256) :: name, metaName
 
-    call update_host_all(.true.)
-    call output_time_string(timeString)
+    call update_host_all(.true.)  !传输数据到 CPU
+    call output_time_string(timeString)   !返回累计 tff 的有效字符串，100，100.5这种，timeString是字符串
     ! 文件名同时记录实际t_ff和累计细格子步数，手工续算直接填写这个整数步数。
     write(name,'(a,a,a,i0,a)') reloadFilePrefix//'-',trim(timeString),'tff-',reloadItcOffset+itc,'itc.bin'
     metaName=reloadFilePrefix//'-latest.meta'
@@ -3923,141 +3946,6 @@
   end subroutine output_ReloadFile
 !===================================================================================================
 
-
-!===================================================================================================
-! 子程序: section_owned_weight
-! 作用: 将中线穿过的物理分区线段相加。
-!===================================================================================================
-  subroutine section_owned_weight(xOffset,yOffset,dx,integrationBox,k,axis,position,w)
-    use commondata,only: centerIntegrationBox,refineRatio
-    implicit none
-
-    real(kind=8), intent(out) :: w    ! 输出：本节点在指定中线上实际负责的积分长度。
-
-    ! axis=1 表示固定 x 的竖直中线，axis=2 表示固定 y 的水平中线。
-    ! 先定位本节点控制区间；细区处于中心投影内时只累加两侧物理线段。
-
-    real(kind=8), intent(in) :: xOffset, yOffset, dx, integrationBox(4), position
-    integer(kind=4), intent(in) :: k, axis
-    real(kind=8) :: q, lo, hi, clo, chi
-
-    if(axis==1) then
-        q=yOffset+(k-.5d0)*dx
-        lo=integrationBox(3)
-        hi=integrationBox(4)
-        clo=centerIntegrationBox(3)
-        chi=centerIntegrationBox(4)
-    else
-        q=xOffset+(k-.5d0)*dx
-        lo=integrationBox(1)
-        hi=integrationBox(2)
-        clo=centerIntegrationBox(1)
-        chi=centerIntegrationBox(2)
-    endif
-
-    w=max(0d0,min(q+dx/2,hi)-max(q-dx/2,lo))
-    if(refineRatio > 1 .AND. dx==1d0) then
-        if(axis==1) then
-            if(position < centerIntegrationBox(1) .OR. position >=centerIntegrationBox(2)) return
-        else
-            if(position < centerIntegrationBox(3) .OR. position >=centerIntegrationBox(4)) return
-        endif
-
-        ! 中心投影内的细中线由两段物理区间相加，不计算交换层长度。
-        w=max(0d0,min(q+dx/2,hi,clo)-max(q-dx/2,lo)) &
-            +max(0d0,min(q+dx/2,hi)-max(q-dx/2,lo,chi))
-    endif
-  end subroutine section_owned_weight
-!===================================================================================================
-
-!===================================================================================================
-! 子程序: fine_section_x
-! 作用: 跨具名细数组读取 x 方向四点模板，计算中线温度、速度和温度导数。
-!===================================================================================================
-  subroutine fine_section_x(x,j,tm,um,dTdx)
-    use commondata
-    implicit none
-
-    ! 模板位置按全域 nx 定位；四个温度和速度样本分别从相应具名细数组读取。
-
-    real(kind=8), intent(in) :: x
-    integer(kind=4), intent(in) :: j
-    real(kind=8), intent(out) :: tm, um, dTdx
-    real(kind=8) :: w(4), dw(4), temp(4), velocity(4)
-    integer(kind=4) :: first, a
-
-    call section_weights(x+0.5d0,nx,first,w,dw)
-    do a=1,4
-        call fine_value(first+a-1,j,T_left,T_right,T_bottom,T_top,temp(a))
-        call fine_value(first+a-1,j,u_left,u_right,u_bottom,u_top,velocity(a))
-    enddo
-
-    tm=sum(w*temp)
-    um=sum(w*velocity)
-    dTdx=sum(dw*temp)
-  end subroutine fine_section_x
-!===================================================================================================
-
-!===================================================================================================
-! 子程序: fine_section_y
-! 作用: 跨具名细数组读取 y 方向四点模板，计算中线温度、速度和温度导数。
-!===================================================================================================
-  subroutine fine_section_y(i,y,tm,vm,dTdy)
-    use commondata
-    implicit none
-
-    ! 模板位置按全域 ny 定位；四个温度和速度样本分别从相应具名细数组读取。
-
-    integer(kind=4), intent(in) :: i
-    real(kind=8), intent(in) :: y
-    real(kind=8), intent(out) :: tm, vm, dTdy
-    real(kind=8) :: w(4), dw(4), temp(4), velocity(4)
-    integer(kind=4) :: first, a
-
-    call section_weights(y+0.5d0,ny,first,w,dw)
-    do a=1,4
-        call fine_value(i,first+a-1,T_left,T_right,T_bottom,T_top,temp(a))
-        call fine_value(i,first+a-1,v_left,v_right,v_bottom,v_top,velocity(a))
-    enddo
-
-    tm=sum(w*temp)
-    vm=sum(w*velocity)
-    dTdy=sum(dw*temp)
-  end subroutine fine_section_y
-!===================================================================================================
-
-!===================================================================================================
-! 子程序: fine_value
-! 作用: 将全局细节点编号转换成本地下标，读取对应细数组中的标量值。
-!===================================================================================================
-  subroutine fine_value(i,j,left,right,bottom,top,value)
-    use commondata,only: f_left,f_right,f_bottom,f_top,&
-        xOffsetRight,xOffsetBottom,xOffsetTop,yOffsetTop
-    implicit none
-
-    real(kind=8), intent(out) :: value    ! 输出：指定全局细节点对应的温度或速度等标量值。
-
-    ! i/j 是全局细节点编号；减去所选具名数组的整数偏移后才是本地下标。
-    ! 只用于主机端中线后处理；若请求落入未分配的中心空区，立即报错。
-
-    integer(kind=4), intent(in) :: i, j
-    real(kind=8), intent(in) :: left(size(f_left,1),size(f_left,2)), right(size(f_right,1),size(f_right,2)), &
-        bottom(size(f_bottom,1),size(f_bottom,2)),top(size(f_top,1),size(f_top,2))
-
-    if(i <=size(f_left,1)) then
-        value=left(i,j)
-    else if(i > nint(xOffsetRight)) then
-        value=right(i-nint(xOffsetRight),j)
-    else if(j <=size(f_bottom,2)) then
-        value=bottom(i-nint(xOffsetBottom),j)
-    else if(j > nint(yOffsetTop)) then
-        value=top(i-nint(xOffsetTop),j-nint(yOffsetTop))
-    else
-        error stop 'Fine section requested an inactive central node'
-    endif
-  end subroutine fine_value
-!===================================================================================================
-
 !===================================================================================================
 
 !===================================================================================================
@@ -4074,5 +3962,30 @@
     write(k,'(I0,1X,A)') reloadItcOffset+itc,trim(name)
     close(k)
   end subroutine record_output_file
+!===================================================================================================
 
+!===================================================================================================
+! 子程序: exit_data_2d_openacc
+! 作用: 等待设备任务结束，释放场量、粗时间层及格子常数的设备存储。
+!===================================================================================================
+  subroutine exit_data_2d_openacc()
+    use commondata
+    implicit none
 
+    !$acc wait(1)
+
+    !$acc exit data delete(f_coarse, g_coarse, f_post_coarse, g_post_coarse, rho_coarse, u_coarse, &
+    !$acc& v_coarse, T_coarse, Fx_coarse, Fy_coarse, coarseHistoryPrevious,coarseHistoryCurrent,coarseHistoryNext)
+    if(refineRatio > 1) then
+        !$acc exit data delete(f_left, g_left, f_post_left, g_post_left, rho_left, u_left, &
+        !$acc& v_left, T_left, Fx_left, Fy_left)
+        !$acc exit data delete(f_right, g_right, f_post_right, g_post_right, rho_right, u_right, &
+        !$acc& v_right, T_right, Fx_right, Fy_right)
+        !$acc exit data delete(f_bottom, g_bottom, f_post_bottom, g_post_bottom, rho_bottom, u_bottom, &
+        !$acc& v_bottom, T_bottom, Fx_bottom, Fy_bottom)
+        !$acc exit data delete(f_top, g_top, f_post_top, g_post_top, rho_top, u_top, &
+        !$acc& v_top, T_top, Fx_top, Fy_top)
+    endif
+    !$acc exit data delete(ex, ey, omega, omegaT)
+  end subroutine exit_data_2d_openacc
+!===================================================================================================
