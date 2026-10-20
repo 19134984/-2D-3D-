@@ -54,9 +54,10 @@ def compile_run(d,s,stem='solver',expect=0):
  return r
 for label in ['wall','periodic','uniform_periodic','steady']:
  d=root/label;ps=post.replace('=500.0d0','=0.02d0').replace('=1000.0d0','=0.09d0')
- if label=='steady':ps=ps.replace('postprocessSteady=0','postprocessSteady=1')
+ if label=='steady':ps=ps.replace('!#define steadyFlow','#define steadyFlow').replace('#define unsteadyFlow','!#define unsteadyFlow')
  compile_run(d,ps,'post')
  a=np.atleast_2d(np.loadtxt(d/'NuRe_2DOpenaccMultiblock.dat'));b=np.atleast_2d(np.loadtxt(d/'SnapshotNuRe_2DOpenaccMultiblock.dat'))
+ assert a.shape[1]==14 and b.shape[1]==13
  match=b[np.isin(b[:,0],a[:,1])];diff=float(np.max(np.abs(a[:,2:]-match[:,1:])))
  np.testing.assert_allclose(a[:,2:],match[:,1:],rtol=1e-13,atol=1e-13)
  results[label+'_snapshot_max_diff']=diff
@@ -64,20 +65,43 @@ for label in ['wall','periodic','uniform_periodic','steady']:
   finaltext=(d/'FinalNuRe_2DOpenaccMultiblock.dat').read_text()
   assert '# itc_total = 38' in finaltext and '# error_check_itc = 32' in finaltext
   assert '# errorU errorT = ' in finaltext
-  assert (d/'SteadySummary_2DOpenaccMultiblock.dat').read_text()==finaltext
+  assert not (d/'SteadySummary_2DOpenaccMultiblock.dat').exists()
  # Output index uses full filenames with the exact cumulative integer step.
  for row in (d/'OutputFiles_2DOpenaccMultiblock.dat').read_text().splitlines():
   step,name=row.split()
   if name.startswith('buoyancy'):
    assert name.endswith(f'tff-{step}itc{Path(name).suffix}')
    assert (d/name).is_file()
- # Size: 16-byte magic, 5 ints, 8 reals, box(4), per-block (2 ints+3 reals), 4 fields.
+ # Snapshot 0002: full arrays/original offsets; 11 ints, 8 reals, box(4), block geometry, 4 fields.
+ meta=(d/'reloadFile2DOpenaccMultiblock-latest.meta').read_text().splitlines()
+ settings=list(map(int,meta[3].split()))
+ meta_step=int(meta[meta.index('# itc_total NuReSampleCount t_ff errorU errorT')+1].split()[0])
+ expected_geometry=[]
+ for block in (['coarse','left','right','bottom','top'] if settings[-1]==5 else ['coarse']):
+  pos=next(i for i,line in enumerate(meta) if line.startswith('# '+block+':'))
+  dims=list(map(int,meta[pos+1].split()))
+  geometry=list(map(float,meta[pos+2].split()))
+  expected_geometry.append((dims[:2],geometry[:3]))
  for snap in d.glob('buoyancy*Snapshot-*.bin'):
   with snap.open('rb') as f:
-   f.seek(16);nb,*_=__import__('struct').unpack('5i',f.read(20));f.seek(96,1);cells=0
+   assert f.read(16)==b'MB2DSNAPSHOT0002'
+   nb,nx,ny,total_step,mode,ratio,skin,left,right,bottom,top=struct.unpack('11i',f.read(44))
+   assert [nx,ny,ratio,left,right,bottom,top,skin,nb]==settings
+   physics=struct.unpack('8d',f.read(64));box=struct.unpack('4d',f.read(32));cells=0;block_cells=[]
+   assert abs(physics[0]-total_step/physics[7])<1e-12*max(1,abs(physics[0]))
    for i in range(nb):
-    ni,nj=__import__('struct').unpack('2i',f.read(8));f.seek(24,1);cells+=ni*nj
-  assert snap.stat().st_size==16+20+96+32*nb+32*cells
+    ni,nj=struct.unpack('2i',f.read(8));offsets=struct.unpack('3d',f.read(24))
+    assert [ni,nj]==expected_geometry[i][0]
+    np.testing.assert_array_equal(offsets,expected_geometry[i][1])
+    block_cells.append(ni*nj);cells+=ni*nj
+   fields=np.frombuffer(f.read(),dtype=np.float64).reshape(4,cells)
+  assert snap.stat().st_size==16+44+96+32*nb+32*cells
+  if total_step==meta_step:
+   # The full coarse u/v/T/rho, including receivers, must equal the checkpoint arrays exactly.
+   checkpoint_fields=np.frombuffer((d/meta[1]).read_bytes(),dtype=np.float64,
+       count=4*block_cells[0],offset=14*block_cells[0]*8).reshape(4,block_cells[0])
+   np.testing.assert_array_equal(fields[:,:block_cells[0]],checkpoint_fields)
+ results[label+'_snapshot_layout']='full dimensions and original offsets match meta; coarse fields match checkpoint exactly'
 for label in ['wall','periodic','steady']:
  base=root/label;d=root/(label+'_restart');shutil.copytree(base,d,dirs_exist_ok=True)
  latest='reloadFile2DOpenaccMultiblock-latest.meta'
@@ -162,21 +186,63 @@ for label in ['wall','periodic','steady']:
 report['restart_and_snapshot']=results
 
 if args.before:
-    d=root/'original';d.mkdir(exist_ok=True);s=small(args.before.read_text(encoding='utf-8'))
-    (d/'solver.F90').write_text(s,encoding='utf-8')
-    c=subprocess.run([fc,'-cpp','-ffree-line-length-none','-fcheck=all','solver.F90','-lgomp','-o','solver.exe'],cwd=d,env=env,capture_output=True,text=True,encoding="utf-8",errors="replace");assert c.returncode==0,c.stderr
-    r=subprocess.run([str(d/'solver.exe')],cwd=d,env=env,capture_output=True,text=True,encoding="utf-8",errors="replace",timeout=60);assert r.returncode==0,r.stderr
-    fn=(d/'reloadFile2DOpenaccMultiblock-latest.meta').read_text().strip();blob=(d/fn).read_bytes()
-    off=9*4+12*4+15*8+2*4+2*8;payload=b''
-    for b in range(5):
-     geom=struct.unpack_from('6i',blob,off);off+=6*4+7*8;size=geom[0]*geom[1]*20*8
-     if b==0:size+=20*2*max(32-8-9,32-8-9-4)*4*3*8
-     payload+=blob[off:off+size];off+=size
-    assert off==len(blob)
-    fresh=root/'wall';fn2=(fresh/'reloadFile2DOpenaccMultiblock-latest.meta').read_text().splitlines()[1]
-    new=(fresh/fn2).read_bytes();assert payload==new,'Pre-edit numerical state changed'
-    np.testing.assert_array_equal(np.loadtxt(d/'NuRe_2DOpenaccMultiblock.dat'),np.loadtxt(fresh/'NuRe_2DOpenaccMultiblock.dat')[:,2:])
-    report['before_edit_comparison']='bitwise identical state and Nu/Re after 60 steps'
+    # Removing the extra diagnostic must leave fields and all retained columns unchanged.
+    for label,steady,periodic,ratio in [('wall',False,False,2),('periodic',False,True,2),('uniform_periodic',False,True,1),('steady',True,False,2)]:
+        d=root/('original_'+label)
+        compile_run(d,small(args.before.read_text(encoding='utf-8'),steady,periodic,ratio))
+        fresh=root/label
+        fn=(d/'reloadFile2DOpenaccMultiblock-latest.meta').read_text().splitlines()[1]
+        fn2=(fresh/'reloadFile2DOpenaccMultiblock-latest.meta').read_text().splitlines()[1]
+        assert (d/fn).read_bytes()==(fresh/fn2).read_bytes(),'Pre-edit numerical state changed'
+        old=np.atleast_2d(np.loadtxt(d/'NuRe_2DOpenaccMultiblock.dat'))
+        new=np.atleast_2d(np.loadtxt(fresh/'NuRe_2DOpenaccMultiblock.dat'))
+        np.testing.assert_array_equal(np.delete(old,5,axis=1),new)
+        if steady:
+            old_final=np.atleast_2d(np.loadtxt(d/'FinalNuRe_2DOpenaccMultiblock.dat'))
+            new_final=np.atleast_2d(np.loadtxt(fresh/'FinalNuRe_2DOpenaccMultiblock.dat'))
+            np.testing.assert_array_equal(np.delete(old_final,3,axis=1),new_final)
+    report['before_edit_comparison']='four cases: bitwise identical checkpoint fields and retained Nu/RMS/history columns; steady final values unchanged'
+
+# Independent area-weighted diagnostic: coarse speed=5, fine speed=1.
+# The physical center area gives analytic RMS; uniform mode gives speed=5.
+for ratio in [1,2]:
+    s=small(src,steady=True,ratio=ratio)
+    s=re.sub(r'    program main.*?    end program main','',s,flags=re.S)
+    probe='''
+program rms_re_probe
+ use commondata
+ implicit none
+ real(kind=8) :: nu,re,hot,cold,middle,mass,meanT,tmin,tmax,rmin,rmax,fraction,expected
+ call initial()
+ u_coarse=3d0
+ v_coarse=4d0
+ fraction=1d0
+ if(refineRatio>1) then
+   u_left=0.6d0; v_left=0.8d0
+   u_right=0.6d0; v_right=0.8d0
+   u_bottom=0.6d0; v_bottom=0.8d0
+   u_top=0.6d0; v_top=0.8d0
+   fraction=(centerIntegrationBox(2)-centerIntegrationBox(1))* &
+       (centerIntegrationBox(4)-centerIntegrationBox(3))/(dble(nx)*dble(ny))
+ endif
+ itc=outputSnapshotIntervalItc
+ call calculate_NuRe(nu,re,hot,cold,middle,mass,meanT,tmin,tmax,rmin,rmax)
+ expected=sqrt(1d0+24d0*fraction)*lengthUnit/viscosity
+ if(abs(re-expected)>1d-12*max(1d0,abs(expected))) error stop 'RMS Re area weighting'
+ call calNuRe()
+ call output_SnapshotFile()
+ call output_final_NuRe()
+end program rms_re_probe
+'''
+    d=root/f'rms_re_ratio{ratio}'
+    compile_run(d,s+probe)
+    compile_run(d,post.replace('!#define steadyFlow','#define steadyFlow').replace('#define unsteadyFlow','!#define unsteadyFlow'),'post')
+    history=np.atleast_2d(np.loadtxt(d/'NuRe_2DOpenaccMultiblock.dat'))
+    snapshot=np.atleast_2d(np.loadtxt(d/'SnapshotNuRe_2DOpenaccMultiblock.dat'))
+    final=np.atleast_2d(np.loadtxt(d/'FinalNuRe_2DOpenaccMultiblock.dat'))
+    np.testing.assert_allclose(history[:,2:],snapshot[:,1:],rtol=1e-13,atol=1e-13)
+    np.testing.assert_array_equal(history[:,2:],final)
+report['rms_re_analytic']='coarse/fine physical-area weighting and uniform constant-speed limit; history, snapshot and final results agree'
 
 # Standalone halo probe with unique direction/row/column markers.
 s=(root/'periodic'/'solver.F90').read_text(encoding='utf-8');s=re.sub(r'    program main.*?    end program main', '',s,flags=re.S)
@@ -279,7 +345,7 @@ line=next(x for x in (d/'NuReStatistics_2DOpenaccMultiblock.dat').read_text().sp
 np.testing.assert_allclose(np.fromstring(line[6:],sep=' '),[3,2.5**0.5,7,8,9],rtol=1e-14,atol=1e-14)
 (d/'NuRe_2DOpenaccMultiblock.dat').write_text('\n'.join(rows[:2]+rows[3:])+'\n')
 compile_run(d,ps,'post',expect=1)
-report['analytic_window']='linear Nu and RMS Re verified; missing sample rejected'
+report['analytic_window']='linear Nu and RMS Re verified; five-column summary unchanged; missing sample rejected'
 
 # A total target between samples rounds upward; a positive sub-coarse interval is accepted.
 d=root/'aligned_target'

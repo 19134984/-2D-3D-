@@ -1,0 +1,6 @@
+{
+  "diagnosis_only": true,
+  "label": "coarse_scaled",
+  "target_tff": 30,
+  "purpose": "isolate bulk collision and retain fine-grid molecular nu/alpha; no production change"
+}

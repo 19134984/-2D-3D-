@@ -1,0 +1,39 @@
+#!/bin/bash
+#PBS -N MB2D_RB07
+#PBS -q batch
+#PBS -l nodes=node07:ppn=1
+#PBS -l walltime=336:00:00
+#PBS -o /data2/XLLi/Multiblock/data2D/RB/serial_node07/pbs.stdout
+#PBS -e /data2/XLLi/Multiblock/data2D/RB/serial_node07/pbs.stderr
+set -uo pipefail
+ROOT=/data2/XLLi/Multiblock/data2D/RB
+cd "$ROOT/serial_node07" || exit 90
+test "$(hostname -s)" = node07 || exit 91
+test ! -e campaign.started || exit 92
+date -Is > campaign.started
+printf 'job=%s\nhost=%s\n' "${PBS_JOBID:-unknown}" "$(hostname)" > job_identity.txt
+finish() {
+    rc=$?
+    printf '%s\n' "$rc" > run.status
+    date -Is > campaign.finished
+    trap - EXIT
+    exit "$rc"
+}
+trap finish EXIT
+nvidia-smi > nvidia_smi_before.log 2>&1 || true
+pids=$(nvidia-smi --query-compute-apps=pid --format=csv,noheader,nounits) || exit 93
+if [ -n "$pids" ]; then printf 'GPU already occupied; no solver started: %s\n' "$pids" >&2; exit 75; fi
+printf 'case\tstarted\tfinished\texit_code\n' > case_exit_status.tsv
+failed=0
+# One foreground process at a time. No background launches and no additional qsub calls.
+for case in Ra1e6 Ra1e7 Ra1e8 Ra1e9 Ra1e10; do
+    started=$(date -Is)
+    printf '%s starting %s\n' "$started" "$case"
+    bash "$ROOT/$case/run.sh"
+    rc=$?
+    finished=$(date -Is)
+    printf '%s\t%s\t%s\t%s\n' "$case" "$started" "$finished" "$rc" >> case_exit_status.tsv
+    printf '%s finished %s exit=%s\n' "$finished" "$case" "$rc"
+    if [ "$rc" -ne 0 ]; then failed=1; fi
+done
+exit "$failed"

@@ -1,0 +1,189 @@
+{
+  "checked": "2026-10-20T09:07:12.021425",
+  "job_id": "7266.master",
+  "postprocess_sha256": "3c0c5b6b598cfc5f5f5e44dc9d85c198dd139babd4cc3a4f6df11e2c307d3a86",
+  "window_tff": [
+    500,
+    1000
+  ],
+  "compiler": "nvfortran 24.3 CPU executable",
+  "cases": [
+    {
+      "case": "Ra1e6",
+      "samples": 1998,
+      "last_history_tff": 1000.3405312526313,
+      "solver_exit": 0,
+      "nonfinite_history_rows": 0,
+      "history_sha256": "b3f8caf2c010a21646e282c480c32311e98e9219e0904e2b76fa10e4e6283cdb",
+      "postprocess_exit": 0,
+      "statistics": " Window t_ff:    500.0000000000000         1000.000000000000     \n Covered durations:    500.0000000000042         249.9999999999999      \n    250.0000000000024     \n# NuVolAvg Re_rms_space_time Nu_hot Nu_cold Nu_middle\nwhole: 4.4232481256565457E+000 2.1838903673458998E+002 4.4306013065545908E+000 4.4297155585984873E+000 4.3407220327920282E+000\nfirst: 4.4232481256506420E+000 2.1838903673491279E+002 4.4306013065755812E+000 4.4297155586195327E+000 4.3407220327560401E+000\nlast : 4.4232481256624956E+000 2.1838903673426685E+002 4.4306013065336289E+000 4.4297155585774819E+000 4.3407220328280554E+000\nrelative half-window difference: 2.6798472191876936E-012 2.9577500770325226E-012 9.4687417290407035E-012 9.4928910726734868E-012 1.6590622961361122E-011\n",
+      "solver_source_hash_verified": true,
+      "reference_Nu": 6.3,
+      "reference_Re": 279,
+      "whole": [
+        4.423248125656546,
+        218.38903673458998,
+        4.430601306554591,
+        4.429715558598487,
+        4.340722032792028
+      ],
+      "first": [
+        4.423248125650642,
+        218.3890367349128,
+        4.430601306575581,
+        4.429715558619533,
+        4.34072203275604
+      ],
+      "last": [
+        4.423248125662496,
+        218.38903673426685,
+        4.430601306533629,
+        4.429715558577482,
+        4.340722032828055
+      ],
+      "half_relative_difference": [
+        2.6798472191876936e-12,
+        2.9577500770325226e-12,
+        9.468741729040703e-12,
+        9.492891072673487e-12,
+        1.6590622961361122e-11
+      ],
+      "relative_error_Nu_percent": 29.789712291165937,
+      "relative_error_Re_percent": 21.724359593336924,
+      "independent_numpy_verification": {
+        "Nu": 4.4232481256565865,
+        "Re_space_time_rms": 218.3890367345904,
+        "absolute_difference": [
+          4.085620730620576e-14,
+          4.263256414560601e-13
+        ]
+      },
+      "final_checkpoint_history_alignment_verified": true
+    },
+    {
+      "case": "Ra1e7",
+      "samples": 2000,
+      "last_history_tff": 1000.4397633301475,
+      "solver_exit": 0,
+      "nonfinite_history_rows": 0,
+      "history_sha256": "f3de9c2e8e0aef565a3e6ffb5189ef115da2e427b724a5e2901a47fe9615688e",
+      "postprocess_exit": 0,
+      "statistics": " Window t_ff:    500.0000000000000         1000.000000000000     \n Covered durations:    500.0000000000149         250.0000000000005      \n    250.0000000000067     \n# NuVolAvg Re_rms_space_time Nu_hot Nu_cold Nu_middle\nwhole: 1.1368352446442282E+001 9.6538605959810207E+002 1.1385510234182654E+001 1.1386694951454556E+001 1.1362888651901541E+001\nfirst: 1.1380611727303197E+001 9.6605914766845251E+002 1.1388937383890367E+001 1.1390193808081223E+001 1.1341841372609117E+001\nlast : 1.1356093165581717E+001 9.6471250190864282E+002 1.1382083084475319E+001 1.1383196094828268E+001 1.1383935931194275E+001\nrelative half-window difference: 2.1567383521042707E-003 1.3949297759388703E-003 6.0201952078259779E-004 6.1455174506643007E-004 3.7045649107995912E-003\n",
+      "solver_source_hash_verified": true,
+      "reference_Nu": 11.37,
+      "reference_Re": 968,
+      "whole": [
+        11.368352446442282,
+        965.3860595981021,
+        11.385510234182654,
+        11.386694951454556,
+        11.36288865190154
+      ],
+      "first": [
+        11.380611727303197,
+        966.0591476684525,
+        11.388937383890367,
+        11.390193808081223,
+        11.341841372609117
+      ],
+      "last": [
+        11.356093165581717,
+        964.7125019086428,
+        11.382083084475319,
+        11.383196094828268,
+        11.383935931194275
+      ],
+      "half_relative_difference": [
+        0.0021567383521042707,
+        0.0013949297759388703,
+        0.0006020195207825978,
+        0.0006145517450664301,
+        0.003704564910799591
+      ],
+      "relative_error_Nu_percent": 0.014490356708154567,
+      "relative_error_Re_percent": 0.27003516548532386,
+      "independent_numpy_verification": {
+        "Nu": 11.36835244644262,
+        "Re_space_time_rms": 965.3860595981167,
+        "absolute_difference": [
+          3.375077994860476e-13,
+          1.4665602066088468e-11
+        ]
+      },
+      "final_checkpoint_history_alignment_verified": true
+    },
+    {
+      "case": "Ra1e8",
+      "samples": 36,
+      "last_history_tff": 18.007915739942778,
+      "solver_exit": 1,
+      "nonfinite_history_rows": 0,
+      "history_sha256": "b099ff69d605a09e8f98c19993c39846596c345afa121a6d8b66775de45e6ae4",
+      "postprocess_exit": 0,
+      "statistics": " Window t_ff:    500.0000000000000         1000.000000000000     \nINCOMPLETE: the history does not cover the requested window; no final mean.\n",
+      "solver_source_hash_verified": true,
+      "failure_step": 164132,
+      "failure_offset": [
+        58.5,
+        58.5
+      ],
+      "failure_local_indices": [
+        3,
+        3
+      ],
+      "error_message": "Nonfinite or nonpositive density in owned cells",
+      "failure_tff": 18.508135621607856,
+      "reference_Nu": 25.25,
+      "reference_Re": 3662
+    },
+    {
+      "case": "Ra1e9",
+      "samples": 28,
+      "last_history_tff": 14.002999302337434,
+      "solver_exit": 1,
+      "nonfinite_history_rows": 0,
+      "history_sha256": "da03b58733ac7551870a4ccc7173bb587c54f65e4064e5d7e50e415623082c46",
+      "postprocess_exit": 0,
+      "statistics": " Window t_ff:    500.0000000000000         1000.000000000000     \nINCOMPLETE: the history does not cover the requested window; no final mean.\n",
+      "solver_source_hash_verified": true,
+      "failure_step": 257230,
+      "failure_offset": [
+        122.5,
+        122.5
+      ],
+      "failure_local_indices": [
+        3,
+        3
+      ],
+      "error_message": "Nonfinite or nonpositive density in owned cells",
+      "failure_tff": 14.503106420278057,
+      "reference_Nu": 53.51,
+      "reference_Re": 15101
+    },
+    {
+      "case": "Ra1e10",
+      "samples": 27,
+      "last_history_tff": 13.50136987411661,
+      "solver_exit": 1,
+      "nonfinite_history_rows": 0,
+      "history_sha256": "7960580c8249f2609a966eecc404ec9944026c93f412badf5c420b926fbb70df",
+      "postprocess_exit": 0,
+      "statistics": " Window t_ff:    500.0000000000000         1000.000000000000     \nINCOMPLETE: the history does not cover the requested window; no final mean.\n",
+      "solver_source_hash_verified": true,
+      "failure_step": 496664,
+      "failure_offset": [
+        250.5,
+        250.5
+      ],
+      "failure_local_indices": [
+        3,
+        3
+      ],
+      "error_message": "Nonfinite or nonpositive density in owned cells",
+      "failure_tff": 14.001420610195005,
+      "reference_Nu": 93.88,
+      "reference_Re": 61797
+    }
+  ],
+  "reference_source": "Zhang, Zhou & Sun (2017), JFM 814, Table 1, p.169; local paper PDF"
+}

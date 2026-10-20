@@ -1,0 +1,42 @@
+Warning: ieee_invalid is signaling
+Warning: ieee_divide_by_zero is signaling
+Warning: ieee_inexact is signaling
+ERROR STOP Nonfinite or nonpositive density in owned cells
+t_ff=     0.50022 NuVolAvg=  1.00202E+00 ReVolRMS=  9.23398E-01
+t_ff=     1.00044 NuVolAvg=  9.61674E-01 ReVolRMS=  1.10007E+00
+t_ff=     1.50066 NuVolAvg=  9.23049E-01 ReVolRMS=  1.34818E+00
+t_ff=     2.00088 NuVolAvg=  8.85303E-01 ReVolRMS=  1.62260E+00
+t_ff=     2.50110 NuVolAvg=  8.48093E-01 ReVolRMS=  1.90424E+00
+t_ff=     3.00132 NuVolAvg=  8.11664E-01 ReVolRMS=  2.18674E+00
+t_ff=     3.50154 NuVolAvg=  7.76130E-01 ReVolRMS=  2.46938E+00
+t_ff=     4.00176 NuVolAvg=  7.41505E-01 ReVolRMS=  2.75814E+00
+t_ff=     4.50198 NuVolAvg=  7.07982E-01 ReVolRMS=  3.07548E+00
+t_ff=     5.00220 NuVolAvg=  6.75425E-01 ReVolRMS=  3.46884E+00
+t_ff=     5.50242 NuVolAvg=  6.44223E-01 ReVolRMS=  4.03308E+00
+t_ff=     6.00264 NuVolAvg=  6.14343E-01 ReVolRMS=  4.93399E+00
+t_ff=     6.50286 NuVolAvg=  5.86160E-01 ReVolRMS=  6.44037E+00
+t_ff=     7.00308 NuVolAvg=  5.60362E-01 ReVolRMS=  8.94469E+00
+t_ff=     7.50330 NuVolAvg=  5.38458E-01 ReVolRMS=  1.30087E+01
+t_ff=     8.00352 NuVolAvg=  5.24384E-01 ReVolRMS=  1.94617E+01
+t_ff=     8.50374 NuVolAvg=  5.26986E-01 ReVolRMS=  2.95674E+01
+t_ff=     9.00396 NuVolAvg=  5.67610E-01 ReVolRMS=  4.52784E+01
+t_ff=     9.50418 NuVolAvg=  6.97016E-01 ReVolRMS=  6.96153E+01
+t_ff=    10.00440 NuVolAvg=  1.03561E+00 ReVolRMS=  1.07237E+02
+t_ff=    10.50462 NuVolAvg=  1.86724E+00 ReVolRMS=  1.65271E+02
+t_ff=    11.00484 NuVolAvg=  3.84677E+00 ReVolRMS=  2.54428E+02
+t_ff=    11.50506 NuVolAvg=  8.41077E+00 ReVolRMS=  3.90113E+02
+t_ff=    12.00528 NuVolAvg=  1.83356E+01 ReVolRMS=  5.92159E+02
+t_ff=    12.50550 NuVolAvg=  3.73640E+01 ReVolRMS=  8.78928E+02
+t_ff=    13.00572 NuVolAvg=  6.49638E+01 ReVolRMS=  1.24757E+03
+t_ff=    13.50594 NuVolAvg=  8.42715E+01 ReVolRMS=  1.63978E+03
+t_ff=    14.00616 NuVolAvg=  7.06032E+01 ReVolRMS=  1.94008E+03
+t_ff=    14.50638 NuVolAvg=  3.87966E+01 ReVolRMS=  2.08139E+03
+t_ff=    15.00660 NuVolAvg=  1.17284E+01 ReVolRMS=  2.10810E+03
+t_ff=    15.50682 NuVolAvg= -4.12125E+00 ReVolRMS=  2.05774E+03
+t_ff=    16.00704 NuVolAvg= -2.59857E+00 ReVolRMS=  1.98133E+03
+t_ff=    16.50726 NuVolAvg=  7.31240E+00 ReVolRMS=  1.93058E+03
+t_ff=    17.00748 NuVolAvg=  2.04193E+01 ReVolRMS=  1.93184E+03
+t_ff=    17.50770 NuVolAvg=  4.24941E+01 ReVolRMS=  2.01121E+03
+t_ff=    18.00792 NuVolAvg=  6.49730E+01 ReVolRMS=  2.17765E+03
+ Invalid state: time, xOffset,yOffset, i,j:       164132 
+    58.50000000000000         58.50000000000000                 3            3

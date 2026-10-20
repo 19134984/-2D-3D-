@@ -1,0 +1,33 @@
+Warning: ieee_invalid is signaling
+Warning: ieee_divide_by_zero is signaling
+Warning: ieee_inexact is signaling
+ERROR STOP Nonfinite or nonpositive density in owned cells
+t_ff=     0.50005 NuVolAvg=  1.28145E+00 ReVolRMS=  5.97903E+00
+t_ff=     1.00010 NuVolAvg=  1.42123E+00 ReVolRMS=  8.38391E+00
+t_ff=     1.50015 NuVolAvg=  1.54530E+00 ReVolRMS=  1.11373E+01
+t_ff=     2.00020 NuVolAvg=  1.65332E+00 ReVolRMS=  1.39426E+01
+t_ff=     2.50025 NuVolAvg=  1.74561E+00 ReVolRMS=  1.67041E+01
+t_ff=     3.00030 NuVolAvg=  1.82274E+00 ReVolRMS=  1.93939E+01
+t_ff=     3.50036 NuVolAvg=  1.88505E+00 ReVolRMS=  2.20075E+01
+t_ff=     4.00041 NuVolAvg=  1.93289E+00 ReVolRMS=  2.45566E+01
+t_ff=     4.50046 NuVolAvg=  1.96716E+00 ReVolRMS=  2.71024E+01
+t_ff=     5.00051 NuVolAvg=  1.98813E+00 ReVolRMS=  2.97718E+01
+t_ff=     5.50056 NuVolAvg=  1.99728E+00 ReVolRMS=  3.28555E+01
+t_ff=     6.00061 NuVolAvg=  1.99507E+00 ReVolRMS=  3.69409E+01
+t_ff=     6.50066 NuVolAvg=  1.98321E+00 ReVolRMS=  4.32126E+01
+t_ff=     7.00071 NuVolAvg=  1.96385E+00 ReVolRMS=  5.37889E+01
+t_ff=     7.50076 NuVolAvg=  1.94206E+00 ReVolRMS=  7.20397E+01
+t_ff=     8.00081 NuVolAvg=  1.92886E+00 ReVolRMS=  1.02892E+02
+t_ff=     8.50086 NuVolAvg=  1.95064E+00 ReVolRMS=  1.53546E+02
+t_ff=     9.00091 NuVolAvg=  2.07088E+00 ReVolRMS=  2.34982E+02
+t_ff=     9.50096 NuVolAvg=  2.44529E+00 ReVolRMS=  3.64410E+02
+t_ff=    10.00101 NuVolAvg=  3.45696E+00 ReVolRMS=  5.68987E+02
+t_ff=    10.50107 NuVolAvg=  6.04769E+00 ReVolRMS=  8.91447E+02
+t_ff=    11.00112 NuVolAvg=  1.25027E+01 ReVolRMS=  1.39823E+03
+t_ff=    11.50117 NuVolAvg=  2.81288E+01 ReVolRMS=  2.18890E+03
+t_ff=    12.00122 NuVolAvg=  6.32624E+01 ReVolRMS=  3.39345E+03
+t_ff=    12.50127 NuVolAvg=  1.25516E+02 ReVolRMS=  5.09318E+03
+t_ff=    13.00132 NuVolAvg=  2.25060E+02 ReVolRMS=  7.23248E+03
+t_ff=    13.50137 NuVolAvg=  4.11031E+02 ReVolRMS=  1.00969E+04
+ Invalid state: time, xOffset,yOffset, i,j:       496664 
+    250.5000000000000         250.5000000000000                 3            3

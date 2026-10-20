@@ -1,0 +1,9 @@
+{
+  "name": "Ra8_replay",
+  "base_case": "Ra1e8",
+  "target_tff": 20,
+  "initial_thermal_perturbation": 0,
+  "source_sha256": "4aa769a1910bae409f88f8cf757bc1431b6265d69c90973abd840a738c296e56",
+  "parent_sha256": "431e77597829829d3dd0d2b18df07bdc1a1cdff97acb435d365f65fa8496e185",
+  "purpose": "diagnosis only; original case unchanged"
+}

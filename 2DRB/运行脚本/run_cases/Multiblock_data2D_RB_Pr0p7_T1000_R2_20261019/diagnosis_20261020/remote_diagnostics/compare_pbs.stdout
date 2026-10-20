@@ -1,0 +1,4 @@
+START Ra8_uniform
+EXIT=0
+START Ra8_seed
+EXIT=1

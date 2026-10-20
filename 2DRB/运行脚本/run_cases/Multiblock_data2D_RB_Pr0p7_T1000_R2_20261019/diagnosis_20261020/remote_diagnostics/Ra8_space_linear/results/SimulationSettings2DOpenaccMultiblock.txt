@@ -1,0 +1,9 @@
+  
+ ================ Restart continuation begins ================
+ Start: Tue Oct 20 09:32:03 2026
+ Starting OpenACC >>>>>>
+ Visible OpenACC devices:            1
+ Reload offset itc =       155260
+ Reload dimensionless time =    17.50769585827770     
+ Cumulative target itc, t_ff =       266160    30.01319289990463     
+ Remaining fine steps =       110900

@@ -1,0 +1,12 @@
+#!/bin/bash
+#PBS -N RB_PROBE20V2
+#PBS -q batch
+#PBS -l nodes=node07:ppn=1
+#PBS -l walltime=02:00:00
+#PBS -o /data2/XLLi/Multiblock/data2D/RB/diagnosis_20261020/probe_v2_pbs.stdout
+#PBS -e /data2/XLLi/Multiblock/data2D/RB/diagnosis_20261020/probe_v2_pbs.stderr
+set -uo pipefail
+test "$(hostname -s)" = node07 || exit 90
+pids=$(nvidia-smi --query-compute-apps=pid --format=csv,noheader,nounits) || exit 91
+if [ -n "$pids" ]; then echo GPU_occupied;exit 75;fi
+bash /data2/XLLi/Multiblock/data2D/RB/diagnosis_20261020/Ra8_probe_v2/run.sh

@@ -1,0 +1,217 @@
+{
+  "checked": "2026-10-20T09:50:02.311740",
+  "runs": [
+    {
+      "case": "Ra6_seed",
+      "compile.status": 0,
+      "run.status": 0,
+      "last_history_tff": 200.2683746251514,
+      "diagnostic_only": true
+    },
+    {
+      "case": "Ra6_seed_export",
+      "last_history_tff": 200.2683746251514,
+      "diagnostic_only": true
+    },
+    {
+      "case": "Ra8_coarse_magic",
+      "compile.status": 0,
+      "run.status": 0,
+      "last_history_tff": 30.013192899904627,
+      "diagnostic_only": true
+    },
+    {
+      "case": "Ra8_coarse_scaled",
+      "compile.status": 0,
+      "run.status": 0,
+      "last_history_tff": 30.013192899904627,
+      "diagnostic_only": true
+    },
+    {
+      "case": "Ra8_magic_from_zero",
+      "compile.status": 0,
+      "run.status": 1,
+      "last_history_tff": 17.5076958582777,
+      "failure_step": 159696,
+      "failure_offset": [
+        58.5,
+        58.5
+      ],
+      "failure_local_indices": [
+        3,
+        3
+      ],
+      "diagnostic_only": true
+    },
+    {
+      "case": "Ra8_precursor",
+      "compile.status": 0,
+      "run.status": 1,
+      "job_id": "7277.master",
+      "last_history_tff": 18.007915739942778,
+      "diagnostic_only": true
+    },
+    {
+      "case": "Ra8_probe",
+      "compile.status": 2,
+      "run.status": 2,
+      "job_id": "7268.master",
+      "last_history_tff": 17.5076958582777,
+      "diagnostic_only": true
+    },
+    {
+      "case": "Ra8_probe_v2",
+      "compile.status": 0,
+      "run.status": 1,
+      "job_id": "7269.master",
+      "last_history_tff": 17.5076958582777,
+      "diagnostic_only": true
+    },
+    {
+      "case": "Ra8_probe_v3",
+      "compile.status": 0,
+      "run.status": 1,
+      "job_id": "7270.master",
+      "last_history_tff": 18.007915739942778,
+      "diagnostic_only": true
+    },
+    {
+      "case": "Ra8_replay",
+      "compile.status": 0,
+      "run.status": 1,
+      "last_history_tff": 18.007915739942778,
+      "failure_step": 164132,
+      "failure_offset": [
+        58.5,
+        58.5
+      ],
+      "failure_local_indices": [
+        3,
+        3
+      ],
+      "diagnostic_only": true
+    },
+    {
+      "case": "Ra8_resume_control",
+      "compile.status": 0,
+      "run.status": 1,
+      "last_history_tff": 18.007915739942778,
+      "failure_step": 164132,
+      "failure_offset": [
+        58.5,
+        58.5
+      ],
+      "failure_local_indices": [
+        3,
+        3
+      ],
+      "diagnostic_only": true
+    },
+    {
+      "case": "Ra8_seed",
+      "compile.status": 0,
+      "run.status": 1,
+      "last_history_tff": 9.504177751636465,
+      "failure_step": 88720,
+      "failure_offset": [
+        58.5,
+        58.5
+      ],
+      "failure_local_indices": [
+        3,
+        3
+      ],
+      "diagnostic_only": true
+    },
+    {
+      "case": "Ra8_short_gpu",
+      "compile.status": 0,
+      "run.status": 1,
+      "last_history_tff": 18.007915739942778,
+      "failure_step": 161520,
+      "failure_offset": [
+        58.5,
+        58.5
+      ],
+      "failure_local_indices": [
+        101,
+        191
+      ],
+      "diagnostic_only": true
+    },
+    {
+      "case": "Ra8_short_host",
+      "compile.status": 0,
+      "run.status": 1,
+      "last_history_tff": 18.007915739942778,
+      "failure_step": 161520,
+      "failure_offset": [
+        58.5,
+        58.5
+      ],
+      "failure_local_indices": [
+        101,
+        191
+      ],
+      "diagnostic_only": true
+    },
+    {
+      "case": "Ra8_space_linear",
+      "compile.status": 0,
+      "run.status": 1,
+      "last_history_tff": 18.007915739942778,
+      "failure_step": 164132,
+      "failure_offset": [
+        58.5,
+        58.5
+      ],
+      "failure_local_indices": [
+        3,
+        3
+      ],
+      "diagnostic_only": true
+    },
+    {
+      "case": "Ra8_sq_magic",
+      "compile.status": 0,
+      "run.status": 1,
+      "job_id": "7273.master",
+      "last_history_tff": 17.5076958582777,
+      "failure_step": 159696,
+      "failure_offset": [
+        58.5,
+        58.5
+      ],
+      "failure_local_indices": [
+        3,
+        3
+      ],
+      "diagnostic_only": true
+    },
+    {
+      "case": "Ra8_time_linear",
+      "compile.status": 0,
+      "run.status": 1,
+      "last_history_tff": 18.007915739942778,
+      "failure_step": 164132,
+      "failure_offset": [
+        58.5,
+        58.5
+      ],
+      "failure_local_indices": [
+        3,
+        3
+      ],
+      "diagnostic_only": true
+    },
+    {
+      "case": "Ra8_uniform",
+      "compile.status": 0,
+      "run.status": 0,
+      "last_history_tff": 30.00642707643756,
+      "diagnostic_only": true
+    }
+  ],
+  "original_sources_and_histories_unchanged": true,
+  "Ra9_Ra10_first_failure_locations_not_replayed": true
+}

@@ -1,21 +1,36 @@
 ! 独立后处理程序：CPU运行，不依赖OpenACC或求解器的commondata模块。
-! 修改下面参数区即可重新统计，不必重新运行求解器。
+! 修改下面宏开关和参数区后重新编译本程序即可重新统计，不必重新运行求解器。
+!=============================================================
+! 自定义宏：与主程序一样，稳态和非稳态只能选择一个。
+!#define steadyFlow
+#define unsteadyFlow
+
+#if defined(steadyFlow) && defined(unsteadyFlow)
+#error "Choose only one flow mode: steadyFlow or unsteadyFlow"
+#endif
+#if !defined(steadyFlow) && !defined(unsteadyFlow)
+#error "Define one flow mode: steadyFlow or unsteadyFlow"
+#endif
+
+!=============================================================
+
 module postdata
-    use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
+    use, intrinsic :: ieee_arithmetic, only: ieee_is_finite !检查读入的数据是不是有限值
     implicit none
-    ! 0: 非稳态窗口统计；1: 稳态最终结果与误差曲线，不做时间平均。
-    integer, parameter :: postprocessSteady=0
-    logical, parameter :: processSnapshots=.true.
-    real(kind=8), parameter :: unsteadyAverageStartTf=500.0d0
-    real(kind=8), parameter :: unsteadyAverageEndTf=1000.0d0
-    real(kind=8), parameter :: unsteadyAverageMidTf= &
+    logical, parameter :: processSnapshots=.false.    ! 是否读取快照重算瞬时空间指标：.true.=开启，.false.=关闭。
+    ! 非稳态时间窗口
+    real(kind=8), parameter :: unsteadyAverageStartTf=500.0d0 !非稳态统计起点
+    real(kind=8), parameter :: unsteadyAverageEndTf=1000.0d0  !非稳态统计终点
+    real(kind=8), parameter :: unsteadyAverageMidTf= &        !非稳态统计中点
         0.5d0*(unsteadyAverageStartTf+unsteadyAverageEndTf)
     character(*), parameter :: NuReHistoryFile='NuRe_2DOpenaccMultiblock.dat'
-    character(*), parameter :: outputIndexFile='OutputFiles_2DOpenaccMultiblock.dat'
+    character(*), parameter :: outputIndexFile='OutputFiles_2DOpenaccMultiblock.dat' !已输出文件的累计步数和文件名
     character(*), parameter :: snapshotFilePrefix='buoyancyCavity2DOpenaccMultiblockSnapshot'
-    ! 下列参数和几何由快照读入，不手工重复填写物理参数。
-    integer :: nx,ny,itc,refineRatio
-    integer, parameter :: reloadItcOffset=0, interfaceSkin=0
+    ! 下列参数和几何由快照读入；各区完整数组尺寸、局部下标、坐标偏移与主程序一致。
+    integer :: nx,ny,refineRatio,interfaceSkin
+    integer :: fineLayerCellsLeft,fineLayerCellsRight,fineLayerCellsBottom,fineLayerCellsTop
+    integer :: totalItc    ! 当前快照的累计细格子步数；后处理不区分重启步数和本次步数。
+    real(kind=8) :: totalTff    ! 当前快照的累计无量纲时间，核对 totalTff=totalItc/timeUnit。
     real(kind=8), parameter :: dxFine=1d0
     real(kind=8) :: lengthUnit,timeUnit,viscosity,diffusivity,Thot,Tcold,Tref,dxCoarse
     real(kind=8) :: centerIntegrationBox(4)
@@ -42,92 +57,87 @@ program postprocess
     character(len=256) :: name
 
     ! 首先核对连续采样编号、整数步数与实际时间；不把缺测间隙跨过去积分。
-    open(newunit=k,file=NuReHistoryFile,status='old')
-    open(newunit=u,file='NuReCurve_2DOpenaccMultiblock.dat',status='replace')
+    open(newunit=k,file=NuReHistoryFile,status='old')   !打开主程序生成的NuRe历史文件
+    open(newunit=u,file='NuReCurve_2DOpenaccMultiblock.dat',status='replace')  !创建曲线文件
     write(u,'(a)') '# sample itc_total t_ff NuVolAvg ReVolRMS Nu_hot Nu_cold Nu_middle mass meanT Tmin Tmax rhoMin rhoMax'
-    n=0
-    prevStep=0
-    previousTime=0d0
-    interval=0
-    do
-        read(k,'(a)',iostat=ios) line
-        if(ios<0) exit
-        if(ios>0) error stop 'History read error'
-        if(len_trim(line)==0 .OR. line(1:1)=='#') cycle
-        read(line,*,iostat=ios) sample,step,values
-        if(ios/=0 .OR. .NOT.all(ieee_is_finite(values))) error stop 'Invalid Nu/Re history'
+    n=0                  !初始化读取过程中的计数
+    prevStep=0           !上一条记录的累计步数
+    previousTime=0d0     !上一条记录的累计 tff
+    interval=0           !两次正式采样之间相隔的细格子步数
+    do                   !不断读取，直到遇到文件结尾
+        read(k,'(a)',iostat=ios) line  !读取一行
+        if(ios<0) exit      !到达文件结尾，退出 do 循环
+        if(ios>0) error stop 'History read error'  !发生读取错误，停止程序
+        if(len_trim(line)==0 .OR. line(1:1)=='#') cycle !跳过空行和说明行
+        read(line,*,iostat=ios) sample,step,values  !将这一行文本解析成数值
+        if(ios/=0 .OR. .NOT.all(ieee_is_finite(values))) error stop 'Invalid Nu/Re history' !检查能否按规定读取完整
         n=n+1
-        if(n==1) then
-            interval=step
-            dt=values(1)
-            firstTime=values(1)
+        if(n==1) then    !第一次读到数值记录时
+            interval=step   !采样间隔，单位为细格子步。
+            dt=values(1)    !采样间隔，单位为 tff
+            firstTime=values(1) !第一条采样记录的时间
             if(interval<=0 .OR. dt<=0d0) error stop 'Invalid first sample'
         endif
-        if(sample/=n .OR. step/=n*interval) error stop 'Missing or duplicate sample'
+        !能发现采样缺失、重复或步数不符合固定间隔的问题
+        if(sample/=n .OR. step/=n*interval) error stop 'Missing or duplicate sample' !核对采样编号和累计步数
         if(values(1)<=previousTime .OR. abs(values(1)-dble(n)*dt)>1d-10*max(1d0,abs(values(1)))) &
-            error stop 'History time does not match fixed sampling'
+            error stop 'History time does not match fixed sampling' !核对累计时间
         previousTime=values(1)
         prevStep=step
-        write(u,'(a)') trim(line)
+        write(u,'(a)') trim(line) !写进曲线文件
     enddo
     close(k)
     close(u)
-    if(n==0 .AND. postprocessSteady==0) error stop 'No samples for unsteady statistics'
+#ifdef unsteadyFlow
+    if(n==0) error stop 'No samples for unsteady statistics'
+#endif
     lastTime=previousTime
 
-    if(postprocessSteady==1) then
+ !稳态：整理收敛误差曲线，保存最终结果摘要
+ !非稳态：计算指定时间窗口内的统计结果
+#ifdef steadyFlow
         ! 每次check记录的误差直接用于画图，无需从快照重新定义误差。
         open(newunit=k,file='Convergence_2DOpenaccMultiblock.dat',status='old')
         open(newunit=u,file='ConvergenceCurve_2DOpenaccMultiblock.dat',status='replace')
-        write(u,'(a)') '# itc_total t_ff errorU errorT'
-        prevStep=-1
+        write(u,'(a)') '# itc_total t_ff errorU errorT'  !打开稳态误差历史，创建误差曲线文件
+        prevStep=-1    !保存上一条记录的累计步数
         do
             read(k,'(a)',iostat=ios) line
-            if(ios<0) exit
-            if(ios>0) error stop 'Convergence read error'
-            if(len_trim(line)==0 .OR. line(1:1)=='#') cycle
+            if(ios<0) exit   !遇到结尾退出
+            if(ios>0) error stop 'Convergence read error' !读取错误则停止
+            if(len_trim(line)==0 .OR. line(1:1)=='#') cycle !跳过空行和以 # 开头的说明行
             read(line,*,iostat=ios) step,values(1:3)
             if(ios/=0 .OR. .NOT.all(ieee_is_finite(values(1:3)))) error stop 'Invalid convergence data'
-            if(step<=prevStep) error stop 'Nonmonotone convergence steps'
+            if(step<=prevStep) error stop 'Nonmonotone convergence steps' !累计步数严格增加
             prevStep=step
             write(u,'(a)') trim(line)
         enddo
         close(k)
         close(u)
-        ! 原样保留最终时刻与converged标志；不把最后一个周期样本当作最终状态。
-        open(newunit=k,file='FinalNuRe_2DOpenaccMultiblock.dat',status='old')
-        open(newunit=u,file='SteadySummary_2DOpenaccMultiblock.dat',status='replace')
-        do
-            read(k,'(a)',iostat=ios) line
-            if(ios<0) exit
-            if(ios>0) error stop 'Final result read error'
-            write(u,'(a)') trim(line)
-        enddo
-        close(k)
-        close(u)
-    else
-        if(unsteadyAverageStartTf<0d0 .OR. unsteadyAverageStartTf>=unsteadyAverageMidTf .OR. &
-            unsteadyAverageMidTf>=unsteadyAverageEndTf) error stop 'Invalid averaging window'
-        open(newunit=u,file='NuReStatistics_2DOpenaccMultiblock.dat',status='replace')
+        ! 稳态最终结果直接查看主程序输出的 FinalNuRe_2DOpenaccMultiblock.dat，不再另存副本。
+#else     
+        if(unsteadyAverageStartTf<0d0 .OR. unsteadyAverageStartTf>=unsteadyAverageMidTf .OR. & 
+            unsteadyAverageMidTf>=unsteadyAverageEndTf) error stop 'Invalid averaging window' !先检查时间窗口
+        open(newunit=u,file='NuReStatistics_2DOpenaccMultiblock.dat',status='replace') !创建统计文件，检查历史是否覆盖窗口
         write(u,*) 'Window t_ff:',unsteadyAverageStartTf,unsteadyAverageEndTf
-        if(firstTime>unsteadyAverageStartTf .OR. lastTime<unsteadyAverageEndTf) then
+        if(firstTime>unsteadyAverageStartTf .OR. lastTime<unsteadyAverageEndTf) then !统计区间不全
             write(u,'(a)') 'INCOMPLETE: the history does not cover the requested window; no final mean.'
-        else
-            call average_window(unsteadyAverageStartTf,unsteadyAverageEndTf,allMean,c0)
-            call average_window(unsteadyAverageStartTf,unsteadyAverageMidTf,firstMean,c1)
-            call average_window(unsteadyAverageMidTf,unsteadyAverageEndTf,lastMean,c2)
-            write(u,*) 'Covered durations:',c0,c1,c2
+        else   !统计区间全了
+            call average_window(unsteadyAverageStartTf,unsteadyAverageEndTf,allMean,c0)  !整个统计区间
+            call average_window(unsteadyAverageStartTf,unsteadyAverageMidTf,firstMean,c1) !前半个统计区间
+            call average_window(unsteadyAverageMidTf,unsteadyAverageEndTf,lastMean,c2)    !后半个统计区间
+            write(u,*) 'Covered durations:',c0,c1,c2  !写入统计时长
             write(u,'(a)') '# NuVolAvg Re_rms_space_time Nu_hot Nu_cold Nu_middle'
-            write(u,'(a,5ES24.16E3)') 'whole:',allMean
-            write(u,'(a,5ES24.16E3)') 'first:',firstMean
-            write(u,'(a,5ES24.16E3)') 'last :',lastMean
-            write(u,'(a,5ES24.16E3)') 'relative half-window difference:', &
+            write(u,'(a,5ES24.16E3)') 'whole:',allMean   !整个窗口
+            write(u,'(a,5ES24.16E3)') 'first:',firstMean !前半窗口
+            write(u,'(a,5ES24.16E3)') 'last :',lastMean  !后半窗口
+            write(u,'(a,5ES24.16E3)') 'relative half-window difference:', & !前后半窗口的差异
                 abs(lastMean-firstMean)/max(abs(allMean),1d-30)
         endif
         close(u)
-    endif
+#endif
 
-    if(processSnapshots) then
+    if(processSnapshots) then   !核对结果：验证快照保存、读取和空间积分是否正确。
         open(newunit=k,file=outputIndexFile,status='old')
         open(newunit=u,file='SnapshotNuRe_2DOpenaccMultiblock.dat',status='replace')
         write(u,'(a)') '# itc_total t_ff NuVolAvg ReVolRMS Nu_hot Nu_cold Nu_middle mass meanT Tmin Tmax rhoMin rhoMax'
@@ -141,11 +151,11 @@ program postprocess
             if(index(name,snapshotFilePrefix//'-')/=1) cycle
             ! 索引保存完整的<tff>tff-<累计细步数>itc.bin文件名，直接打开，不从文件名反推时间或步数。
             call read_snapshot(trim(name))
-            if(itc/=step) error stop 'Snapshot/index step mismatch'
+            if(totalItc/=step) error stop 'Snapshot/index step mismatch'
             call calculate_NuRe(values(2),values(3),values(4),values(5),values(6),values(7), &
                 values(8),values(9),values(10),values(11),values(12))
-            values(1)=dble(itc)/timeUnit
-            write(u,'(I0,1X,12(ES24.16E3,1X))') itc,values
+            values(1)=totalTff
+            write(u,'(I0,1X,12(ES24.16E3,1X))') totalItc,values
         enddo
         close(k)
         close(u)
@@ -158,42 +168,45 @@ subroutine average_window(t0,t1,result,coverage)
     implicit none
     real(kind=8),intent(in) :: t0,t1
     real(kind=8),intent(out) :: result(5),coverage
-    real(kind=8) :: prev(12),row(12),a,b,left(5),right(5),ra(5),rb(5)
+    real(kind=8) :: prev(12),values(12),a,b,left(5),right(5),ra(5),rb(5)
     integer :: k,ios,sample,step
     logical :: hasPrev
     character(len=512) :: line
-    result=0d0
-    coverage=0d0
-    hasPrev=.false.
+
+
+    result=0d0  !返回五项统计结果
+    coverage=0d0 !实际参与积分的时间长度
+    hasPrev=.false.  !是否已经读到上一条记录
     open(newunit=k,file=NuReHistoryFile,status='old')
     do
         read(k,'(a)',iostat=ios) line
-        if(ios<0) exit
-        if(ios>0) error stop 'Averaging read error'
-        if(len_trim(line)==0 .OR. line(1:1)=='#') cycle
-        read(line,*,iostat=ios) sample,step,row
+        if(ios<0) exit  !遇到文件结尾退出
+        if(ios>0) error stop 'Averaging read error' 
+        if(len_trim(line)==0 .OR. line(1:1)=='#') cycle !空行和说明行跳过
+        read(line,*,iostat=ios) sample,step,values
         if(ios/=0) error stop 'Invalid averaging row'
-        if(hasPrev) then
-            a=max(t0,prev(1))
-            b=min(t1,row(1))
+        if(hasPrev) then   !两个时刻之间才能构成一段时间，因此第一条不计算积分，只保存到 prev
+            a=max(t0,prev(1))  !截取落在统计窗口内的时间段,前一时刻
+            b=min(t1,values(1))   !截取落在统计窗口内的时间段,当前时刻
             if(b>a) then
-                left=prev(2:6)
-                right=row(2:6)
+                left=prev(2:6)  !上一条记录的 Nu、Re、三个截面 Nu
+                right=values(2:6)  !当前一条记录的对应数值
                 ! 保持时空均方根定义：对瞬时空间RMS的平方积分，再开方。
                 left(2)=left(2)**2
                 right(2)=right(2)**2
-                ra=left+(right-left)*(a-prev(1))/(row(1)-prev(1))
-                rb=left+(right-left)*(b-prev(1))/(row(1)-prev(1))
-                result=result+0.5d0*(ra+rb)*(b-a)
-                coverage=coverage+b-a
+                !a、b 不一定正好等于已有采样时刻
+                ra=left+(right-left)*(a-prev(1))/(values(1)-prev(1)) !计算截取后两个端点上的值
+                rb=left+(right-left)*(b-prev(1))/(values(1)-prev(1)) !计算截取后两个端点上的值
+                result=result+0.5d0*(ra+rb)*(b-a) !用梯形公式累计积分和时间长度
+                coverage=coverage+b-a             !用梯形公式累计积分和时间长度
             endif
         endif
-        prev=row
+        prev=values
         hasPrev=.true.
     enddo
     close(k)
-    if(abs(coverage-(t1-t0))>1d-10*max(1d0,t1-t0)) error stop 'Incomplete average window'
-    result=result/coverage
+    if(abs(coverage-(t1-t0))>1d-10*max(1d0,t1-t0)) error stop 'Incomplete average window' !检查实际积分时长是否等于目标窗口
+    result=result/coverage        !积分除以时长，RMS Re 再开方
     result(2)=sqrt(max(0d0,result(2)))
 end subroutine average_window
 
@@ -203,30 +216,41 @@ subroutine read_snapshot(name)
     character(*),intent(in) :: name
     character(len=16) :: magic
     integer :: k,ios,blocks,caseMode,r,ni(5),nj(5),first,last,count
-    real(kind=8) :: xfirst(5),yfirst(5),dx(5),savedTime
+    real(kind=8) :: xOffset(5),yOffset(5),dx(5)
     real(kind=8),allocatable :: uall(:),vall(:),Tall(:),rhoall(:)
     open(newunit=k,file=name,form='unformatted',access='stream',status='old')
-    read(k,iostat=ios) magic,blocks,nx,ny,itc,caseMode
-    if(ios/=0 .OR. magic/='MB2DSNAPSHOT0001') error stop 'Invalid snapshot header'
+    ! 与主程序 output_SnapshotFile 的流式写入顺序一致：头部、几何、四个拼接场。
+    read(k,iostat=ios) magic,blocks,nx,ny,totalItc,caseMode
+    if(ios/=0 .OR. magic/='MB2DSNAPSHOT0002') error stop 'Invalid snapshot header'
     if((blocks/=1 .AND. blocks/=5) .OR. min(nx,ny)<4) error stop 'Invalid snapshot mesh'
     if(caseMode/=0 .AND. caseMode/=1) error stop 'Invalid snapshot case'
     sideHeated=caseMode==1
-    read(k,iostat=ios) savedTime,lengthUnit,viscosity,diffusivity,Thot,Tcold,Tref,timeUnit,centerIntegrationBox
+    read(k,iostat=ios) refineRatio,interfaceSkin,fineLayerCellsLeft,fineLayerCellsRight, &
+        fineLayerCellsBottom,fineLayerCellsTop
+    if(ios/=0 .OR. refineRatio<1 .OR. interfaceSkin<0) error stop 'Invalid snapshot grid settings'
+    if((blocks==1 .AND. refineRatio/=1) .OR. (blocks==5 .AND. refineRatio<=1)) &
+        error stop 'Snapshot block/refinement mismatch'
+    if(totalItc<0 .OR. mod(totalItc,refineRatio)/=0) error stop 'Invalid snapshot cumulative step'
+    read(k,iostat=ios) totalTff,lengthUnit,viscosity,diffusivity,Thot,Tcold,Tref,timeUnit,centerIntegrationBox
     if(ios/=0) error stop 'Incomplete snapshot physics'
     if(.NOT.all(ieee_is_finite(centerIntegrationBox))) error stop 'Invalid snapshot integration box'
-    if(.NOT.all(ieee_is_finite([savedTime,lengthUnit,viscosity,diffusivity,timeUnit,Thot,Tcold,Tref]))) &
+    if(.NOT.all(ieee_is_finite([totalTff,lengthUnit,viscosity,diffusivity,timeUnit,Thot,Tcold,Tref]))) &
         error stop 'Nonfinite snapshot metadata'
     if(min(lengthUnit,viscosity,diffusivity,timeUnit)<=0d0 .OR. Thot==Tcold) error stop 'Invalid snapshot units'
-    if(abs(savedTime-dble(itc)/timeUnit)>1d-12*max(1d0,abs(savedTime))) error stop 'Snapshot time mismatch'
+    if(abs(totalTff-dble(totalItc)/timeUnit)>1d-12*max(1d0,abs(totalTff))) error stop 'Snapshot time mismatch'
     count=0
     do r=1,blocks
-        read(k,iostat=ios) ni(r),nj(r),xfirst(r),yfirst(r),dx(r)
+        read(k,iostat=ios) ni(r),nj(r),xOffset(r),yOffset(r),dx(r)
         if(ios/=0 .OR. min(ni(r),nj(r))<1 .OR. dx(r)<=0d0) error stop 'Invalid snapshot block'
-        if(.NOT.all(ieee_is_finite([xfirst(r),yfirst(r),dx(r)]))) error stop 'Nonfinite block geometry'
+        if(.NOT.all(ieee_is_finite([xOffset(r),yOffset(r),dx(r)]))) error stop 'Nonfinite block geometry'
         count=count+ni(r)*nj(r)
     enddo
     dxCoarse=dx(1)
-    refineRatio=nint(dxCoarse)
+    if(dxCoarse/=dble(refineRatio)) error stop 'Snapshot coarse spacing mismatch'
+    if(blocks==5) then
+        if(any(dx(2:5)/=dxFine) .OR. min(ni(1),nj(1))<=2*interfaceSkin) &
+            error stop 'Invalid snapshot full-grid layout'
+    endif
     allocate(uall(count),vall(count),Tall(count),rhoall(count))
     read(k,iostat=ios) uall,vall,Tall,rhoall
     if(ios/=0) error stop 'Incomplete snapshot fields'
@@ -238,8 +262,9 @@ subroutine read_snapshot(name)
         T_coarse(ni(1),nj(1)),rho_coarse(ni(1),nj(1)))
     first=last+1
     last=last+ni(1)*nj(1)
-    xOffsetCoarse=xfirst(1)-0.5d0*dx(1)
-    yOffsetCoarse=yfirst(1)-0.5d0*dx(1)
+    ! 粗区包含接收层，局部下标直接从1恢复；默认389*389、偏移122.5，与主程序一致。
+    xOffsetCoarse=xOffset(1)
+    yOffsetCoarse=yOffset(1)
     u_coarse=reshape(uall(first:last),[ni(1),nj(1)])
     v_coarse=reshape(vall(first:last),[ni(1),nj(1)])
     T_coarse=reshape(Tall(first:last),[ni(1),nj(1)])
@@ -250,8 +275,8 @@ subroutine read_snapshot(name)
         T_left(ni(2),nj(2)),rho_left(ni(2),nj(2)))
     first=last+1
     last=last+ni(2)*nj(2)
-    xOffsetLeft=xfirst(2)-0.5d0*dx(2)
-    yOffsetLeft=yfirst(2)-0.5d0*dx(2)
+    xOffsetLeft=xOffset(2)
+    yOffsetLeft=yOffset(2)
     u_left=reshape(uall(first:last),[ni(2),nj(2)])
     v_left=reshape(vall(first:last),[ni(2),nj(2)])
     T_left=reshape(Tall(first:last),[ni(2),nj(2)])
@@ -261,8 +286,8 @@ subroutine read_snapshot(name)
         T_right(ni(3),nj(3)),rho_right(ni(3),nj(3)))
     first=last+1
     last=last+ni(3)*nj(3)
-    xOffsetRight=xfirst(3)-0.5d0*dx(3)
-    yOffsetRight=yfirst(3)-0.5d0*dx(3)
+    xOffsetRight=xOffset(3)
+    yOffsetRight=yOffset(3)
     u_right=reshape(uall(first:last),[ni(3),nj(3)])
     v_right=reshape(vall(first:last),[ni(3),nj(3)])
     T_right=reshape(Tall(first:last),[ni(3),nj(3)])
@@ -272,8 +297,8 @@ subroutine read_snapshot(name)
         T_bottom(ni(4),nj(4)),rho_bottom(ni(4),nj(4)))
     first=last+1
     last=last+ni(4)*nj(4)
-    xOffsetBottom=xfirst(4)-0.5d0*dx(4)
-    yOffsetBottom=yfirst(4)-0.5d0*dx(4)
+    xOffsetBottom=xOffset(4)
+    yOffsetBottom=yOffset(4)
     u_bottom=reshape(uall(first:last),[ni(4),nj(4)])
     v_bottom=reshape(vall(first:last),[ni(4),nj(4)])
     T_bottom=reshape(Tall(first:last),[ni(4),nj(4)])
@@ -283,8 +308,8 @@ subroutine read_snapshot(name)
         T_top(ni(5),nj(5)),rho_top(ni(5),nj(5)))
     first=last+1
     last=last+ni(5)*nj(5)
-    xOffsetTop=xfirst(5)-0.5d0*dx(5)
-    yOffsetTop=yfirst(5)-0.5d0*dx(5)
+    xOffsetTop=xOffset(5)
+    yOffsetTop=yOffset(5)
     u_top=reshape(uall(first:last),[ni(5),nj(5)])
     v_top=reshape(vall(first:last),[ni(5),nj(5)])
     T_top=reshape(Tall(first:last),[ni(5),nj(5)])
@@ -300,7 +325,8 @@ end subroutine read_snapshot
     implicit none
 
     ! 依次累加五个物理分区，节点实际贡献的面积在各区统计循环内直接计算。
-    ! Re 使用速度平方的面积平均再开方；不能直接平均各网格各自计算的 Re。
+    ! RMS Re 使用速度平方的面积平均再开方。
+    ! 先累加全域积分，不能直接平均各网格各自计算的 Re。
 
     real(kind=8), intent(out) :: nu, re, hot, cold, middle, mass, meanT, tmin, tmax, rmin, rmax
     real(kind=8) :: conv, vel2
@@ -348,7 +374,7 @@ end subroutine read_snapshot
     endif
 
     ! 空间积分等于中心、左、右、下、上五个物理分区之和；接口端点按实际面积计权。
-    ! Re 使用速度平方的面积平均再开方，非稳态时间统计也采用同一 RMS 定义。
+    ! 原 RMS Re 使用速度平方的面积平均再开方，非稳态时间统计保持同一 RMS 定义。
     nu=1.0d0+conv/(dble(nx)*dble(ny))*(lengthUnit/(Thot-Tcold))/diffusivity
     re=sqrt(vel2/(dble(nx)*dble(ny)))*lengthUnit/viscosity
     hot=(lengthUnit/(Thot-Tcold))*hot
@@ -362,7 +388,7 @@ end subroutine read_snapshot
       vel2,mass,meanT,hot,cold,middle,tmin,tmax,rmin,rmax,&
       rho,u,v,T)
 
-    use postdata,only: nx,ny,Thot,Tcold,diffusivity,itc,reloadItcOffset,refineRatio,ieee_is_finite,centerIntegrationBox,sideHeated
+    use postdata,only: nx,ny,Thot,Tcold,diffusivity,totalItc,refineRatio,ieee_is_finite,centerIntegrationBox,sideHeated
     implicit none
 
     ! integrationBox 为细数组外框或粗区物理矩形；零面积交换节点不参与统计。
@@ -406,7 +432,7 @@ end subroutine read_snapshot
             if(cellArea <=0d0) cycle
             if(.NOT. ieee_is_finite(T(i,j)) .OR. .NOT. ieee_is_finite(rho(i,j)) .OR. &
                 .NOT. ieee_is_finite(u(i,j)) .OR. .NOT. ieee_is_finite(v(i,j)) .OR. rho(i,j) <=0.0d0) then
-                write(*,*) 'Invalid state: time, xOffset,yOffset, i,j:',reloadItcOffset+itc,xOffset,yOffset,i,j
+                write(*,*) 'Invalid state: totalItc, xOffset,yOffset, i,j:',totalItc,xOffset,yOffset,i,j
                 error stop 'Nonfinite or nonpositive density in owned cells'
             endif
     if(sideHeated) then

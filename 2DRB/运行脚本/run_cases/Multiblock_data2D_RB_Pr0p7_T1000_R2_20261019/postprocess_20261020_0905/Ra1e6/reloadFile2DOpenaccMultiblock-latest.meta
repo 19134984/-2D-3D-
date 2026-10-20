@@ -1,0 +1,29 @@
+MB2D_RESTART 1
+reloadFile2DOpenaccMultiblock-1000.340531252631tff-2217780itc.bin
+# nx ny refineRatio Left Right Bottom Top interfaceSkin blockCount
+          128          128            2           16           17           16 
+           17            2            5
+# steady unused SideHeated UhorizontalWall UverticalWall Uperiodic ThorizontalConst ThorizontalAdiabatic TverticalConst TverticalAdiabatic Tperiodic Ha
+            0            0            0            1            1            0 
+            1            0            0            1            0            0
+# Rayleigh Prandtl Mach Thot Tcold Snu Sq Qk Qnu paraA snapshotInterval reloadInterval pltInterval Ha phi
+ 1.0000000000000000E+006  6.9999999999999996E-001  1.0000000000000001E-001  5.0000000000000000E-001 -5.0000000000000000E-001  1.9284582032324580E+000  9.4265080155594760E-002  1.2679491924311228E+000  9.2820323027550877E-001 -3.6940214760103953E+000  5.0000000000000000E-001  1.0000000000000000E+002  1.0000000000000000E+002  0.0000000000000000E+000  0.0000000000000000E+000
+# itc_total NuReSampleCount t_ff errorU errorT
+2217780 1998  1.0003405312526313E+003  1.0000000000000000E+002  1.0000000000000000E+002
+# coarse: ni nj iStart iEnd jStart jEnd / xOffset yOffset dx xmin xmax ymin ymax
+           53           53            3           51            3           51
+ 1.0500000000000000E+001  1.0500000000000000E+001  2.0000000000000000E+000  1.5500000000000000E+001  1.1150000000000000E+002  1.5500000000000000E+001  1.1150000000000000E+002
+# left: ni nj iStart iEnd jStart jEnd / xOffset yOffset dx xmin xmax ymin ymax
+           18          128            1           18            1          128
+ 0.0000000000000000E+000  0.0000000000000000E+000  1.0000000000000000E+000  0.0000000000000000E+000  1.8000000000000000E+001  0.0000000000000000E+000  1.2800000000000000E+002
+# right: ni nj iStart iEnd jStart jEnd / xOffset yOffset dx xmin xmax ymin ymax
+           19          128            1           19            1          128
+ 1.0900000000000000E+002  0.0000000000000000E+000  1.0000000000000000E+000  1.0900000000000000E+002  1.2800000000000000E+002  0.0000000000000000E+000  1.2800000000000000E+002
+# bottom: ni nj iStart iEnd jStart jEnd / xOffset yOffset dx xmin xmax ymin ymax
+           91           18            1           91            1           18
+ 1.8000000000000000E+001  0.0000000000000000E+000  1.0000000000000000E+000  1.8000000000000000E+001  1.0900000000000000E+002  0.0000000000000000E+000  1.8000000000000000E+001
+# top: ni nj iStart iEnd jStart jEnd / xOffset yOffset dx xmin xmax ymin ymax
+           91           19            1           91            1           19
+ 1.8000000000000000E+001  1.0900000000000000E+002  1.0000000000000000E+000  1.8000000000000000E+001  1.0900000000000000E+002  1.0900000000000000E+002  1.2800000000000000E+002
+# requested_target_itc requested_target_tff
+2217780  1.0003405312526313E+003

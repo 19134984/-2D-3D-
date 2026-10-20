@@ -1,0 +1,22 @@
+{
+  "Pr": 0.7,
+  "Ra": 1000000.0,
+  "mesh": 128,
+  "refineRatio": 2,
+  "changed_initial_T_amplitude": 0.001,
+  "perturbation": "sin(2*pi*x/L)*sin(pi*y/H)",
+  "target_tff": 200,
+  "average_window": [
+    100,
+    200
+  ],
+  "Nu": 6.308720372137821,
+  "Re_space_time_rms": 280.4136544288929,
+  "reference_Nu": 6.3,
+  "reference_Re": 279,
+  "half_relative_Nu_percent": 0.10404770881554953,
+  "half_relative_Re_percent": 0.22666978252443354,
+  "formal_1000_tff_replacement": false,
+  "Nu_relative_error_percent": 0.13841860536224265,
+  "Re_relative_error_percent": 0.5066861752304394
+}

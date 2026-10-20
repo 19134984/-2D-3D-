@@ -9,14 +9,12 @@
 ! 1. 局部下标 i,j：当前网格块数组中的整数编号；各场数组从 1 开始，f_post/g_post 另有外圈。
 ! 2. 全局物理坐标 x,y：节点在整个计算域中的位置，统一以细格距为长度单位，用实数表示。
 !    x=xOffset+(i-0.5)*dx，y=yOffset+(j-0.5)*dx；这里的坐标尚未除以 lengthUnit。
-!    xOffset/yOffset 是该网格块在全局物理坐标中的偏移量，不是首节点坐标。
+!    xOffset/yOffset 是该网格块在全局物理坐标中的偏移量。
 ! 3. 全局细网格下标 I,J：统一细网格编号体系中的整数编号，对应 x=I-0.5、y=J-0.5。
 !    当前网格的共址节点满足 I=x+0.5、J=y+0.5；全局细网格下标不等于任意块的局部下标。
-!    大写 I,J 仅用于此处说明，Fortran 不区分大小写；不表示代码中另有一套同名变量。
 ! 默认例子：粗网格 dx=2、xOffset=122.5，局部下标 i=1 -> 全局物理坐标 x=123.5 -> I=124。
 !           粗网格局部下标 i=3 与左细区局部下标 i=128 都位于 x=127.5，对应 I=128。
 ! 左细区偏移为零且 dx=1，局部下标恰好等于全局细网格下标；其他块需要按偏移和格距换算。
-! 文中不把“局部下标对应的全局物理坐标”简称为“局部坐标”，避免与相对偏移量混淆。
 ! 插值另用连续下标 q=(x-xOffset)/dx+0.5；例如 x=128.5 对应粗网格 q=3.5。
 ! 连续下标用于定位节点之间的位置，可能不是整数，不能直接作数组下标；y 方向同理。
 !=============================================================
@@ -1180,7 +1178,7 @@
 
         n=0
         do while(n<NuReSampleCount)  !循环只读取检查点对应的次数，不要求把整个文件读完
-            read(k,'(a)',iostat=ios) line !# sample itc_total t_ff NuVolAvg ReVolRMS Nu_hot Nu_cold Nu_middle 
+            read(k,'(a)',iostat=ios) line !# sample itc_total t_ff NuVolAvg ReVolRMS Nu_hot Nu_cold Nu_middle
                                           ! mass meanT Tmin Tmax rhoMin rhoMax
             if(ios/=0) error stop 'History is shorter than checkpoint sample count'
             if(len_trim(line)==0 .OR. line(1:1)=='#') cycle  !跳过，继续读下一行,不会增加 n，所以标题不算一次采样
@@ -3223,7 +3221,7 @@
         mass,meanT,tmin,tmax,rmin,rmax
     close(k)
     NuReSampleCount=NuReSampleCount+1
-    write(*,'(a,f12.5,a,es13.5,a,es13.5)') 't_ff=',dble(reloadItcOffset+itc)/timeUnit,' NuVolAvg=',nu,' ReVolRMS=',re
+    write(*,'(a,f12.5,2(a,es13.5))') 't_ff=',dble(reloadItcOffset+itc)/timeUnit,' NuVolAvg=',nu,' ReVolRMS=',re
   end subroutine calNuRe
 !===================================================================================================
 
@@ -3237,7 +3235,8 @@
     implicit none
 
     ! 依次累加五个物理分区，节点实际贡献的面积在各区统计循环内直接计算。
-    ! Re 使用速度平方的面积平均再开方；不能直接平均各网格各自计算的 Re。
+    ! RMS Re 使用速度平方的面积平均再开方。
+    ! 先累加全域积分，不能直接平均各网格各自计算的 Re。
 
     real(kind=8), intent(out) :: nu, re, hot, cold, middle, mass, meanT, tmin, tmax, rmin, rmax
     real(kind=8) :: conv, vel2
@@ -3287,7 +3286,7 @@
     endif
 
     ! 空间积分等于中心、左、右、下、上五个物理分区之和；接口端点按实际面积计权。
-    ! Re 使用速度平方的面积平均再开方，非稳态时间统计也采用同一 RMS 定义。
+    ! 原 RMS Re 使用速度平方的面积平均再开方，非稳态时间统计保持同一 RMS 定义。
     nu=1.0d0+conv/(dble(nx)*dble(ny))*(lengthUnit/(Thot-Tcold))/diffusivity
     re=sqrt(vel2/(dble(nx)*dble(ny)))*lengthUnit/viscosity
     hot=(lengthUnit/(Thot-Tcold))*hot
@@ -3739,12 +3738,12 @@
 
 !===================================================================================================
 ! 子程序: output_SnapshotFile
-! 作用: 将五区原始节点拼成四个一维数组，输出紧凑快照，不存积分权重。
+! 作用: 将五区完整宏观场拼成四个一维数组，保留原始局部下标和坐标偏移，不存积分权重。
 !===================================================================================================
   subroutine output_SnapshotFile()    !四个细数组全部保存，包括部分积分权重为零的接收节点
     use commondata
     implicit none
-    integer(kind=4) :: k, first, last, count, iStart, iEnd, jStart, jEnd
+    integer(kind=4) :: k, first, last, count
     real(kind=8), allocatable :: uall(:), vall(:), Tall(:), rhoall(:)
     character(len=40) :: timeString
     character(len=256) :: name
@@ -3752,21 +3751,18 @@
     call update_host_all(.false.)     !传输数据到 CPU
     call output_time_string(timeString) !返回累计 tff 的有效字符串，100，100.5这种，timeString是字符串
     write(name,'(a,a,a,i0,a)') snapshotFilePrefix//'-',trim(timeString),'tff-',reloadItcOffset+itc,'itc.bin'
-    ! 中心去掉接收层；四个细矩形保存原始节点，含零积分面积的接口节点。
-    iStart=1+merge(interfaceSkin,0,refineRatio>1)               !中心粗网格需要保存的节点范围
-    iEnd=size(f_coarse,1)-merge(interfaceSkin,0,refineRatio>1)
-    jStart=iStart
-    jEnd=size(f_coarse,2)-merge(interfaceSkin,0,refineRatio>1)
-    count=(iEnd-iStart+1)*(jEnd-jStart+1)   !中心粗网格
+    ! 五区均保存完整数组，包含接收层；后处理局部下标与主程序一致，积分时再按实际物理范围计权。
+    ! 默认粗区完整尺寸389*389，xOffsetCoarse/yOffsetCoarse仍为122.5，局部下标1对应全局物理坐标123.5。
+    count=size(T_coarse)   !中心粗网格的完整节点数
     if(refineRatio>1) count=count+size(T_left)+size(T_right)+size(T_bottom)+size(T_top) ! 四周细网格
     allocate(uall(count),vall(count),Tall(count),rhoall(count))
     !按照“粗、左、右、下、上”的顺序拼接
     first=1
-    last=(iEnd-iStart+1)*(jEnd-jStart+1) !Fortran 默认第一个下标变化最快,先遍历 i，再增加 j
-    uall(first:last)=reshape(u_coarse(iStart:iEnd,jStart:jEnd),[last-first+1]) !reshape：把二维数组按规定顺序展开成一维
-    vall(first:last)=reshape(v_coarse(iStart:iEnd,jStart:jEnd),[last-first+1]) ![last-first+1]：指定展开后的一维数组长度
-    Tall(first:last)=reshape(T_coarse(iStart:iEnd,jStart:jEnd),[last-first+1])
-    rhoall(first:last)=reshape(rho_coarse(iStart:iEnd,jStart:jEnd),[last-first+1])
+    last=size(T_coarse) !Fortran 默认第一个下标变化最快,先遍历 i，再增加 j
+    uall(first:last)=reshape(u_coarse,[last-first+1]) !reshape：把二维数组按规定顺序展开成一维
+    vall(first:last)=reshape(v_coarse,[last-first+1]) ![last-first+1]：指定展开后的一维数组长度
+    Tall(first:last)=reshape(T_coarse,[last-first+1])
+    rhoall(first:last)=reshape(rho_coarse,[last-first+1])
 
     if(refineRatio>1) then
         first=last+1              !左细区
@@ -3803,21 +3799,23 @@
     !'unformatted'：按二进制数据写入，不转换成文本数字。
     !'stream'：连续写入数据，不添加顺序非格式化文件的记录标记
     open(newunit=k,file=trim(name),form='unformatted',access='stream',status='replace')
-    write(k) 'MB2DSNAPSHOT0001',merge(5,1,refineRatio>1),nx,ny,reloadItcOffset+itc
+    ! 0002格式：完整粗数组、原始偏移和实际interfaceSkin；只记录累计步数和累计tff，不分存续算计数。
+    write(k) 'MB2DSNAPSHOT0002',merge(5,1,refineRatio>1),nx,ny,reloadItcOffset+itc
 #ifdef SideHeatedCell
     write(k) 1
 #else
     write(k) 0
 #endif
+    write(k) refineRatio,interfaceSkin,fineLayerCellsLeft,fineLayerCellsRight,fineLayerCellsBottom,fineLayerCellsTop
     write(k) dble(reloadItcOffset+itc)/timeUnit,lengthUnit,viscosity,diffusivity,Thot,Tcold,Tref,timeUnit
     write(k) centerIntegrationBox
-    write(k) iEnd-iStart+1,jEnd-jStart+1,xOffsetCoarse+(iStart-0.5d0)*dxCoarse, &
-        yOffsetCoarse+(jStart-0.5d0)*dxCoarse,dxCoarse
+    ! 每区直接保存完整尺寸和原始坐标偏移，不再用首节点坐标重新编号。
+    write(k) size(T_coarse,1),size(T_coarse,2),xOffsetCoarse,yOffsetCoarse,dxCoarse
     if(refineRatio>1) then
-        write(k) size(T_left,1),size(T_left,2),xOffsetLeft+0.5d0,yOffsetLeft+0.5d0,dxFine
-        write(k) size(T_right,1),size(T_right,2),xOffsetRight+0.5d0,yOffsetRight+0.5d0,dxFine
-        write(k) size(T_bottom,1),size(T_bottom,2),xOffsetBottom+0.5d0,yOffsetBottom+0.5d0,dxFine
-        write(k) size(T_top,1),size(T_top,2),xOffsetTop+0.5d0,yOffsetTop+0.5d0,dxFine
+        write(k) size(T_left,1),size(T_left,2),xOffsetLeft,yOffsetLeft,dxFine
+        write(k) size(T_right,1),size(T_right,2),xOffsetRight,yOffsetRight,dxFine
+        write(k) size(T_bottom,1),size(T_bottom,2),xOffsetBottom,yOffsetBottom,dxFine
+        write(k) size(T_top,1),size(T_top,2),xOffsetTop,yOffsetTop,dxFine
     endif
     write(k) uall,vall,Tall,rhoall
     close(k)

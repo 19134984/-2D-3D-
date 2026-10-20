@@ -1,0 +1,11 @@
+{
+  "source_main_sha256": "0559bdca697c5abc0c7db79df5ae1611d358d34722343b882d40b34c6bd00c2e",
+  "all_expected_diagnostic_outcomes_verified": true,
+  "cpu_gpu_failed_same_cell": true,
+  "Ra8_original_failure_reproduced": true,
+  "Ra9_Ra10_first_failure_mechanism_unverified": true,
+  "precursor_tff": 18.211567026301463,
+  "precursor_T_abs_max_all_arrays": 0.49747979461956426,
+  "precursor_rho_min_all_arrays": 0.6953236600437787,
+  "precursor_speed_max_all_arrays": 0.4438232323058657
+}

@@ -1,0 +1,35 @@
+ Start: Tue Oct 20 09:21:09 2026
+ Starting OpenACC >>>>>>
+ Visible OpenACC devices:            1
+ Fine-equivalent nx,ny; refinement ratio:          512          512 
+            2
+ Rayleigh, Prandtl, Mach:    100000000.0000000        0.7000000000000000      
+   0.1000000000000000     
+ Fine tauf, Snu, Sq, Qk, Qnu, paraA:   0.5074195848940490      
+    1.970755622703849        3.8803372981562459E-002    1.267949192431123      
+   0.9282032302755088        -3.877608590404158     
+ Fine viscosity, diffusivity, gBeta, timeUnit:   2.4731949646830120E-003 
+   3.5331356638328747E-003   6.5104166666667433E-006    8868.100134752600     
+ Target itc, actual t_ff =       177440    20.00879526660308     
+ outputSnapshotIntervalItc =         4436
+ reloadFileIntervalItc =       886812
+ outputPltFileIntervalItc =       886812
+ Fine-node indices left/right/bottom/top:           64           65 
+           64           65
+ Coarse extension (coarse spacings); fine extension (fine spacings); interface layers:
+             2            2            2
+ Geometry: central coarse rectangle and four compact fine rectangles.
+ Fine seams exchange post-collision populations directly, including diagonal links.
+ Coordinates: x=xOffset+(i-0.5)*dx, y=yOffset+(j-0.5)*dx; local i,j start at 1.
+ Interfaces preserve the connected-ring time interpolation and MRT scaling; dt=dx.
+ Restart: paired meta (configuration/counters) and bin (coarse,left,right,bottom,top arrays).
+ coarse: nx,ny,dx,xOffset,yOffset:          197          197 
+    2.000000000000000         58.50000000000000         58.50000000000000     
+ left: nx,ny,dx,xOffset,yOffset:           66          512 
+    1.000000000000000         0.000000000000000         0.000000000000000     
+ right: nx,ny,dx,xOffset,yOffset:           67          512 
+    1.000000000000000         445.0000000000000         0.000000000000000     
+ bottom: nx,ny,dx,xOffset,yOffset:          379           66 
+    1.000000000000000         66.00000000000000         0.000000000000000     
+ top: nx,ny,dx,xOffset,yOffset:          379           67 
+    1.000000000000000         66.00000000000000         445.0000000000000     

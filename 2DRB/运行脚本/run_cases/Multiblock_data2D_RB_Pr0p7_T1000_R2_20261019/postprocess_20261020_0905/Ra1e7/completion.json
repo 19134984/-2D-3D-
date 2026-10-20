@@ -1,0 +1,8 @@
+{
+  "completed": true,
+  "final_step": 4436000,
+  "final_tff": 1000.4397633301475,
+  "samples": 2000,
+  "checkpoint": "reloadFile2DOpenaccMultiblock-1000.439763330147tff-4436000itc.bin",
+  "statistical_convergence_assessed": false
+}

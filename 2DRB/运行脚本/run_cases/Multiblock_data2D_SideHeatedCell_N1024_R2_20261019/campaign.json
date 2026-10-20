@@ -1,0 +1,81 @@
+{
+  "created_at_Asia_Shanghai": "2026-10-19T12:50:12.321881+08:00",
+  "local_master": "D:\\桌面\\代码\\代码\\热对流\\2DRB\\多块网格\\2DRBOpenaccMultiblock.F90",
+  "local_master_sha256": "f228ef9a02cf855bfd0f05f0e0d191dba708d4d14dcc8263352466fac5272252",
+  "remote_root": "/data2/XLLi/Multiblock/data2D/SideHeatedCell",
+  "node": "node07",
+  "order": [
+    "Ra1e6",
+    "Ra1e7",
+    "Ra1e8"
+  ],
+  "one_pbs_job": true,
+  "cases": [
+    {
+      "case": "Ra1e6",
+      "Rayleigh": 1000000,
+      "Prandtl": 0.71,
+      "Mach": 0.1,
+      "nx": 1024,
+      "ny": 1024,
+      "refineRatio": 2,
+      "fineLayerCells": [
+        128,
+        129,
+        128,
+        129
+      ],
+      "epsU": 1e-07,
+      "epsT": 1e-07,
+      "max_fine_steps": 20000000,
+      "start": "from_zero",
+      "remote_case": "/data2/XLLi/Multiblock/data2D/SideHeatedCell/Ra1e6",
+      "source_sha256": "4bc6b0a20877bb9c8f4b73d165b317d48a2aef59cd30120791bfd41592db377b",
+      "local_master_sha256": "f228ef9a02cf855bfd0f05f0e0d191dba708d4d14dcc8263352466fac5272252"
+    },
+    {
+      "case": "Ra1e7",
+      "Rayleigh": 10000000,
+      "Prandtl": 0.71,
+      "Mach": 0.1,
+      "nx": 1024,
+      "ny": 1024,
+      "refineRatio": 2,
+      "fineLayerCells": [
+        128,
+        129,
+        128,
+        129
+      ],
+      "epsU": 1e-07,
+      "epsT": 1e-07,
+      "max_fine_steps": 20000000,
+      "start": "from_zero",
+      "remote_case": "/data2/XLLi/Multiblock/data2D/SideHeatedCell/Ra1e7",
+      "source_sha256": "2e25737716f1abba484be79ba5060581271462da1053c6363bc3a4cdc70066b7",
+      "local_master_sha256": "f228ef9a02cf855bfd0f05f0e0d191dba708d4d14dcc8263352466fac5272252"
+    },
+    {
+      "case": "Ra1e8",
+      "Rayleigh": 100000000,
+      "Prandtl": 0.71,
+      "Mach": 0.1,
+      "nx": 1024,
+      "ny": 1024,
+      "refineRatio": 2,
+      "fineLayerCells": [
+        128,
+        129,
+        128,
+        129
+      ],
+      "epsU": 1e-07,
+      "epsT": 1e-07,
+      "max_fine_steps": 20000000,
+      "start": "from_zero",
+      "remote_case": "/data2/XLLi/Multiblock/data2D/SideHeatedCell/Ra1e8",
+      "source_sha256": "e4474ca56c2818645836d6fd38eb1d51ac0751864552507eb61d9cb308d87ee2",
+      "local_master_sha256": "f228ef9a02cf855bfd0f05f0e0d191dba708d4d14dcc8263352466fac5272252"
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "change": "remove mean-speed Reynolds diagnostic; retain RMS definitions",
+  "active_files_before": {
+    "多块网格/2DRBOpenaccMultiblock.F90": "92a910d0827f99c3882e184cc5211f2d9b918da4d8ce65be012c97d934449c7b",
+    "多块网格/2DRBOpenaccMultiblockPostprocess.F90": "7bcd9dcfd46db0ae314c58e6f4afbd002ec070d65b3bb40b014afbe14c0ca2d5",
+    "多块网格/初始化续算与后处理说明.md": "c7c2f7e83a75213883ad1d75e8af71e93746951f4c46ff2aa32b0b0a79bce0ca",
+    "多块网格/代码逻辑说明.md": "86876abf6b0d865e21274819669b143edeeee4b983032d9b3cc5525191d874f7",
+    "运行脚本/tools/verify_multiblock_restart_postprocess.py": "a2a6abf575c57b2f3b17a3ee92bfac36dfd6066a03fe5f818e04402c630bf8f5"
+  },
+  "completed_case_root": "D:\\桌面\\代码\\代码\\热对流\\2DRB\\运行脚本\\run_cases\\Multiblock_data2D_SideHeatedCell_N1024_R2_20261019",
+  "completed_files_sha256": {
+    "campaign.json": "05a1ed67a3c56d351b512e55fdf01bff57ee8ff689801abbe30815bf5ac448d4",
+    "README.md": "00c0c056c0977d3215a22a1cc8dfbbe6f3461b1a26bb621ee2b5fa5bce1700f0",
+    "results_audit_7265.json": "8742894632de51aa59070a79dcf77752395d0260c98743c46edb5189fb2005be",
+    "source_master.sha256": "1b1359ddc35988b6a4848d0adceb15a04c3fb7e5e3af430a1482a9c1fa0e0757",
+    "Ra1e6\\run.sh": "ddcd3a0e262293be593db6e97b25f0599e40537d652d7a93192f43bee35ebcf7",
+    "Ra1e7\\run.sh": "cda4b864d73cbb729f673dddc44a22fed054ce0c87692573c06eeaf644b5ac93",
+    "Ra1e8\\run.sh": "bec477fcb93b7a357a3734ce4ec30165c845aa92d85629d6e410228479915b81",
+    "serial_node07\\run.pbs": "1b5fdd3ae84b12853b8a736a2e4af8b6dfc2c97ed8ea0998e408037d1258b931",
+    "serial_node07\\submission.json": "50e75a810bf9ce859cef6d92b967cb5f1737afb4af3b68bd36557b796fe53c8b",
+    "Ra1e6\\source\\master_to_case.diff": "0b75964641f98b48adc7806334385ba261b80ad437dc789cea5e4997d007cbc0",
+    "Ra1e6\\source\\provenance.json": "c1f162daad764957e3ca109daafc95db9f714ffde5404c54e4af8aa7ab665a76",
+    "Ra1e6\\source\\solver.F90": "4bc6b0a20877bb9c8f4b73d165b317d48a2aef59cd30120791bfd41592db377b",
+    "Ra1e6\\source\\solver.sha256": "edcd382a015f63d6f04472f9b23131cc3fc146148aaa795a8a51e5c6ab3c9eee",
+    "Ra1e7\\source\\master_to_case.diff": "de56d9c60e2ff0cc21e0bf379e4e9aad00cb4a57eb3de9a25eef0c43023f91dd",
+    "Ra1e7\\source\\provenance.json": "da01e00f360f1b1092e66d29425d39d2cfc413dbbd332d0c9b9ac814195c567d",
+    "Ra1e7\\source\\solver.F90": "2e25737716f1abba484be79ba5060581271462da1053c6363bc3a4cdc70066b7",
+    "Ra1e7\\source\\solver.sha256": "cd9130f0fbfb35cc4462292d7c9dacb520db8df064ae87a0770a322523746bda",
+    "Ra1e8\\source\\master_to_case.diff": "20810c28260b1380d8016fc4945411a308e1dfdc7e4297776943de3074be3c41",
+    "Ra1e8\\source\\provenance.json": "7a4f32d9b14d5c6e69afda774a2313ba511b06589ca680ab9e99a1ff69623af3",
+    "Ra1e8\\source\\solver.F90": "e4474ca56c2818645836d6fd38eb1d51ac0751864552507eb61d9cb308d87ee2",
+    "Ra1e8\\source\\solver.sha256": "089cd591be4d64a38b773b393da6d747fee30e6ba2ac8a82754e05442965ad85"
+  },
+  "completed_7265_postprocess_origin": "C:\\Users\\User\\AppData\\Local\\Temp\\mb-regression-_2s4ddkw\\steady\\post.F90",
+  "completed_7265_postprocess_note": "Preserved tested steady postprocessor for the completed 15-column histories and snapshot 0001. Its averaging-window constants are unused in steady mode. The current before/ postprocessor instead reads snapshot 0002."
+}

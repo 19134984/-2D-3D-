@@ -1,0 +1,194 @@
+{
+  "job": "7265.master",
+  "root": "/data2/XLLi/Multiblock/data2D/SideHeatedCell",
+  "reference": "ISLBM Table 2, Present 1025^2",
+  "relative_error": "100*abs(value-reference)/abs(reference)",
+  "cases": [
+    {
+      "case": "Ra1e6",
+      "final_step": 2992000,
+      "t_ff": 168.69453177884387,
+      "errorU": 9.261789303634146e-08,
+      "errorT": 9.857368475533284e-08,
+      "converged": true,
+      "compile_status": "0",
+      "run_status": "0",
+      "validation": "steady_threshold_passed",
+      "started": "2026-10-19T12:52:59+0800",
+      "finished": "2026-10-19T13:49:50+0800",
+      "final": {
+        "t_ff": 168.69453177884387,
+        "NuVolAvg": 8.824891271937627,
+        "ReVolRMS": 99.25033447444734,
+        "ReVolMean": 72.89737751057184,
+        "Nu_hot": 8.825122780782673,
+        "Nu_cold": 8.825113822803704,
+        "Nu_middle": 8.824775825362257,
+        "mass": 1048576.1063400295,
+        "meanT": -2.511304155980292e-07,
+        "Tmin": -0.49952314199045467,
+        "Tmax": 0.4995231410228729,
+        "rhoMin": 0.9996255169495095,
+        "rhoMax": 1.0009026843979278
+      },
+      "reference": {
+        "NuVolAvg": 8.8188,
+        "Nu_hot": 8.8246,
+        "Nu_middle": 8.8188,
+        "ReVolMean": 99.3576
+      },
+      "relative_error_percent": {
+        "NuVolAvg": 0.0690714375836576,
+        "Nu_hot": 0.0059241300758383075,
+        "Nu_middle": 0.06776234138724017,
+        "ReVolMean": 26.63130197330467
+      },
+      "RMS_vs_table_percent": 0.10795905451889203,
+      "history_rows": 16,
+      "convergence_rows": 1496,
+      "history_finite": true,
+      "last_periodic_step": 2837824,
+      "snapshot": "/data2/XLLi/Multiblock/data2D/SideHeatedCell/Ra1e6/results/buoyancyCavity2DOpenaccMultiblockSnapshot-168.694531778844tff-2992000itc.bin",
+      "snapshot_all_macro_fields_finite": true,
+      "snapshot_area": 1048576.0,
+      "independent_recomputed": {
+        "NuVolAvg": 8.824891271937581,
+        "ReVolRMS": 99.25033447444628,
+        "ReVolMean": 72.89737751057173
+      },
+      "independent_minus_final": {
+        "NuVolAvg": -4.618527782440651e-14,
+        "ReVolRMS": -1.0658141036401503e-12,
+        "ReVolMean": -1.1368683772161603e-13
+      },
+      "source_sha256": "4bc6b0a20877bb9c8f4b73d165b317d48a2aef59cd30120791bfd41592db377b",
+      "source_hashes_match": true,
+      "log_nonfinite_or_fatal_matches": []
+    },
+    {
+      "case": "Ra1e7",
+      "final_step": 5762000,
+      "t_ff": 324.8722901436153,
+      "errorU": 9.612390652210393e-08,
+      "errorT": 6.759572844060932e-08,
+      "converged": true,
+      "compile_status": "0",
+      "run_status": "0",
+      "validation": "steady_threshold_passed",
+      "started": "2026-10-19T13:49:50+0800",
+      "finished": "2026-10-19T15:38:58+0800",
+      "final": {
+        "t_ff": 324.8722901436153,
+        "NuVolAvg": 16.525404816412696,
+        "ReVolRMS": 229.94183976524647,
+        "ReVolMean": 142.1747891846175,
+        "Nu_hot": 16.525790875251655,
+        "Nu_cold": 16.52578413999848,
+        "Nu_middle": 16.525447538507986,
+        "mass": 1048576.4985995814,
+        "meanT": -9.485381673510014e-08,
+        "Tmin": -0.49933799353928826,
+        "Tmax": 0.49933799299485915,
+        "rhoMin": 0.9996229743286273,
+        "rhoMax": 1.000827862879086
+      },
+      "reference": {
+        "NuVolAvg": 16.5133,
+        "Nu_hot": 16.5242,
+        "Nu_middle": 16.5133,
+        "ReVolMean": 230.2448
+      },
+      "relative_error_percent": {
+        "NuVolAvg": 0.07330343670068777,
+        "Nu_hot": 0.009627547788422232,
+        "Nu_middle": 0.07356214995176884,
+        "ReVolMean": 38.25059711028544
+      },
+      "RMS_vs_table_percent": 0.1315817924024896,
+      "history_rows": 32,
+      "convergence_rows": 2881,
+      "history_finite": true,
+      "last_periodic_step": 5675648,
+      "snapshot": "/data2/XLLi/Multiblock/data2D/SideHeatedCell/Ra1e7/results/buoyancyCavity2DOpenaccMultiblockSnapshot-324.872290143615tff-5762000itc.bin",
+      "snapshot_all_macro_fields_finite": true,
+      "snapshot_area": 1048576.0,
+      "independent_recomputed": {
+        "NuVolAvg": 16.525404816412752,
+        "ReVolRMS": 229.94183976524508,
+        "ReVolMean": 142.17478918461867
+      },
+      "independent_minus_final": {
+        "NuVolAvg": 5.684341886080802e-14,
+        "ReVolRMS": -1.3926637620897964e-12,
+        "ReVolMean": 1.1652900866465643e-12
+      },
+      "source_sha256": "2e25737716f1abba484be79ba5060581271462da1053c6363bc3a4cdc70066b7",
+      "source_hashes_match": true,
+      "log_nonfinite_or_fatal_matches": []
+    },
+    {
+      "case": "Ra1e8",
+      "final_step": 8694000,
+      "t_ff": 490.18391018892817,
+      "errorU": 9.954979596686544e-08,
+      "errorT": 2.1819343639889222e-08,
+      "converged": true,
+      "compile_status": "0",
+      "run_status": "0",
+      "validation": "steady_threshold_passed",
+      "started": "2026-10-19T15:38:59+0800",
+      "finished": "2026-10-19T18:24:17+0800",
+      "final": {
+        "t_ff": 490.18391018892817,
+        "NuVolAvg": 30.241798931950154,
+        "ReVolRMS": 535.9877756675236,
+        "ReVolMean": 274.78429817899104,
+        "Nu_hot": 30.24690705177531,
+        "Nu_cold": 30.24693184501781,
+        "Nu_middle": 30.241601402972965,
+        "mass": 1048576.919787044,
+        "meanT": 1.6828221711984925e-07,
+        "Tmin": -0.49908676321528345,
+        "Tmax": 0.4990867646552024,
+        "rhoMin": 0.9996176487984221,
+        "rhoMax": 1.000789591615732
+      },
+      "reference": {
+        "NuVolAvg": 30.2225,
+        "Nu_hot": 30.2423,
+        "Nu_middle": 30.2223,
+        "ReVolMean": 537.342
+      },
+      "relative_error_percent": {
+        "NuVolAvg": 0.06385617321582772,
+        "Nu_hot": 0.015233800918942676,
+        "Nu_middle": 0.06386477194973214,
+        "ReVolMean": 48.86230777065797
+      },
+      "RMS_vs_table_percent": 0.2520227959988994,
+      "history_rows": 49,
+      "convergence_rows": 4347,
+      "history_finite": true,
+      "last_periodic_step": 8690836,
+      "snapshot": "/data2/XLLi/Multiblock/data2D/SideHeatedCell/Ra1e8/results/buoyancyCavity2DOpenaccMultiblockSnapshot-490.183910188928tff-8694000itc.bin",
+      "snapshot_all_macro_fields_finite": true,
+      "snapshot_area": 1048576.0,
+      "independent_recomputed": {
+        "NuVolAvg": 30.241798931949155,
+        "ReVolRMS": 535.9877756675135,
+        "ReVolMean": 274.7842981789913
+      },
+      "independent_minus_final": {
+        "NuVolAvg": -9.983125437429408e-13,
+        "ReVolRMS": -1.0118128557223827e-11,
+        "ReVolMean": 2.8421709430404007e-13
+      },
+      "source_sha256": "e4474ca56c2818645836d6fd38eb1d51ac0751864552507eb61d9cb308d87ee2",
+      "source_hashes_match": true,
+      "log_nonfinite_or_fatal_matches": []
+    }
+  ],
+  "serial_completed": true,
+  "case_sequence": "case\tstarted\tfinished\texit_code\nRa1e6\t2026-10-19T12:52:59+0800\t2026-10-19T13:49:50+0800\t0\nRa1e7\t2026-10-19T13:49:50+0800\t2026-10-19T15:38:58+0800\t0\nRa1e8\t2026-10-19T15:38:59+0800\t2026-10-19T18:24:18+0800\t0\n",
+  "comparison_warning": "The paper Eq. (34) denotes a spatial mean of speed, but Table 2 values are close to our RMS Reynolds numbers; reference convention remains unconfirmed. Both comparisons are retained."
+}

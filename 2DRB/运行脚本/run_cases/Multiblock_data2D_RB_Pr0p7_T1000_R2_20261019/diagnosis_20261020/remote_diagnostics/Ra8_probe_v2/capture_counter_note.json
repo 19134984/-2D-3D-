@@ -1,0 +1,6 @@
+{
+  "step": 155260,
+  "counter_before": "34",
+  "counter_after": "35",
+  "reason": "capture before history write; histories copied through same step; physical arrays unchanged"
+}
