@@ -1,9 +1,0 @@
-{
-  "name": "Ra6_seed",
-  "base_case": "Ra1e6",
-  "target_tff": 200,
-  "initial_thermal_perturbation": 0.001,
-  "source_sha256": "2c10c8d47179178481805e35c51c14ad140dfbd446b0311075894e42f94b4586",
-  "parent_sha256": "2fa54b5f497dac2a2b84f26b1c947a0c09cb77761abf2c2cc56b589939a3d10c",
-  "purpose": "diagnosis only; original case unchanged"
-}

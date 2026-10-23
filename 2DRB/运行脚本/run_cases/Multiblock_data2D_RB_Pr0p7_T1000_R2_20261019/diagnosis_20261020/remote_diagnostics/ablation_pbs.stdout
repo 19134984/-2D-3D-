@@ -1,6 +1,0 @@
-START Ra8_resume_control
-EXIT=1
-START Ra8_space_linear
-EXIT=1
-START Ra8_time_linear
-EXIT=1

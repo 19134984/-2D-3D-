@@ -1,6 +1,0 @@
-START Ra8_coarse_scaled
-EXIT=0
-START Ra8_coarse_magic
-EXIT=0
-START Ra8_magic_from_zero
-EXIT=1

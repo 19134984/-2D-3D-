@@ -1,4 +1,0 @@
-START Ra8_short_host
-EXIT=1
-START Ra8_short_gpu
-EXIT=1

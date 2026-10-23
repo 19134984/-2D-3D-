@@ -1,4 +1,0 @@
- Reload offset itc =       444000
- Reload dimensionless time =    200.2683746251514     
- Cumulative target itc, t_ff =       444000    200.2683746251514     
- Remaining fine steps =            0

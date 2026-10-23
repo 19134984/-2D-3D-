@@ -1,5 +1,0 @@
-Warning: ieee_inexact is signaling
-ERROR STOP Nonfinite or nonpositive density in owned cells
- Elapsed seconds:   0.2922540000000000     
- Invalid state: time, xOffset,yOffset, i,j:       161520 
-    58.50000000000000         58.50000000000000               101          191

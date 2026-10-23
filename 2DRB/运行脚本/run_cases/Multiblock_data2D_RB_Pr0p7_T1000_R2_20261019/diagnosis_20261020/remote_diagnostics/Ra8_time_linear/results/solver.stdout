@@ -1,7 +1,0 @@
-Warning: ieee_invalid is signaling
-Warning: ieee_divide_by_zero is signaling
-Warning: ieee_inexact is signaling
-ERROR STOP Nonfinite or nonpositive density in owned cells
-t_ff=    18.00792 NuVolAvg=  6.49730E+01 ReVolRMS=  2.17765E+03
- Invalid state: time, xOffset,yOffset, i,j:       164132 
-    58.50000000000000         58.50000000000000                 3            3

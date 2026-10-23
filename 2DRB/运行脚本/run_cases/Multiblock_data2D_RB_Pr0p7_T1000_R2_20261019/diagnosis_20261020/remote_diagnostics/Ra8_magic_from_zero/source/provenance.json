@@ -1,6 +1,0 @@
-{
-  "diagnosis_only": true,
-  "label": "magic_from_zero",
-  "target_tff": 30,
-  "purpose": "isolate bulk collision and retain fine-grid molecular nu/alpha; no production change"
-}

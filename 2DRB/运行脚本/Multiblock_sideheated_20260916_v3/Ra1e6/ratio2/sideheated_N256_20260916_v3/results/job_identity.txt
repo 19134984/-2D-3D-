@@ -1,2 +1,0 @@
-job=6979.master
-host=node05

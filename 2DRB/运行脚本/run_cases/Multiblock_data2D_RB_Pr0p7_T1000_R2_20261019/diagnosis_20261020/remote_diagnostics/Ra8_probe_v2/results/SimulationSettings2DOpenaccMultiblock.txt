@@ -1,5 +1,0 @@
-  
- ================ Restart continuation begins ================
- Start: Tue Oct 20 09:27:12 2026
- Starting OpenACC >>>>>>
- Visible OpenACC devices:            1

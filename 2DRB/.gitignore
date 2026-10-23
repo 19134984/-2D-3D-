@@ -29,3 +29,20 @@ fort.*
 
 # Keep simulation restart states locally; do not add new checkpoints to Git.
 reloadFile2DOpenaccMultiblock-*.bin
+
+# Local case snapshots and run evidence; keep useful records on disk.
+/运行脚本/run_cases/
+/运行脚本/Multiblock_sideheated_20260916/
+/运行脚本/Multiblock_sideheated_20260916_v2/
+/运行脚本/Multiblock_sideheated_20260916_v3/
+/运行脚本/resume_T9_c02_t900_1000/
+/运行脚本/Multiblock_gpu_debug/
+/PTRT/p100/
+
+# Paper extraction scratch space is retained locally.
+/tmp/
+
+# Reproducible upload packages and diagnostic output.
+/运行脚本/**/*.tar
+/运行脚本/**/*.tar.gz
+/PTRT/p100/**/*.tar

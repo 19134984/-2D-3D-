@@ -45,6 +45,13 @@ working inside the matching folder instead of adding new top-level source files.
 
 - `运行脚本/run_cases/`
   Case-specific source snapshots and corresponding PBS scripts, grouped by case.
+  These generated snapshots and run records are retained locally and excluded
+  from Git, together with dated side-heated campaigns and `PTRT/p100/` results.
+  Edit the main solver in its method folder rather than a case snapshot.
+
+- `tmp/`
+  Local paper extracts and temporary previews, retained on disk and excluded
+  from Git. Original papers in `pdf/` and research notes in `文档/` remain tracked.
 
 ## Core Baselines
 

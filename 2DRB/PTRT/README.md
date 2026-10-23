@@ -118,7 +118,7 @@ Removing Ghost Modes from TRT for Enhanced Stability*, arXiv:2602.06686v1,
 未使用 NVIDIA GPU 或 NVHPC；主机 OpenACC 测试不代表 GPU 验证。
 
 1. 完整原尺寸主程序通过 OpenACC 语法检查及 `-O2` 编译。
-2. `verification/verify_ptrt.py` 提取实际源码中的模块和碰撞函数编译执行，
+2. 当时的临时验证脚本提取实际源码中的模块和碰撞函数编译执行，
    独立参考使用完整二阶、三阶 Hermite 张量收缩，不复用生产代码的幽灵扣除公式。
    三组黏性参数（测试网格16，对应 `Ra=1e3/1e6/1e10`）、浮力及倾斜磁场双分量体力、
    串行与 OpenACC 主机两种执行，共12组，每组256个局部状态：
@@ -144,12 +144,14 @@ Removing Ghost Modes from TRT for Enhanced Stability*, arXiv:2602.06686v1,
 没有发现守恒或主机执行差异；上述细小差异与碰撞模型改变相容，不能据此判定长期精度。
 表中不是稳态或时间平均结果。
 
-复现（仓库根目录）：
+论文体力公式的代数核对（仓库根目录）：
 
 ```powershell
 python PTRT/verification/audit_paper_force.py
-python PTRT/verification/verify_ptrt.py
 ```
+
+2026-10-22 清理说明：旧版 `verification/verify_ptrt.py` 仍引用已不存在的
+`PTRT/2DRBOpenacc.F90`，已移除。上述验证为历史记录，原结果和日志继续保留。
 
 编译/运行中间文件放在 ASCII 临时目录。验证结果、源码哈希和编译器信息保存在
 `verification/results.json`，短程 Nu/Re 与场范围见 `verification/smoke_*.log`。
