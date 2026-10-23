@@ -3690,18 +3690,57 @@
             rho_right,u_right,&
             v_right,T_right)
 
-        call output_Tecplot_grid(size(f_bottom,1),size(f_bottom,2),dxFine,xOffsetBottom,yOffsetBottom,1,&
-            size(f_bottom,1),1,size(f_bottom,2),'bottom',&
-            k,rho_bottom,u_bottom,&
-            v_bottom,T_bottom)
+        ! 上下细区各补左右一列真实宏观量，与左右细区共享绘图边，消除独立 Zone 间的四条白缝。
+        call output_Tecplot_fine_strip(size(f_bottom,1),size(f_bottom,2),xOffsetBottom,yOffsetBottom,&
+            'bottom',k,rho_bottom,u_bottom,v_bottom,T_bottom)
 
-        call output_Tecplot_grid(size(f_top,1),size(f_top,2),dxFine,xOffsetTop,yOffsetTop,1,size(f_top,1),&
-            1,size(f_top,2),'top',k,rho_top,u_top,v_top,T_top)
+        call output_Tecplot_fine_strip(size(f_top,1),size(f_top,2),xOffsetTop,yOffsetTop,&
+            'top',k,rho_top,u_top,v_top,T_top)
     endif
 
     close(k)
     call record_output_file(name)    !OutputFiles输出
   end subroutine output_Tecplot
+!===================================================================================================
+
+!===================================================================================================
+! 子程序: output_Tecplot_fine_strip
+! 作用: 仅为上下细区的可视化补共享列；不插值、不修改计算场，也不改变快照和 Nu/Re 积分范围。
+!===================================================================================================
+  subroutine output_Tecplot_fine_strip(ni,nj,xOffset,yOffset,gridName,k,rho,u,v,T)
+
+    use commondata,only: dxFine,yOffsetLeft,yOffsetRight,rho_left,u_left,v_left,T_left,&
+        rho_right,u_right,v_right,T_right
+    implicit none
+    integer(kind=4), intent(in) :: ni,nj,k
+    real(kind=8), intent(in) :: xOffset,yOffset,rho(ni,nj),u(ni,nj),v(ni,nj),T(ni,nj)
+    character(*), intent(in) :: gridName
+    integer(kind=4) :: jLeft,jRight,iLeft
+    real(kind=8), allocatable :: rhoPlot(:,:),uPlot(:,:),vPlot(:,:),TPlot(:,:)
+
+    allocate(rhoPlot(ni+2,nj),uPlot(ni+2,nj),vPlot(ni+2,nj),TPlot(ni+2,nj))
+    ! 原始数组完整保留在第 2 至 ni+1 列，临时数组两端存邻块同一时刻、相同 y 坐标的真实值。
+    rhoPlot(2:ni+1,:)=rho
+    uPlot(2:ni+1,:)=u
+    vPlot(2:ni+1,:)=v
+    TPlot(2:ni+1,:)=T
+    jLeft=1+nint((yOffset-yOffsetLeft)/dxFine)  !找到左右细区中，与当前区域第一行 y 坐标相同的行下标。
+    jRight=1+nint((yOffset-yOffsetRight)/dxFine) !nint 最近整数
+    iLeft=size(rho_left,1)   !找到左细数组最右边的一列
+    rhoPlot(1,:)=rho_left(iLeft,jLeft:jLeft+nj-1)  !将左细区最右列复制到临时数组第一列
+    uPlot(1,:)=u_left(iLeft,jLeft:jLeft+nj-1)
+    vPlot(1,:)=v_left(iLeft,jLeft:jLeft+nj-1)
+    TPlot(1,:)=T_left(iLeft,jLeft:jLeft+nj-1)
+    rhoPlot(ni+2,:)=rho_right(1,jRight:jRight+nj-1)  !将右细区第一列复制到临时数组最后一列。
+    uPlot(ni+2,:)=u_right(1,jRight:jRight+nj-1)
+    vPlot(ni+2,:)=v_right(1,jRight:jRight+nj-1)
+    TPlot(ni+2,:)=T_right(1,jRight:jRight+nj-1)
+
+    ! 输出偏移左移一个细格距，使原有节点坐标不变；左右新增列恰好落在邻块的边列坐标上。
+    call output_Tecplot_grid(ni+2,nj,dxFine,xOffset-dxFine,yOffset,1,ni+2,1,nj,&
+        gridName,k,rhoPlot,uPlot,vPlot,TPlot)
+    deallocate(rhoPlot,uPlot,vPlot,TPlot)
+  end subroutine output_Tecplot_fine_strip
 !===================================================================================================
 
 !===================================================================================================
