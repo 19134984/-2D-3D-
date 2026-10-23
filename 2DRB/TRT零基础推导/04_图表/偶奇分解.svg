@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="520" viewBox="0 0 1200 520" role="img" aria-labelledby="title desc">
+  <title id="title">一对反向 population 的偶奇分解与重构</title>
+  <desc id="desc">左侧输入 h_i 等于 0.30 和反向 population h_bar(i) 等于 0.10。中间分别取和的一半得到偶部 0.20，取差的一半得到奇部 0.10。右侧用偶部加奇部恢复 h_i，用偶部减奇部恢复反向 population。底部强调交换方向后偶部不变、奇部变号。</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L10,4 L0,8 Z" fill="#34495e"/>
+    </marker>
+    <style>
+      .title{font:600 24px 'Microsoft YaHei',sans-serif;fill:#17324d}
+      .head{font:600 19px 'Microsoft YaHei',sans-serif;fill:#17324d}
+      .body{font:16px 'Microsoft YaHei',sans-serif;fill:#243746}
+      .math{font:17px Consolas,'Microsoft YaHei',sans-serif;fill:#243746}
+      .small{font:14px 'Microsoft YaHei',sans-serif;fill:#4b5f70}
+      .input{fill:#eef6ff;stroke:#1769aa;stroke-width:2}
+      .even{fill:#ecf8f1;stroke:#23865b;stroke-width:2}
+      .odd{fill:#fff4e4;stroke:#b66a00;stroke-width:2}
+      .output{fill:#f4f0ff;stroke:#7056b8;stroke-width:2}
+      .note{fill:#f7f9fb;stroke:#8495a5;stroke-width:1.5}
+      .arrow{fill:none;stroke:#34495e;stroke-width:2.2;marker-end:url(#arrow)}
+      .guide{fill:none;stroke:#8b9aa8;stroke-width:1.6;stroke-dasharray:6 5;marker-end:url(#arrow)}
+    </style>
+  </defs>
+
+  <text class="title" x="600" y="38" text-anchor="middle">两个原数 → 和与差各除以 2 → 精确重构</text>
+
+  <rect class="input" x="45" y="105" width="230" height="210" rx="12"/>
+  <text class="head" x="160" y="140" text-anchor="middle">一对反向方向</text>
+  <text class="math" x="160" y="190" text-anchor="middle">h_i = 0.30</text>
+  <text class="math" x="160" y="235" text-anchor="middle">h_bar(i) = 0.10</text>
+  <text class="small" x="160" y="282" text-anchor="middle">bar(i) 只表示反向编号</text>
+
+  <rect class="even" x="385" y="80" width="360" height="135" rx="12"/>
+  <text class="head" x="565" y="116" text-anchor="middle">偶部：和的一半</text>
+  <text class="math" x="565" y="156" text-anchor="middle">h_i⁺ = (h_i + h_bar(i)) / 2</text>
+  <text class="math" x="565" y="190" text-anchor="middle">= (0.30 + 0.10) / 2 = 0.20</text>
+
+  <rect class="odd" x="385" y="245" width="360" height="135" rx="12"/>
+  <text class="head" x="565" y="281" text-anchor="middle">奇部：差的一半</text>
+  <text class="math" x="565" y="321" text-anchor="middle">h_i⁻ = (h_i − h_bar(i)) / 2</text>
+  <text class="math" x="565" y="355" text-anchor="middle">= (0.30 − 0.10) / 2 = 0.10</text>
+
+  <rect class="output" x="855" y="105" width="300" height="210" rx="12"/>
+  <text class="head" x="1005" y="140" text-anchor="middle">用加减法重构</text>
+  <text class="math" x="1005" y="188" text-anchor="middle">h_i = h_i⁺ + h_i⁻</text>
+  <text class="math" x="1005" y="220" text-anchor="middle">= 0.20 + 0.10 = 0.30</text>
+  <text class="math" x="1005" y="262" text-anchor="middle">h_bar(i) = h_i⁺ − h_i⁻</text>
+  <text class="math" x="1005" y="294" text-anchor="middle">= 0.20 − 0.10 = 0.10</text>
+
+  <path class="arrow" d="M275 175 C325 175 330 145 382 145"/>
+  <path class="arrow" d="M275 245 C325 245 330 312 382 312"/>
+  <path class="arrow" d="M748 145 C795 145 805 178 852 178"/>
+  <path class="arrow" d="M748 312 C795 312 805 252 852 252"/>
+
+  <rect class="note" x="170" y="422" width="860" height="68" rx="10"/>
+  <text class="body" x="600" y="449" text-anchor="middle">交换 i ↔ bar(i)：偶部不变，h_bar(i)⁺ = h_i⁺；奇部变号，h_bar(i)⁻ = −h_i⁻</text>
+  <text class="small" x="600" y="477" text-anchor="middle">这里的 1/2 来自和差平均，不是 Hénon 参数 H = 1/r − 1/2 中的时间离散修正</text>
+  <path class="guide" d="M565 383 L565 418"/>
+</svg>
