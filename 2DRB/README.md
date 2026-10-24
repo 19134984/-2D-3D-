@@ -1,9 +1,22 @@
 # 2DRB Code Guide
 
+中文完整说明：[2DRB目录与工作总览（2026-10-24）](文档/2DRB目录与工作总览_20261024.md)。
+
 This repository now groups solver variants by numerical method and role. Prefer
 working inside the matching folder instead of adding new top-level source files.
 
 ## Main Folders
+
+- `多块网格/`
+  Current multiblock solver and its dedicated postprocessor: center coarse grid,
+  four surrounding fine regions, interface coupling, and restart/output handling.
+  Experimental variants and run evidence remain in `运行脚本/run_cases/`.
+
+- `PTRT/`
+  Purified-TRT flow variant with consistent forcing and Luo/Wang thermal model.
+
+- `TRT零基础推导/`
+  Theory tutorial, paper evidence, formula checks, diagrams, and final PDF.
 
 - `均匀网格/`
   Uniform-grid 2D/3D solvers. This is the default baseline family for new
@@ -86,9 +99,11 @@ explicitly targets another method family:
 - Flow D2Q9 TRT + thermal D2Q5 Luo/Wang TRT (OpenACC):
   `Xs/D2Q9TRT_D2Q5LuoTRT/2DRBOpenaccLBMCDE_D2Q9TRT_D2Q5LuoTRT.F90`
 
-All `Xs` solvers use the `chi_s`-corrected effective flow collision scale:
-`(1-chi_s)(tau_even-0.5)(tau_odd-0.5)=3/16`. The former raw/base magic branch
-is no longer supported, and no flow-magic compile switch is required.
+The current three `Xs` sources retain mutually exclusive flow choices:
+`FLOW_ODD_ORIGINAL_MAGIC`, `FLOW_ODD_EFFECTIVE_MAGIC`, `FLOW_ODD_FIXED_SQ`,
+and `FLOW_BGK`. They currently enable `FLOW_ODD_ORIGINAL_MAGIC` by default.
+Check the source macros and the frozen source of each historical run; older
+README statements about one mandatory magic policy do not describe all current branches.
 
 ## Build Helper
 
