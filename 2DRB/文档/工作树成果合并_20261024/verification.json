@@ -1,0 +1,33 @@
+{
+  "Ra9_RR3_F2048": {
+    "completed_target": true,
+    "samples": 2000,
+    "last_tff": 1000.1014721567942,
+    "history_finite": true,
+    "window_500_1000_covered": true,
+    "independent_integral_match": true,
+    "source_sha256": "3e9e5db71d650e8a7550c23dab54247a35e370b3b6b32e1e5000074575ba2e2a",
+    "source_hash_verified": true,
+    "Nu": 49.67408575837261,
+    "Re_space_time_RMS": 15725.114049938253,
+    "Nu_error_percent": 7.168593237950638,
+    "Re_error_percent": 4.13293192462918
+  },
+  "Ra8_CDE_coarse05_F512": {
+    "completed_target": true,
+    "samples": 2000,
+    "last_tff": 1000.4397633301485,
+    "history_finite": true,
+    "window_500_1000_covered": true,
+    "independent_integral_match": true,
+    "source_sha256": "9fbc9d33c869807009b1bf7ed950cc23fbb1d53c87555bbf307c28879fc29a25",
+    "source_hash_verified": true,
+    "Nu": 25.274660964930625,
+    "Re_space_time_RMS": 3684.850987111478,
+    "Nu_error_percent": 0.0976671878440527,
+    "Re_error_percent": 0.6240029249447776
+  },
+  "protected_sources_unchanged": true,
+  "incremental_files_verified": true,
+  "original_worktrees_retained": true
+}

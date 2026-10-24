@@ -1,0 +1,17 @@
+[
+  {
+    "source": "D:\\桌面\\代码\\代码\\热对流\\2DRB\\运行脚本\\run_cases\\Multiblock_all_tests_summary_20261023\\all_tests.json",
+    "destination": "D:\\桌面\\代码\\代码\\热对流\\2DRB\\文档\\工作树成果合并_20261024\\粗网格诊断汇总\\all_tests.json",
+    "sha256": "0ba422ead0a1b5693153b0cb3091045a6014d55a9ce37c6317011abf08b3f15d"
+  },
+  {
+    "source": "D:\\桌面\\代码\\代码\\热对流\\2DRB\\运行脚本\\run_cases\\Multiblock_all_tests_summary_20261023\\outputs\\20261023_all_tests_0f19\\全部测试结果与误差.md",
+    "destination": "D:\\桌面\\代码\\代码\\热对流\\2DRB\\文档\\工作树成果合并_20261024\\粗网格诊断汇总\\全部测试结果与误差.md",
+    "sha256": "8b912212a71e265cd00924920a5b7f3afb22d0c659f23bb561ae488a4d561c09"
+  },
+  {
+    "source": "D:\\桌面\\代码\\代码\\热对流\\2DRB\\运行脚本\\run_cases\\Multiblock_all_tests_summary_20261023\\outputs\\20261023_all_tests_0f19\\全部测试结果.xlsx",
+    "destination": "D:\\桌面\\代码\\代码\\热对流\\2DRB\\文档\\工作树成果合并_20261024\\粗网格诊断汇总\\全部测试结果.xlsx",
+    "sha256": "ba178daafe60c49d371619fdd84d5dba8aefd3dd11f1d33e99528a89578993da"
+  }
+]

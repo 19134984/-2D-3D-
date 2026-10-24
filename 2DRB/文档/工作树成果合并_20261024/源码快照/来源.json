@@ -1,0 +1,16 @@
+{
+  "date": "2026-10-24",
+  "solvers": [
+    {
+      "case": "Ra9_RR3_F2048",
+      "snapshot": "源码快照\\Ra9_RR3_F2048\\solver.F90",
+      "sha256": "3e9e5db71d650e8a7550c23dab54247a35e370b3b6b32e1e5000074575ba2e2a"
+    },
+    {
+      "case": "Ra8_CDE_coarse05_F512",
+      "snapshot": "源码快照\\Ra8_CDE_coarse05_F512\\solver.F90",
+      "sha256": "9fbc9d33c869807009b1bf7ed950cc23fbb1d53c87555bbf307c28879fc29a25"
+    }
+  ],
+  "postprocess_sha256": "3c0c5b6b598cfc5f5f5e44dc9d85c198dd139babd4cc3a4f6df11e2c307d3a86"
+}

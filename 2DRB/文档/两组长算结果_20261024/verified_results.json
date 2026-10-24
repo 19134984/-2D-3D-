@@ -1,0 +1,129 @@
+{
+  "checked_date": "2026-10-24",
+  "postprocess_source_sha256": "27f094f215571b45b91bd3c72870220e8623f4e2a2da3ba277dd662913e2d7fd",
+  "cases": {
+    "Ra9_RR3_F2048": {
+      "Ra": 1000000000.0,
+      "N_fine_equivalent": 2048,
+      "ratio": 2,
+      "last_tff": 1000.1014721567942,
+      "source_sha256": "3e9e5db71d650e8a7550c23dab54247a35e370b3b6b32e1e5000074575ba2e2a",
+      "reference_Nu": 53.51,
+      "reference_Re": 15101,
+      "Nu": 49.67408575837261,
+      "Re_space_time_RMS": 15725.114049938253,
+      "Nu_hot": 49.618320786489114,
+      "Nu_cold": 49.79370672694263,
+      "Nu_middle": 50.05797935861265,
+      "Nu_relative_error_percent": 7.168593237950638,
+      "Re_relative_error_percent": 4.13293192462918,
+      "Nu_half_difference_percent": 0.23157989538819387,
+      "Re_half_difference_percent": 1.9403116484215217,
+      "max_mass_relative_drift_percent": 1.9930319461458623e-05,
+      "final_mass_relative_change_percent": 1.9373789594823165e-05,
+      "wall_volume_max_difference_percent": 0.24081161584308397,
+      "windows": {
+        "500-1000": [
+          49.67408575837261,
+          15725.114049938253,
+          49.618320786489114,
+          49.79370672694263,
+          50.05797935861265
+        ],
+        "500-750": [
+          49.61656816045547,
+          15876.932116649987,
+          49.290812439332555,
+          49.73914313700343,
+          50.07374246172747
+        ],
+        "750-1000": [
+          49.73160335628975,
+          15571.815897011465,
+          49.94582913364568,
+          49.84827031688182,
+          50.04221625549782
+        ]
+      },
+      "source_and_runtime_hash_match": true,
+      "history_finite_contiguous": true,
+      "Fortran_postprocess_independently_verified": true,
+      "server_final_fields": {
+        "all_nodes_finite": true,
+        "rho_min": 0.9973401131918259,
+        "rho_max": 1.002111059672854,
+        "Tmin": -0.4975543379015343,
+        "Tmax": 0.4972033886202932,
+        "max_speed": 0.05046143057782781
+      },
+      "server_checkpoint_verification": {
+        "filename": "reloadFile2DOpenaccMultiblock-1000.101472156794tff-35476000itc.bin",
+        "all_values_finite": true,
+        "double_count": 49694240,
+        "sha256": "8ae62cc23f0a55eff130da1a9083ed47ca4002f35d38f621f4c608707065c458"
+      }
+    },
+    "Ra8_CDE_coarse05_F512": {
+      "Ra": 100000000.0,
+      "N_fine_equivalent": 512,
+      "ratio": 2,
+      "last_tff": 1000.4397633301485,
+      "source_sha256": "9fbc9d33c869807009b1bf7ed950cc23fbb1d53c87555bbf307c28879fc29a25",
+      "reference_Nu": 25.25,
+      "reference_Re": 3662,
+      "Nu": 25.274660964930625,
+      "Re_space_time_RMS": 3684.850987111478,
+      "Nu_hot": 25.316418288011945,
+      "Nu_cold": 25.306136188179433,
+      "Nu_middle": 25.401437427384305,
+      "Nu_relative_error_percent": 0.0976671878440527,
+      "Re_relative_error_percent": 0.6240029249447776,
+      "Nu_half_difference_percent": 0.4619050879916053,
+      "Re_half_difference_percent": 0.9351406386776825,
+      "max_mass_relative_drift_percent": 0.0067147490876218185,
+      "final_mass_relative_change_percent": 0.0067147490876218185,
+      "wall_volume_max_difference_percent": 0.16521417691521822,
+      "windows": {
+        "500-1000": [
+          25.274660964930625,
+          3684.850987111478,
+          25.316418288011945,
+          25.306136188179433,
+          25.401437427384305
+        ],
+        "500-750": [
+          25.333033437415448,
+          3702.0399769436485,
+          25.366372531202224,
+          25.34763156121228,
+          25.486378786490718
+        ],
+        "750-1000": [
+          25.216288492445806,
+          3667.5814378884534,
+          25.266464044821667,
+          25.264640815146585,
+          25.316496068277896
+        ]
+      },
+      "source_and_runtime_hash_match": true,
+      "history_finite_contiguous": true,
+      "Fortran_postprocess_independently_verified": true,
+      "server_final_fields": {
+        "all_nodes_finite": true,
+        "positive_density": true,
+        "Tmin": -0.49631865682374254,
+        "Tmax": 0.49580458962073654,
+        "rho_min": 0.9992733730811436,
+        "rho_max": 1.0010498479914802,
+        "max_speed": 0.03467856817599483
+      },
+      "server_checkpoint_verification": {
+        "filename": "reloadFile2DOpenaccMultiblock-1000.439763330148tff-8872000itc.bin",
+        "all_values_finite": true,
+        "double_count": 3996096,
+        "sha256": "3159409f6d7a19807386b089968338a9e43fd8e27fa2bdb5a2d5da3d42cbc5ed"
+      }
+    }
+  }
+}
