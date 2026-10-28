@@ -1,0 +1,78 @@
+{
+  "created_date": "2026-10-28",
+  "implementation": {
+    "path": "D:\\桌面\\代码\\代码\\热对流\\2DRB\\CuLBM\\2DRBOpenaccCuLBM.F90",
+    "sha256": "59a4158d386bade5f7bab98f43ba45591dba17bae111b05f82adc7d6350202fb"
+  },
+  "paper": {
+    "author": "Md. Mamun Molla",
+    "year": 2025,
+    "doi": "10.1016/j.rineng.2025.106225"
+  },
+  "execution": "2D uniform-grid single-GPU OpenACC; host initialization and I/O; no MPI/OpenMP execution path",
+  "scope": "Newtonian fluid; closed side-heated steady case and closed Rayleigh-Benard unsteady extension",
+  "interpretation": "Mathematically consistent normalized cumulants; not a literal implementation of contradictory printed equations",
+  "flow": "D2Q9 true normalized cumulants about raw mean; full normalized half-force first cumulant and inverse shift",
+  "flow_rates": {
+    "second": "1/tauf",
+    "third": 0.6,
+    "fourth": 1.4
+  },
+  "heat": "D2Q5 true normalized cumulants; mass-scaled C20=K20-K10^2/T; cT^2=1/5",
+  "heat_carrier_domain": "Thot>Tcold>0; cell T strictly positive; invalid collisions cause persistent failure flag and stop before output",
+  "heat_origin_translation_invariance_claimed": false,
+  "printed_equation_corrections": "FORMULATION_CN.md",
+  "author_erratum_or_original_code_available": false,
+  "references": [
+    {
+      "path": "D:\\桌面\\代码\\代码\\热对流\\2DRB\\均匀网格\\2DRBOpenmp.F90",
+      "sha256": "83a17f30cd4715bd14e9fa2d06aa43f026ca4ff57a11154cbcdbbbcf6b7a713f",
+      "role": "canonical 2D framework and diagnostic semantics"
+    },
+    {
+      "path": "D:\\桌面\\代码\\代码\\热对流\\2DRB\\均匀网格\\2DRBOpenacc.F90",
+      "sha256": "68debf94f75f3a70af6bf4f7205e18afc14618d48dd227ccf1d1a8e73d8afd48",
+      "role": "same-dimension single-GPU OpenACC infrastructure"
+    },
+    {
+      "path": "D:\\桌面\\代码\\代码\\热对流\\2DRB\\CLBM\\2DRBOpenaccCLBM.F90",
+      "sha256": "533365ae329a2f134d0dd26c5699b1b36330e00ee663f5b721875c47f6b201c1",
+      "role": "organized D2Q9/D2Q5 frame and output/restart scaffolding only; both collisions independently replaced"
+    },
+    {
+      "path": "D:\\桌面\\代码\\代码\\热对流\\2DRB\\HybridRLB4\\2DRBOpenaccHybridRLB4.F90",
+      "sha256": "33eeef4d6f2d785ff8a1c721ac6babf3bbd13de081d65e8a59656b61743e8f31",
+      "role": "recent strict steady-state restart and Nu scaling reference"
+    },
+    {
+      "path": "D:\\桌面\\代码\\代码\\热对流\\2DRB\\pdf\\算法\\Development and numerical validations of a two-dimensional cumulant-driven thermal lattice Boltzmann method.pdf",
+      "sha256": "346395cdf116289073f32d069a0b5859bbd6b3bc8fadef5df75b84b9cbe5d7ce",
+      "role": "user-provided primary paper"
+    }
+  ],
+  "validation_reports": [
+    "validation_local.json",
+    "transport_validation_local.json"
+  ],
+  "NVIDIA_GPU_tested": false,
+  "paper_high_Ra_benchmark_validated": false,
+  "grid_independence_validated": false,
+  "server_accessed": false,
+  "validation_outcomes": {
+    "validation_local.json": {
+      "passed": true,
+      "source_sha256": "59a4158d386bade5f7bab98f43ba45591dba17bae111b05f82adc7d6350202fb"
+    },
+    "transport_validation_local.json": {
+      "passed": true,
+      "source_sha256": "59a4158d386bade5f7bab98f43ba45591dba17bae111b05f82adc7d6350202fb"
+    }
+  },
+  "protected_files_verified_unchanged": {
+    "均匀网格/2DRBOpenmp.F90": "83a17f30cd4715bd14e9fa2d06aa43f026ca4ff57a11154cbcdbbbcf6b7a713f",
+    "均匀网格/2DRBOpenacc.F90": "68debf94f75f3a70af6bf4f7205e18afc14618d48dd227ccf1d1a8e73d8afd48",
+    "FPC/2DRBOpenaccFPC.F90": "fcc880954b4d48217a5e2d043208f6bf1a51ab8b955be3cbd4870bef012b274d",
+    "CLBM/2DRBOpenaccCLBM.F90": "533365ae329a2f134d0dd26c5699b1b36330e00ee663f5b721875c47f6b201c1",
+    "HybridRLB4/2DRBOpenaccHybridRLB4.F90": "33eeef4d6f2d785ff8a1c721ac6babf3bbd13de081d65e8a59656b61743e8f31"
+  }
+}

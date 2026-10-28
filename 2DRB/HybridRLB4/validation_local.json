@@ -1,0 +1,346 @@
+{
+  "source": "D:\\桌面\\代码\\代码\\热对流\\2DRB\\HybridRLB4\\2DRBOpenaccHybridRLB4.F90",
+  "source_sha256": "33eeef4d6f2d785ff8a1c721ac6babf3bbd13de081d65e8a59656b61743e8f31",
+  "compiler": "C:/msys64/ucrt64/bin/gfortran.exe",
+  "backend": "gfortran OpenACC host; NVIDIA GPU not tested",
+  "scope": "independent flow moments, scalar spatial/RK4 operators, finite-step smoke and restart",
+  "high_Ra_accuracy_validated": false,
+  "grid_independence_validated": false,
+  "compiler_version": "GNU Fortran (Rev13, Built by MSYS2 project) 15.2.0",
+  "compile_matrix": {
+    "steady_side": true,
+    "steady_rb": true,
+    "unsteady_side": true,
+    "unsteady_rb": true
+  },
+  "mathematical_checks": {
+    "side_heated": {
+      "fourth_order_equilibrium_central_moments": {
+        "max_abs_residual": 2.220446049250313e-16,
+        "tolerance": 4e-15
+      },
+      "equilibrium_fixed_point": {
+        "max_abs_residual": 0.0,
+        "tolerance": 4e-15
+      },
+      "initial_raw_mass_momentum": {
+        "max_abs_residual": 2.220446049250313e-16,
+        "tolerance": 3e-14
+      },
+      "regularized_zero_force_mass": {
+        "max_abs_residual": 2.220446049250313e-16,
+        "tolerance": 4e-14
+      },
+      "regularized_zero_force_momentum": {
+        "max_abs_residual": 0.0,
+        "tolerance": 4e-14
+      },
+      "regularized_second_order_stress": {
+        "max_abs_residual": 5.551115123125783e-17,
+        "tolerance": 4e-14
+      },
+      "regularized_third_order_central_noneq": {
+        "max_abs_residual": 1.3877787807814457e-17,
+        "tolerance": 4e-14
+      },
+      "regularized_fourth_order_central_closure": {
+        "max_abs_residual": 5.551115123125783e-17,
+        "tolerance": 4e-14
+      },
+      "forced_mass": {
+        "max_abs_residual": 2.220446049250313e-16,
+        "tolerance": 4e-14
+      },
+      "forced_x_momentum_increment": {
+        "max_abs_residual": 5.1228552649940085e-18,
+        "tolerance": 4e-14
+      },
+      "forced_y_momentum_increment": {
+        "max_abs_residual": 1.2034644114589099e-17,
+        "tolerance": 4e-14
+      },
+      "pure_high_order_ghost_removed": {
+        "max_abs_residual": 6.938893903907228e-18,
+        "tolerance": 4e-15
+      },
+      "uniform_interior_rhs": {
+        "max_abs_residual": 0.0,
+        "tolerance": 4e-14
+      },
+      "quadratic_advection_diffusion_rhs": {
+        "max_abs_residual": 9.107298248878237e-18,
+        "tolerance": 4e-14
+      },
+      "linear_conduction_rhs": {
+        "max_abs_residual": 1.976388483194427e-19,
+        "tolerance": 4e-14
+      },
+      "linear_conduction_temperature": {
+        "max_abs_residual": 0.0,
+        "tolerance": 2e-12
+      },
+      "linear_conduction_heat_balance": {
+        "max_abs_residual": 0.0,
+        "tolerance": 2e-11
+      },
+      "linear_conduction_Nu_volume": {
+        "max_abs_residual": 0.0,
+        "tolerance": 1e-10
+      },
+      "linear_conduction_Nu_hot": {
+        "max_abs_residual": 0.0,
+        "tolerance": 1e-10
+      },
+      "linear_conduction_Nu_cold": {
+        "max_abs_residual": 1.5543122344752192e-15,
+        "tolerance": 1e-10
+      },
+      "thermal_discrete_eigenmode_rhs": {
+        "max_abs_residual": 7.318364664277155e-19,
+        "tolerance": 4e-14
+      },
+      "thermal_integral_boundary_flux_balance": {
+        "max_abs_residual": 2.3852447794681098e-18,
+        "tolerance": 4e-13
+      },
+      "rk4_full_step_mode_amplification": {
+        "max_abs_residual": 6.938893903907228e-17,
+        "tolerance": 5e-13
+      },
+      "rk4_two_half_steps_mode_amplification": {
+        "max_abs_residual": 9.020562075079397e-17,
+        "tolerance": 5e-13
+      },
+      "rk4_exponential_error_refinement_ratio": {
+        "max_abs_residual": 0.05948244897760808,
+        "tolerance": 0.1
+      }
+    },
+    "rayleigh_benard": {
+      "fourth_order_equilibrium_central_moments": {
+        "max_abs_residual": 2.220446049250313e-16,
+        "tolerance": 4e-15
+      },
+      "equilibrium_fixed_point": {
+        "max_abs_residual": 0.0,
+        "tolerance": 4e-15
+      },
+      "initial_raw_mass_momentum": {
+        "max_abs_residual": 2.220446049250313e-16,
+        "tolerance": 3e-14
+      },
+      "regularized_zero_force_mass": {
+        "max_abs_residual": 2.220446049250313e-16,
+        "tolerance": 4e-14
+      },
+      "regularized_zero_force_momentum": {
+        "max_abs_residual": 2.0816681711721685e-17,
+        "tolerance": 4e-14
+      },
+      "regularized_second_order_stress": {
+        "max_abs_residual": 5.551115123125783e-17,
+        "tolerance": 4e-14
+      },
+      "regularized_third_order_central_noneq": {
+        "max_abs_residual": 1.3877787807814457e-17,
+        "tolerance": 4e-14
+      },
+      "regularized_fourth_order_central_closure": {
+        "max_abs_residual": 5.551115123125783e-17,
+        "tolerance": 4e-14
+      },
+      "forced_mass": {
+        "max_abs_residual": 2.220446049250313e-16,
+        "tolerance": 4e-14
+      },
+      "forced_x_momentum_increment": {
+        "max_abs_residual": 5.1228552649940085e-18,
+        "tolerance": 4e-14
+      },
+      "forced_y_momentum_increment": {
+        "max_abs_residual": 2.5912431922403556e-17,
+        "tolerance": 4e-14
+      },
+      "pure_high_order_ghost_removed": {
+        "max_abs_residual": 6.938893903907228e-18,
+        "tolerance": 4e-15
+      },
+      "uniform_interior_rhs": {
+        "max_abs_residual": 0.0,
+        "tolerance": 4e-14
+      },
+      "quadratic_advection_diffusion_rhs": {
+        "max_abs_residual": 9.107298248878237e-18,
+        "tolerance": 4e-14
+      },
+      "linear_conduction_rhs": {
+        "max_abs_residual": 5.270369288518549e-19,
+        "tolerance": 4e-14
+      },
+      "linear_conduction_temperature": {
+        "max_abs_residual": 0.0,
+        "tolerance": 2e-12
+      },
+      "linear_conduction_heat_balance": {
+        "max_abs_residual": 0.0,
+        "tolerance": 2e-11
+      },
+      "linear_conduction_Nu_volume": {
+        "max_abs_residual": 0.0,
+        "tolerance": 1e-10
+      },
+      "linear_conduction_Nu_hot": {
+        "max_abs_residual": 3.3306690738754696e-15,
+        "tolerance": 1e-10
+      },
+      "linear_conduction_Nu_cold": {
+        "max_abs_residual": 1.3322676295501878e-15,
+        "tolerance": 1e-10
+      },
+      "thermal_discrete_eigenmode_rhs": {
+        "max_abs_residual": 4.845028458294598e-19,
+        "tolerance": 4e-14
+      },
+      "thermal_integral_boundary_flux_balance": {
+        "max_abs_residual": 1.0842021724855044e-17,
+        "tolerance": 4e-13
+      },
+      "rk4_full_step_mode_amplification": {
+        "max_abs_residual": 7.979727989493313e-17,
+        "tolerance": 5e-13
+      },
+      "rk4_two_half_steps_mode_amplification": {
+        "max_abs_residual": 6.245004513516506e-17,
+        "tolerance": 5e-13
+      },
+      "rk4_exponential_error_refinement_ratio": {
+        "max_abs_residual": 0.05826086581343332,
+        "tolerance": 0.1
+      }
+    }
+  },
+  "integration_checks": {
+    "side_steady": {
+      "itc_total": 48,
+      "snapshot_count": 7,
+      "checkpoint_records": [
+        8640,
+        960,
+        2896
+      ],
+      "closed_cavity_relative_mass_error": 2.6053233644537005e-15,
+      "finite_Nu_Re_samples": {
+        "Nu_VolAvg": 1,
+        "Re_VolAvg": 1
+      },
+      "checkpoint_saved_Nu_Re_samples": 1
+    },
+    "rb_unsteady": {
+      "itc_total": 48,
+      "snapshot_count": 6,
+      "checkpoint_records": [
+        8640,
+        960
+      ],
+      "closed_cavity_relative_mass_error": 2.4868995751603505e-15,
+      "finite_Nu_Re_samples": {
+        "Nu_VolAvg": 6,
+        "Re_VolAvg": 6
+      },
+      "checkpoint_saved_Nu_Re_samples": 6
+    },
+    "side_strict_restart": {
+      "before": {
+        "itc_total": 32,
+        "snapshot_count": 5,
+        "checkpoint_records": [
+          8640,
+          960,
+          2896
+        ],
+        "closed_cavity_relative_mass_error": 1.7763568394002505e-15,
+        "finite_Nu_Re_samples": {
+          "Nu_VolAvg": 1,
+          "Re_VolAvg": 1
+        },
+        "checkpoint_saved_Nu_Re_samples": 1
+      },
+      "after": {
+        "itc_total": 48,
+        "snapshot_count": 8,
+        "checkpoint_records": [
+          8640,
+          960,
+          2896
+        ],
+        "closed_cavity_relative_mass_error": 2.6053233644537005e-15,
+        "finite_Nu_Re_samples": {
+          "Nu_VolAvg": 2,
+          "Re_VolAvg": 2
+        },
+        "checkpoint_saved_Nu_Re_samples": 2
+      },
+      "f_T_and_steady_reference_bitwise_equal": true,
+      "snapshot_bitwise_equal": true,
+      "Nu_Re_history_preserved": true,
+      "final_Nu_Re_row_bitwise_equal": true,
+      "completed_target_restart_preserved": true,
+      "converged_restart_preserved": true
+    },
+    "rb_strict_restart": {
+      "before": {
+        "itc_total": 32,
+        "snapshot_count": 4,
+        "checkpoint_records": [
+          8640,
+          960
+        ],
+        "closed_cavity_relative_mass_error": 1.6579330501069005e-15,
+        "finite_Nu_Re_samples": {
+          "Nu_VolAvg": 4,
+          "Re_VolAvg": 4
+        },
+        "checkpoint_saved_Nu_Re_samples": 4
+      },
+      "after": {
+        "itc_total": 48,
+        "snapshot_count": 6,
+        "checkpoint_records": [
+          8640,
+          960
+        ],
+        "closed_cavity_relative_mass_error": 2.4868995751603505e-15,
+        "finite_Nu_Re_samples": {
+          "Nu_VolAvg": 6,
+          "Re_VolAvg": 6
+        },
+        "checkpoint_saved_Nu_Re_samples": 6
+      },
+      "f_T_and_steady_reference_bitwise_equal": true,
+      "snapshot_bitwise_equal": true,
+      "Nu_Re_history_preserved": true,
+      "final_Nu_Re_row_bitwise_equal": true,
+      "completed_target_restart_preserved": true
+    }
+  },
+  "physical_semantics_checks": {
+    "side": {
+      "temperature_reference_shift": 3.25,
+      "max_f_shift_error": 0.0,
+      "max_T_translation_error": 4.440892098500626e-15,
+      "max_Nu_translation_error": 1.5987211554602254e-14,
+      "velocity_display_scale_state_bitwise_equal": true,
+      "max_Nu_display_scale_error": 0.0
+    },
+    "rb": {
+      "temperature_reference_shift": 3.25,
+      "max_f_shift_error": 0.0,
+      "max_T_translation_error": 3.1086244689504383e-15,
+      "max_Nu_translation_error": 8.659739592076221e-15,
+      "velocity_display_scale_state_bitwise_equal": true,
+      "max_Nu_display_scale_error": 0.0
+    }
+  },
+  "passed": true,
+  "elapsed_seconds": 32.626
+}

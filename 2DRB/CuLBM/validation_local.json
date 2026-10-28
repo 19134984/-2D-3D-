@@ -1,0 +1,405 @@
+{
+  "source": "D:\\桌面\\代码\\代码\\热对流\\2DRB\\CuLBM\\2DRBOpenaccCuLBM.F90",
+  "source_sha256": "59a4158d386bade5f7bab98f43ba45591dba17bae111b05f82adc7d6350202fb",
+  "compiler": "C:/msys64/ucrt64/bin/gfortran.exe",
+  "backend": "gfortran OpenACC host; NVIDIA GPU not tested",
+  "scope": "normalized cumulants and inverse, positive thermal carrier, boundary identities, finite-step strict restart",
+  "high_Ra_accuracy_validated": false,
+  "grid_independence_validated": false,
+  "thermal_carrier_domain": "strictly positive; zero and negative mass rejected",
+  "temperature_origin_invariance_claimed": false,
+  "compiler_version": "GNU Fortran (Rev13, Built by MSYS2 project) 15.2.0",
+  "compile_matrix": {
+    "steady_side": true,
+    "steady_rb": true,
+    "unsteady_side": true,
+    "unsteady_rb": true
+  },
+  "mathematical_checks": {
+    "side_heated": {
+      "raw_moment_definition": {
+        "max_abs_residual": 0.0,
+        "tolerance": 3e-15
+      },
+      "population_raw_roundtrip": {
+        "max_abs_residual": 7.28583859910259e-17,
+        "tolerance": 3e-15
+      },
+      "central_moment_definition": {
+        "max_abs_residual": 5.551115123125783e-17,
+        "tolerance": 3e-15
+      },
+      "central_raw_roundtrip": {
+        "max_abs_residual": 4.163336342344337e-17,
+        "tolerance": 3e-15
+      },
+      "initial_mass_temperature_half_force_momentum": {
+        "max_abs_residual": 4.440892098500626e-16,
+        "tolerance": 4e-14
+      },
+      "normalized_equilibrium_cumulants": {
+        "max_abs_residual": 5.551115123125783e-17,
+        "tolerance": 5e-15
+      },
+      "flow_zero_force_mass_momentum": {
+        "max_abs_residual": 4.440892098500626e-16,
+        "tolerance": 5e-14
+      },
+      "normalized_viscous_cumulant_rate": {
+        "max_abs_residual": 1.1102230246251565e-16,
+        "tolerance": 5e-14
+      },
+      "normalized_third_cumulant_rate": {
+        "max_abs_residual": 1.0164395367051604e-17,
+        "tolerance": 5e-14
+      },
+      "normalized_fourth_cumulant_inverse_and_rate": {
+        "max_abs_residual": 5.659535340374333e-17,
+        "tolerance": 5e-14
+      },
+      "forced_mass": {
+        "max_abs_residual": 4.440892098500626e-16,
+        "tolerance": 5e-14
+      },
+      "forced_raw_momentum_increment": {
+        "max_abs_residual": 4.675621868843738e-17,
+        "tolerance": 5e-14
+      },
+      "density_force_homogeneity": {
+        "max_abs_residual": 8.881784197001252e-16,
+        "tolerance": 8e-14
+      },
+      "thermal_equilibrium_mass_flux": {
+        "max_abs_residual": 5.551115123125783e-17,
+        "tolerance": 5e-15
+      },
+      "thermal_equilibrium_variances": {
+        "max_abs_residual": 5.551115123125783e-17,
+        "tolerance": 5e-15
+      },
+      "thermal_mass_conservation": {
+        "max_abs_residual": 4.440892098500626e-16,
+        "tolerance": 5e-14
+      },
+      "thermal_flux_rate": {
+        "max_abs_residual": 7.632783294297951e-17,
+        "tolerance": 5e-14
+      },
+      "thermal_normalized_variance_rate": {
+        "max_abs_residual": 2.7755575615628914e-17,
+        "tolerance": 5e-14
+      },
+      "thermal_mass_homogeneity": {
+        "max_abs_residual": 1.7763568394002505e-15,
+        "tolerance": 8e-14
+      },
+      "invalid_input_returned_without_clipping": {
+        "max_abs_residual": 0.0,
+        "tolerance": 0.0
+      }
+    },
+    "rayleigh_benard": {
+      "raw_moment_definition": {
+        "max_abs_residual": 0.0,
+        "tolerance": 3e-15
+      },
+      "population_raw_roundtrip": {
+        "max_abs_residual": 7.28583859910259e-17,
+        "tolerance": 3e-15
+      },
+      "central_moment_definition": {
+        "max_abs_residual": 5.551115123125783e-17,
+        "tolerance": 3e-15
+      },
+      "central_raw_roundtrip": {
+        "max_abs_residual": 4.163336342344337e-17,
+        "tolerance": 3e-15
+      },
+      "initial_mass_temperature_half_force_momentum": {
+        "max_abs_residual": 4.440892098500626e-16,
+        "tolerance": 4e-14
+      },
+      "normalized_equilibrium_cumulants": {
+        "max_abs_residual": 5.551115123125783e-17,
+        "tolerance": 5e-15
+      },
+      "flow_zero_force_mass_momentum": {
+        "max_abs_residual": 4.440892098500626e-16,
+        "tolerance": 5e-14
+      },
+      "normalized_viscous_cumulant_rate": {
+        "max_abs_residual": 1.6653345369377348e-16,
+        "tolerance": 5e-14
+      },
+      "normalized_third_cumulant_rate": {
+        "max_abs_residual": 1.322049024074512e-17,
+        "tolerance": 5e-14
+      },
+      "normalized_fourth_cumulant_inverse_and_rate": {
+        "max_abs_residual": 4.949382917396328e-17,
+        "tolerance": 5e-14
+      },
+      "forced_mass": {
+        "max_abs_residual": 4.440892098500626e-16,
+        "tolerance": 5e-14
+      },
+      "forced_raw_momentum_increment": {
+        "max_abs_residual": 4.675621868843738e-17,
+        "tolerance": 5e-14
+      },
+      "density_force_homogeneity": {
+        "max_abs_residual": 6.661338147750939e-16,
+        "tolerance": 8e-14
+      },
+      "thermal_equilibrium_mass_flux": {
+        "max_abs_residual": 5.551115123125783e-17,
+        "tolerance": 5e-15
+      },
+      "thermal_equilibrium_variances": {
+        "max_abs_residual": 5.551115123125783e-17,
+        "tolerance": 5e-15
+      },
+      "thermal_mass_conservation": {
+        "max_abs_residual": 0.0,
+        "tolerance": 5e-14
+      },
+      "thermal_flux_rate": {
+        "max_abs_residual": 1.6653345369377348e-16,
+        "tolerance": 5e-14
+      },
+      "thermal_normalized_variance_rate": {
+        "max_abs_residual": 2.7755575615628914e-17,
+        "tolerance": 5e-14
+      },
+      "thermal_mass_homogeneity": {
+        "max_abs_residual": 2.6645352591003757e-15,
+        "tolerance": 8e-14
+      },
+      "invalid_input_returned_without_clipping": {
+        "max_abs_residual": 0.0,
+        "tolerance": 0.0
+      }
+    }
+  },
+  "conduction_checks": {
+    "side_heated": {
+      "exact_boundary_case": {
+        "Prandtl": 0.00014399999999999998,
+        "diffusivity": 0.1,
+        "thermal_flux_rate": 1.0,
+        "steps": 600,
+        "max_T_linear_deviation": 4.440892098500626e-16,
+        "Nu_volume": 1.0,
+        "Nu_hot": 1.0,
+        "Nu_cold": 0.9999999999999993,
+        "exact_Nu_1_required": true,
+        "interpretation": "boundary identity at heat-flux rate 1"
+      },
+      "default_rate_observation": {
+        "Prandtl": 0.71,
+        "diffusivity": 0.0014241379898326017,
+        "thermal_flux_rate": 1.9719171783352918,
+        "steps": 600,
+        "max_T_linear_deviation": 0.0002452745199812423,
+        "Nu_volume": 0.9999462922181687,
+        "Nu_hot": 1.0042122291780238,
+        "Nu_cold": 0.9915482150962702,
+        "exact_Nu_1_required": false,
+        "interpretation": "finite-grid thermal-cumulant correction; observation only, not a benchmark"
+      }
+    },
+    "rayleigh_benard": {
+      "exact_boundary_case": {
+        "Prandtl": 9.999999999999996e-05,
+        "diffusivity": 0.1,
+        "thermal_flux_rate": 1.0,
+        "steps": 600,
+        "max_T_linear_deviation": 2.220446049250313e-16,
+        "Nu_volume": 0.9999999999999997,
+        "Nu_hot": 0.9999999999999981,
+        "Nu_cold": 1.0000000000000038,
+        "exact_Nu_1_required": true,
+        "interpretation": "boundary identity at heat-flux rate 1"
+      },
+      "default_rate_observation": {
+        "Prandtl": 0.71,
+        "diffusivity": 0.001186781658193852,
+        "thermal_flux_rate": 1.976542753139382,
+        "steps": 600,
+        "max_T_linear_deviation": 0.00034478163975704135,
+        "Nu_volume": 0.9999230632985976,
+        "Nu_hot": 1.0049576872465436,
+        "Nu_cold": 0.9900457264881748,
+        "exact_Nu_1_required": false,
+        "interpretation": "finite-grid thermal-cumulant correction; observation only, not a benchmark"
+      }
+    }
+  },
+  "invalid_state_checks": {
+    "zero_mass_zero_population": {
+      "rejected": true,
+      "persistent_status_guard": true,
+      "division_by_zero_avoided": true
+    },
+    "zero_mass_nonzero_heat_flux": {
+      "rejected": true,
+      "persistent_status_guard": true,
+      "division_by_zero_avoided": true
+    },
+    "negative_thermal_mass": {
+      "rejected": true,
+      "persistent_status_guard": true,
+      "division_by_zero_avoided": true
+    }
+  },
+  "integration_checks": {
+    "side_steady": {
+      "itc_total": 48,
+      "snapshot_count": 7,
+      "checkpoint_records": [
+        8640,
+        4800,
+        2896
+      ],
+      "closed_cavity_relative_mass_error": 0.0,
+      "finite_Nu_Re_samples": {
+        "Nu_VolAvg": 1,
+        "Re_VolAvg": 1
+      },
+      "checkpoint_saved_Nu_Re_samples": 1
+    },
+    "rb_unsteady": {
+      "itc_total": 48,
+      "snapshot_count": 6,
+      "checkpoint_records": [
+        8640,
+        4800
+      ],
+      "closed_cavity_relative_mass_error": 0.0,
+      "finite_Nu_Re_samples": {
+        "Nu_VolAvg": 6,
+        "Re_VolAvg": 6
+      },
+      "checkpoint_saved_Nu_Re_samples": 6
+    },
+    "side_strict_restart": {
+      "before": {
+        "itc_total": 32,
+        "snapshot_count": 5,
+        "checkpoint_records": [
+          8640,
+          4800,
+          2896
+        ],
+        "closed_cavity_relative_mass_error": 0.0,
+        "finite_Nu_Re_samples": {
+          "Nu_VolAvg": 1,
+          "Re_VolAvg": 1
+        },
+        "checkpoint_saved_Nu_Re_samples": 1
+      },
+      "after": {
+        "itc_total": 48,
+        "snapshot_count": 8,
+        "checkpoint_records": [
+          8640,
+          4800,
+          2896
+        ],
+        "closed_cavity_relative_mass_error": 0.0,
+        "finite_Nu_Re_samples": {
+          "Nu_VolAvg": 2,
+          "Re_VolAvg": 2
+        },
+        "checkpoint_saved_Nu_Re_samples": 2
+      },
+      "f_g_and_steady_reference_bitwise_equal": true,
+      "snapshot_bitwise_equal": true,
+      "Nu_Re_history_preserved": true,
+      "final_Nu_Re_row_bitwise_equal": true,
+      "completed_target_restart_preserved": true,
+      "converged_restart_preserved": true
+    },
+    "rb_strict_restart": {
+      "before": {
+        "itc_total": 32,
+        "snapshot_count": 4,
+        "checkpoint_records": [
+          8640,
+          4800
+        ],
+        "closed_cavity_relative_mass_error": 0.0,
+        "finite_Nu_Re_samples": {
+          "Nu_VolAvg": 4,
+          "Re_VolAvg": 4
+        },
+        "checkpoint_saved_Nu_Re_samples": 4
+      },
+      "after": {
+        "itc_total": 48,
+        "snapshot_count": 6,
+        "checkpoint_records": [
+          8640,
+          4800
+        ],
+        "closed_cavity_relative_mass_error": 0.0,
+        "finite_Nu_Re_samples": {
+          "Nu_VolAvg": 6,
+          "Re_VolAvg": 6
+        },
+        "checkpoint_saved_Nu_Re_samples": 6
+      },
+      "f_g_and_steady_reference_bitwise_equal": true,
+      "snapshot_bitwise_equal": true,
+      "Nu_Re_history_preserved": true,
+      "final_Nu_Re_row_bitwise_equal": true,
+      "completed_target_restart_preserved": true
+    }
+  },
+  "scalar_semantics_checks": {
+    "side": {
+      "amplitude": {
+        "factor": 2.0,
+        "max_f_error": 0.0,
+        "max_scaled_g_error": 0.0,
+        "max_Nu_error": 0.0,
+        "required_invariance": true
+      },
+      "background": {
+        "shift": 3.25,
+        "max_f_change": 7.138169694220764e-09,
+        "max_T_translation_deviation": 0.0004522743511174987,
+        "max_Nu_change": 0.005283094694634727,
+        "required_invariance": false,
+        "interpretation": "finite-grid background dependence of proper thermal cumulants"
+      },
+      "velocity_units": {
+        "state_bitwise_equal": true,
+        "max_Nu_change": 0.0
+      }
+    },
+    "rb": {
+      "amplitude": {
+        "factor": 2.0,
+        "max_f_error": 0.0,
+        "max_scaled_g_error": 0.0,
+        "max_Nu_error": 0.0,
+        "required_invariance": true
+      },
+      "background": {
+        "shift": 3.25,
+        "max_f_change": 1.0429536942413442e-08,
+        "max_T_translation_deviation": 0.0001893585554881838,
+        "max_Nu_change": 0.005558576407751703,
+        "required_invariance": false,
+        "interpretation": "finite-grid background dependence of proper thermal cumulants"
+      },
+      "velocity_units": {
+        "state_bitwise_equal": true,
+        "max_Nu_change": 0.0
+      }
+    }
+  },
+  "passed": true,
+  "elapsed_seconds": 44.798
+}

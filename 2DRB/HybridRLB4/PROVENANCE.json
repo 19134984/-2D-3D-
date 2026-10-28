@@ -1,0 +1,60 @@
+{
+  "created_date": "2026-10-28",
+  "implementation": {
+    "path": "D:\\桌面\\代码\\代码\\热对流\\2DRB\\HybridRLB4\\2DRBOpenaccHybridRLB4.F90",
+    "sha256": "33eeef4d6f2d785ff8a1c721ac6babf3bbd13de081d65e8a59656b61743e8f31"
+  },
+  "paper": {
+    "author": "Alexander Nee",
+    "year": 2025,
+    "doi": "10.1016/j.icheatmasstransfer.2025.108635"
+  },
+  "execution": "2D uniform grid, single GPU OpenACC; host initialization, I/O and selected final diagnostics",
+  "method": {
+    "flow": "D2Q9 fourth-order factorized equilibrium and recursively regularized non-equilibrium",
+    "force_and_velocity": "Literal Eq6 simple force and Eq8 raw momentum, without half-force correction",
+    "energy": "Advective central-second-order spatial stencil and classical RK4, frozen post-flow velocity",
+    "wall_completion": "Cell-centered half-link wall; quadratic Dirichlet ghost and reflected Neumann ghost",
+    "overall_time_order_proven": false
+  },
+  "original_paper_gaps_documented": "FORMULATION_CN.md",
+  "references": [
+    {
+      "path": "D:\\桌面\\代码\\代码\\热对流\\2DRB\\均匀网格\\2DRBOpenmp.F90",
+      "sha256": "83a17f30cd4715bd14e9fa2d06aa43f026ca4ff57a11154cbcdbbbcf6b7a713f"
+    },
+    {
+      "path": "D:\\桌面\\代码\\代码\\热对流\\2DRB\\均匀网格\\2DRBOpenacc.F90",
+      "sha256": "68debf94f75f3a70af6bf4f7205e18afc14618d48dd227ccf1d1a8e73d8afd48"
+    },
+    {
+      "path": "D:\\桌面\\代码\\代码\\热对流\\2DRB\\FPC\\2DRBOpenaccFPC.F90",
+      "sha256": "fcc880954b4d48217a5e2d043208f6bf1a51ab8b955be3cbd4870bef012b274d"
+    },
+    {
+      "path": "D:\\桌面\\代码\\代码\\热对流\\2DRB\\pdf\\算法\\Evaluation of hybrid lattice Boltzmann models for laminar and turbulent natural convection.pdf",
+      "sha256": "0d20af33899595b50451975badd5cf94a3e1de72e207c14d748cfc67cee808a3"
+    }
+  ],
+  "validation_reports": {
+    "validation_local.json": {
+      "passed": true,
+      "source_sha256": "33eeef4d6f2d785ff8a1c721ac6babf3bbd13de081d65e8a59656b61743e8f31"
+    },
+    "transport_validation_local.json": {
+      "passed": true,
+      "source_sha256": "33eeef4d6f2d785ff8a1c721ac6babf3bbd13de081d65e8a59656b61743e8f31"
+    }
+  },
+  "protected_files_verified_unchanged": {
+    "均匀网格/2DRBOpenmp.F90": "83a17f30cd4715bd14e9fa2d06aa43f026ca4ff57a11154cbcdbbbcf6b7a713f",
+    "均匀网格/2DRBOpenacc.F90": "68debf94f75f3a70af6bf4f7205e18afc14618d48dd227ccf1d1a8e73d8afd48",
+    "FPC/2DRBOpenaccFPC.F90": "fcc880954b4d48217a5e2d043208f6bf1a51ab8b955be3cbd4870bef012b274d",
+    "CLBM/2DRBOpenaccCLBM.F90": "533365ae329a2f134d0dd26c5699b1b36330e00ee663f5b721875c47f6b201c1",
+    "STLBM/2DRBOpenaccUSTLBM.F90": "0fa85768290c4717c78ddbe4e227cb4e0b71f290762ae6ffe92a5491ff3ca9a5"
+  },
+  "NVIDIA_GPU_tested": false,
+  "high_Ra_benchmark_validated": false,
+  "grid_independence_validated": false,
+  "server_accessed": false
+}
