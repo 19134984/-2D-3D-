@@ -1,0 +1,81 @@
+{
+  "date": "2026-10-28",
+  "production_source": "2DRBOpenaccDUGKS.F90",
+  "production_source_sha256": "35e26173682b47ef034d08a470a254a0d05e01211ec358b02a6ec5dded057c36",
+  "primary_baseline": "\u5747\u5300\u7f51\u683c/2DRBOpenmp.F90",
+  "primary_baseline_sha256": "83a17f30cd4715bd14e9fa2d06aa43f026ca4ff57a11154cbcdbbbcf6b7a713f",
+  "compiler": "GNU Fortran (Rev13, Built by MSYS2 project) 15.2.0",
+  "compiler_path": "C:\\msys64\\ucrt64\\bin\\gfortran.exe",
+  "host_flags": [
+    "-cpp",
+    "-ffree-line-length-none",
+    "-O1",
+    "-fcheck=all",
+    "-fbacktrace"
+  ],
+  "openacc_flags": [
+    "-fopenacc"
+  ],
+  "openacc_runtime_environment": {
+    "ACC_DEVICE_TYPE": "host"
+  },
+  "mesh": [
+    16,
+    16
+  ],
+  "normal_smoke_steps": 80,
+  "tests": {
+    "side_steady": {
+      "NuVolAvg": 1.0000064261732917,
+      "ReVolAvg": 2.2910572937253613
+    },
+    "side_unsteady": {
+      "NuVolAvg": 1.0000064261732917,
+      "ReVolAvg": 2.2910572937253613
+    },
+    "rb_steady": {
+      "NuVolAvg": 1.014271296071908,
+      "ReVolAvg": 0.07309527514216049
+    },
+    "rb_unsteady": {
+      "NuVolAvg": 1.014271296071908,
+      "ReVolAvg": 0.07309527514216049
+    },
+    "rb_periodic": {
+      "NuVolAvg": 1.0140440372895256,
+      "ReVolAvg": 0.07190411597020227
+    },
+    "conduction_side": {
+      "max_Nu_error": 3.5682701535755257e-06,
+      "Re": 0.0
+    },
+    "conduction_rb": {
+      "max_Nu_error": 3.5682701475803213e-06,
+      "Re": 0.0
+    },
+    "buoyant_mass": {
+      "max_relative_mass_error": 1.2889689315898067e-13,
+      "steps": 600
+    },
+    "restart_37_plus_43": {
+      "transformed_populations_bitwise_equal": true,
+      "history_bitwise_equal": true,
+      "convergence_tail_trimmed": true
+    },
+    "restart_parameter_guard": "passed",
+    "gnu_openacc_directive_syntax": "passed; device execution remains unverified",
+    "gnu_openacc_host_side": {
+      "max_diagnostic_difference_from_serial": 0.0
+    },
+    "gnu_openacc_host_rb": {
+      "max_diagnostic_difference_from_serial": 0.0
+    }
+  },
+  "limitations": [
+    "No nvfortran compilation or NVIDIA GPU execution was performed.",
+    "No server submission was made.",
+    "No paper benchmark agreement, grid independence, or statistical convergence is claimed.",
+    "Zero-force conduction retains the paper full bounce-back adiabatic wall: mean numerical flux Nu defect is about 3.6e-6 on this test.",
+    "Only the explicitly listed generated small-grid variants were run; the production 256x256 default was not run."
+  ]
+}

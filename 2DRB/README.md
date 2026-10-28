@@ -29,6 +29,15 @@ working inside the matching folder instead of adding new top-level source files.
 - `STLBM/`
   Simplified thermal LBM variants.
 
+- `DUGKS/`
+  Wang/Tao/Guo (2015) coupled DUGKS, 2D uniform finite volumes and single-GPU
+  OpenACC. See its README for side-heated/RB cases and local validation limits.
+
+- `EntropicLBM/`
+  2D uniform-grid adaptation of the Frapolli/Chikatamarla/Karlin (2018)
+  two-population total-energy model, with OpenACC. Its README records the
+  entropy-formula ambiguity and the chosen entropy-minimization treatment.
+
 - `Xs/`
   Latest LBM-CDE reproduction sources with the `chi` parameter.
 
@@ -92,6 +101,8 @@ explicitly targets another method family:
 - ISLBM 3D MPI + GPU: `ISLBM/3DRBOpenaccMpiISLBM.F90`
 - STLBM 2D CPU: `STLBM/2DRBOpenmpSTLBM.F90`
 - STLBM 2D GPU: `STLBM/2DRBOpenaccSTLBM.F90`
+- Coupled DUGKS 2D GPU: `DUGKS/2DRBOpenaccDUGKS.F90`
+- Entropic total-energy 2D GPU: `EntropicLBM/2DRBOpenaccEntropic.F90`
 - Flow D2Q9 TRT + thermal D2Q9 BGK LBM-CDE (OpenACC):
   `Xs/D2Q9TRT_D2Q9BGK/2DRBOpenaccLBMCDE_D2Q9TRT_D2Q9BGK.F90`
 - Flow D2Q9 TRT + fixed-rate thermal D2Q9 TRT-a-chi_kappa LBM-CDE (OpenACC):

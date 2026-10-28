@@ -1,0 +1,80 @@
+{
+  "status": "passed",
+  "source_sha256": "05a5d39ef1af2fb6f6f0e140a35a1e2e8ade7122fdf25779e1a04aa4066bb207",
+  "normalized_source_sha256": "5a383e7fe258d959f23e75578d300c725dab83f5fd46d9dd15c511863077a64b",
+  "method": "actual Fortran kernels, GNU host, periodic Fourier decay; test overrides nx=64 ny=1, nu=0.05 and zero buoyancy; no wall or GPU validation",
+  "cases": [
+    {
+      "Prandtl": 0.7,
+      "nx": 64,
+      "ny": 1,
+      "steps": 5000,
+      "results": [
+        {
+          "mode": "shear",
+          "expected": 0.05000000000000001,
+          "effective": 0.05001968248671035,
+          "relative_error": 0.00039364973420674687,
+          "amplitude_at_step_100": 9.522367291490045e-06,
+          "amplitude_at_step_5000": 8.970299459915698e-07
+        },
+        {
+          "mode": "thermal",
+          "expected": 0.07142857142857145,
+          "effective": 0.07148176044537212,
+          "relative_error": 0.000744646235209423,
+          "amplitude_at_step_100": 9.328112779173671e-07,
+          "amplitude_at_step_5000": 3.18899519592746e-08
+        }
+      ]
+    },
+    {
+      "Prandtl": 1.0,
+      "nx": 64,
+      "ny": 1,
+      "steps": 5000,
+      "results": [
+        {
+          "mode": "shear",
+          "expected": 0.05000000000000001,
+          "effective": 0.05001968248671035,
+          "relative_error": 0.00039364973420674687,
+          "amplitude_at_step_100": 9.522367291490045e-06,
+          "amplitude_at_step_5000": 8.970299459915698e-07
+        },
+        {
+          "mode": "thermal",
+          "expected": 0.05000000000000001,
+          "effective": 0.05003656158949075,
+          "relative_error": 0.0007312317898147125,
+          "amplitude_at_step_100": 9.522208685256647e-07,
+          "amplitude_at_step_5000": 8.96300225803058e-08
+        }
+      ]
+    },
+    {
+      "Prandtl": 7.0,
+      "nx": 64,
+      "ny": 1,
+      "steps": 5000,
+      "results": [
+        {
+          "mode": "shear",
+          "expected": 0.05000000000000001,
+          "effective": 0.050019682493225213,
+          "relative_error": 0.00039364986450407535,
+          "amplitude_at_step_100": 9.522367291521846e-06,
+          "amplitude_at_step_5000": 8.970299457185662e-07
+        },
+        {
+          "mode": "thermal",
+          "expected": 0.007142857142857144,
+          "effective": 0.007148584956457953,
+          "relative_error": 0.0008018939041132267,
+          "amplitude_at_step_100": 9.92336799538205e-07,
+          "amplitude_at_step_5000": 7.080056403536458e-07
+        }
+      ]
+    }
+  ]
+}

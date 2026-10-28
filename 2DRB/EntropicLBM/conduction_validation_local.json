@@ -1,0 +1,34 @@
+{
+  "status": "passed",
+  "source_sha256": "05a5d39ef1af2fb6f6f0e140a35a1e2e8ade7122fdf25779e1a04aa4066bb207",
+  "cases": [
+    {
+      "geometry": "SideHeatedCell",
+      "nx": 16,
+      "ny": 12,
+      "steps": 600,
+      "backend": "GNU OpenACC host",
+      "maximum_temperature_error": 1.5543122344752192e-15,
+      "maximum_absolute_velocity": 0.0,
+      "maximum_absolute_mass_error": 2.842170943040401e-14,
+      "Nu_global": 0.9999999999999984,
+      "Nu_hot": 0.9999999999982608,
+      "Nu_cold": 1.0000000000010731,
+      "Nu_middle": 1.0000000000002445
+    },
+    {
+      "geometry": "RayleighBenardCell",
+      "nx": 16,
+      "ny": 12,
+      "steps": 600,
+      "backend": "GNU OpenACC host",
+      "maximum_temperature_error": 2.3314683517128287e-15,
+      "maximum_absolute_velocity": 0.0,
+      "maximum_absolute_mass_error": 2.842170943040401e-14,
+      "Nu_global": 0.9999999999999979,
+      "Nu_hot": 0.999999999999023,
+      "Nu_cold": 1.0000000000006661,
+      "Nu_middle": 1.0000000000002882
+    }
+  ]
+}

@@ -1,0 +1,77 @@
+2DRBOpenaccUSTLBM.F90 使用说明
+
+一、文件和方法
+
+这是二维、单设备 OpenACC 的独立 USTLBM 版本，不含 MPI。
+原 STLBM 与均匀网格源码保留不变；新文件中的后处理和输出沿用项目二维框架。
+论文：Chen, Shu and Tan, Applied Sciences 7 (2017), 277，DOI 10.3390/app7030277。
+推进依据为式 (39)--(47)，流场与内能场均使用 D2Q9。
+
+本文件直接推进 rho/u/v/T，不能把它理解成“流场仍用 MRT，只替换温度碰撞”。
+非平衡缓存不作为重启状态。它的索引 P 表示半格位置 P-e_alpha/2，校正使用
+N_alpha(P+e_alpha)-N_alpha(P)。浮力采用新旧温度的时间平均。
+二维内能平衡态的二阶矩为 2/3，故 tauT=0.5+1.5*diffusivity；代码不照抄原文
+式 (16) 中与二维矩不相容的 5/3 系数，也不把标题中的“无条件稳定”当作保证。
+
+二、直接修改 commondata 参数
+
+默认：nx=ny=128，Rayleigh=1e6，Prandtl=0.71，Mach=0.1，侧壁稳态。
+这些默认值是算例设置，不代表已证明网格无关或完成该 Ra 的 GPU 验证。
+Rayleigh、Prandtl、Mach、Thot/Tcold、输出间隔和收敛阈值均在 commondata 中修改。
+长度、黏性、热扩散、浮力及自由落体时间单位由这些参数统一推导。
+rbInitialPerturbation 控制 RB 初始温度扰动幅值；设为 0 可关闭。
+
+三、工况宏必须配套切换，修改后重新编译
+
+1. 侧壁稳态（默认）
+   开启 steadyFlow、SideHeatedCell、HorizontalWallsNoslip、VerticalWallsNoslip、
+   HorizontalWallsAdiabatic、VerticalWallsConstT。
+   关闭 unsteadyFlow、RayleighBenardCell、HorizontalWallsConstT、VerticalWallsAdiabatic、
+   VerticalWallsPeriodicalU、VerticalWallsPeriodicalT。
+
+2. RB 非稳态，封闭绝热侧壁
+   开启 unsteadyFlow、RayleighBenardCell、HorizontalWallsNoslip、VerticalWallsNoslip、
+   HorizontalWallsConstT、VerticalWallsAdiabatic。
+   关闭 steadyFlow、SideHeatedCell、HorizontalWallsAdiabatic、VerticalWallsConstT、
+   VerticalWallsPeriodicalU、VerticalWallsPeriodicalT、SideHeatedHa。
+
+3. RB 非稳态，周期侧面
+   在第 2 种配置中关闭 VerticalWallsNoslip、VerticalWallsAdiabatic，
+   同时开启 VerticalWallsPeriodicalU 和 VerticalWallsPeriodicalT。
+
+无效或相互冲突的宏会在预处理阶段报错。默认使用一个 OpenACC 设备，推进临时量常驻
+设备，CPU 仅承担输出、重启管理与部分最终后处理。GPU 编译/运行应使用实际服务器
+匹配的 Fortran OpenACC 工具链；本次没有在 NVHPC/NVIDIA GPU 上实测。
+
+四、网格、后处理和输出
+
+所有 1:nx,1:ny 节点都是流体格心；第一层节点距离物理壁面半个格距。
+求解用 ghost 位于墙外，后处理 xp(0)/yp(0) 则表示物理墙，二者不是同一位置。
+保留 Nu/Re、壁面与中线换热、速度极值、流函数/涡量、Tecplot、二进制快照、
+非稳态 Nu/Re 时间序列和统计窗口。周期侧面不调用封闭腔体流函数后处理。
+velocityScaleCompare 只改变速度类输出的比较单位，Nu 热流系数固定为 L/kappa。
+所有输出前缀均带 USTLBM，避免与旧算例混用。
+稳态结束还需检查日志中的 steadyConverged：达到 itc_max 也会输出当前场，但不代表已收敛。
+
+快照四条记录依次为无量纲 u、无量纲 v、T、rho，保持项目后处理格式。
+严格重启文件先写算法标识和 nx/ny 的记录，再写格子单位 rho、u、v、T 四条记录。
+快照不能拿来续算，旧 STLBM 或传统 LBM 的重启也不能直接读取。
+
+五、续算
+
+设置 loadInitField=1，在原算例结果目录运行；必须保留本版本 latest.meta 和对应 .bin。
+程序核对算法、工况、网格、Ra/Pr/Mach/温度等参数，以及非稳态采样间隔。
+非稳态续算使用绝对采样序号；checkpoint 不在采样点也不会平移后续时间轴。
+若断电后 Nu/Re 历史已有超出 checkpoint 的尾部，程序先逐字节备份为唯一 .bak，
+再恢复到 checkpoint 对应的共同前缀。缺失或损坏的必要前缀会报错，不会补造历史。
+稳态收敛曲线保留已有记录；从较早 checkpoint 恢复后，曲线可能包含重复的重算区段。
+
+六、本轮验证范围
+
+验证脚本：运行脚本/tools/verify_ustlbm.py。
+结果及源码校验值：运行脚本/run_cases/USTLBM_implementation_20261028/。
+验证只改隔离副本，不改变本文件的默认宏或物理参数。
+GCC OpenACC host 检查确实解析并执行 OpenACC，但不能代替 NVIDIA GPU 实跑。
+解析扩散的网格加密结果属于联合空间时间收敛，不能称为独立时间阶验证。
+低 Ra 侧壁基准同时检查墙面 Nu、全场 Nu 和速度；粗网格失败保留在报告中。
+高 Ra 稳定性、网格无关性、长期 RB 统计收敛和单 GPU 性能仍需另外验证。

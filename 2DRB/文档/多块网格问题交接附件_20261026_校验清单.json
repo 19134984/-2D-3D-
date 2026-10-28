@@ -1,0 +1,121 @@
+{
+  "created_date_Asia_Shanghai": "2026-10-26",
+  "version": "results_only",
+  "files": [
+    {
+      "path": "文档/多块网格与均匀网格测试结果汇总_20261026.md",
+      "bytes": 28880,
+      "sha256": "601af56dd8ecdaa6069a5a21c7b51ab60a550c485413b5dd2baefe4d0995bc39"
+    },
+    {
+      "path": "文档/多块网格与均匀网格测试结果_20261026.json",
+      "bytes": 34323,
+      "sha256": "161c5a091f8a80febe2b253ee4082329547e9ee19a1eb3f7fe978f7048a983d2"
+    },
+    {
+      "path": "文档/多块网格与均匀网格测试结果_20261026.csv",
+      "bytes": 17509,
+      "sha256": "6bb61ee498c58086c822fc2005cac579e1b73434b2f20a4944d270ab8e18a0db"
+    },
+    {
+      "path": "多块网格/2DRBOpenaccMultiblock.F90",
+      "bytes": 209801,
+      "sha256": "84ca3661eaa2544cca9bb19403b1eaa7d97e82aa4f09ccbbd7cf657de915aa2c"
+    },
+    {
+      "path": "文档/工作树成果合并_20261024/源码快照/Ra9_RR3_F2048/solver.F90",
+      "bytes": 215564,
+      "sha256": "3e9e5db71d650e8a7550c23dab54247a35e370b3b6b32e1e5000074575ba2e2a"
+    },
+    {
+      "path": "文档/工作树成果合并_20261024/源码快照/Ra8_CDE_coarse05_F512/solver.F90",
+      "bytes": 213879,
+      "sha256": "9fbc9d33c869807009b1bf7ed950cc23fbb1d53c87555bbf307c28879fc29a25"
+    },
+    {
+      "path": "运行脚本/run_cases/Multiblock_scaling_matrix_20261021/source/MB256_both.F90",
+      "bytes": 210479,
+      "sha256": "def39f13f1a31c3510130a52d22038f88c00b27af7db100a19b5d3415416c26f"
+    },
+    {
+      "path": "运行脚本/run_cases/Multiblock_scaling_matrix_20261021/source/U128_both.F90",
+      "bytes": 210511,
+      "sha256": "6941213dbb979024078b47e92f416ff95981cd5edb7dd29202fd79e3d9e42aca"
+    },
+    {
+      "path": "运行脚本/run_cases/Multiblock_scaling_matrix_20261021/actual_parameter_verification.json",
+      "bytes": 4997,
+      "sha256": "3d0250edb46e275ac6d0f6d1e5703f1a7c3b8c649796081c7f406601bc2a15c3"
+    },
+    {
+      "path": "运行脚本/run_cases/Multiblock_scaling_matrix_20261021/results.json",
+      "bytes": 20790,
+      "sha256": "3b794fd44a384524dacdfbb72b73416ab47f81c19f96521eb0719d3d8b8eb291"
+    },
+    {
+      "path": "运行脚本/run_cases/Multiblock_standard_steady_20261021/results.json",
+      "bytes": 6368,
+      "sha256": "d31c8d4ed6f7fbd453227d1e670608a53be18b74ec151825eacb9fa5771bb546"
+    },
+    {
+      "path": "运行脚本/run_cases/Multiblock_N512_steady_resume_20261021/反算与粗化对照汇总.json",
+      "bytes": 49606,
+      "sha256": "ed2ee343ba6fe64c086a067fdc6485200687f7d7b52bb30fb329ff4f1d6528f7"
+    },
+    {
+      "path": "运行脚本/run_cases/UseG_uniform_multiblock_convergence_20261021/uniform256/source/solver.F90",
+      "bytes": 215033,
+      "sha256": "42c5c385fbcb85f341394e24ef0e136817f94fa526e8e352c77ade6fb1dcbaef"
+    },
+    {
+      "path": "运行脚本/run_cases/UseG_uniform_multiblock_convergence_20261021/uniform512/source/solver.F90",
+      "bytes": 215033,
+      "sha256": "5b0a6e5598bcbc6e20cf4bdf94db8b15d2b255d9e87654c85733c0ce06a889bd"
+    },
+    {
+      "path": "运行脚本/run_cases/UseG_uniform_multiblock_convergence_20261021/completed_verification.json",
+      "bytes": 7330,
+      "sha256": "636b31bfbb775746a098fd35549efe77e2ac119b2c6e2239530e04bd4ef0dd62"
+    },
+    {
+      "path": "运行脚本/run_cases/Uniform_LuoTRT_Ra9_control_T1000_20261025/campaign.json",
+      "bytes": 1893,
+      "sha256": "ab35d37393a72e4a13b26b0a7d99797d8a13f20c0b5535cef27d8c5d99980a66"
+    },
+    {
+      "path": "运行脚本/run_cases/Uniform_LuoTRT_Ra9_control_T1000_20261025/Ra1e9/source/solver.F90",
+      "bytes": 245118,
+      "sha256": "423e1f96adac6c9bb92798a88cb878cb76c18c29945e52f6fdda96d3764a8001"
+    },
+    {
+      "path": "运行脚本/run_cases/Uniform_LuoTRT_Ra9_control_T1000_20261025/completion_evidence_20261026/Ra1e9/results/assessment.json",
+      "bytes": 769,
+      "sha256": "211c376f3312a19ceb740927fefda338979d40bc74adf5e2519d7288b282c82e"
+    },
+    {
+      "path": "运行脚本/run_cases/Uniform_LuoTRT_Ra9_control_T1000_20261025/completion_evidence_20261026/Ra1e9/results/NuRe_TimeAverage_2DOpenaccLBMCDE_D2Q5.txt",
+      "bytes": 737,
+      "sha256": "ecda9ce1ff9d2dfdd72956539c8fc0c6bb36fc4aff95b777503a83e4352c25d3"
+    },
+    {
+      "path": "运行脚本/run_cases/Uniform_LuoTRT_Ra9_control_T1000_20261025/completion_evidence_20261026/Ra1e9/results/reloadFile2DOpenaccLBMCDE_D2Q5-latest.meta",
+      "bytes": 226,
+      "sha256": "29318abe4337ccd457a432ac6c3de8f622d48028b61cca1beedf40bd14e26ef8"
+    },
+    {
+      "path": "文档/两组长算结果_20261024/verified_results.json",
+      "bytes": 4660,
+      "sha256": "987003fe593a4e8ae2938af2ded469326589f68353d15332a2b6215dc093ae11"
+    },
+    {
+      "path": "运行脚本/run_cases/Multiblock_Ra1e10_N4096_RR3_node05_20261026/campaign.json",
+      "bytes": 1545,
+      "sha256": "577e53aafb8cc16c635e6258fad3500d26780261086db963a74653d235760a4c"
+    },
+    {
+      "path": "运行脚本/run_cases/Multiblock_Ra1e10_N4096_RR3_node05_20261026/submission_verified.json",
+      "bytes": 498,
+      "sha256": "50c8bc4894de830143b1caa7f76e3393a455d69187850ca60b51176b5e88e3a3"
+    }
+  ]
+}

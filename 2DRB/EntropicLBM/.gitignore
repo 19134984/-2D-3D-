@@ -1,0 +1,5 @@
+_local_checks/
+__pycache__/
+*.mod
+*.o
+*.exe

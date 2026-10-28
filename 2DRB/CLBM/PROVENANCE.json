@@ -1,0 +1,45 @@
+{
+  "created_date": "2026-10-28",
+  "worktree_workspace": "C:\\Users\\User\\.codex\\worktrees\\cascaded-thermal-2d\\热对流\\2DRB",
+  "implementation": {
+    "path": "C:/Users/User/.codex/worktrees/cascaded-thermal-2d/热对流/2DRB/CLBM/2DRBOpenaccCLBM.F90",
+    "sha256": "533365ae329a2f134d0dd26c5699b1b36330e00ee663f5b721875c47f6b201c1",
+    "role": "complete generated CLBM implementation; identical bytes published to managed worktree"
+  },
+  "references": [
+    {
+      "path": "D:\\桌面\\代码\\代码\\热对流\\2DRB\\均匀网格\\2DRBOpenmp.F90",
+      "sha256": "83a17f30cd4715bd14e9fa2d06aa43f026ca4ff57a11154cbcdbbbcf6b7a713f",
+      "role": "canonical 2D CPU framework and diagnostics style"
+    },
+    {
+      "path": "D:\\桌面\\代码\\代码\\热对流\\2DRB\\均匀网格\\2DRBOpenacc.F90",
+      "sha256": "68debf94f75f3a70af6bf4f7205e18afc14618d48dd227ccf1d1a8e73d8afd48",
+      "role": "current user working-copy OpenACC backend and framework reference"
+    },
+    {
+      "path": "C:\\Users\\User\\.codex\\worktrees\\cascaded-thermal-2d\\热对流\\2DRB\\均匀网格\\2DRBOpenacc.F90",
+      "sha256": "58e1758f3a9a3599021ca4ec0b90e94abea79f26bcd736e1b7a47fca3e188f77",
+      "role": "tracked managed-worktree baseline; recorded separately from current user working copy"
+    },
+    {
+      "path": "D:\\桌面\\代码\\代码\\热对流\\2DRB\\FPC\\2DRBOpenaccFPC.F90",
+      "sha256": "fcc880954b4d48217a5e2d043208f6bf1a51ab8b955be3cbd4870bef012b274d",
+      "role": "shared scaffolding only: cases, output and strict restart fixes; all CLBM collisions replaced independently"
+    },
+    {
+      "path": "D:\\桌面\\代码\\代码\\热对流\\2DRB\\pdf\\算法\\Natural convection heat transfer modeling by the cascaded thermal lattice Boltzmann method.pdf",
+      "sha256": "830bf1db2eeedb6f48866df002d35c1fc2eb9e43206bd4b444a585049588ec86",
+      "role": "user-provided primary paper"
+    }
+  ],
+  "protected_live_baselines_verified_unchanged": true,
+  "method": "Sharma2018 D2Q9 cascaded flow plus explicit Eq27 D2Q5 CTLBM",
+  "thermalA": "sqrt(2/5), literal Sharma parameter",
+  "thermalCs2": "thermalA/2",
+  "thermal_second_rate": "1/(1/2+[1/(8*(1-thermalCs2))]/(taug-1/2))",
+  "published_equation_30_difference": "independently derived actual-weight ABB slip cancellation, documented in 公式消歧_CN.md",
+  "server_accessed": false,
+  "NVIDIA_GPU_tested": false,
+  "execution": "single GPU OpenACC; no MPI/OpenMP execution path"
+}

@@ -74,6 +74,15 @@ For future work, inspect both dimension and backend references:
 - If a requested change would require a large structural departure from one of
   the four core baselines, call out that departure before proceeding.
 
+## 服务器任务提交与节点选择
+
+- 每次提交任务前，必须实时检查当前允许使用的各节点是否空闲及其资源占用；不能沿用上一次提交或旧记录中的节点选择。
+- P100任务须检查`node05`和`node07`的PBS队列／资源分配，以及GPU利用率、GPU进程和可用显存；不能只根据某一项或某个瞬时利用率认定节点空闲。
+- 在满足算例资源需求、调度规则和用户明确约束的前提下，优先选择空闲节点；均有任务时，尽量选择占用较低、剩余资源足够的节点。
+- 若用户本次明确指定节点，按该要求执行，同时核对该节点当前是否适合运行。以前某次任务的节点选择不自动视为以后所有任务的固定要求。
+- 保存本次提交前的节点检查时间、占用记录和选择理由；提交后核对作业实际分配的节点与选定节点一致。
+- 不得为腾出节点而擅自取消、迁移或修改其他任务。调整本算例的节点时，保留已有源码与输出记录，并核对旧、新作业状态，避免重复运行。
+
 ## Language
 
 - Use Simplified Chinese for user-facing explanations, progress updates, and

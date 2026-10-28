@@ -1,0 +1,51 @@
+{
+  "source_sha256": "05a5d39ef1af2fb6f6f0e140a35a1e2e8ade7122fdf25779e1a04aa4066bb207",
+  "compiler": "GNU Fortran (Rev13, Built by MSYS2 project) 15.2.0",
+  "scope": "GNU OpenACC host; no NVHPC, GPU, convection benchmark or grid convergence validation",
+  "checks": [
+    {
+      "check": "moments_entropy_total_energy_Pr0.71",
+      "result": "PASS contracts Pr=  0.70999999999999996      entropy gradient=  -1.3552527156068805E-020\nAt line 3722 of file solver.F90\nFortran runtime warning: An array temporary was created"
+    },
+    {
+      "check": "moments_entropy_total_energy_Pr1.0",
+      "result": "PASS contracts Pr=   1.0000000000000000      entropy gradient=   1.3552527156068805E-020\nAt line 3722 of file solver.F90\nFortran runtime warning: An array temporary was created"
+    },
+    {
+      "check": "moments_entropy_total_energy_Pr7.0",
+      "result": "PASS contracts Pr=   7.0000000000000000      entropy gradient=   1.3552527156068805E-020\nAt line 3722 of file solver.F90\nFortran runtime warning: An array temporary was created"
+    },
+    {
+      "check": "GNU_OpenACC_host_side_160_steps",
+      "result": "PASS"
+    },
+    {
+      "check": "GNU_OpenACC_host_rb_160_steps",
+      "result": "PASS"
+    },
+    {
+      "check": "GNU_OpenACC_side_unsteady_compile",
+      "result": "PASS"
+    },
+    {
+      "check": "GNU_OpenACC_rb_steady_compile",
+      "result": "PASS"
+    },
+    {
+      "check": "side_restart_equals_continuous_320_steps",
+      "result": "PASS bitwise f/g"
+    },
+    {
+      "check": "rb_restart_equals_continuous_320_steps",
+      "result": "PASS bitwise f/g"
+    },
+    {
+      "check": "steady_offphase_checkpoint_157_to_320",
+      "result": "PASS bitwise fields/reference fields/errors and full convergence history"
+    },
+    {
+      "check": "unsteady_partial_window",
+      "result": "PASS INCOMPLETE label; no full-window mean"
+    }
+  ]
+}
