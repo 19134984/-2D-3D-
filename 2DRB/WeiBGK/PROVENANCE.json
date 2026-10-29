@@ -1,0 +1,91 @@
+{
+  "created_date": "2026-10-29",
+  "repository_head_at_creation": "42d6645409e90d13bf630bd5628e94562870bbc3",
+  "implementation": {
+    "path": "2DRB/WeiBGK/2DRBOpenaccWeiBGK.F90",
+    "sha256": "ed9bb8d24c5ff6480fb2b1b025cb237e9f4bf05e0df27a90d5119ec8764f9ca0",
+    "dimension": 2,
+    "grid": "single uniform cell-centered grid",
+    "execution": "single GPU OpenACC source; GNU OpenACC host checked"
+  },
+  "paper": {
+    "title": "A simple lattice Boltzmann model for turbulence Rayleigh–Bénard thermal convection",
+    "authors": [
+      "Yikun Wei",
+      "Zhengdao Wang",
+      "Jianfei Yang",
+      "Hua-Shu Dou",
+      "Yuehong Qian"
+    ],
+    "year": 2015,
+    "doi": "10.1016/j.compfluid.2015.06.003",
+    "url": "https://doi.org/10.1016/j.compfluid.2015.06.003",
+    "local_pdf": "/Users/Admin/Documents/References/05_论文原文PDF/Yikun Wei-Hua-Shu Dou and Yuehong Qian-2015-A simple lattice Boltzmann model for turbulence Rayleigh-Benard thermal convection.pdf",
+    "sha256": "7fb08a505a21584c3f4292bf1e83eb2b0ee740e9d16761f235e55f0f2e65d7f4",
+    "formula_pages_visually_checked": [
+      2
+    ]
+  },
+  "primary_numerical_baseline": "2DRB/均匀网格/2DRBOpenmp.F90",
+  "OpenACC_reference": "2DRB/均匀网格/2DRBOpenacc.F90",
+  "output_restart_infrastructure_donor": "2DRB/ZhangHR/2DRBOpenaccZhangHR.F90",
+  "protected_sources_sha256": {
+    "均匀网格/2DRBOpenmp.F90": "d131ed59599412ced084e91a0235fb9d76de7c5c9876e7c764ed789298133e55",
+    "均匀网格/2DRBOpenacc.F90": "6896712768396ef1a24af2258e5c72b0bdb380e2ca00fbe04a51432be92fbfa7",
+    "ZhangHR/2DRBOpenaccZhangHR.F90": "081d98435b71759c3917cf379cefa6138a25519e4eb196b3f64750562d1c4d8f"
+  },
+  "method": {
+    "flow": "Wei D2Q9 BGK with explicit Fi=3wi*rho*gBeta*T*ciy",
+    "thermal": "D2Q9 BGK without source/filter",
+    "velocity": "raw sum(ci*f)/rho; no Guo prefactor or half-step correction; initial f=feq",
+    "equilibrium_completion": "standard second-order D2Q9 polynomial for rho and T, supported by Wei ref10 Shan1997 Eq2 but not explicitly printed by Wei",
+    "transport_completion": "nu=(tauf-.5)/3 and kappa=(taug-.5)/3, Shan1997 Eq7 and Eq10 with zero self interaction",
+    "temperature": "Thot1,Tcold0,Tref0; buoyancy uses raw T",
+    "walls": "Project half-link BB/ABB/specular; closed RB side adiabatic and side-heated case are adaptations",
+    "restart": "scheme WEI_BGK_2D_V1, metadata1004,14parameters, f/g and steady reference fields, strict Nu/Re timeline"
+  },
+  "completion_source": {
+    "paper": "Xiaowen Shan (1997), Simulation of Rayleigh-Benard convection using a lattice Boltzmann method",
+    "url": "https://arxiv.org/pdf/comp-gas/9612001",
+    "equations": [
+      "2",
+      "7",
+      "10"
+    ],
+    "qualification": "supports explicit equilibrium/transport completion; Shan velocity-shift force was not imported"
+  },
+  "paper_adaptations_documented_in": "FORMULATION_CN.md",
+  "checks": {
+    "validation_local.json": {
+      "passed": true,
+      "source_sha256": "ed9bb8d24c5ff6480fb2b1b025cb237e9f4bf05e0df27a90d5119ec8764f9ca0"
+    },
+    "transport_validation_local.json": {
+      "passed": true,
+      "source_sha256": "ed9bb8d24c5ff6480fb2b1b025cb237e9f4bf05e0df27a90d5119ec8764f9ca0"
+    },
+    "convection_validation_local.json": {
+      "passed": true,
+      "source_sha256": "ed9bb8d24c5ff6480fb2b1b025cb237e9f4bf05e0df27a90d5119ec8764f9ca0"
+    }
+  },
+  "known_benchmark_difference": "Low-Ra 32² side-heated Nu1.11562330 vs Wang1.1178, relative0.19473%; finite-grid/explicit-forcing effects possible but cause not established; not a reported Wei Nu target",
+  "NVIDIA_GPU_tested": false,
+  "high_Ra_benchmark_validated": false,
+  "grid_independence_validated": false,
+  "long_time_RB_statistics_validated": false,
+  "server_accessed": false,
+  "git_commit_or_push_performed": false,
+  "artifact_sha256": {
+    ".gitignore": "bd8ea88befd8950367d038295080db2794fce020ef59d4c63b2dd6d0d12d35ce",
+    "2DRBOpenaccWeiBGK.F90": "ed9bb8d24c5ff6480fb2b1b025cb237e9f4bf05e0df27a90d5119ec8764f9ca0",
+    "FORMULATION_CN.md": "3a9368ed946dd5962c23ea8be4459e9f429a6b3e4da3e1f5ac356c903f3c6bc8",
+    "README.md": "696218e68ed5c07848c11adca28182a4928bcc55df2be01c0246c8f3ba623daf",
+    "convection_validation_local.json": "728eec8befd0e52acace1d7e947909a46cf75de099cde325833cfaadf0f02451",
+    "transport_validation_local.json": "0e52a707a8abf582ac14d0fff06055d9fed936297f93ff3d64151564228a3d19",
+    "validation_local.json": "4de1d4da29dd2e97178bf7b73f93030981cda3ce6ad94f15419156047a5b6757",
+    "verify_benchmark.py": "9c0c90594c687ec54dd1b80650bdf1e511f50f06e47c619b7aeb746ea3c64ea7",
+    "verify_local.py": "f246ee657081d34075c31418e232e9ffecca5ba6e93bf2d4657e3c61dffde1b1",
+    "verify_transport.py": "627cf885c23fba0ea70254e4a5a4ff34719be4b0541e12e239f33e55079715c4"
+  }
+}

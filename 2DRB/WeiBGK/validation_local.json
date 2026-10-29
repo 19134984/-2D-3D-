@@ -1,0 +1,199 @@
+{
+  "passed": true,
+  "source_sha256": "ed9bb8d24c5ff6480fb2b1b025cb237e9f4bf05e0df27a90d5119ec8764f9ca0",
+  "backend": "GNU Fortran OpenACC host; not NVIDIA GPU",
+  "build_directory": "/private/var/folders/8b/v3x15k4n0t15dt0c077k7ctc0000gp/T/wei-bgk-local-a_y1xpkv",
+  "high_Ra_validated": false,
+  "grid_independence_validated": false,
+  "four_macro_compilations": {
+    "steady_side": true,
+    "steady_rb": true,
+    "unsteady_side": true,
+    "unsteady_rb": true
+  },
+  "mathematical_checks": {
+    "side": {
+      "D2Q9_weights": {
+        "max_abs_residual": 0.0,
+        "tolerance": 1e-15
+      },
+      "polynomial_equilibrium": {
+        "max_abs_residual": 2.7755575615628914e-17,
+        "tolerance": 2e-15
+      },
+      "equilibrium_mass": {
+        "max_abs_residual": 2.220446049250313e-16,
+        "tolerance": 2e-15
+      },
+      "equilibrium_jx": {
+        "max_abs_residual": 2.7755575615628914e-17,
+        "tolerance": 2e-15
+      },
+      "Eq1_BGK_and_Eq3_force": {
+        "max_abs_residual": 5.551115123125783e-17,
+        "tolerance": 2e-15
+      },
+      "Eq2_thermal_BGK": {
+        "max_abs_residual": 5.551115123125783e-17,
+        "tolerance": 2e-15
+      },
+      "production_flow_mass": {
+        "max_abs_residual": 1.1102230246251565e-16,
+        "tolerance": 5e-14
+      },
+      "production_force_jx": {
+        "max_abs_residual": 6.938893903907228e-18,
+        "tolerance": 5e-14
+      },
+      "production_force_jy": {
+        "max_abs_residual": 6.0482387598693316e-18,
+        "tolerance": 5e-14
+      },
+      "raw_momentum_u": {
+        "max_abs_residual": 0.0,
+        "tolerance": 5e-15
+      },
+      "raw_momentum_v_NO_half_force": {
+        "max_abs_residual": 0.0,
+        "tolerance": 5e-15
+      },
+      "linear_conduction_temperature": {
+        "max_abs_residual": 4.5852210917018965e-14,
+        "tolerance": 2e-10
+      },
+      "linear_conduction_heat_balance": {
+        "max_abs_residual": 3.062439191126032e-12,
+        "tolerance": 2e-09
+      },
+      "conduction_Nu_volume": {
+        "max_abs_residual": 2.6645352591003757e-15,
+        "tolerance": 2e-09
+      },
+      "conduction_Nu_hot": {
+        "max_abs_residual": 5.060396546241464e-13,
+        "tolerance": 2e-09
+      },
+      "conduction_Nu_cold": {
+        "max_abs_residual": 3.26405569239796e-14,
+        "tolerance": 2e-09
+      }
+    },
+    "rb": {
+      "D2Q9_weights": {
+        "max_abs_residual": 0.0,
+        "tolerance": 1e-15
+      },
+      "polynomial_equilibrium": {
+        "max_abs_residual": 2.7755575615628914e-17,
+        "tolerance": 2e-15
+      },
+      "equilibrium_mass": {
+        "max_abs_residual": 2.220446049250313e-16,
+        "tolerance": 2e-15
+      },
+      "equilibrium_jx": {
+        "max_abs_residual": 2.7755575615628914e-17,
+        "tolerance": 2e-15
+      },
+      "Eq1_BGK_and_Eq3_force": {
+        "max_abs_residual": 5.551115123125783e-17,
+        "tolerance": 2e-15
+      },
+      "Eq2_thermal_BGK": {
+        "max_abs_residual": 5.551115123125783e-17,
+        "tolerance": 2e-15
+      },
+      "production_flow_mass": {
+        "max_abs_residual": 2.220446049250313e-16,
+        "tolerance": 5e-14
+      },
+      "production_force_jx": {
+        "max_abs_residual": 3.469446951953614e-18,
+        "tolerance": 5e-14
+      },
+      "production_force_jy": {
+        "max_abs_residual": 1.0871244361535318e-17,
+        "tolerance": 5e-14
+      },
+      "raw_momentum_u": {
+        "max_abs_residual": 0.0,
+        "tolerance": 5e-15
+      },
+      "raw_momentum_v_NO_half_force": {
+        "max_abs_residual": 0.0,
+        "tolerance": 5e-15
+      },
+      "linear_conduction_temperature": {
+        "max_abs_residual": 4.96269692007445e-14,
+        "tolerance": 2e-10
+      },
+      "linear_conduction_heat_balance": {
+        "max_abs_residual": 3.360867140145274e-12,
+        "tolerance": 2e-09
+      },
+      "conduction_Nu_volume": {
+        "max_abs_residual": 4.884981308350689e-15,
+        "tolerance": 2e-09
+      },
+      "conduction_Nu_hot": {
+        "max_abs_residual": 5.841993555577574e-13,
+        "tolerance": 2e-09
+      },
+      "conduction_Nu_cold": {
+        "max_abs_residual": 3.2085445411667024e-14,
+        "tolerance": 2e-09
+      }
+    }
+  },
+  "integration_checks": {
+    "side_steady": {
+      "itc_total": 48,
+      "relative_mass_error": 5.092222939614051e-15,
+      "record_sizes": [
+        48,
+        8640,
+        8640,
+        2896
+      ],
+      "snapshots": 7
+    },
+    "side_steady_strict_restart": {
+      "checkpoint_bitwise_equal": true,
+      "shared_snapshots_bitwise_equal": true,
+      "history_preserved": true,
+      "completed_horizon_preserved": true,
+      "invalid_restarts_rejected": {
+        "missing_nu": true,
+        "ahead_nu": true,
+        "bad_time": true,
+        "bad_parameters": true,
+        "bad_binary": true
+      }
+    },
+    "rb_unsteady": {
+      "itc_total": 48,
+      "relative_mass_error": 5.684341886080802e-15,
+      "record_sizes": [
+        48,
+        8640,
+        8640
+      ],
+      "snapshots": 6
+    },
+    "rb_unsteady_strict_restart": {
+      "checkpoint_bitwise_equal": true,
+      "shared_snapshots_bitwise_equal": true,
+      "history_preserved": true,
+      "completed_horizon_preserved": true,
+      "invalid_restarts_rejected": {
+        "missing_nu": true,
+        "ahead_nu": true,
+        "bad_time": true,
+        "bad_parameters": true,
+        "bad_binary": true
+      }
+    }
+  },
+  "source_unchanged": true,
+  "elapsed_seconds": 17.066490708
+}

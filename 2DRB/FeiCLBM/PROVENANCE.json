@@ -1,0 +1,80 @@
+{
+  "created_date": "2026-10-29",
+  "repository_head_at_creation": "42d6645409e90d13bf630bd5628e94562870bbc3",
+  "implementation": {
+    "path": "2DRB/FeiCLBM/2DRBOpenaccFeiCLBM.F90",
+    "sha256": "26f46b306316e868b89e5894f59324d738e538bb5c92a54ffd820acd6b5cebe7",
+    "dimension": 2,
+    "grid": "single uniform cell-centered grid",
+    "execution": "single GPU OpenACC source; GNU OpenACC host checked"
+  },
+  "paper": {
+    "title": "Modeling incompressible thermal flows using a central-moments-based lattice Boltzmann method",
+    "authors": [
+      "Linlin Fei",
+      "Kai Hong Luo",
+      "Chuandong Lin",
+      "Qing Li"
+    ],
+    "year": 2018,
+    "doi": "10.1016/j.ijheatmasstransfer.2017.12.052",
+    "url": "https://doi.org/10.1016/j.ijheatmasstransfer.2017.12.052",
+    "local_pdf": "/Users/Admin/Documents/References/05_论文原文PDF/Linlin Fei-Kai Hong Luo-2018-Modeling incompressible thermal flows using a central-moments-based lattice Boltzmann method.pdf",
+    "sha256": "675f0da30ac7ee67d9eeb5044d057e436bcbd42a1d69568461123c5a8ad54390",
+    "formula_pages_visually_checked": [
+      3,
+      4
+    ]
+  },
+  "user_scope": "Use the paper flow model when present; 2D uniform grid, single GPU OpenACC, side-heated steady and closed RB unsteady, project diagnostics/restart and code style",
+  "primary_numerical_baseline": "2DRB/均匀网格/2DRBOpenmp.F90",
+  "OpenACC_reference": "2DRB/均匀网格/2DRBOpenacc.F90",
+  "output_restart_infrastructure_donor": "2DRB/ZhangHR/2DRBOpenaccZhangHR.F90",
+  "protected_sources_sha256": {
+    "均匀网格/2DRBOpenmp.F90": "d131ed59599412ced084e91a0235fb9d76de7c5c9876e7c764ed789298133e55",
+    "均匀网格/2DRBOpenacc.F90": "6896712768396ef1a24af2258e5c72b0bdb380e2ca00fbe04a51432be92fbfa7",
+    "ZhangHR/2DRBOpenaccZhangHR.F90": "081d98435b71759c3917cf379cefa6138a25519e4eb196b3f64750562d1c4d8f",
+    "EntropicADE/2DRBOpenaccEntropicADE.F90": "b1526c1fd85bfeeac6a52bf742299510809a9d83cf45b753e9fb292b8730841e"
+  },
+  "method": {
+    "flow": "Fei D2Q9 CLBM, continuous central equilibrium, coupled20/02 relaxation block, complete binomial inverse shift",
+    "forcing": "Paper Eq3 normalized reference rho0=1 force density, Fy=gBeta*(T-Tref); consistent central C and (I-S/2), physical velocity half-force; no instantaneous-rho multiplier",
+    "thermal": "Fei D2Q5 CLBM, cT squared=0.5, continuous central equilibrium and velocity squared terms in raw second moments",
+    "stabilizers": "No extra filter, LES, population clipping or entropy positivity mechanism",
+    "walls": "Project half-link BB/ABB and adiabatic reflection; different from original default NEBB/NEE",
+    "restart": "Full f9/g5; steady prior reference fields/errors; model/grid/17 parameters/version1003 and Nu/Re history validation"
+  },
+  "paper_adaptations_documented_in": "FORMULATION_CN.md",
+  "checks": {
+    "validation_local.json": {
+      "passed": true,
+      "source_sha256": "26f46b306316e868b89e5894f59324d738e538bb5c92a54ffd820acd6b5cebe7"
+    },
+    "transport_validation_local.json": {
+      "passed": true,
+      "source_sha256": "26f46b306316e868b89e5894f59324d738e538bb5c92a54ffd820acd6b5cebe7"
+    },
+    "convection_validation_local.json": {
+      "passed": true,
+      "source_sha256": "26f46b306316e868b89e5894f59324d738e538bb5c92a54ffd820acd6b5cebe7"
+    }
+  },
+  "NVIDIA_GPU_tested": false,
+  "high_Ra_benchmark_validated": false,
+  "grid_independence_validated": false,
+  "long_time_RB_statistics_validated": false,
+  "server_accessed": false,
+  "git_commit_or_push_performed": false,
+  "artifact_sha256": {
+    ".gitignore": "bd8ea88befd8950367d038295080db2794fce020ef59d4c63b2dd6d0d12d35ce",
+    "2DRBOpenaccFeiCLBM.F90": "26f46b306316e868b89e5894f59324d738e538bb5c92a54ffd820acd6b5cebe7",
+    "FORMULATION_CN.md": "ab49ead0717290137662b4d8e2fb58dee1fde57113598945f06cbb526448f05c",
+    "README.md": "db52fd786118384fb27bcdebe9e57f1e54bd618aa2d6a172c709dc89c58492aa",
+    "convection_validation_local.json": "b2e23ce179fb4b4b85ffcb41f0008bec22d1c41ec5d781e004ac23961cf634c4",
+    "transport_validation_local.json": "d5f0fd48ffd2c741b57316147c3feb4028732c8259ea3b4c820f66f3cf4bfc3c",
+    "validation_local.json": "acd53229ed57cf34fb16783cfb42384e777108ca7d259653829f138d564d8172",
+    "verify_benchmark.py": "3b5820a939bc9aeef233bafcffcf1b41b041c4d7479f871ba69a8c012ba137b0",
+    "verify_local.py": "ea172323a42c26c80af7a0805515c72e2c95b0de32e502ab8cc90691ecf04ab1",
+    "verify_transport.py": "9de2ace591fd51025d159ee1ac522f73124e4a0f20422dc38a0036d05192980a"
+  }
+}

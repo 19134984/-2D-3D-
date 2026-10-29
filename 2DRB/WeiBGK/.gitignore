@@ -1,0 +1,15 @@
+_local_checks/
+__pycache__/
+*.mod
+*.o
+*.exe
+*.bin
+*.meta
+*.plt
+*.dat
+SimulationSettings*.txt
+convergence_*.txt
+NuRe_*.txt
+*Snapshot-readme
+*Tecplot-readme
+reloadFile*-readme

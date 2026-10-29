@@ -1,0 +1,37 @@
+{
+  "passed": true,
+  "source_sha256": "081d98435b71759c3917cf379cefa6138a25519e4eb196b3f64750562d1c4d8f",
+  "verified_at_utc": "2026-10-29T12:13:56.871806+00:00",
+  "case": "2D closed side-heated square cavity, steady",
+  "Ra": 1000,
+  "Pr": 0.71,
+  "Ma": 0.05,
+  "grid": [
+    32,
+    32
+  ],
+  "maximum_steps": 100000,
+  "backend": "GNU Fortran OpenACC host; not NVIDIA GPU",
+  "build_directory": "/private/var/folders/8b/v3x15k4n0t15dt0c077k7ctc0000gp/T/zhang-hr-convection-esd59paq",
+  "reference": {
+    "paper": "Wang et al. (2013), DOI 10.1016/j.camwa.2012.07.001, Table 2/9",
+    "Nu": 1.1178
+  },
+  "limitations": "One low-Ra grid; no grid independence, high-Ra RB or GPU validation",
+  "metrics": {
+    "Nu_global": 1.1181345084425125,
+    "Nu_hot": 1.1182522817271188,
+    "Nu_cold": 1.1182522817271145,
+    "final_check_step": 16000,
+    "errorU": 5.92335182355652e-08,
+    "errorT": 1.5709402228200127e-09,
+    "Nu_relative_reference_error": 0.0002992560766796881,
+    "maximum_wall_volume_Nu_difference": 0.00011777328460627068
+  },
+  "checks": {
+    "steady_thresholds_met": true,
+    "Nu_within_two_percent": true,
+    "wall_volume_Nu_difference_below_0p02": true
+  },
+  "source_unchanged": true
+}

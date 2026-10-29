@@ -1,0 +1,311 @@
+{
+  "passed": true,
+  "verified_at_utc": "2026-10-29T11:54:50.426523+00:00",
+  "source": "/Users/Admin/Documents/References/-2D-3D-/2DRB/EntropicADE/2DRBOpenaccEntropicADE.F90",
+  "source_sha256": "b1526c1fd85bfeeac6a52bf742299510809a9d83cf45b753e9fb292b8730841e",
+  "compiler": "/private/tmp/feng-fortran-runtime/gfortran",
+  "backend": "GNU Fortran OpenACC host; NVIDIA GPU not tested",
+  "build_directory": "/private/var/folders/8b/v3x15k4n0t15dt0c077k7ctc0000gp/T/feng-ade-local-mljcwt3g",
+  "high_Ra_accuracy_validated": false,
+  "grid_independence_validated": false,
+  "scope": "Actual production kernels; moment/positive-branch/conduction and finite-step output/restart checks",
+  "compiler_version": "GNU Fortran (Homebrew GCC 16.2.0) 16.2.0",
+  "four_macro_compilations": {
+    "steady_side": true,
+    "steady_rb": true,
+    "unsteady_side": true,
+    "unsteady_rb": true
+  },
+  "mathematical_checks": {
+    "side_heated": {
+      "equilibrium_mass": {
+        "max_abs_residual": 4.440892098500626e-16,
+        "tolerance": 5e-14
+      },
+      "equilibrium_flux_x": {
+        "max_abs_residual": 5.551115123125783e-17,
+        "tolerance": 5e-14
+      },
+      "equilibrium_flux_y": {
+        "max_abs_residual": 4.683753385137379e-17,
+        "tolerance": 5e-14
+      },
+      "equilibrium_fixed_point": {
+        "max_abs_residual": 1.1102230246251565e-16,
+        "tolerance": 5e-14
+      },
+      "equilibrium_fallback_unneeded": {
+        "max_abs_residual": 0.0,
+        "tolerance": 1e-14
+      },
+      "ADE_lambda_with_J": {
+        "max_abs_residual": 2.398081733190338e-14,
+        "tolerance": 2e-11
+      },
+      "thermal_collision_scalar_conservation": {
+        "max_abs_residual": 6.661338147750939e-16,
+        "tolerance": 5e-13
+      },
+      "full_increment_alpha": {
+        "max_abs_residual": 1.2628786905111156e-15,
+        "tolerance": 8e-13
+      },
+      "post_x_flux_including_fallback": {
+        "max_abs_residual": 3.3306690738754696e-16,
+        "tolerance": 8e-13
+      },
+      "post_y_flux_including_fallback": {
+        "max_abs_residual": 3.3306690738754696e-16,
+        "tolerance": 8e-13
+      },
+      "Luo_collision_mass": {
+        "max_abs_residual": 1.1102230246251565e-16,
+        "tolerance": 5e-14
+      },
+      "Luo_collision_x_momentum": {
+        "max_abs_residual": 1.3877787807814457e-17,
+        "tolerance": 5e-14
+      },
+      "Luo_collision_y_force_increment": {
+        "max_abs_residual": 2.1379323346935354e-17,
+        "tolerance": 5e-14
+      },
+      "linear_conduction_temperature": {
+        "max_abs_residual": 2.7977620220553945e-14,
+        "tolerance": 2e-10
+      },
+      "linear_conduction_heat_balance": {
+        "max_abs_residual": 2.3874235921539366e-12,
+        "tolerance": 2e-09
+      },
+      "conduction_Nu_volume": {
+        "max_abs_residual": 2.220446049250313e-16,
+        "tolerance": 2e-09
+      },
+      "conduction_Nu_hot": {
+        "max_abs_residual": 1.687538997430238e-13,
+        "tolerance": 2e-09
+      },
+      "conduction_Nu_cold": {
+        "max_abs_residual": 2.0605739337042905e-13,
+        "tolerance": 2e-09
+      }
+    },
+    "rayleigh_benard": {
+      "equilibrium_mass": {
+        "max_abs_residual": 4.440892098500626e-16,
+        "tolerance": 5e-14
+      },
+      "equilibrium_flux_x": {
+        "max_abs_residual": 5.551115123125783e-17,
+        "tolerance": 5e-14
+      },
+      "equilibrium_flux_y": {
+        "max_abs_residual": 4.683753385137379e-17,
+        "tolerance": 5e-14
+      },
+      "equilibrium_fixed_point": {
+        "max_abs_residual": 1.1102230246251565e-16,
+        "tolerance": 5e-14
+      },
+      "equilibrium_fallback_unneeded": {
+        "max_abs_residual": 0.0,
+        "tolerance": 1e-14
+      },
+      "ADE_lambda_with_J": {
+        "max_abs_residual": 2.353672812205332e-14,
+        "tolerance": 2e-11
+      },
+      "thermal_collision_scalar_conservation": {
+        "max_abs_residual": 6.661338147750939e-16,
+        "tolerance": 5e-13
+      },
+      "full_increment_alpha": {
+        "max_abs_residual": 1.2906342661267445e-15,
+        "tolerance": 8e-13
+      },
+      "post_x_flux_including_fallback": {
+        "max_abs_residual": 2.7755575615628914e-16,
+        "tolerance": 8e-13
+      },
+      "post_y_flux_including_fallback": {
+        "max_abs_residual": 4.440892098500626e-16,
+        "tolerance": 8e-13
+      },
+      "Luo_collision_mass": {
+        "max_abs_residual": 0.0,
+        "tolerance": 5e-14
+      },
+      "Luo_collision_x_momentum": {
+        "max_abs_residual": 2.42861286636753e-17,
+        "tolerance": 5e-14
+      },
+      "Luo_collision_y_force_increment": {
+        "max_abs_residual": 2.0045034696773018e-18,
+        "tolerance": 5e-14
+      },
+      "linear_conduction_temperature": {
+        "max_abs_residual": 2.930988785010413e-14,
+        "tolerance": 2e-10
+      },
+      "linear_conduction_heat_balance": {
+        "max_abs_residual": 3.211653165635653e-12,
+        "tolerance": 2e-09
+      },
+      "conduction_Nu_volume": {
+        "max_abs_residual": 6.661338147750939e-16,
+        "tolerance": 2e-09
+      },
+      "conduction_Nu_hot": {
+        "max_abs_residual": 2.5557334026871104e-13,
+        "tolerance": 2e-09
+      },
+      "conduction_Nu_cold": {
+        "max_abs_residual": 2.716715741257758e-13,
+        "tolerance": 2e-09
+      }
+    }
+  },
+  "integration_checks": {
+    "side_steady": {
+      "itc_total": 48,
+      "relative_mass_error": 5.921189464667501e-16,
+      "finite_Nu_Re_samples": {
+        "Nu_VolAvg": 1,
+        "Re_VolAvg": 1
+      },
+      "snapshot_count": 7,
+      "entropy_history_samples": 1,
+      "checkpoint_record_bytes": [
+        48,
+        8640,
+        8640,
+        4320,
+        2896
+      ]
+    },
+    "side_steady_strict_restart": {
+      "checkpoint_bitwise_equal": true,
+      "snapshot_bitwise_equal": true,
+      "Nu_Re_history_preserved": true,
+      "entropy_history_preserved": true,
+      "entropy_final_row_bitwise_equal": true,
+      "entropy_full_history_bitwise_equal": false,
+      "entropy_history_comparison_note": "Steady stop at32 adds a final sample; compare old prefix and final48 row",
+      "completed_target_restart_preserved": true,
+      "after": {
+        "itc_total": 48,
+        "relative_mass_error": 5.921189464667501e-16,
+        "finite_Nu_Re_samples": {
+          "Nu_VolAvg": 2,
+          "Re_VolAvg": 2
+        },
+        "snapshot_count": 8,
+        "entropy_history_samples": 2,
+        "checkpoint_record_bytes": [
+          48,
+          8640,
+          8640,
+          4320,
+          2896
+        ]
+      }
+    },
+    "side_steady_invalid_entropy_restarts": {
+      "missing": {
+        "rejected_by_entropy_validator": true,
+        "checkpoint_and_histories_preserved": true
+      },
+      "short": {
+        "rejected_by_entropy_validator": true,
+        "checkpoint_and_histories_preserved": true
+      },
+      "ahead": {
+        "rejected_by_entropy_validator": true,
+        "checkpoint_and_histories_preserved": true
+      },
+      "duplicate_tail": {
+        "rejected_by_entropy_validator": true,
+        "checkpoint_and_histories_preserved": true
+      },
+      "wrong_time": {
+        "rejected_by_entropy_validator": true,
+        "checkpoint_and_histories_preserved": true
+      },
+      "wrong_step": {
+        "rejected_by_entropy_validator": true,
+        "checkpoint_and_histories_preserved": true
+      }
+    },
+    "rb_unsteady": {
+      "itc_total": 48,
+      "relative_mass_error": 1.1842378929335003e-16,
+      "finite_Nu_Re_samples": {
+        "Nu_VolAvg": 6,
+        "Re_VolAvg": 6
+      },
+      "snapshot_count": 6,
+      "entropy_history_samples": 6,
+      "checkpoint_record_bytes": [
+        48,
+        8640,
+        8640,
+        4320
+      ]
+    },
+    "rb_unsteady_strict_restart": {
+      "checkpoint_bitwise_equal": true,
+      "snapshot_bitwise_equal": true,
+      "Nu_Re_history_preserved": true,
+      "entropy_history_preserved": true,
+      "entropy_final_row_bitwise_equal": true,
+      "entropy_full_history_bitwise_equal": true,
+      "entropy_history_comparison_note": "Every RB sample and header are bitwise equal",
+      "completed_target_restart_preserved": true,
+      "after": {
+        "itc_total": 48,
+        "relative_mass_error": 1.1842378929335003e-16,
+        "finite_Nu_Re_samples": {
+          "Nu_VolAvg": 6,
+          "Re_VolAvg": 6
+        },
+        "snapshot_count": 6,
+        "entropy_history_samples": 6,
+        "checkpoint_record_bytes": [
+          48,
+          8640,
+          8640,
+          4320
+        ]
+      }
+    },
+    "rb_unsteady_invalid_entropy_restarts": {
+      "missing": {
+        "rejected_by_entropy_validator": true,
+        "checkpoint_and_histories_preserved": true
+      },
+      "short": {
+        "rejected_by_entropy_validator": true,
+        "checkpoint_and_histories_preserved": true
+      },
+      "ahead": {
+        "rejected_by_entropy_validator": true,
+        "checkpoint_and_histories_preserved": true
+      },
+      "duplicate_tail": {
+        "rejected_by_entropy_validator": true,
+        "checkpoint_and_histories_preserved": true
+      },
+      "wrong_time": {
+        "rejected_by_entropy_validator": true,
+        "checkpoint_and_histories_preserved": true
+      },
+      "wrong_step": {
+        "rejected_by_entropy_validator": true,
+        "checkpoint_and_histories_preserved": true
+      }
+    }
+  },
+  "source_unchanged": true,
+  "elapsed_seconds": 18.646
+}

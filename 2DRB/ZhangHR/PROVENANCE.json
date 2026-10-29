@@ -1,0 +1,95 @@
+{
+  "created_date": "2026-10-29",
+  "repository_head_at_creation": "42d6645409e90d13bf630bd5628e94562870bbc3",
+  "implementation": {
+    "path": "2DRB/ZhangHR/2DRBOpenaccZhangHR.F90",
+    "sha256": "081d98435b71759c3917cf379cefa6138a25519e4eb196b3f64750562d1c4d8f",
+    "dimension": 2,
+    "grid": "single uniform cell-centered grid",
+    "execution": "single GPU OpenACC source; GNU OpenACC host checked"
+  },
+  "paper": {
+    "title": "Advection–Diffusion Lattice Boltzmann Method With and Without Dynamical Filter",
+    "authors": [
+      "Zhihong Zhang",
+      "Zhiqiang Li",
+      "Yunke Wu"
+    ],
+    "year": 2022,
+    "doi": "10.3389/fphy.2022.875628",
+    "url": "https://doi.org/10.3389/fphy.2022.875628",
+    "local_pdf": "/Users/Admin/Documents/References/05_论文原文PDF/Zhihong Zhang-Yunke Wu-2022-Advection–Diffusion Lattice Boltzmann Method With and Without Dynamical Filter.pdf",
+    "sha256": "4ce689df75ca0e45be49c01034c12cf4070059a54c115fb4970acab629d2ff20",
+    "formula_pages_visually_checked": [
+      3,
+      4,
+      5,
+      6
+    ],
+    "benchmark_pages_visually_checked": [
+      8,
+      10
+    ]
+  },
+  "user_scope": "Same 2D uniform-grid single-GPU OpenACC / Luo MRT flow choice as prior Feng implementation; side-heated steady and closed RB unsteady; no multiblock or Git commit",
+  "primary_numerical_baseline": "2DRB/均匀网格/2DRBOpenmp.F90",
+  "flow_kernel_and_OpenACC_reference": "2DRB/均匀网格/2DRBOpenacc.F90",
+  "output_restart_infrastructure_donor": "2DRB/EntropicADE/2DRBOpenaccEntropicADE.F90",
+  "protected_sources_sha256": {
+    "均匀网格/2DRBOpenmp.F90": "d131ed59599412ced084e91a0235fb9d76de7c5c9876e7c764ed789298133e55",
+    "均匀网格/2DRBOpenacc.F90": "6896712768396ef1a24af2258e5c72b0bdb380e2ca00fbe04a51432be92fbfa7",
+    "EntropicADE/2DRBOpenaccEntropicADE.F90": "b1526c1fd85bfeeac6a52bf742299510809a9d83cf45b753e9fb292b8730841e"
+  },
+  "method": {
+    "flow": "Luo/Wang D2Q9 MRT; project adaptation, not the original paper RR flow",
+    "thermal": "Zhang first-order scalar equilibrium, PR/FD first-moment mixture, explicit dt(Cu) correction; dt=dx=1",
+    "default_model": "HR, beta=0.95, filter OFF",
+    "other_models": "PR1st and corrected BGK; PR2nd excluded due to ambiguous original formula",
+    "filter": "Original pointwise nonconservative dynamic macro filter; simultaneous 2D stencil; forward-difference sensor; scalar-range threshold from text; g unchanged and independent filtered T saved",
+    "startup_history": "previous Cu=initial Cu, first-step dt(Cu)=0",
+    "coupling": "Same-time-layer collisions, then streaming/walls, new T, new half-force velocity; initial f includes -F/2",
+    "walls": "Project half-link BB/ABB/specular; scalar ghost extrapolation for HR/filter is a project extension",
+    "restart": "T, previous Cu, per-cell filter accumulators and sigma stored with f/g; steady references and metadata20/version1002; strict histories checked"
+  },
+  "paper_adaptations_documented_in": "FORMULATION_CN.md",
+  "checks": {
+    "validation_local.json": {
+      "passed": true,
+      "source_sha256": "081d98435b71759c3917cf379cefa6138a25519e4eb196b3f64750562d1c4d8f"
+    },
+    "transport_validation_local.json": {
+      "passed": true,
+      "source_sha256": "081d98435b71759c3917cf379cefa6138a25519e4eb196b3f64750562d1c4d8f"
+    },
+    "convection_validation_local.json": {
+      "passed": true,
+      "source_sha256": "081d98435b71759c3917cf379cefa6138a25519e4eb196b3f64750562d1c4d8f"
+    }
+  },
+  "known_benchmark_difference": "Pe=1 Gaussian BGK L2=0.0227457769 vs paper 0.022573 (0.7654% relative difference); cause not established. Other seven table cases differ by at most 0.041%.",
+  "skills_installed": {
+    "count": 9,
+    "files_verified": 20,
+    "location": "/Users/Admin/.codex/skills",
+    "manifest": "/Users/Admin/Documents/References/99_处理日志/2026-10-29-仓库Skills安装清单.json"
+  },
+  "NVIDIA_GPU_tested": false,
+  "high_Ra_benchmark_validated": false,
+  "grid_independence_validated": false,
+  "long_time_RB_statistics_validated": false,
+  "filter_wall_heat_budget_closed": false,
+  "server_accessed": false,
+  "git_commit_or_push_performed": false,
+  "artifact_sha256": {
+    ".gitignore": "e291c683e87185a3de236e973d4336c8855415ab85c8840b027f22c06e91efc2",
+    "2DRBOpenaccZhangHR.F90": "081d98435b71759c3917cf379cefa6138a25519e4eb196b3f64750562d1c4d8f",
+    "FORMULATION_CN.md": "67197dccde7797c88b6b61c55c2800363be4094b7dbdf0e724b0b8aaf4a3b603",
+    "README.md": "ae7ba797a615f5af8abe6e542ca8394ed80e569fab3d7e9abb0510611b9adf3c",
+    "convection_validation_local.json": "4ca241d85829bde073b3ec81d05f90fd87bbc1cd3b7b7d777f5dc1433c179704",
+    "transport_validation_local.json": "a574aa4821aaeac14381dc0c81df8f62523b28adef5d86bc9b33229af99aee3b",
+    "validation_local.json": "949830627b181cd7fd4ee9390914ce183ca885805988e73fc2b48a8175224b29",
+    "verify_benchmark.py": "c8131f3b2949efd45485d84d21d53107750df90a310a9a8fb7a219b8d1df4394",
+    "verify_local.py": "a554e7fbc8c90c8552f9112155c134446753eaa9240152d1f0adde9b443c3389",
+    "verify_transport.py": "7a47b7f32428a1c7ddb591bc497be5d2099715f6a365e0738c5f7ad59f1c8da0"
+  }
+}

@@ -1,0 +1,90 @@
+{
+  "passed": true,
+  "source_sha256": "26f46b306316e868b89e5894f59324d738e538bb5c92a54ffd820acd6b5cebe7",
+  "verified_at_utc": "2026-10-29T12:31:21.209728+00:00",
+  "backend": "GNU OpenACC host; NVIDIA GPU not tested",
+  "build_directory": "/private/var/folders/8b/v3x15k4n0t15dt0c077k7ctc0000gp/T/fei-clbm-transport-j40uak5_",
+  "cases": [
+    {
+      "name": "shear_viscosity",
+      "passed": true,
+      "checks": {
+        "coefficient_within_one_percent": true,
+        "wave_endpoint_within_one_percent": true,
+        "mass_conserved": true,
+        "temperature_conserved": true,
+        "positive_density": true
+      },
+      "grid": [
+        6,
+        100
+      ],
+      "steps": 4000,
+      "target_coefficient": 0.05,
+      "measured_coefficient": 0.05000806090264255,
+      "relative_coefficient_error": 0.00016121805285096436,
+      "maximum_phase_error_radians": 1.1345918994207312e-11,
+      "relative_analytical_wave_endpoint_error": 0.00042663136034036347,
+      "maximum_relative_mass_drift": 9.473903143468002e-16,
+      "maximum_relative_temperature_drift": 0.0,
+      "prescribed_advection": 0.0,
+      "Ma": 0.0,
+      "final_t_star": 0.7895683520871488
+    },
+    {
+      "name": "temperature_rest",
+      "passed": true,
+      "checks": {
+        "coefficient_within_one_percent": true,
+        "wave_endpoint_within_one_percent": true,
+        "mass_conserved": true,
+        "temperature_conserved": true,
+        "positive_density": true
+      },
+      "grid": [
+        6,
+        100
+      ],
+      "steps": 10132,
+      "target_coefficient": 0.05,
+      "measured_coefficient": 0.050004275979560524,
+      "relative_coefficient_error": 8.551959121039232e-05,
+      "maximum_phase_error_radians": 4.563222391210962e-13,
+      "relative_analytical_wave_endpoint_error": 0.0006446950170975604,
+      "maximum_relative_mass_drift": 0.0,
+      "maximum_relative_temperature_drift": 5.684341886080802e-15,
+      "prescribed_advection": 0.0,
+      "Ma": 0.0,
+      "final_t_star": 1.9999766358367481
+    },
+    {
+      "name": "paper_moving_temperature_Ma0p3",
+      "passed": true,
+      "checks": {
+        "coefficient_within_one_percent": true,
+        "wave_endpoint_within_one_percent": true,
+        "mass_conserved": true,
+        "temperature_conserved": true,
+        "positive_density": true
+      },
+      "grid": [
+        6,
+        100
+      ],
+      "steps": 10132,
+      "target_coefficient": 0.05,
+      "measured_coefficient": 0.050006913465670745,
+      "relative_coefficient_error": 0.0001382693134148738,
+      "maximum_phase_error_radians": 0.0076901151778186235,
+      "relative_analytical_wave_endpoint_error": 0.007723719324965438,
+      "maximum_relative_mass_drift": 0.0,
+      "maximum_relative_temperature_drift": 4.547473508864641e-15,
+      "prescribed_advection": 0.17320508075688773,
+      "Ma": 0.3,
+      "final_t_star": 1.9999766358367481
+    }
+  ],
+  "qualification": "Periodic production kernels; no high-Ra, walls or long-time turbulence validation",
+  "source_unchanged": true,
+  "elapsed_seconds": 6.677
+}

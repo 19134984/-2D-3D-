@@ -1,0 +1,14 @@
+# 本地编译及小网格检查产物；源码、说明与验证摘要保留在 Git 中。
+_local_checks/
+__pycache__/
+*.mod
+*.o
+*.exe
+*.bin
+*.meta
+*.plt
+*.dat
+SimulationSettings*.txt
+convergence_*.txt
+NuRe_*.txt
+EntropyHistory*.txt

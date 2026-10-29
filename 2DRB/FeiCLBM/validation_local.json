@@ -1,0 +1,281 @@
+{
+  "passed": true,
+  "verified_at_utc": "2026-10-29T12:32:07.688697+00:00",
+  "source_sha256": "26f46b306316e868b89e5894f59324d738e538bb5c92a54ffd820acd6b5cebe7",
+  "backend": "GNU Fortran OpenACC host; NVIDIA GPU not tested",
+  "build_directory": "/private/var/folders/8b/v3x15k4n0t15dt0c077k7ctc0000gp/T/fei-clbm-local-qdd_lkoi",
+  "high_Ra_validated": false,
+  "grid_independence_validated": false,
+  "four_macro_compilations": {
+    "steady_rb": true,
+    "steady_side": true,
+    "unsteady_rb": true,
+    "unsteady_side": true
+  },
+  "mathematical_checks": {
+    "side_default": {
+      "flow_all_central_moments_Eq8": {
+        "max_abs_residual": 2.220446049250313e-16,
+        "tolerance": 8e-14
+      },
+      "flow_mass": {
+        "max_abs_residual": 2.220446049250313e-16,
+        "tolerance": 5e-14
+      },
+      "flow_x_force_increment": {
+        "max_abs_residual": 4.0766001685454967e-17,
+        "tolerance": 5e-14
+      },
+      "flow_y_force_increment": {
+        "max_abs_residual": 3.2959746043559335e-17,
+        "tolerance": 5e-14
+      },
+      "continuous_flow_central_equilibrium": {
+        "max_abs_residual": 2.220446049250313e-16,
+        "tolerance": 8e-14
+      },
+      "thermal_continuous_central_equilibrium": {
+        "max_abs_residual": 1.1102230246251565e-16,
+        "tolerance": 5e-14
+      },
+      "thermal_all_central_moments_Eq19": {
+        "max_abs_residual": 1.1102230246251565e-16,
+        "tolerance": 5e-14
+      },
+      "thermal_scalar_conservation": {
+        "max_abs_residual": 1.1102230246251565e-16,
+        "tolerance": 5e-14
+      },
+      "reference_density_force_wrapper": {
+        "max_abs_residual": 0.0,
+        "tolerance": 5e-14
+      },
+      "reference_density_momentum_wrapper": {
+        "max_abs_residual": 1.0970982491074512e-17,
+        "tolerance": 5e-14
+      },
+      "new_force_half_step_wrapper": {
+        "max_abs_residual": 6.453755783367328e-18,
+        "tolerance": 5e-14
+      },
+      "linear_conduction_temperature": {
+        "max_abs_residual": 2.7755575615628914e-17,
+        "tolerance": 2e-10
+      },
+      "linear_conduction_heat_balance": {
+        "max_abs_residual": 2.220446049250313e-16,
+        "tolerance": 2e-09
+      },
+      "conduction_Nu_volume": {
+        "max_abs_residual": 0.0,
+        "tolerance": 2e-09
+      },
+      "conduction_Nu_hot": {
+        "max_abs_residual": 0.0,
+        "tolerance": 2e-09
+      },
+      "conduction_Nu_cold": {
+        "max_abs_residual": 0.0,
+        "tolerance": 2e-09
+      }
+    },
+    "rb_default": {
+      "flow_all_central_moments_Eq8": {
+        "max_abs_residual": 2.220446049250313e-16,
+        "tolerance": 8e-14
+      },
+      "flow_mass": {
+        "max_abs_residual": 2.220446049250313e-16,
+        "tolerance": 5e-14
+      },
+      "flow_x_force_increment": {
+        "max_abs_residual": 4.163336342344337e-17,
+        "tolerance": 5e-14
+      },
+      "flow_y_force_increment": {
+        "max_abs_residual": 4.683753385137379e-17,
+        "tolerance": 5e-14
+      },
+      "continuous_flow_central_equilibrium": {
+        "max_abs_residual": 2.220446049250313e-16,
+        "tolerance": 8e-14
+      },
+      "thermal_continuous_central_equilibrium": {
+        "max_abs_residual": 1.1102230246251565e-16,
+        "tolerance": 5e-14
+      },
+      "thermal_all_central_moments_Eq19": {
+        "max_abs_residual": 1.1796119636642288e-16,
+        "tolerance": 5e-14
+      },
+      "thermal_scalar_conservation": {
+        "max_abs_residual": 1.1102230246251565e-16,
+        "tolerance": 5e-14
+      },
+      "reference_density_force_wrapper": {
+        "max_abs_residual": 0.0,
+        "tolerance": 5e-14
+      },
+      "reference_density_momentum_wrapper": {
+        "max_abs_residual": 2.9760079085306215e-17,
+        "tolerance": 5e-14
+      },
+      "new_force_half_step_wrapper": {
+        "max_abs_residual": 1.7506053437378252e-17,
+        "tolerance": 5e-14
+      },
+      "linear_conduction_temperature": {
+        "max_abs_residual": 1.1102230246251565e-16,
+        "tolerance": 2e-10
+      },
+      "linear_conduction_heat_balance": {
+        "max_abs_residual": 0.0,
+        "tolerance": 2e-09
+      },
+      "conduction_Nu_volume": {
+        "max_abs_residual": 0.0,
+        "tolerance": 2e-09
+      },
+      "conduction_Nu_hot": {
+        "max_abs_residual": 0.0,
+        "tolerance": 2e-09
+      },
+      "conduction_Nu_cold": {
+        "max_abs_residual": 0.0,
+        "tolerance": 2e-09
+      }
+    },
+    "side_nondefault_rates": {
+      "flow_all_central_moments_Eq8": {
+        "max_abs_residual": 2.220446049250313e-16,
+        "tolerance": 8e-14
+      },
+      "flow_mass": {
+        "max_abs_residual": 2.220446049250313e-16,
+        "tolerance": 5e-14
+      },
+      "flow_x_force_increment": {
+        "max_abs_residual": 4.163336342344337e-17,
+        "tolerance": 5e-14
+      },
+      "flow_y_force_increment": {
+        "max_abs_residual": 4.5102810375396984e-17,
+        "tolerance": 5e-14
+      },
+      "continuous_flow_central_equilibrium": {
+        "max_abs_residual": 2.220446049250313e-16,
+        "tolerance": 8e-14
+      },
+      "thermal_continuous_central_equilibrium": {
+        "max_abs_residual": 1.1102230246251565e-16,
+        "tolerance": 5e-14
+      },
+      "thermal_all_central_moments_Eq19": {
+        "max_abs_residual": 1.1102230246251565e-16,
+        "tolerance": 5e-14
+      },
+      "thermal_scalar_conservation": {
+        "max_abs_residual": 1.1102230246251565e-16,
+        "tolerance": 5e-14
+      },
+      "reference_density_force_wrapper": {
+        "max_abs_residual": 0.0,
+        "tolerance": 5e-14
+      },
+      "reference_density_momentum_wrapper": {
+        "max_abs_residual": 1.0970982491074512e-17,
+        "tolerance": 5e-14
+      },
+      "new_force_half_step_wrapper": {
+        "max_abs_residual": 6.453120508656887e-18,
+        "tolerance": 5e-14
+      },
+      "linear_conduction_temperature": {
+        "max_abs_residual": 1.1102230246251565e-16,
+        "tolerance": 2e-10
+      },
+      "linear_conduction_heat_balance": {
+        "max_abs_residual": 0.0,
+        "tolerance": 2e-09
+      },
+      "conduction_Nu_volume": {
+        "max_abs_residual": 2.220446049250313e-16,
+        "tolerance": 2e-09
+      },
+      "conduction_Nu_hot": {
+        "max_abs_residual": 3.3306690738754696e-15,
+        "tolerance": 2e-09
+      },
+      "conduction_Nu_cold": {
+        "max_abs_residual": 0.0,
+        "tolerance": 2e-09
+      }
+    }
+  },
+  "integration_checks": {
+    "side_steady": {
+      "continuous": {
+        "itc_total": 48,
+        "relative_mass_error": 3.552713678800501e-16,
+        "checkpoint_record_bytes": [
+          48,
+          8640,
+          4800,
+          2896
+        ]
+      },
+      "restart": {
+        "itc_total": 48,
+        "relative_mass_error": 3.552713678800501e-16,
+        "checkpoint_record_bytes": [
+          48,
+          8640,
+          4800,
+          2896
+        ]
+      },
+      "checkpoint_bitwise_equal": true,
+      "common_snapshots_bitwise_equal": true,
+      "history_preserved": true,
+      "completed_target_preserved": true,
+      "rejected_corrupt_restarts": {
+        "missing_Nu": true,
+        "extra_Nu": true,
+        "wrong_time_Nu": true,
+        "wrong_model_meta": true
+      }
+    },
+    "rb_unsteady": {
+      "continuous": {
+        "itc_total": 48,
+        "relative_mass_error": 8.289665250534502e-16,
+        "checkpoint_record_bytes": [
+          48,
+          8640,
+          4800
+        ]
+      },
+      "restart": {
+        "itc_total": 48,
+        "relative_mass_error": 8.289665250534502e-16,
+        "checkpoint_record_bytes": [
+          48,
+          8640,
+          4800
+        ]
+      },
+      "checkpoint_bitwise_equal": true,
+      "common_snapshots_bitwise_equal": true,
+      "history_preserved": true,
+      "completed_target_preserved": true,
+      "rejected_corrupt_restarts": {
+        "missing_Nu": true,
+        "extra_Nu": true,
+        "wrong_time_Nu": true,
+        "wrong_model_meta": true
+      }
+    }
+  },
+  "source_unchanged": true,
+  "elapsed_seconds": 18.04
+}

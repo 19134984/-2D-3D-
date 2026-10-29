@@ -1,0 +1,37 @@
+{
+  "passed": true,
+  "source_sha256": "b1526c1fd85bfeeac6a52bf742299510809a9d83cf45b753e9fb292b8730841e",
+  "verified_at_utc": "2026-10-29T11:54:40.708379+00:00",
+  "case": "2D closed side-heated square cavity, steady",
+  "Ra": 1000,
+  "Pr": 0.71,
+  "Ma": 0.05,
+  "grid": [
+    32,
+    32
+  ],
+  "maximum_steps": 100000,
+  "backend": "GNU Fortran OpenACC host; not NVIDIA GPU",
+  "build_directory": "/private/var/folders/8b/v3x15k4n0t15dt0c077k7ctc0000gp/T/feng-ade-convection-mjw4zdiq",
+  "reference": {
+    "paper": "Wang et al. (2013), DOI 10.1016/j.camwa.2012.07.001, Table 2/9",
+    "Nu": 1.1178
+  },
+  "limitations": "One low-Ra grid; no grid independence, high-Ra RB or GPU validation",
+  "metrics": {
+    "Nu_global": 1.1181315248181674,
+    "Nu_hot": 1.1182886314888671,
+    "Nu_cold": 1.1182937712239442,
+    "final_check_step": 16000,
+    "errorU": 7.568339185614474e-08,
+    "errorT": 3.478673524606214e-08,
+    "Nu_relative_reference_error": 0.00029658688331313243,
+    "maximum_wall_volume_Nu_difference": 0.0001622464057768891
+  },
+  "checks": {
+    "steady_thresholds_met": true,
+    "Nu_within_two_percent": true,
+    "wall_volume_Nu_difference_below_0p02": true
+  },
+  "source_unchanged": true
+}

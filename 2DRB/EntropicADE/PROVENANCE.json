@@ -1,0 +1,82 @@
+{
+  "created_date": "2026-10-29",
+  "repository_head_at_creation": "42d6645409e90d13bf630bd5628e94562870bbc3",
+  "implementation": {
+    "path": "2DRB/EntropicADE/2DRBOpenaccEntropicADE.F90",
+    "sha256": "b1526c1fd85bfeeac6a52bf742299510809a9d83cf45b753e9fb292b8730841e",
+    "dimension": 2,
+    "grid": "single uniform cell-centered grid",
+    "execution": "single GPU OpenACC source; GNU OpenACC host checked"
+  },
+  "paper": {
+    "title": "Entropic lattice Boltzmann method for general anisotropic advection-diffusion",
+    "authors": [
+      "Jingsen Feng",
+      "Jing Leng",
+      "Jingchao Jiang",
+      "Xu Chu"
+    ],
+    "year": 2026,
+    "arxiv": "2605.01774v1",
+    "url": "https://arxiv.org/abs/2605.01774",
+    "local_pdf": "2DRB/pdf/算法/2605.01774v1.pdf",
+    "sha256": "78eb549335b634b00b03f4551648e104195aee9a6e67e30ae9b5a1078aaeac3b",
+    "formula_pages_visually_checked": [
+      7,
+      8,
+      36
+    ]
+  },
+  "user_confirmed_choice": "Keep existing Luo D2Q9 MRT flow solver; reproduce Feng scalar temperature on 2D uniform grid",
+  "primary_numerical_baseline": "2DRB/均匀网格/2DRBOpenmp.F90",
+  "flow_kernel_and_OpenACC_reference": "2DRB/均匀网格/2DRBOpenacc.F90",
+  "output_restart_infrastructure_donor": "2DRB/FPC/2DRBOpenaccFPC.F90",
+  "protected_sources_sha256": {
+    "2DRB/均匀网格/2DRBOpenmp.F90": "d131ed59599412ced084e91a0235fb9d76de7c5c9876e7c764ed789298133e55",
+    "2DRB/均匀网格/2DRBOpenacc.F90": "6896712768396ef1a24af2258e5c72b0bdb380e2ca00fbe04a51432be92fbfa7",
+    "2DRB/FPC/2DRBOpenaccFPC.F90": "dcfc621db0b240419806382f62dd02be4d06e74cc105c0e27ff7bda65ec18efe"
+  },
+  "method": {
+    "flow": "Luo/Wang D2Q9 MRT, standard polynomial equilibria and Guo-type moment forcing",
+    "thermal": "Feng D2Q9 scalar, flux/ghost split; isotropic S=(1/2+3*kappa)^(-1) I",
+    "entropy": "Eq38 with ADE correction; no lambda clipping or Newton entropy solve",
+    "positivity": "Eq40/41 full-increment alpha fallback, threshold relative to local minimum positive population; persistent invalid-state detection",
+    "coupling": "Both collisions read same time layer, then streaming/walls, new T, new force-corrected velocity; initial f includes -F/2. These are additional changes relative to the old baseline advance.",
+    "walls": "Project half-link BB / constant-temperature ABB / adiabatic specular reflection",
+    "temperature": "Strictly positive carrier, default 2/1; physical DeltaT and T-Tref used for diagnostics and buoyancy"
+  },
+  "paper_adaptations_documented_in": "FORMULATION_CN.md",
+  "checks": {
+    "validation_local.json": {
+      "passed": true,
+      "source_sha256": "b1526c1fd85bfeeac6a52bf742299510809a9d83cf45b753e9fb292b8730841e"
+    },
+    "transport_validation_local.json": {
+      "passed": true,
+      "source_sha256": "b1526c1fd85bfeeac6a52bf742299510809a9d83cf45b753e9fb292b8730841e"
+    },
+    "convection_validation_local.json": {
+      "passed": true,
+      "source_sha256": "b1526c1fd85bfeeac6a52bf742299510809a9d83cf45b753e9fb292b8730841e"
+    }
+  },
+  "NVIDIA_GPU_tested": false,
+  "high_Ra_benchmark_validated": false,
+  "grid_independence_validated": false,
+  "long_time_RB_statistics_validated": false,
+  "server_accessed": false,
+  "git_commit_or_push_performed": false,
+  "restart_history_validation": "Nu/Re plus entropy history aligned to checkpoint; missing, short, ahead, duplicate-tail, wrong-time and wrong-step entropy histories tested and rejected",
+  "artifact_sha256": {
+    ".gitignore": "bfb95b14c88b8fe4a5d4808e81e908c4b535219bcb0d8fd641c8935dfc5d0d5b",
+    "2DRBOpenaccEntropicADE.F90": "b1526c1fd85bfeeac6a52bf742299510809a9d83cf45b753e9fb292b8730841e",
+    "FORMULATION_CN.md": "a7da4b530d4d045f9e3c835dc6cc7525bcd00850f5bcedc95d77d93c2379f6d1",
+    "README.md": "0948f5bc4107539983103d3977a1033ba5f47b10e219bf01666bb4fe54613fa8",
+    "convection_validation_local.json": "1f06e4691ed58e698e8710a1ab30d455bf7a54d6aee99cda3f97e0bcc32cafc8",
+    "transport_validation_local.json": "5e08d45b689d1a7f40947661482a0f9380892a65de4edbe3df5241656d1195b4",
+    "validation_local.json": "93424fd04b9afbd85cefc63e5c1f0d92027ce2d60a9bc0d0eea1559b13c687fe",
+    "verify_benchmark.py": "f2020dff98e46d429171a9984a388b279e20a4818a808db576edf266c86f2af3",
+    "verify_local.py": "c5f02cc5f955582955dd51a22c4ca58b0239af0bbaf3aa9a827392ab862d2158",
+    "verify_transport.py": "667780a90fefe234394b4d978e2c3bba89082f352b69bdcc3cda4cd090c9c0f3"
+  }
+}
