@@ -1,0 +1,74 @@
+---
+features: [turbulent, transient, showcase, primitives]
+---
+
+### nozzle3d
+
+On the one hand, this example describes building a cylindrical 3D geometry in $\OpenLB$; on the other hand, it examines turbulent flow in a nozzle injection tube using different turbulence models and Reynolds numbers.
+
+For characterization, different physical parameters have to be set.
+The resolution $N$ defines most physical parameters such as the velocity `charU`, the kinematic viscosity $\nu$, and two characteristic lengths `charL` and `latticeL`.
+Physical length `charL` is used to characterize the geometry and the Reynolds number.
+Lattice length `latticeL` defines the mesh size and is calculated as `latticeL` $=$ `charL`$/N$.
+More information about the parameter definitions is located in the file `units.h`.
+
+| parameter | value |
+|-----------|-------|
+| `charL` | $1\,\mathrm{m}$ |
+| `latticeL` | $\frac{1}{3}\,\mathrm{m}$ |
+| `charU` | $1\,\frac{\mathrm{m}}{\mathrm{s}}$ |
+| $\nu$ | $0.00002\,\frac{\mathrm{m}^2}{\mathrm{s}}$ |
+| $Re_{inlet}$ | $5000$ |
+| turbulence model | Smagorinsky |
+
+: The preset simulation parameters. {#tbl-nozzle3dParameters}
+
+@fig-geometryNozzle3d illustrates the geometry and the nozzle's size as a function of the characteristic length `charL`.
+The nozzle consists of two circular cylinders.
+The inflow (red) is located left in the *inletCylinder*.
+The outflow (green) is at the right end of the *injectionTube*.
+At the main inlet, either a block profile or a power $1/7$ profile is imposed as a Dirichlet velocity boundary condition, whereas at the outlet a Dirichlet pressure condition is set by $p=0$ (i.e. $\rho=1$).
+
+![Cross section of a 3D geometry of `nozzle3d` in dependency of characteristic length `charL`.](/examples/turbulence/nozzle3d/doc/fig/geometryNozzle3d.png){#fig-geometryNozzle3d width="100%"}
+
+Two vectors, `origin` and `extend`, describe the center and normal direction of the cylinder's circular start (`origin`) and end (`extend`) plane.
+The radius is defined in the function.
+
+As mentioned before, this example simulates turbulent fluid flow.
+The flow behavior in the inlet is characterized by the Reynolds number.
+The following turbulence models are based on large eddy simulation (LES).
+The idea behind LES is to simulate only eddies larger than a certain grid filter length, while smaller eddies are modeled.
+Several models are currently implemented, e.g.:
+
+- The **Smagorinsky model** reduces the turbulence to a so-called eddy viscosity. This viscosity depends on the Smagorinsky constant, which has to be defined. This model has certain disadvantages at the wall.
+- The **shear-improved Smagorinsky model (SISM)** is based on the Smagorinsky model. Compared to the original model, the SISM works at the wall very well. Similarly, a model specific constant has to be defined.
+
+The following code shows the model selection.
+A model is selected when the correlate line is uncommented.
+Below, the model-specific constants are defined.
+In this case, the Smagorinsky model is selected and the Smagorinsky constant is set to $0.15$.
+
+```{.cpp}
+/// Choose your turbulent model of choice
+
+#define Smagorinsky
+
+...
+
+#elif defined(Smagorinsky)
+bulkDynamics = new SmagorinskyBGKdynamics<T, DESCRIPTOR>(converter.getOmega(), instances::getBulkMomenta<T, DESCRIPTOR>(),
+0.04, converter.getLatticeL(), converter.physTime());
+```
+
+As an example, @fig-nozzle3d-physVelocity shows the results with preset parameters.
+
+![Physical velocity field after 200 seconds with preset parameters (Smagorinsky model, $C_S = 0.15$, `latticeL` $= \frac{1}{3}\,\mathrm{m}$, $Re_{inlet}=5000$).](/examples/turbulence/nozzle3d/doc/fig/nozzle3d_physVelocity.png){#fig-nozzle3d-physVelocity width="100%"}
+
+The simulations strongly depend on the Smagorinsky constant's value, used in the turbulence model.
+However, the constant is not a generally calculable value and valid for one model.
+It could be a function of the Reynolds number and/or another dimensionless parameter.
+Thus, a physically useful value has to be found by trial and error, or chosen as an educated guess in the beginning.
+Generally, if the constant's value is chosen too small, the simulation results will become unstable and/or unphysical.
+If the value is too large, the model will introduce too much artificial viscosity and smooth the results.
+
+![Increasing Smagorinsky constant smoothens results and straightens the appearing turbulence.](/examples/turbulence/nozzle3d/doc/fig/nozzle3d_physVelocity_Smag015.png){#fig-nozzle3d-smag015 width="80%"}

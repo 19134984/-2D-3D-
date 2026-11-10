@@ -1,0 +1,150 @@
+---
+features: [transient, benchmark, stl, primitives]
+---
+
+### cylinder3d {#sec-example-laminar-cylinder3d}
+
+This example examines a steady flow past a cylinder placed in a channel.
+The cylinder is offset somewhat from the center of the flow to make the steady-state symmetrical flow unstable.
+At the inlet, a Poiseuille profile is imposed on the velocity, whereas the outlet implements a Dirichlet pressure condition set by $p = 0$, inspired by [@turek:96].
+For high resolution, low `latticeU`, and enough time to converge, the results for pressure drop, drag, and lift lie within the estimated intervals for the exact results.
+An unsteady flow with Kármán vortex street can be created by changing the Reynolds number to $Re=100$.
+This 3D version of [[`laminar/cylinder2d`](/examples/laminar/cylinder2d/cylinder2d.qmd)]{.content-visible when-format="html"}[`laminar/cylinder2d` (@sec-example-laminar-cylinder2d)]{.content-visible when-format="pdf"} also shows the usage of the STL-reader.
+
+#### Governing equations
+
+The domain $\Omega \times \I$, the channel $[0, 2.5] \times [0, 0.41] \times [0, 0.41]$ without the cylinder times $\R_{\geq 0}$, is considered with the following governing equations with the velocity field $\vel \in \R^3$ and the pressure $p \in \R$ for the incompressible flow of a Newtonian fluid with kinematic viscosity $\nu \in \R_{> 0}$ and constant density $\rho \in \R_{> 0}$,
+\begin{align}
+    \nabla \cdot \vel &= 0 \quad \text{in} \quad \Omega \times \I, \\
+    \partial_t \vel + (\vel \cdot \nabla) \vel &= -\frac{1}{\rho} \nabla p + \nu \Delta \vel \quad \text{in} \quad \Omega \times \I.
+\end{align}
+
+#### Boundary conditions
+
+The boundary $\partial \Omega = \Gamma_D \cup \Gamma_\text{out} \cup \Gamma_{\mathrm{no\text{-}slip}}$ consists of the inlet $\Gamma_D$ at $x = 0$ (MN 3), the outlet $\Gamma_\text{out}$ at $x = 2.5\,\mathrm{m}$ (MN 4), and $\Gamma_{\mathrm{no\text{-}slip}}$, the four channel walls (MN 2) and the surface of the cylinder (MN 5),
+\begin{align}
+    \vel &= (u_\text{in}(y, z, t), 0, 0)^\top \quad \text{on} \quad \Gamma_D \times \I, \\
+    p &= 0 \quad \text{on} \quad \Gamma_\text{out} \times \I, \\
+    \vel &= \mathbf{0} \quad \text{on} \quad \Gamma_{\mathrm{no\text{-}slip}} \times \I.
+\end{align}
+The inflow profile is the product of two parabolas across the square cross section,
+$$
+    u_\text{in}(y, z, t) = s(t)\, \frac{16\, U_\text{max}\, y z (H - y)(H - z)}{H^4}, \qquad U_\text{max} = \tfrac{9}{4} U,
+$$
+whose mean velocity is $U$ once it is fully developed.
+`setTemporalValues()` raises it from rest with a polynomial ramp $s(t)$ during the first $40\,\%$ of the simulated time, updated every $0.03\,\mathrm{s}$.
+The fluid is initially at rest.
+
+#### Domain
+
+The geometry is read from `cylinder3d.stl` (@fig-cylinder3d-geometry), which is given in millimetres and scaled by $0.001$: a channel of length $2.5\,\mathrm{m}$ with the square cross section $H \times H$, $H = 0.41\,\mathrm{m}$, and a cylinder of diameter $D = 0.1\,\mathrm{m}$ that spans the whole height of the channel, with its axis at $(x, y) = (0.5\,\mathrm{m}, 0.2\,\mathrm{m})$, slightly below the centre line.
+This is the setup of the test case 3D-1Z of @turek:96.
+With the mean inflow velocity $U = 0.2\,\mathrm{m/s}$ and $\nu = 10^{-3}\,\mathrm{m^2/s}$, the Reynolds number is $Re = U D / \nu = 20$, and the flow becomes steady.
+The FreeCAD model `cylinder3d.fcstd` the STL file was created from is part of the example.
+
+`prepareGeometry()` marks the cells inside the STL surface as fluid (MN 1) and a layer of one cell around it as wall (MN 2).
+It then marks the wall cells at the inlet and the outlet end as MN 3 and MN 4, and the remaining wall cells inside the channel, those of the cylinder, as MN 5.
+
+![Geometry of `cylinder3d`, the surface of `cylinder3d.stl`: the channel and the cylinder spanning its height.](/examples/laminar/cylinder3d/doc/fig/cylinder3dGeometry.png){width="70%" #fig-cylinder3d-geometry .lightbox}
+
+#### Discretization \& Descriptor
+In this example, the domain is discretized with a uniform grid with the lattice spacing $\Delta x = D / N$, where $N = 10$ cells resolve the diameter of the cylinder, which gives about $417\,000$ fluid cells.
+The mesh is split into $7$ cuboids, or into one cuboid per process with MPI.
+
+The LBM collision operator is the BGK operator with a single relaxation time ([Collision Operators](/content/02_core.qmd#collision-operators)), used as `BGKdynamics`, together with the D3Q19 velocity set ([Lattice Structures](/content/01_introduction.qmd#sec-lattice-structures)). The lattice uses single precision.
+The channel walls (MN 2) are treated with `BounceBack`, the inlet (MN 3) with `InterpolatedVelocity`, the outlet (MN 4) with `InterpolatedPressure`, and the cylinder (MN 5) with the Bouzidi boundary, `setBouzidiBoundary()`, which takes the exact position of the STL surface between the lattice nodes into account ([Define Boundary Method](/content/06_initial_boundary.qmd#sec-defineBoundaryMethod)). Without the `BOUZIDI` define in `case.h`, the cylinder falls back to `BounceBack`.
+
+The corresponding lattice is defined inside the case definition in `case.h` as in @lst-cylinder3d-case.
+
+::: {#lst-cylinder3d-case}
+```{.cpp}
+using MyCase = Case<
+  NavierStokes, Lattice<float, descriptors::D3Q19<>>
+>;
+```
+Case definition for the `cylinder3d` example.
+:::
+
+The unit converter `UnitConverterFromResolutionAndRelaxationTime` derives the time step size from the resolution and the lattice relaxation time.
+The parameters are given in @tbl-cylinder3d-params.
+
+| Parameter | Symbol | Value | Description |
+|---|---|---|---|
+| `RESOLUTION` | $N$ | $10$ | cells per cylinder diameter $D$ |
+| `REYNOLDS` | $Re$ | $20$ | Reynolds number $U D / \nu$, which sets $\nu = 10^{-3}\,\mathrm{m^2/s}$ |
+| `PHYS_MAX_T` | $T$ | $16\,\mathrm{s}$ | simulated time, $16\,000$ time steps |
+| `PHYS_CHAR_VELOCITY` | $U$ | $0.2\,\mathrm{m/s}$ | mean velocity of the fully developed inflow |
+| `LATTICE_RELAXATION_TIME` | $\tau$ | $0.53$ | lattice relaxation time |
+| `PHYS_CHAR_DENSITY` | $\rho$ | $1\,\mathrm{kg/m^3}$ | density |
+| `RADIUS_CYLINDER` | $D/2$ | $0.05\,\mathrm{m}$ | radius of the cylinder |
+| `PHYS_VTK_ITER_T` | | $0.3\,\mathrm{s}$ | interval of the VTK output, the heat maps and the drag plot |
+| `PHYS_STAT_ITER_T` | | $0.1\,\mathrm{s}$ | interval of the console statistics and the drag evaluation |
+| `RAMP_UP_UPDATE` | | $0.03\,\mathrm{s}$ | interval at which the inflow is updated during the ramp-up |
+| `RAMP_UP_END_FRACTION` | | $0.4$ | fraction of $T$ after which the inflow is fully developed |
+| `VTK_ENABLED` | | `true` | write VTK output and heat maps |
+| `GNUPLOT_ENABLED` | | `true` | write the drag over time |
+
+: Parameters of `cylinder3d`, as set in `main()`. {#tbl-cylinder3d-params}
+
+#### Validation
+
+The velocity, the pressure and a refinement quality criterion based on the Knudsen number are written every $0.3\,\mathrm{s}$, together with heat maps of the velocity and of the quality criterion in the plane $z = H/2$.
+@fig-cylinder3d-velocity shows the velocity magnitude in this plane at the end of the simulation.
+
+![Magnitude of the physical velocity of `cylinder3d` in the plane $z = H/2$ at $t = 15.9\,\mathrm{s}$, visualized in ParaView.](/examples/laminar/cylinder3d/doc/fig/cylinder3d_velocity.png){width="100%" #fig-cylinder3d-velocity .lightbox}
+
+The heat maps are produced without ParaView, directly in `getResults()` (@lst-cylinder3d-heatmap).
+`SuperEuklidNorm3D` computes the magnitude $|\vel|$ of the physical velocity, and `BlockReduction3D2D` samples this 3D functor on the plane with the normal $(0, 0, 1)$ through the centre of the mesh, the plane $z = H/2$.
+
+::: {#lst-cylinder3d-heatmap}
+```{.cpp}
+SuperEuklidNorm3D<T> normVel(velocity);
+BlockReduction3D2D<T> planeReduction(normVel, Vector<T,3>{0, 0, 1});
+// write output as JPEG
+heatmap::write(planeReduction, iT);
+```
+Reduction of the velocity magnitude to the plane $z = H/2$ and output as a heat map in `getResults()`.
+:::
+
+@fig-cylinder3d-heatmap shows these heat maps during the ramp-up of the inflow and at the end of the simulation.
+As long as the inflow is weak, the fluid flows around the cylinder almost symmetrically in $x$. With the growing velocity, the region of low velocity behind the cylinder stretches into a wake, and the flow accelerates through the gaps between the cylinder and the channel walls.
+After the ramp-up, the velocity field hardly changes any more.
+
+::: {.image-slider .image-slider-wide}
+::: {#fig-cylinder3d-heatmap layout-ncol="3"}
+![$t = 1.8\,\mathrm{s}$](/examples/laminar/cylinder3d/doc/fig/heatmap/velocity_iT0001800.jpeg)
+
+![$t = 2.7\,\mathrm{s}$](/examples/laminar/cylinder3d/doc/fig/heatmap/velocity_iT0002700.jpeg)
+
+![$t = 3.6\,\mathrm{s}$](/examples/laminar/cylinder3d/doc/fig/heatmap/velocity_iT0003600.jpeg)
+
+![$t = 4.5\,\mathrm{s}$](/examples/laminar/cylinder3d/doc/fig/heatmap/velocity_iT0004500.jpeg)
+
+![$t = 6.3\,\mathrm{s}$, end of the ramp-up](/examples/laminar/cylinder3d/doc/fig/heatmap/velocity_iT0006300.jpeg)
+
+![$t = 15.9\,\mathrm{s}$, end of the simulation](/examples/laminar/cylinder3d/doc/fig/heatmap/velocity_iT0015900.jpeg)
+
+Heat maps of the velocity magnitude $|\vel|$ in m/s of `cylinder3d` in the plane $z = H/2$, written by `heatmap::write()` from the `BlockReduction3D2D` of `SuperEuklidNorm3D`. For this page, the colour range is fixed to $[0, 0.6]\,\mathrm{m/s}$ for all time steps, so that they are comparable. `getResults()` itself does not fix it, so the heat maps it writes are scaled to the maximum of each time step.
+:::
+:::
+
+Every $0.1\,\mathrm{s}$, `getResults()` evaluates the drag coefficient of the cylinder, $c_D = 2 F_D / (\rho U^2 D H)$ with the drag force $F_D$, and writes it over time to `tmp/gnuplotData/`. It also computes the pressure drop across the cylinder, but does not output it.
+@fig-cylinder3d-drag compares the drag coefficient with the interval $6.05 \le c_D \le 6.25$ that @turek:96 give for the test case 3D-1Z.
+During the ramp-up, the drag follows the stepwise updates of the inflow. Afterwards it settles at $c_D = 6.31$ at the end of the simulation, about $1\,\%$ above the reference interval with the coarse default resolution of $N = 10$.
+The drag plot that the example writes itself shows the 2D reference value $5.58$ of the test case 2D-1 instead.
+
+![Drag coefficient $c_D$ of `cylinder3d` over time with $N = 10$, compared with the reference interval of the test case 3D-1Z. The drag rises while the inflow is ramped up during the first $6.4\,\mathrm{s}$ and then settles.](/examples/laminar/cylinder3d/doc/fig/drag/drag.svg){width="80%" #fig-cylinder3d-drag .lightbox}
+
+#### Files
+
+```
+cylinder3d/
+├── cylinder3d.cpp     main(): parameters, then mesh, geometry, lattice, initial values and time loop
+├── case.h             Case type, geometry from the STL file, boundary conditions, inflow ramp-up, drag and output
+├── cylinder3d.stl     geometry of the channel and the cylinder, in millimetres
+├── cylinder3d.fcstd   FreeCAD model of the geometry
+└── Makefile
+```
+
+`case.h` reads the geometry from `cylinder3d.stl`, a path relative to the directory the example is run from, which therefore has to be the example's own directory.
+The results are written to `tmp/` there: `vtkData/cylinder3d.pvd` opens all time steps in ParaView, `imageData/` holds the heat maps and `gnuplotData/` the drag over time. The heat maps and plots are drawn with gnuplot; without it, only the data in `gnuplotData/data/` is written.

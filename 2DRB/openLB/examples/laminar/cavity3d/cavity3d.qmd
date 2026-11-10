@@ -1,0 +1,117 @@
+---
+features: [benchmark, primitives]
+---
+
+### cavity3d {#sec-example-laminar-cavity3d}
+
+This example illustrates a flow in a cuboid, lid-driven cavity.
+It is the three-dimensional counterpart of [[`laminar/cavity2d`](/examples/laminar/cavity2d/cavity2d.qmd)]{.content-visible when-format="html"}[`laminar/cavity2d` (@sec-example-laminar-cavity2d)]{.content-visible when-format="pdf"}: the lid on top of a cube moves at constant velocity and drives a vortex in the fluid, and the simulation runs until the flow is steady.
+
+#### Governing equations
+
+The domain $\Omega \times \I \subseteq [0,1]^3 \times \R_{\geq 0}$ is considered with the following governing equations with the velocity field $\vel \in \R^3$ and the pressure $p \in \R$ for the incompressible flow of a Newtonian fluid with kinematic viscosity $\nu \in \R_{> 0}$ and constant density $\rho \in \R_{> 0}$,
+\begin{align}
+    \nabla \cdot \vel &= 0 \quad \text{in} \quad \Omega \times \I, \\
+    \partial_t \vel + (\vel \cdot \nabla) \vel &= -\frac{1}{\rho} \nabla p + \nu \Delta \vel \quad \text{in} \quad \Omega \times \I.
+\end{align}
+
+#### Boundary conditions
+
+The boundary $\partial \Omega = \Gamma_D \cup \Gamma_{\mathrm{no\text{-}slip}}$ consists of two parts (@fig-cavity3d-domain): the moving lid $\Gamma_D$ at the top, $y = L$, where the lid velocity is prescribed as a Dirichlet condition, and the five walls at rest $\Gamma_{\mathrm{no\text{-}slip}}$,
+\begin{align}
+    \vel &= (u_\text{lid}, 0, 0)^\top \quad \text{on} \quad \Gamma_D \times \I, \\
+    \vel &= \mathbf{0} \quad \text{on} \quad \Gamma_{\mathrm{no\text{-}slip}} \times \I.
+\end{align}
+The fluid is initially at rest, $\vel = \mathbf{0}$ in $\Omega$ at $t = 0$.
+
+#### Domain
+
+The fluid fills a cube of side length $L = 1\,\mathrm{m}$ (@fig-cavity3d-domain).
+The lid moves with $u_\text{lid} = 1\,\mathrm{m/s}$ in $x$-direction.
+With $\nu = 10^{-3}\,\mathrm{m^2/s}$ this gives a Reynolds number of $Re = u_\text{lid} L / \nu = 1000$.
+
+In `prepareGeometry()`, $\Gamma_{\mathrm{no\text{-}slip}}$ gets the material number 2 and $\Gamma_D$ the material number 3.
+
+![Domain and boundary conditions of `cavity3d`, with the material numbers (MN) assigned in `prepareGeometry()`.](/examples/laminar/cavity3d/doc/fig/cavity3dDomain.svg){width="60%" #fig-cavity3d-domain .lightbox}
+
+#### Discretization \& Descriptor
+In this example, the domain is discretized with a uniform grid of $N^3$ cells with the lattice spacing $\Delta x = L / N$, where the default is $N = 30$.
+
+The LBM collision operator is the BGK operator with a single relaxation time ([Collision Operators](/content/02_core.qmd#collision-operators)), used as `ConstRhoBGKdynamics`, together with the D3Q19 velocity set ([Lattice Structures](/content/01_introduction.qmd#sec-lattice-structures)).
+All six walls, including the moving lid, are velocity boundaries of the type `InterpolatedVelocity` ([Define Boundary Method](/content/06_initial_boundary.qmd#sec-defineBoundaryMethod)).
+
+::: {#lst-cavity3d-case}
+```{.cpp}
+using MyCase = Case<NavierStokes, Lattice<double, descriptors::D3Q19<>>>;
+```
+Case definition for the `cavity3d` example.
+:::
+
+The parameters for the simulation are set in `main()` and given in @tbl-cavity3d-params.
+The unit converter `UnitConverterFromResolutionAndRelaxationTime` derives the time step size from the resolution and the lattice relaxation time.
+
+| Parameter | Symbol | Value | Description |
+|---|---|---|---|
+| `RESOLUTION` | $N$ | $30$ | cells per side length $L$ |
+| `LATTICE_RELAXATION_TIME` | $\tau$ | $0.509$ | lattice relaxation time |
+| `PHYS_CHAR_LENGTH` | $L$ | $1\,\mathrm{m}$ | side length of the cavity |
+| `PHYS_CHAR_VELOCITY` | $u_\text{lid}$ | $1\,\mathrm{m/s}$ | velocity of the lid |
+| `PHYS_CHAR_VISCOSITY` | $\nu$ | $10^{-3}\,\mathrm{m^2/s}$ | kinematic viscosity |
+| `PHYS_CHAR_DENSITY` | $\rho$ | $1\,\mathrm{kg/m^3}$ | density |
+| `PHYS_MAX_T` | $T$ | $100\,\mathrm{s}$ | upper limit of the simulated time, $30\,000$ time steps |
+| `TIME_INTERVAL` | | $1\,\mathrm{s}$ | time window of the convergence check |
+| `RESIDUUM` | | $10^{-3}$ | bound for the relative standard deviation of the average energy |
+| `PHYS_DELTA_X` | $\Delta x$ | $L / N$ | lattice spacing, derived from the resolution |
+
+: Parameters of `cavity3d`, as set in `main()`. {#tbl-cavity3d-params}
+
+
+#### Results
+
+The simulation stops as soon as the relative standard deviation of the average energy over the last $1\,\mathrm{s}$ falls below $10^{-3}$.
+Every second, `getResults()` prints the lattice statistics and writes the velocity and the pressure in physical units to the VTK output, and a heat map of the velocity magnitude in the mid-plane $z = L/2$.
+
+The heat maps are produced without ParaView, directly in `getResults()` (@lst-cavity3d-heatmap).
+`SuperEuklidNorm3D` computes the magnitude $|\vel|$ of the physical velocity, and `BlockReduction3D2D` samples this 3D functor on the plane through the centre of the cavity that is spanned by the unit vectors in $x$- and $y$-direction, on a grid of $600$ points per side.
+
+::: {#lst-cavity3d-heatmap}
+```{.cpp}
+Vector<T, 3> u(1, 0, 0);
+Vector<T, 3> v(0, 1, 0);
+T            tmp       = (T)converter.getCharPhysLength() / 2.0;
+T            origin[3] = {tmp, tmp, tmp};
+
+SuperEuklidNorm3D<T>  normVel(velocity);
+BlockReduction3D2D<T> planeReduction(normVel, origin, u, v, 600, BlockDataSyncMode::ReduceOnly);
+
+heatmap::plotParam<T> plotParam;
+plotParam.maxValue = (T)1.0;
+plotParam.name     = "velocity";
+heatmap::write(planeReduction, iT, plotParam);
+```
+Reduction of the velocity magnitude to the mid-plane $z = L/2$ and output as a heat map in `getResults()`.
+:::
+
+@fig-cavity3d-heatmap shows these heat maps for the development of the flow.
+After $1\,\mathrm{s}$ the motion is still confined to a thin layer below the lid and to the upper corners.
+The primary vortex forms in the upper right corner, where the lid pushes the fluid against the downstream wall, and then grows and moves towards the centre of the cavity until it fills the plane at convergence.
+
+::: {.image-slider}
+::: {#fig-cavity3d-heatmap layout-ncol="3"}
+![$t = 1\,\mathrm{s}$](/examples/laminar/cavity3d/doc/fig/heatmap/velocity_iT0000640.jpeg)
+
+![$t = 3\,\mathrm{s}$](/examples/laminar/cavity3d/doc/fig/heatmap/velocity_iT0001920.jpeg)
+
+![$t = 5\,\mathrm{s}$](/examples/laminar/cavity3d/doc/fig/heatmap/velocity_iT0003200.jpeg)
+
+![$t = 10\,\mathrm{s}$](/examples/laminar/cavity3d/doc/fig/heatmap/velocity_iT0006400.jpeg)
+
+![$t = 15\,\mathrm{s}$](/examples/laminar/cavity3d/doc/fig/heatmap/velocity_iT0009600.jpeg)
+
+![$t = 15.8\,\mathrm{s}$, converged](/examples/laminar/cavity3d/doc/fig/heatmap/velocity_iT0010118.jpeg)
+
+Heat maps of the velocity magnitude $|\vel|$ in m/s of `cavity3d` in the mid-plane $z = L/2$, written by `heatmap::write()` from the `BlockReduction3D2D` of `SuperEuklidNorm3D`. The colour range is fixed to $[0, u_\text{lid}] = [0, 1]\,\mathrm{m/s}$ via `plotParam.maxValue`, so that the heat maps of different time steps are comparable. The heat maps were generated with $N = 64$ and $\tau = 0.5192$.
+:::
+:::
+
+The results are written to `tmp/` in the directory the example is run from: `vtkData/cavity3d.pvd` opens all time steps in ParaView and `imageData/` holds the heat maps of the mid-plane, which are drawn with gnuplot if it is installed.

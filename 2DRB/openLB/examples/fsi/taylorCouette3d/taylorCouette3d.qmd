@@ -1,0 +1,7 @@
+---
+features: [turbulent, transient, benchmark, showcase, primitives]
+---
+
+### taylorCouette3d
+
+This example implements a Taylor--Couette flow with a rotating inner cylinder and a static outer cylinder.

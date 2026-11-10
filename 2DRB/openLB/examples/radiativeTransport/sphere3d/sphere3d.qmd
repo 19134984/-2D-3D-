@@ -1,0 +1,31 @@
+---
+features: [benchmark, showcase, primitives]
+---
+
+### sphere3d
+
+This example utilizes a D3Q7 stencil to validate the macroscopic radiative transfer lattice Boltzmann method (RTLBM) to approximate the Helmholtz equation.
+The derivation of the Helmholtz equation that approximates the radiative transport equation (RTE) is
+
+$$
+\Delta \Phi = \mu_{\text{eff}}^{2} \Phi
+$$ {#eq-Helmholtz}
+
+with
+
+$$
+\mu_{\text{eff}} =  \sqrt{3 \mu_a ( \mu_a + \mu_s )},
+$$ {#eq-effAttCoefficient}
+
+where
+
+- $\mu_\mathrm{a}$ is the absorption coefficient and
+- $\mu_\mathrm{s}$ is the scattering coefficient.
+
+Here, $\Phi$ refers to the radiative energy flux.
+The Helmholtz equation is solved similarly to the advection-diffusion equation.
+The LBM is validated against an analytical solution that is known for the target Helmholtz equation, @eq-Helmholtz, in a particular setup.
+The radius of the sphere is $R$ and the radiative source is placed at radius $r_\mathrm{0} = 0.1 R$ and equipped with a Dirichlet boundary.
+Similarly, the outgoing Dirichlet boundary is placed at radius $r_\mathrm{1} = R$.
+
+![Cross section of the spherical benchmark with cell size $\triangle x$. Yellow indicates the radiative source, blue the participating volume and gray the outgoing boundary.](/examples/radiativeTransport/sphere3d/doc/fig/sphericalDomain_radiation.png){#fig-domain-radiation width="60%"}

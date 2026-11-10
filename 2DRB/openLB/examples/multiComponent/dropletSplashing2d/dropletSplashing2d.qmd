@@ -1,0 +1,10 @@
+---
+features: [multiPhase, transient, benchmark, primitives]
+---
+
+### dropletSplashing2d
+
+A droplet is initially placed at the center of the domain, surrounded by vapor.
+A thin liquid film covers the bottom region of the domain.
+The droplet has an initial velocity and travels toward the liquid layer.
+Upon impact, a crown splash forms.

@@ -1,0 +1,245 @@
+### periodicPlateOpti2d
+
+Distributed control of the body force field on a periodic plate, with the gradient
+computed by the discrete adjoint lattice Boltzmann method (ALBM). Where
+`periodicPlateOptiAD2d` and `periodicPlateOptiParam2d` identify two scalar amplitudes
+of the same force field, here the nodal force field itself is the control, so that
+the number of degrees of freedom is $2N = 2N_x^2$ and grows with the resolution. This
+is the regime the adjoint method is designed for: forward-mode automatic
+differentiation would need one tangent direction per degree of freedom and is
+computationally infeasible.
+
+The benchmark and its results are described in
+[@grafenBenchmarkCasesGradientbased2026].
+
+Besides the inverse problem, the case also runs the grid convergence study of the
+primal problem and a node-wise validation of the ALBM gradient against a finite
+difference quotient.
+
+#### Setup
+
+The domain is the unit square $\Omega = [0,1]^2$ with periodic boundaries,
+discretized by $N_x$ nodes per Cartesian direction. The primal problem is the
+quasistationary MRT scheme of [@boolakee:23a] on a `D2Q8` descriptor, in its OpenLB
+implementation [@kaiser:25], with the
+manufactured displacement
+
+$$
+\symbf{u}^*(\symbf{x}) = \begin{pmatrix}
+  \delta_1 \cos(2\pi x_1) \sin(2\pi x_2) \\
+  \delta_2 \sin(2\pi x_1) \cos(2\pi x_2)
+\end{pmatrix},
+\qquad \delta_1 = 9 \cdot 10^{-4}, \quad \delta_2 = 7 \cdot 10^{-4},
+$$
+
+for $E = 0.11$ and $\nu = 0.8$, and the body force $\symbf{F}^*$ that produces it,
+obtained from the steady Navier--Cauchy equation. The displacement is reset to
+$\symbf{u}(\symbf{x}, t=0) = \symbf{0}$ at the beginning of every optimization step.
+
+#### Inverse problem
+
+The control is the nodal force field, $\symbf{F}(\symbf{x}_n, \symbf{\alpha}) = \symbf{\alpha}(\symbf{x}_n)$,
+with reference control $\symbf{\alpha}^*(\symbf{x}_n) = \symbf{F}^*(\symbf{x}_n)$, and the objective
+is the squared $L^2$ distance of the displacement from the sampled target. Two
+initial controls are provided:
+
+* the **uninformed** start $\symbf{\alpha}^{(0)}(\symbf{x}_n) = (-1,-1)^{\mathsf{T}}$, which
+  carries no information about the solution (`SCALE_FORCE_WITH_CONTROL 0`), and
+* the **informed** start $\symbf{\alpha}^{(0)}(\symbf{x}_n) = -\symbf{F}^*(\symbf{x}_n)$, obtained by
+  scaling the analytical force field (`SCALE_FORCE_WITH_CONTROL 1` with
+  `INITIAL_CONTROL "[-1 -1]"`).
+
+On a periodic domain a static equilibrium exists only for body forces with vanishing
+mean. A control with non-zero mean, such as the constant uninformed start, violates
+this compatibility condition: the displacement drifts, $J$ then depends on $T_{max}$
+rather than on a steady state, and the steady adjoint is no longer consistent with the
+primal solve. Setting `ZERO_MEAN_CONTROL` therefore projects both the control and the
+gradient component-wise onto the zero-mean subspace,
+
+$$
+\mathcal{P}\symbf{\alpha}(\symbf{x}_n) = \symbf{\alpha}(\symbf{x}_n) - \frac{1}{N} \sum_{k=0}^{N-1} \symbf{\alpha}(\symbf{x}_k) ,
+$$
+
+which keeps the L-BFGS iterates in that subspace. The projection maps the uninformed
+start to $\symbf{\alpha}^{(0)} = \symbf{0}$ and leaves the informed start, which already has
+zero mean, unchanged.
+
+#### Files
+
+```
+periodicPlateOpti2d/
+├── periodicPlateOpti.cpp     main(): default parameters, optimizer settings, run
+├── case.h                    Case and OptiCase types, geometry, lattice, objective
+├── analyticalSolution.h      manufactured displacement, stress and body force
+├── gradient_comparison.h     FDQ reference gradient, sampling line, CSV writer
+├── forward_study.xml         case file: primal grid convergence study
+├── gradient_comparison.xml   case file: node-wise gradient validation
+└── Makefile
+```
+
+Every parameter set in the `.cpp` can be overridden on the command line
+(`--RESOLUTION 20`) or collected in a case file passed with `--case-file`. The
+precedence is `set<>()` < case file < command line, so a case file pins what
+belongs to a study while the command line varies the rest.
+
+`forward_study.xml` turns the example into the primal grid convergence study:
+
+| Setting | Effect |
+|---|---|
+| `FORWARD_ONLY 1` | solve the primal problem once at the reference force and write the error CSVs instead of optimizing |
+| `PHYS_MAX_T 30` | with $\Delta t = \Delta x^2$, a fixed budget of $30 N_x^2$ steps |
+| `CONVERGENCE_PRECISION 0` | disables the steady-state stopping rule, so every resolution runs the same budget |
+| `LATTICE_LOG_ITER_T 100000000` | silences the per-step log |
+| `VTK_ENABLED 0` | no field output |
+
+`gradient_comparison.xml` switches to the node-wise gradient validation:
+
+| Setting | Effect |
+|---|---|
+| `gradient_comparison.ACTIVE 1` | run the FDQ comparison in the first optimization step instead of the full loop |
+| `PHYS_MAX_T 10` | the pseudo-time budget of the distributed control study |
+| `CONVERGENCE_PRECISION 1e-7`, `CONVERGENCE_PRECISION_ADJOINT 1e-7` | steady-state tolerances for the primal and the adjoint solve |
+| `ANALYTICAL_REFERENCE 1` | compare against the sampled manufactured displacement |
+
+The remaining knobs of the comparison take their defaults from
+`gradient_comparison.h` and are normally set on the command line:
+`gradient_comparison.FDQ_SHIFT` (the perturbation $h$, default `1e-5`),
+`gradient_comparison.PLOT_TYPE` (`diagonal` or `straight`) and, for `straight`,
+`gradient_comparison.SAMPLE_POS`.
+
+#### Parameters
+
+All of the following are set in `periodicPlateOpti.cpp` and can be overridden from
+a case file or the command line. Vector-valued entries are passed in brackets,
+`--INITIAL_CONTROL "[-1 -1]"`, and the parameters of the `gradient_comparison`
+group are addressed with their prefix, `--gradient_comparison.FDQ_SHIFT 1e-6`.
+
+##### Geometry and discretization
+
+| Parameter | Type | Default | Meaning |
+|---|---|---|---|
+| `RESOLUTION` | int | `40` | nodes per Cartesian direction, $N_x$; the lattice holds $N_x^2$ nodes |
+| `DOMAIN_EXTENT` | double[2] | `{1.0, 1.0}` | physical size of the periodic square |
+| `ORIGIN` | double[2] | `{0.0, 0.0}` | lower-left corner of the domain |
+| `PHYS_CHAR_LENGTH` | double | `1.0` | characteristic length of the unit converter |
+| `PHYS_DELTA_X` | double | derived | $\Delta x =$ `DOMAIN_EXTENT[0] / RESOLUTION` |
+| `PHYS_DELTA_T` | double | derived | $\Delta t = \Delta x^2$, the diffusive scaling of the pseudo-time |
+| `PHYS_CHAR_DISPLACEMENT` | double | derived | displacement scale of the converter, set to $\Delta x$ |
+
+The three derived values are computed in `main()` from `DOMAIN_EXTENT` and
+`RESOLUTION` once the parameter block has been read, so overriding `RESOLUTION`
+on the command line updates them too.
+
+##### Material
+
+| Parameter | Type | Default | Meaning |
+|---|---|---|---|
+| `SOLID_CASE` | string | `"continua"` | dimensional reduction of the constitutive law; accepts `continua`, `planeStress`, `planeStrain` and `standard` |
+| `YOUNGS_MODULUS` | double | `0.11` | $E$ of the simulated material |
+| `POISSON_RATIO` | double | `0.8` | $\nu$; in 2D the admissible range is $-1 < \nu < 1$ |
+| `PHYS_DENSITY` | double | `1` | $\rho$ |
+| `DAMPING_FACTOR` | double | `1.0` | $\kappa$ of the damped pseudo-time scheme; also sets the stress conversion factor $\kappa \Delta x^2 / \Delta t$ |
+
+##### Pseudo-time stepping and convergence
+
+| Parameter | Type | Default | Meaning |
+|---|---|---|---|
+| `PHYS_MAX_T` | double | `30` | pseudo-time budget; the step cap is `PHYS_MAX_T`$/\Delta t = $ `PHYS_MAX_T`$\cdot N_x^2$ |
+| `CONVERGENCE_PRECISION` | double | `1e-6` | relative tolerance of the primal steady-state check; `0` disables the check and runs the full budget |
+| `CONVERGENCE_PRECISION_ADJOINT` | double | `1e-6` | the same tolerance for the adjoint solve |
+| `CONV_ITER` | double | `10` | window length of the `ValueTracer` that watches the monitored value |
+| `CONV_VALUE` | double | `1` | slot the case writes the monitored value into (the mean squared displacement); not a user knob |
+| `CONVERGED_IT` | size_t | `0` | slot holding the step at which the primal solve converged; read back when `SET_ADJOINT_MAX_IT` is set |
+| `SET_ADJOINT_MAX_IT` | bool | `false` | `true` runs the adjoint for exactly `CONVERGED_IT` steps instead of applying its own tolerance |
+
+##### Inverse problem and control
+
+| Parameter | Type | Default | Meaning |
+|---|---|---|---|
+| `INITIAL_CONTROL` | double[2] | `{-1.0, -1.0}` | per-node initial value of the control |
+| `SCALE_FORCE_WITH_CONTROL` | bool | `true` | `false`: the control *is* the nodal force field (uninformed start). `true`: the control scales $\symbf{F}^*$ node-wise, so `INITIAL_CONTROL` $=(-1,-1)$ gives the informed start $\symbf{\alpha}^{(0)} = -\symbf{F}^*$ |
+| `ZERO_MEAN_CONTROL` | bool | `false` | `true` projects the initial control and every gradient onto the zero-mean subspace; needed whenever the start has non-zero mean |
+| `ANALYTICAL_REFERENCE` | bool | `false` | `true` compares against the sampled manufactured displacement, `false` against a reference obtained from a simulation |
+| `FORWARD_ONLY` | bool | `false` | `true` solves the primal problem once and writes the error CSVs, skipping the optimization entirely |
+
+`INITIAL_CONTROL` is assigned twice in `main()`, first `{0, 0}` and then
+`{-1.0, -1.0}`; the second assignment wins, so the effective default is the
+informed start.
+
+##### Output
+
+| Parameter | Type | Default | Meaning |
+|---|---|---|---|
+| `VTK_ENABLED` | bool | `true` | write the displacement, stress and control fields to VTK |
+| `LATTICE_VTK_ITER_T` | int | `1000` | pseudo-time steps between VTK writes |
+| `LATTICE_LOG_ITER_T` | int | `1000` | pseudo-time steps between console log lines; a very large value silences the log |
+
+##### Gradient comparison group
+
+Addressed with the `gradient_comparison.` prefix and defined in
+`gradient_comparison.h`.
+
+| Parameter | Type | Default | Meaning |
+|---|---|---|---|
+| `ACTIVE` | bool | `false` | `true` runs the FDQ comparison in the first optimization step instead of the optimization loop |
+| `FDQ_SHIFT` | double | `1e-5` | perturbation $h$ of the one-sided difference quotient |
+| `PLOT_TYPE` | string | `"diagonal"` | sampling line: `diagonal` samples $y = x$, `straight` samples a line of constant $y$ |
+| `SAMPLE_POS` | double[2] | `{0.5, 0.5}` | for `straight`, its second component fixes the $y$ of the sampling line |
+
+##### Optimizer
+
+Held in a separate `OptimizerParametersD` in `main()` rather than in the case
+parameters, and namespaced by optimizer component.
+
+| Parameter | Type | Default | Meaning |
+|---|---|---|---|
+| `optimizer::EPS` | double | `1e-10` | termination tolerance on the gradient norm |
+| `optimizer::MAX_OPTIMIZATION_STEPS` | int | `50` | cap on the number of optimization steps |
+| `optimizer::VERBOSE` | bool | `true` | per-step optimizer log |
+| `linesearch::MAX_STEP_ATTEMPTS` | int | `100` | cap on line-search refinements within one step |
+| `linesearch::STEP_CONDITION` | string | `"StrongWolfe"` | acceptance condition of the line search |
+| `LBFGS::HISTORY_SIZE` | int | `20` | number of stored vector pairs of the limited-memory inverse Hessian approximation |
+
+#### Different modes of running the case
+
+**Inverse problem**:
+The default mode, selected by passing no case file: `FORWARD_ONLY` and
+`gradient_comparison.ACTIVE` are both `false`, so the case runs the L-BFGS loop
+over the distributed control. The defaults solve $N_x = 40$ from the informed
+start. The benchmark study uses $T_{max} = 10$, the zero-mean projection and up to
+100 optimization steps.
+
+The zero-mean projection is only optional in the sense that the flag exists.
+Without it the uninformed start violates the compatibility condition of the
+periodic problem, and the run measures a drifting displacement rather than a
+steady state.
+
+**Forward grid convergence study**:
+Selected by `forward_study.xml`. All resolutions have to run in the same
+directory, because each one appends a row to the same CSV:
+
+```sh
+for N in 32 64 128 256; do
+  mpirun -np 4 ./periodicPlateOpti --case-file forward_study.xml --RESOLUTION $N
+done
+```
+
+**Gradient validation**:
+The gradient validation is a single run per configuration:
+
+```sh
+./periodicPlateOpti --case-file gradient_comparison.xml \
+  --RESOLUTION 20 --INITIAL_CONTROL "[-1 -1]" --SCALE_FORCE_WITH_CONTROL 1 \
+  --gradient_comparison.FDQ_SHIFT 1e-5 --gradient_comparison.PLOT_TYPE diagonal
+```
+
+It writes `tmp/gnuplotData/data/gradient_comparison.csv`, holding the adjoint and
+the FDQ gradient and their absolute and relative deviation at each sampled node.
+
+#### Results
+
+The results of this benchmark are reported and discussed in
+[@grafenBenchmarkCasesGradientbased2026]: the evolution of the objective, of the
+gradient norm and of the relative error of the recovered force field for both
+initial controls, the order of convergence of that error under mesh refinement,
+and the node-wise validation of the ALBM gradient against the FDQ reference.

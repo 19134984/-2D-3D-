@@ -1,0 +1,12 @@
+---
+features: [multiComponent, transient, benchmark, showcase, primitives]
+---
+
+### fourRollMill2d
+
+Here, a spherical domain filled with one fluid phase is immersed in a square filled with another phase of equal density and viscosity.
+Four circle structures which represent roller sections are equidistantly distributed in the corners of the domain.
+The bottom left and top right cylinders begin to spin in a counter-clockwise direction, whereas the top left and bottom right cylinders spin in a clockwise direction.
+A velocity field of extensional type deforms the initial droplet accordingly.
+Dependent on the non-dimensional parameter setting in the example header, the droplet reaches steady state or breaks up.
+Reference simulations are provided in [@simonis:23a].

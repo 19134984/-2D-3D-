@@ -1,0 +1,10 @@
+---
+features: [benchmark, primitives]
+recommended-for-beginners: [benchmark, primitives]
+---
+
+### cavity2d
+
+This app is the simplified version of [[`laminar/cavity2d`](/examples/laminar/cavity2d/cavity2d.qmd)]{.content-visible when-format="html"}[`laminar/cavity2d` (@sec-example-laminar-cavity2d)]{.content-visible when-format="pdf"}. It contains the bare minimum code to execute the cavity benchmark case with $\OpenLB$. This example is suited to grasp the basic structure of $\OpenLB$ example cases.
+This case is also used for the tutorial exercises at the $\OpenLB$ spring school.
+

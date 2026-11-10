@@ -1,0 +1,30 @@
+---
+features: [transient, benchmark, stl, primitives]
+---
+
+### cylinder3d
+
+This example applies UQ to the flow past a circular cylinder.
+Here, the inflow velocity is modeled as a random variable following a uniform distribution $\mathcal{U}[0.8, 1.2]$, introducing $\pm 20\%$ uncertainty.
+The simulation setup -- including sampling configuration and postprocessing structure -- is consistent with the `cavity2d` example of this category.
+Both Monte Carlo sampling and the stochastic collocation method are supported.
+Quantities of interest -- such as the drag coefficient -- are computed for each sample, and statistical moments like the mean and standard deviation are evaluated.
+
+To compute statistics of the drag coefficient, store its values across all samples and apply:
+
+```{.cpp}
+uq.mean(drag);
+uq.std(drag);
+```
+
+Simulation results can be postprocessed and visualized to analyze the sensitivity of flow features to input uncertainty (see @fig-uqCylinder-3d).
+
+::: {#fig-uqCylinder-3d layout-ncol=2}
+
+![Mean $\bar{|\mathbf{u}|}$.](/examples/uncertaintyQuantification/cylinder2d/doc/fig/uqCylinderMean.png){#fig-uqCylinderMean-3d}
+
+![Standard deviation $\sigma(|\mathbf{u}|)$.](/examples/uncertaintyQuantification/cylinder2d/doc/fig/uqCylinderStd.png){#fig-uqCylinderStd-3d}
+
+Mean and standard deviation of the velocity magnitude, computed using the stochastic collocation method with a second-order polynomial expansion and five quadrature points.
+
+:::

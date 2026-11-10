@@ -1,0 +1,28 @@
+---
+features: [thermal, transient, benchmark, showcase, primitives]
+---
+
+### knudsenPump3d
+
+This example is a standard showcase for the thermal creep effect at higher Knudsen numbers and rarefied ideal gases.
+Thereby, two vessels with a temperature difference are connected by a pipe, whose walls conduct the temperature gradient between the two vessels.
+This gradient leads to the acceleration of the gas particles that collide with the pipe wall.
+Besides, the Knudsen slip effect plays a role, which, together with thermal creep, establishes a circulating flow in the pipe.
+
+![Streamlines in the Knudsen pump.](/examples/microfluidics/knudsenPump3d/doc/fig/knudsenPump.png){#fig-knudsenPump width="70%"}
+
+The thermal creep effect can be mathematically described as a wall velocity
+
+$$
+u_{tc} = \frac{3}{4} \frac{\mu R}{P} \Bigl(\frac{\partial T}{\partial s} \Bigr)_w.
+$$
+
+The resulting pressure difference caused by moving gas particles can be described with the following analytical expression:
+
+$$
+\triangle P = \Bigl( \frac{6 \mu^2 R_s}{R^2 P_m} \Bigr) \frac{\triangle T}{\bigl( 1 + 8 \frac{Kn}{1 + b Kn} \bigr)}
+$$
+
+The nitrogen by $Kn=0.05$ in the given Knudsen pump by 4 K temperature difference leads to the pressure development shown in @fig-knudsenPumpPlot.
+
+![Pressure difference in the Knudsen pump. Numerical and analytical results.](/examples/microfluidics/knudsenPump3d/doc/fig/knudsenPumpPlot.png){#fig-knudsenPumpPlot width="60%"}

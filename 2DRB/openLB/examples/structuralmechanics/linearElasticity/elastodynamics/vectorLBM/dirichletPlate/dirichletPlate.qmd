@@ -1,0 +1,12 @@
+#### dirichletPlate (elastodynamics)
+
+The same manufactured elastodynamics problem as
+`elastodynamics/vectorLBM/periodicPlate`, but on a non-periodic plate whose
+whole boundary is prescribed with
+`ElastodynamicsVectorLBMDirichletValidation`. The displacement of the
+manufactured solution is imposed on the boundary cells, which are collected in
+material number 2, and the resulting error shows how much accuracy the
+Dirichlet treatment costs compared to the periodic case.
+
+The `run.sh` script performs the same resolution sweep and order of convergence
+study as `elastodynamics/vectorLBM/periodicPlate`.

@@ -1,0 +1,14 @@
+---
+features: [multiComponent, multiPhase, benchmark, primitives]
+---
+
+### flatInterfaceEOC2d
+
+In this example, a flat interface test is performed for several multiphase models such as the incompressible Allen--Cahn or the well-balanced Cahn--Hilliard.
+A rectangular domain of fluid 2 is immersed in fluid 1.
+A diffusive interface forms with the profile of a hyperbolic tangent whose accuracy is measured for multiple resolutions in order to test the models' experimental order of convergence.
+The equilibrium pressure is also investigated in a similar way.
+The grid refinement can be performed with either a constant or a decreasing Cahn number.
+Multiple different error norms can then be written into an output `EOC.dat` file.
+
+This example shows the simplest application of the hybrid (and local) phase field Allen--Cahn model with periodic boundaries, based on Liu *et al.* [@liu2023] and the well-balanced Cahn--Hilliard from Ju *et al.* [@ju2023].

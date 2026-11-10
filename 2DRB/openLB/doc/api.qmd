@@ -1,0 +1,12 @@
+---
+title: "API Reference"
+include-in-header:
+  text: |
+    <meta http-equiv="refresh" content="0; url=api/index.html">
+---
+
+The generated C++ API reference lives at [api/index.html](api/index.html).
+
+It is built from the sources with doxygen and is published next to this guide,
+so it is only present on the hosted site and not in the standalone HTML
+download.

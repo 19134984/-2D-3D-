@@ -1,0 +1,7 @@
+---
+features: [benchmark, stl, primitives]
+---
+
+### cylinder3dEoc
+
+The examples `cylinder2dEoc` and `cylinder3dEoc` are extensions of the `cylinder2d` and `cylinder3d` examples, respectively, focusing on the experimental order of convergence (EOC) of the simulation.

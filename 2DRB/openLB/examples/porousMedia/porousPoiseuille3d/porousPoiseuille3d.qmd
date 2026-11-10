@@ -1,0 +1,9 @@
+---
+features: [porousMedia, benchmark, primitives]
+---
+
+### porousPoiseuille3d
+
+These examples simulate Poiseuille flows through porous media.
+The implementation reproduces the benchmark *Example A* by Guo and Zhao [@guo2002lattice].
+The theoretical maximum velocity is calculated as in [@guo2002lattice, Equation (21)], and the velocity profile as in [@guo2002lattice, Equation (23)].

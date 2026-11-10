@@ -1,0 +1,9 @@
+---
+features: [multiPhase, transient, benchmark, primitives]
+---
+
+### isothermalEvaporation2d
+
+A flat interface evaporates due to a lower pressure assigned to the boundary.
+This example is run in lattice units, but can be easily changed to physical units by prescribing the values of the parameters in physical units.
+This example can be used to compare the LBM solution for simple evaporation with the analytical solution proposed in [@czelusniak2025analytical].

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Param>  
+  <Parameters>
+    <FORWARD_ONLY>1</FORWARD_ONLY>
+    <PHYS_MAX_T>30</PHYS_MAX_T>
+    <CONVERGENCE_PRECISION>0</CONVERGENCE_PRECISION>
+    <LATTICE_LOG_ITER_T>100000000</LATTICE_LOG_ITER_T>
+    <VTK_ENABLED>0</VTK_ENABLED>
+  </Parameters>
+</Param>

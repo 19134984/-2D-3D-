@@ -1,0 +1,117 @@
+---
+features: [benchmark, primitives]
+---
+
+### poiseuille3d {#sec-example-laminar-poiseuille3d}
+
+For basic tests of boundary conditions, a comparison with analytical solutions is the easiest and most accurate approach.
+One of the fundamental applications of fluid dynamics is that of laminar flow of a Newtonian fluid in a circular pipe.
+This is known as Poiseuille flow.
+The analytical solution is easily found and is therefore a common benchmark case (see @fig-poiseuille3dCAD).
+It is also one of the first examples in most fluid dynamics textbooks for the application of the principles of fluid dynamics.
+The extension of the Poiseuille flow in a round pipe from 2D to 3D is trivial; consequently, it is also an ideal test case for curved boundaries in 3D as well.
+
+#### Governing equations
+
+The domain $\Omega \times \I$, the inside of a pipe of diameter $D$ and length $L$ times $\R_{\geq 0}$, is considered with the following governing equations with the velocity field $\vel \in \R^3$ and the pressure $p \in \R$ for the incompressible flow of a Newtonian fluid with kinematic viscosity $\nu \in \R_{> 0}$ and constant density $\rho \in \R_{> 0}$,
+\begin{align}
+    \nabla \cdot \vel &= 0 \quad \text{in} \quad \Omega \times \I, \\
+    \partial_t \vel + (\vel \cdot \nabla) \vel &= -\frac{1}{\rho} \nabla p + \nu \Delta \vel \quad \text{in} \quad \Omega \times \I.
+\end{align}
+The steady solution is the Hagen–Poiseuille flow, with the distance $r$ from the pipe axis and the radius $R = D/2$,
+\begin{align}
+    u_\text{P}(r) &= u_\text{max} \left( 1 - \frac{r^2}{R^2} \right), \\
+    p_\text{P}(x) &= p_0 \left( 1 - \frac{x}{L} \right), \quad p_0 = \frac{4 \rho \nu u_\text{max} L}{R^2},
+\end{align}
+with $\vel = (u_\text{P}(r), 0, 0)^\top$ and the wall shear stress $\tau_w = 4 \rho \nu u_\text{max} / D$, against which the example measures its error.
+
+#### Boundary conditions
+
+In the default setup, the boundary $\partial \Omega = \Gamma_\text{in} \cup \Gamma_\text{out} \cup \Gamma_\text{wall}$ consists of the inlet $\Gamma_\text{in}$ (MN 3), where the Poiseuille profile is prescribed, the outlet $\Gamma_\text{out}$ (MN 4), where the pressure is prescribed, and the pipe wall $\Gamma_\text{wall}$ (MN 2) (@fig-poiseuille3dCAD),
+\begin{align}
+    \vel &= (u_\text{P}(r), 0, 0)^\top \quad \text{on} \quad \Gamma_\text{in} \times \I, \\
+    p &= p_\text{P}(L) \quad \text{on} \quad \Gamma_\text{out} \times \I, \\
+    \vel &= \mathbf{0} \quad \text{on} \quad \Gamma_\text{wall} \times \I.
+\end{align}
+The simulation starts from the analytical solution, the Poiseuille profile and the linear pressure, and relaxes to the steady state of the discrete scheme.
+
+![Geometry setup in example `poiseuille3d` with boundary patches and velocity profile.](/examples/laminar/poiseuille3d/doc/fig/poiseuille3d.png){#fig-poiseuille3dCAD width="70%"}
+
+#### Domain
+
+The pipe has the diameter $D = 1\,\mathrm{m}$ and the length $L = 2\,\mathrm{m}$, and its axis runs along $x$ through $y = z = R$.
+With $u_\text{max} = 1\,\mathrm{m/s}$ and $Re = u_\text{max} D / \nu = 10$, the viscosity is $\nu = 0.1\,\mathrm{m^2/s}$.
+`prepareGeometry()` marks the cells inside the cylinder as fluid (MN 1), the cells around it as wall (MN 2), and the first and last layer of the pipe as inlet (MN 3) and outlet (MN 4).
+
+#### Discretization \& Descriptor
+In this example, the domain is discretized with a uniform grid with the lattice spacing $\Delta x = D / N$, where $N = 21$ cells resolve the diameter of the pipe.
+
+The LBM collision operator is the BGK operator with a single relaxation time ([Collision Operators](/content/02_core.qmd#collision-operators)), used as `BGKdynamics`, together with the D3Q19 velocity set ([Lattice Structures](/content/01_introduction.qmd#sec-lattice-structures)).
+In the default configuration, the wall (MN 2) and the inlet (MN 3) are treated with `InterpolatedVelocity` and the outlet (MN 4) with `InterpolatedPressure` ([Define Boundary Method](/content/06_initial_boundary.qmd#sec-defineBoundaryMethod)).
+
+Like [[`laminar/poiseuille2d`](/examples/laminar/poiseuille2d/poiseuille2d.qmd)]{.content-visible when-format="html"}[`laminar/poiseuille2d` (@sec-example-laminar-poiseuille2d)]{.content-visible when-format="pdf"}, the example compares boundary conditions and flow setups, selected in `setDefaultParameters()` in `case.h`:
+
+- `BOUNDARY_TYPE` chooses the wall boundary: `BOUNCE_BACK`, `LOCAL`, `INTERPOLATED` (default), `BOUZIDI`, which takes the exact position of the curved wall between the lattice nodes into account and then also treats the inlet, `FREE_SLIP` or `PARTIAL_SLIP`, where `PARTIAL_SLIP_TUNER` blends between no-slip and free slip.
+- `FLOW_TYPE` chooses between `NON_FORCED` (default), the setup above, and `FORCED`, where the pipe is periodic in $x$ and a constant body force drives the flow. The forced setup uses `ForcedBGKdynamics`.
+- With `EOC` set to `true`, the VTK and image output is skipped and the error norms are only computed at the end, which suits a convergence study. The resolutions of such a study are run one after the other, e.g. with `--RESOLUTION`.
+
+The output directory is named after the boundary and flow type, `tmp/bc<BOUNDARY_TYPE>_force<FLOW_TYPE>/`, by default `tmp/bc2_force1/`.
+
+The corresponding lattice is defined inside the case definition in `case.h` as in @lst-poiseuille3d-case.
+
+::: {#lst-poiseuille3d-case}
+```{.cpp}
+using MyCase = Case<
+  NavierStokes, Lattice<FLOATING_POINT_TYPE, descriptors::D3Q19<descriptors::FORCE>>
+>;
+```
+Case definition for the `poiseuille3d` example. The `FORCE` field holds the body force of the forced setup.
+:::
+
+The unit converter `UnitConverterFromResolutionAndRelaxationTime` derives the time step size from the resolution and the lattice relaxation time.
+The parameters are given in @tbl-poiseuille3d-params.
+
+| Parameter | Symbol | Value | Description |
+|---|---|---|---|
+| `FLOW_TYPE` | | `NON_FORCED` | inlet and outlet (`NON_FORCED`) or periodic with body force (`FORCED`) |
+| `BOUNDARY_TYPE` | | `INTERPOLATED` | boundary condition at the wall |
+| `RESOLUTION` | $N$ | $21$ | cells per pipe diameter $D$ |
+| `PHYS_CHAR_VELOCITY` | $u_\text{max}$ | $1\,\mathrm{m/s}$ | maximum velocity of the Poiseuille profile |
+| `PHYS_CHAR_DENSITY` | $\rho$ | $1\,\mathrm{kg/m^3}$ | density |
+| `PHYS_MAX_T` | $T$ | $20\,\mathrm{s}$ | upper limit of the simulated time |
+| `LENGTH` | $L$ | $2\,\mathrm{m}$ | length of the pipe |
+| `DIAMETER` | $D$ | $1\,\mathrm{m}$ | diameter of the pipe |
+| `REYNOLDS` | $Re$ | $10$ | Reynolds number $u_\text{max} D / \nu$ |
+| `LATTICE_RELAXATION_TIME` | $\tau$ | $0.8$ | lattice relaxation time |
+| `RESIDUUM` | | $10^{-5}$ | bound for the relative standard deviation of the average energy |
+| `PARTIAL_SLIP_TUNER` | | $0$ | blending of the partial slip boundary, from $0$ (no-slip) to $1$ (free slip) |
+| `EOC` | | `false` | run a convergence study over several resolutions |
+| `PHYS_CONVERGENCE_CHECK_T` | | $0.0125\,T = 0.25\,\mathrm{s}$ | time window of the convergence check |
+| `PHYS_STAT_ITER_T` | | $T/20 = 1\,\mathrm{s}$ | interval of the console statistics and the error norms |
+| `PHYS_VTK_ITER_T` | | $T/20 = 1\,\mathrm{s}$ | interval of the VTK output |
+| `PHYS_DELTA_X` | $\Delta x$ | $D / N$ | lattice spacing, derived from the resolution |
+
+: Parameters of `poiseuille3d`, as set in `setDefaultParameters()` in `case.h`. {#tbl-poiseuille3d-params}
+
+#### Validation
+
+The simulation stops as soon as the relative standard deviation of the average energy over the last $0.25\,\mathrm{s}$ falls below $10^{-5}$, which happens after $1\,917$ time steps at $t = 4.3\,\mathrm{s}$.
+At every statistics output and at the end, `calculateError()` prints the absolute and relative $L^1$, $L^2$ and $L^\infty$ errors of the velocity, the strain rate and the pressure in the fluid, and of the wall shear stress on the wall cells.
+The VTK output contains the analytical velocity and the wall shear stress next to the simulated velocity and pressure.
+
+At convergence, the relative $L^2$ errors are $1.3\,\%$ for the velocity, $1.4\,\%$ for the strain rate, $6.6\,\%$ for the pressure and $48\,\%$ for the wall shear stress.
+With $21$ cells across the diameter, the round wall is approximated by a staircase of cells, which affects the wall shear stress most. The Bouzidi boundary and finer resolutions are expected to reduce these errors.
+@fig-poiseuille3d-profile compares the velocity profile across the pipe at $x = L/2$ with the analytical solution.
+
+![Velocity profile of `poiseuille3d` along $y$ through the pipe axis at $x = L/2$, at convergence with $N = 21$, compared with the analytical Poiseuille profile.](/examples/laminar/poiseuille3d/doc/fig/profile/profile.svg){width="60%" #fig-poiseuille3d-profile .lightbox}
+
+#### Files
+
+```
+poiseuille3d/
+├── poiseuille3d.cpp   main(): output directory, mesh, geometry, lattice, initial values and time loop
+├── case.h             Case type, default parameters, flow and boundary variants, error norms and output
+└── Makefile
+```
+
+The results are written to `tmp/bc<BOUNDARY_TYPE>_force<FLOW_TYPE>/` in the directory the example is run from: `vtkData/poiseuille3d.pvd` opens all time steps in ParaView, `imageData/` holds the heat maps of the velocity and `gnuplotData/` the velocity profile at the end. The heat maps and plots are drawn with gnuplot; without it, only the data in `gnuplotData/data/` is written.

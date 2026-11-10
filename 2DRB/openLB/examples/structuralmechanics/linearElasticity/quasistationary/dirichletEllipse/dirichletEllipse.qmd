@@ -1,0 +1,12 @@
+#### dirichletEllipse (quasistationary)
+
+Quasistationary linear elasticity on a non-trivial geometry: a large ellipse
+with two smaller ellipses cut out of it, each of them carrying its own material
+number. All three contours are prescribed with
+`StationaryLinearElasticityMRTDirichletValidation`, which imposes the
+displacement of the manufactured solution on the curved boundary, so the case
+measures how well the boundary scheme follows a geometry that is not aligned
+with the lattice.
+
+The `run.sh` script performs the same resolution sweep and order of convergence
+study as `quasistationary/periodicPlate`.

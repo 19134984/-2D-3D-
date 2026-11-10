@@ -1,0 +1,10 @@
+---
+features: [multiComponent, multiPhase, transient, showcase, primitives]
+---
+
+### bubbleChannel2d
+
+This example shows an advecting bubble of air in a channel of water.
+The bubble has a size of 40 micrometers and has the exact surface tension of an air-water mixture.
+This high surface tension creates the necessity for a trick at the outlet, using a fringe zone.
+This setup achieves a nice shape of the bubble at the artificial outlet, which is roughly five bubble diameters before the actual domain outlet.

@@ -1,0 +1,169 @@
+[UnitConverter] ----------------- UnitConverter information -----------------
+[UnitConverter] -- Parameters:
+[UnitConverter] Resolution:                       N=              21
+[UnitConverter] Lattice velocity:                 latticeU=       0.0592687
+[UnitConverter] Lattice relaxation frequency:     omega=          1.38958
+[UnitConverter] Lattice relaxation time:          tau=            0.719643
+[UnitConverter] Characteristical length(m):       charL=          0.1
+[UnitConverter] Characteristical speed(m/s):      charU=          0.02
+[UnitConverter] Phys. kinematic viscosity(m^2/s): charNu=         0.000117647
+[UnitConverter] Phys. density(kg/m^d):            charRho=        1.225
+[UnitConverter] Characteristical pressure(N/m^2): charPressure=   0
+[UnitConverter] Mach number:                      machNumber=     0.102656
+[UnitConverter] Reynolds number:                  reynoldsNumber= 17
+[UnitConverter] Knudsen number:                   knudsenNumber=  0.00603861
+[UnitConverter] 
+[UnitConverter] -- Conversion factors:
+[UnitConverter] Voxel length(m):                  physDeltaX=     0.0047619
+[UnitConverter] Time step(s):                     physDeltaT=     0.0141116
+[UnitConverter] Velocity factor(m/s):             physVelocity=   0.337446
+[UnitConverter] Density factor(kg/m^3):           physDensity=    1.225
+[UnitConverter] Mass factor(kg):                  physMass=       1.32275e-07
+[UnitConverter] Viscosity factor(m^2/s):          physViscosity=  0.00160689
+[UnitConverter] Force factor(N):                  physForce=      3.16305e-06
+[UnitConverter] Pressure factor(N/m^2):           physPressure=   0.139491
+[UnitConverter] -------------------------------------------------------------
+[AdsConverter] ----------------- UnitConverter information -----------------
+[AdsConverter] -- Parameters:
+[AdsConverter] Resolution:                       N=              21
+[AdsConverter] Lattice velocity:                 latticeU=       0.0592687
+[AdsConverter] Lattice relaxation frequency:     omega=          1.43836
+[AdsConverter] Lattice relaxation time:          tau=            0.695238
+[AdsConverter] Characteristic length(m):         charL=          0.1
+[AdsConverter] Characteristic speed(m/s):        charU=          0.02
+[AdsConverter] Phys. concentration(kg/m^d):      charC=          1
+[AdsConverter] Phys. diffusivity (m^2/s):        Diffusivity=    7.84314e-05
+[AdsConverter] Phys. viscosity (m^2/s):          Viscosity=      0.000117647
+[AdsConverter] Schmidt Number:                   Sc=             1.5
+[AdsConverter] Reynolds number:                  reynoldsNumber= 17
+[AdsConverter] Mach number:                      machNumber=     0.118537
+[AdsConverter] Fourier number:                   fourierNumber=  0.0488095
+[AdsConverter] 
+[AdsConverter] -- Conversion factors:
+[AdsConverter] Voxel length(m):                  physDeltaX=     0.0047619
+[AdsConverter] Time step(s):                     physDeltaT=     0.0141116
+[AdsConverter] Velocity factor(m/s):             physVelocity=   0.337446
+[AdsConverter] Density factor(kg/m^3):           physDensity=    1
+[AdsConverter] Mass factor(kg):                  physMass=       1.0798e-07
+[AdsConverter] Viscosity factor(m^2/s):          physViscosity=  0.00160689
+[AdsConverter] Diffusivity factor(m^2/s):        physDiffusivity=0.00160689
+[AdsConverter] Force factor(N):                  physForce=      2.58208e-06
+[AdsConverter] Pressure factor(N/m^2):           physPressure=   0.11387
+[AdsConverter] Particle density factor:                          0.94
+[AdsConverter] -------------------------------------------------------------
+[CuboidDecomposition] -- Cuboid Structure Statistics --
+[CuboidDecomposition]  Number of Cuboids: 	1
+[CuboidDecomposition]  Delta       : 		0.0047619
+[CuboidDecomposition]  Ratio  (min): 		1
+[CuboidDecomposition]         (max): 		1
+[CuboidDecomposition]  Nodes  (min): 		10648
+[CuboidDecomposition]         (max): 		10648
+[CuboidDecomposition]  Weight (min): 		10648
+[CuboidDecomposition]         (max): 		10648
+[CuboidDecomposition] --------------------------------
+[SuperGeometryStatistics3D] materialNumber=1; count=10648; minPhysR=(-0.05,-0.05,-0.05); maxPhysR=(0.05,0.05,0.05)
+[SuperGeometryStatistics3D] countTotal[1e6]=0.010648
+[main] ----------------- Reaction information -----------------
+[main] -- Parameters:
+[main] Particle diameter(m):                   d_p=    0.0003
+[main] Film diffusion constant(m/s):           k_f*=   1.074
+[main] Surface diffusion constant(m^2/s):      D_s=    5e-11
+[main] Initial solute concentration(mg/mL):    c_0=    1
+[main] Equilibrium surface loading(mg/g):      q_0=    45
+[main] lattice Equilibrium surface loading:    q_0=    47.8723
+[main] Surface Mass transfer coefficient(m/s): k_s*=   0.0333333
+[main] -------------------------------------------------------------
+[main] ----------------- Isotherm information -----------------
+[main] Isotherm exponent    n = [0.5]
+[main] Isotherm factor      K = [45]
+[main] -------------------------------------------------------------
+[getResults] N=21; maxTimeSteps=1063; noOfCuboid=1; Re=17; St=6.52245e-06
+[getResults] concentration-L2-error(rel)=0
+[getResults] concentration-L2-error(rel)=0.0768031
+[getResults] concentration-L2-error(rel)=0.163818
+[getResults] concentration-L2-error(rel)=0.256852
+[getResults] concentration-L2-error(rel)=0.355991
+[getResults] concentration-L2-error(rel)=0.461207
+[getResults] concentration-L2-error(rel)=0.572326
+[getResults] concentration-L2-error(rel)=0.688981
+[getResults] concentration-L2-error(rel)=0.810573
+[getResults] concentration-L2-error(rel)=0.936214
+[getResults] concentration-L2-error(rel)=1.06469
+[getResults] concentration-L2-error(rel)=1.19443
+[getResults] concentration-L2-error(rel)=1.32346
+[getResults] concentration-L2-error(rel)=1.44943
+[getResults] concentration-L2-error(rel)=1.56968
+[getResults] concentration-L2-error(rel)=1.68128
+[getResults] concentration-L2-error(rel)=1.78121
+[getResults] concentration-L2-error(rel)=1.86655
+[getResults] concentration-L2-error(rel)=1.93465
+[getResults] concentration-L2-error(rel)=1.98339
+[getResults] concentration-L2-error(rel)=2.01139
+[getResults] concentration-L2-error(rel)=2.01809
+[getResults] concentration-L2-error(rel)=2.00385
+[getResults] concentration-L2-error(rel)=1.9699
+[getResults] concentration-L2-error(rel)=1.91821
+[getResults] concentration-L2-error(rel)=1.85131
+[getResults] concentration-L2-error(rel)=1.77207
+[getResults] concentration-L2-error(rel)=1.68345
+[getResults] concentration-L2-error(rel)=1.58836
+[getResults] concentration-L2-error(rel)=1.48949
+[getResults] concentration-L2-error(rel)=1.38918
+[getResults] concentration-L2-error(rel)=1.28942
+[getResults] concentration-L2-error(rel)=1.19179
+[getResults] concentration-L2-error(rel)=1.09753
+[getResults] concentration-L2-error(rel)=1.00751
+[getResults] concentration-L2-error(rel)=0.922339
+[getResults] concentration-L2-error(rel)=0.842373
+[getResults] concentration-L2-error(rel)=0.767778
+[getResults] concentration-L2-error(rel)=0.698568
+[getResults] concentration-L2-error(rel)=0.634647
+[getResults] concentration-L2-error(rel)=0.575836
+[getResults] concentration-L2-error(rel)=0.521901
+[getResults] concentration-L2-error(rel)=0.472573
+[getResults] concentration-L2-error(rel)=0.42756
+[getResults] concentration-L2-error(rel)=0.386567
+[getResults] concentration-L2-error(rel)=0.349295
+[getResults] concentration-L2-error(rel)=0.315454
+[getResults] concentration-L2-error(rel)=0.284764
+[getResults] concentration-L2-error(rel)=0.256962
+[getResults] concentration-L2-error(rel)=0.231797
+[getResults] concentration-L2-error(rel)=0.209035
+[getResults] concentration-L2-error(rel)=0.188461
+[getResults] concentration-L2-error(rel)=0.169874
+[getResults] concentration-L2-error(rel)=0.153091
+[getResults] concentration-L2-error(rel)=0.137943
+[getResults] concentration-L2-error(rel)=0.124274
+[getResults] concentration-L2-error(rel)=0.111946
+[getResults] concentration-L2-error(rel)=0.100828
+[getResults] concentration-L2-error(rel)=0.0908057
+[getResults] concentration-L2-error(rel)=0.0817718
+[getResults] concentration-L2-error(rel)=0.0736305
+[getResults] concentration-L2-error(rel)=0.0662949
+[getResults] concentration-L2-error(rel)=0.0596862
+[getResults] concentration-L2-error(rel)=0.0537332
+[getResults] concentration-L2-error(rel)=0.0483713
+[getResults] concentration-L2-error(rel)=0.0435423
+[getResults] concentration-L2-error(rel)=0.0391938
+[getResults] concentration-L2-error(rel)=0.0352781
+[getResults] concentration-L2-error(rel)=0.0317525
+[getResults] concentration-L2-error(rel)=0.0285784
+[getResults] concentration-L2-error(rel)=0.0257208
+[getResults] concentration-L2-error(rel)=0.0231483
+[getResults] concentration-L2-error(rel)=0.0208326
+[getResults] concentration-L2-error(rel)=0.0187481
+[getResults] concentration-L2-error(rel)=0.0168719
+[getResults] concentration-L2-error(rel)=0.0151831
+[getResults] concentration-L2-error(rel)=0.0136632
+[getResults] concentration-L2-error(rel)=0.0122952
+[getResults] concentration-L2-error(rel)=0.011064
+[getResults] concentration-L2-error(rel)=0.00995598
+[getResults] concentration-L2-error(rel)=0.00895882
+[getResults] concentration-L2-error(rel)=0.00806144
+[getResults] concentration-L2-error(rel)=0.00725388
+[getResults] concentration-L2-error(rel)=0.00652716
+[getResults] concentration-L2-error(rel)=0.00587319
+[getResults] concentration-L2-error(rel)=0.0052847
+[getResults] concentration-L2-error(rel)=0.00475515
+[getResults] concentration-L2-error(rel)=0.00427863
+[getResults] concentration-L2-error(rel)=0.00384984

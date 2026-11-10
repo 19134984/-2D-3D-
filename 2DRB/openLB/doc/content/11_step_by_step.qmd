@@ -1,0 +1,797 @@
+---
+title: "Step by Step"
+subtitle: "Using $\\OpenLB$ for Applications"
+number-sections: true
+toc: true
+---
+
+The general way of functioning in $\OpenLB$ follows a generic path.
+The following structure is maintained throughout every $\OpenLB$ application example, to provide a common structure and guide beginners.
+
+1. **Initialization.**
+   The converter between physical and lattice units is set in this step.
+   It is also defined where the simulation data is stored and which lattice type is used.
+2. **Prepare geometry.**
+   The geometry is acquired, either from another file (a `.stl` file) or from defining indicator functions.
+   Then, the mesh is created and initialized based on the given geometry.
+   This consists of classifying voxels with material numbers, according to the kind of voxels they are: an inner voxel containing fluid ruled by the fluid dynamics will have a different number than a voxel on the inflow with conditions on its velocity.
+   The function `prepareGeometry` is called for these tasks.
+   Further, the mesh is distributed over the threads to establish good scaling properties.
+3. **Prepare lattice.**
+   According to the material numbers of the geometry, the lattice dynamics are set here.
+   This step characterizes the collision model and boundary behavior.
+   The choices depend on whether a force is acting or not, the use of single relaxation time (BGK) or multiple relaxation times (MRT), the simulation dimension (it can also be a 2D model), whether compressible or incompressible fluid is considered, and the number of neighboring voxels chosen.
+   By the creation of a computing grid, the `SuperLattice`, the allocation of the required data is done as well.
+4. **Main loop with timer.**
+   The timer is initialized and started, then a loop over all time steps `iT` starts the simulation, during which the functions `setBoundaryValues`, `collideAndStream` and `getResults` (the 5th, 6th, and 7th step, respectively) are called repeatedly until a maximum of iterations is reached, or the simulation has converged.
+   At the end, the timer is stopped and the summary is printed to the console.
+5. **Definition of initial and boundary conditions.**
+   The first of the three important functions called during the loop, `setBoundaryValues`, sets the slowly increasing inflow boundary condition.
+   Since the boundary is time dependent, this happens in the main loop.
+   In some applications, the boundaries stay the same during the whole simulation and the function doesn't need to do anything after the very first iteration.
+6. **Collide and stream execution.**
+   Another function, `collideAndStream`, is called each iteration step, to perform the collision and the streaming step.
+   If more than one lattice is used, the function is called for each lattice separately.
+7. **Computation and output of results.**
+   At the end of each iteration step, the function `getResults` is called, which creates console output, `.ppm` files or `.vti` files of the results at certain time steps.
+   The ideal is to get the relevant simulation data with functors and thus facilitate the post processing significantly.
+   By passing the converter and the time step, the frequency of writing or displaying data can be chosen easily.
+   In many applications, the console output is required more often than the VTK data.
+
+## Lesson 1: Getting Started -- Sketch of Application {#sec-lessonGettingStarted}
+
+This section presents the `bstep2d` example that can be found in the recent release of $\OpenLB$.
+This example simulates a flow over a backward-facing step and serves as an illustration of $\OpenLB$ and its features.
+In order to execute the simulation and get some results, download and unpack $\OpenLB$ on (preferably) a Linux system, see [Building and Running](10_building_and_running.qmd).
+Then, generate an executable file by compiling the program through the command `make`.
+Finally, launch the simulation by `./bstep2d` and observe the terminal output, see [Section Console Output](07_input_output.qmd#sec-consoleOutput).
+
+A few lines are invariably the same for all $\OpenLB$ applications, see @lst-code1-1.
+
+::: {#lst-code1-1}
+```{.cpp}
+#include <olb.h>
+#include "olb2D.hh"
+
+using namespace olb;              // OpenLB namespaces
+using namespace olb::descriptors; //
+
+using T = FLOATING_POINT_TYPE;
+using DESCRIPTOR = D2Q9<>;
+```
+Framework of an $\OpenLB$ program. Fundamental properties of the simulation are defined here.
+:::
+
+- **Line 1:** The header file `olb2D.h` includes definitions for the whole 2D code present in the release. In the same way, access to 3D code is obtained by including the file `olb3D.h`.
+- **Line 2:** Most $\OpenLB$ code depends on template parameters. Therefore, it cannot be compiled in advance, and needs to be integrated "as is" into your programs via the file `olb2D.hh` or `olb3D.hh` respectively.
+- **Line 4:** All $\OpenLB$ code is contained in the namespace `olb`. The descriptors have their own namespace and define the lattice arrangement, e.g. $D2Q9$ or $D3Q19$.
+- **Line 7:** Choice of precision for floating point arithmetic. The default type `FLOATING_POINT_TYPE` is defined in the `config.mk` file and usually equals `float` or `double`. Any other floating point type can be used, including built-in types and user-defined types which are implemented through a C++ class.
+- **Line 8:** Choice of a lattice descriptor. Lattice descriptors specify not only which lattice is employed (see the [discrete velocity sets](01_introduction.qmd#fig-velSets) for exemplary velocity sets), but are also used to compute the size of various dependent fields such as force vectors.
+
+The next code presents a brief overview of the structure of an $\OpenLB$ application, see @lst-bstep2d.
+It aims rather to introduce guidelines to beginners than to explain the classes and methods in depth.
+Details on the shown functions can be found in the source code, this means in the `bstep2d.cpp` file, as well as in the other chapters.
+
+::: {#lst-bstep2d}
+```{.cpp filename="examples/laminar/bstep2d/bstep2d.cpp"}
+SuperGeometry<T,2> prepareGeometry(LBconverter<T> const& converter)
+{
+  // create Cuboids and assign them to threads
+  // create SuperGeometry
+  // set material numbers
+  return superGeometry;
+}
+void prepareLattice(...)
+{
+  // set dynamics for fluid and boundary lattices
+  // set initial values, rho and u
+}
+void setBoundaryValues(...)
+{
+  // set Poiseuille velocity profile at inflow
+  // increase inflow velocity slowly over time
+}
+void getResults(...)
+{
+  // write simulation data do vtk files and terminal
+}
+
+int main(int argc, char* argv[])
+{
+  // === 1st Step: Initialization ===
+  initialize( &argc, &argv );
+  singleton::directories().setOutputDir( "./tmp/" );  // set output directory
+  OstreamManager clout( std::cout, "main" );
+
+  UnitConverterFromResolutionAndRelaxationTime<T, DESCRIPTOR> converter(
+    (T)   N,                 // resolution
+    (T)   relaxationTime,    // relaxation time
+    (T)   charL,             // charPhysLength: reference length of simulation geometry
+    (T)   1.,                // charPhysVelocity: maximal/highest expected velocity during simulation in __m / s__
+    (T)   1./19230.76923,    // physViscosity: physical kinematic viscosity in __m^2 / s__
+    (T)   1.                 // physDensity: physical density in __kg / m^3__
+  );
+
+  // Prints the converter log as console output
+  converter.print();
+  // Writes the converter log in a file
+  converter.write("bstep2d");
+
+  // === 2nd Step: Prepare Geometry ===
+  // Instantiation of a superGeometry
+  SuperGeometry<T,2> superGeometry( prepareGeometry(converter) );
+
+  // === 3rd Step: Prepare Lattice ===
+  SuperLattice<T,DESCRIPTOR> sLattice( superGeometry );
+  BGKdynamics<T,DESCRIPTOR> bulkDynamics (
+    converter.getLatticeRelaxationFrequency(),
+    instances::getBulkMomenta<T,DESCRIPTOR>()
+  );
+
+  //prepare Lattice and set boundaryConditions
+  prepareLattice( converter, sLattice, bulkDynamics, superGeometry );
+
+  // instantiate reusable functors
+  SuperPlaneIntegralFluxVelocity2D<T> velocityFlux( sLattice,
+      converter,
+      superGeometry,
+      {lengthStep/2.,  heightInlet / 2.},
+      {0.,  1.} );
+
+  SuperPlaneIntegralFluxPressure2D<T> pressureFlux( sLattice,
+      converter,
+      superGeometry,
+      {lengthStep/2.,  heightInlet / 2. },
+      {0.,  1.} );
+
+  // === 4th Step: Main Loop with Timer ===
+  clout << "starting simulation..." << std::endl;
+  Timer<T> timer( converter.getLatticeTime( maxPhysT ), superGeometry.getStatistics().getNvoxel() );
+  timer.start();
+
+  for ( std::size_t iT = 0; iT < converter.getLatticeTime( maxPhysT ); ++iT ) {
+    // === 5th Step: Definition of Initial and Boundary Conditions ===
+    setBoundaryValues( converter, sLattice, iT, superGeometry );
+    // === 6th Step: Collide and Stream Execution ===
+    sLattice.collideAndStream();
+    // === 7th Step: Computation and Output of the Results ===
+    getResults( sLattice, converter, iT, superGeometry, timer, velocityFlux, pressureFlux );
+  }
+
+  timer.stop();
+  timer.printSummary();
+}
+```
+A brief overview of a typical $\OpenLB$ application, `bstep2d`. Details on the specific functions can be found in the other chapters.
+:::
+
+## Lesson 2: Define and Use Boundary Conditions {#sec-lesson-boundary}
+
+The current $\OpenLB$ release offers a wide range of boundary conditions for the implementation of pressure and velocity boundaries.
+They support boundaries that are aligned with the numerical grid, and also implement proper corner nodes in 2D and 3D, and edge nodes that connect two plane boundaries in 3D.
+The choice of a boundary condition is conceptually separated from the definition of the location of boundary nodes.
+It is therefore possible to modify the choice of the boundary condition by changing a single instruction in a program.
+An overview of the available boundary conditions is given by [@krause:21].
+
+The new boundary condition system utilizes free floating functions and doesn't require a class structure.
+Consequently, the following classes are obsolete in the current release: `sOn/OffLatticeBoundaryConditionXD`, `OnLatticeBoundaryConditionXD`, `(Off)BoundaryConditionInstantiatorXD` and `Regularized/InterpolationBoundaryManagerXD`.
+
+Key features of the new system are:
+
+- Free floating design that allows for general functions like `setBoundary` to be used in multiple boundary conditions.
+- Overall slimmer design with fewer function calls and fewer loops through the block domain.
+- `MomentaVector` and `dynamicsVector` are stored in `src/core/blockLatticeStructure3D.h`.
+- Uncluttered function call design, which makes it easier to create new boundary conditions.
+
+The new boundaries are similarly named, as in `addSlipBoundary` becomes `setSlipBoundary` in the new system.
+For example, if you want to use a slip boundary condition:
+
+**Define dynamics**
+: Keep in mind that `sLattice.defineDynamics` is the same for the old and new boundary system.
+
+**Define your boundary type**
+: In this case it is the `slipBoundary`. To set the boundary, call the fitting `setBoundaryCondition` function inside your `prepareLattice` function, i.e. `setSlipBoundary<T,DESCRIPTOR>("superLattice", "superGeometry", "MaterialNumber");`. The difference between the old and the new system is that every boundary condition needs to have the `superLattice` as an argument. The `latticeRelaxationFrequency` `omega` is usually called as the second argument.
+
+**Define initial conditions**
+: On-lattice: `sLattice.defineRhoU(..)`. Off-lattice: `sLattice.defineRho(..)`, `sLattice.defineUBouzidi(..)`.
+
+**Define boundary values**
+: On-lattice: `sLattice.defineU(..)`. Off-lattice: `sLattice.defineUBouzidi(..)`.
+
+With the help of this system, one can treat local and non-local boundary conditions the same way.
+Furthermore, they can be used both for sequential and parallel program execution, as it is shown in [Lesson 9](#sec-lesson-parallel).
+The mechanism behind this is explained in [Lesson 7](#sec-lesson-genericity).
+The bottom line is that both local and non-local boundary conditions instantiate a special dynamics object and assign it to boundary cells.
+Non-local boundaries additionally instantiate post-processing objects that take care of non-local aspects of the algorithm.
+
+## Lesson 3: UnitConverter -- Lattice and Physical Units {#sec-LessonUnitConverter}
+
+Fluid flow problems are usually given in a system of metric units.
+For example, consider a cylinder of diameter $3\,\mathrm{cm}$ in a fluid channel with an average inflow velocity of $4\,\mathrm{m/s}$.
+The fluid has a kinematic viscosity of $0.001\,\mathrm{m^2/s}$.
+The value of interest is the pressure difference measured in $\mathrm{Pa}$ at the front and the back of the cylinder (with respect to the flow direction).
+However, the variables used in an LB simulation live in a system of lattice units, in which the distance between two lattice cells and the time interval between two iteration steps are chosen to be unity.
+Therefore, when setting up a simulation, a conversion directive has to be defined that takes care of scaling variables from physical units into lattice units and *vice versa*.
+
+In $\OpenLB$, all these conversions are handled by a class called `UnitConverter`, see @lst-converter.
+An instance of the `UnitConverter` is generated with desired discretization parameters and reference values in SI units.
+It provides a set of conversion functions to enable a fast and easy way to convert between physical and lattice units.
+In addition, it gives information about the parameters of the fluid flow simulation, such as the Reynolds number or the relaxation parameter $\omega$.
+
+Let's have a closer look at the input parameters: the reference values represent characteristic quantities of the fluid flow problem.
+In this example, it is suitable to choose the cylinder's diameter as characteristic length and the average inflow speed as characteristic velocity.
+Furthermore, two discretization parameters, namely the grid size $\Delta x$ in $\mathrm{m}$ and time step size $\Delta t$ in $\mathrm{s}$, are provided to the converter.
+From these reference values and discretization parameters, all the conversion factors and the relaxation time $\tau$ are calculated.
+
+Due to the fact that there are stability bounds for the relaxation time and the maximum occurring lattice velocity, one does not usually choose $\Delta x$ and $\Delta t$, but sets stable and accurate values for any two out of resolution, relaxation time or characteristic (maximum) lattice velocity.
+To make that easily available for the user of $\OpenLB$, there are different constructors for the `UnitConverter` class: `UnitConverterFromRelaxationTimeAndLatticeVelocity`, `UnitConverterFromResolutionAndLatticeVelocity`, and `UnitConverterFromResolutionAndRelaxationTime`.
+
+Once the converter is initialized, its methods can be used to convert various quantities such as velocity, time, force, or pressure.
+The function for the latter helps us to evaluate the pressure drop in our example problem, as shown in the following code snippet.
+
+::: {#lst-converter}
+```{.cpp}
+UnitConverterFromResolutionAndRelaxationTime<T, DESCRIPTOR> const converter(
+    int {N},              // resolution: number of voxels per charPhysL
+    (T)   0.53,           // latticeRelaxationTime: relaxation time, have to be greater than 0.5!
+    (T)   0.1,            // charPhysLength: reference length of simulation geometry
+    (T)   0.2,            // charPhysVelocity: maximal/highest expected velocity during simulation in __m / s__
+    (T)   0.2*2.*0.05/Re, // physViscosity: physical kinematic viscosity in __m^2 / s__
+    (T)   1.0             // physDensity: physical density in __kg / m^3__
+  );
+// Prints the converter log as console output
+converter.print();
+// Writes the converter log in a file
+converter.write("converterLogFile");
+// conversion from seconds to iteration steps and vice-versa
+int iT = converter.getLatticeTime(maxPhysT);
+T sec  = converter.getPhysTime(iT);
+<...> simulation
+<...> evaluation of latticeRho at the back and the front of the cylinder
+T latticePressureFront = latticeRhoFront / descriptors::invCs2<T,DESCRIPTOR>();
+T latticePressureBack = latticeRhoBack / descriptors::invCs2<T,DESCRIPTOR>();
+T pressureDrop =   converter.getPhysPressure(latticePressureFront)
+                 - converter.getPhysPressure(latticePressureBack);
+```
+Use of `UnitConverter` in a 3D problem.
+:::
+
+- **Lines 1--7:** Instantiate a `UnitConverter` object and specify discretization parameters as well as characteristic values.
+- **Line 9:** Write simulation parameters and conversion factors to the terminal.
+- **Line 11:** Write simulation parameters and conversion factors to a logfile.
+- **Lines 13 and 14:** The conversion from physical units (seconds) to discrete ones (time steps) is managed by the converter.
+- **Lines 17--20:** The converter automatically calculates the pressure values from the local density.
+
+## Lesson 4: Extract Data From a Simulation {#sec-lesson-extract-data}
+
+When the collision step is executed, the value of the density and the velocity are computed internally, in order to evaluate the equilibrium distribution.
+Those macroscopic variables are however interesting for the $\OpenLB$ end-user as well, and it would be a shame to simply neglect their value after use.
+These values are accessed through the method `getStatistics()` of a `BlockLattice`:
+
+`T lattice.getStatistics().getAverageRho()`
+: Returns the average density evaluated during the previous collision step.
+
+`T lattice.getStatistics().getAverageEnergy()`
+: Returns half the average velocity norm evaluated during the previous collision step.
+
+`T lattice.getStatistics().getMaxU()`
+: Returns the maximum value of the velocity norm evaluated during the previous collision step.
+
+Often, the information provided by the statistics of a lattice is not sufficient, and more generally, numerical results are required.
+To do this, you can get data cell-by-cell from the `BlockLatticeXD` and `SuperLatticeXD` through functors, see [Section Functors](02_core.qmd#sec-functors).
+Functors act on the underlying lattice and process its data to relevant macroscopic units, e.g. density, velocity, stress, flux, pressure, and drag.
+Functors provide an `operator()` that, instead of accessing stored data, computes the data every time it is called.
+Since $\OpenLB$ 0.8, the concept of functors unfolds not only for postprocessing but also for boundary conditions and the generation of geometry.
+In @lst-VTMwriter it is shown how to extract data out of a `SuperLattice` named `sLattice` and a `SuperGeometry3D` named `sGeometry`.
+The data format is a legal `.vtk` file that can be processed further with ParaView.
+
+::: {#lst-VTMwriter}
+```{.cpp}
+// generate the writer object
+SuperVTMwriter3D<T> vtmWriter("bstep3d");
+// write every 0.2 seconds
+if (iT==converter.getLatticeTime(0.2)) {
+  // create functors
+  SuperGeometryF3D<T,DESCRIPTOR> geometry(sGeometry);
+  SuperLatticeCuboid3D<T,DESCRIPTOR> cuboid(sLattice);
+  SuperLatticeRank3D<T,DESCRIPTOR> rank(sLattice);
+  // write functors to file system, vtk formata
+  vtmWriter.write(geometry);
+  vtmWriter.write(cuboid);
+  vtmWriter.write(rank);
+}
+```
+Extract simulation data to `vtk` file format.
+:::
+
+As mentioned before, $\OpenLB$ provides functors for a bunch of data, see @lst-functorData.
+More details about writing simulation data can be found in the [Input and Output](07_input_output.qmd) chapter.
+
+::: {#lst-functorData}
+```{.cpp}
+// Create the functors by only passing lattice and converter
+SuperLatticePhysVelocity3D<T,DESCRIPTOR> velocity(sLattice, converter);
+SuperLatticePhysPressure3D<T,DESCRIPTOR> pressure(sLattice, converter);
+// Create functor that corresponds to material numbers
+SuperGeometryF3D<T,DESCRIPTOR> geometry(superGeometry);
+```
+Code example for creating velocity, pressure and geometry functors.
+:::
+
+The most straightforward and convenient way of visualizing simulation data is to produce a 2D snapshot of a scalar valued functor.
+This is done through the `BlockReduction3D2D`, which puts a plane into arbitrary 3D functors.
+Afterwards, this plane can be easily written to an image file.
+$\OpenLB$ creates images of PPM format as shown in @lst-GIFwriter.
+
+::: {#lst-GIFwriter}
+```{.cpp}
+// velocity is an application: R^3 -> R^3
+// an image in its very basic sense is an application: R^2 -> R
+
+// transformation of data is presented below
+// get velocity functor
+SuperLatticePhysVelocity3D<T,DESCRIPTOR> velocity(sLattice, converter);
+// get scalar valued functor by applying the point wise l2 norm
+SuperEuklidNorm3D<T> normVel( velocity );
+// put a plane with normal (0,0,1) in the 3 dimensional data
+BlockReduction3D2D<T> planeReduction( normVel, {0, 0, 1} );
+BlockGifWriter<T> gifWriter;
+// write ppm image to file system
+gifWriter.write( planeReduction, iT, "vel" );
+```
+Create a PPM image out of a 3D velocity functor.
+:::
+
+This image writer provides *in situ* visualization which, in contrast to the `VTKwriter`, produces smaller data sets that can be interpreted immediately without requiring other software.
+
+## Lesson 5: Convergence Check {#sec-lessonConvergenceCheck}
+
+The class `ValueTracer` checks for time convergence of a given scalar $\phi$.
+The convergence is reached when the standard deviation $\sigma$ of the monitored value $\phi$ is smaller than a given residuum $\epsilon$ times the expected value $\bar\phi$:
+$$
+\sigma(\phi)=\sqrt{\frac{1}{N+1}\sum \limits_{i=0}^{N}\left(\phi_i-\bar\phi\right)^2}< \epsilon\bar\phi
+$$
+The expected value $\bar\phi$ is the average over the last $N$ time steps with $\phi_i := \phi(t^* - i\Delta t)$, where $t^*$ is the current time step and $\Delta t$ denotes the time step size:
+$$
+\bar\phi=\frac{1}{N+1}\sum \limits_{i=0}^{N}\phi_i
+$$
+The value $N$ should be chosen as a problem-specific time period.
+As an example, $\texttt{charT} = \texttt{charL} / \texttt{charU}$ and $N = \texttt{converter.getLatticeTime}(\texttt{charT})$.
+
+To initialize a `ValueTracer` object use:
+
+::: {#lst-valuetracer-init}
+```{.cpp}
+util::ValueTracer<T> converge( numberTimeSteps, residuum );
+```
+:::
+
+For example, to check for convergence with a residuum of $\epsilon = 10^{-5}$ every physical second:
+
+::: {#lst-valuetracer-example}
+```{.cpp}
+util::ValueTracer<T> converge( converter.getLatticeTime(1.0), 1e-5 );
+```
+:::
+
+It is required to pass the monitored value to the `ValueTracer` object at every time step by:
+
+::: {#lst-valuetracer-take}
+```{.cpp}
+for (iT = 0; iT < maxIter; ++iT) {
+  ...
+  converge.takeValue( monitoredValue, isVerbose );
+  ..
+}
+```
+:::
+
+If you would like to print the average value and its standard deviation every number of time steps chosen during initialization, set `isVerbose` to true; otherwise, choose false.
+It is a good idea to choose average energy as the monitored value:
+
+::: {#lst-valuetracer-energy}
+```{.cpp}
+converge.takeValue(SLattice.getStatistics().getAverageEnergy(),true);
+```
+:::
+
+Do something like the following in the time loop:
+
+::: {#lst-valuetracer-check}
+```{.cpp}
+if (converge.hasConverged()) {
+  clout << "Simulation converged." << std::endl;
+  break;
+}
+```
+:::
+
+## Lesson 6: Use an External Force {#sec-externalForces}
+
+In simulations, the dynamics of a fluid are often driven by some kind of externally imposed force field.
+In order to optimize memory access and to minimize cache misses, the value of this force can be stored right alongside the cell's population values.
+This is achieved by specifying additional fields in the lattice descriptor (see [Section Descriptor](02_core.qmd#sec-Descriptor) and [Section Multiphysics Couplings](05_simulation_models.qmd#sec-couplings)).
+
+At this point, we want to consider a time- and space-independent external force as a basic example.
+@lst-externalForceExample shows how such an external force can be defined for all cells of a certain material number.
+
+::: {#lst-externalForceExample}
+```{.cpp filename="examples/laminar/poiseuille2d"}
+// Define constant force
+AnalyticalConst2D<T,T> force(
+  8.0 * converter.getLatticeViscosity()
+      * converter.getCharLatticeVelocity()
+      / ( Ly*Ly ), // x-component of the force
+  0.0);            // y-component of the force
+
+// Initialize force for materials 1 and 2
+superLattice.defineField<FORCE>(
+  superGeometry.getMaterialIndicator({1, 2}), force);
+```
+Define a constant external force.
+:::
+
+This code was adapted from `examples/laminar/poiseuille2d` where just such a constant force is used to drive the channel flow.
+
+::: callout-note
+The underlying `D2Q9` descriptor's field list must contain a `FORCE` field in order for `defineField<FORCE>` to work.
+:::
+
+The command `SuperLattice::defineField` provides just one of many template methods one can use to work with descriptor fields.
+For example, we can read and write a cell's force field as follows:
+
+::: {#lst-force-field-access}
+```{.cpp}
+// Get a reference to the memory location of a cell's force vector
+FieldPtr<T,DESCRIPTOR,FORCE> force = cell.template getFieldPointer<FORCE>();
+// Read a cell's force vector as an OpenLB vector value
+Vector<double,2> force = cell.template getField<FORCE>();
+// Set a cell's force vector to zero
+cell.template setField<FORCE>(Vector<double,2>(0.0, 0.0));
+```
+:::
+
+Note that these methods work the same way for any other field that might be declared by a cell's specific descriptor.
+
+## Lesson 7: Understand Genericity in $\OpenLB$ {#sec-lesson-genericity}
+
+$\OpenLB$ is a framework for the implementation of lattice Boltzmann algorithms.
+Although most of the code shipped with the distribution is about fluid dynamics, it is open to various types of physical models.
+Generally speaking, a model which makes use of $\OpenLB$ must be formulated in terms of the "local collision followed by nearest-neighbor streaming" philosophy.
+A current restriction to $\OpenLB$ is that the streaming step can only include nearest neighbors: there is no possibility to include larger neighborhoods within the modular framework of the library, i.e. without tampering with $\OpenLB$ source code.
+Except for this restriction, one is completely free to define the topology of the neighborhood of cells, to implement an arbitrary local collision step, and to add non-local corrections for the implementation of, say, a boundary condition.
+
+To reach this level of genericity, $\OpenLB$ distinguishes between non-modifiable core components, which you'll always use as they are, and modular extensions.
+As far as these extensions are concerned, you have the choice to use default implementations that are part of $\OpenLB$ or to write your own.
+As a scientific developer, concentrating on these, usually quite short, extensions means that you can concentrate on the physics of your model instead of technical implementation details.
+By respecting this concept of modularity, you can automatically take advantage of all structural additions to $\OpenLB$.
+In the current release, the most important addition is parallelism: you can run your code in parallel without (or almost without) having to care about parallelism and MPI.
+
+The most important non-modifiable components are the lattice and the cell.
+You can configure their behavior, but you are not expected to write a new class which inherits from or replaces the lattice or the cell.
+Lattices are offered in different flavours, most of which inherit from a common interface `BlockStructureXD`.
+The most common lattice is the regular `BlockLatticeXD`, which is replaced by the `SuperLatticeXD` for parallel applications and for memory-saving applications when faced with irregular domain boundaries.
+An alternative choice for parallelism and memory savings is the `CuboidStructureXD`, which does not inherit from `BlockStructureXD`, but instead allows for more general constructs.
+
+The modular extensions are classes that customize the behavior of core components.
+An important extension of this kind is the lattice descriptor.
+This specifies the number of particle populations contained in a cell, and defines the lattice constants and lattice velocities, which are used to specify the neighborhood relation between a cell and its nearest neighbors.
+The lattice descriptor can also be used to require additional allocation of memory on a cell for external scalars, such as a force field.
+The integration of a lattice descriptor in a lattice happens via a template mechanism of C++.
+This mechanism takes place statically, i.e. before program execution, and avoids the potential efficiency loss of a dynamic, object-oriented approach.
+Furthermore, template specialization is used to optimize the $\OpenLB$ code specifically for some types of lattices.
+Because of the template-based approach, a lattice descriptor need not inherit from some interface.
+Instead, you are free to simply implement a new class, inspired from the default descriptors in the files `core/latticeDescriptors.h` and `core/latticeDescriptor.hh`.
+
+The dynamics executed by a cell are implemented through a mechanism of dynamic (run-time) genericity.
+In this way, the dynamics can be different from one cell to another, and can change during program execution.
+There are two mechanisms of this type in $\OpenLB$, one to implement local dynamics, and one for non-local dynamics.
+To implement local dynamics, one needs to write a new class which inherits the interface of the abstract class `Dynamics`.
+The purpose of this class is to specify the nature of the collision step, as well as other important information (for example, how to compute the velocity moments on a cell).
+For non-local dynamics, a so-called post-processor needs to be implemented and integrated into a `BlockLatticeXD` through a call to the method `addPostProcessorXD`.
+
+::: callout-note
+This terminology can be somewhat confusing, because the term "post-processing" is used in the CFD community in the context of data analysis at the end of a simulation.
+In $\OpenLB$, a post-processor is an operator which is applied to the lattice after each streaming step.
+:::
+
+Thus, the time evolution of an $\OpenLB$ lattice consists of three steps: (1) local collision, (2) nearest-neighbor streaming, and (3) non-local postprocessing.
+Implementing the dynamics of a cell through a postprocessor is usually less efficient than when the mechanism of the `Dynamics` classes is used.
+It is therefore important to respect the spirit of the lattice Boltzmann method and to express the collision as a local operation whenever possible.
+
+## Lesson 8: Use Checkpointing for Long Duration Simulations {#sec-lesson-checkpointing}
+
+All types of data in $\OpenLB$ can be stored in a file or loaded from a file.
+This includes the data of a `BlockLatticeXD` and the data of a `ScalarFieldXD` or a `TensorFieldXD`.
+All these classes implement the interface `Serializable<T>`.
+This guarantees that they can transform their content into a data stream of type `T`, or read from such a stream.
+Serialization and unserialization of data are mainly used for file access, but they can be applied to different aims, such as copying data between two objects of different types.
+The data is stored in the ASCII-based binary format `Base64`.
+Although `Base64`-encoded data requires $25\%$ more storage space than when a pure binary format is used, this approach was chosen in $\OpenLB$ to enhance compatibility of the code between platforms.
+Saving and loading data are invoked by calling the `save` and `load` methods on the object to be serialized.
+These methods take the filename as an optional (but recommended) argument, as shown below.
+
+::: {#lst-checkpointing}
+```{.cpp}
+int nx, ny;
+<...> initialization of nx and ny
+BlockLattice<T,DESCRIPTOR> lattice(nx, ny);
+// load data from a previous simulation
+lattice.load("simulation.checkpoint");
+<...> run the simulation
+// save data for security, to be able to take up
+// the simulation at this point later
+lattice.save("simulation.checkpoint");
+```
+Store and load the state of the simulation.
+:::
+
+Checkpointing is also illustrated in the example programs `bstep2d` and `bstep3d`.
+
+## Lesson 9: Run Your Programs on a Parallel Machine {#sec-lesson-parallel}
+
+$\OpenLB$ programs can be executed on a parallel machine with distributed memory, based on MPI.
+To compile an $\OpenLB$ program for parallel execution, modify the file named `config.mk`, found in the $\OpenLB$ root directory, by removing the hashes before the lines `#CXX := mpic++` and `#PARALLEL_MODE := MPI`.
+The modified lines are shown in @lst-makefileMPI.
+Execute `make clean` and `make cleanbuild` within the desired program directory to eliminate previously compiled libraries, and recompile the program by executing the `make` command.
+To run the program in parallel, use the command `mpirun -np 2 ./cavity2d`.
+Here `-np 2` specifies the number of processors to be used.
+
+::: {#lst-makefileMPI}
+```{.makefile filename="config.mk"}
+#CXX             := g++
+#CXX             := icpc -D__aligned__=ignored
+#CXX             := mpiCC
+CXX             := mpic++
+...
+#PARALLEL_MODE   := OFF
+PARALLEL_MODE   := MPI
+#PARALLEL_MODE   := OMP
+#PARALLEL_MODE   := HYBRID
+```
+Edited `config.mk` for MPI-parallel programs.
+:::
+
+## Lesson 10: Work with Indicators {#sec-lesson-indicators}
+
+Many of the methods covered up until this point accepted geometry and material number arguments to define their working domain.
+This can lead to repetition and code that is harder to read than necessary.
+An alternative to, e.g., setting up bulk dynamics using raw material numbers is available in the form of indicator functors.
+
+In fact, most of the material number accepting operations we have covered so far use generic lattice indicators under the hood, specifically `SuperIndicatorMaterial3D`.
+
+::: {#lst-indicator-usage}
+```{.cpp}
+superLattice.defineDynamics(superGeometry, 1, &bulkDynamics);
+superLattice.defineDynamics(superGeometry, 3, &bulkDynamics);
+superLattice.defineDynamics(superGeometry, 4, &bulkDynamics);
+// is equivalent to:
+SuperIndicatorMaterial3D<T> bulkIndicator({1, 3, 4});
+superLattice.defineDynamics(bulkIndicator, &bulkDynamics);
+```
+Indicator usage example.
+:::
+
+This can be further abstracted using `SuperGeometry3D`'s indicator factory:
+
+::: {#lst-indicator-factory}
+```{.cpp}
+auto bulkIndicator = superGeometry.getMaterialIndicator({1, 3, 4});
+superLattice.defineDynamics(bulkIndicator, &bulkDynamics);
+```
+Indicator usage in `bstep3d`.
+:::
+
+The advantage of this pattern is that we explicitly named materials 1, 3 and 4 as bulk materials and can reuse the indicator whenever we operate on bulk cells:
+
+::: {#lst-indicator-reuse}
+```{.cpp}
+superLattice.defineRhoU(bulkIndicator, rho, u);
+superLattice.iniEquilibrium(bulkIndicator, rho, u);
+```
+Indicator reuse in `bstep3d`.
+:::
+
+This way the bulk material domain is defined in a central place, which will come in handy should we need to change it in the future.
+Note that for one-off usage, this can be written even more compactly:
+
+::: {#lst-indicator-inline}
+```{.cpp}
+superLattice.defineDynamics(
+  superGeometry.getMaterialIndicator({1, 3, 4}), &bulkDynamics);
+```
+Inline indicator usage.
+:::
+
+This pattern of using indicators instead of raw material numbers is available for all material number accepting methods of `SuperGeometryXD`.
+The methods themselves support arbitrary `SuperIndicatorFXD` instances and, as such, are not restricted to material indicators.
+
+@tbl-indicators2d and @tbl-indicators3d give an overview of the indicator functions that are available in $\OpenLB$ for 2D and 3D cases respectively.
+
+| Indicator | Description |
+|---|---|
+| `IndicatorF2DfromIndicatorF3D` | Creates a 2D version of a 3D cuboid indicator. |
+| `IndicatorAirfoil2D` | Creates a 2D airfoil. |
+| `IndicatorCuboid2D` | Creates a 2D rectangle. |
+| `IndicatorCircle2D` | Creates a 2D circle. |
+| `IndicatorTriangle2D` | Creates a 2D triangle. |
+| `IndicatorEquiTriangle2D` | Creates an equilateral triangle. |
+| `IndicatorBlockData2D` | Indicator function for information obtained from `VTIreader`. |
+| `IndicatorLayer2D` | Creates a layer around an input indicator or reduces an input indicator by a layer. |
+| `IndicatorSDF2D` | Converts a signed distance function to a 2D indicator. |
+| `IndicatorRotate` | Rotates a 2D indicator around a point by a specified angle (in radians). |
+
+: 2D indicators found in `indicatorF2D.h`. {#tbl-indicators2d tbl-colwidths="[37,63]"}
+
+| Indicator | Description |
+|---|---|
+| `IndicatorTranslate3D` | Move the indicator to another position. |
+| `IndicatorCircle3D` | Returns true for all positions inside of a 3D cylinder with a length five times that of the floating point epsilon. |
+| `IndicatorSphere3D` | Returns true for all positions inside of a 3D sphere. |
+| `IndicatorLayer3D` | Extend the layer of an indicator by a given thickness. |
+| `IndicatorCylinder3D` | Returns true for all positions inside of a 3D cylinder. |
+| `IndicatorCone3D` | Returns true for all positions inside of a 3D cone. |
+| `IndicatorEllipsoid3D` | Returns true for all positions inside of a 3D ellipsoid. |
+| `IndicatorSuperEllipsoid3D` | Returns true for all positions inside of a 3D ellipsoid. The geometry can be more complex than `IndicatorEllipsoid3D`. |
+| `IndicatorCuboid3D` | Returns true for all positions inside of a 3D cuboid. |
+| `IndicatorCuboidRotate3D` | Rotate a cuboid indicator around an axis. |
+| `IndicatorSDF3D` | Converts a signed distance function to an indicator. |
+| `IndicatorRotate` | Rotates a 3D indicator around an axis through a point by a specified angle (in radians). |
+
+: 3D indicators found in `indicatorF3D.h`. {#tbl-indicators3d tbl-colwidths="[37,63]"}
+
+## Alternative Approach: Using a Solver Class {#sec-solver}
+
+Quite a lot of program components are similar for each $\OpenLB$ application, e.g. the collide and stream loop is part of every simulation.
+The concept of a solver class is meant to perform such steps automatically, s.t. the user only has to define those steps which are specific to their application.
+Moreover, a generic interface shall be given for other programs (e.g. launch from Python scripts or execution of optimization routines).
+For both purposes, this is work in progress and more improvements and functionalities are under development.
+In the following, the parts of an $\OpenLB$ program in solver style are explained.
+These steps are also illustrated by the `cavity2dSolver` and `porousPlate3dSolver` examples.
+
+### Structure of an $\OpenLB$ Simulation in Solver Style
+
+#### Parameter handling
+
+In order to allow flexible interfaces to other programs, all parameters which are needed for simulation and interface are stored publicly in structs.
+For different groups of parameters (e.g. simulation/output/stationarity), different structs are used.
+
+For `Simulation`, `Output` and `Stationarity`, basic versions containing the essential parameters are given by `SimulationBase`, `OutputBase` and `StationarityBase`, respectively.
+These can be supplemented by inheritance.
+
+More parameter structs could be added for individualization.
+For instance, a `Results` struct could be used to save simulation results.
+
+#### List parameter structs and lattices
+
+A map of parameter structs with corresponding names is defined as a `meta::map`.
+Similarly, a map of lattice names and descriptors is defined.
+Some typical names are provided at `src/solver/names.h`; a list which is intended to be extended for individualization.
+The two maps are then given to the solver class as template parameters.
+
+#### Definition of a solver class
+
+Many standard routines for simulation are implemented in the existing class `LbSolver`.
+It is templatized w.r.t. maps of parameters and lattices and should therefore fit most application cases.
+However, some steps (like the definition of the geometry) depend on the application and have to be defined for each application.
+Therefore, an application-specific solver class is created as a child class of `LbSolver`.
+It has to implement the methods `prepareGeometry`, `prepareLattices`, `setInitialValues` and `setBoundaryValues`, similar to the classical app structure.
+Moreover, methods `getResults`, `computeResults`, `writeImages`, `writeVTK` and `writeGnuplot` can be defined if such output is desired.
+They are all called automatically during construction/simulation.
+
+The access to the parameter structs works with the tags defined above: e.g. `this->parameters(Simulation()).maxTime` gives the maximal simulation time (which is a member of the struct `SimulationBase`).
+Similarly, we find access to super geometry and super lattices via `this->geometry()` and `this->lattice(LatticeName())`, respectively.
+
+An automatic check, whether the simulation became stationary, is executed if a parameter struct with tag `Stationarity` is available (and the corresponding struct inherits from `StationarityBase`).
+
+#### Main method
+
+First, instances of the parameter structs and the solver class are constructed.
+This can be done classically, using the constructors (cf. the `porousPlate3dSolver` example), or, if XML reading has been implemented for all parameter structs, with the create-from-XML interface (cf. the `cavity2dSolver` example).
+
+Secondly, the `solve()` method of the solver instance is called in order to run the simulation.
+
+### Set up an Application in Solver Style
+
+In order to set up your own $\OpenLB$ application in solver style, the following steps should be followed:
+
+- Select parameter structs. You can use existing ones or inherit from them / define them completely new. The simulation parameters are expected to inherit from `SimulationParameters` and provide a unit converter. The output parameters should inherit from `OutputParameters`. You are free to add more parameter structs (e.g. for simulation results) yourself.
+- Define a solver class. It should inherit publicly from the `LbSolver` class and implement the missing virtual methods like `prepareGeometry`.
+- Define the main method. Either construct instances of the parameter structs and the solver class or use the create-from-XML interface. Then call the `solve()` method and possibly perform postprocessing.
+
+### Parameter Explanation and Reading from XML
+
+In this short overview, the relevant parameters for an app in solver style are listed with the respective names for using an XML file for the input.
+The documentation is divided into the two different main parts of the XML file: @sec-solver-application and @sec-solver-output.
+
+In each section, the parameters are explained via a table whose columns have the following meaning:
+
+- **Parameter:** Name of the parameter in the XML file.
+- **Name (type):** Name of the parameter in the source code and its data type in brackets. Besides the common data types the abbreviations `S` and `T` are used for template parameters.
+- **Class (file):** Name of the class in which the parameter is stored and name of the file in which the class is defined.
+- **Default value:** Is this parameter essential, optional or unused?
+  If a parameter is optional, it does not need to be defined; then the default value can be seen in this column.
+  If a parameter is so important that without it the program has to exit, it is labeled as *EXIT*.
+  Some parameters are indicated with **unused**, which means that the parameter is read but not used afterwards.
+- **Explanation:** Brief description and explanation of the parameter.
+  Some parameters have different possibilities for their definition.
+  In this case, all available possibilities are also offered in **bold** type letters.
+
+The arrangement of the parameters in the XML file has the following structure:
+
+::: {#lst-solver-xml-structure}
+```{.xml}
+<Param>
+  <name of the subsection in this documentation>
+    <superordinate term of the parameter>
+      <name of the parameter> value of the parameter </name of the parameter>
+    </superordinate term of the parameter>
+  </name of the subsection in this documentation>
+</Param>
+```
+:::
+
+For example:
+
+::: {#lst-solver-xml-example}
+```{.xml}
+<Param>
+  <Application>
+    <Discretization>
+      <Resolution> 128 </Resolution>
+    </Discretization>
+  </Application>
+</Param>
+```
+:::
+
+#### Application {#sec-solver-application}
+
+In the following, all parameters for the general setup of the application are explained.
+
+| Parameter | Name (type) | Class (file) | Default | Explanation / **possibilities** |
+|---|---|---|---|---|
+| *Name* | `name` (`std::string`) | `OutputGeneral` (`solverParameters.h`) | `"unnamed"` | Output name *Name*`.dat` for information of `UnitConverter` in the *tmp* folder |
+| *OlbDir* | `olbDir` (`std::string`) | `OutputGeneral` (`solverParameters.h`) | `"../../../"` | Defines the trail for the $\OpenLB$ directory |
+| *PressureFilter* | `pressureFilterOn` (`bool`) | `SimulationBase` (`solverParameters.h`) | false | Weights for moments computing; if `pressureFilterOn`, then `_lattice->stripeOffDensityOffset(_lattice->getStatistics().getAverageRho() - (T) 1)` in `lbSolver.hh` |
+| **Discretization** | | | | |
+| *Resolution* | `_resolution` (`int`) | `UnitConverter` (`unitConverter.hh`) | | Defines the resolution number of the simulation area |
+| *LatticeRelaxationTime* | `_latticeRelaxationTime` (`T`) | `UnitConverter` (`unitConverter.hh`) | | Defines the lattice relaxation time and thereby the *physicalDeltaT* and *_conversionTime* respectively |
+| **PhysParameters** | | | | |
+| *CharPhysLength* | `_charPhysLength` (`T`) | `UnitConverter` (`unitConverter.hh`) | | Defines the characteristic physical length |
+| *CharPhysVelocity* | `_charPhysVelocity` (`T`) | `UnitConverter` (`unitConverter.hh`) | | Defines the characteristic physical velocity |
+| *PhysDensity* | `_physDensity` (`T`) | `UnitConverter` (`unitConverter.hh`) | | Defines the physical density |
+| *CharPhysPressure* | `_charPhysPressure` (`T`) | `UnitConverter` (`unitConverter.hh`) | | Defines the characteristic physical pressure |
+| *PhysViscosity* | `_physViscosity` (`T`) | `UnitConverter` (`unitConverter.hh`) | | Defines the physical viscosity |
+| *PhysMaxTime* | `maxTime` (`S`) | `SimulationBase` (`solverParameters.h`) | | Defines the maximal simulation time in seconds |
+| *StartUpTime* | `startUpTime` (`S`) | `SimulationBase` (`solverParameters.h`) | | Defines the start time until which the simulation is started up. From then on, the *convergence criterion* is checked (in `solver3D.hh`) and determines the boundaries for `defineU` in primal mode. |
+| *BoundaryValueUpdateTime* | `_physBoundaryValueUpdateTime` (`S`) | `SimulationBase` (`solverParameters.h`) | *PhysMaxTime*/100 | Defines the boundary value update time |
+| **mesh** | | | | |
+| *noCuboidsPerProcess* | `noC` (`int`) | `SimulationBase` (`solverParameters.h`) | 1, **unused** | Defines the number of cuboids per process |
+| **ConvergenceCheck** | | | | |
+| *Type* | `convergenceType[0]` (`std::string`) | `Stationarity` (`solverParameters.h`) | `"MaxLatticeVelocity"` | Define which quantity is regarded when checking the convergence. Alternative values: **AverageEnergy**, **AverageRho** |
+| *Interval* | `physInterval[0]` (`BaseType<T>`) | `Stationarity` (`solverParameters.h`) | | Physical time interval in which the values are checked for convergence |
+| *Residuum* | `epsilon[0]` (`BaseType<T>`) | `Stationarity` (`solverParameters.h`) | | Sensitivity for the convergence check |
+
+: Application parameters read from the XML file. {#tbl-solver-application tbl-colwidths="[14,16,22,12,36]"}
+
+#### Output {#sec-solver-output}
+
+In the following, all parameters for the output produced by the application are explained.
+
+| Parameter | Name (type) | Class (file) | Default | Explanation / **possibilities** |
+|---|---|---|---|---|
+| *MultiOutput* | used as (`bool`) | `testDomain3d.cpp` | | Choose 0 or 1 for `clout.setMultiOutput`, output for all processors. Needs to be manually added to the `olbInit` call |
+| *OutputDir* | `outputDir` (`std::string`) | `OutputGeneral` (`solverParameters.h`) | `"./temp/"` | Choose your output directory |
+| *PrintLogConverter* | `printLogConverter` (`bool`) | `OutputGeneral` (`solverParameters.h`) | true | If true, call `writeLogConverter()`, i.e. print the converter |
+| **Log** | | | | |
+| *SaveTime* | `logT` (`BaseType<T>`) | `OutputGeneral` (`solverParameters.h`) | EXIT | Choose physical time; write the data in the terminal each $x$ seconds until *PhysMaxTime*; `printLog(iT)` in `lbSolver.hh` |
+| *VerboseLog* | `verbose` (`bool`) | `OutputGeneral` (`solverParameters.h`) | 1 (true) | Show statements in the terminal, if true |
+| **VisualizationVTK, VisualizationImages and VisualizationGnuplot** | | | | |
+| *Output* | `out` (`bool`) | `OutputPlot` (`solverParameters.h`) | false | States whether there is output or not |
+| *FileName* | `filename` (`std::string`) | `OutputPlot` (`solverParameters.h`) | `"unnamed"` | Name of the output file |
+| *SaveTime* | `saveTime` (`S`) | `OutputPlot` (`solverParameters.h`) | EXIT | Choose physical time; write the data each $x$ seconds until *PhysMaxTime* |
+| **Timer** | | | | |
+| *PrintMode* | `timerPrintMode` (`int`) | `OutputGeneral` (`solverParameters.h`) | 2 | Mode of the display style passed to `printStep()` of the `Timer` instance: **0** for single-line layout, usable for data extraction as CSV; **1** for single-line layout (not conform with output rules); **2** for double-line layout (not conform with output rules); **3** for performance output only |
+
+: Output parameters read from the XML file. {#tbl-solver-output tbl-colwidths="[14,16,22,12,36]"}

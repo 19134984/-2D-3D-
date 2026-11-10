@@ -1,0 +1,37 @@
+---
+features: [porousMedia, transient, showcase, stl, primitives]
+---
+
+### resolvedRock3d
+
+This example illustrates the consideration of resolved porous media.
+It does this by importing a VTI file representing the geometry of the rock and applying a constant pressure gradient in one direction and periodic boundary conditions in all other directions.
+The no-slip boundary condition on the channel walls is enforced using *bounce back*.
+
+It is also possible to convert a TIFF series, that is for example provided on the Digital Rocks Portal (<https://www.digitalrocksportal.org>), to a VTI file by following these steps:
+
+1. **Provide or download a medium:** obtain the TIFF series of the desired medium, for instance from the Digital Rocks Portal (<https://www.digitalrocksportal.org/projects/92>, [@peyman:2017]).
+2. **Convert the TIFF series to VTI using ParaView [@paraview-web]:**
+   a. Open ParaView and import the TIFF series.
+   b. If the "cell data to point data" filter is available, apply it. (Note: if the filter is greyed out, it is not necessary to apply it.)
+   c. Save the resulting data as a VTI file.
+   d. When saving, use ASCII formatting.
+   e. Export only one array from the data and make a note of its name for use as a command line argument to start the simulation (see below).
+
+To start the simulation, use the following parameters in the specified order:
+
+- **Filename:** name of the VTI file representing the porous medium.
+- **Array name:** name of the array exported from ParaView containing the data.
+- **Scaling factor:** factor to scale the dimensions of the simulation.
+- **Time scaling factor:** factor to scale the time dimension of the simulation.
+- **Resolution:** resolution of the $y$-length.
+- **Pressure drop:** magnitude of the applied pressure drop in Pa.
+
+For example:
+
+```{.bash}
+mpirun -np 6 ./resolvedRock3d rock.vti "Tiff Scalars" 2.5e-6 1.0 200 1.0
+```
+
+Note that `-np 6` specifies the number of processors, or cores, that will be used to run the simulation; hence, it may differ depending on the available resources.
+Ensure you replace the filename `rock.vti` with the name of your VTI file, the array name `"Tiff Scalars"` with the name of the array you exported from ParaView, and adjust the values for the scaling factor, resolution, and pressure drop according to your specific setup requirements.

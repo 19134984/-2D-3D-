@@ -1,0 +1,27 @@
+#!/bin/bash
+#PBS -A project_XXXX
+#PBS -q debug
+#PBS -l select=1:ncpus=1:mpiprocs=1:ngpus=1
+#PBS -l walltime=01:00:00
+#PBS -N benchmark
+#PBS -l filesystems=home:flare
+
+cd $PBS_O_WORKDIR
+
+SIZE=$(./babel_size.sh $MCELLS)
+cd babelStream
+
+ZE_AFFINITY_MASK=0.0 ./build/sycl2020-acc-stream --float -s $SIZE
+
+cd ..
+
+# PYTHON ENVIRONMENT MUST BE INSTALLED IN ADVANCE USING THE $SCRIPT_HOME/pyenv_requirements.txt 
+source ../.roofline_pyenv/bin/activate
+
+export MPIR_CVAR_ENABLE_GPU=1
+export MPICH_GPU_SUPPORT_ENABLED=1
+
+export ZE_AFFINITY_MASK=0.0
+export ZE_ENABLE_PCI_ID_DEVICE_ORDER=1
+
+./run_multiple_dynamics.sh --size $MCELLS ../target/roofline.dynamics

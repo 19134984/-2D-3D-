@@ -1,0 +1,28 @@
+---
+features: [thermal, benchmark, primitives]
+---
+
+### microChannel2d
+
+This is a two-dimensional example of a channel with predefined pressures and temperatures at both ends where a rarefied gas flow is developing according to the chosen Knudsen number and considering the Knudsen slip and thermal creep effects
+
+$$
+u_s = \frac{2-\sigma_\nu}{\sigma_\nu} \left[ \frac{\lambda}{1+b Kn} \right] \Bigl( \frac{\partial u_t}{\partial n} \Bigr)_w + u_{tc},
+$$
+
+where $u_s$ is the resulting slip velocity, $\sigma_\nu$ is the accommodation coefficient, $\lambda$ the mean free path of the gas particle under the given conditions, and $\Bigl( \frac{\partial u_t}{\partial n} \Bigr)_w$ is the derivative of the tangential velocity in the wall normal direction.
+In *OpenLB*, this boundary condition is realized by combining the Bouzidi bounce back with slip velocity, which is computed using the second-order finite differences for tangential velocities that are interpolated at the points where the wall normal is pointing.
+The boundary condition is set as
+
+```{.cpp}
+setBouzidiBoundary<T,DESCRIPTOR,KnudsenVelocityPostProcessor<true>>(sLattice, superGeometry.getMaterialIndicator({2}), superGeometry.getMaterialIndicator({1,3,4}), channel);
+setBouzidiKnudsenSlipVelocity<T,DESCRIPTOR,true>(sLattice, superGeometry.getMaterialIndicator({2}), superGeometry.getMaterialIndicator({1,3,4}), channel);
+```
+
+The analytical velocity distribution in the channel height can be formulated as
+
+$$
+u(y) = \frac{h^2}{2\mu} \frac{dP}{dx} \left[ \frac{y^2}{h^2} - \frac{y}{h} - \frac{2 - \sigma_v}{\sigma_v} \cdot \frac{\mathrm{Kn}}{1 + \mathrm{Kn}} \right] + \frac{3\mu R}{4P} \left( \frac{\partial T}{\partial s} \right)_w.
+$$
+
+The example leads to a convergence order of 2.03 by $Kn=0.45$ and a relaxation time of 1.13.

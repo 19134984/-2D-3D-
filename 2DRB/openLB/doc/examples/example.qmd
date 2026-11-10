@@ -1,0 +1,192 @@
+---
+# Template and guide for the documentation page of an example.
+#
+# Copy this file to examples/<category>/<name>/<name>.qmd in the source tree,
+# next to the code of the example, and replace its contents. Nothing has to be
+# registered anywhere: link_examples.sh finds the page, adds it to the user
+# guide, the PDF and the sidebar, and example_table.py adds a row for it to the
+# overview table on the Examples page.
+#
+# The features the example covers, one column each in that table. Keep the
+# ones that apply and delete the others; write `features: []` if none of them
+# do. Without a features key the example is listed as not classified yet. The
+# keys are defined in doc/example_table.py, which warns about unknown ones.
+features:
+  - turbulent       # turbulence modelling, e.g. LES or wall functions
+  - thermal         # heat transfer, temperature coupled to the flow
+  - multiComponent  # several fluid components or species
+  - multiPhase      # several phases, e.g. liquid and gas, free surfaces
+  - particles       # resolved or subgrid particles
+  - porousMedia     # flow through porous media
+  - transient       # time dependent flow
+  - benchmark       # compared against an analytical or reference solution
+  - showcase        # application oriented case beyond a test problem
+  - stl             # geometry read from an STL file
+  - primitives      # geometry built from indicator primitives
+  - checkpointing   # saves and loads the simulation state
+# The subset of the features above for which the example is a good starting
+# point for beginners; they are highlighted in green in the table. Mostly left
+# out.
+recommended-for-beginners: [primitives]
+---
+
+### example
+
+The first paragraph says in a few sentences what the example simulates and what
+it demonstrates, so that a reader can decide whether it is the one they are
+looking for. This page is a template: it shows how the documentation of an
+example is written, and every section below explains what belongs in it while
+using the markup it describes. Read it next to its source,
+`doc/examples/example.qmd`.
+
+The page starts with a level three heading that carries the name of the
+example, which is also the name of its directory and its `.qmd` file. All
+examples are collected into a single document for the PDF, in which the
+chapter (`#`) is *Examples* and the section (`##`) is the category, so an
+example only uses `###` for its title and `####` and `#####` below it. Do not
+give the page a `title` in the front matter; the heading is the title.
+
+#### Setup
+
+Describe the physical problem: the domain, the governing equations, the
+boundary and initial conditions and the material parameters. Inline math is
+written between single dollar signs, $Re = U L / \nu$, and display math between
+double ones. A label after the closing `$$` numbers the equation and makes it
+referable:
+
+```markdown
+$$
+\partial_t \symbf{u} + (\symbf{u} \cdot \nabla) \symbf{u}
+  = -\frac{1}{\rho} \nabla p + \nu \Delta \symbf{u}
+$$ {#eq-navierStokes-example}
+
+The flow is governed by @eq-navierStokes-example.
+```
+
+$$
+\partial_t \symbf{u} + (\symbf{u} \cdot \nabla) \symbf{u}
+  = -\frac{1}{\rho} \nabla p + \nu \Delta \symbf{u}
+$$ {#eq-navierStokes-example}
+
+The flow is governed by @eq-navierStokes-example.
+
+Every example ends up in the same PDF, so a label has to be unique across the
+whole user guide, not only on its page. Suffix it with the name of the example
+and, where a 2D and a 3D variant share the text, the dimension, as in
+`eq-rayleighBenardInit-2d`. Vectors are set with `\symbf`, which works on the
+website and in the PDF alike. Stick to standard LaTeX math otherwise: macros
+such as `\OpenLB` are only defined on the website.
+
+Literature is cited by its key in `doc/literature.bib`, [@krause:21], written
+as `[@krause:21]`. Add missing entries to that file; the bibliography is shared
+by the whole user guide.
+
+Figures live in `doc/examples/<category>/fig/` and are referenced with an
+absolute path, because the page is rendered both on its own and as part of the
+PDF. Give them a label, a caption and a width:
+
+```markdown
+![Velocity field around the valve.](/examples/forBeginners/fig/pipeWithValve.png){#fig-pipeWithValve-example width="80%"}
+```
+
+![Velocity field around the valve.](/examples/forBeginners/fig/pipeWithValve.png){#fig-pipeWithValve-example width="80%"}
+
+and refer to them as @fig-pipeWithValve-example, written
+`@fig-pipeWithValve-example`. Prefer PNG for plots and renderings and SVG for
+sketches.
+
+#### Files
+
+List the files of the example with a short note on each, so that a reader
+knows where to look:
+
+```
+example/
+├── example.cpp       main(): parameters, geometry, simulation loop
+├── case.h            lattice, boundary conditions, post-processing
+├── example.qmd       this documentation
+└── Makefile
+```
+
+Code is quoted inline as `SuperLattice` or in a block with its language, which
+enables syntax highlighting:
+
+```{.cpp}
+lattice.setParameter<descriptors::OMEGA>(omega);
+lattice.initialize();
+```
+
+#### Parameters
+
+Parameters are documented in a table with the columns used by the other
+examples. A caption after the table, starting with a colon, carries the label:
+
+| Parameter | Type | Default | Meaning |
+|---|---|---|---|
+| `RESOLUTION` | int | `40` | number of nodes per characteristic length |
+| `REYNOLDS` | double | `100` | Reynolds number |
+| `PHYS_MAX_T` | double | `16` | simulated physical time in seconds |
+| `VTK_ENABLED` | bool | `true` | write the flow fields to VTK |
+
+: Default parameters of `example`. {#tbl-parameters-example}
+
+@tbl-parameters-example then refers to it. Group long lists under `#####`
+headings, for instance by geometry, numerics and output.
+
+#### Running the example
+
+Show how to build and run the example, and how to choose between its modes
+where it has several:
+
+```{.bash}
+make
+./example --RESOLUTION 80
+mpirun -np 4 ./example
+```
+
+Notes that the reader must not miss go into a callout, which is rendered as a
+box on the website and in the PDF:
+
+::: {.callout-note}
+Callouts come as `callout-note`, `callout-tip`, `callout-important`,
+`callout-warning` and `callout-caution`. Use them sparingly.
+:::
+
+#### Results
+
+Show and discuss what the example produces, and compare it with the reference
+where it is a benchmark. Several images form one figure with subcaptions when
+they are wrapped in a labelled div:
+
+```markdown
+::: {#fig-results-example layout-ncol=2}
+
+![The valve.](/examples/forBeginners/fig/pipeWithValve.png){#fig-resultsValve-example}
+
+![The Poiseuille flow.](/examples/laminar/fig/poiseuille3d.png){#fig-resultsPoiseuille-example}
+
+Two figures side by side.
+
+:::
+```
+
+::: {#fig-results-example layout-ncol=2}
+
+![The valve.](/examples/forBeginners/fig/pipeWithValve.png){#fig-resultsValve-example}
+
+![The Poiseuille flow.](/examples/laminar/fig/poiseuille3d.png){#fig-resultsPoiseuille-example}
+
+Two figures side by side.
+
+:::
+
+@fig-results-example refers to the whole figure,
+@fig-resultsPoiseuille-example to one of its parts.
+
+#### Checking the page
+
+Run `make website` in `doc/` and open `doc/ug/index.html`: the example appears
+in the sidebar under its category and in the table on the Examples page. The
+build reports examples without a `features` list and unknown feature keys.
+Build the PDF with `make pdf` as well when you add figures, equations or
+labels, because duplicate labels and LaTeX-only problems only show up there.

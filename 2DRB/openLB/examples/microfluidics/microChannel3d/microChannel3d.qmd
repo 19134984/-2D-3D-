@@ -1,0 +1,16 @@
+---
+features: [thermal, benchmark, primitives]
+---
+
+### microChannel3d
+
+This example is the three-dimensional analogy of `microChannel2d` in a round pipe.
+Instead of pressure boundary conditions at both ends, a Dirichlet velocity boundary is set at the inlet.
+
+The analytical solution for a pipe is
+
+$$
+u(r) = \frac{R^2}{4\mu} \frac{\partial P}{\partial x} \left( 1 - \frac{r^2}{R^2} - 4 \cdot \frac{2 - \sigma_v}{\sigma_v} \left[ \frac{\mathrm{Kn}}{1 + b\,\mathrm{Kn}} \right] \right) + \frac{3 \mu R}{4P} \left( \frac{\partial T}{\partial s} \right)_w
+$$
+
+The example leads to a convergence order of 2.17 by $Kn=0.45$ and a relaxation time of 1.4.

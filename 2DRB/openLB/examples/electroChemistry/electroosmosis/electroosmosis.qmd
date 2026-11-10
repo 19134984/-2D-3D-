@@ -1,0 +1,68 @@
+---
+features: [benchmark, primitives]
+---
+
+### electroosmosis
+
+The mathematical and physical description of this application is given in [@bukreev2024electro1].
+The full electro-dynamic system for two monovalent counter-ions is the same as in `poissonNernstPlanck`, with the addition of the mass and momentum equations
+
+$$
+\begin{aligned}
+    \partial_t \rho + \nabla \cdot (\rho \mathbf{u}) &= 0, \\
+    \partial_t (\rho \mathbf{u}) + \nabla \cdot (\rho \mathbf{u} \mathbf{u}^T) + \nabla p &= \nu \nabla \cdot \Bigl( \rho (\nabla \mathbf{u} + (\nabla \mathbf{u})^{\mathsf T}) \Bigr) + \mathbf{F} .
+\end{aligned}
+$$
+
+The reference solution is also the Poisson--Boltzmann equation.
+The electric force present in the momentum equation is much smaller than the advection term in the Nernst--Planck equations, and therefore the influence of the carrier fluid without an external electric field in the Gouy--Chapman model is assumed to be negligible.
+
+To check the convergence behavior of the complete *NSPNPE* system, the steady-state one-dimensional electro-osmotic flow is reproduced:
+
+$$
+\begin{aligned}
+   \Delta \psi + \frac{F}{\epsilon} (C_+ - C_-) &= 0, \\
+  \partial_t C_+ - \Bigl( \frac{D e}{k_B T} \nabla \psi \Bigr) \nabla C_+ &= D  \Delta C_+, \\
+  \partial_t C_- + \Bigl( \frac{D e}{k_B T} \nabla \psi \Bigr) \nabla C_- &= D  \Delta C_-, \\
+  \partial_t u_y + u_x \partial_y u_y + u_y \partial_x u_y + \frac{1}{\rho} \partial_y p &= \nu ( \partial_x^2 u_y + \partial_y^2 u_y) + \frac{F_{el,y}}{\rho}.
+\end{aligned}
+$$
+
+The boundary conditions are similar to the previous case.
+For the carrier fluid, the velocity on the wall is set to a bounce-back condition, whereby in the bulk it is set as zero-gradient.
+Instead of the internal electric field based on the potential gradients, a constant external field is applied in the $y$-direction, parallel to the wall.
+The only force acting within the system is also directed towards the $y$ direction:
+
+$$
+F_{el,y} = E_y F \sum_i z_i C_i .
+$$
+
+In the current case $E_y=250\,\mathrm{V\,m^{-1}}$.
+The analytical solution for carrier fluid velocity in the normal-to-wall direction is
+
+$$
+u_y(x) = -\frac{\epsilon \psi_{x=0} E_y}{\nu \rho} \Bigl( 1-\frac{e^{\frac{x}{\lambda_D}} + e^{\frac{2L-x}{\lambda_D}}}{1+e^{\frac{2L}{\lambda_D}}} \Bigr).
+$$
+
+The code of the example is based on `poissonNernstPlanck`.
+It is extended with the *NSE* on a `D3Q19` lattice.
+This lattice is operated with `ForcedBGKdynamics`.
+At the wall thereby, the `BounceBack` boundary condition is defined.
+At the bulk borders, the `setZeroGradient` is chosen. The coupler is extended by
+
+```{.cpp}
+auto force = cellNSE.template getField<descriptors::FORCE>();
+force = {0.,0.,0.};
+force[0] = forceCoeff * (concentration - concentration2);
+cellNSE.template setField<descriptors::FORCE>(force);
+```
+
+The `forceCoeff` is defined as
+
+```{.cpp}
+T forceCoeff = eField * Faraday * valence/density * converterNSE.getConversionFactorMass() / converterNSE.getConversionFactorForce();
+```
+
+The convergence order in the system remains the same as above and is shown in @fig-electroosmosis-convergence.
+
+![EOC study for electroosmosis simulations (`electroosmosis`).](/examples/electroChemistry/electroosmosis/doc/fig/electroosmosis_convergence.png){#fig-electroosmosis-convergence width="60%"}

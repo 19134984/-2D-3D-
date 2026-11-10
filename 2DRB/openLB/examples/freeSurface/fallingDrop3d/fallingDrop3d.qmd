@@ -1,0 +1,7 @@
+---
+features: [multiComponent, multiPhase, transient, primitives]
+---
+
+### fallingDrop3d
+
+This example is the three-dimensional variant of `fallingDrop2d`: a drop falls into a pool of the same liquid, forming a crown on impact.

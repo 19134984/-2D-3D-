@@ -1,0 +1,3 @@
+The directory for the new automated test framework.
+
+The tests are based on google test (). Tests should be minimal and run quickly.

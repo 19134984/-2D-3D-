@@ -1,0 +1,10 @@
+---
+features: [multiComponent, multiPhase, particles, benchmark, primitives]
+---
+
+### adsorption3d
+
+This example shows the adsorption in a batch reactor using an Euler--Euler approach.
+The model is based on the linear driving force model and uses advection diffusion reaction lattices for particles, solute, and particle loading.
+Different isotherms and mass transfer models can be used.
+An analytical solution is implemented when using the linear isotherm and surface diffusion.

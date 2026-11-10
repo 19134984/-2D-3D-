@@ -1,0 +1,21 @@
+\documentclass[tikz, border=2pt]{standalone}
+
+\usepackage{tikz}
+\usepackage{caption}
+\begin{document}
+\begin{tikzpicture}[>=latex]
+    \draw[densely dashed] (0,0) -- (2,0);
+    \draw[densely dashed] (2,0) -- (2,2);
+    \draw[densely dashed] (2,2) -- (0,2);
+    \draw[densely dashed] (0,2) -- (0,0);
+    \draw[ ->, thick] (1,1) -- (0,1);
+    \draw[ ->, thick] (1,1) -- (1,0);
+    \draw[ ->, thick] (1,1) -- (2,1);
+    \draw[ ->, thick] (1,1) -- (1,2);
+    \draw[thick,fill=orange](1,1) circle(3pt);
+    \draw[thick,fill=cyan](0,1) circle(2pt);
+    \draw[thick,fill=cyan](1,0) circle(2pt);
+    \draw[thick,fill=cyan](2,1) circle(2pt);
+    \draw[thick,fill=cyan](1,2) circle(2pt);
+\end{tikzpicture}
+\end{document}

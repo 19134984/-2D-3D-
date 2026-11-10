@@ -1,0 +1,257 @@
+\usepackage{xspace}
+%\newcommand{\OpenLB}[1][!]{\textit{\sffamily{\ifx!#1OpenLB\else OpenLB~#1\fi}}\xspace}
+
+\usepackage[utf8]{inputenc} %% utf8 support
+
+\usepackage[dvipsnames]{xcolor}
+
+\usepackage{scrhack} %% kill toc warnings
+
+%% helvet (phv) and palatino (ppl) only declare T1/OT1 font shapes. Under XeLaTeX
+%% fontspec switches the encoding to TU, which left every one of their shapes
+%% undefined -- see "LaTeX Font Warning: Font shape `TU/ppl/b/n' undefined". The
+%% substitution dropped the bold series, so \textbf produced upright text
+%% throughout the PDF. Load them only for the engine that can use them.
+\usepackage{iftex}
+\ifPDFTeX
+  \usepackage{helvet} %% modern font (for headings)
+  \usepackage{palatino} %% palatino font (for text)
+\fi
+
+\setkomafont{disposition}{\normalfont\sffamily\normalcolor\bfseries} %% regulate spacing of headings
+
+\usepackage[onehalfspacing]{setspace} %% linespacing
+
+\usepackage{amsmath,amsfonts,amsthm}
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}
+\usepackage{booktabs}
+
+
+\usepackage{geometry}
+\usepackage{tabularx}
+
+\usepackage{graphicx}
+\usepackage{url}
+\usepackage{hyperref}
+\hypersetup{
+    colorlinks,
+    linkcolor={red!50!black},
+    citecolor={blue!50!black},
+    urlcolor={blue!80!black}
+}
+
+\usepackage{listings}
+\usepackage{algorithm,algpseudocode}
+\usepackage{longtable}
+\usepackage{pdflscape}
+\usepackage{color}
+\usepackage{colortbl}
+
+\usepackage{placeins}
+\usepackage{xspace}
+\usepackage{ifthen}
+
+\usepackage{pdfpages}
+
+%\renewcommand{\abstractnamefont}{\normalfont\sffamily\Large\bfseries}
+
+\definecolor{gray}{rgb}{0.4,0.4,0.4}
+\definecolor{darkblue}{rgb}{0.0,0.0,0.6}
+\definecolor{cyan}{rgb}{0.0,0.6,0.6}
+
+\definecolor{lighttuerkis}{HTML}{F7FCFC}
+\definecolor{tuerkis}{HTML}{D9EEEE}
+\definecolor{RoyalBlue}{RGB}{22,111,191} %%166FBF {0.086,0.435,0.749}
+\definecolor{RoyalBluedark}{RGB}{10,80,191}
+\definecolor{lightgray}{RGB}{240,240,240}
+\definecolor{darkgray}{RGB}{225,225,225}
+
+\definecolor{lightantituerkis}{HTML}{FFFCFA}
+\definecolor{antituerkis}{HTML}{FFE5CF}
+\definecolor{darkantituerkis}{HTML}{FF9A0C} %%{1,.604,.047}
+
+\usepackage{tikz}
+\usepackage{subcaption}
+\usepackage{pgfplots}
+\pgfplotsset{compat=newest}
+\usetikzlibrary{
+    automata,
+    arrows.meta,
+    calc,
+    shapes.geometric,
+    graphs,
+    positioning,
+    calligraphy,
+    decorations.pathreplacing,
+    angles,
+    external,
+    quotes
+}
+%\tikzexternalize[prefix=./figuresOut/]
+\tikzstyle{startstop} = [ellipse, minimum width=3cm, minimum height=1cm, text centered, draw=black, fill=blue!20]
+\tikzstyle{process} = [rectangle, minimum width=2cm, minimum height=1cm, text centered, draw=black, fill=gray!20]
+\tikzstyle{decision} = [diamond, minimum width=1cm, minimum height=1cm, text centered, draw=black, fill=red!20]
+\tikzstyle{arrow} = [thick,->,>=stealth]
+
+
+\usepackage[
+  table-parse-only,
+  detect-all,
+  list-separator = \text{;\ },
+  list-units = single,
+  range-units = single
+]{siunitx}
+\usepackage{unicode-math}
+
+% \lstdefinelanguage{XML} %% enables syntax highlithning of xml code
+% {
+%   numbers=none,
+%   captionpos=b, %% label position t-top or b-bottom
+%   basicstyle=\footnotesize\singlespacing,
+%   showstringspaces=false,
+%   morestring=[b]",
+%   morestring=[s]{>}{<},
+%   morecomment=[s]{<?}{?>},
+%   stringstyle=\color{black},
+%   identifierstyle=\color{darkblue},
+%   keywordstyle=\color{cyan},
+%   morekeywords={timestep, index, group, part, byte_order, file ,version, type}% list your attributes here
+% }
+
+% \lstdefinelanguage{bash} %% enables syntax highlithning of bash code
+% {
+%   numbers=none,
+%   captionpos=b, %% label position t-top or b-bottom
+%   basicstyle=\small\ttfamily,
+%   showstringspaces=false,
+%   keywordstyle=\color{RoyalBlue}\bfseries, % Add \bfseries for bold
+%   morekeywords={convert,ffmpeg}
+% }
+
+% \lstdefinelanguage{myc++} %% enables syntax highlighting of c++ code
+% {
+%   language=C++,
+%   captionpos=b, %% label position t-top or b-bottom
+% %  frame=single,
+%   keywordstyle=\color{RoyalBlue}\bfseries\em, % Add \bfseries for bold
+%   keywordstyle=[2]\color{RoyalBlue}\bfseries\em,
+%   basicstyle=\footnotesize\ttfamily,
+% %  basicstyle=\small\ttfamily, % Makes listings a smaller font size and a different 
+% %  identifierstyle=\color{NavyBlue}, % Color of text inside brackets
+%   commentstyle=\color{gray}\ttfamily, % Color of comments
+%   stringstyle=\rmfamily, % Font type to use for strings
+%   numbers=left, % Change left to none to remove line numbers
+%   numberstyle=\scriptsize, % Font size of the line numbers
+%   stepnumber=1, % Increment of line numbers
+%   numbersep=8pt, % Distance of line numbers from code listing
+%   showstringspaces=false, % Sets whether spaces in strings should appear underlined
+%   breaklines=true, % Force the code to stay in the confines of the listing box
+%   lineskip=1pt, %% linespacing
+% %  frameround=ftff, % Uncomment for rounded frame
+%   frame=tB, % Frame border - none/leftline/topline/bottomline/lines/single/shadowbox/L
+%   belowcaptionskip=.75\baselineskip, % Space after the "Listing #: Desciption" text and the listing box
+% %  keywords={void, if, endif, else, for, endfor, foreach, while, endwhile, class, Class, bool, const, double, auto, T, S, begin, end, int, char, std::string, std::shared_ptr, DESCRIPTOR, PARTICLETYPE, virtual, unsigned, ADDESCRIPTOR, NSDESCRIPTOR, PARTICLE, Vector, constexpr, MOMENTA, EQUILIBRIUM, PARAMETERS, CELL},
+% %  morekeywords=[2]{CuboidStructureXD, CuboidDecomposition, SuperCommunicator, ConcreteBlockLattice, FieldArrayD, SuperParticleSystemXD, Data, Timer, SuperParticleSystem3D, ParticleSystem3D, ParticleSystemXD, BlockLatticeXD, BlockLattice3D, BlockLattice2D, BlockLattice, Cell, SuperLatticeXD, SuperLattice, SuperLattice, SuperLattice, Triangle, XMLreader, STLreader, Octree, Force3D, Boundary3D, IndicatorF3D, Particle3D, ContactDetection, MpiNonBlockingHelper, SuperParticleSystem3D, SuperParticleSysVtuWriter, SuperLatticeInterpPhysVelocity3D, StokesDragForce3D, MaterialBoundary3D, BGKdynamics, LBconverter, Serializable, Dynamics, BlockStructureXD, IndicatorFXD, IndicatorCuboid3D, IndicatorCuboid2D, IndicatorIdentity2D, SuperParticleSystem, LoadBalancer, HeuristicLoadBalancer, AdvectionDiffusionBGKdynamics, HeuristicLoadBalancer, SuperVTMwriter3D, SuperLatticePhysVelocity3D, SuperLatticeVelocity3D, SuperLatticeDensity3D, SuperLatticeFfromAnalyticalF3D, SuperLatticePhysPressure3D, SuperGeometryF3D, SuperLatticeCuboid3D, SuperL2Norm3D, SuperEuklidNorm3D, SuperEuklidNorm2D, BlockReduction3D2D, BlockReduction2D2D, Hyperplane3D, HyperplaneLattice3D, BlockGifWriter, SuperPlaneIntegralF3D, SuperPlaneIntegralFluxVelocity3D, SuperPlaneIntegralFluxPressure3D, SuperPlaneIntegralFluxF3D, SuperPlaneIntegralFluxMass3D, UnitConverter, UnitConverterFromResolutionAndLatticeVelocity, OstreamManager, GenericF, AnalyticalF, AnalyticalF3D, AnalyticalF2D, AnalyticalConst2D, AnalyticalConst3D, AnalyticPlus2D, AnalyticalIdentity2D, SmoothIndicatorF2D, SmoothIndicatorF3D, IndicatorSphere3D, IndicatorCircle3D, Indicator3D, CuboidDecomposition3D, SuperGeometryXD, SuperGeometry3D, SuperGeometry2D, SuperGeometry, SuperLatticeRank3D, PolynomialStartScale, SquarePoiseuilleInflow3D, SuperLatticeF3D, SuperLatticeFlux3D, SuperLatticePhysVelocityFlux3D, SuperLatticePhysPressureFlux3D, SuperExternal3D, Poiseuille2D, SuperIndicatorMaterial3D, SuperIndicatorFXD, SuperRelativeErrorLpNormXD, SuperAbsoluteErrorLpNormXD, SuperLatticeKnudsen2D, SuperLatticeRefinementMetricKnudsen2D, LATTICE_DESCRIPTOR, PARTICLE_DESCRIPTOR, FIELD_BASE, D2Q9, D3Q19, POPULATION, FORCE, POROSITY, VELOCITY_NUMERATOR, VELOCITY_DENOMINATOR, GENERAL, REVISION, OMEGA, ResolvedParticle3D, ResolvedSphere3D, ParticleSystem, ParticleManager, VerletParticleDynamics,DynamicsTupleParser,OSMParser}
+% }
+
+% \lstdefinestyle{floater}{
+%     float=tb,
+%     frame=tB,
+%     language=myc++
+% }
+
+% \lstdefinestyle{intext}{
+%     frame=leftline,
+%     numbers=none,
+%     xleftmargin=10pt,
+%     language=myc++
+% }
+
+% \usepackage[T1]{fontenc}
+
+% % \usepackage[
+% %   backend       = biber,
+% %   citetracker   = true,
+% %   defernumbers  = true,
+% % %  sorting      = ydnt,
+% %   sorting      = nyt,
+% %   natbib        = true,
+% %   style         = numeric-comp,    %% authoryear or alphabetic
+% %   giveninits    = true,
+% %   maxnames      = 2,
+% %   minnames      = 1,
+% %   maxbibnames   = 14,
+% %   url           = false,
+% %   isbn          = false,
+% %   doi           = true,
+% %   eprint        = false
+% %   ]
+% %   {biblatex}
+
+% %\addbibresource[datatype=bibtex]{olb_ug_mathias.bib}
+% %\addbibresource[datatype=bibtex]{olb_ug_external.bib}
+
+
+% %% cut url and texttt to pagewidth
+% \apptocmd{\UrlBreaks}{\do\f\do\m}{}{}
+% \setcounter{biburllcpenalty}{7000} %% Kleinbuchstaben
+% \setcounter{biburlucpenalty}{7000} %% Großbuchstaben
+% \setcounter{biburlnumpenalty}{7000} %% Zahlen
+
+% \newcommand*\justify{
+%   \fontdimen2\font=0.4em %% interword space
+%   \fontdimen3\font=0.2em %% interword stretch
+%   \fontdimen4\font=0.1em %% interword shrink
+%   \fontdimen7\font=0.1em %% extra space
+%   \hyphenchar\font=`\- %% allowing hyphenation
+% }
+
+\newcommand{\lb}{$\left<\right.$}
+\newcommand{\rb}{$\left.\right>$}
+%% Math macros shared with the website live in macros.tex.
+\newcommand{\class}[1]{\sloppy\lstinline[language=myc++]{#1}}
+\newcommand{\struct}[1]{\sloppy\lstinline[language=myc++]{#1}}
+%% bm cannot embolden the math characters of unicode-math (loaded above), so
+%% \bm{\Pi} stops XeLaTeX with "Improper alphabetic constant". Use the bold
+%% italic alphabet of unicode-math instead.
+\renewcommand{\boldsymbol}[1]{\symbfit{#1}}
+
+\let\OldTexttt\texttt % make \texttt sloppy to respect page margins
+\renewcommand{\texttt}[1]{\sloppy{\footnotesize\OldTexttt{#1}}}
+
+\newcommand{\eg}{e.g.\ }
+\newcommand{\ie}{i.e.\ }
+\newcommand{\TODO}[1]{\textcolor{red}{[\textbf{#1}]}}
+%\newcommand{\OpenLB}[1][\@empty]{\textit{\sffamily{\ifthenelse{\isempty{#1}}{OpenLB}{OpenLB~#1}}}\xspace}
+\newcommand{\OpenLB}[1][!]{\textit{\sffamily{\ifx!#1OpenLB\else OpenLB~#1\fi}}\xspace}
+
+%\usepackage{tocloft} %% control spacing in table of contents
+%\usepackage{mathtools}
+
+%for quarto algorithm
+\renewcommand{\Return}{\State \textbf{return}~}
+\newcommand{\Print}{\State \textbf{print}~}
+\newcommand{\Break}{\State \textbf{break}}
+\newcommand{\Continue}{\State \textbf{continue}}
+\newcommand{\True}{\textbf{true}}
+\newcommand{\False}{\textbf{false}}
+\renewcommand{\And}{\textbf{and}~}
+\newcommand{\Or}{\textbf{or}~}
+\newcommand{\Not}{\textbf{not}~}
+\newcommand{\To}{\textbf{to}~}
+\newcommand{\DownTo}{\textbf{downto}~}
+
+\usepackage{tocloft} %% control spacing in table of contents
+
+\setcounter{secnumdepth}{3} %% set numbering of sections:
+\setcounter{tocdepth}{2} %% set appearance in table of contents
+%% -1 part
+%% 0 chapter
+%% 1 section
+%% 2 subsection
+%% 3 subsubsection
+%% 4 paragraph
+%% 5 subparagraph
+
+\usepackage{mathtools}

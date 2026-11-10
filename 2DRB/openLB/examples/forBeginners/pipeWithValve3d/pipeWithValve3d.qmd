@@ -1,0 +1,51 @@
+---
+features: [transient, benchmark, stl, primitives]
+recommended-for-beginners: [stl]
+---
+
+### pipeWithValve3d
+
+This example shows how to use STL files for the channel geometry and for an obstacle in it. It describes the flow in a pipe with a valve under a predefined angle. The pipe geometry is included via `STLreader<T> pipe( "pipe.stl", converter.getPhysDeltaX(), 0.001)` and the valve geometry via `STLreader<T> valve( "valve.stl", converter.getPhysDeltaX(), 0.001)`. Both geometries were created in FreeCAD and exported in STL format with mm units. The case is discretized with a D3Q19 lattice and `BGKdynamics`. On the inlet and outlet planes of the pipe, the `boundary::set<boundary::InterpolatedVelocity>(sLattice, superGeometry, 3)` and `boundary::set<boundary::InterpolatedPressure>(sLattice, superGeometry, 4)` boundaries are set. On the walls of the pipe and of the valve `BounceBack` dynamics are used as no-slip boundary conditions. For the definition of inlet and outlet material numbers, the maximal and minimal coordinates of the pipe STL surrounding cells are used:
+
+```{.cpp}
+superGeometry.rename( 0,2,indicator );
+superGeometry.rename( 2,1,pipe );
+superGeometry.clean();
+
+Vector<T,3> origin = superGeometry.getStatistics().getMinPhysR(2);
+origin[1] += converter.getPhysDeltaX()/2.;
+origin[2] += converter.getPhysDeltaX()/2.;
+
+Vector<T,3> extend = superGeometry.getStatistics().getMaxPhysR(2);
+extend[1] = extend[1]-origin[1]-converter.getPhysDeltaX()/2.;
+extend[2] = extend[2]-origin[2]-converter.getPhysDeltaX()/2.;
+
+// Set material number for inflow
+origin[0] = superGeometry.getStatistics().getMinPhysR(2)[0]
+    -converter.getPhysDeltaX();
+extend[0] = 2*converter.getPhysDeltaX();
+IndicatorCuboid3D<T> inflow( extend,origin );
+superGeometry.rename( 2,3,inflow );
+```
+
+The valve inside the pipe is rotated using the rotation indicator `IndicatorRotate<T,3> valveRot(rotationPoint, rotationAxis, rotationAngle, valve)`.
+
+To get a stable simulation, a velocity ramp is used at the beginning of the simulation:
+
+```{.cpp}
+PolynomialStartScale<T,int> StartScale( iTmaxStart, T( 1 ) );
+// Creates and sets the Poiseuille inflow profile using functors
+int iTvec[1] = {iT};
+T frac[1] = {};
+StartScale( frac,iTvec );
+std::vector<T> maxVelocity(3,0);
+maxVelocity[0] = 2.25*frac[0]*converter.getCharLatticeVelocity();
+T distance2Wall = converter.getPhysDeltaX()/2.;
+CirclePoiseuille3D<T> poiseuilleU(superGeometry, 3, 
+    maxVelocity[0], distance2Wall);
+sLattice.defineU( superGeometry, 3, poiseuilleU );
+```
+
+The simulation results in a flow around the valve with the velocity field visualized in the following @fig-pipeWithValve.
+    
+![Middle slice of the pipe with rotated valve.](/examples/forBeginners/pipeWithValve3d/doc/fig/pipeWithValve.png){width="100%" #fig-pipeWithValve .lightbox}

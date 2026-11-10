@@ -1,0 +1,36 @@
+/// \mainpage OpenLB API Reference
+///
+/// OpenLB is a C++ framework for lattice Boltzmann simulations, built around a
+/// small set of composable pieces: a descriptor fixes the velocity set and the
+/// fields a cell carries, dynamics decide how those cells collide, and a
+/// lattice holds them and drives the time loop across CPUs and GPUs. This
+/// reference documents those types as they appear in the source. For the
+/// narrative introduction, the worked examples and the installation
+/// instructions, see the <a href="../index.html">OpenLB User Guide</a>.
+///
+/// <ul>
+/// <li><a href="topics.html">Topics</a> &mdash; the curated public interface,
+///     grouped by subsystem. Start here.</li>
+/// <li><a href="annotated.html">Classes</a> &mdash; every documented class and
+///     struct, with its members and inheritance.</li>
+/// <li><a href="concepts.html">Concepts</a> &mdash; the C++20 concepts that
+///     constrain descriptors, dynamics and field types.</li>
+/// <li><a href="namespaces.html">Namespaces</a> &mdash; the complete symbol
+///     index, including free functions that belong to no class.</li>
+/// <li><a href="files.html">Files</a> &mdash; the header tree, for when you
+///     know where something lives but not what it is called.</li>
+/// </ul>
+
+/// \defgroup api OpenLB API
+/// The curated public interface of OpenLB. Everything reachable from here is
+/// meant to be used directly by application code.
+
+/// \defgroup core Core
+/// \ingroup api
+/// Lattice data structures and the unit conversion between lattice and
+/// physical quantities.
+
+/// \defgroup descriptor Descriptors
+/// \ingroup api
+/// Compile-time description of a lattice: its dimension, velocity set and the
+/// fields each cell carries.

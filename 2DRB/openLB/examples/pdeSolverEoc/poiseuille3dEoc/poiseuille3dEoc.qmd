@@ -1,0 +1,62 @@
+---
+features: [benchmark, primitives]
+---
+
+### poiseuille3dEoc
+
+The examples `poiseuille2dEoc` and `poiseuille3dEoc` are extensions of the `poiseuille2d` and `poiseuille3d` examples, respectively, focusing on the experimental order of convergence (EOC) of the simulation.
+
+The implementations therein run the Poiseuille flow simulations multiple times to subsequently analyze the different error norms of the simulations with an automated `gnuplot` output.
+Exemplarily, the `poiseuille3dEoc` example is simulated for multiple configurations: the periodic pipe flow with *forcing* and several boundary methods at the walls (the keywords *interpolated*, *bouzidi*, and *bounce back* specify the implementations), as well as a bounded domain case where a *velocity inlet* and a *pressure outlet* are prescribed and combined with a *bouzidi* boundary at the pipe wall.
+For all simulations, the Reynolds number of the flow problem is set to $Re = 10$ and the relaxation time to $\tau = 0.8$.
+The EOC is investigated by running four consecutive simulations with increasing grid resolution (number of lattice cells along the pipe diameter: $N_D = 21, 31, 41, 51$).
+A residual below 1e-5 stops each simulation via the convergence criteria.
+The absolute error of the simulation from the analytic solution is evaluated on every lattice node whereby different norms for the error calculation are used.
+The $L_1$-norm is defined as
+
+$$
+E_{\mathrm{abs}, L_1} = \sum^{N}_i \sum^D_d|\phi_{\mathrm{sim},i,d} - \phi_{\mathrm{ana},i,d}|\,\triangle x^D ~,
+$$
+
+where $N$ is the number of lattice nodes, $D$ is the number of dimensions of the variable $\phi$, $\phi_{\mathrm{sim}}$ is the solution of a flow variable obtained by the simulation, $\phi_{\mathrm{ana}}$ is the corresponding analytic solution, and $\triangle x$ is the grid spacing.
+The $L_2$-norm is defined as
+
+$$
+E_{\mathrm{abs}, L_2} = \sqrt{\sum^{N}_i \sum^D_d|\phi_{\mathrm{sim},i,d} - \phi_{\mathrm{ana},i,d}|^2 \,\triangle x^D} ~.
+$$
+
+Finally, the $L_\infty$-norm is defined as
+
+$$
+E_{\mathrm{abs}, L_\infty} = \max_{i,d}|\phi_{\mathrm{sim},i,d} - \phi_{\mathrm{ana},i,d}| ~.
+$$
+
+The relative error according to the $L_1$-norm is defined as
+
+$$
+E_{\mathrm{rel}, L_1} = \frac{E_{\mathrm{abs}, L_1}}{\sum^{N}_i \sum^D_d|\phi_{\mathrm{ana},i,d}|\,\triangle x^D} ~,
+$$
+
+the $L_2$-norm as
+
+$$
+E_{\mathrm{rel}, L_2} = \frac{E_{\mathrm{abs}, L_2}}{\sqrt{\sum^{N}_i \sum^D_d|\phi_{\mathrm{ana},i,d}|^2\,\triangle x^D}} ~,
+$$
+
+and the $L_\infty$-norm as
+
+$$
+E_{\mathrm{rel}, L_\infty} = \frac{E_{\mathrm{abs}, L_\infty}}{\max_{i,d}|\phi_{\mathrm{ana},i,d}|} ~.
+$$
+
+The results of the EOC tests are plotted in @fig-eocPoiseuille3d-interpol, @fig-eocPoiseuille3d-bouzidi, @fig-eocPoiseuille3d-bounceback, @fig-eocPoiseuille3d-inout-bouzidi and @fig-eocPoiseuille3d-pressure.
+
+![EOC study for periodic pipe flow simulations with *forcing* and *interpolated* boundary walls. The absolute and relative error of the velocity and the strain-rate (SR) are plotted.](/examples/pdeSolverEoc/poiseuille3dEoc/doc/fig/eoc_poiseuille3d_interpolated.png){#fig-eocPoiseuille3d-interpol width="100%"}
+
+![EOC study for periodic pipe flow simulations with *forcing* and *bouzidi* boundary walls. The absolute and relative error of the velocity and the strain-rate (SR) are plotted.](/examples/pdeSolverEoc/poiseuille3dEoc/doc/fig/eoc_poiseuille3d_bouzidi.png){#fig-eocPoiseuille3d-bouzidi width="100%"}
+
+![EOC study for periodic pipe flow simulations with *forcing* and *bounce-back* boundary walls. The absolute and relative error of the velocity and the strain-rate (SR) are plotted.](/examples/pdeSolverEoc/poiseuille3dEoc/doc/fig/eoc_poiseuille3d_bounceback.png){#fig-eocPoiseuille3d-bounceback width="100%"}
+
+![EOC study for pipe flow simulations with *velocity inlet*, *pressure outlet* and *bouzidi* boundary walls. The absolute and relative error of the velocity and the strain-rate (SR) are plotted.](/examples/pdeSolverEoc/poiseuille3dEoc/doc/fig/eoc_poiseuille3d_inout_bouzidi.png){#fig-eocPoiseuille3d-inout-bouzidi width="100%"}
+
+![EOC study for pipe flow simulations with *velocity inlet*, *pressure outlet* and *bouzidi* boundary walls. The absolute and relative error of the pressure are plotted.](/examples/pdeSolverEoc/poiseuille3dEoc/doc/fig/eoc_poiseuille3d_pressure.png){#fig-eocPoiseuille3d-pressure width="100%"}

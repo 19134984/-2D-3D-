@@ -1,0 +1,9 @@
+---
+features: [multiComponent, multiPhase, transient, primitives]
+---
+
+### airBubbleCoalescence3d
+
+Two bubbles of air in quiescent water are initialized close to each other so that they start to coalesce from the first time step under standard conditions.
+The mixture consists of water, oxygen, and nitrogen and uses the same multi-component-multi-phase model as well as equation of state as the model from the flat interface between water and air, see `waterAirFlatInterface2d`.
+It is important to mention that for these thermodynamic models, currently only periodic boundary conditions are available in $\OpenLB$.

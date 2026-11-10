@@ -1,0 +1,10 @@
+---
+features: [multiComponent, benchmark, primitives]
+---
+
+### contactAngle3d
+
+In this example, a semi-spherical droplet of fluid is initialized within a different fluid at a solid boundary.
+The contact angle is measured as the droplet comes to equilibrium.
+This is compared with the analytical angle predicted by the parameters set for the boundary (100 degrees for preset values).
+This example demonstrates how to use the solid wetting boundaries for the free-energy model with two fluid components.

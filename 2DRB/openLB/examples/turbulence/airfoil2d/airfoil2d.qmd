@@ -1,0 +1,77 @@
+---
+features: [turbulent, transient, benchmark, showcase, primitives]
+recommended-for-beginners: [primitives]
+---
+
+### airfoil2d
+
+In this example, the flow past a 2D airfoil is simulated.
+The geometry is obtained via the `IndicatorAirfoil2D` class, which generates a 2D NACA 4-digit airfoil with the set parameters.
+The geometry uses a Bouzidi boundary in combination with a Turbulent Wall Model to accurately simulate the flow around the airfoil.
+
+The parameters for the wall function are chosen at the beginning of the example:
+
+```{.cpp}
+/// Wallfunction parameters
+//  Used method for density reconstruction
+//  0: use local density
+//  1: extrapolation (Guo)
+//  2: constant (rho = 1.)
+const int rhoMethod = 0;
+//  Used wall profile
+//  0: power law profile
+//  1: Spalding profile
+const int wallFunctionProfile = 1;
+// check if descriptor with body force is used
+const bool bodyForce = false;
+// interpolate sampling velocity along given normal between lattice voxels
+const bool interpolateSampleVelocity = true;
+// use van Driest damping function for turbulent viscosity in boundary cell
+const bool useVanDriest = false;
+//  distance from cell to real wall in lattice units if no geometry indicator is given as input
+const T latticeWallDistance = 0.5;
+//  distance from cell to velocity sampling point in lattice units
+const T samplingCellDistance = 3.5;
+const bool movingWall = false;
+const bool averageVelocity = false;
+```
+
+These parameters are then given to an instance of `wallModelParameters`:
+
+```{.cpp}
+WallModelParameters<T>      wallModelParameters;
+wallModelParameters.bodyForce                 = bodyForce;
+wallModelParameters.rhoMethod                 = rhoMethod;
+wallModelParameters.samplingCellDistance      = samplingCellDistance;
+wallModelParameters.interpolateSampleVelocity = interpolateSampleVelocity;
+wallModelParameters.useVanDriest              = useVanDriest;
+wallModelParameters.wallFunctionProfile       = wallFunctionProfile;
+wallModelParameters.latticeWallDistance       = latticeWallDistance;
+wallModelParameters.movingWall                = movingWall;
+wallModelParameters.averageVelocity           = averageVelocity;
+```
+
+which is then used for the setup of the dynamics and the Turbulent Wall Model in the `prepareLattice` function:
+
+```{.cpp}
+void prepareLattice(SuperLattice<T, DESCRIPTOR>&        sLattice,
+                    UnitConverter<T, DESCRIPTOR> const& converter,
+                    SuperGeometry<T, 2>&                superGeometry,
+                    IndicatorF2D<T>&                    airfoil,
+                    WallModelParameters<T>&             wallModelParameters)
+{
+  setTurbulentWallModelDynamics(sLattice, superGeometry, 1, wallModelParameters);
+  ...
+  // Set Bouzidi boundary and turbulent wall model on geometry
+  setBouzidiBoundary(sLattice, superGeometry, 5, airfoil);
+  setTurbulentWallModel(sLattice, superGeometry, 5, wallModelParameters);
+  ...
+}
+```
+
+The `TurbulentVelocity2D` class defined at the beginning of the example randomly modifies a constant velocity profile by a given intensity.
+This results in a mildly turbulent flow that is used as the inflow for the simulation.
+A full slip boundary is used at the upper and lower bounds to eliminate friction.
+The outflow is a constant pressure boundary, similar to the `cylinder2d` and `cylinder3d` examples.
+
+![Velocity magnitude around the airfoil profile.](/examples/turbulence/airfoil2d/doc/fig/airfoil2d.png){#fig-airfoil2d width="70%"}

@@ -1,0 +1,41 @@
+---
+features: [benchmark, showcase, primitives]
+---
+
+### testFlowOpti3d
+
+This app is built on top of the test flow case with an analytical solution and solves parameter identification problems with an optimization approach [@krause:10b].
+It makes use of the Solver framework to create the following variants of the application:
+
+- Computing sensitivity of flow quantities w.r.t. the force field with Difference Quotients (DQ) or Automatic Differentiation (AD).
+- Optimization with AD: scale the force field such that the velocity or dissipation error w.r.t. a given flow is minimized. Three control variables scale the components of the force field. The objective is $J = \tfrac{1}{2} \int_{\Omega} \vert \mathbf{u} - \mathbf{u^\ast} \vert ^2 \, dx$, where $\mathbf{u^\ast}$ is the reference solution field (for control $= (1, 1, 1)$) and $\mathbf{u}$ is the simulated solution (velocity or dissipation) with "estimated" control parameters.
+- Optimization with adjoint LBM: identify the force field such that the velocity or dissipation error w.r.t. a given flow is minimized. The objective is as above, but the control is the (spatially) distributed field -- three components at each mesh point.
+
+The basic simulation setup is implemented in the base class `TestFlowBase`.
+Further optimization-specific implementations (which are used in all optimization variants, e.g. objective computation) are done in `TestFlowOptiBase`.
+For DQ and AD, `TestFlowSolverDirectOpti` implements the case-specific features, e.g. that the vector of control variables acts as a scaling factor for the force field.
+For adjoint LBM, case-specific features are implemented in `TestFlowSolverOptiAdjoint`.
+The structure of parameter classes corresponds to that of the solver classes.
+
+Simulation and optimization parameters are read from the corresponding parameter XML file.
+The following optimization parameters are specific for this example and set in the XML file:
+
+- `ReferenceSolution`: decide whether the reference solution $\mathbf{u^\ast}$ is computed via a simulation.
+- `TestFlowOptiMode`: decide whether velocity or dissipation is compared in the objective functional.
+- `OptiReferenceMode`: use analytical or discrete (simulated) solution as $\mathbf{u^\ast}$.
+- `ControlType` (force): type of control parameters in the context of adjoint optimization.
+- `CuboidWiseControl`: if true, then the domain is decomposed into an arbitrary number of cuboids and one control variable is set as a scaling factor for each cuboid. This is meaningful if the sensitivities are computed with finite difference quotients or automatic differentiation.
+
+The results of example runs with AD and adjoint LBM are shown in @fig-tf-opti-eoc.
+
+::: {#fig-tf-opti-eoc layout-ncol=2}
+
+![Automatic differentiation.](/examples/optimization/testFlowOpti3d/doc/fig/tf_ad.png){#fig-tf-ad}
+
+![Adjoint LBM.](/examples/optimization/testFlowOpti3d/doc/fig/tf_adjoint.png){#fig-tf-adjoint}
+
+Decrease of the objective for increasing optimization steps for different resolutions. The trends differ since the number of control variables is fixed in the AD case while it increases with the resolution in the adjoint optimization case.
+
+:::
+
+This app design omits the implementation of a solver class and uses operator-based functors for optimization-related operations.

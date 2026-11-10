@@ -1,0 +1,274 @@
+### parameterIdentificationEllipseCombo2d
+
+Identification of Young's modulus of an elliptic plate with Dirichlet and Neumann
+boundaries, with the gradient computed by forward-mode automatic differentiation
+(f-AD). This is the third of three benchmarks for gradient-based optimization in
+linear elastic solid mechanics. Unlike the periodic benchmarks
+(`periodicPlateOptiAD2d`, `periodicPlateOptiParam2d` and `periodicPlateOpti2d`), where
+the control acts on the body force, the control here is a material parameter, and the
+curved boundaries reduce the primal scheme to first order.
+
+The benchmark and its results are described in
+[@grafenBenchmarkCasesGradientbased2026].
+
+#### Setup
+
+The numerical domain is $\Omega = [0, 1.5]^2$, discretized by $N_x + 1$ lattice nodes
+per Cartesian direction. The PDE constraint is enforced on the elliptic plate
+$\Omega^E$ of [@boolakee:23b], an outer ellipse from which two inner ellipses are
+removed, with the geometric parameters
+
+| Ellipse | $a_i^2$ | $b_i^2$ | $x_i$ | $y_i$ | $\phi_i$ |
+|---|---|---|---|---|---|
+| 1 | $0.48L^2$ | $0.3L^2$ | $0.750L$ | $0.750L$ | $-\pi/9$ |
+| 2 | $0.010L^2$ | $0.018L^2$ | $0.950L$ | $0.600L$ | $0$ |
+| 3 | $0.035L^2$ | $0.010L^2$ | $0.500L$ | $0.900L$ | $0$ |
+
+for the characteristic length $L = 1$. The outer contour is a traction (Neumann)
+boundary, the two inner contours are displacement (Dirichlet) boundaries, which is the
+combined configuration of
+`structuralmechanics/linearElasticity/quasistationary/combinedEllipse` and follows the
+OpenLB implementation of [@kaiser:25].
+
+![The elliptic plate with its boundary conditions. The outer contour carries the traction (Neumann) condition, the two inner contours the prescribed displacement (Dirichlet) condition. Reproduced from [@grafenBenchmarkCasesGradientbased2026].](/examples/optimization/parameterIdentificationEllipseCombo2d/doc/fig/ellipse_domain.png){#fig-ellipse-domain width="60%"}
+
+Following [@boolakee:23b] the manufactured steady-state displacement is
+
+$$
+\symbf{u}^*(\symbf{x}) = \begin{pmatrix}
+  \delta_1 \sin(2\pi x_1 x_2) \\
+  \delta_2 \cos(2\pi x_2)(1 + x_1^2)
+\end{pmatrix},
+\qquad \delta_1 = 9 \cdot 10^{-4}, \quad \delta_2 = 7 \cdot 10^{-4},
+$$
+
+with the associated stress following from the constitutive relation. The body force,
+the Dirichlet data and the traction are evaluated for the reference material
+$E^* = 0.1$ and $\nu = 0.7$. The initial displacement is $\symbf{u}(\symbf{x}, t=0) = \symbf{0}$.
+
+#### Inverse problem
+
+Young's modulus is the control. To keep it physically admissible without a constrained
+optimizer, it is substituted as
+
+$$
+E = \alpha^2 \in \mathbb{R}_{>0}, \qquad \alpha \in \mathbb{R},
+$$
+
+so the optimizer works on an unconstrained scalar and $E > 0$ holds by construction.
+The reference control is $\alpha^* = \sqrt{E^*}$. The map $\alpha \mapsto \alpha^2$ has
+the two minimizers $\pm\alpha^*$, so the recovered control is determined only up to its
+sign and the error is reported for $|\alpha|$. The objective is evaluated on the
+discretized elliptic domain $\Omega^E_{\Delta x}$.
+
+Because the control enters through the relaxation frequencies of the scheme, the state
+depends nonlinearly on $\alpha$ — in contrast to the periodic benchmarks, where the
+scheme is linear in the control.
+
+##### Loads must not follow the control
+
+The boundary conditions and the body force are data of the inverse problem and are held
+fixed throughout the optimization; only their representation in lattice units depends
+on the control. In particular the traction $\symbf{T} = \symbf{\sigma}^*\symbf{n}$ has to be
+evaluated with the reference moduli $\mu(E^*)$ and $K(E^*)$. If it were evaluated with
+the control of the current optimization step, the dependence on $E$ would cancel on
+$\partial\Omega_N$ and the Neumann boundary would carry no information about the
+material.
+
+This is why the outer contour uses
+`StationaryLinearElasticityMRTNeumannValidationFixedMaterial` instead of the
+`StationaryLinearElasticityMRTNeumannValidation` of the forward example
+`combinedEllipse`. It reads the moduli of the manufactured traction from the dedicated
+parameters `structuralmechanics::REFERENCE_LAME_MU` and
+`structuralmechanics::REFERENCE_BULK_MODULUS`, set to the lattice moduli of a second
+`StationaryMRTUnitConverter` built at the target modulus, while
+`structuralmechanics::LAME_MU` and `BULK_MODULUS` carry the lattice moduli of the
+simulated (controlled) material. Both variants share the implementation
+`TractionFromManufacturedStress<MU, BULK>` and differ only in the two parameters they
+read.
+
+All four parameters hold lattice moduli. The strain of the manufactured displacement is
+dimensionless, so a stress built from lattice moduli is already in lattice units. The
+lattice value of the target moduli depends on the conversion factor
+$\kappa \Delta x^2 / \Delta t$ of the simulation, and without `FIXED_TIME_STEP` the
+time step follows the control. `targetConverter` therefore shares $\Delta x$ and
+$\Delta t$ with the simulated lattice, and `prepareLattice` sets both parameters anew in
+every optimization step. The forward variant, in contrast, evaluates the traction for
+the simulated material in either time-step mode.
+
+The same applies to the body force. $\symbf{F}^*$ follows from inserting the
+manufactured displacement into the steady Navier--Cauchy equation, so it is
+proportional to the moduli it is evaluated with. It is a load, fixed by the problem,
+and must therefore also be built at $E^*$. `setInitialValues` does this explicitly:
+
+```cpp
+ForceField2D<T> force(targetConverter.getLameMu(),
+                      targetConverter.getLameLambda(),
+                      converter.getConversionFactorSolidForce());
+fields::set<descriptors::FORCE>(lattice, geometry.getMaterialIndicator({1}), force);
+```
+
+Note the split between the two converters. The two moduli come from
+`targetConverter`, built at `TARGET_YOUNGS_MODULUS`, because they fix the physical
+load; the conversion factor comes from the controlled `converter`, because only the
+*representation* of that load in lattice units may follow the control. Building the
+force with the controlled moduli instead would make the applied load scale with $E$
+together with the stiffness it is probing, and the identification would lose most of
+its sensitivity to the control.
+
+#### Implementation
+
+`case.h` defines `MyCase` as a `Case<names::NavierCauchy, Lattice<double, D2Q8<>>>`,
+derives `MyADfCase = MyCase::exchange_value_t<ADf>` and combines them in an
+`OptiCaseADf<Controlled, MyCase, Derivatives, MyADfCase, Reference, MyCase>`. With a
+one-dimensional control, a single tangent direction suffices and f-AD is the efficient
+choice. `analyticalSolution.h` holds the manufactured fields.
+
+#### Files
+
+```
+parameterIdentificationEllipseCombo2d/
+├── parameterIdentificationEllipseCombo2d.cpp  main(): default parameters, optimizer settings, run
+├── case.h                                     Case and OptiCase types, geometry, lattice, objective
+├── analyticalSolution.h                       ellipse level sets, manufactured displacement, stress and force
+├── forward_study.xml                          case file: primal grid convergence study
+└── Makefile
+```
+
+Every parameter set in the `.cpp` can be overridden on the command line
+(`--RESOLUTION 80`) or collected in a case file passed with `--case-file`. The
+precedence is `set<>()` < case file < command line, so a case file pins what
+belongs to a study while the command line varies the rest.
+
+`forward_study.xml` turns the example into the primal grid convergence study:
+
+| Setting | Effect |
+|---|---|
+| `FORWARD_ONLY 1` | solve the primal problem once at the target modulus $E^* = 0.1$ and write the error CSVs instead of optimizing |
+| `FIXED_TIME_STEP 1` | pin $\Delta t$ to the value belonging to the target modulus instead of letting it follow the control |
+| `PHYS_MAX_T 90` | with $\Delta x = 1.5/N_x$, a fixed budget of $40 N_x^2$ steps |
+| `CONVERGENCE_PRECISION 0` | disables the steady-state stopping rule, so every resolution runs the same budget |
+| `LATTICE_LOG_ITER_T 100000000` | silences the per-step log |
+
+Disabling the stopping rule is what makes the study measure the discretization
+error alone. With a tolerance active the run stops at a point that depends on the
+resolution, and on the summation order of the lattice-wide average that the
+convergence check watches — which is not the same on CPU and GPU.
+
+`FIXED_TIME_STEP` matters for the inverse problem too, and is the reason the
+resolution study passes it on the command line. The relaxation frequencies follow
+the control, so with a control-dependent $\Delta t$ the iteration budget itself
+would change from one optimization step to the next.
+
+#### Parameters
+
+All of the following are set in `parameterIdentificationEllipseCombo2d.cpp` and can
+be overridden from a case file or the command line. `INITIAL_CONTROL` is a scalar
+here, not a vector, because the control is the single modulus.
+
+##### Geometry and discretization
+
+| Parameter | Type | Default | Meaning |
+|---|---|---|---|
+| `RESOLUTION` | int | `40` | nodes per Cartesian direction, $N_x$; the elliptic domain is carved out of the square lattice |
+| `DOMAIN_EXTENT` | double[2] | `{1.5, 1.5}` | physical size of the square that contains the plate |
+| `PHYS_CHAR_LENGTH` | double | `1.0` | characteristic length $L$ of the ellipse parameters |
+| `PHYS_DELTA_X` | double | derived | $\Delta x =$ `DOMAIN_EXTENT[0] / RESOLUTION` |
+| `ORIGIN` | double[2] | derived | lower-left corner, set to $(\Delta x, \Delta x)$ so the boundary does not land on the lattice edge |
+| `LATTICE_MAX_T` | size_t | derived | step cap, computed once as `PHYS_MAX_T`$/\Delta x^2$ |
+| `PHYS_CHAR_DISPLACEMENT` | double | derived | displacement scale of the converter, set to $\Delta x$ |
+
+$\Delta t$ is deliberately absent from this list: it depends on the control and is
+set in `prepareLattice`. The iteration budget must not move with it, which is why
+`LATTICE_MAX_T` is derived once from $\Delta x^2$ rather than from $\Delta t$.
+
+##### Material and control target
+
+| Parameter | Type | Default | Meaning |
+|---|---|---|---|
+| `SOLID_CASE` | string | `"continua"` | dimensional reduction of the constitutive law; accepts `continua`, `planeStress`, `planeStrain` and `standard` |
+| `YOUNGS_MODULUS` | double | `0.15` | $E$ the simulation starts from; it is the control and changes every optimization step |
+| `TARGET_YOUNGS_MODULUS` | double | `0.1` | $E^*$, the modulus the loads and the target displacement were generated with |
+| `POISSON_RATIO` | double | `0.7` | $\nu$, held fixed |
+| `PHYS_DENSITY` | double | `1.0` | $\rho$ |
+| `DAMPING_FACTOR` | double | `1.0` | $\kappa$ of the damped pseudo-time scheme; also sets the stress conversion factor |
+
+`TARGET_YOUNGS_MODULUS` is what builds the second unit converter behind
+`REFERENCE_LAME_MU` and `REFERENCE_BULK_MODULUS`, so changing it moves the
+loads as well as the answer.
+
+##### Pseudo-time stepping and convergence
+
+| Parameter | Type | Default | Meaning |
+|---|---|---|---|
+| `PHYS_MAX_T` | double | `60` | pseudo-time budget; converted once into `LATTICE_MAX_T`. The benchmark's forward study uses `90`, giving $40 N_x^2$ steps |
+| `CONVERGENCE_PRECISION` | double | `1e-7` | relative tolerance of the steady-state check; `0` disables the check and runs the full budget. The benchmark study uses `1e-6` |
+| `CONV_ITER` | double | `10` | window length of the `ValueTracer` that watches the monitored value |
+| `CONV_VALUE` | double | `1` | slot the case writes the monitored value into; not a user knob |
+| `CONVERGED` | bool | `false` | slot recording whether the last solve met the tolerance; not a user knob |
+| `FIXED_TIME_STEP` | bool | `false` | `true` pins $\Delta t$ to the value belonging to the target modulus instead of letting it follow the control |
+
+##### Inverse problem
+
+| Parameter | Type | Default | Meaning |
+|---|---|---|---|
+| `INITIAL_CONTROL` | double | `0.15` | given as $E^{(0)}$, not as $\alpha^{(0)}$; the case takes the root internally, so the optimizer starts at $\alpha^{(0)} = \sqrt{E^{(0)}}$ |
+| `ANALYTICAL_REFERENCE` | bool | `true` | `true` compares against the sampled manufactured displacement, `false` against a reference obtained from a simulation |
+| `FORWARD_ONLY` | bool | `false` | `true` solves the primal problem once at $E^*$ and writes the error CSVs, skipping the optimization entirely |
+
+##### Output
+
+| Parameter | Type | Default | Meaning |
+|---|---|---|---|
+| `OPTI_VTK_ENABLED` | bool | `true` | write VTK fields during the optimization; note the name differs from the `VTK_ENABLED` of the periodic cases |
+| `LATTICE_VTK_ITER_T` | int | `1000` | pseudo-time steps between VTK writes |
+| `LATTICE_LOG_ITER_T` | int | `100` | pseudo-time steps between console log lines; a very large value silences the log |
+
+##### Optimizer
+
+Held in a separate `OptimizerParametersD` in `main()` rather than in the case
+parameters, and namespaced by optimizer component.
+
+| Parameter | Type | Default | Meaning |
+|---|---|---|---|
+| `optimizer::EPS` | double | `1e-10` | termination tolerance on the gradient norm |
+| `optimizer::MAX_OPTIMIZATION_STEPS` | int | `50` | cap on the number of optimization steps |
+| `optimizer::VERBOSE` | bool | `true` | per-step optimizer log |
+| `linesearch::MAX_STEP_ATTEMPTS` | int | `100` | cap on line-search refinements within one step |
+
+#### Different modes of running the case
+
+**Inverse problem**:
+The default mode, selected by passing no case file, so that `FORWARD_ONLY` is
+`false` and the f-AD optimization loop runs. The defaults solve $N_x = 40$ starting
+from $E^{(0)} = 0.15$ towards $E^* = 0.1$. The resolution study uses the looser
+steady-state tolerance $10^{-6}$ and a time step that does not follow the control:
+
+```sh
+mpirun -np 4 ./parameterIdentificationEllipseCombo2d \
+  --CONVERGENCE_PRECISION 1e-6 --RESOLUTION 40 --FIXED_TIME_STEP 1
+```
+
+repeated over $N_x \in \{40, 80, 120, 160\}$, with `--INITIAL_CONTROL 0.07` (or
+`0.19`) for the initial-value study. The optimization history is written to
+`tmp/gnuplotData/data/optiLog.dat`.
+
+**Forward grid convergence study**:
+Selected by `forward_study.xml`, which solves the primal problem once at the target
+modulus with the stopping rule disabled, for a fixed budget of $40 N_x^2$ steps:
+
+```sh
+./parameterIdentificationEllipseCombo2d --case-file forward_study.xml --RESOLUTION 64
+```
+
+Each run appends one row `N,L2,LInf` to `tmp/gnuplotData/data/disp_err.csv` and
+`stress_err.csv`, so all resolutions have to run in the same directory for the
+study to collect.
+
+#### Results
+
+The results of this benchmark are reported and discussed in
+[@grafenBenchmarkCasesGradientbased2026]: the order of convergence of the primal
+problem on the curved boundaries, the evolution of the objective, of the gradient
+magnitude and of the relative control error over the resolutions, and the
+influence of the initial modulus on the optimization.

@@ -1,0 +1,15 @@
+\documentclass[tikz, border=2pt]{standalone}
+
+\usepackage{tikz}
+\usepackage{caption}
+\begin{document}
+
+\begin{tikzpicture}
+	\draw[->,thick] (0,0,0) -- (.5,0,0);
+    \node[anchor=north] at (.5,0,0) {$x$};
+    \draw[->,thick] (0,0,0) -- (0,.5,0);
+    \node[anchor=east] at (0,.5,0) {$y$};
+	\draw[->,thick] (0,0,0) -- (0,0,.5);
+	\node[anchor=north west] at (0,0,.5) {$z$};
+\end{tikzpicture}
+\end{document}

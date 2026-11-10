@@ -1,0 +1,30 @@
+---
+features: [transient, benchmark, primitives]
+---
+
+### advectionDiffusion2d
+
+The example `advectionDiffusion2d` acts as a mesh-convergence test for a solution to the scalar linear *two-dimensional* advection--diffusion equation
+
+$$
+\partial_{t} \chi + \nabla_{\mathbf{x}} \mathbf{F} \left( \chi \right) - \mu \Delta_{\mathbf{x}} \chi = 0 ,
+$$
+
+where $\chi : \mathcal{X} \times \mathcal{I} \to \mathbb{R}$ is the conservative variable dependent on space $\mathbf{x} \in \mathcal{X} \subseteq \mathbb{R}^2$ and time $t \in \mathcal{I} \subseteq \mathbb{R}_{0}^{+}$, $\mathbf{F} \equiv \mathbf{u} \chi$ is a linear function defined by the advection velocity $\mathbf{u} = \left(u_x, u_y\right)^{\mathrm{T}} \in \mathbb{R}^{2}$, and $\mu > 0$ denotes the diffusion coefficient.
+Similarly, the analytical solution is given for any point $\mathbf{x} = \left(x, y\right)^{\mathrm{T}}$ and time $t$ as
+
+$$
+\chi^{\star}\left(x, y, t\right) = \sin \left[ \pi \left(x - u_x t\right) \right] \sin \left[ \pi \left( y - u_y t\right) \right] \exp \left( - 2 \mu \pi^{2} t \right).
+$$
+
+The simulation is executed on a square $\mathcal{X} = \left[-1, 1\right]^{2}$ which is periodically embedded in $\mathbb{R}^2$.
+An error norm over the domain measures the deviation from the analytical solution up to the time step at which the initial pulse is diffused below 10%.
+For the default setting ($\mu = 0.05$ and $Pe=100$), the outputs of three subsequent simulation runs are stored in a subfolder structure in `./tmp` and directly post-processed for visualization.
+A sequence of contour plots is generated with the highest computed resolution $N=200$ and contained in `./tmp/N200/imageData`.
+Note that via issuing the command
+
+```{.bash}
+python3 advectionDiffusion2dPlot.py
+```
+
+an error plot can be produced, which numerically validates the second-order convergence in space.

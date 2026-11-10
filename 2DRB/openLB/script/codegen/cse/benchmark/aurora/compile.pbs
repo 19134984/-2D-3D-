@@ -1,0 +1,12 @@
+#!/bin/bash
+#PBS -A project_XXXX
+#PBS -q debug
+#PBS -l select=1:ncpus=8:ngpus=1
+#PBS -l walltime=00:15:00
+#PBS -N compile
+#PBS -l filesystems=home:flare
+
+cd $PBS_O_WORKDIR
+
+source $HOME/.roofline_env/bin/activate
+./compile_multiple_dynamics.sh --precision float ../target/roofline.dynamics

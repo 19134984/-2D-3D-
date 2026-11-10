@@ -1,0 +1,13 @@
+#### combinedPlate (elastodynamics)
+
+Combination of the two boundary treatments on one plate: the bottom edge
+(material number 2) is a traction boundary handled by
+`ElastodynamicsVectorLBMNeumannValidation`, the remaining edges (material
+number 3) are displacement boundaries handled by
+`ElastodynamicsVectorLBMDirichletValidation`. Driving force and reference
+fields are again taken from the manufactured solution shared by the
+elastodynamics cases in `elastodynamics/fields.h`, so the mixed setup can be
+validated in the same way as the single boundary ones.
+
+The `run.sh` script performs the same resolution sweep and order of convergence
+study as `elastodynamics/vectorLBM/periodicPlate`.

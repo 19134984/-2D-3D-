@@ -1,0 +1,11 @@
+---
+features: [thermal, multiPhase, transient, benchmark, showcase, primitives]
+---
+
+### galliumMelting2d
+
+The solution for the melting problem (solid-liquid phase change) coupled with natural convection is found using the lattice Boltzmann method after Huang and Wu [@huangwu:2015].
+The equilibrium distribution function for the temperature is modified in order to deal with the latent-heat source term.
+That way, iteration steps or solving a group of linear equations is avoided, which results in enhanced efficiency.
+The phase interface is located by the current total enthalpy, and its movement is considered by the immersed moving boundary scheme after Noble and Torczynski [@nobletorczynski:1998].
+This method was validated by comparison with experimental values (e.g. Gau and Viskanta [@gauviskanta:1986]).

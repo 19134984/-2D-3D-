@@ -1,0 +1,6 @@
+# Preserve original PDF bytes and avoid text diffs or line-ending conversion.
+*.pdf binary
+
+# Keep imported upstream reference snapshots byte-for-byte unchanged.
+/openLB/** -text
+/Palabos/** -text

@@ -1,0 +1,13 @@
+---
+features: [multiComponent, multiPhase, porousMedia, transient, showcase, stl, primitives]
+---
+
+### gasStorage2d
+
+This example shows a liquid (water) entering inside a porous media filled with gas (compressed hydrogen at 100 bar) and replacing the gas, only to a certain extent as some of the gas remains trapped in the porous domain, which gives the effective porosity for such removal of stored gas processes.
+To run this example, download the appropriate vti file with
+
+```{.bash}
+curl https://openlb.net/data/gas_storage/gasStorage2d.vti -o storage.vti
+./gasStorage2d storage.vti "Tiff Scalars"
+```

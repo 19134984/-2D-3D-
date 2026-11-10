@@ -1,0 +1,10 @@
+#### neumannEllipse (quasistationary)
+
+The ellipse geometry of `quasistationary/dirichletEllipse` with traction
+boundaries: all three contours are handled by
+`StationaryLinearElasticityMRTNeumannValidation`, which prescribes the stress
+of the manufactured solution. The outer contour is flagged as such, the two
+inner ones as holes, so the normals point the right way on each of them.
+
+The `run.sh` script performs the same resolution sweep and order of convergence
+study as `quasistationary/periodicPlate`.

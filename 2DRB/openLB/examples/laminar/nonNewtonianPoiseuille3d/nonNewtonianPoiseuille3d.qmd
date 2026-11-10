@@ -1,0 +1,121 @@
+---
+features: [benchmark, primitives]
+---
+
+### nonNewtonianPoiseuille3d {#sec-example-laminar-nonNewtonianPoiseuille3d}
+
+This example case is based on the forced Poiseuille flow case of [[`laminar/poiseuille3d`](/examples/laminar/poiseuille3d/poiseuille3d.qmd)]{.content-visible when-format="html"}[`laminar/poiseuille3d` (@sec-example-laminar-poiseuille3d)]{.content-visible when-format="pdf"}, where several non-Newtonian viscosity models, such as Power-Law, Casson, and Carreau--Yasuda, can be applied.
+The identical pressure drop is applied for all models where the other model parameters are converted accordingly for easy comparison of the viscosity model impact.
+Note that the Carreau--Yasuda model is not in a validated state yet.
+
+#### Governing equations
+
+The domain $\Omega \times \I$, the inside of a pipe of diameter $D$ times $\R_{\geq 0}$, is considered with the following governing equations with the velocity field $\vel \in \R^3$ and the pressure $p \in \R$ for the incompressible flow of a generalized Newtonian fluid with constant density $\rho \in \R_{> 0}$, driven by the constant pressure gradient $G = -\partial_x p$ as a body force,
+\begin{align}
+    \nabla \cdot \vel &= 0 \quad \text{in} \quad \Omega \times \I, \\
+    \partial_t \vel + (\vel \cdot \nabla) \vel &= \frac{1}{\rho} \nabla \cdot \left( 2 \mu(\dot\gamma) \mathbf{S} \right) + \frac{G}{\rho} \mathbf{e}_x \quad \text{in} \quad \Omega \times \I,
+\end{align}
+with the strain rate tensor $\mathbf{S} = \tfrac{1}{2} (\nabla \vel + \nabla \vel^\top)$ and the shear rate $\dot\gamma = \sqrt{2 \mathbf{S} : \mathbf{S}}$.
+`VISCOSITY_MODEL` selects the dynamic viscosity $\mu(\dot\gamma)$:
+
+- `NEWTONIAN`: $\mu = \mu_0$,
+- `POWER_LAW`: $\mu = K \dot\gamma^{\,n - 1}$ with the power-law index $n$ and the consistency index $K$,
+- `CASSON`: $\sqrt{\tau} = k_0 + k_1 \sqrt{\dot\gamma}$ for the shear stress $\tau = \mu \dot\gamma$, where $k_0^2$ is the yield stress and $k_1^2$ the Casson viscosity,
+- `CARREAU_YASUDA`: $\mu = \mu_\infty + (\mu_\text{zero} - \mu_\infty) \left( 1 + (\lambda \dot\gamma)^a \right)^{(n - 1)/a}$.
+
+For the Newtonian, power-law and Casson models, the steady solution in the pipe is known analytically and is used to measure the error. For the Carreau–Yasuda model, the example compares with the power-law profile with the index $0.708$.
+
+#### Boundary conditions
+
+The pipe is periodic in $x$, and the pipe wall $\Gamma_{\mathrm{no\text{-}slip}}$ (MN 2) is a no-slip wall,
+$$
+    \vel = \mathbf{0} \quad \text{on} \quad \Gamma_{\mathrm{no\text{-}slip}} \times \I.
+$$
+The body force $G / \rho$ drives the flow instead of an inlet and an outlet.
+The simulation starts from the analytical velocity profile of the selected model.
+
+#### Domain
+
+The pipe has the diameter $D = 1\,\mathrm{mm}$ and the length $L = 3\,\mathrm{mm}$, and its axis runs along $x$ through $y = z = D/2$.
+The fluid properties are those of blood: the density $\rho = 1060\,\mathrm{kg/m^3}$ and, for the Newtonian model, the dynamic viscosity $\mu_0 = 4.0755 \cdot 10^{-3}\,\mathrm{Pa\,s}$.
+The pressure gradient
+$$
+    G = \frac{16 \mu_0^2 Re}{\rho D^3}
+$$
+gives the Newtonian fluid the maximum velocity $u_\text{max} = Re\, \mu_0 / (\rho D) = 0.38\,\mathrm{m/s}$ for $Re = 100$.
+The same $G$ drives all models. The consistency index $K$ of the power law and the constant $k_1$ of the Casson model are derived from $\mu_0$ and $G$, so that the models are comparable.
+
+`prepareGeometry()` marks the cells inside a cylinder slightly longer than the pipe as fluid (MN 1) and the cells around it as wall (MN 2).
+
+#### Discretization \& Descriptor
+In this example, the domain is discretized with a uniform grid with the lattice spacing $\Delta x = D / N$, where $N = 31$ cells resolve the diameter of the pipe.
+
+The LBM collision operator is a BGK operator with a body force ([Collision Operators](/content/02_core.qmd#collision-operators)), together with the D3Q19 velocity set ([Lattice Structures](/content/01_introduction.qmd#sec-lattice-structures)): `ForcedBGKdynamics` for the Newtonian model, and `PowerLawForcedBGKdynamics`, `CassonForcedBGKdynamics` and `CarreauYasudaForcedBGKdynamics`, whose relaxation time follows the local shear rate, for the others.
+The descriptor stores the force and the local relaxation frequency in every cell.
+The pipe wall (MN 2) is treated with the Bouzidi boundary, `setBouzidiBoundary()`, which takes the exact position of the curved wall between the lattice nodes into account ([Define Boundary Method](/content/06_initial_boundary.qmd#sec-defineBoundaryMethod)).
+
+The corresponding lattice is defined inside the case definition in `case.h` as in @lst-nonNewtonianPoiseuille3d-case.
+
+::: {#lst-nonNewtonianPoiseuille3d-case}
+```{.cpp}
+using MyCase = Case<
+  NavierStokes, Lattice<double, descriptors::D3Q19<descriptors::FORCE,descriptors::OMEGA>>
+>;
+```
+Case definition for the `nonNewtonianPoiseuille3d` example.
+:::
+
+The unit converter `UnitConverterFromResolutionAndRelaxationTime` derives the time step size from the resolution, the lattice relaxation time and the characteristic velocity of the selected model, the maximum of its analytical profile.
+The parameters are given in @tbl-nonNewtonianPoiseuille3d-params.
+
+| Parameter | Symbol | Value | Description |
+|---|---|---|---|
+| `EOC` | | `false` | not used by the simulation itself; the convergence study is a program of its own, see below |
+| `VISCOSITY_MODEL` | | `NEWTONIAN` | viscosity model: `NEWTONIAN` (0), `POWER_LAW` (1), `CASSON` (2), `CARREAU_YASUDA` (3) |
+| `RESOLUTION` | $N$ | $31$ | cells per pipe diameter $D$ |
+| `EOC_RESOLUTIONS` | | $41, 61, 81, 101$ | resolutions of the convergence study |
+| `DOMAIN_EXTENT` | $L \times D \times D$ | $3 \times 1 \times 1\,\mathrm{mm}$ | size of the pipe |
+| `LATTICE_RELAXATION_TIME` | $\tau$ | $0.64265$ | lattice relaxation time |
+| `PHYS_CHAR_DENSITY` | $\rho$ | $1060\,\mathrm{kg/m^3}$ | density |
+| `PHYS_MAX_T` | $T$ | $0.3\,\mathrm{s}$ | simulated time |
+| `REYNOLDS` | $Re$ | $100$ | Reynolds number of the Newtonian flow, which sets $G$ |
+| `DYNAMIC_VISCOSITY` | $\mu_0$ | $4.0755 \cdot 10^{-3}\,\mathrm{Pa\,s}$ | viscosity of the Newtonian model |
+| `PRESSURE_DROP` | $G$ | $16 \mu_0^2 Re / (\rho D^3)$ | pressure gradient |
+| `POWER_LAW_EXPONENT` | $n$ | $0.65$ | power-law index |
+| `CONSISTENCY_INDEX` | $K$ | derived from $\mu_0$ and $G$ | consistency index of the power law |
+| `K0` | $k_0$ | $0.07\,\mathrm{Pa^{1/2}}$ | Casson constant, $k_0^2$ is the yield stress |
+| `K1` | $k_1$ | $\sqrt{\mu_0}$ | Casson constant, $k_1^2$ is the Casson viscosity |
+| `N_CY` | $n$ | $0.9$ | index of the Carreau–Yasuda model |
+| `MODEL_CONSTANT_A` | $a$ | $1.5$ | constant of the Carreau–Yasuda model |
+| `CHAR_TIME_CONSTANT` | $\lambda$ | $3.313\,\mathrm{s}$ | time constant of the Carreau–Yasuda model |
+| `MU_ZERO` | $\mu_\text{zero}$ | $1.45\, \mu_0$ | zero shear viscosity of the Carreau–Yasuda model |
+| `MU_INF` | $\mu_\infty$ | $\mu_0 / 10$ | infinite shear viscosity of the Carreau–Yasuda model |
+| `N_PL` | | $0.708$ | power-law index of the reference profile for the Carreau–Yasuda model |
+
+: Parameters of `nonNewtonianPoiseuille3d`, as set in `setGetParameters()` in `case.h`. They can be overridden on the command line, e.g. `./nonNewtonianPoiseuille3d --VISCOSITY_MODEL 1`. {#tbl-nonNewtonianPoiseuille3d-params}
+
+#### Validation
+
+The simulation runs for the full simulated time.
+Every $T/10$ and at the end, the example prints the absolute and relative $L^1$, $L^2$ and $L^\infty$ errors of the velocity against the analytical profile, and every $T/100$ it writes the velocity, the pressure, the analytical velocity and the local relaxation frequency to the VTK output.
+
+With the default parameters, the relative $L^2$ error of the velocity at the end is $0.61\,\%$ for the Newtonian and $0.75\,\%$ for the power-law model.
+@fig-nonNewtonianPoiseuille3d-profile compares both profiles with the analytical ones: at the same pressure gradient, the shear-thinning power-law fluid flows more than twice as fast as the Newtonian fluid, and its profile is flatter.
+
+![Velocity profiles of `nonNewtonianPoiseuille3d` along $y$ through the pipe axis at $x = L/2$ at the end of the simulation, for the Newtonian and the power-law model at the same pressure gradient, compared with the analytical profiles.](/examples/laminar/nonNewtonianPoiseuille3d/doc/fig/profile/profile.svg){width="60%" #fig-nonNewtonianPoiseuille3d-profile .lightbox}
+
+The program in the subdirectory `eoc/` uses the same `case.h` and runs the selected model for the resolutions `EOC_RESOLUTIONS` one after the other. At the end, it prints the errors and the experimental orders of convergence between consecutive resolutions.
+
+#### Files
+
+```
+nonNewtonianPoiseuille3d/
+├── nonNewtonianPoiseuille3d.cpp       main(): selects the viscosity model and runs the simulation
+├── case.h                             Case type, parameters, viscosity models, geometry, lattice, error norms and output
+├── eoc/
+│   ├── nonNewtonianPoiseuille3d.cpp   convergence study over EOC_RESOLUTIONS
+│   └── Makefile
+└── Makefile
+```
+
+The results are written to `tmp/<model>/`, for example `tmp/Newtonian/`, in the directory the example is run from: `vtkData/nonNewtonianPoiseuille3d.pvd` opens all time steps in ParaView. The convergence study writes to `tmp/<model>_eoc/`.

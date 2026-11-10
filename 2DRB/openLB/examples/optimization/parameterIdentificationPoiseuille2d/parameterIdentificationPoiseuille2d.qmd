@@ -1,0 +1,18 @@
+---
+features: [showcase, primitives]
+---
+
+### parameterIdentificationPoiseuille2d
+
+This is a simple showcase for a two-dimensional fluid flow optimization / parameter identification problem.
+It is based on the simulation of a planar channel flow similar to the example `poiseuille2d`.
+By an optimization loop, the inlet pressure is determined such that a given mass flow rate is achieved.
+Hence, the following optimization problem is solved:
+
+$$
+\underset{p_0}{\mathrm{argmin}} \frac{1}{2} (m(\mathbf{u}(p_0), p(p_0)) - m^{\ast})^2,
+$$
+
+where $(\mathbf{u}(p_0), p(p_0))$ is the solution of the Navier--Stokes equations corresponding to the inlet pressure $p_0$, $m$ is the mass flow rate corresponding to that solution, and $m^{\ast}$ is the wanted mass flow rate.
+
+The optimization is performed with the LBFGS method; the derivative of the objective w.r.t. the argument (inlet pressure) is computed with automatic differentiation.

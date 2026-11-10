@@ -1,0 +1,130 @@
+---
+features: [benchmark, primitives]
+---
+
+### poiseuille2d {#sec-example-laminar-poiseuille2d}
+
+For basic tests of boundary conditions, a comparison with analytical solutions is the easiest and most accurate approach.
+One of the fundamental applications of fluid dynamics is that of laminar flow of a Newtonian fluid in a circular pipe.
+This is known as Poiseuille flow.
+The analytical solution is easily found and is therefore a common benchmark case.
+It is also one of the first examples in most fluid dynamics textbooks for the application of the principles of fluid dynamics.
+The extension of the Poiseuille flow in a round pipe from 2D to 3D is trivial; consequently, it is also an ideal test case for curved boundaries in 3D as well.
+
+#### Governing equations
+
+The domain $\Omega \times \I \subseteq [0, 2] \times [0, 1] \times \R_{\geq 0}$ is considered with the following governing equations with the velocity field $\vel \in \R^2$ and the pressure $p \in \R$ for the incompressible flow of a Newtonian fluid with kinematic viscosity $\nu \in \R_{> 0}$ and constant density $\rho \in \R_{> 0}$,
+\begin{align}
+    \nabla \cdot \vel &= 0 \quad \text{in} \quad \Omega \times \I, \\
+    \partial_t \vel + (\vel \cdot \nabla) \vel &= -\frac{1}{\rho} \nabla p + \nu \Delta \vel \quad \text{in} \quad \Omega \times \I.
+\end{align}
+In a straight channel of height $H$ and length $L$, the steady solution is the Poiseuille flow
+\begin{align}
+    u_\text{P}(y) &= \frac{4\, u_\text{max}\, y (H - y)}{H^2}, \\
+    p_\text{P}(x) &= p_0 \left(1 - \frac{x}{L}\right), \quad p_0 = \frac{8 \rho \nu u_\text{max} L}{H^2},
+\end{align}
+with $\vel = (u_\text{P}(y), 0)^\top$, against which the example measures its error.
+
+#### Boundary conditions
+
+The boundary $\partial \Omega = \Gamma_D \cup \Gamma_\text{out} \cup \Gamma_{\mathrm{no\text{-}slip}}$ consists of three parts (@fig-poiseuille2d-domain): the inlet $\Gamma_D$ on the left, where the Poiseuille profile is prescribed as a Dirichlet condition, the outlet $\Gamma_\text{out}$ on the right, where the pressure is prescribed, and the two channel walls $\Gamma_{\mathrm{no\text{-}slip}}$,
+\begin{align}
+    \vel &= (u_\text{P}(y), 0)^\top \quad \text{on} \quad \Gamma_D \times \I, \\
+    p &= p_\text{P}(L) \quad \text{on} \quad \Gamma_\text{out} \times \I, \\
+    \vel &= \mathbf{0} \quad \text{on} \quad \Gamma_{\mathrm{no\text{-}slip}} \times \I.
+\end{align}
+The simulation starts from the analytical solution, $\vel = (u_\text{P}(y), 0)^\top$ and $p = p_\text{P}(x)$ in $\Omega$ at $t = 0$, and relaxes to the steady state of the discrete scheme.
+
+#### Domain
+
+The channel has the length $L = 2\,\mathrm{m}$ and the height $H = 1\,\mathrm{m}$ (@fig-poiseuille2d-domain).
+With the maximum velocity $u_\text{max} = 1\,\mathrm{m/s}$ and $\nu = 0.1\,\mathrm{m^2/s}$, the Reynolds number is $Re = u_\text{max} H / \nu = 10$.
+`prepareGeometry()` assigns the material numbers (MN) shown in @fig-poiseuille2d-domain.
+
+![Domain and boundary conditions of `poiseuille2d` in its default configuration, with the material numbers (MN) assigned in `prepareGeometry()`.](/examples/laminar/poiseuille2d/doc/fig/poiseuille2dDomain.svg){width="80%" #fig-poiseuille2d-domain .lightbox}
+
+#### Discretization \& Descriptor
+In this example, the domain is discretized with a uniform grid with the lattice spacing $\Delta x = H / N$, where $N = 50$ cells resolve the height of the channel.
+
+The LBM collision operator is the BGK operator with a single relaxation time ([Collision Operators](/content/02_core.qmd#collision-operators)), used as `BGKdynamics`, together with the D2Q9 velocity set ([Lattice Structures](/content/01_introduction.qmd#sec-lattice-structures)).
+In the default configuration, the walls (MN 2) and the inlet (MN 3) are treated with `InterpolatedVelocity` and the outlet (MN 4) with `InterpolatedPressure` ([Define Boundary Method](/content/06_initial_boundary.qmd#sec-defineBoundaryMethod)).
+
+The example is meant for comparing boundary conditions and flow setups, which are selected in `main()`:
+
+- `BOUNDARY_TYPE` chooses the wall boundary: `bounceBack`, `local` (`LocalVelocity`, with `LocalVelocity` and `LocalPressure` at the inlet and outlet), `interpolated` (default), `freeSlip` or `partialSlip`, where `TUNER_PARAM` blends between no-slip and free slip. The error norms are only computed for the no-slip boundaries.
+- `FLOW_TYPE` chooses between `nonForced` (default), the setup described above, and `forced`, where the channel is periodic in $x$ and a constant body force $F = p_0 / L$ drives the flow instead of the inlet and outlet. The forced setup uses `ForcedBGKdynamics`.
+- Compiling with `ENABLE_MRT` defined replaces the BGK operator by the multiple relaxation time operator, `MRTdynamics` and `ForcedMRTdynamics`.
+
+The corresponding lattice is defined inside the case definition in `case.h` as in @lst-poiseuille2d-case.
+
+::: {#lst-poiseuille2d-case}
+```{.cpp}
+using MyCase = Case<
+  NavierStokes, Lattice<FLOATING_POINT_TYPE, descriptors::D2Q9<FORCE>>
+>;
+```
+Case definition for the `poiseuille2d` example. The `FORCE` field holds the body force of the forced setup.
+:::
+
+The parameters for the simulation are set in `main()` and given in @tbl-poiseuille2d-params.
+The unit converter `UnitConverterFromResolutionAndRelaxationTime` derives the time step size from the resolution and the lattice relaxation time.
+
+| Parameter | Symbol | Value | Description |
+|---|---|---|---|
+| `RESOLUTION` | $N$ | $50$ | cells per channel height $H$ |
+| `DOMAIN_EXTENT` | $L \times H$ | $2\,\mathrm{m} \times 1\,\mathrm{m}$ | length and height of the channel |
+| `PHYS_CHAR_VELOCITY` | $u_\text{max}$ | $1\,\mathrm{m/s}$ | maximum velocity of the Poiseuille profile |
+| `REYNOLDS` | $Re$ | $10$ | Reynolds number $u_\text{max} H / \nu$, which sets $\nu = 0.1\,\mathrm{m^2/s}$ |
+| `LATTICE_RELAXATION_TIME` | $\tau$ | $0.8$ | lattice relaxation time |
+| `PHYS_MAX_T` | $T$ | $30\,\mathrm{s}$ | upper limit of the simulated time, $75\,000$ time steps |
+| `PHYS_CHAR_DENSITY` | $\rho$ | $1\,\mathrm{kg/m^3}$ | density |
+| `TUNER_PARAM` | | $0.5$ | blending of the partial slip boundary, from $0$ (no-slip) to $1$ (free slip) |
+| `FLOW_TYPE` | | `nonForced` | inlet and outlet (`nonForced`) or periodic with body force (`forced`) |
+| `BOUNDARY_TYPE` | | `interpolated` | boundary condition at the walls |
+| `CONVERGENCE_PRECISION` | | $10^{-9}$ | bound for the relative standard deviation of the average energy |
+| `CONV_ITER` | | $0.25\,\mathrm{s}$ | time window of the convergence check |
+| `VTK_ENABLED` | | `true` | write VTK output and heat maps |
+| `GNUPLOT_ENABLED` | | `true` | plot the velocity profile at the last time step, with `EOC` the errors over the resolution |
+| `COMPUTE_ERROR` | | `true` | compute the error norms at every statistics output |
+| `EOC` | | `false` | convergence study over $N = 30, 50, 70, 100$ instead of a single run |
+| `PHYS_VTK_ITER_T` | | $T/20 = 1.5\,\mathrm{s}$ | interval of the VTK output |
+| `PHYS_STAT_ITER_T` | | $T/20 = 1.5\,\mathrm{s}$ | interval of the console statistics and the error norms |
+
+: Parameters of `poiseuille2d`, as set in `main()`. {#tbl-poiseuille2d-params}
+
+#### Validation
+
+The simulation stops as soon as the relative standard deviation of the average energy over the last $0.25\,\mathrm{s}$ falls below $10^{-9}$, which happens after $46\,600$ time steps at $t = 18.6\,\mathrm{s}$.
+At every statistics output and at the end, `errorNorms()` prints the absolute and relative $L^1$, $L^2$ and $L^\infty$ errors of the velocity, the strain rate and the pressure against the analytical solution, over the fluid cells (MN 1).
+The VTK output contains the analytical velocity next to the simulated one.
+
+@fig-poiseuille2d-profile compares the velocity profile at $x = L/2$ with the analytical solution, and @tbl-poiseuille2d-errors lists the relative $L^2$ errors for the default resolution and for $N = 100$, run with `--RESOLUTION 100`.
+Halving the lattice spacing reduces all three errors by a factor of about four, which is the second order convergence of the scheme.
+
+![Velocity profile of `poiseuille2d` at $x = L/2$ at the end of the simulation with $N = 50$, compared with the analytical Poiseuille profile.](/examples/laminar/poiseuille2d/doc/fig/profile/profile.svg){width="60%" #fig-poiseuille2d-profile .lightbox}
+
+| Resolution $N$ | velocity | strain rate | pressure |
+|---|---|---|---|
+| $50$ (default) | $1.15 \cdot 10^{-3}$ | $1.49 \cdot 10^{-3}$ | $3.01 \cdot 10^{-3}$ |
+| $100$ | $2.87 \cdot 10^{-4}$ | $3.78 \cdot 10^{-4}$ | $7.54 \cdot 10^{-4}$ |
+
+: Relative $L^2$ errors of `poiseuille2d` at the end of the simulation. {#tbl-poiseuille2d-errors}
+
+With `--EOC 1`, `main()` runs the simulation for the resolutions $N = 30$, $50$, $70$ and $100$ one after the other, without VTK output.
+At the end of each run, `getResults()` adds the absolute errors to `tmp/gnuplotData/error.png`, which plots them over the resolution on logarithmic axes together with a linear fit (@fig-poiseuille2d-error).
+The fitted slopes are about $-2$ for the velocity and for the $L^1$ and $L^2$ errors of the strain rate and the pressure, which confirms the second order convergence.
+The $L^\infty$ errors of the strain rate and the pressure converge more slowly, with the slopes $-1.2$ and $-1.7$.
+At $N = 25$ and $N = 40$, the mean density grows during the run and the pressure error does not converge, which is why the study uses other resolutions.
+
+![Absolute $L^1$, $L^2$ and $L^\infty$ errors of the velocity, the strain rate and the pressure of `poiseuille2d` over the resolution $N$, with linear fits on logarithmic axes, written by the example with `--EOC 1`. The legend gives the slopes of the fits.](/examples/laminar/poiseuille2d/doc/fig/error/error.png){width="80%" #fig-poiseuille2d-error .lightbox}
+
+#### Files
+
+```
+poiseuille2d/
+├── poiseuille2d.cpp   main(): parameters, one run or the convergence study; run(): mesh, geometry, lattice, initial values and time loop
+├── case.h             Case type, flow and boundary variants, error norms and output
+└── Makefile
+```
+
+The results are written to `tmp/` in the directory the example is run from: `vtkData/poiseuille2d.pvd` opens all time steps in ParaView, `imageData/` holds the velocity heat maps and `gnuplotData/` the velocity profile of the last time step, or with `EOC` the error plot. The heat maps and plots are drawn with gnuplot; without it, only the data in `gnuplotData/data/` is written.

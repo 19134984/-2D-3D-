@@ -1,0 +1,20 @@
+### linearElasticity
+
+Solving the equations of linear elasticity with lattice Boltzmann methods. Two
+families of cases are provided, both of them validated against manufactured
+solutions:
+
+* `quasistationary` solves stationary linear elasticity with a multiple
+  relaxation time scheme on a `D2Q8` descriptor. The simulation is iterated
+  until the displacement field no longer changes, which makes these cases the
+  right starting point for static load problems.
+* `elastodynamics` solves the time dependent Navier--Cauchy equation with the
+  vectorial lattice Boltzmann method (`vectorLBM`), where every cell carries a
+  `VECTOR` of `D2Q4` populations. These cases resolve wave propagation through
+  the solid.
+
+Within each family the cases differ only in the boundary condition they
+exercise: a periodic domain without any boundary, a prescribed displacement
+(Dirichlet), a prescribed traction (Neumann), and a combination of the latter
+two. Every case ships a `run.sh` that repeats the simulation over a range of
+resolutions and reports the experimental order of convergence.

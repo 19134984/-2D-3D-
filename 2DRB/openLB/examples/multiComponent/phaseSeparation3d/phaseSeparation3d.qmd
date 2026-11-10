@@ -1,0 +1,10 @@
+---
+features: [multiPhase, transient, primitives]
+---
+
+### phaseSeparation3d
+
+In this example, the simulation is initialized with a given density plus small, random variation over the domain.
+This condition is unstable and leads to liquid-vapor phase separation.
+Boundaries are assumed to be periodic.
+This example illustrates the usage of multiphase flow models akin to the ones proposed in [@shan_chen:93] in $\OpenLB$.

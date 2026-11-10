@@ -1,0 +1,23 @@
+<script>
+    MathJax = {
+        loader: {
+                load: ['[tex]/boldsymbol']
+            },
+        tex: {
+            macros: {
+                bm: ["{\\boldsymbol #1}", 1],
+                symbf: ["{\\boldsymbol #1}", 1],
+                OpenLB: ["{\\textit{\\sf OpenLB}}", 0]
+            },
+            tags: "all",
+            inlineMath: [['$','$'], ['\\(','\\)']],
+            displayMath: [['$$','$$'], ['\\[','\\]']],
+            processEscapes: true,
+            processEnvironments: true,
+            packages: {
+            '[+]': ['boldsymbol']
+            }
+        },
+    };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>

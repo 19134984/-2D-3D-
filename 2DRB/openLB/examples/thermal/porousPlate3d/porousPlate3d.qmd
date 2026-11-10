@@ -1,0 +1,33 @@
+---
+features: [thermal, benchmark, primitives]
+---
+
+### porousPlate3d
+
+The porous plate problem is implemented as described in [@guo2002coupled] and [@peng2003simplified].
+To test the coupled model's accuracy and to determine its EOC, a numerical simulation of the porous plate problem including a temperature gradient and natural convection in a square cavity is used.
+The porous plate problem describes a channel flow, where the upper cool plate moves with a constant velocity, and through the bottom warm plate a constant normal flow is injected and withdrawn at the same rate from the upper plate.
+At the left and right hand sides of the domain a periodic boundary condition is applied and constant velocity and temperature boundary conditions are applied to the top and bottom plates according to @fig-porousplateprob-3d.
+
+![Schematic representation of the porous plate's simulation setup including the boundary conditions.](/examples/thermal/porousPlate2d/doc/fig/porousPlateSetup.png){#fig-porousplateprob-3d width="60%"}
+
+An analytical solution for the given steady-state problem is provided for the velocity and temperature distributions by
+
+$$
+\begin{aligned}
+ u_x(y) & =u_{x,0}\left(\frac{e^{Re \cdot y/L}-1}{e^{Re}-1}\right) , \\
+T(y) & =T_0+ \Delta T\left(\frac{e^{Pr \cdot Re \cdot y/L} -1}{e^{Pr \cdot Re}-1}\right) .
+\end{aligned}
+$$ {#eq-porousPlateAnalytical-3d}
+
+Here $u_{x,0}$ is the upper plate's velocity, $Re = \frac{u_{y,0} L}{\nu}$ the Reynolds number depending on the injected velocity $u_{y,0}$, the fluid's viscosity $\nu$, and the channel length $L$.
+The temperature difference between the hot and cold plate is given by $\Delta T=T_h-T_c$.
+First, a couple of simulations are implemented to scale the velocity and temperature profiles for a range of the Reynolds number and Prandtl number.
+The relative global error is computed via [@guo2002coupled]
+
+$$
+E= \frac{\sqrt{\sum \limits_{i} |T(x_i)-T_a(x_i)|^2}}{\sqrt{\sum \limits_{i} |T_a(x_i)|^2}} \quad ,
+$$
+
+where the summation is over the entire system and $T_a$ is the analytical solution @eq-porousPlateAnalytical-3d.
+The `porousPlate3dSolver` variant implements the same simulation, but additionally illustrates the application of the solver class concept.

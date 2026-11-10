@@ -1,0 +1,57 @@
+<Param>
+  <Application>
+    <Name>cube3d</Name>
+    <Discretization>
+      <Resolution>50</Resolution>
+      <LatticeRelaxationTime>1.0</LatticeRelaxationTime>
+    </Discretization>
+    <PhysParam>
+      <maxTime>12</maxTime>
+    </PhysParam>
+    <!-- optical parameters, a is scattering albedo, b is optical depth -->
+    <case1  absorption=" 1.8 "  scattering=" 0.2 "  mcvalue="0.37824554 "  totalEnergy="0.4399596" /> <!-- a=0.1 , b=2 -->
+    <case2  absorption=" 1.2 "  scattering=" 0.8 "  mcvalue="0.41495083 "  totalEnergy="0.4788224" /> <!-- a=0.4 , b=2 -->
+    <case3  absorption=" 0.6 "  scattering=" 1.4 "  mcvalue="0.46079487 "  totalEnergy="0.5276765" /> <!-- a=0.7 , b=2 -->
+    <case4  absorption=" 0.2 "  scattering=" 1.8 "  mcvalue="0.50106060 "  totalEnergy="0.5682858" /> <!-- a=0.9 , b=2 -->
+    <case5  absorption=" 0 "    scattering=" 2 "    mcvalue="0.52569301 "  totalEnergy="0.5925921" /> <!-- a=1.0 , b=2 -->
+    <case6  absorption=" 3.6 "  scattering=" 0.4 "  mcvalue="0.38624618 "  totalEnergy="0.2457602" /> <!-- a=0.1 , b=4 -->
+    <case7  absorption=" 2.4 "  scattering=" 1.6 "  mcvalue="0.45191547 "  totalEnergy="0.2852184" /> <!-- a=0.4 , b=4 -->
+    <case8  absorption=" 1.2 "  scattering=" 2.8 "  mcvalue="0.54982364 "  totalEnergy="0.3429499" /> <!-- a=0.7 , b=4 -->
+    <case9  absorption=" 0.4 "  scattering=" 3.6 "  mcvalue="0.64909162 "  totalEnergy="0.403097 " /> <!-- a=0.9 , b=4 -->
+    <case10 absorption=" 0 "    scattering=" 4 "    mcvalue="0.72141801 "  totalEnergy="0.4481525" /> <!-- a=1.0 , b=4 -->
+    <case11 absorption=" 5.4 "  scattering=" 0.6 "  mcvalue="0.40680904 "  totalEnergy="0.1611278" /> <!-- a=0.1 , b=6 -->
+    <case12 absorption=" 3.6 "  scattering=" 2.4 "  mcvalue="0.49842785 "  totalEnergy="0.1965076" /> <!-- a=0.4 , b=6 -->
+    <case13 absorption=" 1.8 "  scattering=" 4.2 "  mcvalue="0.64846842 "  totalEnergy="0.2538965" /> <!-- a=0.7 , b=6 -->
+    <case14 absorption=" 0.6 "  scattering=" 5.4 "  mcvalue="0.81467782 "  totalEnergy="0.3241431" /> <!-- a=0.9 , b=6 -->
+    <case15 absorption=" 0 "    scattering=" 6 "    mcvalue="0.95039179 "  totalEnergy="0.3901859" /> <!-- a=1.0 , b=6 -->
+    <case16 absorption=" 7.2 "  scattering=" 0.8 "  mcvalue="0.41106477 "  totalEnergy="0.1165382" /> <!-- a=0.1 , b=8 -->
+    <case17 absorption=" 4.8 "  scattering=" 3.2 "  mcvalue="0.52257154 "  totalEnergy="0.1475802" /> <!-- a=0.4 , b=8 -->
+    <case18 absorption=" 2.4 "  scattering=" 5.6 "  mcvalue="0.71273221 "  totalEnergy="0.2024515" /> <!-- a=0.7 , b=8 -->
+    <case19 absorption=" 0.8 "  scattering=" 7.2 "  mcvalue="0.94303889 "  totalEnergy="0.277922 " /> <!-- a=0.9 , b=8 -->
+    <case20 absorption=" 0 "    scattering=" 8 "    mcvalue="1.14847199 "  totalEnergy="0.3648461" /> <!-- a=1.0 , b=8 -->
+    <case21 absorption=" 10.8 " scattering=" 1.2 "  mcvalue="0.41586679 "  totalEnergy="0.0713477" /> <!-- a=0.1 , b=12 -->
+    <case22 absorption=" 7.2 "  scattering=" 4.8 "  mcvalue="0.55311671 "  totalEnergy="0.0956651" /> <!-- a=0.4 , b=12 -->
+    <case23 absorption=" 3.6 "  scattering=" 8.4 "  mcvalue="0.80652265 "  totalEnergy="0.1440762" /> <!-- a=0.7 , b=12 -->
+    <case24 absorption=" 1.2 "  scattering=" 10.8 " mcvalue="1.15326132 "  totalEnergy="0.2231779" /> <!-- a=0.9 , b=12 -->
+    <case25 absorption=" 0 "    scattering=" 12 "   mcvalue="1.50616606 "  totalEnergy="0.3487122" /> <!-- a=1.0 , b=12 -->
+    <case26 absorption=" 18 "   scattering=" 2 "    mcvalue="0.40432430 "  totalEnergy="0.0356388" /> <!-- a=0.1 , b=20 -->
+    <case27 absorption=" 12 "   scattering=" 8 "    mcvalue="0.56124423 "  totalEnergy="0.0512611" /> <!-- a=0.4 , b=20 -->
+    <case28 absorption=" 6 "    scattering=" 14 "   mcvalue="0.88608446 "  totalEnergy="0.0877447" /> <!-- a=0.7 , b=20 -->
+    <case29 absorption=" 2 "    scattering=" 18 "   mcvalue="1.40296635 "  totalEnergy="0.1630496" /> <!-- a=0.9 , b=20 -->
+    <case30 absorption=" 0 "    scattering=" 20 "   mcvalue="2.05812907 "  totalEnergy="0.3515545" /> <!-- a=1.0 , b=20 -->
+    <case31 absorption=" 27 "   scattering=" 3 "    mcvalue="0.44760592 "  totalEnergy="0.0187141" /> <!-- a=0.1 , b=30 -->
+    <case32 absorption=" 18 "   scattering=" 12 "   mcvalue="0.62400688 "  totalEnergy="0.0283054" /> <!-- a=0.4 , b=30 -->
+    <case33 absorption=" 9 "    scattering=" 21 "   mcvalue="0.99992339 "  totalEnergy="0.0536873" /> <!-- a=0.7 , b=30 -->
+    <case34 absorption=" 3 "    scattering=" 27 "   mcvalue="1.64948688 "  totalEnergy="0.1181293" /> <!-- a=0.9 , b=30 -->
+    <case35 absorption=" 0 "    scattering=" 30 "   mcvalue="2.60768558 "  totalEnergy="0.3631883" /> <!-- a=1.0 , b=30 -->
+
+
+    <!--anisotropy factor g: takes values from -1 to 1, negative represents backward scattering, positive forward scattering-->
+    <!--g=0 is isotropic scattering-->
+    <AnisotropyFactor>0.0</AnisotropyFactor>
+  </Application>
+  <Output>
+    <!--saveIter: how often it writes during one physical timestep-->
+    <saveIter>2</saveIter>
+  </Output>
+</Param>

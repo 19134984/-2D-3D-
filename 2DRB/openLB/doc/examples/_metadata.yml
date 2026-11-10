@@ -1,0 +1,15 @@
+# Directory metadata for every page below doc/examples/.
+#
+# An example page starts at ### and uses #### and ##### below it, because in
+# the PDF all examples are sections of one chapter (see example.qmd). Quarto's
+# default table of contents only goes down to ###, so on the website it would
+# list nothing but the name of the example. Going down to ##### lists the
+# sections of the page instead, the #### ones expanded, like the sections on
+# the pages in content/.
+#
+# Only the HTML format is touched, the PDF keeps its own table of contents.
+format:
+  html:
+    toc: true
+    toc-depth: 5
+    toc-expand: 2

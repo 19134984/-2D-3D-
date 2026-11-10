@@ -1,0 +1,48 @@
+---
+features: [turbulent, thermal, transient, benchmark, showcase, primitives]
+---
+
+### rayleighBenard3d
+
+The Rayleigh--Bénard convection is a typical case of natural convection, where the lower boundary is heated and a regular pattern of convection cells is developed.
+This is a suitable test platform for thermal algorithms, since the driving force is a coupling between momentum and energy equations by means of a buoyancy force, which is a function of the temperature, and the temperature varies spatially inside the domain.
+This example demonstrates Rayleigh--Bénard convection rolls, simulated with the thermal LB model by Guo *et al.* [@guo:02c], between a hot plate at the bottom and a cold plate at the top.
+
+#### Setup
+
+The case considered has an aspect ratio ($AR = L_x/L_y$) of $2$, which enhances the appearance of unstable modes.
+The lower wall is heated with a constant temperature ($T = 1$), and the upper wall is isothermal and cold ($T = 0$).
+The vertical walls are set to be periodic.
+
+Among the example programs implemented in $\OpenLB$, a demo code for the Rayleigh--Bénard convection in 2D and 3D is provided.
+This code is taken as a base for the development of most of the thermal applications.
+For the simulation of the Rayleigh--Bénard convection, only one modification is made to the code regarding the initial conditions: to enhance the appearance of the convection cells, an instability in the domain is introduced.
+The available code initializes a small area near the lower boundary with a slightly higher temperature, introducing a perturbation in the system, whereas the rest of the domain is initialized with the cold temperature.
+In the modified code, there is no local perturbation, but the initial temperature at the domain is dependent on the space coordinates.
+The domain is initialized with zero velocity and a temperature field by using a functor according to
+
+$$
+T(x,y,t=0)= T_{max} \left[\left(1-\frac{y}{L_y}\right) + 0.1\cos\left(2\pi\frac{x}{L_x}\right)\right] .
+$$ {#eq-rayleighBenardInit-3d}
+
+The files created to help with the initialization of the temperature field are called `tempField.h` and `tempField2.h`.
+The following listing shows the corresponding usage.
+The first file computes the temperature at every point of the lattice, as a function of its macroscopic position, and then this value is applied on the lattice as the density (line 3).
+The second file calculates the equilibrium distribution functions for every node corresponding to the given temperature and zero velocity.
+Next, the populations are defined for the desired material number in line 4.
+
+```{.cpp}
+TemperatureField2D<T,T> Initial( converter );
+TemperatureFieldPop2D<T,T> EqInitial( converter );
+ADlattice.defineRho( superGeometry, 1, Initial );
+ADlattice.definePopulations( superGeometry, 1, EqInitial );
+```
+
+In @eq-rayleighBenardInit-3d, the $y$-dependent part of the equation matches the stationary solution of the problem, corresponding to a case where there is no fluid movement and the heat transfer only occurs by conduction.
+The cosine term introduces a disturbance in the system, which enhances the appearance of the convection cells.
+
+#### Simulation Parameters
+
+Computations are run for a range of different Rayleigh ($3\cdot 10^3$, $6\cdot 10^5$) and Prandtl numbers ($0.3$, $1$).
+The spatial resolution was fixed to $100$ cells in the $y$-direction, and the time discretization was switched between $10^{-3}$ and $10^{-4}$, which give lattice velocities of $0.1$ and $0.01$ respectively.
+The convergence criterion is applied to the average energy, and it is set to a precision of $10^{-5}$.

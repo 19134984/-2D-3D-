@@ -1,0 +1,10 @@
+#### neumannPlate (elastodynamics)
+
+The manufactured elastodynamics problem of
+`elastodynamics/vectorLBM/periodicPlate` with a traction boundary instead of a
+periodic one. `ElastodynamicsVectorLBMNeumannValidation` prescribes the stress
+of the manufactured solution on the boundary, for which the descriptor carries
+the boundary coordinates and the outward normal as additional fields.
+
+The `run.sh` script performs the same resolution sweep and order of convergence
+study as `elastodynamics/vectorLBM/periodicPlate`.

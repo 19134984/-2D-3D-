@@ -1,0 +1,29 @@
+The gausspulse3d example initializes pressure with a gaussian distribution and velocity at (Ma, 0, 0). It is used to compare different boundary conditions with regards to their reflecting the pressure wave into the fluid domain.
+
+To get the results, run
+
+```
+make
+for boundaryCondition in 0 1 2 3 4 5 6
+do
+./gausspulse3d ----FAR_FIELD_TYPE $boundaryCondition
+done
+cd ../refinedGausspulse3d
+make
+./refinedGausspulse3d
+cd ../gausspulse3d
+python ./l2plot.py
+```
+
+NOTE: You need matplotlib and numpy for the python plots.
+
+To compare boundary-specific parameters, do something like
+```
+for sig in 0.1 0.03 0.01 0.003 0.001
+do
+mpirun ./gausspulse3d ----FAR_FIELD_TYPE 6 --CBC_SIGMA $sig
+done
+python ./l2plotCbcSigma.py
+```
+
+To get VTK and image output, add `--DO_GRAPHICAL_OUTPUT 1`

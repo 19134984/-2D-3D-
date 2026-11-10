@@ -1,0 +1,81 @@
+---
+features: [transient, benchmark, primitives, checkpointing]
+---
+
+### bstep2d {#sec-example-laminar-bstep2d}
+
+This example implements the fluid flow over a backward-facing step.
+Furthermore, it is shown how checkpointing can be used to regularly save the state of the simulation.
+The 2D geometry corresponds to Armaly *et al.* [@armaly:83].
+
+#### Governing equations
+
+The domain $\Omega \times \I$, the channel without the step times $\R_{\geq 0}$, is considered with the following governing equations with the velocity field $\vel \in \R^2$ and the pressure $p \in \R$ for the incompressible flow of a Newtonian fluid with kinematic viscosity $\nu \in \R_{> 0}$ and constant density $\rho \in \R_{> 0}$,
+\begin{align}
+    \nabla \cdot \vel &= 0 \quad \text{in} \quad \Omega \times \I, \\
+    \partial_t \vel + (\vel \cdot \nabla) \vel &= -\frac{1}{\rho} \nabla p + \nu \Delta \vel \quad \text{in} \quad \Omega \times \I.
+\end{align}
+
+#### Boundary conditions
+
+The boundary $\partial \Omega = \Gamma_D \cup \Gamma_\text{out} \cup \Gamma_{\mathrm{no\text{-}slip}}$ consists of the inlet $\Gamma_D$ above the step, where a parabolic velocity profile is prescribed, the outlet $\Gamma_\text{out}$, where the pressure is prescribed, and the walls $\Gamma_{\mathrm{no\text{-}slip}}$, which include the step (@fig-bstep2d-domain),
+\begin{align}
+    \vel &= (u_\text{in}(y, t), 0)^\top \quad \text{on} \quad \Gamma_D \times \I, \\
+    p &= 0 \quad \text{on} \quad \Gamma_\text{out} \times \I, \\
+    \vel &= \mathbf{0} \quad \text{on} \quad \Gamma_{\mathrm{no\text{-}slip}} \times \I.
+\end{align}
+The inflow profile is a Poiseuille profile across the inlet height $h$ with the peak velocity $\tfrac{3}{2} U$, so the mean velocity is $U$ once it is fully developed.
+`setTemporalValues()` raises it smoothly from rest with a polynomial ramp during the first $20\,\%$ of the simulated time and updates it every $100$ time steps.
+The fluid is initially at rest.
+
+#### Domain
+
+The channel has the length $L = 0.7\,\mathrm{m}$ and the height $H = 10.1\,\mathrm{mm}$. The step at its lower left is $0.2\,\mathrm{m}$ long and $S = 4.9\,\mathrm{mm}$ high, so the inlet above it has the height $h = H - S = 5.2\,\mathrm{mm}$ and the expansion ratio is $H/h = 1.94$, as in the experiments of @armaly:83.
+The characteristic length is the hydraulic diameter of the inlet channel, $2h = 10.4\,\mathrm{mm}$, and with $U = 1\,\mathrm{m/s}$ and $\nu = 5.2 \cdot 10^{-5}\,\mathrm{m^2/s}$, the Reynolds number is $Re = 2 h U / \nu = 200$, within the laminar range of the experiments.
+
+`prepareGeometry()` assigns the material numbers (MN) shown in @fig-bstep2d-domain.
+
+![Domain and boundary conditions of `bstep2d`, with the material numbers (MN) assigned in `prepareGeometry()`. The sketch is not to scale: the channel is $70$ times longer than high.](/examples/laminar/bstep2d/doc/fig/bstep2dDomain.svg){width="100%" #fig-bstep2d-domain .lightbox}
+
+#### Discretization \& Descriptor
+In this example, the domain is discretized with a uniform grid with the lattice spacing $\Delta x = 2h / N$, where $N = 60$ cells resolve the hydraulic diameter of the inlet, so $\Delta x = 1.73 \cdot 10^{-4}\,\mathrm{m}$ and the grid has about $234\,000$ cells.
+
+The LBM collision operator is the BGK operator with a single relaxation time ([Collision Operators](/content/02_core.qmd#collision-operators)), used as `BGKdynamics` on the fluid, inlet and outlet cells (MN 1, 3 and 4), together with the D2Q9 velocity set ([Lattice Structures](/content/01_introduction.qmd#sec-lattice-structures)).
+The walls (MN 2) are treated with `BounceBack`, the inlet (MN 3) with `LocalVelocity` and the outlet (MN 4) with `LocalPressure` ([Define Boundary Method](/content/06_initial_boundary.qmd#sec-defineBoundaryMethod)). `prepareLattice()` contains the interpolated alternatives as comments.
+
+The corresponding lattice is defined inside the case definition in `bstep2d.cpp` as in @lst-bstep2d-case.
+
+::: {#lst-bstep2d-case}
+```{.cpp}
+using MyCase = Case<NavierStokes, Lattice<double, descriptors::D2Q9<>>>;
+```
+Case definition for the `bstep2d` example.
+:::
+
+The unit converter `UnitConverterFromResolutionAndRelaxationTime` derives the time step size from the resolution and the lattice relaxation time.
+The parameters are given in @tbl-bstep2d-params.
+
+| Parameter | Symbol | Value | Description |
+|---|---|---|---|
+| `RESOLUTION` | $N$ | $60$ | cells per hydraulic diameter $2h$ |
+| `LATTICE_RELAXATION_TIME` | $\tau$ | $0.518$ | lattice relaxation time |
+| `PHYS_LENGTH_OF_STEP` | | $0.2\,\mathrm{m}$ | length of the step |
+| `PHYS_HEIGHT_OF_STEP` | $S$ | $4.9\,\mathrm{mm}$ | height of the step |
+| `PHYS_CHAR_VELOCITY` | $U$ | $1\,\mathrm{m/s}$ | mean velocity of the fully developed inflow |
+| `PHYS_CHAR_VISCOSITY` | $\nu$ | $5.2 \cdot 10^{-5}\,\mathrm{m^2/s}$ | kinematic viscosity, $1/19230.77$ |
+| `PHYS_CHAR_DENSITY` | $\rho$ | $1\,\mathrm{kg/m^3}$ | density |
+| `DOMAIN_EXTENT` | $L \times H$ | $0.7\,\mathrm{m} \times 10.1\,\mathrm{mm}$ | length and height of the channel |
+| `PHYS_CHAR_LENGTH` | $2h$ | $10.4\,\mathrm{mm}$ | characteristic length, derived as $2 (H - S)$ |
+| `PHYS_MAX_T` | $T$ | $2\,\mathrm{s}$ | simulated time |
+
+: Parameters of `bstep2d`, as set in `main()`. {#tbl-bstep2d-params}
+
+#### Results
+
+Every $0.1\,\mathrm{s}$, `getResults()` prints the lattice statistics and the volume flow and the mean pressure through the line with the normal $(0, 1)$ through the point $(0.1\,\mathrm{m}, h/2)$, as given in the code.
+Every $0.2\,\mathrm{s}$, it writes the velocity and the pressure to the VTK output and a heat map of the velocity magnitude, scaled to the peak inflow velocity $\tfrac{3}{2} U$.
+Behind the step, the flow separates and forms a recirculation zone at the lower wall, whose length the experiments of @armaly:83 relate to the Reynolds number. The example does not evaluate it, but it can be read off the velocity field in ParaView.
+
+Every simulated second, `getResults()` reaches the checkpointing block, where the calls that save the lattice with `sLattice.save("bstep2d.checkpoint")` are commented out. A saved state could be restored with `sLattice.load("bstep2d.checkpoint")` to continue a simulation.
+
+The results are written to `tmp/` in the directory the example is run from: `vtkData/bstep2d.pvd` opens all time steps in ParaView and `imageData/` holds the velocity heat maps, which are drawn with gnuplot if it is installed. The unit converter also writes its parameters to `tmp/bstep2d.dat`.

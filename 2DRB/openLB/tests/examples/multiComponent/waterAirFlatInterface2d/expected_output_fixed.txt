@@ -1,0 +1,298 @@
+[MultiPhaseUnitConv] ----------------- MultiPhaseUnitConverter information ------------------
+[MultiPhaseUnitConv] -- Parameters:
+[MultiPhaseUnitConv] Resolution:                                 N=                              50
+[MultiPhaseUnitConv] Lattice velocity:                           latticeU=                       0
+[MultiPhaseUnitConv] Lattice relaxation frequency:               omega=                          1.84981
+[MultiPhaseUnitConv] Lattice relaxation time:                    tau=                            0.540597
+[MultiPhaseUnitConv] Characteristical length(m):                 charL=                          1e-06
+[MultiPhaseUnitConv] Characteristical speed(m/s):                charU=                          0
+[MultiPhaseUnitConv] Phys. kinematic viscosity(m^2/s):           charNu=                         1e-06
+[MultiPhaseUnitConv] Characteristical pressure(N/m^2):           charPressure=                   101300
+[MultiPhaseUnitConv] Reynolds number:                            reynoldsNumber=                 0
+[MultiPhaseUnitConv] Phys. Delta X(m):                           physDeltaX=                     2e-08
+[MultiPhaseUnitConv] Phys. Delta T(s):                           physDeltaT=                     5.41287e-12
+[MultiPhaseUnitConv] Phys. Surface Tension(J/m^2):               physSurfaceTension=             0.07
+[MultiPhaseUnitConv] Characteristical Phys. Temperature(K):      charPhysTemperature=            298.15
+[MultiPhaseUnitConv] ----------------- Conversion factors:-----------------------------------
+[MultiPhaseUnitConv] Voxel length(m):                            physDeltaX=                     2e-08
+[MultiPhaseUnitConv] Time step(s):                               physDeltaT=                     5.41287e-12
+[MultiPhaseUnitConv] Velocity factor(m/s):                       physVelocity=                   3694.9
+[MultiPhaseUnitConv] Density factor(kg/m^3):                     physDensity=                    90.5362
+[MultiPhaseUnitConv] Mass factor(kg):                            physMass=                       7.24289e-22
+[MultiPhaseUnitConv] Viscosity factor(m^2/s):                    physViscosity=                  7.3898e-05
+[MultiPhaseUnitConv] Force factor(N):                            physForce=                      4.9441e-07
+[MultiPhaseUnitConv] Pressure factor(N/m^2):                     physPressure=                   1.23603e+09
+[MultiPhaseUnitConv] Equation of state a(Jm^3/mol^2):            physEoSa=                       48.9658
+[MultiPhaseUnitConv] Equation of state b(m^3/mol):               physEoSb=                       0.000199036
+[MultiPhaseUnitConv] Molar mass(kg/mol):                         physMolarMass=                  0.01802
+[MultiPhaseUnitConv] Surface tension(J/m^2):                     physSurfaceTension=             24.7205
+[MultiPhaseUnitConv] Temperature(K):                             physTemperature=                29588.7
+[MultiPhaseUnitConv] ------------------------------------------------------------------------
+[CuboidDecomposition] -- Cuboid Structure Statistics --
+[CuboidDecomposition]  Number of Cuboids: 	1
+[CuboidDecomposition]  Delta       : 		1
+[CuboidDecomposition]  Ratio  (min): 		0.04
+[CuboidDecomposition]         (max): 		1
+[CuboidDecomposition]  Nodes  (min): 		400
+[CuboidDecomposition]         (max): 		400
+[CuboidDecomposition]  Weight (min): 		400
+[CuboidDecomposition]         (max): 		400
+[CuboidDecomposition] --------------------------------
+[SuperGeometryStatistics2D] materialNumber=1; count=400; minPhysR=(0,0); maxPhysR=(3,99)
+[prepareLattice] epsilon: 2.2355
+[prepareLattice] VLE: 0.106611, 122.862, 0.999981, 1.35545e-05, 5.17077e-06, 0.0274926, 0.7684, 0.204107
+[prepareLattice] Chis: 1.00132, -0.00101672, -0.000305745
+[prepareLattice] Gravitational acceleration in lattice units: 0
+[prepareLattice] Sigma for correct unit conversion: 0.00283166
+[prepareLattice] Prepare Lattice ... OK
+[getResults] Average error of all component densities: 0.109614
+[getResults] Average error of all component densities: 0.946236
+[getResults] Average error of all component densities: 8.74363
+[getResults] Average error of all component densities: 12.2701
+[getResults] Average error of all component densities: 13.8195
+[getResults] Average error of all component densities: 13.889
+[getResults] Average error of all component densities: 13.6699
+[getResults] Average error of all component densities: 13.3153
+[getResults] Average error of all component densities: 12.7961
+[getResults] Average error of all component densities: 12.2902
+[getResults] Average error of all component densities: 11.7941
+[getResults] Average error of all component densities: 11.2971
+[getResults] Average error of all component densities: 10.8282
+[getResults] Average error of all component densities: 10.3826
+[getResults] Average error of all component densities: 9.95653
+[getResults] Average error of all component densities: 9.55408
+[getResults] Average error of all component densities: 9.17268
+[getResults] Average error of all component densities: 8.81047
+[getResults] Average error of all component densities: 8.46718
+[getResults] Average error of all component densities: 8.14129
+[getResults] Average error of all component densities: 7.83157
+[getResults] Average error of all component densities: 7.53717
+[getResults] Average error of all component densities: 7.25703
+[getResults] Average error of all component densities: 6.99024
+[getResults] Average error of all component densities: 6.73601
+[getResults] Average error of all component densities: 6.49354
+[getResults] Average error of all component densities: 6.26213
+[getResults] Average error of all component densities: 6.04113
+[getResults] Average error of all component densities: 5.82993
+[getResults] Average error of all component densities: 5.62796
+[getResults] Average error of all component densities: 5.43471
+[getResults] Average error of all component densities: 5.24969
+[getResults] Average error of all component densities: 5.07244
+[getResults] Average error of all component densities: 4.90256
+[getResults] Average error of all component densities: 4.73965
+[getResults] Average error of all component densities: 4.58334
+[getResults] Average error of all component densities: 4.4333
+[getResults] Average error of all component densities: 4.28921
+[getResults] Average error of all component densities: 4.15076
+[getResults] Average error of all component densities: 4.01769
+[getResults] Average error of all component densities: 3.88973
+[getResults] Average error of all component densities: 3.76663
+[getResults] Average error of all component densities: 3.64816
+[getResults] Average error of all component densities: 3.53411
+[getResults] Average error of all component densities: 3.42428
+[getResults] Average error of all component densities: 3.31846
+[getResults] Average error of all component densities: 3.21649
+[getResults] Average error of all component densities: 3.11818
+[getResults] Average error of all component densities: 3.02338
+[getResults] Average error of all component densities: 2.93194
+[getResults] Average error of all component densities: 2.8437
+[getResults] Average error of all component densities: 2.75854
+[getResults] Average error of all component densities: 2.67632
+[getResults] Average error of all component densities: 2.59693
+[getResults] Average error of all component densities: 2.52024
+[getResults] Average error of all component densities: 2.44614
+[getResults] Average error of all component densities: 2.37454
+[getResults] Average error of all component densities: 2.30533
+[getResults] Average error of all component densities: 2.23841
+[getResults] Average error of all component densities: 2.1737
+[getResults] Average error of all component densities: 2.11111
+[getResults] Average error of all component densities: 2.05056
+[getResults] Average error of all component densities: 1.99197
+[getResults] Average error of all component densities: 1.93527
+[getResults] Average error of all component densities: 1.88038
+[getResults] Average error of all component densities: 1.82724
+[getResults] Average error of all component densities: 1.77579
+[getResults] Average error of all component densities: 1.72596
+[getResults] Average error of all component densities: 1.67769
+[getResults] Average error of all component densities: 1.63093
+[getResults] Average error of all component densities: 1.58562
+[getResults] Average error of all component densities: 1.54172
+[getResults] Average error of all component densities: 1.49916
+[getResults] Average error of all component densities: 1.45792
+[getResults] Average error of all component densities: 1.41793
+[getResults] Average error of all component densities: 1.37916
+[getResults] Average error of all component densities: 1.34156
+[getResults] Average error of all component densities: 1.3051
+[getResults] Average error of all component densities: 1.26973
+[getResults] Average error of all component densities: 1.23543
+[getResults] Average error of all component densities: 1.20214
+[getResults] Average error of all component densities: 1.16985
+[getResults] Average error of all component densities: 1.13852
+[getResults] Average error of all component densities: 1.10811
+[getResults] Average error of all component densities: 1.0786
+[getResults] Average error of all component densities: 1.04995
+[getResults] Average error of all component densities: 1.02214
+[getResults] Average error of all component densities: 0.995143
+[getResults] Average error of all component densities: 0.968932
+[getResults] Average error of all component densities: 0.943481
+[getResults] Average error of all component densities: 0.918767
+[getResults] Average error of all component densities: 0.894766
+[getResults] Average error of all component densities: 0.871456
+[getResults] Average error of all component densities: 0.848815
+[getResults] Average error of all component densities: 0.826823
+[getResults] Average error of all component densities: 0.805459
+[getResults] Average error of all component densities: 0.784705
+[getResults] Average error of all component densities: 0.76454
+[getResults] Average error of all component densities: 0.744948
+[getResults] Average error of all component densities: 0.72591
+[getResults] Average error of all component densities: 0.707411
+[getResults] Average error of all component densities: 0.689433
+[getResults] Average error of all component densities: 0.671962
+[getResults] Average error of all component densities: 0.654981
+[getResults] Average error of all component densities: 0.638476
+[getResults] Average error of all component densities: 0.622433
+[getResults] Average error of all component densities: 0.606839
+[getResults] Average error of all component densities: 0.591679
+[getResults] Average error of all component densities: 0.576941
+[getResults] Average error of all component densities: 0.562613
+[getResults] Average error of all component densities: 0.548683
+[getResults] Average error of all component densities: 0.535138
+[getResults] Average error of all component densities: 0.521969
+[getResults] Average error of all component densities: 0.509163
+[getResults] Average error of all component densities: 0.49671
+[getResults] Average error of all component densities: 0.4846
+[getResults] Average error of all component densities: 0.472824
+[getResults] Average error of all component densities: 0.461371
+[getResults] Average error of all component densities: 0.450232
+[getResults] Average error of all component densities: 0.439399
+[getResults] Average error of all component densities: 0.428862
+[getResults] Average error of all component densities: 0.418613
+[getResults] Average error of all component densities: 0.408643
+[getResults] Average error of all component densities: 0.398946
+[getResults] Average error of all component densities: 0.389513
+[getResults] Average error of all component densities: 0.380337
+[getResults] Average error of all component densities: 0.37141
+[getResults] Average error of all component densities: 0.362725
+[getResults] Average error of all component densities: 0.354276
+[getResults] Average error of all component densities: 0.346057
+[getResults] Average error of all component densities: 0.338059
+[getResults] Average error of all component densities: 0.330278
+[getResults] Average error of all component densities: 0.322708
+[getResults] Average error of all component densities: 0.315342
+[getResults] Average error of all component densities: 0.308174
+[getResults] Average error of all component densities: 0.3012
+[getResults] Average error of all component densities: 0.294414
+[getResults] Average error of all component densities: 0.28781
+[getResults] Average error of all component densities: 0.281384
+[getResults] Average error of all component densities: 0.275131
+[getResults] Average error of all component densities: 0.269046
+[getResults] Average error of all component densities: 0.263124
+[getResults] Average error of all component densities: 0.257361
+[getResults] Average error of all component densities: 0.251752
+[getResults] Average error of all component densities: 0.246294
+[getResults] Average error of all component densities: 0.240982
+[getResults] Average error of all component densities: 0.235811
+[getResults] Average error of all component densities: 0.230779
+[getResults] Average error of all component densities: 0.225882
+[getResults] Average error of all component densities: 0.221115
+[getResults] Average error of all component densities: 0.216476
+[getResults] Average error of all component densities: 0.21196
+[getResults] Average error of all component densities: 0.207565
+[getResults] Average error of all component densities: 0.203287
+[getResults] Average error of all component densities: 0.199123
+[getResults] Average error of all component densities: 0.19507
+[getResults] Average error of all component densities: 0.191124
+[getResults] Average error of all component densities: 0.187284
+[getResults] Average error of all component densities: 0.183546
+[getResults] Average error of all component densities: 0.179907
+[getResults] Average error of all component densities: 0.176364
+[getResults] Average error of all component densities: 0.172916
+[getResults] Average error of all component densities: 0.169559
+[getResults] Average error of all component densities: 0.166292
+[getResults] Average error of all component densities: 0.163111
+[getResults] Average error of all component densities: 0.160014
+[getResults] Average error of all component densities: 0.156999
+[getResults] Average error of all component densities: 0.154065
+[getResults] Average error of all component densities: 0.151208
+[getResults] Average error of all component densities: 0.148426
+[getResults] Average error of all component densities: 0.145719
+[getResults] Average error of all component densities: 0.143083
+[getResults] Average error of all component densities: 0.140516
+[getResults] Average error of all component densities: 0.138018
+[getResults] Average error of all component densities: 0.135585
+[getResults] Average error of all component densities: 0.133217
+[getResults] Average error of all component densities: 0.130912
+[getResults] Average error of all component densities: 0.128667
+[getResults] Average error of all component densities: 0.126482
+[getResults] Average error of all component densities: 0.124354
+[getResults] Average error of all component densities: 0.122282
+[getResults] Average error of all component densities: 0.120265
+[getResults] Average error of all component densities: 0.118302
+[getResults] Average error of all component densities: 0.11639
+[getResults] Average error of all component densities: 0.112716
+[getResults] Average error of all component densities: 0.110952
+[getResults] Average error of all component densities: 0.109233
+[getResults] Average error of all component densities: 0.107561
+[getResults] Average error of all component densities: 0.105932
+[getResults] Average error of all component densities: 0.104346
+[getResults] Average error of all component densities: 0.102802
+[getResults] Average error of all component densities: 0.101298
+[getResults] Average error of all component densities: 0.0998345
+[getResults] Average error of all component densities: 0.0984091
+[getResults] Average error of all component densities: 0.0970213
+[getResults] Average error of all component densities: 0.0956699
+[getResults] Average error of all component densities: 0.0943541
+[getResults] Average error of all component densities: 0.093073
+[getResults] Average error of all component densities: 0.0918255
+[getResults] Average error of all component densities: 0.0906108
+[getResults] Average error of all component densities: 0.089428
+[getResults] Average error of all component densities: 0.0882764
+[getResults] Average error of all component densities: 0.087155
+[getResults] Average error of all component densities: 0.0860631
+[getResults] Average error of all component densities: 0.0849998
+[getResults] Average error of all component densities: 0.0839645
+[getResults] Average error of all component densities: 0.0829564
+[getResults] Average error of all component densities: 0.0819748
+[getResults] Average error of all component densities: 0.081019
+[getResults] Average error of all component densities: 0.0800883
+[getResults] Average error of all component densities: 0.079182
+[getResults] Average error of all component densities: 0.0782995
+[getResults] Average error of all component densities: 0.0774401
+[getResults] Average error of all component densities: 0.0766033
+[getResults] Average error of all component densities: 0.0757885
+[getResults] Average error of all component densities: 0.0749951
+[getResults] Average error of all component densities: 0.0742225
+[getResults] Average error of all component densities: 0.0734702
+[getResults] Average error of all component densities: 0.0727376
+[getResults] Average error of all component densities: 0.0720242
+[getResults] Average error of all component densities: 0.0713295
+[getResults] Average error of all component densities: 0.0706531
+[getResults] Average error of all component densities: 0.0699944
+[getResults] Average error of all component densities: 0.069353
+[getResults] Average error of all component densities: 0.0687284
+[getResults] Average error of all component densities: 0.0681202
+[getResults] Average error of all component densities: 0.0675279
+[getResults] Average error of all component densities: 0.0669512
+[getResults] Average error of all component densities: 0.0663895
+[getResults] Average error of all component densities: 0.0658426
+[getResults] Average error of all component densities: 0.0653101
+[getResults] Average error of all component densities: 0.0647915
+[getResults] Average error of all component densities: 0.0642865
+[getResults] Average error of all component densities: 0.0637947
+[getResults] Average error of all component densities: 0.0633158
+[getResults] Average error of all component densities: 0.0628495
+[getResults] Average error of all component densities: 0.0623954
+[getResults] Average error of all component densities: 0.0619531
+[getResults] Average error of all component densities: 0.0615225
+[getResults] Average error of all component densities: 0.0611032
+[getResults] Average error of all component densities: 0.0606948
+[getResults] Average error of all component densities: 0.0602971
+[getResults] Average error of all component densities: 0.0599099
+[getResults] Average error of all component densities: 0.0595328
+[getResults] Average error of all component densities: 0.0591656
+[getResults] Average error of all component densities: 0.058808
+[getResults] Average error of all component densities: 0.0584597
+[getResults] Average error of all component densities: 0.0581206
+[getResults] Average error of all component densities: 0.0577904
+[getResults] Average error of all component densities: 0.0574688
+Final average error of all component densities: 0.0574688

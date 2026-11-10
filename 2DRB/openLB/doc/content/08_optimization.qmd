@@ -1,0 +1,251 @@
+---
+title: Flow Control and Optimization
+number-sections: true
+toc: true
+---
+
+In almost every application, the optimization of a process regarding certain objectives is of interest.
+In numerical investigations, this is often the natural step subsequent to a successful set-up of a simulation.
+That could be, for example, maximizing the efficiency of a mixer, exploiting the maximal conversion in a chemical reactor, or reducing the air drag of a parametrized shape.
+In the context of numerical investigations, the goal is to find the optimal simulation parameters, which yield the optimal results regarding the objective we want to optimize.
+A straightforward approach is to run through the parameter sets manually, which can, of course, be very demanding in terms of resources.
+The limitations of this approach are clear: when we need to handle problems where the number of parameters to be optimized exceeds a certain amount, this is no longer feasible.
+At this point, optimal flow control comes into play, where we first formulate an optimization problem, which we aim to solve using methods of optimization.
+
+$\OpenLB$ provides a powerful framework to address these problems, accounting for automatic parameter adjustments and iterative execution of simulations.
+Currently, the following types of optimization problems can be addressed by our framework:
+
+- *Classical optimization* -- Finding optimal flow simulation parameters regarding a defined objective
+- *Shape optimization* -- Adjusting the shape of a parametrized surface model which interacts with the fluid
+- *Topology optimization* -- Finding an optimal body topology (distributed control problems, i.e. the control variable is distributed in the flow domain)
+- *Inverse problem* -- Minimizing the deviation between simulation and measurement (e.g. of velocity distributions) and finding flow simulation parameters reversely
+
+Besides that, the implemented methodologies to solve the above-mentioned problems can also be used to:
+
+- Find the minimum of an analytic function $J$ w.r.t. an argument vector $\alpha$, e.g. as a postprocessing step
+- Perform automated parameter studies
+- Conduct sensitivity analysis regarding flow simulation parameters (as gradients are computed when a gradient-based approach is chosen)
+
+This chapter aims to give a brief theoretical introduction of the concepts we apply to solve these kinds of problems and how they are realized within $\OpenLB$.
+It is structured as follows: @sec-opti-problem is about what kind of problems we can address using the optimization framework, @sec-opti-gradient explains the methods which are currently available in $\OpenLB$, and @sec-opti-implementation deals with their implementation in $\OpenLB$.
+Furthermore, there are application examples available which demonstrate the use of the optimization framework, e.g. `showcaseRosenbrock`.
+
+## Problem Formulation and Solution Strategy {#sec-opti-problem}
+
+The optimization framework of $\OpenLB$ is dedicated to addressing the solution of optimization problems of the general form
+$$
+\textrm{Find } \alpha \textrm{, s.t. } J(f, \alpha) \textrm{ is minimized while } G(f, \alpha) = 0.
+$${#eq-opti}
+
+In this context, $\alpha \in \mathbb{R}^d$ is called the *control variable*, $f$ is the *state*, $J$ is the *objective functional* and $G$ is the *side condition*.
+The objective functional evaluates how "optimal" our solution is.
+The control variables can be interpreted as the degrees of freedom in the optimization problem which we adjust in order to find the optimal solution.
+The state relates to the physical entities, such as flow velocity or particle distribution function, which we compute in a simulation.
+The underlying physical conservation equations which are solved during simulations are the side conditions mentioned in @eq-opti.
+For simplicity, we assume in the following that the side condition $G(f,\alpha)=0$ yields a unique state $f$ for any admissible control $\alpha$, s.t. we have $f=f(\alpha)$ (unconstrained optimization approach).
+
+The employed solution strategy in $\OpenLB$ in order to solve problems formulated in @eq-opti is an iterative approach based on the line search concept.
+Starting with an initial guess, the set of control variables $\alpha_{k}$ are updated where with each iteration the objective function should be reduced, i.e.
+$$
+\alpha_{k+1} = \alpha_k + \triangle \alpha_k, \quad \mathrm{with} \quad J(\alpha_{k+1}) < J(\alpha_k).
+$$
+That is, we basically have a loop where we perform iterative adjustments to the control parameters and run the simulations as a function of those controls.
+After completion of one simulation, we obtain the resulting state, which we use to evaluate the objective function.
+Depending on the chosen strategy (gradient-based, pattern search, etc.), the control variables are updated in order to be used in the next simulation.
+This basic scheme is illustrated in @algo-opti-basic.
+
+```pseudocode
+#| label: algo-opti-basic
+#| html-line-number: true
+#| pdf-placement: "htb!"
+
+\begin{algorithm}
+\caption{Basic optimization algorithm in OpenLB}
+\begin{algorithmic}
+\Procedure{Minimize}{$J(f,\alpha)$}
+  \State Choose initial guess of controls $\alpha_0$
+  \Repeat \Comment{For $k = 0, 1, 2, \ldots, k_{\max}$}
+    \State Run simulation for current set of $\alpha_{k}$ to obtain $f_k$
+    \State Evaluate objective $J_k(f_k,\alpha_k)$
+    \State Update controls $\alpha_{k+1}$
+  \Until{terminating condition fulfilled}
+\EndProcedure
+\end{algorithmic}
+\end{algorithm}
+```
+
+## Gradient-based Approach {#sec-opti-gradient}
+
+Currently, all the available optimization methods implemented in $\OpenLB$ are gradient-based.
+The next set of control variables $\alpha_{k+1}$ are computed by using the total derivative of the objective regarding the control variables and the step size $s$, i.e. $\triangle\alpha = f\left(\frac{\mathrm{d} J}{\mathrm{d} \alpha}, s\right)$.
+For the termination condition of the optimization algorithm, usually the value of the objective functional or its total derivative is checked if it undergoes a user-defined threshold.
+The remaining questions to be answered are listed here:
+
+1. How to choose the (descent) direction? (@sec-opti-descent)
+2. How to choose the step size? (@sec-opti-step)
+3. How can we compute the derivatives? (@sec-opti-derivative)
+
+### Descent Algorithms {#sec-opti-descent}
+
+The descent algorithm computes the descent direction $d$ for our next iteration step, i.e. the direction where we likely approach the optimal solution.
+One possible approach is to use the local gradient of the objective function $\frac{\partial J}{\partial \alpha}$ as the descent direction.
+This method is referred to as the steepest descent approach.
+Since only first order derivatives are considered here, this method is relatively slow (it requires more iteration steps) compared to Newton or Quasi-Newton methods while its main advantage is its stability.
+Quasi-Newton methods such as LBFGS achieve higher convergence orders since these additionally include the approximated second derivatives.
+In $\OpenLB$, the steepest descent, LBFGS, and Barzilai--Borwein algorithms are provided for computing the descent direction.
+
+### Step Control {#sec-opti-step}
+
+The choice of suitable step sizes is a non-trivial task: if the step sizes are too large we may overshoot and miss the optimum.
+On the other side, if the steps are too small we will need a lot of iterations until the optimal solution is reached, resulting in larger computational time.
+To find the optimal step size, step conditions like Armijo, normal or strong Wolfe--Powell rules can be applied.
+This introduces an additional inner loop where the step size is varied until a valid step size is found regarding the step control (or by exceeding the maximal number of attempts).
+Note that during the step-finding process multiple evaluations of the objective function and/or its derivative can be required.
+
+### Derivative Computation {#sec-opti-derivative}
+
+$\OpenLB$ provides several methods to compute the gradients, which have to be chosen depending on the optimization problem one wants to tackle:
+
+- **Usage of forward/central difference quotients:** evaluate $J$ for neighboring values of $\alpha$ and compute the difference quotients.
+  This is the simplest method and for a small number of control variables it is fast.
+  However, it is the least accurate method.
+- **Forward automatic differentiation:** evaluate $J$ for operator-overloaded variables of type `ADf<T,n>`, where `T` is the underlying arithmetic type and `n` is the number of control variables.
+  This method is a little slower than difference quotients, but in contrast it returns derivatives at full machine precision.
+- **Adjoint LBM:** adjoint lattice Boltzmann equations are used, cf. [@krause:12a; @klemens:18a].
+  This method is perfect for distributed control problems since the computational expense remains constant for any number of control variables.
+  However, this method requires the (theoretical) derivation of the adjoint formulation of the LB equations which is problem-specific.
+
+## Implementation {#sec-opti-implementation}
+
+The implementation is separated into two key steps: the `OptiCase` classes define how the objective functional $J$ and its gradient are computed as functions of $\alpha$.
+The `Optimizer` classes define optimization methods such as steepest descent or step size algorithms (independent of the question of how the function and gradient evaluations are performed).
+
+The optimization framework provided in $\OpenLB$ is rather designed for large-scale applications like fluid flow simulations, where a time-critical step (regarding computation time) is the function evaluation and not the optimization routine.
+
+### Optimizer Classes: Optimization Methods
+
+The common methods steepest descent, LBFGS, and Barzilai--Borwein are implemented as children classes of the `Optimizer` classes.
+Their various free parameters (e.g. an upper limit for the number of optimization steps) can be passed via the constructor or read from an XML file.
+In many situations, the control variables have to remain in a certain range in order to guarantee physical meaningfulness and a stable simulation.
+E.g. for porosity optimization, the porosity has to lie between $0$ and $1$ in order to be physically meaningful.
+This can be achieved via bounding the control by user-defined thresholds (typically used for parameter optimization) or by using a smooth projection map $p\colon \mathbb{R} \to [0, 1]$ (helpful for porosity optimization).
+Alternatively, if one has more than one control variable, a vector with the upper and lower bounds for each variable can be used to bound the control.
+
+### OptiCase Classes: Gradient Computation
+
+For the numerical evaluation of the functional gradient $\tfrac{dJ}{d\alpha}$, the following options are implemented:
+
+- **Forward/central difference quotients.**
+  The method is implemented in the classes `OptiCaseFDQ` and `OptiCaseCDQ`, where the user (only) has to provide an expression for the evaluation of $J$.
+  This expression is passed as any function in the constructor of the `OptiCase`.
+- **Forward automatic differentiation via operator-overloading.**
+  Therefore, the full source code has to be templatized w.r.t. the arithmetic type `T` and one has to take care that the arithmetic operations are differentiable (which is both satisfied by the $\OpenLB$ code basis).
+  One then passes two instances of $J$ (one with type `T`, one with type `ADf<T,n>`) to the class `OptiCaseAD`, which then does the rest.
+- **Adjoint LBM.**
+  This method requires the (theoretical) calculation of adjoint LB equations which is a problem-specific task.
+  Because of that, the implementing class `OptiCaseDual` poses direct assumptions on the implementation of the LB simulation (e.g. it requires usage of the Solver framework and has so far only been implemented for porosity and force optimization, cf. the `DomainIdentification3d` and `TestFlowOpti3d` examples).
+
+For difference quotients and forward automatic differentiation, any functions of type `T (const std::vector<T>&)` (with or without LB simulation) are passed.
+Flow simulations have to be encapsulated by a suitable wrapper that accepts the control variables, runs the simulation, and computes the objective.
+In the Solver app structure, the `getCallable` method fulfills this task.
+An introduction to forward automatic differentiation, whose application is not limited to optimization, is provided in the `showcaseADf` example.
+
+### Miscellaneous
+
+#### Projection
+
+In some situations, it is useful to link the numerical control variable and the controlled physical quantity via a function, which is called *projection* in this context.
+This is best illustrated by the following example: for topology optimization, it is a common approach to use a scalar porosity field $d \colon D \to [0, 1]$ as the controlled (physical) quantity, where $D$ is the discretized design domain, consisting of the respective mesh points.
+Using the porosity $d$ as the (numerical) control variable in the optimization, i.e. $\alpha = d$, causes difficulties: we had to bound $\alpha$ between zero and one.
+Handling these bounds in the optimization is possible, but it seems easier and more stable to employ a bijective projection $B \colon (- \infty, \infty) \to (0, 1)$, $d = B(\alpha)$ component-wise, s.t. we have an unbounded optimization problem.
+Various typical projection functions are provided in the file `src/optimization/projection.h`.
+Some of them are dedicated to resolve resolution-dependent effects of the porosity, cf. [@klemens2020] for more details.
+
+#### Serialization
+
+For distributed optimization problems, where the control is given by a spatial field, we need a mapping between the (serial) control vector and the two- or three-dimensional field.
+We call this mapping a serialization.
+Both its evaluation and its inversion are necessary in practice.
+Two variants are implemented in the file `src/optimization/serialization.h`.
+The `SimpleGeometrySerializer` uses a Cartesian mapping `serial_index = cuboid_offset + NX*NY*z + NX*y + x`.
+Here, `cuboid_offset` is the position of the cuboid in the control vector, and `Nx, Ny, Nz` are the local coordinates of the mesh point.
+This method is simple and fast, but the resulting number of control variables is independent of the size of the design domain (the domain where the control variables are active).
+Hence, the length of the control vector may be much larger than the size of the design domain.
+All in all, this is good for adjoint optimization, where the computational effort does not depend on the number of control variables.
+
+This is different for direct optimization with difference quotients or forward AD.
+In that case, the `SparseGeometrySerializer` is usually better, since it indicates only the cells *within* the design domain and, hence, keeps the number of control variables at a minimum.
+
+#### Objective
+
+In adjoint optimization, the objective does not only need to be evaluated, but we also need its partial derivatives w.r.t. the state $f$ and the control variable $\alpha$.
+All of them are implemented in a subclass of `DistributedObjective`.
+There are two possible ways to define it:
+
+- One can calculate and implement the partial derivatives by hand. This allows for maximal flexibility.
+- If the objective functional has a certain structure, that is, if
+  $$
+  J(f, \alpha) = \int_{\Omega_1} j(x, f) \, \mathrm{d}x + \int_{\Omega_2} r(x, \alpha) \, \mathrm{d}x,
+  $$
+  where $\Omega_1$ denotes the *objective domain*, $\Omega_2$ is the *design domain*, $x$ is the spatial position and $j$ and $r$ are differentiable scalar functions, then the respective partial derivatives can be computed automatically.
+  This is implemented in a subclass `GenericObjective`.
+  It therefore suffices to define the respective subdomains and functions $j, r$.
+
+For comparison, both of these variants are illustrated in the `domainId3dSolver` and `TestFlowOpti3dSolver` examples.
+
+### Parameter Explanation and Reading from XML
+
+In this short overview, the relevant parameters for an app with optimization are listed with the respective names for using an XML file for the input.
+The columns of @tbl-opti-parameters have the following meaning:
+
+- **Parameter:** Name of the parameter in the XML file.
+- **Name (type):** Name of the parameter in the source code and its data type in brackets.
+- **[declaration & definition] (&& other usages):** Location of declaration and definition (and sometimes some other important usages) of the parameter, e.g. `[solver.h & solver.hh] (&& example.cpp)`.
+  If the location of the declaration and definition is the same, only one location is indicated, e.g. `[solver.hh]`.
+  If there is more than one location for the declaration and definition, it is indicated with an *and*.
+  If there are different possibilities for the location of declaration and definition, it is indicated with round brackets and an *or*.
+- **Default value:** Is this parameter essential or optional?
+  If a parameter is optional, it does not need to be defined; then the default value can be seen in this column.
+  If a parameter is of such importance that without it the program has to exit, it is labeled as *EXIT*.
+  Some parameters are indicated with **unused**, which means that the parameter is read but not used afterwards.
+- **Explanation:** Brief description and explanation of the parameter.
+  Some parameters have different possibilities for their definition.
+  In this case, all available possibilities are also offered in **bold** type letters.
+
+The arrangement of the parameters in the XML file has the following structure:
+
+::: {#lst-opti-xml}
+```{.xml}
+<Param>
+  <Optimization>
+    <MaxStepAttempts> 20 </MaxStepAttempts>
+  </Optimization>
+</Param>
+```
+:::
+
+| Parameter | Name (type) | [declaration & definition] (&& other usages) | Default | Explanation / **possibilities** |
+|---|---|---|---|---|
+| *ControlType* | `_controlType` (`std::string`) | `[optiCaseDual.h & optiCaseDual.hh]` | | Defines the control type to optimize: **force** or **porosity** |
+| *ControlMaterial* | `_controlMaterial` (`int`) | `[optiSolverParameters.h]` (&& `optiCaseDual.h` and `optiCaseDual.hh`) | 0 | Defines the number of the control material, here 6 for porosity optimization problems |
+| *FieldDimension* | `_fieldDim` (`int`) | `[optiSolverParameters.h]` (&& `optiCaseDual.h` and `optiCaseDual.hh`) | 0 | Spatial dimension of the controlled field |
+| *DimensionControl* | `_dimCtrl` (`int`) | (`[optiCaseDual.h & optiCaseDual.hh]`) and (`[optimizer.h & optimizer.hh]`) (`[optimizerSteepestDescent.h]` or `[optimizerLBFGS.h]` or `[optimizerBarzilaiBorwein.h]`) and `[controller.h]` | EXIT | Upper limit for the number of control variables; so far not read from XML |
+| *Lambda* | `_lambda` (`double`) | (`[optimizerSteepestDescent.h]` or `[optimizerLBFGS.h]` or `[optimizerBarzilaiBorwein.h]`) (&& `optimizerLineSearch.h`) | 1 | Determines the initial step length lambda |
+| *MaxIter* | `_maxIt` (`int`) | `[optimizer.h & (optimizerSteepestDescent.h` or `optimizerLBFGS.h` or `optimizerBarzilaiBorwein.h)]` | 100 | Maximal number of iterations of the optimizer |
+| *MaxStepAttempts* | `_maxStepAttempts` (`int`) | `[optimizer.h & (optimizerSteepestDescent.h` or `optimizerLBFGS.h` or `optimizerBarzilaiBorwein.h)]` | 20 | Maximal number of attempts at each optimization step for finding a suitable step size |
+| *FailOnMaxIter* | `_failOnMaxIter` (`bool`) | `[optimizer.h]` (&& `optimizer.hh` or `optimizerLBFGS.h` or `optimizerLineSearch.h`) | 1 (true) | If true, the optimization fails when reaching `_maxIt` and prints a warning that the problem failed to converge within the specified iteration limit with tolerance `_eps` |
+| *Tolerance* | `_eps` (`double`) | `[optimizer.h]` (&& `optimizer.hh`) | 1e-10 | Tolerance of the optimizer. The optimizer stops if the norm of the vector of derivatives of the objective functional is smaller than this tolerance |
+| *L* | `_l` (`int`) | `[optimizerLBFGS.h]` | 20 | Maximal number of stored iteration steps for the LBFGS algorithm |
+| *Verbose* | `_verboseOn` (`bool`) | `[optimizer.h & optimizer.hh]` (&& `optimizerLineSearch.h`) | 1 (true) | Print warnings and further output in the terminal, if true |
+| *InputFileName* | `fname` (`std::string`) | (`[optimizerSteepestDescent.h]` or `[optimizerLBFGS.h]` or `[optimizerBarzilaiBorwein.h]`) (&& `optimizer.h` and `optimizerLineSearch.hh`) | `"control.dat"` | Name of the file that contains the initial guess for the control values |
+| *ControlTolerance* | `_controlEps` (`double`) | `[optimizer.h & optimizerSteepestDescent.h` and `optimizerLBFGS.h` and `optimizerBarzilaiBorwein.h]` (&& `optimizer.hh`) | 0 | Optimization stops if the change of the control variables is less than this tolerance |
+| *StepCondition* | `stepCondition` (`std::string`) | (`[optimizerSteepestDescent.h]` or `[optimizerLBFGS.h]` or `[optimizerBarzilaiBorwein.h]`) (&& `optimizerLineSearch.h`) | `"Armijo"` (SD), `"StrongWolfe"` (LBFGS), `"None"` (Barzilai--Borwein) | Defines the step condition: **None** or **Smaller** or **Armijo** or **Wolfe** or **StrongWolfe** |
+| *VectorBounds* | `_vectorBounds` (`bool`) | `[optimizer.h & optimizerLBFGS.h` or `optimizerBarzilaiBorwein.h]` (&& `optimizer.h` and `optimizerLineSearch.h`) | 0 (false) | Determines whether bounds on the control variables are applied component-wise |
+| *Projection* | `_projectionName` (`std::string`) | `[optiCaseDual.h & optiCaseDual.hh]` | | Mapping method between the physical and computational control variables: **Sigmoid** or **Rectifier** or **Softplus** or **Baron** or **Krause** or **Foerster** or **FoersterN** or **StasiusN** |
+| *ReferenceSolution* | `_computeReference` (`bool`) | `[optiCaseDual.h & optiCaseDual.hh]` | false | States if a reference solution is available |
+| *StartValue* | `startValue` (`double`) | (&& `optimizer.h` and `optimizer.hh`) | 0 | Determines the initial guess for the optimization algorithm |
+| *UpperBound* | `_upperBound` (`double`) | `[optimizer.h & optimizerSteepestDescent.h` and `optimizerLBFGS.h` and `optimizerBarzilaiBorwein.h]` (&& `optimizer.hh`) | false in all three optimizers | Sets an upper bound for the control values during the optimization process |
+| *LowerBound* | `_lowerBound` (`double`) | `[optimizer.h & optimizerSteepestDescent.h` and `optimizerLBFGS.h` and `optimizerBarzilaiBorwein.h]` (&& `optimizer.hh`) | false in all three optimizers | Sets a lower bound for the control values during the optimization process |
+| *VisualizedParameters* | `gplotAnalysisString` (`std::string`) | `[optimizerSteepestDescent.h]` or `[optimizerLBFGS.h]` or `[optimizerBarzilaiBorwein.h]` | | *VisualizationGnuplot:* lists the parameters that will be plotted by Gnuplot during the optimization process: **VALUE**, **CONTROL**, **DERIVATIVE**, **ERROR**, **NORM_DERIVATIVE** |
+
+: Optimization parameters read from the XML file. {#tbl-opti-parameters tbl-colwidths="[12,15,30,13,30]"}

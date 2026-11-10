@@ -1,0 +1,12 @@
+#### combinedEllipse (quasistationary)
+
+The ellipse geometry of `quasistationary/dirichletEllipse` with both boundary
+treatments at once: the outer contour is a traction boundary
+(`StationaryLinearElasticityMRTNeumannValidation`) while the two inner contours
+are displacement boundaries
+(`StationaryLinearElasticityMRTDirichletValidation`). This is the most general
+of the quasistationary cases and validates that the two schemes can be mixed on
+curved boundaries within one simulation.
+
+The `run.sh` script performs the same resolution sweep and order of convergence
+study as `quasistationary/periodicPlate`.

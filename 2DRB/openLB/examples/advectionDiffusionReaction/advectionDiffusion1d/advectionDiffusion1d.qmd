@@ -1,0 +1,55 @@
+---
+features: [transient, benchmark, primitives]
+---
+
+### advectionDiffusion1d
+
+The `advectionDiffusion1d` example showcases second-order mesh convergence of LBM for scalar linear one-dimensional advection--diffusion equations [@simonis:20] of the form
+
+$$
+\partial_{t} \chi + \partial_{x} F \left( \chi \right) - \mu \partial_{xx} \chi = 0 ,
+$$
+
+where $\chi : \mathcal{X} \times \mathcal{I} \to \mathbb{R}$ is the conservative variable dependent on space $x \in \mathcal{X} \subseteq \mathbb{R}$ and time $t \in \mathcal{I} \subseteq \mathbb{R}_{0}^{+}$, $F \equiv u \chi$ is a linear function defined by the advection velocity $u \in \mathbb{R}$, and $\mu > 0$ denotes the diffusion coefficient.
+Hence, the LBM approximates the transport of the conservative variable $\chi$ along a one-dimensional line with periodic boundary conditions on $\mathcal{X} = \left[-1,1\right]$.
+The initial pulse is defined by a sine profile, which is subsequently diffused and advected.
+An analytical solution at point $x$ and time $t$ is given by
+
+$$
+\chi^{\star} (x, t) = \sin\left[ \pi(x - u t) \right] \exp \left( -\mu \pi^2 t \right).
+$$
+
+In practice, the simulation uses a two-dimensional square domain which is evaluated along a centerline to obtain the desired one-dimensional result.
+The domain is initialized with $\chi^{\star} (x,t= 0)$.
+
+Diffusive scaling is applied which results in the input parameters listed in @tbl-advectionDiffusion1dParameters.
+In the default setting, `advectionDiffusion1d` executes three simulation runs with increasing resolutions $N=50, 100, 200$, respectively.
+Each simulation recovers $\mu=1.5$ and a Péclet number of $Pe=40/3$.
+
+| $N$ | $u_L$ | $\triangle x$ |
+|----:|------:|--------------:|
+|  50 |   0.4 |          0.04 |
+| 100 |   0.2 |          0.02 |
+| 200 |   0.1 |          0.01 |
+
+: Default simulation parameters of `advectionDiffusion1d` with $\mu=1.5$, using diffusive scaling $\triangle t = \triangle x^{2}$ for $Pe=40/3$. {#tbl-advectionDiffusion1dParameters}
+
+The output of each simulation run is stored in the `tmp/N<number>` directory.
+At each simulation time step, the average L2 relative error over the centerline is computed.
+Said average is then stored within the respective resolution directory `./gnuplotData/data/averageL2RelError.dat`.
+Additionally, the program averages the values in `averageL2RelError.dat` for each simulation run, which in turn is written to the global error file `tmp/gnuplotData/data/averageSimL2RelErr.dat`.
+For post-processing, a python3 script can be executed via
+
+```{.bash}
+python3 advectionDiffusion1dPlot.py
+```
+
+The script requires the `matplotlib` python package which can be installed on any platform by issuing the following commands in a terminal:
+
+```{.bash}
+python3 -m pip install -U pip
+python3 -m pip install -U matplotlib
+```
+
+The script generates basic error plots for every file with the file extension `.dat` in `./tmp`.
+Finally, a global log-log error plot with reference curves is extracted from the data contained in `averageSimL2RelErr.dat`.

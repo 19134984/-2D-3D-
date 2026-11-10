@@ -1,0 +1,11 @@
+---
+features: [multiComponent, multiPhase, transient, primitives]
+---
+
+### fallingDrop2d
+
+This example type simulates a drop falling into a pool of the same liquid.
+@fig-fallingDrop2d shows an excerpt of the first couple of time steps.
+On the right half of these steps, the forming of a so-called crown can be seen.
+
+![Setup and some exemplary steps of the example `fallingDrop2d`.](/examples/freeSurface/fallingDrop2d/doc/fig/fallingDrop2d.png){#fig-fallingDrop2d width="100%"}

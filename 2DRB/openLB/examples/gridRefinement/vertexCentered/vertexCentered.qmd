@@ -1,0 +1,3 @@
+### vertexCentered
+
+<!-- TODO: describe this example. -->

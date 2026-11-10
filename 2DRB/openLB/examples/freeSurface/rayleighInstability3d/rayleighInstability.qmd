@@ -1,0 +1,21 @@
+---
+features: [multiComponent, multiPhase, transient, primitives]
+---
+
+### RayleighInstability3d
+
+This example covers Plateau-Rayleigh instabilities. 
+Figure @fig-fsrayleigh shows the initial setup as well as multiple steps throughout a simulation of this example. 
+Each of these steps after the initial setup was captured after 1800 additional simulation steps. 
+The perturbation was made by setting the fill level on the border of the main cylinder according to a sine wave with a wave length set to $\delta = 9R$ with $R$ being the radius of the cylinder. 
+This initial sine wave can be seen in the setup step: Red cells are full, blue cells are empty.
+
+::: {#fig-test layout-ncol=2}
+    
+![freeSurfaceRayleigh ](/examples/freeSurface/rayleighInstability3d/doc/fig/freeSurfaceRayleigh.png){#fig-fsrayleigh width="90%"}
+
+![face ](/examples/freeSurface/rayleighInstability3d/doc/fig/face.png){#fig-face width="90%"}
+
+Test two figures
+
+:::

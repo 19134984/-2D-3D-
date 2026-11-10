@@ -1,0 +1,116 @@
+---
+features: [benchmark, primitives]
+---
+
+### powerLaw2d {#sec-example-laminar-powerLaw2d}
+
+This example describes a steady non-Newtonian flow in a channel.
+The fluid follows a power law, so its viscosity depends on the shear rate. With the default power-law index $n = 0.5$ it is shear thinning, and the velocity profile is flatter than the parabola of a Newtonian fluid.
+By default the channel is periodic and driven by a pressure offset. Alternatively, a power-law profile is imposed on the velocity at the inlet, whereas the outlet implements a Dirichlet pressure condition.
+The parameters are read from the XML file `input.xml`.
+
+#### Governing equations
+
+The domain $\Omega \times \I \subseteq [0, 2] \times [0, 1] \times \R_{\geq 0}$ is considered with the following governing equations with the velocity field $\vel \in \R^2$ and the pressure $p \in \R$ for the incompressible flow of a generalized Newtonian fluid with constant density $\rho \in \R_{> 0}$,
+\begin{align}
+    \nabla \cdot \vel &= 0 \quad \text{in} \quad \Omega \times \I, \\
+    \partial_t \vel + (\vel \cdot \nabla) \vel &= -\frac{1}{\rho} \nabla p + \nabla \cdot \left( 2 \nu(\dot\gamma) \mathbf{S} \right) \quad \text{in} \quad \Omega \times \I,
+\end{align}
+with the strain rate tensor $\mathbf{S} = \tfrac{1}{2} (\nabla \vel + \nabla \vel^\top)$, the shear rate $\dot\gamma = \sqrt{2 \mathbf{S} : \mathbf{S}}$ and the power-law viscosity
+$$
+    \nu(\dot\gamma) = K \dot\gamma^{\,n - 1},
+$$
+where $K$ is the consistency coefficient and $n$ the power-law index. The index $n = 1$ recovers a Newtonian fluid.
+In a channel of height $H$, the steady solution is
+$$
+    u_x(y) = u_\text{max} \left( 1 - \left| \frac{2 y}{H} - 1 \right|^{(n + 1)/n} \right),
+$$
+driven by the constant pressure gradient $\partial_x p = -\rho K u_\text{max}^n \left( \frac{n + 1}{n} \right)^n \left( \frac{2}{H} \right)^{n + 1}$.
+
+#### Boundary conditions
+
+By default (`PERIODIC_BC` set to `true` in `main()`), the channel is periodic in $x$, $\Gamma_\text{per}$ (MN 3 and MN 4).
+The cells at both ends of the channel add a pressure offset $\pm \Delta p$ to the populations that cross the periodic boundary, which matches the pressure drop of the analytical solution over the channel and drives the flow (@fig-powerLaw2d-domain).
+The two channel walls $\Gamma_{\mathrm{no\text{-}slip}}$ (MN 2) are no-slip walls,
+$$
+    \vel = \mathbf{0} \quad \text{on} \quad \Gamma_{\mathrm{no\text{-}slip}} \times \I.
+$$
+Without periodicity, the inlet (MN 3) prescribes the analytical profile with `InterpolatedVelocity` and the outlet (MN 4) the pressure with `InterpolatedPressure`.
+The simulation starts from the analytical velocity profile and the linear pressure in $\Omega$.
+
+#### Domain
+
+The channel has the length $L = 2\,\mathrm{m}$ and the height $H = 1\,\mathrm{m}$ (@fig-powerLaw2d-domain).
+The maximum velocity is $u_\text{max} = 0.1\,\mathrm{m/s}$, and the Reynolds number $Re = 10$ refers to the characteristic viscosity $u_\text{max} H / Re = 0.01\,\mathrm{m^2/s}$, from which the unit converter derives the consistency coefficient $K = 2.24 \cdot 10^{-3}\,\mathrm{m^2 s^{n - 2}}$.
+`prepareGeometry()` assigns the material numbers (MN) shown in @fig-powerLaw2d-domain.
+
+![Domain and boundary conditions of `powerLaw2d` in its default, periodic configuration, with the material numbers (MN) assigned in `prepareGeometry()`.](/examples/laminar/powerLaw2d/doc/fig/powerLaw2dDomain.svg){width="80%" #fig-powerLaw2d-domain .lightbox}
+
+#### Discretization \& Descriptor
+In this example, the domain is discretized with a uniform grid with the lattice spacing $\Delta x = H / N$, where $N = 40$ cells resolve the height of the channel.
+
+The collision operator is a BGK operator whose relaxation time follows the local shear rate ([Collision Operators](/content/02_core.qmd#collision-operators)), together with the D2Q9 velocity set ([Lattice Structures](/content/01_introduction.qmd#sec-lattice-structures)).
+In the bulk (MN 1), `SmagorinskyPowerLawBGKdynamics` adds a Smagorinsky eddy viscosity with the constant $0.15$ to the power-law viscosity. Without the `_SMAGORINSKY` define at the top of `powerLaw2d.cpp`, `PowerLawBGKdynamics` is used instead.
+The viscosity is limited to $[\nu_\text{min}, \nu_\text{max}]$, which keeps the relaxation time in a stable range where the shear rate vanishes or becomes large.
+The descriptor stores the local relaxation frequency `OMEGA` in every cell.
+The walls (MN 2) are treated with `BounceBack` ([Define Boundary Method](/content/06_initial_boundary.qmd#sec-defineBoundaryMethod)).
+
+The corresponding lattice is defined inside the case definition in `powerLaw2d.cpp` as in @lst-powerLaw2d-case.
+
+::: {#lst-powerLaw2d-case}
+```{.cpp}
+using MyCase = Case<
+  NavierStokes, Lattice<FLOATING_POINT_TYPE, descriptors::D2Q9<OMEGA>>
+>;
+```
+Case definition for the `powerLaw2d` example.
+:::
+
+The unit converter `PowerLawUnitConverterFrom_Resolution_RelaxationTime_Reynolds_PLindex` derives the time step size from the resolution, the lattice relaxation time, the Reynolds number and the power-law index.
+The parameters are given in @tbl-powerLaw2d-params.
+
+| Parameter | Symbol | Value | Description |
+|---|---|---|---|
+| `geometry/N` | $N$ | $40$ | cells per channel height $H$ |
+| `geometry/lx` | $L$ | $2\,\mathrm{m}$ | length of the channel |
+| `geometry/ly` | $H$ | $1\,\mathrm{m}$ | height of the channel |
+| `dynamics/maxU` | $u_\text{max}$ | $0.1\,\mathrm{m/s}$ | maximum velocity |
+| `dynamics/Re` | $Re$ | $10$ | Reynolds number |
+| `dynamics/tau` | $\tau$ | $0.8$ | lattice relaxation time |
+| `dynamics/n` | $n$ | $0.5$ | power-law index |
+| `time/Tmax` | $T$ | $200\,\mathrm{s}$ | upper limit of the simulated time |
+| `time/Tprint` | | $5\,\mathrm{s}$ | interval of the output; a tenth of it is the time window of the convergence check |
+| `PHYS_CHAR_DENSITY` | $\rho$ | $1\,\mathrm{kg/m^3}$ | density |
+| `NU_MIN` | $\nu_\text{min}$ | $2.9686 \cdot 10^{-3}\,\mathrm{m^2/s}$ | lower limit of the viscosity |
+| `NU_MAX` | $\nu_\text{max}$ | $3.1667\,\mathrm{m^2/s}$ | upper limit of the viscosity |
+| `SMAGORINSKY` | | $0.15$ | Smagorinsky constant |
+| `PERIODIC_BC` | | `true` | periodic channel instead of inlet and outlet |
+| `CONVERGENCE_PRECISION` | | $10^{-6}$ | bound for the relative standard deviation of the average energy |
+
+: Parameters of `powerLaw2d`. The first nine are read from `input.xml` (below `Param`), the others are set in `main()`. {#tbl-powerLaw2d-params}
+
+#### Validation
+
+The simulation stops as soon as the relative standard deviation of the average energy over the last $0.5\,\mathrm{s}$ falls below $10^{-6}$, which happens after $4\,575$ time steps at $t = 28.6\,\mathrm{s}$.
+At every output, `errorNorms()` prints the absolute and relative $L^1$, $L^2$ and $L^\infty$ errors of the velocity and the pressure against the analytical solution.
+At convergence, the relative $L^2$ errors are $2.3 \cdot 10^{-3}$ for the velocity and $2.1 \cdot 10^{-2}$ for the pressure.
+
+After the time loop, the example writes the velocity profile at $x = 0.9 L$ together with the analytical one to `tmp/gnuplotData/`.
+@fig-powerLaw2d-profile shows it next to the parabola of a Newtonian fluid with the same maximum velocity.
+
+![Velocity profile of `powerLaw2d` at $x = 0.9 L$ at convergence, compared with the analytical power-law profile for $n = 0.5$ and with the Newtonian profile.](/examples/laminar/powerLaw2d/doc/fig/profile/profile.svg){width="60%" #fig-powerLaw2d-profile .lightbox}
+
+The script `run.sh` runs the example with the parameters of `input-model.xml`, $n = 0.2$, for the three maximum velocities $u_\text{max} = 0.1$, $1$ and $10\,\mathrm{m/s}$ at the same Reynolds number, and collects the three velocity plots. As the comment in `input-model.xml` notes, the profile scaled with $u_\text{max}$ does not change with the velocity.
+
+#### Files
+
+```
+powerLaw2d/
+├── powerLaw2d.cpp     main(): reads input.xml; mesh, geometry, lattice, time loop, error norms and output
+├── input.xml          parameters of the simulation
+├── input-model.xml    template for run.sh, with MAXU as placeholder for the maximum velocity
+├── run.sh             runs the example for three maximum velocities
+└── Makefile
+```
+
+The results are written to `tmp/` in the directory the example is run from: `vtkData/powerLaw2d.pvd` opens all time steps in ParaView, with the velocity, the pressure and the viscosity, `imageData/` holds the velocity heat maps and `gnuplotData/` the velocity profile. The heat maps and plots are drawn with gnuplot; without it, only the data in `gnuplotData/data/` is written.

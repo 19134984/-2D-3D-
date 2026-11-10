@@ -1,0 +1,143 @@
+---
+features: [turbulent, transient, showcase, primitives]
+recommended-for-beginners: [primitives]
+---
+
+### venturi3d {#sec-example-turbulence-venturi3d}
+
+This example examines a steady flow in a Venturi tube.
+A Venturi tube is a cylindrical tube, which has a reduced cross-section in the middle part.
+At this constriction is an injection tube.
+As a result of the accelerating fluid in the constriction, the static pressure decreases and the injection tube's fluid is pumped into the main tube.
+The overall geometry is built by adding together single bodies, which are read from the XML file `venturi3d.xml`.
+The example shows how to build a geometry from indicator functors and how to set the boundary conditions on it automatically.
+
+#### Governing equations
+
+The domain $\Omega \times \I$ is considered with the following governing equations with the velocity field $\vel \in \R^3$ and the pressure $p \in \R$ for the incompressible flow of a Newtonian fluid with kinematic viscosity $\nu \in \R_{> 0}$ and constant density $\rho \in \R_{> 0}$,
+\begin{align}
+    \nabla \cdot \vel &= 0 \quad \text{in} \quad \Omega \times \I, \\
+    \partial_t \vel + (\vel \cdot \nabla) \vel &= -\frac{1}{\rho} \nabla p + \nu \Delta \vel \quad \text{in} \quad \Omega \times \I.
+\end{align}
+Along a streamline of a steady flow in which viscous effects are small, these equations reduce to Bernoulli's equation,
+$$
+    p + \frac{\rho}{2} |\vel|^2 = \text{const},
+$$
+which explains the Venturi effect: where the fluid accelerates in the constriction, its static pressure drops.
+
+#### Boundary conditions
+
+The boundary $\partial \Omega = \Gamma_D \cup \Gamma_\text{out} \cup \Gamma_{\mathrm{no\text{-}slip}}$ consists of the main inlet $\Gamma_D$ (MN 3) at $x = 5$, the outlet (MN 4) at $x = 195$ and the opening of the injection tube (MN 5) at $y = 5$, which together form $\Gamma_\text{out}$, and the walls $\Gamma_{\mathrm{no\text{-}slip}}$ (MN 2) (@fig-venturi3d-geometry-2),
+\begin{align}
+    \vel &= (u_\text{in}(r, t), 0, 0)^\top \quad \text{on} \quad \Gamma_D \times \I, \\
+    p &= 0 \quad \text{on} \quad \Gamma_\text{out} \times \I, \\
+    \vel &= \mathbf{0} \quad \text{on} \quad \Gamma_{\mathrm{no\text{-}slip}} \times \I.
+\end{align}
+At the main inlet, a Poiseuille profile is imposed as a Dirichlet velocity boundary condition, whereas at the outlet and the minor inlet, a Dirichlet pressure condition is set by $p=0$ (i.e. $\rho=1$).
+Whether the fluid enters or leaves through the opening of the injection tube is not prescribed, but follows from the pressure in the constriction.
+The inflow profile
+$$
+    u_\text{in}(r, t) = s(t)\, u_\text{max} \left( 1 - \frac{r^2}{R^2} \right), \qquad s(t) = \tau^3 \left( 10 - 15 \tau + 6 \tau^2 \right), \quad \tau = \min\left( \frac{t}{0.8\, T}, 1 \right),
+$$
+is raised from rest with `PolynomialStartScale` during the first $80\,\%$ of the simulated time $T$, updated every $50$ time steps by `setTemporalValues()`.
+`CirclePoiseuille3D` takes the centre and the radius $R = 18$ of the profile from the inlet cells (MN 3). Its peak velocity is the characteristic velocity of the unit converter, $2\,\mathrm{m/s}$, times the scaling factor that `setTemporalValues()` passes as the last argument, $\Delta x = 0.1$, so $u_\text{max} = 0.2\,\mathrm{m/s}$.
+The fluid is initially at rest.
+
+#### Domain
+
+The geometry is built from cylinders and cones, `IndicatorCylinder3D` and `IndicatorCone3D` ([Building Simulation Domains with Geometry Primitive Functors](/content/03_geometry.qmd#sec-indicators)).
+Each body's geometry is defined by certain points (position vectors) in the coordinate system and their radius.
+A cone-shaped cylinder needs the center of the start and end circles as well as the radii.
+`createMesh()` and `prepareGeometry()` read these bodies from the section `Geometry` of `venturi3d.xml` with `createIndicatorF3D()` and `createIndicatorCylinder3D()` ([XML Parameter Files](/content/07_input_output.qmd#sec-xmlparams)), and the union `IndicatorUnion3D` adds them together to the overall geometry, as in @lst-venturi3d-geometry.
+
+::: {#lst-venturi3d-geometry}
+```{.xml}
+<Venturi>
+    <IndicatorUnion3D>
+        <IndicatorCylinder3D center1="5 50 50" center2="40 50 50" radius="20"/>
+        <IndicatorCone3D center1="40 50 50" center2="80 50 50" radius1="20" radius2="10"/>
+        <IndicatorCylinder3D center1="80 50 50" center2="120 50 50" radius="10"/>
+        <IndicatorCone3D center1="120 50 50" center2="160 50 50" radius1="10" radius2="20"/>
+        <IndicatorCylinder3D center1="160 50 50" center2="195 50 50" radius="20"/>
+        <IndicatorCylinder3D center1="115 50 50" center2="115 25 50" radius="4"/>
+        <IndicatorCone3D center1="115 25 50" center2="115 5 50" radius1="4" radius2="10"/>
+    </IndicatorUnion3D>
+</Venturi>
+```
+Definition of the geometry of the Venturi tube in `venturi3d.xml`. The sections `Inflow`, `Outflow0` and `Outflow1` define three further cylinders at the openings.
+:::
+
+@fig-venturi3d-geometry-2 visualizes the defined point positions and @fig-venturi3d-geometry-1 shows the computational geometry.
+The main tube has the radius $20$, which narrows in the cone `co1` to the radius $10$ of the throat `cyl2` from $x = 80$ to $120$ and widens again in the diffuser `co2`.
+The injection tube `cyl4` of radius $4$ branches off the throat at $x = 115$ and widens in the cone `co3` to the radius $10$ of its opening at $y = 5$.
+
+![Schematic diagram visualizing the defined point positions for `venturi3d`.](/examples/turbulence/venturi3d/doc/fig/venturi3d_geometry_2.png){#fig-venturi3d-geometry-2 width="70%"}
+
+![Built geometry as used in simulation of example `venturi3d`.](/examples/turbulence/venturi3d/doc/fig/venturi3d_geometry_1.png){#fig-venturi3d-geometry-1 width="70%"}
+
+#### Discretization \& Descriptor
+In this example, the domain is discretized with a uniform grid. `createMesh()` builds the mesh around the union with the spacing $1/N$ in the coordinates of `venturi3d.xml`, where the default resolution $N = 1$ resolves the throat diameter with $20$ cells. This gives $135\,000$ fluid cells in a mesh of $484\,000$ cells, with one cuboid per process.
+
+The LBM collision operator is the regularized BGK operator [@latt-regularized:06], used as `RLBdynamics` ([Collision Operators](/content/02_core.qmd#collision-operators)), together with the D3Q19 velocity set ([Lattice Structures](/content/01_introduction.qmd#sec-lattice-structures)). Compared with the BGK operator, it is more stable for relaxation times close to $1/2$ [@nathen:17]. The lattice uses the floating point type of the build configuration, `FLOATING_POINT_TYPE`.
+The walls (MN 2) are treated with `BounceBack`, the inlet (MN 3) with `InterpolatedVelocity` and the outlet and the opening of the injection tube (MN 4, MN 5) with `InterpolatedPressure` ([Define Boundary Method](/content/06_initial_boundary.qmd#sec-defineBoundaryMethod)).
+
+The corresponding lattice is defined inside the case definition in `venturi3d.cpp` as in @lst-venturi3d-case.
+
+::: {#lst-venturi3d-case}
+```{.cpp}
+using MyCase = Case<
+  NavierStokes, Lattice<FLOATING_POINT_TYPE, descriptors::D3Q19<>>
+>;
+```
+Case definition for the `venturi3d` example.
+:::
+
+The parameters are given in @tbl-venturi3d-params.
+
+| Parameter | Symbol | Value | Description |
+|---|---|---|---|
+| `Resolution` | $N$ | $1$ | cells per unit length of the geometry, and per characteristic length $L$ |
+| `CharLatticeVelocity` | | $0.2$ | lattice velocity that corresponds to the characteristic velocity, sets $\Delta t$ |
+| `CharPhysLength` | $L$ | $0.1\,\mathrm{m}$ | characteristic length, sets $\Delta x = L / N$ |
+| `CharPhysVelocity` | | $2\,\mathrm{m/s}$ | characteristic velocity |
+| `PhysViscosity` | $\nu$ | $10^{-3}\,\mathrm{m^2/s}$ | kinematic viscosity |
+| `PhysDensity` | $\rho$ | $1\,\mathrm{kg/m^3}$ | density |
+| `PHYS_MAX_T` | $T$ | $200\,\mathrm{s}$ | simulated time, $20\,000$ time steps |
+
+: Parameters of `venturi3d`. `PHYS_MAX_T` is set in `main()`, all others in the section `Application` of `venturi3d.xml`. {#tbl-venturi3d-params}
+
+#### Validation
+
+`getResults()` prints the lattice statistics and writes the velocity and the pressure to `tmp/vtkData/venturi3d.pvd`, together with two heat maps of the velocity magnitude in the plane $z = 50$ through the axis of the tube (@fig-venturi3d-heatmap).
+`SuperEuklidNorm3D` computes the magnitude of the velocity and `BlockReduction3D2D` samples it on the plane with the normal $(0, 0, 1)$ through the centre of the mesh. `heatmap::write()` writes the whole plane with the default settings and, with the parameters `heatmap::plotParam`, a second heat map named `outflow` with five contour levels and the colour map `blackbody`, zoomed to the region behind the throat ([Heatmap](/content/07_input_output.qmd#heatmap)).
+
+::: {#fig-venturi3d-heatmap layout-ncol="1"}
+![Default settings](/examples/turbulence/venturi3d/doc/fig/heatmap/velocity_iT0019900.jpeg)
+
+![`outflow`, zoomed with `zoomOrigin` $(0.6, 0.3)$ and `zoomExtend` $(0.4, 0.7)$, colour map `blackbody`](/examples/turbulence/venturi3d/doc/fig/heatmap/outflow_iT0019900.jpeg)
+
+Heat maps of the velocity magnitude in m/s of `venturi3d` in the plane $z = 50$ at $t = 199\,\mathrm{s}$, as written by `getResults()`. The axes show the coordinates of `venturi3d.xml`, which the labels give in m.
+:::
+
+@fig-venturi3d-velocity shows the steady flow.
+The fluid accelerates in the cone `co1` and leaves the throat as a jet, which does not follow the widening walls of the diffuser `co2` but keeps its diameter up to the outlet, surrounded by slow fluid.
+Fluid from the injection tube enters the main tube at the lower wall of the throat and is carried along with the jet.
+
+![Velocity magnitude of `venturi3d` in the plane $z = 50$ at $t = 199\,\mathrm{s}$, with streamlines from the main inlet (grey) and from the opening of the injection tube (white), visualized in ParaView. The colour range is $[0, 0.65]\,\mathrm{m/s}$.](/examples/turbulence/venturi3d/doc/fig/velocity/venturi3dVelocity.png){width="100%" #fig-venturi3d-velocity .lightbox}
+
+@fig-venturi3d-centreline compares the static pressure on the axis of the tube with Bernoulli's equation.
+From the inlet to the end of the throat, the static pressure falls from $0.169\,\mathrm{Pa}$ to its minimum of $-0.0145\,\mathrm{Pa}$ at $x = 122$, by $0.184\,\mathrm{Pa}$, while the velocity on the axis grows from $0.2\,\mathrm{m/s}$ to $0.634\,\mathrm{m/s}$, for which Bernoulli's equation gives the pressure drop $\tfrac{\rho}{2} (0.634^2 - 0.2^2)\,\mathrm{m^2/s^2} = 0.181\,\mathrm{Pa}$.
+Accordingly, the total pressure $p + \tfrac{\rho}{2} u_x^2$ stays at $0.186\,\mathrm{Pa}$ within $3\,\%$ along the whole axis.
+Since the jet does not slow down in the diffuser, the static pressure is not recovered behind the throat but stays close to the outlet pressure $p = 0$. The pressure at the junction of the injection tube is therefore only about $0.01\,\mathrm{Pa}$ below the pressure at its opening.
+
+![Static, dynamic and total pressure of `venturi3d` on the axis $y = z = 50$ of the tube at $t = 199\,\mathrm{s}$, with the axial velocity $u_x$, evaluated in ParaView. The grey region marks the throat.](/examples/turbulence/venturi3d/doc/fig/pressure/centreline.svg){width="80%" #fig-venturi3d-centreline .lightbox}
+
+
+#### Files
+
+```
+venturi3d/
+├── venturi3d.cpp   main(): parameters; mesh, geometry, lattice, inflow ramp-up, time loop and output
+├── venturi3d.xml   geometry of the Venturi tube and parameters of the unit converter
+└── Makefile
+```

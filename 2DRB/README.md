@@ -72,8 +72,20 @@ working inside the matching folder instead of adding new top-level source files.
   Edit the main solver in its method folder rather than a case snapshot.
 
 - `tmp/`
-  Local paper extracts and temporary previews, retained on disk and excluded
-  from Git. Original papers in `pdf/` and research notes in `文档/` remain tracked.
+  Local paper extracts and scratch work, excluded from Git. Reproducible previews
+  and build caches may be cleaned; original papers, source drafts, and run evidence
+  are preserved. See `文档/目录清理记录_20261110.md` for the latest cleanup.
+
+- `outputs/`
+  Generated data deliveries and their raw evidence, retained locally and excluded
+  from Git alongside `运行脚本/run_cases/`.
+
+- `openLB/` and `Palabos/`
+  Full upstream reference snapshots tracked in this repository, including their
+  licenses and example assets. Their URLs and checked revisions are recorded in
+  `文档/目录清理记录_20261110.md`; analysis reports remain under `文档/`.
+  Their existing nested Git metadata is retained locally and is not part of the
+  snapshots. Scoped attributes preserve the original bytes and line endings.
 
 ## Core Baselines
 

@@ -1,0 +1,8 @@
+---
+features: [showcase, primitives]
+---
+
+### showcaseRosenbrock
+
+This app gives an introduction into the usage of optimization functionalities in $\OpenLB$ in order to compute optima of functions or simulations.
+It is written in the style of literate programming as a tutorial that should allow for being read sequentially.

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Param>
+  <Parameters>
+    <PHYS_MAX_T>10</PHYS_MAX_T>
+    <ANALYTICAL_REFERENCE>1</ANALYTICAL_REFERENCE>
+    <CONVERGENCE_PRECISION>1e-7</CONVERGENCE_PRECISION>
+    <CONVERGENCE_PRECISION_ADJOINT>1e-7</CONVERGENCE_PRECISION_ADJOINT>
+    <gradient_comparison>
+      <ACTIVE>1</ACTIVE>
+    </gradient_comparison>
+  </Parameters>
+</Param>

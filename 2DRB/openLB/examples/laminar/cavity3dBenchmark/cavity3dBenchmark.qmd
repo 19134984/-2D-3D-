@@ -1,0 +1,82 @@
+---
+features: [benchmark, primitives]
+---
+
+### cavity3dBenchmark
+
+This example measures the performance of $\OpenLB$ on a three-dimensional lid-driven cavity. It is based on the setup of [[`laminar/cavity3d`](/examples/laminar/cavity3d/cavity3d.qmd)]{.content-visible when-format="html"}[`laminar/cavity3d` (@sec-example-laminar-cavity3d)]{.content-visible when-format="pdf"}.
+It runs a fixed number of time steps on a cube of $N^3$ cells and reports the throughput in million lattice updates per second (MLUPs), which makes it the reference case for comparing platforms, numbers of processes and resolutions.
+The flow itself is the setup of `laminar/cavity3d`; it is not run to a steady state and not evaluated.
+
+#### Governing equations
+
+The domain $\Omega \times \I \subseteq [0,1]^3 \times \R_{\geq 0}$ is considered with the following governing equations with the velocity field $\vel \in \R^3$ and the pressure $p \in \R$ for the incompressible flow of a Newtonian fluid with kinematic viscosity $\nu \in \R_{> 0}$ and constant density $\rho \in \R_{> 0}$,
+\begin{align}
+    \nabla \cdot \vel &= 0 \quad \text{in} \quad \Omega \times \I, \\
+    \partial_t \vel + (\vel \cdot \nabla) \vel &= -\frac{1}{\rho} \nabla p + \nu \Delta \vel \quad \text{in} \quad \Omega \times \I.
+\end{align}
+
+#### Boundary conditions
+
+As in [[`laminar/cavity3d`](/examples/laminar/cavity3d/cavity3d.qmd)]{.content-visible when-format="html"}[`laminar/cavity3d` (@sec-example-laminar-cavity3d)]{.content-visible when-format="pdf"}, the lid $\Gamma_D$ at $y = L$ (MN 3) moves with $\vel = (u_\text{lid}, 0, 0)^\top$ and the other five walls $\Gamma_{\mathrm{no\text{-}slip}}$ (MN 2) are at rest, $\vel = \mathbf{0}$ (@fig-cavity3dBenchmark-domain).
+The fluid is initially at rest.
+For performance, both are treated with bounce-back rules: the walls with `BounceBack` and the lid with `BounceBackVelocity`, which are cheaper than the interpolated boundaries of `cavity3d`.
+The defines at the top of `cavity3d.cpp` switch this: without `LID_DRIVEN_BOUNCE_BACK`, local velocity boundaries are used, and without `LID_DRIVEN`, the lid is a resting wall as well.
+
+#### Domain
+
+The fluid fills a cube of side length $L = 1\,\mathrm{m}$ (@fig-cavity3dBenchmark-domain), with $u_\text{lid} = 1\,\mathrm{m/s}$ and $\nu = 10^{-3}\,\mathrm{m^2/s}$, that is $Re = 1000$.
+
+![Domain and boundary conditions of `cavity3dBenchmark`, the same as in `cavity3d`, with the material numbers (MN) assigned in `prepareGeometry()`.](/examples/laminar/cavity3d/doc/fig/cavity3dDomain.svg){width="60%" #fig-cavity3dBenchmark-domain .lightbox}
+
+#### Discretization \& Descriptor
+In this example, the domain is discretized with a uniform grid of $N^3$ cells with the lattice spacing $\Delta x = L / N$, where the default is $N = 100$.
+The mesh is split into `CUBOIDS_PER_PROCESS` cuboids per process, by default one.
+
+The LBM collision operator is the BGK operator with a single relaxation time ([Collision Operators](/content/02_core.qmd#collision-operators)), used as `BGKdynamics`, together with the D3Q19 velocity set ([Lattice Structures](/content/01_introduction.qmd#sec-lattice-structures)).
+The lattice uses single precision. With the preprocessor macro `FEATURE_FP16` enabled, the populations are stored in half precision.
+The descriptor stores the velocity in a field of its own, so that it can be written to the VTK output.
+
+::: {#lst-cavity3dBenchmark-case}
+```{.cpp}
+using MyCase = Case<NavierStokes,
+                    Lattice<float, descriptors::D3Q19<descriptors::VELOCITY>>>;
+```
+Case definition for the `cavity3dBenchmark` example, without the `FP16` feature.
+:::
+
+The unit converter `UnitConverterFromResolutionAndLatticeVelocity` uses the lattice velocity $0.01$, so the time step size is $\Delta t = 0.01\, \Delta x / u_\text{lid}$.
+Lattice statistics are switched off, as they cost time in every step.
+The parameters are given in @tbl-cavity3dBenchmark-params. The physical values are fixed in `prepareLattice()`.
+
+| Parameter | Symbol | Value | Description |
+|---|---|---|---|
+| `RESOLUTION` | $N$ | $100$ | cells per side length $L$ |
+| `TIME_STEPS` | | $1\,000$ | number of time steps |
+| `reporter/timer/LATTICE_ITER_T` | | $100$ | interval of the timer output in time steps |
+| `PHYS_CHAR_LENGTH` | $L$ | $1\,\mathrm{m}$ | side length of the cavity |
+| `VTK_ENABLED` | | `false` | write the VTK output before and after the time loop |
+| `CUBOIDS_PER_PROCESS` | | $1$ | number of cuboids per process |
+| `PHYS_DELTA_X` | $\Delta x$ | $L / N$ | lattice spacing, derived from the resolution |
+
+: Parameters of `cavity3dBenchmark`, as set in `main()`. {#tbl-cavity3dBenchmark-params}
+
+
+#### Results
+
+Every $100$ time steps, the timer reports the progress and the current throughput, and at the end the total wall time and the average throughput.
+It also appends one line per report to `tmp/profilingData/performance.csv`, with the resolution, the number of time steps, the number of processes and the throughput.
+
+The job script `scaling.job` runs the benchmark on a GPU cluster with the PBS batch system.
+It considers the total cell counts $10^9$, $2 \cdot 10^9$ and $3 \cdot 10^9$, each multiplied by every power-of-two node count up to the number of nodes the job got, keeps the resolutions with at least $3 \cdot 10^6$ cells per process, and calls `./cavity3d --RESOLUTION <N> --TIME_STEPS 1000 --VTK_ENABLED 0` with $12$ processes per node for each of them.
+
+#### Files
+
+```
+cavity3dBenchmark/
+├── cavity3d.cpp   main(): parameters; mesh, geometry, lattice, initial values and time loop with timer
+├── scaling.job    PBS job script for scaling runs on a GPU cluster
+└── Makefile
+```
+
+The timer output goes to the console and to `tmp/profilingData/performance.csv`. With `VTK_ENABLED`, the velocity and the pressure are written to `tmp/vtkData/`.

@@ -1,0 +1,9 @@
+---
+features: []
+---
+
+### minimal3d
+
+This app is for educational purposes with minimal lines of code to set up a simulation case with OpenLB.
+The basic $\texttt{UnitConverter}$ is used with a single call of $\texttt{collideAndStream}$, using BGKdynamics in a periodic box.
+Finally, the velocity is printed.

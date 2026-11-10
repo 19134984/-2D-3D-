@@ -1,0 +1,122 @@
+---
+features: [benchmark, primitives]
+recommended-for-beginners: [benchmark, primitives]
+---
+
+### cavity2d {#sec-example-laminar-cavity2d}
+
+This example illustrates a flow in a cuboid, lid-driven cavity.
+The 2D version also shows how to use the XML parameter files and has an example description file for OpenGPI.
+This example is available in two different versions for sequential and parallel use.
+The [[`laminar/cavity2dSolver`](/examples/laminar/cavity2dSolver/cavity2dSolver.qmd)]{.content-visible when-format="html"}[`laminar/cavity2dSolver` (@sec-example-laminar-cavity2dSolver)]{.content-visible when-format="pdf"} version illustrates the use of the solver class concept together with the XML parameter interface.
+
+
+#### Governing equations
+
+The domain $\Omega \times \I \subseteq [0,1]^2 \times \R_{\geq 0}$ is considered with the following governing equations with the velocity field $\vel \in \R^2$ and the pressure $p \in \R$ for the incompressible flow of a Newtonian fluid with kinematic viscosity $\nu \in \R_{> 0}$ and constant density $\rho \in \R_{> 0}$,
+\begin{align}
+    \nabla \cdot \vel &= 0 \quad \text{in} \quad \Omega \times \I, \\
+    \partial_t \vel + (\vel \cdot \nabla) \vel &= -\frac{1}{\rho} \nabla p + \nu \Delta \vel \quad \text{in} \quad \Omega \times \I.
+\end{align}
+
+#### Boundary conditions
+
+The boundary $\partial \Omega = \Gamma_D \cup \Gamma_{\mathrm{no\text{-}slip}}$ consists of two parts (@fig-cavity2d-domain): the moving lid $\Gamma_D$ at the top, where the lid velocity is prescribed as a Dirichlet condition, and the three walls at rest $\Gamma_{\mathrm{no\text{-}slip}}$, where the fluid sticks to the wall,
+\begin{align}
+    \vel &= (u_\text{lid}, 0)^\top \quad \text{on} \quad \Gamma_D \times \I, \\
+    \vel &= \mathbf{0} \quad \text{on} \quad \Gamma_{\mathrm{no\text{-}slip}} \times \I.
+\end{align}
+The fluid is initially at rest, $\vel = \mathbf{0}$ in $\Omega$ at $t = 0$.
+In `prepareGeometry()`, $\Gamma_{\mathrm{no\text{-}slip}}$ gets the material number 2 and $\Gamma_D$ the material number 3.
+
+#### Domain
+
+The fluid fills a square cavity of side length $L = 1\,\mathrm{m}$ (@fig-cavity2d-domain).
+The lid at the top moves with $u_\text{lid} = 1\,\mathrm{m/s}$ in $x$-direction, while the remaining three walls are at rest.
+With $\nu = 10^{-3}\,\mathrm{m^2/s}$ this gives a Reynolds number of $Re = u_\text{lid} L / \nu = 1000$.
+
+![Domain and boundary conditions of `cavity2d`, with the material numbers (MN) assigned in `prepareGeometry()`.](/examples/laminar/cavity2d/doc/fig/cavity2dDomain.svg){width="60%" #fig-cavity2d-domain .lightbox}
+
+#### Discretization \& Descriptor
+In this example, the domain is discretized with a uniform grid of $N^2$ cells with the lattice spacing $\Delta x = L / N$, where $N = 128$ is set by `Resolution` in `cavity2d.xml`.
+
+The LBM collision operator is the BGK operator with a single relaxation time ([Collision Operators](/content/02_core.qmd#collision-operators)), used as `ConstRhoBGKdynamics`, together with the D2Q9 velocity set ([Lattice Structures](/content/01_introduction.qmd#sec-lattice-structures)).
+All four walls, including the moving lid, are velocity boundaries of the type `InterpolatedVelocity` ([Define Boundary Method](/content/06_initial_boundary.qmd#sec-defineBoundaryMethod)). The corresponding lattice is defined inside the case definition in 'cavity2d.cpp' as in @lst-cavity2d-case.
+
+::: {#lst-cavity2d-case}
+```{.cpp}
+using MyCase = Case<
+  NavierStokes, Lattice<double, descriptors::D2Q9<>>
+>;
+```
+Case definition for the `cavity2d` example.
+:::
+
+The parameters for the simulation are read from `cavity2d.xml` and given in @tbl-cavity2d-params.
+The unit converter `UnitConverterFromResolutionAndRelaxationTime` derives the time step size from the resolution and the lattice relaxation time.
+
+| XML element | Symbol | Value | Description |
+|---|---|---|---|
+| `Discretization/Resolution` | $N$ | $128$ | cells per side length $L$ |
+| `Discretization/LatticeRelaxationTime` | $\tau$ | $0.5384$ | lattice relaxation time |
+| `PhysParameters/CharPhysLength` | $L$ | $1\,\mathrm{m}$ | side length of the cavity |
+| `PhysParameters/CharPhysVelocity` | $u_\text{lid}$ | $1\,\mathrm{m/s}$ | velocity of the lid |
+| `PhysParameters/PhysViscosity` | $\nu$ | $10^{-3}\,\mathrm{m^2/s}$ | kinematic viscosity |
+| `PhysParameters/PhysDensity` | $\rho$ | $1\,\mathrm{kg/m^3}$ | density |
+| `PhysParameters/PhysMaxTime` | $T$ | $100\,\mathrm{s}$ | upper limit of the simulated time |
+| `ConvergenceCheck/Interval` | | $1\,\mathrm{s}$ | time window of the convergence check |
+| `ConvergenceCheck/Residuum` | | $10^{-3}$ | bound for the relative standard deviation of the average energy |
+| `Log/SaveTime` | | $1\,\mathrm{s}$ | interval of the console statistics |
+| `VisualizationVTK/SaveTime` | | $1\,\mathrm{s}$ | interval of the VTK output |
+| `VisualizationImages/SaveTime` | | $5\,\mathrm{s}$ | interval of the velocity heat maps |
+| `VisualizationGnuplot/SaveTime` | | $5\,\mathrm{s}$ | interval of the comparison with Ghia et al. |
+
+: Parameters of `cavity2d`, read from `cavity2d.xml` in `main()`. The first seven elements are found below `Param/Application`, the others below `Param/Output`. {#tbl-cavity2d-params}
+
+#### Validation
+
+The velocity and the pressure are written in physical units every second (@fig-example-cavity).
+
+::: {.content-visible when-format="html"}
+![Magnitude of the physical velocity of `cavity2d` from $t = 1\,\mathrm{s}$ until convergence at $t = 28.9\,\mathrm{s}$, visualized in ParaView. The vortex starts in the upper right corner below the lid and moves towards the center of the cavity.](/examples/laminar/cavity2d/doc/fig/cavity2d_velocity.gif){width="100%" #fig-example-cavity .lightbox}
+:::
+
+::: {.content-visible when-format="pdf"}
+![Magnitude of the physical velocity of `cavity2d` at convergence, $t = 28.9\,\mathrm{s}$, visualized in ParaView.](/examples/laminar/cavity2d/doc/fig/cavity2d_velocity_converged.png){width="100%" #fig-example-cavity .lightbox}
+:::
+
+The example is validated against the benchmark solution of @GHIA1982387 for $Re = 1000$.
+Every $5\,\mathrm{s}$, `getResults()` interpolates the horizontal velocity $u_x$ on the vertical centreline $x = L/2$ at the 17 heights listed in Table I of @GHIA1982387 and writes it together with the reference values to `tmp/gnuplotData/`.
+The simulation stops as soon as the steady state is reached. This state is identified via the relative standard deviation of the average energy over the last $1\,\mathrm{s}$. When it falls below $10^{-3}$, which happens at $t \approx 28.9\,\mathrm{s}$ ($iT = 37004$), the simulation is considered converged.
+@fig-cavity2d-ghia shows how the profile approaches the reference: the relative $L^2$ error over the 17 points drops from $43\,\%$ at $t = 5\,\mathrm{s}$ to $3.5\,\%$ at convergence.
+The example prints this error to the console as `relativeErrorL2(line)`.
+
+::: {.image-slider}
+::: {#fig-cavity2d-ghia layout-ncol="3"}
+![$t = 5\,\mathrm{s}$](/examples/laminar/cavity2d/doc/fig/ghia/centerVelocityX_iT6400.svg)
+
+![$t = 10\,\mathrm{s}$](/examples/laminar/cavity2d/doc/fig/ghia/centerVelocityX_iT12800.svg)
+
+![$t = 15\,\mathrm{s}$](/examples/laminar/cavity2d/doc/fig/ghia/centerVelocityX_iT19200.svg)
+
+![$t = 20\,\mathrm{s}$](/examples/laminar/cavity2d/doc/fig/ghia/centerVelocityX_iT25600.svg)
+
+![$t = 25\,\mathrm{s}$](/examples/laminar/cavity2d/doc/fig/ghia/centerVelocityX_iT32000.svg)
+
+![$t = 28.9\,\mathrm{s}$, converged](/examples/laminar/cavity2d/doc/fig/ghia/centerVelocityX_iT37004.svg)
+
+Horizontal velocity $u_x$ on the vertical centreline $x = L/2$ of `cavity2d`, compared with @GHIA1982387 at $Re = 1000$.
+:::
+:::
+
+#### Files
+
+```
+cavity2d/
+├── cavity2d.cpp               main(): reads cavity2d.xml; mesh, geometry, lattice, time loop, output and comparison with Ghia et al.
+├── cavity2d.xml               parameters of the simulation and of the output
+├── description_cavity2d.xml   description of the parameters for OpenGPI
+└── Makefile
+```
+
+The results are written to `tmp/` in the directory the example is run from. `vtkData/cavity2dvtk.pvd` opens all time steps in ParaView, `imageData/` holds the velocity heat maps and `gnuplotData/` the comparisons with Ghia et al. as plots and data.

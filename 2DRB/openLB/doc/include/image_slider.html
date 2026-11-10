@@ -1,0 +1,101 @@
+<!-- Turns a multi-panel figure into a slider on the website. Wrap the figure
+     in a div of class image-slider:
+
+       ::: {.image-slider}
+       ::: {#fig-name layout-ncol="3"}
+       ![first panel](a.svg)
+
+       ![second panel](b.svg)
+
+       Caption of the whole figure.
+       :::
+       :::
+
+     The website then shows one panel at a time, with buttons and a range
+     input to step through them; each panel keeps its own caption as label.
+     The PDF ignores the wrapper and lays the panels out as a grid. Quarto
+     drops custom classes on the figure itself, hence the wrapper.
+
+     Panels are at most 600px wide. For wide panels, such as heat maps of a
+     long channel, add the class image-slider-wide to the wrapper,
+     ::: {.image-slider .image-slider-wide}, to use the full text width. -->
+
+<style>
+  .image-slider .quarto-layout-row { justify-content: center; }
+  .image-slider .quarto-layout-cell.image-slider-panel { flex-basis: 100% !important; max-width: 600px; }
+  .image-slider-wide .quarto-layout-cell.image-slider-panel { max-width: 100%; }
+  .image-slider .quarto-layout-cell.image-slider-hidden { display: none !important; }
+  .image-slider-controls {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    margin: 0.25rem 0 0.75rem;
+  }
+  .image-slider-controls input[type="range"] { flex: 1; max-width: 22rem; }
+  .image-slider-controls button {
+    border: 1px solid var(--bs-border-color, #dee2e6);
+    border-radius: 0.25rem;
+    background: transparent;
+    color: inherit;
+    line-height: 1;
+    padding: 0.3rem 0.6rem;
+  }
+  .image-slider-controls button:disabled { opacity: 0.4; }
+  .image-slider-controls .image-slider-count {
+    font-variant-numeric: tabular-nums;
+    min-width: 3.5em;
+    text-align: center;
+  }
+</style>
+<script>
+  (function () {
+    function setUp(slider) {
+      var cells = Array.prototype.slice.call(slider.querySelectorAll(".quarto-layout-cell"));
+      if (cells.length < 2) return;
+
+      var controls = document.createElement("div");
+      controls.className = "image-slider-controls";
+      controls.innerHTML =
+        '<button type="button" aria-label="Previous panel">&#8249;</button>' +
+        '<input type="range" min="0" step="1" aria-label="Panel">' +
+        '<button type="button" aria-label="Next panel">&#8250;</button>' +
+        '<span class="image-slider-count" aria-live="polite"></span>';
+      var prev = controls.children[0];
+      var range = controls.children[1];
+      var next = controls.children[2];
+      var count = controls.children[3];
+      range.max = cells.length - 1;
+
+      // Below the panels, above the caption of the whole figure
+      var rows = cells[0].parentElement.parentElement;
+      rows.appendChild(controls);
+
+      function show(i) {
+        i = Math.max(0, Math.min(cells.length - 1, i));
+        cells.forEach(function (cell, j) {
+          cell.classList.add("image-slider-panel");
+          cell.classList.toggle("image-slider-hidden", j !== i);
+        });
+        range.value = i;
+        prev.disabled = i === 0;
+        next.disabled = i === cells.length - 1;
+        count.textContent = (i + 1) + " / " + cells.length;
+      }
+
+      prev.addEventListener("click", function () { show(+range.value - 1); });
+      next.addEventListener("click", function () { show(+range.value + 1); });
+      range.addEventListener("input", function () { show(+range.value); });
+      show(0);
+    }
+
+    function init() {
+      document.querySelectorAll(".image-slider").forEach(setUp);
+    }
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
+  })();
+</script>

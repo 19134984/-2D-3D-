@@ -1,0 +1,16 @@
+---
+features: [turbulent, transient, benchmark, showcase, primitives]
+---
+
+### channel3d
+
+This example examines a wall-bounded flow at high Reynolds numbers.
+It features the application of wall functions in a bi-periodic, fully developed turbulent channel flow for friction Reynolds numbers of $Re_\tau=1000$ and $Re_\tau=2000$.
+Results with $\OpenLB$ for a similar configuration are published e.g. in [@haussmann:19].
+A visualization of the flow field is given in @fig-channel3d.
+In addition, the dynamics include the RLB collision operator with a third-order equilibrium function and a Smagorinsky--Lilly turbulence model.
+This example also serves as a showcase for stability improvement by hybrid recursive regularized collision schemes.
+The example includes the usage of the turbulent wall model with different tunable parameters.
+All parameters of the wall model are integrated into the HLBM interface.
+
+![Streamwise velocity ($x$-direction) in adapted geometry of the `channel3d` example.](/examples/turbulence/channel3d/doc/fig/channel3d_velocity.png){#fig-channel3d width="100%"}

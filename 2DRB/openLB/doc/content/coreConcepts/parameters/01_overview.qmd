@@ -1,0 +1,11 @@
+---
+title: Parameters Overview
+number-sections: true
+toc: true
+---
+OpenLB supplies a comprehensive parameter concept that makes it easy to move around parameters in the code, while also supplying de/serialization from and to command line interface and xml.
+
+Core to this setup are:
+
+- [ParametersD](03_parametersD.qmd)
+- [Parameters](02_parameters.qmd)

@@ -1,0 +1,10 @@
+---
+features: [multiComponent, transient, showcase, primitives]
+---
+
+### microFluidics2d
+
+This example shows a microfluidic channel creating droplets of two fluid components.
+Poiseuille velocity profiles are imposed at the various channel inlets, while a constant density outlet is imposed at the end of the channel to allow the droplets to exit the simulation.
+This example demonstrates the use of three fluid components with the free energy model.
+It also shows the use of open boundary conditions, specifically velocity inlet and density outlet boundaries.

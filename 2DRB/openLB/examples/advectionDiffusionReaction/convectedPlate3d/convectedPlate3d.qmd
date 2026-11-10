@@ -1,0 +1,15 @@
+---
+features: [thermal, transient, benchmark, primitives]
+---
+
+### convectedPlate3d
+
+This example implements a convection and diffusion driven transport of a species from a plate where the convective flow is a uniform plug flow streaming over the plate surface.
+The results are compared against an analytic solution taken from [@kruger2017lattice].
+It is given as
+
+$$
+C(x,y) = C_p \mathrm{erfc}\left(\frac{y}{\sqrt{4Dx/u_0}}\right),
+$$
+
+where $x$ is the coordinate along the plate, $y$ the coordinate perpendicular to the plate, $C_p$ the species concentration on the plate surface, $\mathrm{erfc}(x)$ the complementary error function, $D$ the diffusivity constant, and $u_0$ the convective velocity.

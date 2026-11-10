@@ -1,0 +1,61 @@
+---
+title: "How-To cite OpenLB"
+---
+
+For references to $\OpenLB$ in general, we recommend to cite the most recent overview paper [@krause:21].
+```bibtex
+@article{openlb2020,
+    author    = "Krause, M. J. and Kummerl{\"a}nder, A. and Avis, S. J.
+                 and Kusumaatmaja, H. and Dapelo, D. and Klemens, F.
+                 and Gaedtke, M. and Hafen, N. and Mink, A.
+                 and Trunk, R. and Marquardt, J. E. and Maier, M.-L.
+                 and Haussmann, M. and Simonis, S.",
+    title     = "OpenLB—Open source lattice Boltzmann code",
+    year      = "2020",
+    journal   = "Computers \& Mathematics with Applications",
+    doi       = "10.1016/j.camwa.2020.04.033"
+}
+```
+
+For references to a specific release of the code, each version is associated with a citeable Zenodo publication.
+The latest release $\OpenLB$ 1.8 [@olb18] is covered by the present user guide and citeable via:
+
+```bibtex
+@Software{olbRelease18,
+  author       = {Kummerl\"{a}nder, Adrian and
+                  Bingert, Tim and
+                  Bukreev, Fedor and
+                  Czelusniak, Luiz Eduardo and
+                  Dapelo, Davide and
+                  Gaul, Christoph and
+                  Hafen, Nicolas and
+                  Ito, Shota and
+                  Je\ss{}berger, Julius and
+                  Khazaeipoul, Danial and
+                  Kr\"{u}ger, Timm and
+                  Kusumaatmaja, Halim and
+                  Marquardt, Jan E. and
+                  Raeli, Alice and
+                  Rennick, Michael and
+                  Prinz, Franti\v{s}ek and
+                  Schecher, Maximilian and
+                  Schneider, Andreas and
+                  Shimojima, Yuji and
+                  Simonis, Stephan and
+                  Sitter, Pascal and
+                  Spelten, Philipp and
+                  Tacques, Alexandre and
+                  Teutscher, Dennis and
+                  Zhong, Mingliang and
+                  Krause, Mathias J.},
+  title        = {{OpenLB Release 1.8: Open Source Lattice Boltzmann Code}},
+  month        = apr,
+  year         = 2025,
+  publisher    = {Zenodo},
+  version      = {1.8.0},
+  doi          = {10.5281/zenodo.15270117},
+  url          = {https://doi.org/10.5281/zenodo.15270117}
+}
+```
+
+Starting with release 1.6, metadata is also defined in the standardized *Citation File Format* and included as a `CITATION.cff` in the release tarball.

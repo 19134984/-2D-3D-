@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<Param>
+
+  <Application>
+    <Name> microMixer3d </Name>
+    <dim> 3 </dim>
+    <OlbDir> ../../../ </OlbDir>
+    <Discretization>
+      <Resolution> 36 </Resolution>
+      <!--<LatticeRelaxationTime> 0.7 </LatticeRelaxationTime>-->
+      <CharLatticeVelocity> 0.1 </CharLatticeVelocity>
+      <BoundaryValueUpdateTime> 0.00001 </BoundaryValueUpdateTime>
+    </Discretization>
+    <PhysParameters>
+      <CharPhysLength> 0.00133 </CharPhysLength>
+      <CharPhysVelocity> 0.0332 </CharPhysVelocity> <!-- 0.0996 -->
+      <PhysViscosity> 1.e-6 </PhysViscosity>
+      <PhysDensity> 1000. </PhysDensity>
+      <CharPhysPressure> 0. </CharPhysPressure>
+      <PhysDiffusionAD> 1.e-9 </PhysDiffusionAD> <!-- 30.e-9 -->
+
+      <StartTime> 0.6 </StartTime> <!-- 1.0 -->
+      <PhysMaxTime> 8.0 </PhysMaxTime> <!-- 8.0 -->
+      <!--<InletVelMultiplier> 1 </InletVelMultiplier>-->
+    </PhysParameters>
+  </Application>
+
+  <Optimization>
+    <!--<DimensionControl> 2 </DimensionControl>-->
+    <MaxIter> 20 </MaxIter>
+    <Tolerance> 1.e-7 </Tolerance>
+    <ControlTolerance> 1.e-6 </ControlTolerance>
+    <Verbose> true </Verbose>
+    <!--<InputFileName> control.dat </InputFileName>-->
+
+    <Lamda> 0.5 </Lamda>
+    <ArmijoConst> 1.0e-4</ArmijoConst>
+    <WolfeConst> 0.1 </WolfeConst>
+    <MaxStepAttempts> 10 </MaxStepAttempts>
+    <StepCondition> StrongWolfe </StepCondition>
+    <StepWidth> 1.e-8 </StepWidth>
+
+    <StartValue> 0.6 </StartValue> <!-- 0.82 -->
+    <StartValueType> Control </StartValueType>
+    <VectorBounds> true </VectorBounds>
+    <UpperBound> 2.0 </UpperBound>
+    <LowerBound> 0.1 </LowerBound>
+  </Optimization>
+
+  <Solver>
+    <ConvergenceCheck> None </ConvergenceCheck>
+    <PressureFilter> false </PressureFilter>
+    <Tolerance> 1.e-5 </Tolerance>
+  </Solver>
+
+  <Output>
+    <MultiOutput> 0 </MultiOutput>
+    <OutputDir> ./tmp/ </OutputDir>
+
+    <LogConverter> 1 </LogConverter>
+
+    <Log>
+      <SaveTime> 8.0 </SaveTime>
+    </Log>
+
+    <VisualizationVTK>
+      <SaveTime> 0.2 </SaveTime>
+    </VisualizationVTK>
+
+    <VisualizationImages>
+      <SaveTime> 1.  </SaveTime>
+    </VisualizationImages>
+  </Output>
+
+</Param>

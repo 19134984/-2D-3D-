@@ -1,0 +1,12 @@
+#### periodicPlate (elastodynamics)
+
+Wave propagation in a fully periodic square plate, solved with the vectorial
+lattice Boltzmann scheme for the Navier--Cauchy equation on a `VECTOR<D2Q4>`
+descriptor. A manufactured solution drives the body force, so displacement,
+velocity and stress can be compared against the exact fields at every time
+step. Because both directions are periodic, no boundary condition is involved,
+which makes this the reference case for the bulk collision alone.
+
+The `run.sh` script sweeps the resolution from 30 to 120 and averages the
+experimental order of convergence of all three quantities into
+`tmp/gnuplotData/data/eoc.csv`.

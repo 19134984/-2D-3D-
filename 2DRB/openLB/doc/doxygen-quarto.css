@@ -1,0 +1,41 @@
+/* Bridges the Quarto navbar into the doxygen pages.
+ *
+ * The bar itself, its markup and its stylesheets come from the rendered guide
+ * via doxygen_header.py, and body.nav-fixed already reserves the space it
+ * occupies. What is left is telling doxygen-awesome that its own chrome starts
+ * that much further down, and keeping the bar's typography off doxygen. */
+
+:root {
+  --olb-navbar-height: 64px;
+  /* doxygen's own header block: logo, title, PROJECT_BRIEF and the search box.
+     Taller than doxygen-awesome's 120px default because of the brief line, and
+     #top clips whatever does not fit. */
+  --olb-top-height: 150px;
+}
+
+@media screen and (min-width: 768px) {
+  /* doxygen-awesome positions the sidebar, its height and the #top block from
+     this one variable, so extending it moves all three together. Overriding
+     #side-nav alone leaves the tree scrolled under the bar. */
+  html {
+    --top-height: calc(var(--olb-top-height) + var(--olb-navbar-height));
+  }
+
+  /* ...but #top is driven by the same variable and only needs its own height,
+     so restore it; otherwise the content starts a navbar lower than it should. */
+  #top {
+    height: var(--olb-top-height);
+    margin-bottom: calc(0px - var(--olb-top-height));
+  }
+}
+
+/* Bootstrap sets the page font on body, which doxygen-awesome also styles; the
+   bar has to keep the guide's font rather than inherit doxygen's. */
+#quarto-header, #quarto-header * {
+  font-family: var(--bs-body-font-family);
+}
+
+/* Anchored links would otherwise scroll their target under the fixed bar. */
+h1, h2, h3, h4, .memtitle, a.anchor {
+  scroll-margin-top: calc(var(--olb-navbar-height) + 0.5rem);
+}

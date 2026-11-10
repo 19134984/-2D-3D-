@@ -1,0 +1,37 @@
+$if(title)$
+\begin{titlepage}
+  \begin{tikzpicture}[remember picture,overlay]
+  %% Heading
+  \node[text width=1.0\textwidth] at ($$ (current page.north) + (0mm,-70mm) $$){
+    \begin{center}
+      {\Huge\sffamily\textbf{\textit{$title$}}}\\[0.5cm]
+      $if(subtitle)$
+      {\Large\sffamily\textbf{\textit{$subtitle$}}}
+      $endif$
+    \end{center}
+  };
+  %% Title-image
+  \node[text width=1.0\textwidth] at ($$ (current page.center) + (0mm,15mm) $$){
+    \begin{center}
+    \includegraphics[width=\textwidth,angle=0,trim={0 7cm 0 0},clip]{fig/airbusBlenderPreview2-with-logo.png}
+    \end{center}
+  }; 
+  %% Authors and Date
+  \node[text width=1.0\textwidth] at ($$ (current page.south) + (0mm,+90mm) $$){
+    \begin{center}
+    {\sffamily\bfseries Authors:}\\
+    \sffamily
+    $for(by-author)$
+    $by-author.name.full$$sep$, 
+    $endfor$
+    \end{center}
+  };
+  %% Logo
+  \node[text width=1.0\textwidth] at ($$ (current page.south) + (0mm,+35mm) $$){
+    \begin{flushright}
+    \includegraphics[width=5cm]{fig/openlb_full.png}
+    \end{flushright}
+  };
+  \end{tikzpicture}
+\end{titlepage}
+$endif$

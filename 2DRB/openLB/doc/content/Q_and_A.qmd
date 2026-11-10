@@ -1,0 +1,323 @@
+---
+title: "Q&A"
+number-sections: false
+toc: true
+---
+
+In this Q&A part, some potential questions concerning the code are answered.
+
+## What do I need the unit converter for?
+
+The unit converter (@lst-UnitConverter) is used in every simulation done with $\OpenLB$.
+In this class, the physical units, like length or mass, are converted to lattice units and vice versa.
+This step is necessary to get a result in the correct physical dimensions and units.
+
+::: {#lst-UnitConverter}
+```{.cpp}
+UnitConverterFromResolutionAndLatticeVelocity<T,DESCRIPTOR> converter(
+(int)   res,                  //resolution
+( T )   charLatticeVelocity,  //charLatticeVelocity
+( T )   charPhysLength,       //charPhysLength
+( T )   charPhysVelocity,     //charPhysVelocity
+( T )   physViscosity,        //physViscosity
+( T )   physDensity           //physDensity
+);
+converter.print();
+```
+`UnitConverter`.
+:::
+
+For a closer look, also check out [Lesson 3: UnitConverter](11_step_by_step.qmd#sec-LessonUnitConverter).
+
+## How can I write my own dynamics? {#sec-faq-dynamics}
+
+Dynamics are the classes that model the cell-specific computation of momenta, equilibria, and the collision operator.
+Ideally, new dynamics are constructed using $\OpenLB$'s flexible *dynamics tuple* system which allows the composition of dynamics as a tuple of momenta, equilibria, and the collision operator in addition to an optional *combination rule* for declaring e.g. forcing schemes.
+This is the approach used for most dynamics in $\OpenLB$ (also see [Section Dynamics](02_core.qmd#sec-dynamics)).
+
+::: {#lst-faq-forced-trt}
+```{.cpp}
+template <typename T, typename DESCRIPTOR>
+using ForcedTRTdynamics = dynamics::Tuple<
+  T, DESCRIPTOR,
+  momenta::BulkTuple,
+  equilibria::SecondOrder,
+  collision::TRT,
+  forcing::Guo
+>;
+```
+:::
+
+Modifying this example to use the BGK collision operator without forcing is as simple as writing:
+
+::: {#lst-faq-bgk}
+```{.cpp}
+template <typename T, typename DESCRIPTOR>
+using BGKdynamics = dynamics::Tuple<
+  T, DESCRIPTOR,
+  momenta::BulkTuple,
+  equilibria::SecondOrder,
+  collision::BGK
+>;
+```
+:::
+
+In most cases that are not yet covered by the extensive library of dynamics tuples, it should be sufficient to write e.g. a new collision operator to be plugged into this framework.
+As a fallback, fully custom dynamics can be implemented using `dynamics::CustomCollision` following this basic scaffold:
+
+::: {#lst-faq-custom-dynamics}
+```{.cpp}
+template <typename T, typename DESCRIPTOR, typename MOMENTA=momenta::BulkTuple>
+struct MyCustomDynamics final : public dynamics::CustomCollision<T,DESCRIPTOR,MOMENTA> {
+  using MomentaF = typename MOMENTA::template type<DESCRIPTOR>;
+
+  // Declare list of parameter fields (can be empty)
+  using parameters = meta::list<...>;
+
+  // Allow exchanging the momenta, used for example to construct boundary dynamics
+  template <typename M>
+  using exchange_momenta = MyCustomDynamics<T,DESCRIPTOR,DYNAMICS,M>;
+
+  template <typename CELL, typename PARAMETERS, typename V=typename CELL::value_t>
+  CellStatistic<V> apply(CELL& cell, PARAMETERS& parameters) any_platform {
+    // Implement custom collision here
+  };
+
+  T computeEquilibrium(int iPop, T rho, const T u[DESCRIPTOR::d]) const override any_platform {
+    // Implement custom equilibrium computation here
+  };
+
+  std::type_index id() override {
+    return typeid(MyCustomDynamics);
+  };
+
+  AbstractParameters<T,DESCRIPTOR>& getParameters(BlockLattice<T,DESCRIPTOR>& block) override {
+    return block.template getData<OperatorParameters<MyCustomDynamics>>();
+  }
+
+  // Return human readable name
+  std::string getName() const override {
+    return "MyCustomDynamics<" + MomentaF().getName() + ">";
+  };
+
+};
+```
+:::
+
+## How can I write my own post processor? {#sec-faq-postprocessor}
+
+A non-local operator, also referred to as a *post processor* in $\OpenLB$, is any class that provides a scope, a priority and an `apply` method template (also see [Section Non-local Operators](02_core.qmd#sec-postprocessor)).
+The scope declares how the `apply` method is to be called, the priority is used to sort the execution sequence of multiple operators assigned to the same *stage*, and the `apply` method template implements the actual instructions to be performed.
+
+::: {#lst-simplePostProcessorImpl}
+```{.cpp}
+struct MyCustomPostProcessor {
+  // One of OperatorScope::(PerCell,PerCellWithParameters,PerBlock)
+  static constexpr OperatorScope scope = OperatorScope::PerCell;
+
+  int getPriority() const {
+    return 0;
+  }
+
+  template <typename CELL>
+  void apply(CELL& cell) any_platform {
+    // custom non-local code here
+    // access neighbors via `cell.neighbor(c_i)`
+  }
+};
+```
+Simple post processor implementation.
+:::
+
+This new post processor can be assigned to cells of the lattice using the various overloads of `SuperLattice::addPostProcessor`:
+
+::: {#lst-simplePostProcessorAssign}
+```{.cpp}
+// Assign MyCustomPostProcessor to all cells
+sLattice.addPostProcessor(meta::id<MyCustomPostProcessor>{});
+// Assign MyCustomPostProcessor to indicated cells
+sLattice.addPostProcessor(indicatorF,
+                          meta::id<MyCustomPostProcessor>{});
+```
+Simple post processor assignment.
+:::
+
+If the operator depends on non-cell-specific parameters, they can be declared by changing the `scope` to `OperatorScope::PerCellWithParameters` and modifying the `apply` template arguments.
+
+::: {#lst-simplePostProcessorImplParams}
+```{.cpp}
+struct MyCustomPostProcessor {
+  static constexpr OperatorScope scope = OperatorScope::PerCellWithParameters;
+
+  using parameters = meta::list<OMEGA>;
+
+  int getPriority() const {
+    return 0;
+  }
+
+  template <typename CELL, typename PARAMETERS>
+  void apply(CELL& cell, PARAMETERS& parameters) any_platform {
+    // access parameter via `parameters.template get<OMEGA>()`
+  }
+};
+```
+Simple post processor implementation with parameters.
+:::
+
+The parameters are set in the same way as dynamics parameters.
+
+::: {#lst-faq-set-parameter}
+```{.cpp}
+// Set OMEGA parameter of all dynamics and post processors to 0.6
+sLattice.setParameter<OMEGA>(0.6);
+```
+:::
+
+## How can I write my own coupling operator? {#sec-faq-coupling}
+
+A coupling operator is any class that provides a scope and an `apply` method template.
+Different from single-lattice non-local operators, we receive not one cell but a named tuple of them.
+Consider for illustration a basic coupling between NSE and ADE lattices in @lst-nseAdeCouplingImpl.
+
+::: {#lst-nseAdeCouplingImpl}
+```{.cpp}
+struct NavierStokesAdvectionDiffusionCoupling {
+  // Declare that we want cell-wise coupling with some global parameters
+  static constexpr OperatorScope scope = OperatorScope::PerCellWithParameters;
+
+  // Declare the two parameters custom to this coupling operator
+  struct FORCE_PREFACTOR : public descriptors::FIELD_BASE<0,1> { };
+  struct T0 : public descriptors::FIELD_BASE<1> { };
+
+  // Declare which parameters are required
+  using parameters = meta::list<FORCE_PREFACTOR,T0>;
+
+  template <typename CELLS, typename PARAMETERS>
+  void apply(CELLS& cells, PARAMETERS& parameters) any_platform
+  {
+    using V = typename CELLS::template value_t<names::NavierStokes>::value_t;
+    using DESCRIPTOR = typename CELLS::template value_t<names::NavierStokes>::descriptor_t;
+
+    // Get the cell of the NavierStokes lattice
+    auto& cellNSE = cells.template get<names::NavierStokes>();
+    // Get the cell of the Temperature lattice
+    auto& cellADE = cells.template get<names::Temperature>();
+
+    // Computation of the Bousinessq force
+    auto force = cellNSE.template getFieldPointer<descriptors::FORCE>();
+    auto forcePrefactor = parameters.template get<FORCE_PREFACTOR>();
+    V temperatureDifference = cellADE.computeRho() - parameters.template get<T0>();
+    for (unsigned iD = 0; iD < DESCRIPTOR::d; ++iD) {
+      force[iD] = forcePrefactor[iD] * temperatureDifference;
+    }
+    // Velocity coupling
+    V u[DESCRIPTOR::d] { };
+    cellNSE.computeU(u);
+    cellADE.template setField<descriptors::VELOCITY>(u);
+  }
+
+};
+```
+Full implementation of a basic NSE-ADE coupling.
+:::
+
+Coupling operators are instantiated using the `SuperLatticeCoupling` template by providing a list of names and assigned lattices.
+For the NSE-ADE coupling this will look similar to the following (see e.g. `thermal/rayleighBenard(2,3)d` for a practical example):
+
+::: {#lst-faq-coupling-instantiation}
+```{.cpp}
+SuperLatticeCoupling coupling(
+  NavierStokesAdvectionDiffusionCoupling{},
+  names::NavierStokes{}, NSlattice,
+  names::Temperature{},  ADlattice);
+coupling.setParameter<NavierStokesAdvectionDiffusionCoupling::T0>(...);
+coupling.setParameter<NavierStokesAdvectionDiffusionCoupling::FORCE_PREFACTOR>(...);
+```
+:::
+
+As we can see, the parameters are set for the specific coupling instance.
+
+## What are aliases used for?
+
+Aliases are used to keep the code simpler for users and allow them to get a faster overview of the code.
+Aliases aren't used for all parts of the program.
+Especially if the user likes to change the code for a special problem, alias functions may not be available and therefore need to be created by the user themselves, or normal functions can be used.
+To sum up, *alias* functions aren't necessary for the simulation to work, but allow simplifying the code for a better overview for the user.
+
+## Why do we use `constexpr` to define some functions?
+
+`constexpr` allows you to get the output of the function at the time of compilation.
+The value returned is set to a constant expression and, as a result, the runtime can be reduced due to the constant value.
+If the return value is part of an if-loop, it won't be checked more than once, as the result is already clear after the first check.
+In the example below, the rotation of a 2D particle is calculated, and therefore the output is set to a concrete value at compilation time, and this value stays constant.
+
+::: {#lst-constexpr}
+```{.cpp}
+static constexpr Vector<T,2> execute( Vector<T,2> input, Vector<T,4> rotationMatrix, Vector<T,2> rotationCenter = Vector<T,2>(0.,0.) )
+{
+    Vector<T,2> dist = input - rotationCenter;
+    return Vector<T,2>(
+    dist[0]*rotationMatrix[0] +
+    dist[1]*rotationMatrix[2],
+    dist[0]*rotationMatrix[1] +
+    dist[1]*rotationMatrix[3] );
+}
+```
+`constexpr`.
+:::
+
+## What is the difference between files ending with `.h` and ending with `.hh`?
+
+The files ending with `.h` like `particleDynamics.h` are header files, where classes and functions are only declared.
+The specification (definition) happens in the `.hh` files.
+In the following two code snippets of the same function, the differences in terms of specification can be compared.
+
+::: {#lst-Dynamics-1}
+```{.cpp filename="particleDynamics.h"}
+template<typename T, typename DESCRIPTOR>
+class VerletParticleDynamics : public ParticleDynamics<T,DESCRIPTOR> {
+    public:
+    /// Constructor
+    VerletParticleDynamics( T timeStepSize );
+    /// Procesisng step
+    void process (Particle<T,DESCRIPTOR>& particle) override;
+    private:
+    T _timeStepSize;
+};
+```
+`particleDynamics.h`
+:::
+
+::: {#lst-Dynamics-2}
+```{.cpp filename="particleDynamics.hh"}
+template<typename T, typename PARTICLETYPE>
+VerletParticleDynamics<T,PARTICLETYPE>::VerletParticleDynamics ( T timeStepSize )
+: _timeStepSize( timeStepSize )
+{
+    this->getName() = "VerletParticleDynamics";
+}
+
+template<typename T, typename PARTICLETYPE>
+void VerletParticleDynamics<T,PARTICLETYPE>::process (
+Particle<T,PARTICLETYPE>& particle )
+{
+    //Calculate acceleration
+    auto acceleration = getAcceleration<T,PARTICLETYPE>( particle );
+    //Check for angular components
+    if constexpr ( providesAngle<PARTICLETYPE>() ) {
+        //Calculate angular acceleration
+        auto angularAcceleration = getAngAcceleration<T,PARTICLETYPE>( particle );
+        //Verlet algorithm
+        particles::dynamics::velocityVerletIntegration<T, PARTICLETYPE>(
+        particle, _timeStepSize , acceleration, angularAcceleration );
+        //Update rotation matrix
+        updateRotationMatrix<T,PARTICLETYPE>( particle );
+    } else {
+        //Verlet algorithm without rotation
+        particles::dynamics::velocityVerletIntegration<T, PARTICLETYPE>(
+        particle, _timeStepSize , acceleration );
+    }
+}
+```
+`particleDynamics.hh`
+:::

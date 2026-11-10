@@ -1,0 +1,12 @@
+#### periodicPlate (quasistationary)
+
+Quasistationary deformation of a periodic square plate under a static body
+force, solved with the MRT scheme for stationary linear elasticity on a `D2Q8`
+descriptor. The simulation is iterated until the displacement field stops
+changing, and the converged result is compared against a manufactured solution.
+Both lattice directions are periodic, so this case validates the collision
+without any boundary condition.
+
+The `run.sh` script sweeps the resolution from 30 to 120 and averages the
+experimental order of convergence of displacement and stress into
+`tmp/gnuplotData/data/eoc.csv`.

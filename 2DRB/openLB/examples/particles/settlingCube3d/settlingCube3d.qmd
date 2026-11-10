@@ -1,0 +1,10 @@
+---
+features: [particles, transient, benchmark, showcase, primitives]
+---
+
+### settlingCube3d
+
+The case examines the settling of a cubical silica particle under gravity in a surrounding fluid.
+The rectangular domain is limited by no-slip boundary conditions.
+For the calculation of forces, a DNS approach is chosen which also leads to a back-coupling of the particle on the fluid, inducing a flow.
+The example demonstrates the usage of HLBM in the $\OpenLB$ framework, the use of the particle decomposition scheme [@marquardt:24a], as well as the utilization of the `gnuplot`-writer to print simulation results (cf. `dkt2d`).

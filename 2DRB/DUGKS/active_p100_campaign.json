@@ -1,0 +1,15 @@
+{
+  "updated_at": "2026-11-09T21:38:52+08:00",
+  "status": "stopped_by_user",
+  "active_jobs": [],
+  "completed_jobs": ["7532.master"],
+  "cancelled_jobs": ["7533.master"],
+  "local_campaign": "运行脚本/run_cases/DUGKS_RB_resume_P100_node05_20261104",
+  "remote_campaign": "/data2/XLLi/DUGKS/DUGKS_RB_resume_P100_node05_20261104",
+  "active_chain_manifest": "运行脚本/run_cases/DUGKS_RB_resume_P100_node05_20261104/active_chain.json",
+  "jobs": ["7532.master", "7533.master"],
+  "node": "node05",
+  "scope": "Only the two previously unfinished RB cases; five completed cases remain preserved.",
+  "previous_cancelled_jobs": ["7469.master", "7470.master"],
+  "previous_cancelled_campaign": "运行脚本/run_cases/DUGKS_P100_node05_20261030"
+}

@@ -1,0 +1,8 @@
+---
+features: [multiComponent, multiPhase, transient, primitives]
+---
+
+### deepFallingDrop2d
+
+A variation of the `fallingDrop2d` example type with a deeper pool of liquid that a drop will fall into.
+This adapted pool depth allows changes to the droplet properties, such as size, density, or velocity, to be more apparent in the simulation.

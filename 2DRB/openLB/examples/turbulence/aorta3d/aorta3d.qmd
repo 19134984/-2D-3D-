@@ -1,0 +1,157 @@
+---
+features: [turbulent, transient, showcase, stl, primitives]
+---
+
+### aorta3d {#sec-example-turbulence-aorta3d}
+
+In this example, the fluid flow through a bifurcation is simulated: the blood flow through the lower abdominal aorta, which splits into the two common iliac arteries.
+The geometry is obtained from a mesh in STL format.
+With Bouzidi boundary conditions, the curved boundary is adequately mapped and initialized entirely automatically.
+A Smagorinsky LES BGK model is used for the dynamics to stabilize the turbulent flow simulation for low resolutions.
+The output is the flux computed at the inflow and outflow regions.
+This example writes the stress on the aorta wall and the velocity field in the bifurcation region to a file.
+Validation studies of LBM simulations in the aorta by the authors of the example are found in [@henn:12; @mirzaee:16].
+
+#### Governing equations
+
+The domain $\Omega \times \I$, the inside of the vessels, is considered with the following governing equations with the velocity field $\vel \in \R^3$ and the pressure $p \in \R$ for the incompressible flow of a Newtonian fluid with kinematic viscosity $\nu \in \R_{> 0}$ and constant density $\rho \in \R_{> 0}$,
+\begin{align}
+    \nabla \cdot \vel &= 0 \quad \text{in} \quad \Omega \times \I, \\
+    \partial_t \vel + (\vel \cdot \nabla) \vel &= -\frac{1}{\rho} \nabla p + \nabla \cdot \left( 2 (\nu + \nu_t) \mathbf{S} \right) \quad \text{in} \quad \Omega \times \I,
+\end{align}
+with the strain rate tensor $\mathbf{S} = \tfrac{1}{2} (\nabla \vel + \nabla \vel^\top)$.
+Blood is modelled as a Newtonian fluid with $\rho = 1055\,\mathrm{kg/m^3}$ and the dynamic viscosity $\mu = 0.003\,\mathrm{Pa\,s}$, so $\nu = \mu / \rho = 2.84 \cdot 10^{-6}\,\mathrm{m^2/s}$.
+The eddy viscosity $\nu_t = (C_S \Delta x)^2 |\mathbf{S}|$ of the Smagorinsky model, with the Smagorinsky constant $C_S = 0.1$, models the scales of the flow that the grid does not resolve.
+With the peak inflow velocity $U = 0.45\,\mathrm{m/s}$ and the inlet diameter $L = 22.46\,\mathrm{mm}$, the Reynolds number is $Re = U L / \nu = 3554$.
+
+#### Boundary conditions
+
+The boundary $\partial \Omega = \Gamma_D \cup \Gamma_\text{out} \cup \Gamma_{\mathrm{no\text{-}slip}}$ consists of the inlet $\Gamma_D$ (MN 3) at the top of the aorta, the two outlets $\Gamma_\text{out}$ at the ends of the iliac arteries, `outflow0` (MN 4) and `outflow1` (MN 5), and the vessel wall $\Gamma_{\mathrm{no\text{-}slip}}$ (MN 2) (@fig-aorta3d-geometry),
+\begin{align}
+    \vel &= u_\text{in}(r, t)\, \mathbf{n} \quad \text{on} \quad \Gamma_D \times \I, \\
+    p &= 0 \quad \text{on} \quad \Gamma_\text{out} \times \I, \\
+    \vel &= \mathbf{0} \quad \text{on} \quad \Gamma_{\mathrm{no\text{-}slip}} \times \I.
+\end{align}
+The inflow profile is a Poiseuille profile directed into the aorta along its normal $\mathbf{n}$, the $-y$-direction,
+$$
+    u_\text{in}(r, t) = u_\text{max}(t) \left( 1 - \frac{r^2}{R^2} \right), \qquad u_\text{max}(t) = \frac{U}{2} \left( 1 - \cos \frac{2 \pi t}{T_p} \right), \qquad T_p = 1\,\mathrm{s}.
+$$
+`CirclePoiseuille3D` takes the centre, the normal and the radius $R = 10.1\,\mathrm{mm}$ of the profile from the inlet cells (MN 3).
+`setBoundaryValues()` updates the profile every $50$ time steps with `SinusStartScale`. Its argument runs over $T_p / 2 = 0.5\,\mathrm{s}$ from rest to the peak value $U$, but it is not limited to this interval: afterwards the sine continues, so the inflow is not just ramped up but pulsates with the period $T_p = 1\,\mathrm{s}$ between rest ($t = 0, 1, 2\,\mathrm{s}$) and the peak ($t = 0.5, 1.5\,\mathrm{s}$), which resembles the pulsatile flow of the heart beat.
+The pressure at both outlets is $p = 0$, a reference value, and the fluid is initially at rest.
+
+#### Domain
+
+The geometry is read from `aorta3d.stl`, given in millimetres and scaled by $0.001$, and spans $43.7 \times 160 \times 28.1\,\mathrm{mm}$ (@fig-aorta3d-geometry).
+The aorta runs downwards along the $-y$-direction from the inlet at $y = 250\,\mathrm{mm}$ to the bifurcation at about $y = 115\,\mathrm{mm}$, where it splits into the two iliac arteries, which end at $y = 90\,\mathrm{mm}$ with the radii $5.5\,\mathrm{mm}$ (`outflow0`) and $5.8\,\mathrm{mm}$ (`outflow1`).
+`Mesh::fromSTL()` builds the mesh around the STL surface from the parameters of @tbl-aorta3d-params.
+
+
+![Geometry of `aorta3d`, the surface of `aorta3d.stl` seen along the $z$-axis: the lower abdominal aorta and its bifurcation into the iliac arteries. The spheres mark the centres and the radii of the circles that `prepareGeometry()` uses to find the inlet (blue) and the two outlets (green).](/examples/turbulence/aorta3d/doc/fig/aorta3dGeometry.png){width="100%" #fig-aorta3d-geometry .lightbox}
+
+#### Discretization \& Descriptor
+In this example, the domain is discretized with a uniform grid with the lattice spacing $\Delta x = L / N$, where $N = 40$ cells resolve the inlet diameter $L$, which gives $\Delta x = 0.56\,\mathrm{mm}$ and $171\,000$ fluid cells.
+The mesh around the STL surface has $605\,000$ cells and is split into $3$ cuboids on a single process.
+The time step size is $2.81 \cdot 10^{-5}\,\mathrm{s}$.
+
+The LBM collision operator is the BGK operator with the Smagorinsky LES model, used as `SmagorinskyBGKdynamics` ([Collision Operators](/content/02_core.qmd#collision-operators)), together with the D3Q19 velocity set ([Lattice Structures](/content/01_introduction.qmd#sec-lattice-structures)).
+
+
+The wall (MN 2) and the inlet (MN 3) are treated with the Bouzidi boundary [@bouzidi:01], `setBouzidiBoundary()`, which takes the exact position of the STL surface between the lattice nodes into account ([Define Boundary Method](/content/06_initial_boundary.qmd#sec-defineBoundaryMethod)). At the inlet, `BouzidiVelocityPostProcessor` imposes the inflow profile, evaluated by `setBouzidiVelocity()` at the points where the lattice links cross the surface. `setBouzidiVelocity()` expects the velocity in lattice units, the other velocity setters, such as `momenta::setVelocity()`, in physical units.
+With `BOUZIDI_ENABLED` set to `false`, the wall is treated with `BounceBack` and the inlet with `InterpolatedVelocity` instead.
+The outlets (MN 4, MN 5) are treated with `InterpolatedPressure`.
+
+The corresponding lattice is defined inside the case definition in `aorta3d.cpp` as in @lst-aorta3d-case.
+
+::: {#lst-aorta3d-case}
+```{.cpp}
+using MyCase = Case<
+  NavierStokes, Lattice<double, D3Q19<>>
+>;
+```
+Case definition for the `aorta3d` example.
+:::
+
+`prepareLattice()` sets up the `UnitConverter` directly from the lattice spacing, the time step size and the physical parameters in @tbl-aorta3d-params.
+
+| Parameter | Symbol | Value | Description |
+|---|---|---|---|
+| `STL_PATH` | | `aorta3d.stl` | file with the surface of the vessels |
+| `STL_SCALING` | | $0.001$ | scaling of the STL coordinates from millimetres to metres |
+| `STL_RAY_MODE` | | `FastRayZ` | method of the inside test of the STL reader |
+| `DECOMPOSITION_STRATEGY` | | `volume` | strategy of the decomposition into cuboids |
+| `DECOMPOSITION_MULTIPLIER` | | $3$ | multiplier for the number of cuboids of the decomposition |
+| `RESOLUTION` | $N$ | $40$ | cells per inlet diameter $L$ |
+| `TIME_RESOLUTION` | $N_t$ | $20$ | sets the time step size $\Delta t = L / (N_t N)$ |
+| `PHYS_CHAR_LENGTH` | $L$ | $0.02246\,\mathrm{m}$ | inlet diameter |
+| `PHYS_CHAR_VELOCITY` | $U$ | $0.45\,\mathrm{m/s}$ | peak velocity of the inflow profile |
+| `PHYS_CHAR_VISCOSITY` | $\nu$ | $0.003 / 1055\,\mathrm{m^2/s}$ | kinematic viscosity of blood |
+| `PHYS_CHAR_DENSITY` | $\rho$ | $1055\,\mathrm{kg/m^3}$ | density of blood |
+| `PHYS_MAX_T` | $T$ | $2\,\mathrm{s}$ | simulated time, two periods of the inflow |
+| `BOUZIDI_ENABLED` | | `true` | Bouzidi boundary at the wall and the inlet, otherwise `BounceBack` and `InterpolatedVelocity` |
+| `PHYS_DELTA_X` | $\Delta x$ | $L / N$ | lattice spacing, derived from the resolution |
+
+: Parameters of `aorta3d`, as set in `main()`. {#tbl-aorta3d-params}
+
+#### Results
+
+On the STL surface, a `SuperVtuSurfaceWriter` writes the wall shear stress `interpolatedWss` to `tmp/vtkData/surface.pvd` ([Write Data on Surfaces](/content/07_input_output.qmd#sec-surfaceWriter)).
+At the same interval, it prints the lattice statistics and, on circles $2 \Delta x$ inside the inlet and the two outlets, the volumetric flow rate in ml/s with `SuperPlaneIntegralFluxVelocity3D` and the pressure force and the mean pressure in mmHg with `SuperPlaneIntegralFluxPressure3D`. With the Bouzidi boundary, it also prints the maximum of the dimensionless wall distance $y^+$ of the fluid cells next to the wall, computed by `SuperLatticeYplus3D`.
+If the maximum lattice velocity exceeds $0.3$, the simulation stops.
+
+@fig-aorta3d-flowrate shows the flow rates through the inlet and the two outlets.
+The inflow follows the prescribed pulsation and reaches $70.4\,\mathrm{ml/s}$ at the peaks, $2.5\,\%$ less than the flow rate $\pi R^2 U / 2 = 72.2\,\mathrm{ml/s}$ of the prescribed Poiseuille profile, which the discrete inlet represents only approximately.
+The second period repeats the first within $0.2\,\%$, so the flow is periodic after the first period.
+The flow divides almost evenly between the iliac arteries.
+The circles on which `getResults()` measures the outflow lie normal to the $y$-axis, whereas the iliac arteries leave the bifurcation obliquely, so the circles do not cover their whole cross sections, and the printed outflows add up to only $94\,\%$ of the inflow.
+Integrated over the whole cross sections of the iliac arteries just before the outlets in ParaView, the outflow at $t = 0.5\,\mathrm{s}$ is $35.0\,\mathrm{ml/s}$ through `outflow0` and $35.8\,\mathrm{ml/s}$ through `outflow1`, together $70.8\,\mathrm{ml/s}$, which agrees with the inflow within $0.6\,\%$. The flow rate is the same within this accuracy on every cross section along the aorta, so the mass is conserved.
+
+![Volumetric flow rates of `aorta3d` through the inlet and the two outlets over time, as printed by `getResults()`, compared with the flow rate of the prescribed inflow profile.](/examples/turbulence/aorta3d/doc/fig/flowrate/flowrate.svg){width="80%" #fig-aorta3d-flowrate .lightbox}
+
+@fig-aorta3d-pressure shows the mean pressure on the same circles, computed as the pressure force divided by the area. The mean pressure that `getResults()` prints is the absolute value of this quotient.
+The pressure at the inlet does not follow the flow rate, but leads it: it peaks at $3.8\,\mathrm{mmHg}$ at $t = 0.4\,\mathrm{s}$ while the flow still accelerates, drops to zero at $t = 0.7\,\mathrm{s}$ although $46\,\mathrm{ml/s}$ still flow, and becomes negative, down to $-1.2\,\mathrm{mmHg}$, while the flow decelerates.
+Most of the pressure difference between the inlet and the outlets accelerates and decelerates the blood, as is typical of pulsatile flows with a large Womersley number, here $\alpha = (L/2) \sqrt{2 \pi / (T_p \nu)} = 17$.
+The pressure is a relative pressure with respect to the outlets, where $p = 0$, not the physiological blood pressure.
+
+![Mean pressure of `aorta3d` on the circles at the inlet and the two outlets over time, the pressure force divided by the area as printed by `getResults()`, together with the flow rate through the inlet.](/examples/turbulence/aorta3d/doc/fig/flowrate/pressure.svg){width="80%" #fig-aorta3d-pressure .lightbox}
+
+@fig-aorta3d-streamlines shows streamlines from the inlet at the peak of the inflow and during its deceleration.
+At the peak, the flow passes the aorta in nearly straight streamlines and accelerates into the iliac arteries, whose cross sections together are only half of that of the aorta, to the maximum velocity of $0.99\,\mathrm{m/s}$, $2.2$ times the peak inflow velocity.
+During the deceleration, the slow fluid near the wall reverses its direction first, which shows as loops of the streamlines along the wall of the aorta and in the bifurcation, while the core of the flow still moves downwards.
+The maximum lattice velocity is $0.049$, well below the limit of $0.3$, and the maximum $y^+$ is $1.9$ at the peaks of the inflow, so the cells next to the wall lie in the viscous sublayer.
+
+::: {#fig-aorta3d-streamlines layout-ncol="1"}
+![$t = 0.5\,\mathrm{s}$, peak of the inflow](/examples/turbulence/aorta3d/doc/fig/velocity/streamlines_iT0017810.png){.lightbox}
+
+![$t = 0.8\,\mathrm{s}$, deceleration](/examples/turbulence/aorta3d/doc/fig/velocity/streamlines_iT0028496.png){.lightbox}
+
+Streamlines of `aorta3d` from $500$ points on a disc just inside the inlet, coloured by the velocity magnitude $|\vel|$, visualized in ParaView. The flow enters on the left; `outflow1` is the upper and `outflow0` the lower iliac artery.
+:::
+
+@fig-aorta3d-wss shows the magnitude of the wall shear stress on the STL surface, the output in `surface.pvd`.
+`PhysWallShearStressOnSurface3D` interpolates the non-equilibrium stress $\boldsymbol{\Pi}^{(1)}$ and the density half a lattice spacing into the fluid and returns the tangential part of the traction, as described for [[`laminar/aneurysm3d`](/examples/laminar/aneurysm3d/aneurysm3d.qmd)]{.content-visible when-format="html"}[`laminar/aneurysm3d` (@sec-example-laminar-aneurysm3d)]{.content-visible when-format="pdf"}. It converts $\boldsymbol{\Pi}^{(1)}$ with the molecular viscosity $\nu$, so the wall shear stress does not include the eddy viscosity of the Smagorinsky model.
+At the peak of the inflow, the median of the wall shear stress is $0.68\,\mathrm{Pa}$ in the aorta and $1.3\,\mathrm{Pa}$ in the iliac arteries, where the flow is faster and the vessels are narrower. The highest values, up to $3\,\mathrm{Pa}$ for $99\,\%$ of the surface, occur at the inner walls of the iliac arteries just behind the bifurcation, where the flow from the aorta impinges on the wall.
+When the inflow comes to rest at $t = 1\,\mathrm{s}$, the median drops to $0.09\,\mathrm{Pa}$.
+
+::: {.image-slider .image-slider-wide}
+::: {#fig-aorta3d-wss layout-ncol="2"}
+![$t = 0.2\,\mathrm{s}$, acceleration](/examples/turbulence/aorta3d/doc/fig/wss/wss_iT0007124.png)
+
+![$t = 0.5\,\mathrm{s}$, peak of the inflow](/examples/turbulence/aorta3d/doc/fig/wss/wss_iT0017810.png)
+
+![$t = 0.8\,\mathrm{s}$, deceleration](/examples/turbulence/aorta3d/doc/fig/wss/wss_iT0028496.png)
+
+![$t = 1.0\,\mathrm{s}$, inflow at rest](/examples/turbulence/aorta3d/doc/fig/wss/wss_iT0035620.png)
+
+Magnitude of the wall shear stress $|\boldsymbol{\tau}_w|$ in Pa on the surface of `aorta3d`, written by the `SuperVtuSurfaceWriter` and visualized in ParaView. The colour range is fixed to $[0, 3]\,\mathrm{Pa}$ for all time steps, so that they are comparable.
+:::
+:::
+
+#### Files
+
+```
+aorta3d/
+├── aorta3d.cpp   main(): parameters; mesh from the STL file, geometry, lattice, pulsatile inflow, time loop and output
+├── aorta3d.stl   surface of the aorta and the iliac arteries, in millimetres
+└── Makefile
+```

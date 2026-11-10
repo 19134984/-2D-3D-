@@ -1,0 +1,52 @@
+---
+features: [benchmark, primitives]
+---
+
+### gausspulse3d
+
+This example initializes a Gaussian pressure distribution, defined in `acousticPulse.h`, in a moving medium.
+The initialization reads
+
+$$
+\begin{aligned}
+	\rho(\mathbf{x}) & = \rho_0 + a \mathrm{e}^{-\alpha |\mathbf{x}-\mathbf{x}_0|} ,\\
+	\mathbf{u}_0 &= \left(M\!a/\sqrt{3},0,0\right)^{\mathrm{T}},
+\end{aligned}
+$$
+
+with $\rho_0=1$ being the background density, $a=10^{-3}$ the amplitude, $\mathbf{x}_0$ the domain center, and $\alpha=\log(2)/b^2$ the distribution parameter, where $b=1/20$.
+The domain has an extent of $1$ around $0$, i.e., $\mathbf{x} = (x,y,z)^{\mathrm{T}} \in [-0.5,0.5]^{3}$ and $\mathbf{x}_0=(0,0,0)$, and is resolved on $N=101$ grid points.
+The pulse expands at a constant pressure norm, defined in `l2norm3d.h` as
+
+$$
+L_p=\left(\frac{1}{N^3}\sum_{i,j,k}^{N^3}p'^2_{i,j,k}\right)^\frac{1}{2}.
+$$
+
+The benchmark is adapted from Bogey and Bailly [@bogeyThreedimensionalNonreflectiveBoundary2002].
+A selection of boundary conditions is available:
+
+1. `eternal`: To test the ideal case, with the pressure wave leaving the domain without interference, the domain is extended to $[-1.5,1.5]$, while calculating the pressure norm within $[-0.5,0.5]$.
+2. `periodic`: Periodic boundary conditions show the conservation of pressure fluctuation while the pressure wave expands and re-enters the domain.
+3. `local`: The `LocalVelocity` boundary condition is prescribed on all sides except $x_\mathrm{max}$, where the `LocalPressure` boundary condition is prescribed. This boundary condition still reflects around 10% of the pressure fluctuation, see @fig-gausspulseL2.
+4. `damping`: The `SpongeLayerDynamics`, defined in `spongeLayerDynamics.h`, are applied. *Note: the terms 'sponge layer', 'damping layer' and 'absorbing layer' are often used interchangeably.* The term described as the most efficient absorbing layer type by Xu and Sagaut [@xuAnalysisAbsorbingLayers2013, Sec. 2.2.2] is implemented. Here, in addition to the BGK collision, populations are relaxed towards the equilibrium described by the background observables, i.e.
+$$
+f_i = f_i + \omega(f_i^\mathrm{eq}-f_i) + \sigma(f_i^{\mathrm{eq}*}-f_i^\mathrm{eq}),
+$$
+where $f_i$ are the post-streaming populations, $f_i^\mathrm{eq}$ are the equilibria calculated from the first two momenta ($\rho$, $\rho\mathbf{u}$), and $f_i^{\mathrm{eq}*}$ are the equilibria calculated from the prescribed values, in this case the background density $\rho_0$ and velocity $\mathbf{u}_0$. The parameter $\sigma$ significantly influences the behaviour of the absorbing layer. Israeli and Orszag [@israeliApproximationRadiationBoundary1981] suggest a fifth-order polynomial along the damping depth $x\in[x_{\mathrm{f}},L]$, starting and ending at $\sigma(x_{\mathrm{f}})=\sigma(L)=0$ and reaching a maximum of $\sigma=A$. The parameter is stored in the field `descriptors::DAMPING` and defined in `dampingTerm.h` as
+$$
+\sigma(x) = 30A \frac{(x-x_{\mathrm{f}})^4(L-x)}{L^6},
+$$
+see [@xuAnalysisAbsorbingLayers2013, Sec. 2.3]. In this case $A=1$. This boundary condition reduces reflections to around 2--5%.
+
+![Comparison of the pressure norm $L_p$ for the different boundary conditions applied to the moving Gaussian pulse benchmark.](/examples/noise/gausspulse3d/doc/fig/l2ComparisonPlot.png){#fig-gausspulseL2 width="80%"}
+
+To apply the benchmark and compare the results, the following bash commands should be executed:
+
+```{.bash}
+make
+for boundaryCondition in 0 1 2 3
+do
+./gausspulse3d --boundaryCondition $boundaryCondition
+done
+python ./l2plot.py
+```

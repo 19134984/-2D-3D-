@@ -1,0 +1,19 @@
+---
+features: [multiComponent, benchmark, primitives]
+---
+
+### youngLaplace2d
+
+In this example, the two-component free energy model is used in its simplest configuration to perform a Young--Laplace pressure test.
+A circular or spherical domain of a fluid with radius $R$ is immersed in another fluid.
+A diffusive interface forms, and the pressure difference across the interface, $\Delta p$, is calculated and compared to that given by the Young--Laplace equation,
+
+$$
+\begin{aligned}
+\Delta p = \frac{\gamma}{R} &= \frac{\alpha}{6R} (\kappa_1 + \kappa_2) \qquad \text{for 2D}, \\
+\Delta p = \frac{2\gamma}{R} &= \frac{\alpha}{3R} (\kappa_1 + \kappa_2) \qquad \text{for 3D}.
+\end{aligned}
+$$
+
+The parameters $\alpha$ and $\kappa_i$ are input parameters to the simulation that define the interfacial width and surface tension, $\gamma$, respectively.
+The pressure difference is calculated between a point in the middle of the circular domain and a point furthest away from it in the computational domain.

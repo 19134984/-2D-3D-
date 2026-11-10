@@ -1,0 +1,57 @@
+---
+features: [particles, transient, benchmark, showcase, primitives]
+---
+
+### dkt2d
+
+$\OpenLB$ provides an alternative approach to conventional resolved particle simulation methods, referred to as the homogenised lattice Boltzmann method (HLBM).
+It was introduced in "Particle flow simulations with homogenised lattice Boltzmann methods" by Krause *et al.* [@krause:17] and extended for the simulation of 3D particles in Trunk *et al.* [@trunk:16].
+It was eventually revisited in [@trunk:21].
+In this approach, the porous media model, introduced into LBM by Spaid and Phelan [@spaid:97], is extended by enabling the simulation of moving porous media.
+In order to avoid pressure fluctuations, the local porosity coefficient is used as a smoothing parameter.
+For solid-solid interactions, a discrete contact model is used [@marquardt:23].
+
+The example `dkt2d` employs said approach for the sedimentation of two particles under gravity in a water-like fluid in 2D.
+The rectangular domain is limited by no-slip boundary conditions.
+This setup is usually referred to as a drafting--kissing--tumbling (DKT) phenomenon and is widely used as a reference setup for the simulation of particle dynamics submerged in a fluid.
+The benchmark case is described e.g. in [@wang2014drafting; @feng2004immersed].
+For the calculation of forces, a DNS approach is chosen, which also leads to a back-coupling of the particle on the fluid, inducing a flow.
+The example demonstrates the usage of HLBM in the $\OpenLB$ framework as well as the utilization of the `gnuplot`-writer to print simulation results.
+
+The `dkt2d` example uses the same subfunctions as other examples to define the geometry, lattice, and boundary conditions.
+However, for the simulation of resolved particles, the desired dynamics model and models for contact between particles and walls and particles between each other have to be set.
+These are defined at the very top.
+
+```{.cpp}
+//Define lattice type
+typedef PorousParticleWithContactD2Q9Descriptor DESCRIPTOR;
+//Define particle type
+typedef ResolvedCircleWithContact2D PARTICLETYPE;
+// Define particle-particle contact type
+typedef ParticleContactArbitraryFromOverlapVolume<T, DESCRIPTOR::d, true>
+PARTICLECONTACTTYPE;
+// Define particle-wall contact type
+typedef WallContactArbitraryFromOverlapVolume<T, DESCRIPTOR::d, true>
+WALLCONTACTTYPE;
+```
+
+After that, particle-specific code is only used in the `main` and `getResults` functions.
+In the main function, the particle system and particle manager are defined.
+Due to the limited number of particles, this example only uses a single `ParticleSystem`, which removes the need for communication between cores.
+
+After that, the movement model for particles is created and assigned with
+
+```{.cpp}
+particleSystem.defineDynamics<
+VerletParticleDynamics<T,PARTICLETYPE>>();
+```
+
+To catch the contacts between particles and the walls, a contact container is created and the properties for contacts between particles and walls or each other are set.
+Then the two circles are inserted by calling their creator functions.
+
+In the time loop, the particle positions have to be updated in every time step, and their contacts have to be detected and processed.
+
+After that, results are written, and the fluid lattice is processed by calling `collideAndStream`.
+
+To get data for writing particle results, it is sufficient to call the `particleSystem.get()` function with the `iD` of the required particle and then extract data from the particle element.
+Note this is not possible when using a `SuperParticleSystem`.

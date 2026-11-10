@@ -1,0 +1,613 @@
+---
+title: Core Concepts
+number-sections: true
+toc: true
+---
+
+The basic data structure of any *Lattice Boltzmann* code is the eponymous *Lattice* or grid.
+For the most widely accepted formulations, such a grid is a regular, homogeneous lattice $\Omega_h$ with equal spacing $h\in\mathbb{R}_{>0}$ in all directions.
+Each spatial location on this lattice can be referred to as a *Cell* which is the core unit of the LB algorithm.
+
+One of the main aspects motivating the use of LBM is its unique suitability for massive parallel processing.
+This parallelization aspect naturally leads to the need for further spatial decomposition of the lattice data structure in order to be able to distribute the processing to multiple independent processing units.
+In $\OpenLB$, this spatial decomposition into so called *Blocks* motivates the core naming convention of distinguishing between *Super*- and *Block*-level structures.
+
+This approach respects the spirit of LBM well and leads to elegant and efficient implementations.
+For complex geometries, a multi-block approach provides another advantage:
+A given domain can be represented by a certain number of regular blocks, which delivers a good compromise between highly efficient block-local processing and sparse memory consumption.
+
+For most practical applications, the lattice data structure not only manages the population values assigned to the individual cells and declared by the descriptor (cf.\ Section [Descriptor](#sec-Descriptor)), but also associated per-cell data such as force fields or reaction coefficients.
+
+::: callout-note
+In terms of optimization the cells hold
+$Cell[iPop] = f_{iPop} -t_{iPop},$
+where $t_{iPop}$ corresponds to the lattice weights.
+:::
+
+## Descriptor {#sec-Descriptor}
+
+Descriptors are the structure that is used to define and access LB model specific information such as the number of dimensions and discrete velocities as well as weights and declarations of additional fields.
+As such, a descriptor is a central choice in any $\OpenLB$ application and passed as a template argument throughout the code base.
+
+::: {#lst-descriptors lst-pos="H"}
+```{.cpp}
+
+using T = FLOATING_POINT_TYPE;
+using DESCRIPTOR = descriptors::D2Q9<>;
+
+// number of spatial dimensions
+const int d = descriptors::d<DESCRIPTOR>(); // == 2
+// number of discrete velocities
+const int q = descriptors::q<DESCRIPTOR>(); // == 9
+
+// second discrete velocity vector
+const Vector<int,2> c1 = descriptors::c<DESCRIPTOR>(1); // == {-1,1}
+
+// weight of the first discrete velocity
+const T w = descriptors::t<T,DESCRIPTOR>(0); // == 4./9.
+```
+Accessing Lattice Boltzmann descriptors for a D2Q9 lattice in OpenLB.
+:::
+
+$\OpenLB$ provides a rich set of such descriptors, most of which are defined in `src/dynamics/latticeDescriptors.h`. 
+Despite the central role of this concept, the concrete definitions of, for example, the `D2Q9` descriptor are quite compact. 
+To illustrate this point, @lst-D2Q9 provides the full definition of this descriptor, including all of its data.
+
+::: {#lst-D2Q9 lst-pos="H"}
+```{.cpp filename="src/descriptor/definition/common.h"}
+template <typename... FIELDS>
+struct D2Q9 : public LATTICE_DESCRIPTOR<2,9,POPULATION,FIELDS...> {
+  D2Q9() = delete;
+};
+
+namespace data {
+
+template <>
+constexpr int vicinity<2,9> = 1;
+
+template <>
+constexpr int c<2,9>[9][2] = {
+  { 0, 0},
+  {-1, 1}, {-1, 0}, {-1,-1}, { 0,-1},
+  { 1,-1}, { 1, 0}, { 1, 1}, { 0, 1}
+};
+
+template <>
+constexpr int opposite<2,9>[9] = {
+  0, 5, 6, 7, 8, 1, 2, 3, 4
+};
+
+template <>
+constexpr Fraction t<2,9>[9] = {
+  {4, 9}, {1, 36}, {1, 9}, {1, 36}, {1, 9},
+  {1, 36}, {1, 9}, {1, 36}, {1, 9}
+};
+
+template <>
+constexpr Fraction cs2<2,9> = {1, 3};
+
+}
+```
+Definition of the `D2Q9` descriptor
+:::
+
+Many LBM based solutions to practical problems require the ability to store not just the populations of each cell but also additional data such as an external force (see e.g. [External Forces](11_step_by_step.qmd#sec-externalForces)). For this reason, every descriptor may explicitly declare such fields. 
+
+::: {#lst-force lst-pos="H"}
+```{.cpp}
+using DESCRIPTOR = descriptors::D2Q9<descriptors::FORCE>;
+
+// Check whether DESCRIPTOR contains the field FORCE
+DESCRIPTOR::provides<descriptors::FORCE>(); // == true
+// Get cell-local memory location of the FORCE field
+const int offset = DESCRIPTOR::index<descriptors::FORCE>(); // == 9
+// Get size of the descriptor's FORCE field
+const int size = DESCRIPTOR::size<descriptors::FORCE>(); // == 2
+```
+:::
+
+A list of various predefined fields can be found in the `src/dynamics/descriptorField.h` header.
+Note that one may add an arbitrary list of such fields to a given descriptor.
+Even more so it is fully supported to add fields on a per-app basis.
+One only needs to make sure that the type is defined prior to any custom descriptor that depends on it, i.e. a user could write inside of a case.
+
+::: {#lst-custom-field}
+```{.cpp}
+struct MY_CUSTOM_FIELD: public FIELD_BASE<42,0,0> { };
+using DESCRIPTOR = D2Q9<FORCE,MY_CUSTOM_FIELD>;
+```
+:::
+
+This custom descriptor can then be used in the same way as any other descriptor.
+This might even be preferable for very specific fields that are only used by a small number of apps or specific user-provided features.
+
+## (Super,Block)Lattice {#sec-superblocklattice}
+
+The `SuperLattice` is $\OpenLB$'s main class for representing and maintaining a concrete lattice with all associated data, cell local models and non-local operators.
+It is constructed from a load balanced geometry, i.e. given a `SuperGeometry` instance which is in turn obtained from a `CuboidDecomposition` and its associated `LoadBalancer`.
+
+### Context
+
+The `CuboidDecomposition` decomposes a given indicator geometry into individual cuboids.
+By design, there is a bijection between the set of cuboids and the set of block lattices resp.\ block geometries.
+Given a cuboid geometry, the `LoadBalancer` assigns the contained cuboids to the available number of MPI processes.
+Based on this structure, each spatial cell location of each lattice location encompassed by the cuboid geometry is assigned a so-called *material number* managed by the `SuperGeometry` (cf.\ the [Geometry](03_geometry.qmd) chapter on meshing).
+Finally, a concrete `BlockLattice` is instantiated by the `SuperLattice` instance of the responsible `LoadBalancer`-assigned MPI process.
+This class maintains the actual data associated with all its lattice cells.
+As such, each process only has access to the data of *its own* blocks, extended by a small overlap for inter-block communication.
+This communication (i.e. synchronization and overlap data) is performed by `SuperCommunicator` instances maintained in *stages* of the `SuperLattice`.
+
+### BlockLattice
+
+The `BlockLattice` class is the high-level interface abstracting the platform-specific implementation details of the actual core structures managed by `ConcreteBlockLattice` class template specializations.
+
+Specifically, there are specializations for each supported platform: `CPU_SISD`, `CPU_SIMD`, and `GPU_CUDA`. At its core, adding support for a new platform consists of specializing all platform-templated classes.
+
+#### Core Data {#sec-coredata}
+
+The very core data structure of $\OpenLB$ is the per-field (cf. @sec-Descriptor) column or *Structure-of-Arrays* (SoA) storage `FieldArrayD`.
+This `FieldArrayD` maintains `(Cyclic)Column` instances for each component of its `FIELD` template argument in a fashion specific to the concrete platform.
+In other words, the same `FIELD` is stored differently for each block / platform, while sharing the same interface of column-wise access.
+This fundamental structure allows for exchanging the entire core data structure implementation without touching the higher level interfaces against which, for example, cell specific models are implemented (cf. @sec-dynamics).
+
+On the next level, all `FieldArrayD` instances of a block are maintained within the `Data` class.
+This class provides an on-demand allocating `getFieldArray` method for access to the field array specific to a given `FIELD`.
+
+The details of rendering this most performance-critical structure efficiently across all platforms exceed the scope of this guide, but you can be assured that the developer team invests lots of effort in preserving and increasing $\OpenLB$'s performance.
+
+### Communication
+
+While the cuboid decomposition maintained by the `CuboidDecomposition` is disjoint, block geometries and lattices overlap by a configurable overlap layer.
+Synchronizing this overlap layer, that is, communicating the data owned by a given block to its neighbor's overlap layer, is how any inter-block communication is handled in $\OpenLB$.
+
+The most frequent type of overlap communication is the synchronization of a single layer of populations during the *PostCollide* stage of the core *collideAndStream* iteration.
+
+Communication of given stages can be manually triggered using the following.
+
+::: {#lst-communication1}
+```{.cpp}
+sLattice.getCommunicator(PostCollide{}).execute();
+```
+:::
+
+Similarly, communication stages may be configured w.r.t. their extent and included fields.
+For example, we can consider the setup of the default *PostCollide* stage.
+
+::: {#lst-communication2}
+```{.cpp}
+auto& communicator = sLattice.getCommunicator(PostCollide{});
+communicator.template requestField<descriptors::POPULATION>();
+communicator.requestOverlap(1);
+communicator.exchangeRequests();
+```
+:::
+
+### Cell
+
+Users familiar with previous versions of $\OpenLB$ may remember the original hierarchy of the `SuperLattice` containing `BlockLattice` instances containing a D-dimensional array of `Cell` instances containing a Q-dimensional array of population values.
+
+This data-holding `Cell` was refactored by $\OpenLB$ 1.4 [@olb14] to only provide a view of the data maintained in field arrays (cf. @sec-coredata).
+This provided an essential ingredient for the implementation of both SIMD and GPU support in $\OpenLB$ 1.5 [@olb15] (cf. the talk [@kummerlaender:deRSE:23] for a summary of the refactoring journey).
+
+Today, there are multiple per-platform and use case versions of the cell interface.
+Core structures such as Dynamics and non-local operators are templated against the *concept of a cell* instead of a specific implementation thereof. This is essential for being able to instantiate the same abstract model implementations on diverse hardware, e.g. both in vectorized CPU collision loops and CUDA GPU kernel functions.
+
+## Dynamics {#sec-dynamics}
+
+In the context of $\OpenLB$, the term *Dynamics* refers to the implementation of cell-local LB models. i.e. equilibrium distribution, collision step, and momenta computation.
+Each *cell* of a lattice is assigned a *dynamics* describing its local behavior.
+This way, it is easy to implement inhomogeneous fluids that use a different type of physics from one cell to another.
+
+The non-local streaming step between cells is modeled independently of the choice of cell-local models and remains invariant.
+$\OpenLB$'s block-local propagation is implemented using the *Periodic Shift* pattern [@kummerlaender:23] on all platforms.
+
+This concept of per-cell dynamics is tied together in the `Dynamics` interface.
+Every dynamics implementation describes the various components required to model the local behavior of the assigned cell locations.
+Specifically, this includes the set of momenta, the equilibrium distribution as well as the actual collision operator.
+Fittingly, most dynamics are declared as a tuple of those three components.
+
+::: {#lst-TRT}
+```{.cpp}
+template <typename T, typename DESCRIPTOR>
+using TRTdynamics = dynamics::Tuple<
+  T, DESCRIPTOR,
+  momenta::BulkTuple,
+  equilibria::SecondOrder,
+  collision::TRT
+>;
+```
+:::
+
+In this example declaration of the `TRTdynamics`, we can tell at a glance that its assigned cells will expose bulk momenta reconstructed directly from the population values and relax towards the second order equilibrium using the TRT (*two-relaxation-time*) collision operator.
+The dynamics tuple concept is quite powerful, e.g. we may apply a forcing scheme by adding a single line.
+
+::: {#lst-Force}
+```{.cpp}
+template <typename T, typename DESCRIPTOR>
+using ForcedTRTdynamics = dynamics::Tuple<
+  T, DESCRIPTOR,
+  momenta::BulkTuple,
+  equilibria::SecondOrder,
+  collision::TRT,
+  forcing::Guo
+>;
+```
+:::
+
+This `forcing::Guo` *combination rule* is the fourth and optional component of the dynamics tuple.
+Combination rules may arbitrarily manipulate the previous momenta, equilibrium, and collision components.
+In the case of Guo, forcing this means that the momenta argument is shifted via `momenta::Forced` and the TRT collision operator is wrapped to force the post-collision populations according to the Guo scheme.
+
+$\OpenLB$ offers a comprehensive library of momenta, equilibria, collision operators and combination rules that can be easily combined into many different dynamics tuples. See 
+
+  - `src/dynamics/momenta/aliases.h`
+  - `src/dynamics/equilibrium.h`
+  - `src/dynamics/collision.h`
+  - `src/dynamics/forcing.h`
+
+for some examples.
+
+While this framework covers most collision steps, a fallback option is provided via `dynamics::CustomCollision`.
+This class enables the combination of momenta with arbitrary collision and equilibrium implementations.
+One example for this are the `CombinedRLBdynamics` that are used as the foundation for various boundary conditions.
+
+The full definition of the interface is available in `src/dynamics/interface.h`.
+Note that due to recent large refactoring to support execution on GPUs and SIMD CPUs, `Dynamics` currently contains
+various legacy methods that will be deprecated in future releases. New dynamics implementations should be formulated either as a `dynamics::Tuple` or `dynamics::CustomCollision` template.
+
+### Collision Operators
+
+A partial summary of the currently supported collision operators can be found in the recent publication on $\OpenLB$ [@krause:21].
+Furthermore, five commonly used collision schemes are compared in [@haussmann:19a] for a typical 3D benchmark case of homogeneous isotropic turbulence.
+For derivations, analysis and theoretical comparisons, the interested reader is referred to [@kruger2017lattice].
+
+#### Implementation in Dynamics
+
+As was touched upon in @sec-dynamics, local collision operators are expressed as `Dynamics` in the context of $\OpenLB$. Specifically, the common dynamics tuple concept expresses collision operators as reusable elements alongside equilibria and momenta.
+
+::: {#lst-BGK}
+```{.cpp}
+struct BGK {
+  using parameters = typename meta::list<descriptors::OMEGA>;
+
+  static std::string getName() {
+    return "BGK";
+  }
+
+  template <typename DESCRIPTOR, typename MOMENTA, typename EQUILIBRIUM>
+  struct type {
+    using EquilibriumF = typename EQUILIBRIUM::template type<DESCRIPTOR,MOMENTA>;
+
+    template <typename CELL, typename PARAMETERS, typename V=typename CELL::value_t>
+    CellStatistic<V> apply(CELL& cell, PARAMETERS& parameters) any_platform {
+      V fEq[DESCRIPTOR::q] { };
+      const auto statistic = EquilibriumF().compute(cell, parameters, fEq);
+      const V omega = parameters.template get<descriptors::OMEGA>();
+      for (int iPop=0; iPop < DESCRIPTOR::q; ++iPop) {
+        cell[iPop] *= V{1} - omega;
+        cell[iPop] += omega * fEq[iPop];
+      }
+      return statistic;
+    };
+  };
+};
+```
+:::
+
+This is the complete listing of the well-known BGK collision operator that is used by many different dynamics. Each collision operator consists of three elements: A `parameters` type list of fields that is used to parameterize the collision, a `getName` method that is used to generate human-readable names for dynamics tuples, and a nested `type` template that contains the actual `apply` method specific to each operator.
+
+The nested `type` template is used to enable composition into dynamics tuples and will be automatically instantiated for the required descriptor, momenta, and equilibrium types. Additionally, this is used as a place for injecting partial specialization which enables usage of auto-generated CSE-optimized kernels. CSE (*common subexpression elimination*) therefore allows the transformation of the composable `Dynamics`-toolbox into efficient code.
+
+As is the case for all other elements, the `apply` template method follows a fixed signature for all collision operators. Each call is provided an instance of some platform-specific implementation of the cell concept alongside a parameters structure containing all requested values. Using these two inputs, the method can perform the local collision and return the computed density and velocity magnitudes for usage in lattice statistics.
+This pattern is repeated at various places in the library. Examples of other instances are equilibria and momenta elements as well as post processors. Any implementations of this style are usable on any of $\OpenLB$'s target platforms (currently, this means the scalar and vectorized CPU code as well as GPU support). They are also amenable to automatic code generation.
+
+For an introduction on how to write your own dynamics, see the [FAQ on writing dynamics](Q_and_A.qmd#sec-faq-dynamics).
+
+## Non-local Operators or *Post Processors* {#sec-postprocessor}
+
+While the basic concept of dynamics assigned to cells in a block lattice is conceptually close to the theory of LBM, it is not sufficiently general to address all possible requirements arising in complex applications.
+As a case in point, some boundary conditions are non-local and need to access neighboring nodes. 
+Their execution is taken care of by a *post processing* step, which instead of traversing the entire lattice a second time, applies to selected cell locations only.
+
+While collision steps are easily parallelized due to their local nature, this doesn't hold once neighborhood access is required.
+For this reason, two adjacent concepts are used to group post processors. Each post processor is assigned to a *stage* and a *priority* within this stage.
+For example, both `OuterVelocityCornerProcessor3D` and `OuterVelocityEdgeProcessor3D` are processed in the `PostStream` stage, but the former is executed after the latter to avoid access conflicts.
+In turn, post processors within the same stage and priority may be executed in parallel depending on the execution platform.
+Note that both the number of priorities and stages may be freely customized -- e.g. the free surface code introduces a number of additional stages to interleave post processing and custom communications steps.
+
+Each (non-local) operator consists of scope and priority declarations in addition to an `apply` template method.
+For the aforementioned `OuterVelocityCornerProcessor3D` this is declared as follows (see 	`src/boundary/boundaryPostProcessors3D.hh` for the full implementation).
+
+::: {#lst-BoundaryPostProcessor}
+```{.cpp}
+template<typename T, typename DESCRIPTOR,
+         int xNormal, int yNormal, int zNormal>
+struct OuterVelocityCornerProcessor3D {
+  static constexpr OperatorScope scope = OperatorScope::PerCell;
+
+  int getPriority() const {
+    return 1;
+  }
+
+  template <typename CELL>
+  void apply(CELL& cell) any_platform {
+    // [...] implementation
+  }
+};
+```
+:::
+
+Here, the `OperatorScope::PerCell` declares that the apply function will be provided a cell implementation with neighborhood access for each assigned location. Other scopes such as `OperatorScope::PerBlock` (used for example for statistics computation) enable different access patterns.
+In any case, the assigned cell locations are maintained by $\OpenLB$'s post processor framework.
+For example
+
+::: {#lst-AddPostProcessor}
+```{.cpp}
+sLattice.addPostProcessor<PostStream>(indicator, meta::id<SomePerCellPostProcessor>{});
+```
+:::
+
+schedules a post processor for application to all indicated cells during the `PostStream` stage.
+
+For an introduction on how to write your own post processors, see the [FAQ on writing post processors](Q_and_A.qmd#sec-faq-postprocessor).
+
+Note that this section describes the new post processor concept adopted by $\OpenLB$ 1.5 [@olb15].
+Some existing *legacy* post processors still use a different paradigm.
+Specifically, they are derived from `PostProcessor(2,3)D` and override virtual methods such as 
+`void PostProcessor(2,3)D::process(BlockLattice<T,DESCRIPTOR>&)`.
+All remaining legacy post processors will be ported to the new approach in time.
+For CPU targets, legacy post processors can be used without restrictions, but they are not supported on the GPU platform.
+
+## Parallelization {#sec-mpi-intro}
+
+As CFD applications tend to require a large amount of computational resources, it is essential to have the flexibility to transparently switch to a parallel platform in order to efficiently utilize said resources.
+This section concentrates on parallelism on distributed memory machines using MPI, as distributed memory is the most common model on large-scale, parallel machines.
+All example cases in the $\OpenLB$ distribution can be compiled with MPI and executed in parallel.
+Data which is spatially distributed, such as lattice fields, is handled through a data-parallel paradigm.
+The data space is partitioned into smaller regions that are distributed over the nodes of a parallel machine.
+In the following, these types of structures are referred to as data-parallel structures.
+Other data types that require a small amount of storage space are duplicated on every node. These are referred to as duplicated data.
+All native C++ data types are automatically duplicated by virtue of the Single-Program-Multiple-Data model of MPI.
+These types should be used to handle scalar values, such as the parameters of the simulation, or integral values over the solution (e.g. the average energy).
+
+For output on the console, it is recommended to use `OstreamManager` since it transparently manages output in case of parallel execution (cf. [Console Output](07_input_output.qmd#sec-consoleOutput)).
+
+### Platform-transparency of Models
+
+All model details such as functions to perform a certain collision step or a certain non-local boundary condition should be implemented in a platform-transparent fashion.
+Such functions commonly look similar to
+
+::: {#lst-Compute}
+```{.cpp}
+template <typename CELL>
+auto compute(CELL& cell) any_platform {
+  return cell.computeRho();
+}
+```
+:::
+
+i.e. they accept the *concept of a Cell* by templatization (to be explicitly declared once OpenLB is switched to C++20) and are declared as `any_platform`.
+
+This `any_platform` *keyword* is not standard C++ but a macro that is replaced by nothing for CPU targets and by the CUDA-specific non-standard declarators `__device__ __host__` for CUDA GPU targets.
+That is, `any_platform` is an OpenLB-specific macro to hide the platform-specific and non-standard-compliant ways that different frameworks use to declare functions as device-executable. 
+
+The main restriction is the `__device__` declaration - unfortunately the specifics of what is supported in device code are not easily summarized and change between CUDA versions.
+For an incomplete overview of what works without issues:
+
+- Basic C++ constructs including loops and branches
+- Basic arithmetic
+- `olb::Vector` operations
+- Most mathematical `olb::util::*` functions (full coverage is work in progress)
+- Access to cell, parameter methods such as `CELL::(get,set)Field`
+
+One big restriction is that the entire C++ standard library is not guaranteed to work but may work in part *accidentally*. Common containers of the standard library such as `std::vector` and container algorithms (`std::find` and friends) don't work.
+In any case, dynamic memory allocation should be avoided.
+
+A starting place for reading NVIDIA's documentation on device code restrictions is <https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#c-language-support>.
+
+### Supported Platforms
+
+$\OpenLB$ models heterogeneous parallelization using its predominant block decomposition architecture. Each individual block of a super lattice is assigned one of currently three possible target platforms: `Platform::CPU_SISD`, `Platform::CPU_SIMD` or `Platform::GPU_CUDA`.
+The availability of each platform is controlled by adding its name to the `PLATFORMS` variable in the `config.mk` build configuration.
+Note that further system-specific changes to the compiler settings are almost certainly required for `CPU_SIMD` and `GPU_CUDA`.
+See the `config/` folder for some examples.
+
+Note that `CPU_SISD` must always be enabled as some host-side data structures rely on this platform.
+In the absence of heterogeneous load balancing, the *most efficient* enabled platform is used by default for all blocks. Specifically, `CPU_SIMD` if only the two CPU platforms are enabled or `GPU_CUDA` (even if `CPU_SIMD` is also enabled at the same time).
+
+#### SIMD
+
+Modern CPUs offer vector instructions with a width of up to 512 bytes in the case of AVX-512. This means that 8 respectively 16 individual scalar values can be processed in a single instruction. In some situations, this can significantly speed up the bulk collision step, which is why $\OpenLB$ supports this option for processing its `Dynamics`.
+This option is at its most powerful when combined with the `HYBRID` parallelization mode s.t. OpenMP is used to further parallelize the vectorized collision on each shared memory node. However, setting up the hybrid mode correctly on an HPC system is non-trivial, which is why we suggest sticking to the MPI-only mode for users inexperienced in working with HPC systems.
+
+Once enabled in the build configuration, vectorization is applied to the dominant collision of each block lattice transparently without requiring any additional code changes.
+
+#### GPU
+
+General purpose graphics processing units (GPGPUs) are an ideal platform for many LBM-based simulations due to their high memory bandwidth and high degree of parallelization. $\OpenLB$ currently supports transparent usage of Nvidia GPUs via CUDA for almost all dynamics and a core set of boundary post processors and coupling operators.
+Similarly to both other available platforms, enabling GPU support requires only adding `GPU_CUDA` to the `PLATFORMS` variable in `config.mk` and some system-specific updates to the compiler settings. MPI parallelization is fully supported for GPU blocks, enabling simulations on multi-GPU clusters.
+
+Note that the resolution commonly needs to be increased significantly compared to the CPU-accommodating default values in order to take full advantage of GPU acceleration.
+Especially on desktop-grade GPUs, changing the fundamental floating-point type `T` to `float` is advisable.
+Also see the [Building and Running](10_building_and_running.qmd) chapter for guidance on how to install, compile, and run GPU-aware $\OpenLB$ cases.
+
+## Functors {#sec-functors}
+In general, a *functor* is a class that behaves like a function.
+Objects of a functor class perform computations by overloading the `operator()` in a standardized fashion, allowing for arithmetic combination.
+One big advantage of functors over functions is that they allow the creation of a hierarchy and bundle ''classes of functions''.
+
+### Basic Functor Types
+The functor concept is a user-friendly and efficient technique to process lattice data and extract relevant data for post-processing.
+In the meantime, $\OpenLB$ deploys the functors also for the geometry, which is a very intuitive and powerful choice.
+
+Basically, functors are applications that operate either on the lattice $\mathbb{N}^3$ or more generally on $\mathbb{R}^3$.
+The values of such a functor may be three-dimensional, as for example for the velocity, where the mapping is defined as
+$$
+\texttt{Functor}: \Omega \to \mathbb{R}^d, \quad \text{for } d \in\mathbb{N} ~.
+$$
+The nomenclature is based on the dimension of the domain.
+Let's say the functor acts on a $3d$ (super) lattice, then the functor is called `SuperLatticeF3D`.
+If the functor value is density, then this functor is called `SuperLatticeDensity3D`.
+
+#### GenericF
+The GenericF functor stands at the top of the hierarchy and is a virtual base class that provides interfaces.
+Template parameter `S` defines the input data type and template parameter `T`, the output.
+The essential interface is the unwritten (pure virtual function) `operator()`.
+Commonly, this $()$-operator is used as an evaluation of a certain functor, e.g. pressure at position $\mathbf{x}$.
+
+#### AnalyticalF
+This is a subclass of `GenericF`, for functions that live in SI-units, e.g. for setting velocities in $m/s$.
+Parts of this class are, for example, constant, linear, interpolation, and random functors, which can be evaluated by the $()$-operator.
+There is an AnalyticalCalc class, which inherits from `AnalyticalF` and establishes arithmetic operations $(+,-,\cdot,/)$ between every type of 
+$$
+\texttt{AnalyticalF3D}: \mathbb{R}^3 \to \mathbb{R}^d, \quad d\in\mathbb{N} ~.
+$$
+
+#### IndicatorF
+This is another subclass of `GenericF` that returns a vector with elements \(0\) or \(1\), i.e.
+$$
+\texttt{IndicatorF3D}: \mathbb{R}^3 \to \{0,1\} ~.
+$$
+These are used to construct geometries, e.g. `IndicatorSphere3D` creates a sphere using an origin and radius.
+Evaluation returns \(1\), if the vector is inside the sphere and \(0\) otherwise.
+In analogy to the `AnalyticalF`, there are arithmetic operations as well, but with a slightly different definition.
+The returned object of an addition is the union, multiplication returns the intersection, and subtraction represents the relative complement.
+
+
+#### SmoothIndicatorF
+Smooth indicators define a *small* epsilon region around the object such that it has a smooth transition from $0$ to $1$. 
+In general, the mapping is defined as 
+$$
+\texttt{SmoothIndicatorF3D}: \mathbb{R}^3 \to [0,1] ~.
+$$
+
+#### SuperLatticeF
+These functors are defined on the lattice via 
+$$
+\texttt{SuperLatticeF3D}: \mathbb{N}^3 \to \mathbb{R}^d, \quad d\in\mathbb{N} ~,
+$$
+and commonly represent the raw simulation data, e.g. macroscopic moments such as pressure and velocity.
+SuperLattice functors are part of the parallelism layer, and they delegate the calculations to the corresponding BlockLattice functors. 
+
+#### InterpolationF 
+Interpolation functors establish conversion between the analytical and lattice functors.
+They are very important in setting analytical boundary conditions, by evaluating the given analytical function on the lattice points.
+The reverse direction - from lattice to analytical functors - is where this functor receives its name, as the conversion is achieved by interpolation between the lattice points.
+
+### Functor Arithmetic
+
+Functor arithmetic expressions are based on functor instances wrapped in `std::shared_ptr<F>` smart pointers.
+This layer is necessary to enable automatic memory management for trees of interdependent functors.
+
+::: {#lst-FunctorArithmetic}
+```{.cpp}
+std::shared_ptr<SuperF3D<T>> aF(
+  new SuperConst3D<T>(superStructure, {1.0, 2.0}));
+std::shared_ptr<SuperF3D<T>> bF(
+  new SuperConst3D<T>(superStructure, {2.0, 1.0}));
+std::shared_ptr<SuperF3D<T>> cF = aF + bF;
+// cF->operator() returns {3.0, 3.0}
+```
+Basic showcase for `std::shared_ptr` based functor arithmetic
+:::
+
+Note that `cF` can be passed out of scope without any regard for `aF` and `bF`, as managed pointers are stored internally.
+At first glance this new functor arithmetic may seem unnecessarily verbose for basic usage such as simply adding two functors and directly using the result.
+As such, legacy functor arithmetic is still available for basic use cases.
+Usage of `std::shared_ptr` functor arithmetic is supported by both `FunctorPtr` and a DSL to ease development of more complex functor compositions.
+
+The `FunctorPtr` helper template is used throughout the functor codebase to transparently accept functors independently of how their memory is managed. This means that functors managed by `std::shared_ptr` are accepted as arguments in any place where raw functor references were used previously. As a nice benefit, `FunctorPtr` transparently forwards any calls of its own operator function to the operator of the underlying functor.
+
+::: {#lst-FunctorArithmetic2}
+```{.cpp}
+T error(FunctorPtr<SuperF3D<T>>&& f, T reference) {
+  T         output[1] = { };
+  const int origin[4] = {0,0,0,0};
+  f(output, origin);
+  return fabs(output[0] - reference);
+}
+
+std::shared_ptr<SuperF3D<T>> managedF(
+  new SuperConst3D<T>(superStructure, 1.0));
+SuperConst3D<T> rawF(superStructure, 1.0);
+// error(managedF, 1.1) == error(rawF, 1.1) == 0.1
+```
+`FunctorPtr` and `std::shared_ptr` based functor arithmetic
+:::
+
+Functor arithmetic expressions may also contain constants in addition to functors.
+Any scalar constant used in the context of managed functor arithmetic is implicitly wrapped into a `SuperConst(2,3)D` instance.
+
+::: {#lst-sharedPtrFunctorArithmeticConstants}
+```{.cpp}
+std::shared_ptr<SuperF3D<T>> aF(/*...*/);
+auto bF = 0.5 * aF + 2.0; // scalar multiplication and addition
+```
+Constant scalars in managed functor arithmetic
+:::
+
+Constant vectors are also supported if they are explicitly passed to the `SuperConst(2,3)D` constructor.
+Note that arithmetic operations of equidimensional functors are performed componentwise (i.e. `aF * aF` are not the scalar product).
+
+::: {#lst-sharedPtrFunctorArithmeticConstantVector}
+```{.cpp}
+std::shared_ptr<SuperF3D<T>> vectorF(
+  new SuperConst3D<T>(superStructure, {1.0, 2.0, 3.0}));
+auto cF = aF / vectorF; // componentwise division
+```
+Constant vectors in managed functor arithmetic
+:::
+
+#### Functor Composition {#sec-functorComposition}
+
+Composing multiple managed functors which in turn need multiple arguments by themselves such as when calculating error norms in a reusable fashion can quickly lead to expressions that are fairly hard to read.
+For this reason, the `functor_dsl` namespace offers a set of conveniently named helper functions in order to deobfuscate such functor compositions.
+
+Consider for example the following snippet which constructs and evaluates a relative error functor based on the L2 norm.
+
+::: {#lst-functorCompositionDSL}
+```{.cpp }
+using namespace functor_dsl;
+// decltype(wantedF) == std::shared_ptr<AnalyticalF3D<double,double>>
+// decltype(f)       == std::shared_ptr<SuperF3D<double>>
+// decltype(indicatorF) == std::shared_ptr<SuperIndicatorF3D<double>>
+auto wantedLatticeF = restrictF(wantedF, sLattice);
+auto relErrorNormF  = norm<2>(wantedLatticeF - f, indicatorF))
+                    / norm<2>(wantedLatticeF, indicatorF);
+const int input[4];
+double result[1];
+relErrorNormF->operator()(result, input);
+std::cout << "Relative error: " << result[0] << std::endl;
+```
+`functor_dsl` supported functor composition
+:::
+
+Note that lines 5 to 7 contain the full implementation of the expression $\frac{\|\text{wantedF} - f\|_2}{\|\text{wantedF}\|_2},$ i.e. the L2-normed relative error of an arbitrary functor \(f\) as compared to the analytical solution *wantedF*.
+This simply allows for moving even basically one-off functor compositions into reusable and easily verifiable functors whose implementation is as close to the actual mathematical definition as is reasonably possible. Correspondingly, a more developed version of @lst-functorCompositionDSL can be found in `SuperRelativeErrorLpNorm3D` which is used extensively by the `poiseuille3d` example to compare simulated and analytical solutions.
+
+::: {#lst-relErrorLpNormConstructor}
+```{.cpp }
+template <typename T, typename W, int P>
+template <template <typename U> class DESCRIPTOR>
+SuperRelativeErrorLpNorm3D<T,W,P>::SuperRelativeErrorLpNorm3D(
+  SuperLattice<T,DESCRIPTOR>&      sLattice,
+  FunctorPtr<SuperF3D<T,W>>&&        f,
+  FunctorPtr<AnalyticalF3D<T,W>>&&   wantedF,
+  FunctorPtr<SuperIndicatorF3D<T>>&& indicatorF)
+  : SuperIdentity3D<T,W>([&]()
+{
+  using namespace functor_dsl;
+
+  auto wantedLatticeF = restrictF(wantedF.toShared(), sLattice);
+
+  return norm<P>(wantedLatticeF-f.toShared(), indicatorF.toShared())
+         / norm<P>(wantedLatticeF, indicatorF.toShared());
+}())
+{
+  this->getName() = "relErrorNormL" + std::to_string(P);
+}
+```
+Functor composition in `SuperRelativeErrorLpNorm3D`'s constructor
+:::
+
+Disregarding the addition of `FunctorPtr` as well as further templatization, lines 12 to 15 are equivalent to the ad-hoc error norm in @lst-functorCompositionDSL. Also note how the actual composition happens inside of a lambda expression and is then returned to be stored by `SuperIdentity3D`. This allows for assigning composed functors their own names and renders them indistinguishable from *primitive* functors.

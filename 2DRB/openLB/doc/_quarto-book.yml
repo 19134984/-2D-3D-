@@ -1,0 +1,101 @@
+project:
+  type: book 
+  pre-render:
+    - ./link_examples.sh
+    - ./example_table.py
+  output-dir: ug_pdf
+
+book:
+  title: "OpenLB User Guide"
+  # Set from OLB_ROOT/VERSION by the makefile; kept here only as a fallback.
+  subtitle: "OpenLB User Guide"
+  date: "4/12/2025"
+  author:
+    - name: Adrian Kummerländer
+    - name: Tim N. Bingert
+    - name: Fedor Bukreev
+    - name: Luiz E. Czelusniak
+    - name: Davide Dapelo
+    - name: Simon Englert
+    - name: Christoph Gaul
+    - name: Johannes Grafen
+    - name: Michael Grinschewski
+    - name: Shota Ito
+    - name: Julius Jeßberger
+    - name: Florian Kaiser
+    - name: Danial Khazaeipoul
+    - name: Timm Krüger
+    - name: Halim Kusumaatmaja
+    - name: Jan E. Marquardt
+    - name: František Prinz
+    - name: Alice Raeli
+    - name: Michael Rennick
+    - name: Maximilian Schecher
+    - name: Andreas Schneider
+    - name: Yuji Shimojima
+    - name: Stephan Simonis
+    - name: Pascal Sitter
+    - name: Philipp Spelten
+    - name: Alexandre Tacques
+    - name: Dennis Teutscher
+    - name: Mingliang Zhong
+    - name: Mathias J. Krause
+  chapters:
+    - abstract.qmd
+    - index.qmd
+    - content/01_introduction.qmd
+    - content/02_core.qmd
+    - content/03_geometry.qmd
+    - content/04_preprocessing.qmd
+    - content/05_simulation_models.qmd
+    - content/06_initial_boundary.qmd
+    - content/07_input_output.qmd
+    - content/08_optimization.qmd
+    - content/algorithm.qmd
+    - examples/index_pdf.qmd
+    - content/10_building_and_running.qmd
+    - content/11_step_by_step.qmd
+    - content/12_developer_guide.qmd
+    - content/references.qmd
+  appendices:
+    - content/Q_and_A.qmd
+    - cite.qmd
+    - contributors.qmd
+    - license.qmd
+
+format:
+  pdf:
+    include-in-header:
+      - include/latex_includes.tex
+      # Math macros shared with the website; needs the packages loaded above.
+      - include/macros.tex
+    template-partials:
+      #- include/title.tex
+      - include/before-body.tex
+    documentclass: scrreport
+    number-sections: true
+    toc: true
+    toc-depth: 3
+    #lot: false
+    #lof: false
+    #keep-tex: true
+    cite-method: biblatex
+    link-citations: true
+    link-bibliography: true
+    syntax-highlighting: printing
+    #highlight-style: monokai.theme
+    #syntax-definition: iso_c++.xml
+    
+    bibliography: literature.bib
+
+pdf-engine: xelatex
+latex-max-runs: 5
+
+filters:
+  - pseudocode
+  - include/example_labels.lua
+
+pseudocode:
+  caption-prefix: "Algorithm"
+  reference-prefix: "Algorithm"
+  caption-number: true

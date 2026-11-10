@@ -1,0 +1,11 @@
+---
+features: [multiComponent, multiPhase, transient, benchmark, primitives]
+---
+
+### breakingDam2d
+
+The `breakingDam2d` example is based on a physical experiment conducted by LaRocque *et al.* [@larocque:13].
+An enclosed box contains an area of fluid in the lower left corner.
+With the start of the simulation, the fluid spreads throughout the box, with a visible wave forming after the fluid reaches the right-hand side wall.
+
+![Initial breaking dam setup of `breakingDam2d` with the fluid in grey.](/examples/freeSurface/breakingDam2d/doc/fig/breakingDam2dSetup.png){#fig-breaking2d-setup width="100%"}

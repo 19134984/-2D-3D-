@@ -1,0 +1,7 @@
+testCommIntegrity
+sparse/testSparseComm
+*.o
+*.d
+build/
+libolb*.so
+tmp/

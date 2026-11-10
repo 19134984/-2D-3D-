@@ -1,0 +1,256 @@
+#define FEATURE_DISABLE_AUTOMATIC_DYNAMICS_CSE
+#define FEATURE_DISABLE_INITIALIZE_LOG
+#include "olb.h"
+
+using namespace olb;
+
+
+using T = ${precision};
+
+using DESCRIPTOR = descriptors::D3Q19<descriptors::POROSITY,
+          descriptors::VELOCITY,
+	  collision::LES::SMAGORINSKY,
+	  descriptors::FORCE,
+	  fields::moments::RHO,
+	  fields::moments::U,
+          collision::HYBRID>;
+
+
+using DYNAMICS = ${dynamics};
+
+namespace benchStatistics {
+    struct Stats{
+        Stats(std::vector<T> runs) {
+            if (runs.empty()) return;
+
+            samples = runs;
+            size_t n = runs.size();
+
+            std::sort(runs.begin(), runs.end());
+            min = runs.front();
+            max = runs.back();
+
+            // Mean
+            T sum = std::accumulate(runs.begin(), runs.end(), T{0});
+            mean = sum / static_cast<T>(n);
+
+            // Median (Q2)
+            auto get_median = [](const std::vector<T>& v, size_t start, size_t end) -> T {
+                size_t size = end - start;
+                if (size == 0) return T{0};
+                size_t mid = start + size / 2;
+                if (size % 2 == 0) {
+                    return (v[mid - 1] + v[mid]) / T{2};
+                }
+                return v[mid];
+            };
+
+            median = get_median(runs, 0, n);
+
+            // Q1 and Q3  
+            q1 = get_median(runs, 0, n / 2);
+            q3 = get_median(runs, (n + 1) / 2, n);
+
+            // Standard Deviation
+            if (n > 1) {
+                T variance_sum = 0;
+                for (const auto& value : runs) {
+                    variance_sum += (value - mean) * (value - mean);
+                }
+                std_dev = std::sqrt(variance_sum / static_cast<T>(n - 1));
+            } else {
+                std_dev = 0;
+            }
+        } 
+        std::string to_json() const {
+            std::stringstream ss;
+            ss << std::fixed << std::setprecision(3); 
+            ss << "{"
+               << "\"mean\":"    << mean    << ","
+               << "\"std_dev\":" << std_dev << ","
+               << "\"median\":"  << median  << ","
+               << "\"max\":"     << max     << ","
+               << "\"min\":"     << min     << ","
+               << "\"n\":"       << samples.size() << ","
+               << "\"q1\":"      << q1 << ","
+               << "\"q3\":"      << q3 << ","
+               << "\"runs\":[";
+
+            for (size_t i = 0; i < samples.size(); ++i) {
+                ss << samples[i] << (i == samples.size() - 1 ? "" : ",");
+            }
+            
+            ss << "]}"; 
+            return ss.str();
+        }
+
+        T mean;
+        T std_dev;
+        T median;
+        T max;
+        T min;
+        T q1;
+        T q3;
+        std::vector<T> samples;  
+    };
+}
+
+template <typename DESCRIPTOR>
+void prepareGeometry(const UnitConverter<T,DESCRIPTOR>& converter,
+                     IndicatorF<T,DESCRIPTOR::d>& indicator,
+                     SuperGeometry<T,DESCRIPTOR::d>& superGeometry)
+{
+  // Sets material number for fluid and boundary
+  superGeometry.rename(0,2,indicator);
+  superGeometry.rename(0,1);
+  superGeometry.rename(2,1,Vector<int,DESCRIPTOR::d>(1));
+}
+template <typename DESCRIPTOR, typename DYNAMICS>
+void prepareLattice(SuperLattice<T,DESCRIPTOR>& superLattice,
+                    SuperGeometry<T,DESCRIPTOR::d>& superGeometry,
+                    const UnitConverter<T,DESCRIPTOR>& converter)
+{
+  superLattice.template defineDynamics<DYNAMICS>(superGeometry, 1);
+  superLattice.template defineDynamics<DYNAMICS>(superGeometry, 2);
+
+  //boundary::set<boundary::BounceBack>(superLattice, superGeometry, 2);
+
+  superLattice.template setParameter<descriptors::OMEGA>(converter.getLatticeRelaxationFrequency());
+  superLattice.template setParameter<collision::LES::SMAGORINSKY>(0.1);
+}
+
+template <typename DESCRIPTOR, typename DYNAMICS>
+benchStatistics::Stats benchmark(std::size_t nCells, std::size_t steps, std::size_t cuboidsPerProcess, std::size_t nRuns) {
+  std::size_t size = std::pow(nCells * 1e6, 1.0 / DESCRIPTOR::d);
+
+  UnitConverterFromResolutionAndLatticeVelocity<T,DESCRIPTOR> const converter(
+    size,      // resolution: number of voxels per charPhysL
+    0.01,      // lattice velocity
+    1.0,       // charPhysLength: reference length of simulation geometry
+    1.0,       // charPhysVelocity: maximal/highest expected velocity during simulation in __m / s__
+    1./1000.,  // physViscosity: physical kinematic viscosity in __m^2 / s__
+    1.0        // physDensity: physical density in __kg / m^3__
+  );
+
+  Vector<T,DESCRIPTOR::d> origin{};
+  Vector<T,DESCRIPTOR::d> extend(converter.getCharPhysLength() + 0.25 * converter.getPhysDeltaX());
+  IndicatorCuboid<T,DESCRIPTOR::d> cube(extend, origin);
+
+  CuboidDecomposition<T,DESCRIPTOR::d> cuboidDecomposition(
+    cube, converter.getPhysDeltaX(), cuboidsPerProcess*singleton::mpi().getSize());
+  BlockLoadBalancer<T> loadBalancer(
+    singleton::mpi().getRank(), singleton::mpi().getSize(), cuboidDecomposition.size(), 0);
+
+  cuboidDecomposition.buildNeighborCache(3);
+
+  SuperGeometry<T,DESCRIPTOR::d> superGeometry(cuboidDecomposition, loadBalancer, 3);
+  
+superGeometry.setWriteIncrementalVTK(false);
+  prepareGeometry<DESCRIPTOR>(converter, cube, superGeometry);
+
+  SuperLattice<T,DESCRIPTOR> superLattice(converter,
+                                          cuboidDecomposition,
+                                          loadBalancer,
+                                          3);
+  superLattice.setStatisticsOff();
+
+  prepareLattice<DESCRIPTOR,DYNAMICS>(superLattice, superGeometry, converter);
+
+  for (std::size_t iT=0; iT < 50; ++iT) {
+    superLattice.collideAndStream();
+  }
+
+  #ifdef PLATFORM_GPU_CUDA
+  gpu::cuda::device::synchronize();
+  #endif
+
+  OstreamManager clresult(std::cout, "result");
+
+  std::vector<T> runs;
+  for (unsigned iRun=0; iRun < nRuns; ++iRun) {
+    util::Timer<T> timer(steps, superGeometry.getStatistics().getNvoxel());
+    timer.start();
+
+    for (std::size_t iT=0; iT < steps; ++iT) {
+      superLattice.collideAndStream();
+    }
+
+    #ifdef PLATFORM_GPU_CUDA
+    gpu::cuda::device::synchronize();
+    #endif
+
+    timer.stop();
+    timer.update(steps);
+    clresult << std::fixed << std::setprecision(2) << timer.getTotalMLUPs() << std::endl;
+    runs.emplace_back(timer.getTotalMLUPs());
+  }
+  return benchStatistics::Stats(runs);
+}
+
+int main(int argc, char **argv)
+{
+  initialize(&argc, &argv, false, false);
+
+  CLIreader args(argc, argv);
+  const std::size_t nCells  = args.getValueOrFallback<std::size_t>("--nCells", 1);
+  const std::size_t steps = args.getValueOrFallback<std::size_t>("--steps", 100);
+  const std::size_t cuboidsPerProcess = args.getValueOrFallback<std::size_t>("--cuboids-per-process", 1);
+  const std::size_t nRuns = args.getValueOrFallback<std::size_t>("--runs", 5);
+
+  //const std::ptrdiff_t jModel  = args.getValueOrFallback<std::ptrdiff_t>("--jModel", -1);
+
+  benchStatistics::Stats noCseResults = benchmark<DESCRIPTOR,DYNAMICS>(nCells, steps, cuboidsPerProcess, nRuns);
+  benchStatistics::Stats cseResults = benchmark<DESCRIPTOR,CSE<DYNAMICS>>(nCells, steps, cuboidsPerProcess, nRuns);
+
+  T cseCount{-1};
+  T nocseCount{-1};
+  if (auto count = introspection::getArithmeticOperationCount<CSE<DYNAMICS>>()) {
+    cseCount = *count;
+  }
+  if (auto count = introspection::getArithmeticOperationCount<DYNAMICS>()) {
+    nocseCount = *count;
+  }
+
+  T bandwidth{-1};
+  if (auto b = introspection::getMemoryBandwidthOfCollision<DYNAMICS>()) {
+    bandwidth = *b * sizeof(T);
+  }
+
+  std::string env_string = R"(${env})";
+  std::string system_string = R"(${system})";
+
+  if (singleton::mpi().isMainProcessor()) {
+    std::ofstream out_file("${jsonPath}");
+    if(!out_file.is_open()){
+	std::cerr << "Error: could not open results.json" << std::endl;
+	return -1;
+    }
+
+    out_file << "{" << std::endl;
+    out_file << "  \"name\": \""        << fields::name<DYNAMICS>()  << "\"," << std::endl;
+    out_file << "  \"nCells\": "        << nCells*1e6      << "," << std::endl;
+    out_file << "  \"steps\": "         << steps       << "," << std::endl; 
+    out_file << "  \"cuboidsPerProcess\": " << cuboidsPerProcess <<  "," << std::endl;
+    out_file << "  \"runs\": "              << nRuns    << "," << std::endl;
+    out_file << "  \"cseCount \":"      << cseCount    << "," << std::endl;
+    out_file << "  \"noCseCount\":"     << nocseCount  << "," << std::endl;
+    out_file << "  \"countRatio\":"     << cseCount/nocseCount << "," << std::endl;
+    out_file << "  \"bandwidth\": "     << bandwidth   << "," << std::endl;
+    out_file << "  \"cseResults\": "    << cseResults.to_json() << "," << std::endl;
+    out_file << "  \"noCseResults\": "  << noCseResults.to_json() << "," << std::endl;
+    out_file << "  \"speedUp\": "       << cseResults.median/noCseResults.median << "," << std::endl;
+    out_file << "  \"metadata\": {"      << std::endl;
+    out_file << "    \"commitHash\": "    << "\"${commitHash}\"," << std::endl;
+    out_file << "    \"olb_version\": \"" << OLB_VERSION << "\"," << std::endl;
+    out_file << "    \"env\": " << env_string << "," << std::endl;
+    out_file << "    \"system\": " << system_string << std::endl;
+    out_file << "  }" << std::endl;
+    out_file << "}" << std::endl;
+    
+    out_file.close();
+
+  }
+
+}
+
+

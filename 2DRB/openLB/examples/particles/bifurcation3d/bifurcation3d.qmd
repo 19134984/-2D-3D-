@@ -1,0 +1,214 @@
+---
+features: [particles, transient, showcase, stl, primitives]
+---
+
+### bifurcation3d {#sec-example-particles-bifurcation3d}
+
+The `bifurcation3d` example simulates particulate flow through an exemplary bifurcation of the human bronchial system.
+The geometry is a splitting pipe, with one inflow and two outflows.
+The fluid is transporting micrometer-scale particles, and the escape and capture rate is computed.
+There exist two implementations of the problem.
+The first one is an Euler--Euler ansatz, meaning that the fluid phase as well as the particle phase are modelled as continua.
+The second is an Euler--Lagrange ansatz, where the particles are modelled as discrete objects.
+A third setup, `eulerLagrange/nonSphericals`, extends the Euler--Lagrange ansatz to non-spherical particles.
+
+The same geometry is used in @Henn:13. The Euler--Euler model of this example, its boundary conditions and the bronchial bifurcation are described by @trunk:16, and the model for non-spherical particles by @prinz:25.
+
+#### Governing equations
+
+The domain $\Omega \times \I$, is considered with the following governing equations with the velocity field $\vel \in \R^3$ and the pressure $p \in \R$ for the incompressible flow of air, a Newtonian fluid with the kinematic viscosity $\nu = 1.5 \cdot 10^{-5}\,\mathrm{m^2/s}$ and the density $\rho = 1.225\,\mathrm{kg/m^3}$,
+\begin{align}
+    \nabla \cdot \vel &= 0 \quad \text{in} \quad \Omega \times \I, \\
+    \partial_t \vel + (\vel \cdot \nabla) \vel &= -\frac{1}{\rho} \nabla p + \nu \Delta \vel \quad \text{in} \quad \Omega \times \I.
+\end{align}
+The particles are water droplets with the radius $r_p = 150\,\mathrm{\mu m}$ and the density $\rho_p = 998.2\,\mathrm{kg/m^3}$. They are dilute, so they are carried by the flow without acting back on it (one-way coupling), and they feel the Stokes drag, which relaxes their velocity $\vel_p$ towards that of the fluid with the relaxation time $\tau_p$,
+$$
+    \frac{\mathrm{d} \vel_p}{\mathrm{d} t} = \frac{\vel - \vel_p}{\tau_p}, \qquad \tau_p = \frac{2 \rho_p r_p^2}{9 \rho \nu} .
+$$
+With the inlet diameter $D = 20\,\mathrm{mm}$ and the characteristic velocity $U = Re\, \nu / D = 0.0375\,\mathrm{m/s}$ for $Re = 50$, the Stokes number is $St = \tau_p U / D = 0.51$. The particles have enough inertia to leave the streamlines where the flow turns, and many of them hit the walls of the bifurcation.
+
+#### Boundary conditions
+
+The boundary consists of the inlet (MN 3) at the top of the pipe, the two outlets (MN 4 and MN 5) at the ends of the daughter branches, and the wall (MN 2) (@fig-bifurcation3d-geometry).
+At the inlet, the pressure is prescribed, $p = 0$ (that is $\rho = 1$), with $\partial_\mathbf{n} \vel = 0$, and at both outlets, a Poiseuille profile is imposed on the velocity, directed out of the domain against the outlet normals $\mathbf{n}_k$, with the peak velocity $u_\text{max}(t)$ and the radius $0.95 R_k$ of the outlet circles,
+\begin{align}
+    p &= 0 \quad \text{on the inlet}, \\
+    \vel &= -u_\text{max}(t) \left( 1 - \frac{r^2}{(0.95 R_k)^2} \right) \mathbf{n}_k \quad \text{on outlet } k, \\
+    \vel &= \mathbf{0} \quad \text{on the wall}, \\
+    u_\text{max}(t) &= s(t)\, \frac{3}{4}\, U \frac{R_\text{in}^2}{R_0^2}, \qquad s(t) = \frac{1}{2} \left( 1 - \cos \frac{\pi t}{0.8\, T_f} \right) \text{ for } t \le 0.8\, T_f .
+\end{align}
+The flow is driven by the outlets and ramped up from rest with `SinusStartScale` during the first $80\,\%$ of the simulated fluid time $T_f$.
+A ring of wall cells around the inlet is marked as MN 6; `eulerEuler` treats it as a bounce-back wall for the fluid and for the particle concentration.
+
+#### Domain
+
+The geometry is read from `bifurcation3d.stl`, given in metres, and spans $61 \times 20 \times 104\,\mathrm{mm}$ (@fig-bifurcation3d-geometry).
+The parent pipe of radius $R_\text{in} = 10.0\,\mathrm{mm}$ runs downwards along $-z$ from the inlet at $z = 78.6\,\mathrm{mm}$ to the bifurcation, where it splits at the carina into two daughter branches of the radii $R_0 = 7.93\,\mathrm{mm}$ and $R_1 = 7.87\,\mathrm{mm}$, which end at $z \approx -21\,\mathrm{mm}$.
+
+![Geometry of `bifurcation3d`, the surface of `bifurcation3d.stl` seen along the $y$-axis. The spheres mark the circles that `prepareGeometry()` uses to find the inlet (blue) and the outlets (green).](/examples/particles/bifurcation3d/doc/fig/bifurcation3dGeometry.png){width="55%" #fig-bifurcation3d-geometry .lightbox}
+
+#### Discretization \& Descriptor
+In all variants, the domain is discretized with a uniform grid with the lattice spacing $\Delta x = D / N$, where $N = 19$ cells resolve the inlet diameter, so $\Delta x = 1.05\,\mathrm{mm}$ and the mesh has about $62\,000$ cells.
+The fluid is solved with the BGK operator (`BGKdynamics`) on the D3Q19 velocity set, with `InterpolatedPressure` at the inlet (MN 3) and `InterpolatedVelocity` at the outlets (MN 4, MN 5) ([Define Boundary Method](/content/06_initial_boundary.qmd#sec-defineBoundaryMethod)).
+
+| Parameter | Symbol | Value | Description |
+|---|---|---|---|
+| `REYNOLDS` | $Re$ | $50$ | Reynolds number $U D / \nu$ |
+| `RESOLUTION` | $N$ | $19$ | cells per inlet diameter $D$ |
+| `PART_RADIUS` | $r_p$ | $1.5 \cdot 10^{-4}\,\mathrm{m}$ | particle radius |
+| `PART_RHO` | $\rho_p$ | $998.2\,\mathrm{kg/m^3}$ | particle density |
+| `INLET_CENTER`, `INLET_NORMAL`, `INLET_RADIUS` | | $(0, 0, 0.0786)\,\mathrm{m}$, $(0, 0, -1)$, $0.0100\,\mathrm{m}$ | circle of the inlet |
+| `OUTLET_CENTER0`, `OUTLET_NORMAL0`, `OUTLET_RADIUS0` | | $(-0.0236, 0, -0.0214)\,\mathrm{m}$, $(0.505, -0.042, 0.862)$, $0.00793\,\mathrm{m}$ | circle of outlet 0 |
+| `OUTLET_CENTER1`, `OUTLET_NORMAL1`, `OUTLET_RADIUS1` | | $(0.0234, 0, -0.0212)\,\mathrm{m}$, $(-0.483, -0.010, 0.875)$, $0.00787\,\mathrm{m}$ | circle of outlet 1 |
+| `IT_PERIOD` | | $0.1419\,\mathrm{s}$ (Euler--Euler), $0.2\,\mathrm{s}$ (Euler--Lagrange) | interval of the boundary updates and the output; Euler--Lagrange uses half of it |
+| `PHYS_MAX_T` | $T_f$ | $10\,\mathrm{s}$ | simulated time (Euler--Euler) |
+| `DIFFUSION` | | $10^{-6}\,\mathrm{m^2/s}$ | diffusion coefficient of the particle concentration (Euler--Euler) |
+| `FLUID_MAX_PHYS_T` | $T_f$ | $5\,\mathrm{s}$ ($1\,\mathrm{s}$ for `nonSphericals`) | simulated time of the fluid (Euler--Lagrange) |
+| `PARTICLE_MAX_PHYS_T` | | $20\,\mathrm{s}$ | maximum simulated time of the particles (Euler--Lagrange) |
+| `NO_OF_PARTICLES` | | $1000$ ($100$ for `nonSphericals`) | number of particles (Euler--Lagrange) |
+| `PARTICLE_DYNAMICS_SETUP` | | $1$ | wall capture from the STL surface instead of the material numbers (Euler--Lagrange) |
+| `BOUZIDI` | | `true` | Bouzidi boundary at the wall, otherwise `BounceBack` (Euler--Lagrange) |
+
+: Parameters of `bifurcation3d`, as set in `main()` of the variants. {#tbl-bifurcation3d-params}
+
+#### Euler--Euler
+
+In this example, the particles are viewed as a continuum and described by an advection--diffusion equation for their concentration $c$, transported with the particle velocity $\vel_p$,
+$$
+    \partial_t c + \nabla \cdot (c\, \vel_p) = D_c \Delta c ,
+$$
+with the diffusion coefficient $D_c$.
+This is done similar to the thermal examples, where the temperature is the considered quantity.
+For particles, however, inertia has to be taken into account.
+This is achieved by applying the Stokes drag force to the velocity field.
+Since for these computations, also the velocity of the previous time step is required, the descriptor `D3Q7<VELOCITY,VELOCITY2>` has to be used, that is capable of saving two velocity fields (@lst-bifurcation3d-ee-case).
+
+::: {#lst-bifurcation3d-ee-case}
+```{.cpp}
+using MyCase = Case<
+  NavierStokes,   Lattice<double, descriptors::D3Q19<>>,
+  Concentration0, Lattice<double, descriptors::D3Q7<descriptors::VELOCITY, descriptors::VELOCITY2>>
+>;
+```
+Case definition of `eulerEuler/bifurcation3d.cpp`.
+:::
+
+The dynamics object `ParticleAdvectionDiffusionBGKdynamics` is required to access the saved velocity fields correctly and use them in an efficient way.
+For information on the coupling of the lattices, see the section on the advection--diffusion equation for particle flow problems ([Particle Flows as an Advection--Diffusion Problem](/content/05_simulation_models.qmd#sec-particleADE)).
+The Stokes drag is applied by the coupling operator `AdvectionDiffusionParticleCoupling3D<ade_forces::AdvDiffDragForce3D>`, registered as `DragForce` in `prepareLattice()`, whose parameters `simulate()` computes from the density and the radius of the particles:
+
+```{.cpp}
+ade_forces::AdvDiffDragForce3D::computeParametersFromRhoAndRadius<T>(
+    parameters.get<parameters::PART_RHO>(), parameters.get<parameters::PART_RADIUS>(), coupling, converter);
+```
+
+For parallel execution, the communication stages may be configured as follows:
+
+```{.cpp}
+auto& communicator = ADlattice.getCommunicator(stage::PostCoupling());
+communicator.requestField<descriptors::VELOCITY>();
+communicator.requestField<descriptors::VELOCITY2>();
+communicator.requestOverlap(ADlattice.getOverlap());
+communicator.exchangeRequests();
+```
+
+For the simulation of particles as a continuum, also other boundary conditions are required.
+At the wall (MN 2), `ZeroDistributionDynamics` together with the boundary `boundary::ZeroDistribution` remove the particle concentration that reaches the wall, which models the deposition.
+At the inlet (MN 3), the concentration is fixed to $c = 1$ with `AdvectionDiffusionDirichlet`; inside, it starts at $10^{-8}$.
+At the outlets, `setZeroGradientBoundary()` approximates a Neumann boundary condition, so the particles leave the domain with the flow; for further reference see [@trunk:16].
+Since non-local computations (gradient is required) are performed on the external field, also a Neumann boundary condition is required that is here implemented as `boundary::ExternalField`.
+In every time step, `simulate()` applies the coupling, communicates the velocity fields and then collides and streams both lattices; the fluid uses `BounceBack` at the wall.
+
+@fig-bifurcation3d-ee-fields shows the steady flow and the concentration of the particles at the end of the simulation.
+The air accelerates into the daughter branches, and the particles cannot follow the turn of the streamlines: they are carried towards the inner walls of the branches next to the carina, where the concentration rises above its inflow value and the wall absorbs them, whereas the outer parts of the branches are almost free of particles.
+
+::: {#fig-bifurcation3d-ee-fields layout-ncol="2"}
+![Particle concentration $c$](/examples/particles/bifurcation3d/doc/fig/eulerEuler/concentration_iT0007000.png){.lightbox}
+
+![Fluid velocity $|\vel|$](/examples/particles/bifurcation3d/doc/fig/eulerEuler/velocity_iT0007000.png){.lightbox}
+
+Particle concentration and fluid velocity of `eulerEuler` in the plane $y = 0$ at $t = 9.9\,\mathrm{s}$, visualized in ParaView.
+:::
+
+@fig-bifurcation3d-ee-escape shows the escape and the capture rate over time.
+As long as the ramped-up flow is slow, the particles that enter the inlet do not reach the outlets, and all of them are captured.
+After $6.3\,\mathrm{s}$, the particles start to leave the domain, and at the end of the simulation, the escape rate is $0.49$ and the capture rate $0.51$, which still change slowly: the flow has only been at its full strength for the last $2\,\mathrm{s}$.
+The flow rates through the inlet and the outlets agree within $0.4\,\%$, $8.85\,\mathrm{ml/s}$ against $4.48 + 4.34\,\mathrm{ml/s}$.
+
+![Escape and capture rate of `eulerEuler` over time, as printed by `getResults()`.](/examples/particles/bifurcation3d/doc/fig/eulerEuler/escapeRate.svg){width="80%" #fig-bifurcation3d-ee-escape .lightbox}
+
+#### Euler--Lagrange
+
+The main task of this example is to show the usage of one-way coupled Lagrangian particles with $\OpenLB$.
+This example is used to show the application of the particle framework, which is described in detail in the particles chapter ([Particles](/content/05_simulation_models.qmd#sec-dpm)).
+Subgrid particles are only supported in parallel mode, so the example has to be compiled with MPI.
+
+The simulation runs in two phases.
+First, the fluid alone is simulated for $T_f = 5\,\mathrm{s}$, with the Bouzidi boundary at the wall, and the result is saved to `tmp/fluidSolution_N19_rank*_size*.dat`. If such a file exists for the same resolution and number of processes, the fluid is loaded instead of simulated.
+Then, $1000$ particles of the type `SubgridParticle3D` are placed at random positions on a disc of radius $R_\text{in} - 2.5 \Delta x$ at $z = 74\,\mathrm{mm}$ just below the inlet, with the velocity of the fluid, and are moved through the frozen flow field by the `ParticleManager` (@lst-bifurcation3d-el-loop): it interpolates the fluid velocity to the particles, computes the Stokes drag, integrates the motion with the Verlet scheme and redistributes the particles among the processes.
+
+::: {#lst-bifurcation3d-el-loop}
+```{.cpp}
+particleManager.execute<
+                couple_lattice_to_particles<T, DESCRIPTOR, PARTICLETYPE>,
+                process_dynamics<T, PARTICLETYPE>,
+                update_particle_core_distribution<T, PARTICLETYPE>
+>();
+```
+Particle time step in `simulate()`.
+:::
+
+With `PARTICLE_DYNAMICS_SETUP` $= 1$, the dynamics `VerletParticleDynamicsMaterialAwareWallCaptureAndEscape` deactivate a particle when it touches the wall, using the distance to the STL surface (`SolidBoundary`), and when it reaches the outlets (MN 4, MN 5); with $0$, the material numbers decide.
+The simulation ends when less than $0.1\,\%$ of the particles are active, or none.
+
+@fig-bifurcation3d-el-particles shows the particles.
+They travel as a cloud down the parent pipe and reach the carina after about $1.4\,\mathrm{s}$. Here, most of them cannot follow the flow into the branches and hit the carina and the inner walls of the branches; the rest is carried through the branches to the outlets.
+
+::: {.image-slider}
+::: {#fig-bifurcation3d-el-particles layout-ncol="3"}
+![$t = 0.07\,\mathrm{s}$](/examples/particles/bifurcation3d/doc/fig/eulerLagrange/particles_iT0003570.png)
+
+![$t = 1.36\,\mathrm{s}$](/examples/particles/bifurcation3d/doc/fig/eulerLagrange/particles_iT0004480.png)
+
+![$t = 1.56\,\mathrm{s}$](/examples/particles/bifurcation3d/doc/fig/eulerLagrange/particles_iT0004620.png)
+
+![$t = 2.25\,\mathrm{s}$](/examples/particles/bifurcation3d/doc/fig/eulerLagrange/particles_iT0005110.png)
+
+![$t = 3.24\,\mathrm{s}$](/examples/particles/bifurcation3d/doc/fig/eulerLagrange/particles_iT0005810.png)
+
+Particles of `eulerLagrange` after their release, active (blue) and deposited or escaped (red), visualized in ParaView.
+:::
+:::
+
+#### Nonspherical particles
+
+This example extends the `bifurcation3d` example and implements computation of motion of dilute non-spherical subgrid particles, namely, cylinders and fibres.
+A robust method is used to compute the transport and deposition of subgrid fibres that are approximated as spheroids using the Euler--Lagrange Euler--Rotation method under formulations of creeping flow conditions (see, e.g., [@tian_transport_2012]); the models are published in [@prinz:25].
+The Euler rotational equations in the moving reference frame for every particle are solved at every time step, and the fibre orientation is updated.
+In addition, an orientation-dependent wall boundary condition for particle deposition is also implemented.
+For comparison, equivalent diameter methods (Haider--Levenspiel [@haider_drag_1989] and Tran--Cong [@tran-cong_drag_2004]) may also be used; see `latticeHaiderLevenspielDragForce` or `latticeTranCongDragForce` in the developer guide.
+
+The particle type is `SubgridParticle3DparallelEulerRotation`, and the forces are the Stokes drag on a spheroid, `BlockLatticeStokesSpheroidDragForce`, and a lift force, `BlockLatticeSpheroidLiftForce`, which `couple_lattice_to_parallel_particles_two_forces` applies.
+`prepareParticles()` places $100$ fibres of the length $500\,\mathrm{\mu m}$ (`FIBER_LENGTH`) and the diameter $100\,\mathrm{\mu m}$ (`FIBER_DIAMETER`) at rest at random positions on a disc of radius $R_\text{in} / 2$ at $z = 74\,\mathrm{mm}$, with `std::rand()` seeded by the time, so the result differs from run to run.
+`PARTICLE_DYNAMICS_SETUP` selects the particle dynamics: $0$ for `VerletParticleDynamics` without wall capture, $1$ (default) for `VerletParticleDynamicsMaterialAwareWallCapture`, $2$ for `EulerParticleDynamicsMaterialAwareWallCapture` and $3$ for `AnalyticalParticleDynamicsTranslationOnlyMaterialAwareWallCapture`. The comment in `main()` gives other numbers for the last two.
+The fluid is simulated for only $1\,\mathrm{s}$, of which $0.8\,\mathrm{s}$ are the ramp-up, so the flow is not yet steady when the particles are released: the flow rate through the inlet, $12.4\,\mathrm{ml/s}$, still exceeds that through the outlets, $8.9\,\mathrm{ml/s}$.
+In this flow, $20\,\%$ of the fibres are deposited and $80\,\%$ escape; all of them have left the flow after $7.7\,\mathrm{s}$, but the particle loop continues up to `PARTICLE_MAX_PHYS_T`.
+
+#### Files
+
+```
+bifurcation3d/
+├── bifurcation3d.stl                 surface of the bifurcation, in metres
+├── eulerEuler/
+│   ├── bifurcation3d.cpp             Euler--Euler: fluid and particle concentration lattices, drag coupling, escape rate
+│   └── Makefile
+└── eulerLagrange/
+    ├── bifurcation3d.cpp             Euler--Lagrange: fluid solution, then spherical subgrid particles (MPI only)
+    ├── Makefile
+    ├── util/run.sh                   batch script for runs over resolutions and numbers of particles
+    └── nonSphericals/
+        ├── bifurcation3d_non_sph.cpp fibres as spheroids with the Euler rotation equations (MPI only)
+        └── Makefile
+```
+
+The results are written to `tmp/` in the directory of each variant: `vtkData/` holds the fluid (`bifurcation3d_fluid.pvd` or `bifurcation3d.pvd`), the particle concentration (`bifurcation3d_particle.pvd`) or the particles (`particles_master.pvd`).

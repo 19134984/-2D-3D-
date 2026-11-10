@@ -1,0 +1,9 @@
+---
+features: [transient, benchmark, primitives]
+recommended-for-beginners: [transient, benchmark, primitives]
+---
+
+### cylinder2d
+
+This app is the simplified version of [[`laminar/cylinder2d`](/examples/laminar/cylinder2d/cylinder2d.qmd)]{.content-visible when-format="html"}[`laminar/cylinder2d` (@sec-example-laminar-cylinder2d)]{.content-visible when-format="pdf"}. It contains the bare minimum code to execute the cylinder benchmark case with $\OpenLB$. This example is suited to grasp the basic structure of $\OpenLB$ example cases.
+This case is also used for the tutorial exercises at the $\OpenLB$ spring school.

@@ -1,0 +1,132 @@
+---
+features: [transient, benchmark, primitives]
+recommended-for-beginners: [primitives]
+---
+
+### cylinder2d {#sec-example-laminar-cylinder2d}
+
+This example examines a steady flow past a cylinder placed in a channel.
+The cylinder is offset somewhat from the center of the flow to make the steady-state symmetrical flow unstable.
+At the inlet, a Poiseuille profile is imposed on the velocity, whereas the outlet implements a Dirichlet pressure condition set by $p = 0$, inspired by [@turek:96].
+For high resolution, low `latticeU`, and enough time to converge, the results for pressure drop, drag, and lift lie within the estimated intervals for the exact results.
+An unsteady flow with Kármán vortex street can be created by changing the Reynolds number to $Re=100$.
+
+#### Governing equations
+
+The domain $\Omega \times \I \subseteq [0, 2.2] \times [0, 0.41] \times \R_{\geq 0}$, the channel without the cylinder, is considered with the following governing equations with the velocity field $\vel \in \R^2$ and the pressure $p \in \R$ for the incompressible flow of a Newtonian fluid with kinematic viscosity $\nu \in \R_{> 0}$ and constant density $\rho \in \R_{> 0}$,
+\begin{align}
+    \nabla \cdot \vel &= 0 \quad \text{in} \quad \Omega \times \I, \\
+    \partial_t \vel + (\vel \cdot \nabla) \vel &= -\frac{1}{\rho} \nabla p + \nu \Delta \vel \quad \text{in} \quad \Omega \times \I.
+\end{align}
+
+#### Boundary conditions
+
+The boundary $\partial \Omega = \Gamma_D \cup \Gamma_\text{out} \cup \Gamma_{\mathrm{no\text{-}slip}}$ consists of three parts (@fig-cylinder2d-domain): the inlet $\Gamma_D$ on the left, where a parabolic velocity profile is prescribed as a Dirichlet condition, the outlet $\Gamma_\text{out}$ on the right, where the pressure is prescribed, and $\Gamma_{\mathrm{no\text{-}slip}}$, which comprises the two channel walls and the surface of the cylinder,
+\begin{align}
+    \vel &= (u_\text{in}(y, t), 0)^\top \quad \text{on} \quad \Gamma_D \times \I, \\
+    p &= 0 \quad \text{on} \quad \Gamma_\text{out} \times \I, \\
+    \vel &= \mathbf{0} \quad \text{on} \quad \Gamma_{\mathrm{no\text{-}slip}} \times \I.
+\end{align}
+The inflow profile
+$$
+    u_\text{in}(y, t) = s(t)\, \frac{4\, U_\text{max}\, y (H - y)}{H^2}
+$$
+with the peak velocity $U_\text{max} = \tfrac{3}{2} U$ has the mean velocity $U$ once it is fully developed.
+`setTemporalValues()` raises it smoothly from rest, with a polynomial ramp $s(t)$ that grows from $0$ to $1$ during the first $40\,\%$ of the simulated time and is updated every $0.01\,\mathrm{s}$.
+The fluid is initially at rest, $\vel = \mathbf{0}$ in $\Omega$ at $t = 0$.
+
+#### Domain
+
+The channel has the length $L = 2.2\,\mathrm{m}$ and the height $H = 0.41\,\mathrm{m}$ (@fig-cylinder2d-domain).
+The cylinder with the diameter $D = 0.1\,\mathrm{m}$ sits at $(0.2\,\mathrm{m}, 0.2\,\mathrm{m})$, slightly below the centre line, which makes the flow asymmetric and gives a lift.
+With the mean inflow velocity $U = 0.2\,\mathrm{m/s}$ and $\nu = 10^{-3}\,\mathrm{m^2/s}$, the Reynolds number is $Re = U D / \nu = 20$, and the flow becomes steady.
+
+`prepareGeometry()` assigns the material numbers (MN) shown in @fig-cylinder2d-domain.
+
+![Domain and boundary conditions of `cylinder2d`, with the material numbers (MN) assigned in `prepareGeometry()`.](/examples/laminar/cylinder2d/doc/fig/cylinder2dDomain.svg){width="100%" #fig-cylinder2d-domain .lightbox}
+
+#### Discretization \& Descriptor
+In this example, the domain is discretized with a uniform grid with the lattice spacing $\Delta x = D / N$, where $N = 10$ cells resolve the diameter of the cylinder.
+
+The LBM collision operator is the BGK operator with a single relaxation time ([Collision Operators](/content/02_core.qmd#collision-operators)), used as `BGKdynamics`, together with the D2Q9 velocity set ([Lattice Structures](/content/01_introduction.qmd#sec-lattice-structures)).
+The boundaries are treated as follows ([Define Boundary Method](/content/06_initial_boundary.qmd#sec-defineBoundaryMethod)):
+
+- the channel walls (MN 2) with `BounceBack`,
+- the inlet (MN 3) with `InterpolatedVelocity`,
+- the outlet (MN 4) with `InterpolatedPressure`,
+- the cylinder (MN 5) with the Bouzidi boundary, `setBouzidiBoundary()`, which takes the exact position of the curved surface between the lattice nodes into account. Without the `BOUZIDI` define in `case.h`, the cylinder falls back to `BounceBack`.
+
+The corresponding lattice is defined inside the case definition in `case.h` as in @lst-cylinder2d-case.
+
+::: {#lst-cylinder2d-case}
+```{.cpp}
+using MyCase = Case<
+  NavierStokes, Lattice<FLOATING_POINT_TYPE, descriptors::D2Q9<>>
+>;
+```
+Case definition for the `cylinder2d` example.
+:::
+
+The parameters for the simulation are set in `main()` and given in @tbl-cylinder2d-params.
+The unit converter is built from them and derives the time step size from the resolution and the lattice relaxation time.
+
+| Parameter | Symbol | Value | Description |
+|---|---|---|---|
+| `RESOLUTION` | $N$ | $10$ | cells per cylinder diameter $D$ |
+| `REYNOLDS` | $Re$ | $20$ | Reynolds number $U D / \nu$ |
+| `PHYS_MAX_T` | $T$ | $16\,\mathrm{s}$ | simulated time, $8\,000$ time steps |
+| `DOMAIN_EXTENT` | $L \times H$ | $2.2\,\mathrm{m} \times 0.41\,\mathrm{m}$ | length and height of the channel |
+| `PHYS_CHAR_VELOCITY` | $U$ | $0.2\,\mathrm{m/s}$ | mean velocity of the fully developed inflow |
+| `LATTICE_RELAXATION_TIME` | $\tau$ | $0.56$ | lattice relaxation time |
+| `PHYS_CHAR_DENSITY` | $\rho$ | $1\,\mathrm{kg/m^3}$ | density |
+| `RADIUS_CYLINDER` | $D/2$ | $0.05\,\mathrm{m}$ | radius of the cylinder |
+| `CENTER_CYLINDER` | | $(0.2\,\mathrm{m}, 0.2\,\mathrm{m})$ | centre of the cylinder |
+| `PHYS_CHAR_LENGTH` | $D$ | $0.1\,\mathrm{m}$ | characteristic length, derived as $2 \cdot$ `RADIUS_CYLINDER` |
+| `PHYS_CHAR_VISCOSITY` | $\nu$ | $10^{-3}\,\mathrm{m^2/s}$ | kinematic viscosity, derived as $D U / Re$ |
+| `PHYS_VTK_ITER_T` | | $0.3\,\mathrm{s}$ | interval of the VTK output and the heat maps |
+| `PHYS_STAT_ITER_T` | | $0.1\,\mathrm{s}$ | interval of the console statistics and of drag, lift and pressure drop |
+| `RAMP_UP_UPDATE` | | $0.01\,\mathrm{s}$ | interval at which the inflow is updated during the ramp-up |
+| `RAMP_UP_END_FRACTION` | | $0.4$ | fraction of $T$ after which the inflow is fully developed |
+
+: Parameters of `cylinder2d`, as set in `main()`. Each of them can be overridden on the command line, e.g. `./cylinder2d --RESOLUTION 20`. {#tbl-cylinder2d-params}
+
+#### Validation
+
+The velocity and the pressure are written in physical units every $0.3\,\mathrm{s}$.
+@fig-cylinder2d-velocity shows the velocity magnitude at the end of the simulation: the flow accelerates around the cylinder, and a closed recirculation region forms in its wake.
+
+![Magnitude of the physical velocity of `cylinder2d` at $t = 15.9\,\mathrm{s}$, with the default resolution $N = 10$, visualized in ParaView.](/examples/laminar/cylinder2d/doc/fig/cylinder2d_velocity.png){width="100%" #fig-cylinder2d-velocity .lightbox}
+
+The example reproduces the steady test case 2D-1 of @turek:96.
+Every $0.1\,\mathrm{s}$, `getResults()` evaluates the drag and lift coefficients of the cylinder,
+$$
+    c_D = \frac{2 F_D}{\rho U^2 D}, \qquad c_L = \frac{2 F_L}{\rho U^2 D},
+$$
+where $F_D$ and $F_L$ are the forces on the cylinder in and across the flow direction, and the pressure drop $\Delta p = p(x_a) - p(x_e)$ between the front and the back of the cylinder, $x_a = (0.15\,\mathrm{m}, 0.2\,\mathrm{m})$ and $x_e = (0.25\,\mathrm{m}, 0.2\,\mathrm{m})$.
+It prints them to the console and writes the drag over time to `tmp/gnuplotData/`, together with the reference value $c_D = 5.58$.
+
+@tbl-cylinder2d-validation compares the values at the end of the simulation with the intervals that @turek:96 give for the exact solution.
+With the default resolution $N = 10$, which keeps the run short, drag and pressure drop deviate by about $4\,\%$ from the reference and the lift by about $40\,\%$, and the drag has not quite settled at the end of the run. Refining the grid brings all three values to the reference: with $N = 40$ they lie within half a percent of the upper bounds of the reference intervals.
+@fig-cylinder2d-drag shows the drag coefficient over time for the three resolutions.
+
+| Resolution $N$ | $c_D$ | $c_L$ | $\Delta p$ [Pa] |
+|---|---|---|---|
+| $10$ (default) | $5.821$ | $0.0153$ | $0.1225$ |
+| $20$ | $5.632$ | $0.0122$ | $0.1184$ |
+| $40$ | $5.591$ | $0.0111$ | $0.1180$ |
+| reference [@turek:96] | $5.57$ – $5.59$ | $0.0104$ – $0.0110$ | $0.1172$ – $0.1176$ |
+
+: Drag coefficient, lift coefficient and pressure drop of `cylinder2d` at $t = 15.9\,\mathrm{s}$ for increasing resolution, run with `--RESOLUTION`, compared with the reference intervals of the test case 2D-1. {#tbl-cylinder2d-validation}
+
+![Drag coefficient $c_D$ of `cylinder2d` over time for the resolutions $N = 10$, $20$ and $40$, and the reference value $c_D = 5.58$. The drag rises while the inflow is ramped up during the first $6.4\,\mathrm{s}$ and then settles.](/examples/laminar/cylinder2d/doc/fig/drag/drag.svg){width="80%" #fig-cylinder2d-drag .lightbox}
+
+#### Files
+
+```
+cylinder2d/
+├── cylinder2d.cpp   main(): parameters, then mesh, geometry, lattice, initial values and time loop
+├── case.h           Case type, geometry, boundary conditions, inflow ramp-up, drag, lift and pressure drop
+└── Makefile
+```
+
+The results are written to `tmp/` in the directory the example is run from: `vtkData/cylinder2d.pvd` opens all time steps in ParaView, `imageData/` holds the velocity heat maps and `gnuplotData/` the drag over time. Both the heat maps and the drag plot are drawn with gnuplot; without it, only the data in `gnuplotData/data/` is written.

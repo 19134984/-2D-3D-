@@ -1,0 +1,29 @@
+---
+title: Parameters
+number-sections: true
+toc: true
+---
+
+# What it is
+Provides a struct to store arbitrarily typed data with a given amount of entries.
+
+# Usage
+Construct a new parameters by inheriting from one of the base parameter structs
+```cpp
+struct PARAMETER_NAME : public descriptors::FIELD_BASE<1> { };
+```
+The names of parameters should be typed in SCREAMING_SNAKE_CASE.
+Afterwards these are combined into a set of parameters called [parametersD](03_parametersD.qmd), which is then responsible for setting, getting and updating the values.
+
+OpenLB defines a base set of parameters in [parameters.h](https://gitlab.com/openlb/release/-/blob/3dedbdd2c4d5e911eda3784643dd419b211951d0/src/case/parameters.h) that are commonly used in setups. These can be used in any simulation case without defining them.
+
+## The base parameter structs
+OpenLB supplies a list of base parameter structs, that fullfill different task
+
+| Base Type              | Template Arguments                                    | What it stores                                                                              |
+| ---------------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| FIELD_BASE\<T>         | T: number of entries                                  | Stores a vector with given size, with a  default type of float or double as defined in case |
+| TYPED_FIELD_BASE\<T,S> | T: data type of the parameter<br>S: number of entries | Stores a vector with given size and given data type                                         |
+| ...                    |                                                       |                                                                                             |
+
+# Implemetation Details

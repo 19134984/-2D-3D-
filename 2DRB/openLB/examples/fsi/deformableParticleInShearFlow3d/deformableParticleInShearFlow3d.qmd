@@ -1,0 +1,22 @@
+---
+features: [particles, transient, benchmark, stl, primitives]
+---
+
+### deformableParticleInShearFlow3d
+
+This example case contains the benchmark validation case for a 3D deformable particle submerged in a shear flow (cf. [@kruger:2011]).
+The solid mechanics for the deformation of the membrane is modelled via the finite element method (FEM) and the shear flow dynamics is simulated via LBM.
+Communication between the two solvers is done via the immersed boundary method (IBM), where the flow velocity is used to compute the displacement of the solid nodes, and the resulting force is mapped onto the fluid via the external force field.
+The current benchmark case validates the correct operation of the coupled FEM-IBM-LBM solver by comparing the scaled deformation ratio over the normalized time scale, cf. @fig-shearFlow3d.
+The mechanical parameters as well as the positioning of the membrane can be configured via the XML files.
+Note that this example is not executable with parallelization yet.
+
+::: {#fig-shearFlow3d layout-ncol=2}
+
+![X-component velocity distribution with the submerged membrane where the area deviation on the solid mesh is visualized together with streamlines.](/examples/fsi/deformableParticleInShearFlow3d/doc/fig/shearFlow3d.png){#fig-shearFlow3d-left}
+
+![Temporal development of the scaled deformation coefficient over the normalized time. At the time $\kappa t = 120$, the analytical solution is given and is compared with the result for two consecutive grid resolutions.](/examples/fsi/deformableParticleInShearFlow3d/doc/fig/shearFlowPlot.png){#fig-shearFlow3d-right}
+
+Validation of the coupled FEM-IBM-LBM solver for a deformable particle in shear flow.
+
+:::

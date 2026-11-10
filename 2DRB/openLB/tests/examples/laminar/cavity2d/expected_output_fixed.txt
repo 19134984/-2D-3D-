@@ -1,0 +1,102 @@
+[UnitConverter] ----------------- UnitConverter information -----------------
+[UnitConverter] -- Parameters:
+[UnitConverter] Resolution:                       N=              128
+[UnitConverter] Lattice velocity:                 latticeU=       0.1
+[UnitConverter] Lattice relaxation frequency:     omega=          1.85736
+[UnitConverter] Lattice relaxation time:          tau=            0.5384
+[UnitConverter] Characteristical length(m):       charL=          1
+[UnitConverter] Characteristical speed(m/s):      charU=          1
+[UnitConverter] Phys. kinematic viscosity(m^2/s): charNu=         0.001
+[UnitConverter] Phys. density(kg/m^d):            charRho=        1
+[UnitConverter] Characteristical pressure(N/m^2): charPressure=   0
+[UnitConverter] Mach number:                      machNumber=     0.173205
+[UnitConverter] Reynolds number:                  reynoldsNumber= 1000
+[UnitConverter] Knudsen number:                   knudsenNumber=  0.000173205
+[UnitConverter] 
+[UnitConverter] -- Conversion factors:
+[UnitConverter] Voxel length(m):                  physDeltaX=     0.0078125
+[UnitConverter] Time step(s):                     physDeltaT=     0.00078125
+[UnitConverter] Velocity factor(m/s):             physVelocity=   10
+[UnitConverter] Density factor(kg/m^3):           physDensity=    1
+[UnitConverter] Mass factor(kg):                  physMass=       4.76837e-07
+[UnitConverter] Viscosity factor(m^2/s):          physViscosity=  0.078125
+[UnitConverter] Force factor(N):                  physForce=      0.00610352
+[UnitConverter] Pressure factor(N/m^2):           physPressure=   100
+[UnitConverter] -------------------------------------------------------------
+[CuboidDecomposition] -- Cuboid Structure Statistics --
+[CuboidDecomposition]  Number of Cuboids: 	1
+[CuboidDecomposition]  Delta       : 		0.0078125
+[CuboidDecomposition]  Ratio  (min): 		1
+[CuboidDecomposition]         (max): 		1
+[CuboidDecomposition]  Nodes  (min): 		16641
+[CuboidDecomposition]         (max): 		16641
+[CuboidDecomposition] --------------------------------
+[SuperGeometry2D] the model is correct!
+[SuperGeometryStatistics2D] materialNumber=1; count=16129; minPhysR=(0.0078125,0.0078125); maxPhysR=(0.992188,0.992188)
+[SuperGeometryStatistics2D] materialNumber=2; count=385; minPhysR=(0,0); maxPhysR=(1,1)
+[SuperGeometryStatistics2D] materialNumber=3; count=127; minPhysR=(0.0078125,1); maxPhysR=(0.992188,1)
+[LatticeStatistics] step=0; physT=0; maxCFL=0.1; avgEnergy=3.81588e-05; avgRho=1
+[LatticeStatistics] step=1280; physT=1; maxCFL=0.1; avgEnergy=0.000110571; avgRho=1
+[ValueTracer] average=8.38777e-05; stdDev/average=0.228563
+[LatticeStatistics] step=2560; physT=2; maxCFL=0.1; avgEnergy=0.000140826; avgRho=1
+[ValueTracer] average=0.000126667; stdDev/average=0.0683431
+[LatticeStatistics] step=3840; physT=3; maxCFL=0.1; avgEnergy=0.00016346; avgRho=1
+[ValueTracer] average=0.000152312; stdDev/average=0.0429748
+[LatticeStatistics] step=5120; physT=4; maxCFL=0.1; avgEnergy=0.000183493; avgRho=1
+[ValueTracer] average=0.000173605; stdDev/average=0.0334478
+[LatticeStatistics] step=6400; physT=5; maxCFL=0.1; avgEnergy=0.000202294; avgRho=1
+[getResults] absoluteErrorL2(line)=0.0428197; relativeErrorL2(line)=0.431709
+[ValueTracer] average=0.000193147; stdDev/average=0.0281806
+[LatticeStatistics] step=7680; physT=6; maxCFL=0.1; avgEnergy=0.000220378; avgRho=1
+[ValueTracer] average=0.000211638; stdDev/average=0.0246224
+[LatticeStatistics] step=8960; physT=7; maxCFL=0.1; avgEnergy=0.000237805; avgRho=1
+[ValueTracer] average=0.000229325; stdDev/average=0.0218769
+[LatticeStatistics] step=10240; physT=8; maxCFL=0.1; avgEnergy=0.000254533; avgRho=1
+[ValueTracer] average=0.000246302; stdDev/average=0.019601
+[LatticeStatistics] step=11520; physT=9; maxCFL=0.1; avgEnergy=0.000270592; avgRho=1
+[ValueTracer] average=0.000262604; stdDev/average=0.0176341
+[LatticeStatistics] step=12800; physT=10; maxCFL=0.1; avgEnergy=0.000285932; avgRho=1
+[getResults] absoluteErrorL2(line)=0.0318024; relativeErrorL2(line)=0.320632
+[ValueTracer] average=0.000278241; stdDev/average=0.0158923
+[LatticeStatistics] step=14080; physT=11; maxCFL=0.1; avgEnergy=0.000300478; avgRho=1
+[ValueTracer] average=0.000293191; stdDev/average=0.0143292
+[LatticeStatistics] step=15360; physT=12; maxCFL=0.1; avgEnergy=0.000314201; avgRho=1
+[ValueTracer] average=0.000307402; stdDev/average=0.0129131
+[LatticeStatistics] step=16640; physT=13; maxCFL=0.1; avgEnergy=0.000327103; avgRho=1
+[ValueTracer] average=0.000320792; stdDev/average=0.0116121
+[LatticeStatistics] step=17920; physT=14; maxCFL=0.1; avgEnergy=0.000339111; avgRho=1
+[ValueTracer] average=0.000333269; stdDev/average=0.0103873
+[LatticeStatistics] step=19200; physT=15; maxCFL=0.1; avgEnergy=0.000350125; avgRho=1
+[getResults] absoluteErrorL2(line)=0.0190911; relativeErrorL2(line)=0.192477
+[ValueTracer] average=0.000344754; stdDev/average=0.00921489
+[LatticeStatistics] step=20480; physT=16; maxCFL=0.1; avgEnergy=0.000360092; avgRho=1
+[ValueTracer] average=0.000355198; stdDev/average=0.00809696
+[LatticeStatistics] step=21760; physT=17; maxCFL=0.1; avgEnergy=0.000368996; avgRho=1
+[ValueTracer] average=0.000364592; stdDev/average=0.00705024
+[LatticeStatistics] step=23040; physT=18; maxCFL=0.1; avgEnergy=0.000376862; avgRho=1
+[ValueTracer] average=0.000372959; stdDev/average=0.00609207
+[LatticeStatistics] step=24320; physT=19; maxCFL=0.1; avgEnergy=0.000383748; avgRho=1
+[ValueTracer] average=0.000380347; stdDev/average=0.0052354
+[LatticeStatistics] step=25600; physT=20; maxCFL=0.1; avgEnergy=0.000389747; avgRho=1
+[getResults] absoluteErrorL2(line)=0.00926959; relativeErrorL2(line)=0.0934561
+[ValueTracer] average=0.00038682; stdDev/average=0.00448526
+[LatticeStatistics] step=26880; physT=21; maxCFL=0.1; avgEnergy=0.000394957; avgRho=1
+[ValueTracer] average=0.000392447; stdDev/average=0.00383523
+[LatticeStatistics] step=28160; physT=22; maxCFL=0.1; avgEnergy=0.000399462; avgRho=1
+[ValueTracer] average=0.000397302; stdDev/average=0.00327027
+[LatticeStatistics] step=29440; physT=23; maxCFL=0.1; avgEnergy=0.000403326; avgRho=1
+[ValueTracer] average=0.000401462; stdDev/average=0.00277558
+[LatticeStatistics] step=30720; physT=24; maxCFL=0.1; avgEnergy=0.000406612; avgRho=1
+[ValueTracer] average=0.000405008; stdDev/average=0.00234197
+[LatticeStatistics] step=32000; physT=25; maxCFL=0.1; avgEnergy=0.000409387; avgRho=1
+[getResults] absoluteErrorL2(line)=0.00483017; relativeErrorL2(line)=0.0486978
+[ValueTracer] average=0.000408017; stdDev/average=0.00196519
+[LatticeStatistics] step=33280; physT=26; maxCFL=0.1; avgEnergy=0.000411721; avgRho=1
+[ValueTracer] average=0.000410564; stdDev/average=0.00164327
+[LatticeStatistics] step=34560; physT=27; maxCFL=0.1; avgEnergy=0.00041368; avgRho=1
+[ValueTracer] average=0.000412717; stdDev/average=0.00137413
+[LatticeStatistics] step=35840; physT=28; maxCFL=0.1; avgEnergy=0.000415332; avgRho=1
+[ValueTracer] average=0.000414536; stdDev/average=0.00115345
+[main] Simulation converged.
+[LatticeStatistics] step=37006; physT=28.9109; maxCFL=0.1; avgEnergy=0.000416637; avgRho=1
+[getResults] absoluteErrorL2(line)=0.00349861; relativeErrorL2(line)=0.0352731

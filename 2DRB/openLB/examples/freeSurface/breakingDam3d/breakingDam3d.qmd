@@ -1,0 +1,8 @@
+---
+features: [multiComponent, multiPhase, transient, primitives]
+---
+
+### breakingDam3d
+
+The example `breakingDam3d` extends the `breakingDam2d` example to 3D.
+A full simulation run of the `breakingDam3d` example, visualized in ParaView, can be found on the $\OpenLB$ YouTube page (<https://youtu.be/X8yeLCkUldQ>).

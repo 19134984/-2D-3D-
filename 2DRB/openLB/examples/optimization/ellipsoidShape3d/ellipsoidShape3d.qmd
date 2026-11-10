@@ -1,0 +1,3 @@
+### ellipsoidShape3d
+
+<!-- TODO: describe this example. -->

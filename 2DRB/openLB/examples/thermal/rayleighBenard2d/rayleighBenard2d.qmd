@@ -1,0 +1,135 @@
+---
+features: [turbulent, thermal, transient, benchmark, showcase, primitives]
+---
+
+### rayleighBenard2d {#sec-example-thermal-rayleighBenard2d}
+
+The Rayleigh--Bénard convection is a typical case of natural convection, where the lower boundary is heated and a regular pattern of convection cells is developed.
+This is a suitable test platform for thermal algorithms, since the driving force is a coupling between momentum and energy equations by means of a buoyancy force, which is a function of the temperature, and the temperature varies spatially inside the domain.
+This example demonstrates Rayleigh--Bénard convection rolls, simulated with the thermal LB model by Guo *et al.* [@guo:02c], between a hot plate at the bottom and a cold plate at the top.
+A version of this example with less code, for beginners, is [[`forBeginners/rayleighBenard2d`](/examples/forBeginners/rayleighBenard2d/rayleighBenard2d.qmd)]{.content-visible when-format="html"}[`forBeginners/rayleighBenard2d`]{.content-visible when-format="pdf"}.
+
+#### Governing equations
+
+The domain $\Omega \times \I = [0, 2] \times [0, 1] \times \R_{\geq 0}$ is considered with the incompressible Navier--Stokes equations in the Boussinesq approximation for the velocity field $\vel \in \R^2$, the pressure $p \in \R$ and the temperature $T \in \R$, with the kinematic viscosity $\nu$, the density $\rho$, the thermal diffusivity $\kappa$, the thermal expansion coefficient $\beta$ and the gravitational acceleration $g = 9.81\,\mathrm{m/s^2}$ in the $-y$-direction,
+\begin{align}
+    \nabla \cdot \vel &= 0 \quad \text{in} \quad \Omega \times \I, \\
+    \partial_t \vel + (\vel \cdot \nabla) \vel &= -\frac{1}{\rho} \nabla p + \nu \Delta \vel + g \beta (T - T_\text{cold})\, \mathbf{e}_y \quad \text{in} \quad \Omega \times \I, \\
+    \partial_t T + \vel \cdot \nabla T &= \kappa \Delta T \quad \text{in} \quad \Omega \times \I.
+\end{align}
+The buoyancy force couples the momentum equation to the temperature, and the velocity transports the temperature.
+The flow is characterized by the Prandtl number $Pr = \nu / \kappa$ and the Rayleigh number
+$$
+    Ra = \frac{g \beta (T_\text{hot} - T_\text{cold}) L^3}{\nu \kappa},
+$$
+and the heat transport by the Nusselt number $Nu$, the heat flux through the plates relative to the flux by conduction alone, $\kappa (T_\text{hot} - T_\text{cold}) / H$.
+
+#### Boundary conditions
+
+The boundary consists of the bottom plate (MN 2) at $y = 0$ and the top plate (MN 3) at $y = H = 1\,\mathrm{m}$; in the $x$-direction, the domain is periodic,
+\begin{align}
+    \vel &= \mathbf{0}, \quad T = T_\text{hot} \quad \text{at} \quad y = 0, \\
+    \vel &= \mathbf{0}, \quad T = T_\text{cold} \quad \text{at} \quad y = H,
+\end{align}
+with $T_\text{hot} = 274.15\,\mathrm{K}$ and $T_\text{cold} = 273.15\,\mathrm{K}$.
+Initially, the fluid is at rest and has the cold temperature $T_\text{cold}$, except for a single cell (MN 4) in the middle of the bottom plate at $(1\,\mathrm{m}, \Delta x)$, which starts with the temperature $T_\text{cold} + 0.8 (T_\text{hot} - T_\text{cold}) = 273.95\,\mathrm{K}$.
+This perturbation breaks the symmetry of the setup in $x$ and fixes where the first plume rises.
+
+#### Domain
+
+The domain has the aspect ratio $\Gamma = L_x / H = 2$, which enhances the appearance of unstable modes, and is periodic in the $x$-direction.
+`prepareGeometry()` marks all cells as MN 2 and renames all of them except the bottom and the top row to fluid (MN 1). It then renames the top row to MN 3 and the perturbation cell to MN 4 with indicator cuboids, which are centred on the rows of cells.
+
+#### Discretization \& Descriptor
+In this example, the domain is discretized with a uniform grid with the lattice spacing $\Delta x = L / N$, where the characteristic length $L = 0.1\,\mathrm{m}$ is resolved with $N = 10$ cells. The height $H = 1\,\mathrm{m}$ of the domain therefore has $100$ cells, and the mesh has $201 \times 101 = 20\,301$ cells in one cuboid.
+The characteristic velocity is the velocity $U = (\nu / L) \sqrt{Ra / Pr} = 0.0119\,\mathrm{m/s}$.
+
+The parameters in `main()` set the Rayleigh number $Ra = 10^4$ and $Pr = 0.71$ with respect to the characteristic length $L = 0.1\,\mathrm{m}$: `PHYS_THERMAL_EXPANSION` is computed as $\beta = Ra\, \nu^2 / (Pr\, g\, (T_\text{hot} - T_\text{cold}) L^3)$.
+The plates, however, are $H = 10 L$ apart, so the Rayleigh number of the convection between them is
+$$
+    Ra_H = Ra \left( \frac{H}{L} \right)^3 = 10^7 ,
+$$
+which is well above the critical value of about $1708$, so the convection is vigorous.
+To simulate the convection at $Ra = 10^4$, the domain has to be scaled with $L$, `DOMAIN_EXTENT` $= (0.2, 0.1)\,\mathrm{m}$.
+
+The momentum equation is solved with the BGK operator with a forcing term, `ForcedBGKdynamics`, on the D2Q9 velocity set, and the temperature with `AdvectionDiffusionBGKdynamics` on the D2Q5 velocity set ([Lattice Structures](/content/01_introduction.qmd#sec-lattice-structures)), both in double precision.
+For the fluid, the plates (MN 2, MN 3) are treated with `BounceBack`; for the temperature, they are Dirichlet boundaries, `AdvectionDiffusionDirichlet`, with the temperatures of @tbl-rayleighBenard2d-params ([Define Boundary Method](/content/06_initial_boundary.qmd#sec-defineBoundaryMethod)).
+The coupling operator `NavierStokesAdvectionDiffusionCoupling`, registered as `Boussinesq` in `prepareLattice()`, adds the buoyancy force to the fluid and passes the velocity to the temperature lattice ([Coupling Between Momentum and Energy Equations](/content/05_simulation_models.qmd)). `simulate()` applies it after the collision and streaming of both lattices in every time step.
+
+The corresponding lattices are defined inside the case definition in `rayleighBenard2d.cpp` as in @lst-rayleighBenard2d-case.
+
+::: {#lst-rayleighBenard2d-case}
+```{.cpp}
+using MyCase = Case<
+  NavierStokes, Lattice<double, descriptors::D2Q9<descriptors::FORCE>>,
+  Temperature,  Lattice<double, descriptors::D2Q5<descriptors::VELOCITY>>
+>;
+```
+Case definition for the `rayleighBenard2d` example. The `FORCE` field holds the buoyancy force on the fluid, the `VELOCITY` field the velocity that transports the temperature.
+:::
+
+@lst-rayleighBenard2d-coupling shows the set-up of the coupling. The prefactor converts $g \beta (T_\text{hot} - T_\text{cold})$ into lattice units, and the coupling multiplies it by the lattice temperature difference $T - T_\text{cold}$ in each cell.
+
+::: {#lst-rayleighBenard2d-coupling}
+```{.cpp}
+const T boussinesqForcePrefactor = 9.81 / ADconverter.getConversionFactorVelocity()
+                                 * ADconverter.getConversionFactorTime()
+                                 * ADconverter.getCharPhysTemperatureDifference()
+                                 * ADconverter.getPhysThermalExpansionCoefficient();
+
+auto& coupling = myCase.setCouplingOperator(
+  "Boussinesq",
+  NavierStokesAdvectionDiffusionCoupling{},
+  names::NavierStokes{}, NSlattice,
+  names::Temperature{},  ADlattice);
+coupling.setParameter<NavierStokesAdvectionDiffusionCoupling::T0>(
+  ADconverter.getLatticeTemperature(Tcold));
+coupling.setParameter<NavierStokesAdvectionDiffusionCoupling::FORCE_PREFACTOR>(
+  boussinesqForcePrefactor * Vector<T,2>{0.0,1.0});
+```
+Coupling of the fluid and the temperature lattice in `prepareLattice()`.
+:::
+
+| Parameter | Symbol | Value | Description |
+|---|---|---|---|
+| `DOMAIN_EXTENT` | $L_x \times H$ | $2\,\mathrm{m} \times 1\,\mathrm{m}$ | size of the domain |
+| `RESOLUTION` | $N$ | $10$ | cells per characteristic length $L$ |
+| `PHYS_CHAR_LENGTH` | $L$ | $0.1\,\mathrm{m}$ | characteristic length of $Ra$ |
+| `RAYLEIGH` | $Ra$ | $10^4$ | Rayleigh number with respect to $L$ |
+| `PRANDTL` | $Pr$ | $0.71$ | Prandtl number |
+| `PHYS_CHAR_VISCOSITY` | $\nu$ | $10^{-5}\,\mathrm{m^2/s}$ | kinematic viscosity |
+| `PHYS_CHAR_DENSITY` | $\rho$ | $1\,\mathrm{kg/m^3}$ | density |
+| `PHYS_THERMAL_CONDUCTIVITY` | $k$ | $0.03\,\mathrm{W/(m\,K)}$ | thermal conductivity |
+| `PHYS_HEAT_CAPACITY` | $c_p$ | $Pr\, k / (\nu \rho) = 2130\,\mathrm{J/(kg\,K)}$ | specific heat capacity, sets $\kappa = k / (\rho c_p) = 1.41 \cdot 10^{-5}\,\mathrm{m^2/s}$ |
+| `PHYS_THERMAL_EXPANSION` | $\beta$ | $1.44 \cdot 10^{-4}\,\mathrm{1/K}$ | thermal expansion coefficient, from $Ra$ |
+| `PHYS_CHAR_HIGH_TEMPERATURE` | $T_\text{hot}$ | $274.15\,\mathrm{K}$ | temperature of the bottom plate |
+| `PHYS_CHAR_LOW_TEMPERATURE` | $T_\text{cold}$ | $273.15\,\mathrm{K}$ | temperature of the top plate and initial temperature |
+| `T_PERTURB` | | $273.95\,\mathrm{K}$ | initial temperature of the perturbation cell |
+| `LATTICE_CHAR_VELOCITY` | | $0.1$ | lattice velocity of $U$, sets $\Delta t$ |
+| `PHYS_MAX_T` | $T$ | $1000\,\mathrm{s}$ | simulated time |
+| `PHYS_VTK_ITER_T` | | $10\,\mathrm{s}$ | interval of the VTK output |
+| `reporter` `PHYS_ITER_T` | | $10\,\mathrm{s}$ | interval of the console statistics and the timer |
+
+: Parameters of `rayleighBenard2d`, as set in `main()`. {#tbl-rayleighBenard2d-params}
+
+#### Validation
+
+@fig-rayleighBenard2d-temperature shows how the convection starts.
+Heat diffuses from the bottom plate into the cold fluid, and after about $100\,\mathrm{s}$ the warm layer becomes unstable at the perturbation: a plume rises in the middle of the domain, flanked by two smaller ones, and drives two counter-rotating rolls, which fill the domain.
+At $t = 1000\,\mathrm{s}$, the end of the default simulation, the rolls are fully developed, but the fluid between them is still colder than the mean of the two plate temperatures.
+
+::: {.image-slider .image-slider-wide}
+::: {#fig-rayleighBenard2d-temperature layout-ncol="2"}
+![$t = 140\,\mathrm{s}$](/examples/thermal/rayleighBenard2d/doc/fig/temperature/temperature_iT0001666.png)
+
+![$t = 191\,\mathrm{s}$](/examples/thermal/rayleighBenard2d/doc/fig/temperature/temperature_iT0002261.png)
+
+![$t = 241\,\mathrm{s}$](/examples/thermal/rayleighBenard2d/doc/fig/temperature/temperature_iT0002856.png)
+
+![$t = 993\,\mathrm{s}$](/examples/thermal/rayleighBenard2d/doc/fig/temperature/temperature_iT0011781.png)
+
+![$t = 9994\,\mathrm{s}$, run with `--PHYS_MAX_T 10000`](/examples/thermal/rayleighBenard2d/doc/fig/temperature/long_temperature_iT0118600.png)
+
+Temperature of `rayleighBenard2d` with streamlines, visualized in ParaView. The colour range is fixed to $[T_\text{cold}, T_\text{hot}]$.
+:::
+:::

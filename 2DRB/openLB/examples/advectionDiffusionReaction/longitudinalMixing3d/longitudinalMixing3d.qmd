@@ -1,0 +1,40 @@
+---
+features: [thermal, transient, benchmark, primitives]
+---
+
+### longitudinalMixing3d
+
+This example models a transient longitudinal mixing process, which is used to validate the implemented robin-type boundary condition.
+In a one-dimensional bed of length $L$ a solute concentration $C(x,t)$ behaves according to
+
+$$
+\partial_t C + u \partial_x C = D\partial_x^2 C,  \qquad 0\leq x\leq L,
+$$
+
+where $u$ is the constant displacement velocity in $x$-direction and $D$ is a constant diffusion coefficient.
+The initial condition is
+
+$$
+C(x,0) = 0, \qquad 0\leq x\leq L
+$$
+
+while the boundary conditions
+
+$$
+\begin{aligned}
+    u C(0,t)-D\partial_x C(0,t) &= u C_f, &t\geq0 \\
+    \partial_x C(L,t) &= 0, &t\geq0
+\end{aligned}
+$$
+
+are imposed at the ends of the domain.
+Under these conditions, the analytical solution $C^*$ to the system is found in [@brenner95] and is given by
+
+$$
+\begin{aligned}
+    C^*(x,t)= &C_f \left[ \frac{1}{2} \mathrm{erfc}\left(\frac{x-ut}{2\sqrt{Dt}}\right)+ \sqrt{\frac{u^2 t}{\pi D}} \exp\left(-\frac{(x-ut)^2}{4Dt}\right)  \right. \\
+    & \left. -\frac{1}{2} \left(1+\frac{ux}{D}+\frac{u^2 t}{D}\right) \exp\left(\frac{ux}{D}\right) \mathrm{erfc}\left(\frac{x+ut}{2\sqrt{Dt}}\right) \right].
+\end{aligned}
+$$
+
+This is an asymptotic solution that holds for small $t$. It is considered valid for $t<5$ [@zhang18].

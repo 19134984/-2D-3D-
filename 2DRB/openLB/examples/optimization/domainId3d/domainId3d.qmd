@@ -1,0 +1,43 @@
+---
+features: [porousMedia, benchmark, showcase, primitives]
+---
+
+### domainId3d
+
+In this example, a domain identification problem is solved: a cubic obstacle in the middle of a cubic fluid flow domain has to be identified given only the surrounding fluid flow, cf. [@klemens:20].
+Therefore, an optimization problem is set up, where the porosity field $\alpha$ in the design domain has to be found such that the error $J$ between the resulting velocity field $\mathbf{u}$ and the original velocity field $\mathbf{u^\ast}$ is minimized.
+Hence, the objective is $J := \tfrac{1}{2} \int_{\tilde{\Omega}} \vert \mathbf{u}- \mathbf{u^\ast} \vert ^2 \, dx$.
+The example employs adjoint Lattice Boltzmann methods for gradient computation. Results are shown in @fig-td-opti.
+
+::: {#fig-td-opti layout-ncol=2}
+
+![Identified object, surrounding velocity field and streamlines.](/examples/optimization/domainId3d/doc/fig/td_flow.png){#fig-td-flow}
+
+![Relative decrease of the objective functional and its derivative w.r.t. the design variables.](/examples/optimization/domainId3d/doc/fig/td_trend.png){#fig-td-trend}
+
+Results of domain identification after 97 optimization steps. The objective hardly changes after ca. 30 optimization steps.
+
+:::
+
+The implementation makes use of the Solver framework and the XML interface for parameter reading.
+In addition to the typical parameters for simulation and optimization, the following geometric domains are read from the XML file:
+
+- `<ObjectiveDomain>`: the domain $\tilde{\Omega}$, where the objective functional is computed.
+- `<SimulationObject>`: the object that is to be identified by the example; it is used for the computation of the reference solution $\mathbf{u^\ast}$.
+- `<DesignDomain>`: the domain where the porosity field is computed by the optimization algorithm.
+
+The $\OpenLB$ software provides the method *createIndicator* to create these domains or objects.
+For example, a three-dimensional cuboid with length $1$ at the origin can be created with `createIndicatorF3D<T>` (reading from the XML file) with the input
+
+```{.xml}
+<IndicatorCuboid3D extend = "1 1 1" origin = "0 0 0"/>
+```
+
+These domains are objects and depend on the specific optimization problem and have to be created or modified for each problem again.
+
+The following optimization parameters are specified in the context of domain identification and set in the XML file:
+
+- `ReferenceSolution`: decide whether the reference velocity $\mathbf{u^\ast}$ is computed via a simulation.
+- `StartValueType`: select between Control, Permeability and Porosity.
+
+This app design omits the implementation of a solver class and uses operator-based functors for optimization-related operations.

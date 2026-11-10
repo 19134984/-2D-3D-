@@ -1,0 +1,68 @@
+/*  Lattice Boltzmann sample, written in C++, using the OpenLB
+ *  library
+ *
+ *  Copyright (C) 2024 Shota Ito
+ *  E-mail contact: info@openlb.net
+ *  The most recent release of OpenLB can be downloaded at
+ *  <http://www.openlb.net/>
+ *
+ *  This program is free software; you can redistribute it and/or
+ *  modify it under the terms of the GNU General Public License
+ *  as published by the Free Software Foundation; either version 2
+ *  of the License, or (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public
+ *  License along with this program; if not, write to the Free
+ *  Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
+ *  Boston, MA  02110-1301, USA.
+ */
+
+/*  ========================================================
+ *  ==  WARNING: This is an automatically generated std::cout, ==
+ *  ==                  do not modify.                    ==
+ *  ========================================================
+ */
+
+% if disable_cse:
+#define DISABLE_CSE
+% endif
+
+#include <iostream>
+#include <fstream>
+#include <olb.h>
+
+using namespace olb;
+
+using T = ${precision};
+using TARGET_DYNAMICS = ${dynamics}; 
+
+
+int main() {
+    auto _id = meta::id<TARGET_DYNAMICS>();
+
+    using DESCRIPTOR = decltype(_id)::type::descriptor_t;
+
+    auto _dynamics = DynamicsPromise<T, DESCRIPTOR>(_id);
+
+    auto opCount    = _dynamics.getArithmeticOperationCount();
+    auto bandwidth  = _dynamics.getMemoryBandwidth();
+    auto complexity = _dynamics.getComplexity();
+    auto name       = _dynamics.name();
+    auto isOptimized= _dynamics.hasOptimizedVersion();
+
+    std::cout << "{" << std::endl;
+    std::cout << "  \"name\": \""        << name        << "\"," << std::endl;
+    std::cout << "  \"isOptimized\": "   << isOptimized << "," << std::endl; 
+    std::cout << "  \"precision\": \"" << "${precision}" << "\"," << std::endl;
+    std::cout << "  \"bandwidth\": "     << *bandwidth  << "," << std::endl;
+    std::cout << "  \"complexity\": "    << *complexity << "," << std::endl;
+    std::cout << "  \"FLOP\": "          << *opCount    << std::endl;
+    std::cout << "}" << std::endl;
+
+    return 0;
+}

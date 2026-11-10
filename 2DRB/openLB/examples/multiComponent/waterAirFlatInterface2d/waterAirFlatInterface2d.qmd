@@ -1,0 +1,9 @@
+---
+features: [multiComponent, multiPhase, showcase, primitives]
+---
+
+### waterAirFlatInterface2d
+
+This example illustrates how to compute the thermodynamic equilibrium of a mixture described by an empirical equation of state with complex mixing rules using a multi-component-multi-phase LBM.
+The multi-phase description is based on the work of Czelusniak *et al.* [@czelusniak2020], while the multi-component force splitting is based on Peng *et al.* [@peng2021].
+The focus is on the case of a non-curved phase interface with periodic boundary conditions.

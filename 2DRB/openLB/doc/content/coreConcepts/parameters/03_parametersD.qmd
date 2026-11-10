@@ -1,0 +1,91 @@
+---
+title: ParametersD
+number-sections: true
+toc: true
+---
+
+# What it is
+parametersD provides an object storing a set of parameters, that can be updated both during runtime, as well as during simuation execution through command line arguments or serialized interfaces e.g. xml.
+
+# Usage
+
+## Basic Usage
+A new parametersD object automatically has access to a set of predefined [parameters](02_parameters.qmd), which are often used. These predefined parameters can be found in [parameters.h](https://gitlab.com/openlb/release/-/blob/3dedbdd2c4d5e911eda3784643dd419b211951d0/src/case/parameters.h).
+Setting up new parameters is done by defining them in the olb::descriptors namespace in global scope of the case
+```cpp
+namespace olb::parameters {
+	struct PARAMETER_NAME_1 : public descriptors::FIELD_BASE<1> { };
+	struct PARAMETER_NAME_2 : public descriptors::TYPED_FIELD_BASE<bool, 1> { };
+}
+```
+Multiple types of parameters are available for different data types and even allow definition of initial values
+
+To set the parameters, first create the parametersD object and then set values for the parameters.
+```cpp
+MyCase::ParametersD myCaseParameters;
+{
+	using namespace olb::parameters;
+	myCaseParameters.set<PARAMETER_NAME_1>(0.0078125);
+	myCaseParameters.set<PARAMETER_NAME_2>(     true);
+}
+```
+As the [[|Case Object]] is created with this initial parametersD, they can always be retrieved from the case like this
+```cpp
+auto& parameters = myCase.getParameters();
+```
+Retriving individual values of the parameters is done like this
+```cpp
+const T    param1 = myCaseParameters.get<parameters::PARAMETER_NAME_1>();
+const bool param2 = myCaseParameters.get<parameters::PARAMETER_NAME_2>();
+```
+
+## Advanced Usage
+Specific functors or models provide their own parametersD, to hold necessary information. Interacting with them works the same way.
+This prototype for an Poiseuille inflow profile functor shows this
+```cpp
+
+struct PoiseuilleF {
+	struct CENTER : public descriptors::FIELD_BASE<0,1> { };
+	struct NORMAL : public descriptors::FIELD_BASE<0,1> { };
+	struct RADIUS : public descriptors::FIELD_BASE<1,0> { };
+	struct U_BULK : public descriptors::FIELD_BASE<1,0> { };
+
+	using parameters = meta::list<CENTER,NORMAL,RADIUS,U_BULK>;
+	using result_t = descriptors::VELOCITY;
+
+	template <typename V, typename PARAMETERS>
+	Vector<V,2> compute(Vector<V,2> physR, PARAMETERS& parameters) any_platform {
+		const auto n = parameters.template get<NORMAL>();
+		const auto center = parameters.template get<CENTER>();
+		const auto r = parameters.template get<RADIUS>();
+		const auto maxU = 3./2.*parameters.template get<U_BULK>();
+
+		return ...;
+	}
+};
+
+int main(int argc, char* argv[]) {
+	
+}
+
+```
+
+## Serialize and Deseralize
+Parameters can be deserialized from the command line interface or other serial formats like xml. 
+Calling
+```cpp
+myCaseParameters.fromCLI(argc, argv);
+```
+reads the parameters from the command line interface during runtime. 
+Overwriting parameters is done like this
+```bash
+./app --PARAMETER_NAME_1 1.2345 --PARAMETER_NAME_2 false
+```
+To list all available parameters run
+```bash
+./app --help
+```
+
+
+# Implementation Details
+parametersD stores a map from parameter name to its value and is build on the legacy [cliReader](https://gitlab.com/openlb/release/-/blob/3dedbdd2c4d5e911eda3784643dd419b211951d0/src/io/cliReader.h). 

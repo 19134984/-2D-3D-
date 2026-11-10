@@ -1,0 +1,351 @@
+%Tabelle Teil 1
+\begin{landscape}
+\begin{footnotesize}
+\renewcommand{\arraystretch}{1,1}
+\begin{tabular}{ |c|p{4.6cm}|c|c|c|c|c|c|c|c|c|c|c|c| }
+
+\noalign{\hrule height 1pt}
+
+\multirow{2}{*}{folder (section)} & \multirow{2}{*}{example} & \multirow{2}{*}{turbulent} & \multirow{2}{*}{thermal} & multi & multi & \multirow{2}{*}{particles} & porous & transient  & \multirow{2}{*}{benchmark} & \multirow{2}{*}{showcase} & STL  & geometry  & check-\\
+
+& & & & Component & Phase & & Media & flow & & & geometry & primitives & pointing \\
+
+\noalign{\hrule height 1pt}
+
+\multirow{2}{*}{\makecell{adsorption} (\ref{sec:ads})} 
+    & \cellcolor{darkgray} \makecell[l]{adsorption3D}		  
+    & \cellcolor{darkgray}&\cellcolor{darkgray} & \cellcolor{RoyalBluedark}& \cellcolor{RoyalBluedark}& \cellcolor{RoyalBluedark}& \cellcolor{darkgray}& \cellcolor{darkgray}&\cellcolor{RoyalBluedark} &\cellcolor{darkgray} & \cellcolor{darkgray}& \cellcolor{RoyalBluedark} & \cellcolor{darkgray}\\
+
+	& \cellcolor{lightgray} \makecell[l]{microMixer3D}  	 	
+    & \cellcolor{lightgray}&\cellcolor{lightgray} & \cellcolor{RoyalBlue}& \cellcolor{RoyalBlue}& \cellcolor{RoyalBlue}& \cellcolor{lightgray}& \cellcolor{lightgray}&\cellcolor{lightgray} &\cellcolor{RoyalBlue} & \cellcolor{RoyalBlue}& \cellcolor{RoyalBlue} & \cellcolor{lightgray}\\
+
+\noalign{\hrule height 1pt}
+
+\multirow{6}{*}{\makecell{advectionDiffusion \\ Reaction (\ref{sec:adr})}} 
+    & \cellcolor{darkgray} advectionDiffusion1d		  & \cellcolor{darkgray}&\cellcolor{darkgray} & \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{RoyalBluedark}&\cellcolor{RoyalBluedark} &\cellcolor{darkgray} & \cellcolor{darkgray}& \cellcolor{RoyalBluedark} & \cellcolor{darkgray}\\
+    
+    & \cellcolor{lightgray} advectionDiffusion2d  	 	& \cellcolor{lightgray}&\cellcolor{lightgray} & \cellcolor{lightgray}& \cellcolor{lightgray}& \cellcolor{lightgray}& \cellcolor{lightgray}& \cellcolor{RoyalBlue}&\cellcolor{RoyalBlue} &\cellcolor{lightgray} & \cellcolor{lightgray}& \cellcolor{RoyalBlue} & \cellcolor{lightgray}\\
+    
+    & \cellcolor{darkgray} advectionDiffusion3d  	 	& \cellcolor{darkgray}&\cellcolor{darkgray} & \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{RoyalBluedark}&\cellcolor{RoyalBluedark} &\cellcolor{darkgray} & \cellcolor{darkgray}& \cellcolor{RoyalBluedark} & \cellcolor{darkgray}\\
+    
+    & \cellcolor{lightgray} convectedPlate3d		    & \cellcolor{lightgray}&\cellcolor{RoyalBlue} & \cellcolor{lightgray}& \cellcolor{lightgray}& \cellcolor{lightgray}& \cellcolor{lightgray}& \cellcolor{RoyalBlue}&\cellcolor{RoyalBlue} &\cellcolor{lightgray} & \cellcolor{lightgray}& \cellcolor{RoyalBlue} & \cellcolor{lightgray}\\
+    
+    & \cellcolor{darkgray} 		laminarReactiveTmixer    & \cellcolor{darkgray}&\cellcolor{darkgray} & \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{RoyalBluedark}&\cellcolor{RoyalBluedark} &\cellcolor{darkgray} & \cellcolor{darkgray}& \cellcolor{RoyalBluedark} & \cellcolor{darkgray}\\
+    
+    & \cellcolor{lightgray} longitudinalMixing3d  	 	& \cellcolor{lightgray}&\cellcolor{RoyalBlue} & \cellcolor{lightgray}& \cellcolor{lightgray}& \cellcolor{lightgray}& \cellcolor{lightgray}& \cellcolor{RoyalBlue}&\cellcolor{RoyalBlue} &\cellcolor{lightgray} & \cellcolor{lightgray}& \cellcolor{RoyalBlue} & \cellcolor{lightgray}\\
+
+\noalign{\hrule height 1pt}
+
+\multirow{2}{*}{electrochemistry (\ref{sec:electrochemistry})}  
+    &\cellcolor{darkgray} electroosmosis							&\cellcolor{darkgray} &\cellcolor{darkgray} & \cellcolor{darkgray}& \cellcolor{darkgray}&\cellcolor{darkgray} & \cellcolor{darkgray} & \cellcolor{darkgray} & \cellcolor{RoyalBluedark} & \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{RoyalBluedark} &\cellcolor{darkgray}\\
+    
+    & \cellcolor{lightgray} poissonNernstPlanck										& \cellcolor{lightgray} & \cellcolor{lightgray} &\cellcolor{lightgray} & \cellcolor{lightgray}&\cellcolor{lightgray} &\cellcolor{lightgray} &\cellcolor{lightgray} & \cellcolor{RoyalBlue} &\cellcolor{lightgray} &\cellcolor{lightgray} & \cellcolor{RoyalBlue} & \cellcolor{lightgray}\\
+
+\noalign{\hrule height 1pt}
+
+\multirow{4}{*}{forBeginners (\ref{sec:forBeginners})}  
+    &\cellcolor{darkgray} cavity2d		& \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{darkgray}&\cellcolor{darkgray} & \cellcolor{green} &\cellcolor{darkgray} & \cellcolor{darkgray}& \cellcolor{green} & \cellcolor{darkgray} \\
+    
+    & \cellcolor{lightgray} cylinder2d									&\cellcolor{lightgray} & \cellcolor{lightgray}& \cellcolor{lightgray}& \cellcolor{lightgray}&\cellcolor{lightgray} & \cellcolor{lightgray}& \cellcolor{green}&\cellcolor{green} &\cellcolor{lightgray} & \cellcolor{lightgray}& \cellcolor{green} & \cellcolor{lightgray} \\
+    
+     &\cellcolor{darkgray} minimal3d							&\cellcolor{darkgray} &\cellcolor{darkgray} & \cellcolor{darkgray}& \cellcolor{darkgray}&\cellcolor{darkgray} & \cellcolor{darkgray} & \cellcolor{darkgray} & \cellcolor{darkgray} & \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{darkgray} &\cellcolor{darkgray}\\
+    
+    & \cellcolor{lightgray} pipeWithValve3d						& \cellcolor{lightgray} & \cellcolor{lightgray} &\cellcolor{lightgray} & \cellcolor{lightgray} & \cellcolor{lightgray} &\cellcolor{lightgray} &\cellcolor{RoyalBlue} & \cellcolor{RoyalBlue} &\cellcolor{lightgray} &\cellcolor{green} & \cellcolor{RoyalBlue} & \cellcolor{lightgray}\\
+
+\noalign{\hrule height 1pt}
+
+\multirow{7}{*}{freeSurface (\ref{sec:freeSurface})} 
+    & \cellcolor{darkgray} basicRisingBubble3d     & \cellcolor{darkgray}& \cellcolor{darkgray}&\cellcolor{RoyalBluedark} & \cellcolor{RoyalBluedark}&\cellcolor{darkgray} & \cellcolor{darkgray}& \cellcolor{RoyalBluedark} & \cellcolor{darkgray}& \cellcolor{darkgray} & \cellcolor{darkgray}&\cellcolor{RoyalBluedark} & \cellcolor{darkgray}\\
+
+    
+    & \cellcolor{lightgray} breakingDam2d	&\cellcolor{lightgray} &\cellcolor{lightgray} & \cellcolor{RoyalBlue}& \cellcolor{RoyalBlue}&\cellcolor{lightgray} & \cellcolor{lightgray}& \cellcolor{RoyalBlue} &\cellcolor{RoyalBlue} & \cellcolor{lightgray} & \cellcolor{lightgray}&\cellcolor{RoyalBlue} & \cellcolor{lightgray}\\
+    
+    
+    & \cellcolor{darkgray} breakingDam3d & \cellcolor{darkgray}& \cellcolor{darkgray}&\cellcolor{RoyalBluedark} & \cellcolor{RoyalBluedark}&\cellcolor{darkgray} & \cellcolor{darkgray}& \cellcolor{RoyalBluedark} & \cellcolor{darkgray}& \cellcolor{darkgray} & \cellcolor{darkgray}&\cellcolor{RoyalBluedark} & \cellcolor{darkgray}\\
+    
+    & \cellcolor{lightgray} deepFallingDrop2d &\cellcolor{lightgray} &\cellcolor{lightgray} & \cellcolor{RoyalBlue}& \cellcolor{RoyalBlue}&\cellcolor{lightgray} & \cellcolor{lightgray}& \cellcolor{RoyalBlue} &\cellcolor{lightgray} & \cellcolor{lightgray} & \cellcolor{lightgray}&\cellcolor{RoyalBlue} & \cellcolor{lightgray}\\
+    
+    
+    & \cellcolor{darkgray} fallingDrop2d & \cellcolor{darkgray}& \cellcolor{darkgray}&\cellcolor{RoyalBluedark} & \cellcolor{RoyalBluedark}&\cellcolor{darkgray} & \cellcolor{darkgray}& \cellcolor{RoyalBluedark} & \cellcolor{darkgray}& \cellcolor{darkgray} & \cellcolor{darkgray}&\cellcolor{RoyalBluedark} & \cellcolor{darkgray}\\
+
+    & \cellcolor{lightgray} fallingDrop3d &\cellcolor{lightgray} &\cellcolor{lightgray} & \cellcolor{RoyalBlue}& \cellcolor{RoyalBlue}&\cellcolor{lightgray} & \cellcolor{lightgray}& \cellcolor{RoyalBlue} &\cellcolor{lightgray} & \cellcolor{lightgray} & \cellcolor{lightgray}&\cellcolor{RoyalBlue} & \cellcolor{lightgray}\\
+    
+    
+    & \cellcolor{darkgray} rayleighInstability3d & \cellcolor{darkgray}& \cellcolor{darkgray}&\cellcolor{RoyalBluedark} & \cellcolor{RoyalBluedark}&\cellcolor{darkgray} & \cellcolor{darkgray}& \cellcolor{RoyalBluedark} & \cellcolor{darkgray}& \cellcolor{darkgray} & \cellcolor{darkgray}&\cellcolor{RoyalBluedark} & \cellcolor{darkgray}\\
+
+\noalign{\hrule height 1pt}
+
+\multirow{3}{*}{fsi (\ref{sec:fsi})} 
+    & \cellcolor{lightgray} deformableParticleInShearFlow3d	&\cellcolor{lightgray} &\cellcolor{lightgray} & \cellcolor{lightgray}& \cellcolor{lightgray} & \cellcolor{RoyalBlue} & \cellcolor{lightgray}& \cellcolor{RoyalBlue} &\cellcolor{RoyalBlue} & \cellcolor{lightgray} & \cellcolor{RoyalBlue} & \cellcolor{RoyalBlue} & \cellcolor{lightgray}\\
+        
+    & \cellcolor{darkgray} rigidValve2d & \cellcolor{darkgray}& \cellcolor{darkgray}&\cellcolor{darkgray} & \cellcolor{darkgray}&\cellcolor{darkgray} & \cellcolor{darkgray}& \cellcolor{RoyalBluedark} & \cellcolor{RoyalBluedark}& \cellcolor{darkgray} & \cellcolor{darkgray}&\cellcolor{RoyalBluedark} & \cellcolor{darkgray}\\
+    
+    & \cellcolor{lightgray} taylorCouette3d &\cellcolor{RoyalBlue} &\cellcolor{lightgray} & \cellcolor{lightgray}& \cellcolor{lightgray}&\cellcolor{lightgray} & \cellcolor{lightgray}& \cellcolor{RoyalBlue} &\cellcolor{RoyalBlue} & \cellcolor{RoyalBlue} & \cellcolor{lightgray}&\cellcolor{RoyalBlue} & \cellcolor{lightgray}\\
+
+\noalign{\hrule height 1pt}
+
+\multirow{2}{*}{gridRefinement (\ref{sec:gridRefinement})}  
+    &\cellcolor{darkgray} cylinder2d								&\cellcolor{darkgray} &\cellcolor{darkgray} & \cellcolor{darkgray}& \cellcolor{darkgray}&\cellcolor{darkgray} & \cellcolor{darkgray} & \cellcolor{RoyalBluedark} & \cellcolor{RoyalBluedark} & \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{RoyalBluedark} &\cellcolor{darkgray}\\
+    
+    & \cellcolor{lightgray} sphere3d										& \cellcolor{lightgray} & \cellcolor{lightgray} &\cellcolor{lightgray} & \cellcolor{lightgray}&\cellcolor{lightgray} &\cellcolor{lightgray} &\cellcolor{RoyalBlue} & \cellcolor{RoyalBlue} &\cellcolor{lightgray} &\cellcolor{lightgray} & \cellcolor{RoyalBlue} & \cellcolor{lightgray}\\
+    
+\noalign{\hrule height 1pt}
+
+\multirow{13}{*}{laminar (\ref{sec:laminar})}  
+    &\cellcolor{darkgray} bstep2d								&\cellcolor{darkgray} &\cellcolor{darkgray} & \cellcolor{darkgray}& \cellcolor{darkgray}&\cellcolor{darkgray} & \cellcolor{darkgray} & \cellcolor{RoyalBluedark} & \cellcolor{RoyalBluedark} & \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{RoyalBluedark} &\cellcolor{RoyalBluedark}\\
+    
+    & \cellcolor{lightgray}bstep3d										& \cellcolor{lightgray} & \cellcolor{lightgray} &\cellcolor{lightgray} & \cellcolor{lightgray}&\cellcolor{lightgray} &\cellcolor{lightgray} &\cellcolor{RoyalBlue} & \cellcolor{RoyalBlue} &\cellcolor{lightgray} &\cellcolor{lightgray} & \cellcolor{RoyalBlue} & \cellcolor{RoyalBlue}\\
+    
+    & \cellcolor{darkgray}cavity2d	& \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{darkgray}&\cellcolor{darkgray} & \cellcolor{RoyalBluedark} &\cellcolor{darkgray} & \cellcolor{darkgray}& \cellcolor{RoyalBluedark} & \cellcolor{darkgray} \\
+    
+    & \cellcolor{lightgray}cavity2dSolver										& \cellcolor{lightgray}& \cellcolor{lightgray}& \cellcolor{lightgray}& \cellcolor{lightgray}& \cellcolor{lightgray}& \cellcolor{lightgray}&\cellcolor{lightgray} & \cellcolor{RoyalBlue} &\cellcolor{lightgray} & \cellcolor{lightgray}& \cellcolor{RoyalBlue} & \cellcolor{lightgray} \\
+    
+    & \cellcolor{darkgray}cavity3d										& \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{darkgray}&\cellcolor{darkgray} & \cellcolor{darkgray}&\cellcolor{darkgray} & \cellcolor{RoyalBluedark} &\cellcolor{darkgray} & \cellcolor{darkgray}& \cellcolor{RoyalBluedark} & \cellcolor{darkgray}\\
+    
+    & \cellcolor{lightgray}cavity3dBenchmark										&\cellcolor{lightgray} & \cellcolor{lightgray}& \cellcolor{lightgray}& \cellcolor{lightgray}&\cellcolor{lightgray} & \cellcolor{lightgray}& \cellcolor{lightgray}&\cellcolor{RoyalBlue} &\cellcolor{lightgray} & \cellcolor{lightgray}& \cellcolor{RoyalBlue} & \cellcolor{lightgray} \\
+    
+    & \cellcolor{darkgray}cylinder2d										&\cellcolor{darkgray} & \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{darkgray}&\cellcolor{darkgray} & \cellcolor{darkgray}& \cellcolor{RoyalBluedark}&\cellcolor{RoyalBluedark} &\cellcolor{darkgray} & \cellcolor{darkgray}& \cellcolor{green} & \cellcolor{darkgray} \\
+    
+    & \cellcolor{lightgray}cylinder3d										&\cellcolor{lightgray} & \cellcolor{lightgray}& \cellcolor{lightgray}& \cellcolor{lightgray}&\cellcolor{lightgray} &\cellcolor{lightgray} &\cellcolor{RoyalBlue} &\cellcolor{RoyalBlue}&\cellcolor{lightgray} &\cellcolor{RoyalBlue} & \cellcolor{RoyalBlue}& \cellcolor{lightgray} \\
+
+    & \cellcolor{darkgray}nonNewtonianPoiseuille3d
+    &\cellcolor{darkgray} & \cellcolor{darkgray}&\cellcolor{darkgray} & \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{darkgray}&\cellcolor{darkgray} &\cellcolor{RoyalBluedark} &\cellcolor{darkgray} &\cellcolor{darkgray} & \cellcolor{RoyalBluedark} & \cellcolor{darkgray}\\
+
+    & \cellcolor{lightgray}poiseuille2d
+    &\cellcolor{lightgray} & \cellcolor{lightgray}&\cellcolor{lightgray} & \cellcolor{lightgray}& \cellcolor{lightgray}& \cellcolor{lightgray}&\cellcolor{lightgray} &\cellcolor{RoyalBlue} &\cellcolor{lightgray} &\cellcolor{lightgray} & \cellcolor{RoyalBlue} & \cellcolor{lightgray}\\
+    
+    & \cellcolor{darkgray}poiseuille3d										&\cellcolor{darkgray} &\cellcolor{darkgray} & \cellcolor{darkgray}&\cellcolor{darkgray} &\cellcolor{darkgray} & \cellcolor{darkgray}& \cellcolor{darkgray}&\cellcolor{RoyalBluedark} &\cellcolor{darkgray} & \cellcolor{darkgray}& \cellcolor{RoyalBluedark} &\cellcolor{darkgray} \\
+    
+    & \cellcolor{lightgray}powerLaw2d
+    &\cellcolor{lightgray} & \cellcolor{lightgray}&\cellcolor{lightgray} & \cellcolor{lightgray}& \cellcolor{lightgray}& \cellcolor{lightgray}&\cellcolor{lightgray} &\cellcolor{RoyalBlue} &\cellcolor{lightgray} &\cellcolor{lightgray} & \cellcolor{RoyalBlue} & \cellcolor{lightgray}\\
+    
+    & \cellcolor{darkgray} testFlow3dSolver 
+    &\cellcolor{darkgray} & \cellcolor{darkgray}&\cellcolor{darkgray} & \cellcolor{darkgray}&\cellcolor{darkgray} &\cellcolor{darkgray} & \cellcolor{darkgray} & \cellcolor{RoyalBluedark} &\cellcolor{RoyalBluedark} & \cellcolor{darkgray} &\cellcolor{RoyalBluedark} & \cellcolor{darkgray}\\
+    
+\noalign{\hrule height 1pt}
+
+\end{tabular}
+
+%Legende für Tabelle Teil 1
+
+\begin{tabular}{ p{4cm} p{0,6cm} p{0,6cm} l p{2cm} p{1,2cm} l}
+& & & & & & \\
+&\cellcolor{RoyalBlue}&\cellcolor{RoyalBluedark}& example includes relevant subject& &\cellcolor{green}&example includes relevant subject and is recommended for beginning \\
+\end{tabular}
+
+%\pagebreak
+
+%Tabelle Teil 2
+\begin{tabular}{ |c|p{4.5cm}|c|c|c|c|c|c|c|c|c|c|c|c| }
+
+\noalign{\hrule height 1pt}
+
+\multirow{2}{*}{folder (section)} & \multirow{2}{*}{example} & \multirow{2}{*}{turbulent} & \multirow{2}{*}{thermal} & multi & multi & \multirow{2}{*}{particles} & porous & transient  & \multirow{2}{*}{benchmark} & \multirow{2}{*}{showcase} & STL  & geometry  & check-\\
+
+& & & & Component & Phase & & Media & flow & & & geometry & primitives & pointing \\
+
+\noalign{\hrule height 1pt}
+
+\multirow{3}{*}{microfluidics (\ref{sec:microfluidics})} 
+    & \cellcolor{darkgray} knudsenPump3d		&\cellcolor{darkgray} &\cellcolor{RoyalBluedark} &\cellcolor{darkgray} &\cellcolor{darkgray} &\cellcolor{darkgray} & \cellcolor{darkgray}& \cellcolor{RoyalBluedark}& \cellcolor{RoyalBluedark}&\cellcolor{RoyalBluedark} & \cellcolor{darkgray}&\cellcolor{RoyalBluedark}& \cellcolor{darkgray}\\
+    
+    & \cellcolor{lightgray} microChannel2d				& \cellcolor{lightgray}& \cellcolor{RoyalBlue}& \cellcolor{lightgray} & \cellcolor{lightgray} & \cellcolor{lightgray}& \cellcolor{lightgray}& \cellcolor{lightgray}& \cellcolor{RoyalBlue} & \cellcolor{lightgray}& \cellcolor{lightgray}& \cellcolor{RoyalBlue} & \cellcolor{lightgray}\\
+
+    & \cellcolor{darkgray} microChannel3d				& \cellcolor{darkgray}& \cellcolor{RoyalBluedark}& \cellcolor{darkgray} & \cellcolor{darkgray} & \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{RoyalBluedark} & \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{RoyalBluedark} & \cellcolor{darkgray}\\
+
+\noalign{\hrule height 1pt}
+
+\multirow{18}{*}{multiComponent (\ref{sec:multiComponent})}  
+    & \cellcolor{lightgray} airBubbleCoalescence3d		&\cellcolor{lightgray} &\cellcolor{lightgray} &\cellcolor{RoyalBlue} &\cellcolor{RoyalBlue} &\cellcolor{lightgray} & \cellcolor{lightgray}& \cellcolor{RoyalBlue}& \cellcolor{lightgray}&\cellcolor{lightgray} & \cellcolor{lightgray}&\cellcolor{RoyalBlue}& \cellcolor{lightgray}\\
+    
+    & \cellcolor{darkgray} binaryShearFlow2d				& \cellcolor{darkgray} & \cellcolor{darkgray}& \cellcolor{RoyalBluedark} & \cellcolor{darkgray} & \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{RoyalBluedark}& \cellcolor{RoyalBluedark} & \cellcolor{RoyalBluedark}& \cellcolor{darkgray}& \cellcolor{RoyalBluedark} & \cellcolor{darkgray}\\
+
+    & \cellcolor{lightgray} bubbleChannel2d				& \cellcolor{lightgray}& \cellcolor{lightgray}& \cellcolor{RoyalBlue} & \cellcolor{RoyalBlue} & \cellcolor{lightgray}& \cellcolor{lightgray}& \cellcolor{RoyalBlue}& \cellcolor{lightgray} & \cellcolor{RoyalBlue}& \cellcolor{lightgray}& \cellcolor{RoyalBlue} & \cellcolor{lightgray}\\
+
+    & \cellcolor{darkgray} contactAngle2d				& \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{RoyalBluedark} & \cellcolor{darkgray} & \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{RoyalBluedark} & \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{RoyalBluedark} & \cellcolor{darkgray}\\
+    
+    & \cellcolor{lightgray} contactAngle3d		&\cellcolor{lightgray} &\cellcolor{lightgray} &\cellcolor{RoyalBlue} &\cellcolor{lightgray} &\cellcolor{lightgray} & \cellcolor{lightgray}& \cellcolor{lightgray}& \cellcolor{RoyalBlue}&\cellcolor{lightgray} & \cellcolor{lightgray}&\cellcolor{RoyalBlue}& \cellcolor{lightgray}\\
+
+    & \cellcolor{darkgray} dropletSplashing2d				& \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{darkgray} & \cellcolor{RoyalBluedark} & \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{RoyalBluedark}& \cellcolor{RoyalBluedark} & \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{RoyalBluedark} & \cellcolor{darkgray}\\
+    
+    & \cellcolor{lightgray} dropletSplashing3d				& \cellcolor{lightgray}& \cellcolor{lightgray}& \cellcolor{lightgray} & \cellcolor{RoyalBlue} & \cellcolor{lightgray}& \cellcolor{lightgray}& \cellcolor{RoyalBlue}& \cellcolor{RoyalBlue} & \cellcolor{lightgray}& \cellcolor{lightgray}& \cellcolor{RoyalBlue} & \cellcolor{lightgray}\\
+    
+    & \cellcolor{darkgray} flatInterfaceEOC2d				& \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{RoyalBluedark} & \cellcolor{RoyalBluedark} & \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{RoyalBluedark} & \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{RoyalBluedark} & \cellcolor{darkgray}\\
+    
+    & \cellcolor{lightgray} fourRollMill2d				& \cellcolor{lightgray}& \cellcolor{lightgray}& \cellcolor{RoyalBlue} & \cellcolor{lightgray} & \cellcolor{lightgray}& \cellcolor{lightgray}& \cellcolor{RoyalBlue}& \cellcolor{RoyalBlue} & \cellcolor{RoyalBlue}& \cellcolor{lightgray}& \cellcolor{RoyalBlue} & \cellcolor{lightgray}\\
+
+    & \cellcolor{darkgray} isothermalEvaporation2d				& \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{darkgray} & \cellcolor{RoyalBluedark} & \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{RoyalBluedark}& \cellcolor{RoyalBluedark} & \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{RoyalBluedark} & \cellcolor{darkgray}\\
+    
+    & \cellcolor{lightgray} microFluidics2d								& \cellcolor{lightgray}& \cellcolor{lightgray}&\cellcolor{RoyalBlue}&\cellcolor{lightgray} &\cellcolor{lightgray} & \cellcolor{lightgray}&\cellcolor{RoyalBlue} & \cellcolor{lightgray}& \cellcolor{RoyalBlue} &\cellcolor{lightgray} & \cellcolor{RoyalBlue} & \cellcolor{lightgray}\\
+    
+    & \cellcolor{darkgray} phaseSeperation2d								& \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{darkgray}&\cellcolor{RoyalBluedark} & \cellcolor{darkgray}&\cellcolor{darkgray} & \cellcolor{RoyalBluedark} &\cellcolor{darkgray} & \cellcolor{darkgray}&\cellcolor{darkgray} &\cellcolor{RoyalBluedark} & \cellcolor{darkgray}\\
+    
+    & \cellcolor{lightgray} phaseSeperation3d								&\cellcolor{lightgray} &\cellcolor{lightgray} &\cellcolor{lightgray} &\cellcolor{RoyalBlue} & \cellcolor{lightgray}&\cellcolor{lightgray} & \cellcolor{RoyalBlue} & \cellcolor{lightgray}& \cellcolor{lightgray} & \cellcolor{lightgray}&\cellcolor{RoyalBlue} & \cellcolor{lightgray}\\
+        
+    & \cellcolor{darkgray} rayleighTaylor2d								&\cellcolor{darkgray} & \cellcolor{darkgray}&\cellcolor{RoyalBluedark}& \cellcolor{darkgray}&\cellcolor{darkgray} & \cellcolor{darkgray}&\cellcolor{RoyalBluedark}&\cellcolor{RoyalBluedark} &\cellcolor{darkgray} & \cellcolor{darkgray}& \cellcolor{RoyalBluedark} &\cellcolor{darkgray} \\
+    
+    & \cellcolor{lightgray} rayleighTaylor3d								&\cellcolor{lightgray} & \cellcolor{lightgray}&\cellcolor{RoyalBlue} & \cellcolor{lightgray}& \cellcolor{lightgray}& \cellcolor{lightgray}& \cellcolor{RoyalBlue} & \cellcolor{RoyalBlue} & \cellcolor{lightgray}&\cellcolor{lightgray} &\cellcolor{RoyalBlue} & \cellcolor{lightgray}\\
+    
+    & \cellcolor{darkgray} waterAirFlatInterface2d									& \cellcolor{darkgray}& \cellcolor{darkgray}&\cellcolor{RoyalBluedark} & \cellcolor{RoyalBluedark}& \cellcolor{darkgray}&\cellcolor{darkgray} & \cellcolor{darkgray}& \cellcolor{darkgray} & \cellcolor{RoyalBluedark}& \cellcolor{darkgray}& \cellcolor{RoyalBluedark} &\cellcolor{darkgray} \\
+    
+    & \cellcolor{lightgray} youngLaplace2d			&\cellcolor{lightgray} &\cellcolor{lightgray} &\cellcolor{RoyalBlue} &\cellcolor{lightgray} & \cellcolor{lightgray}& \cellcolor{lightgray}& \cellcolor{lightgray}& \cellcolor{RoyalBlue} &\cellcolor{lightgray} & \cellcolor{lightgray}& \cellcolor{RoyalBlue} & \cellcolor{lightgray} \\				
+    
+    & \cellcolor{darkgray} youngLaplace3d									&\cellcolor{darkgray} &\cellcolor{darkgray} &\cellcolor{RoyalBluedark} &\cellcolor{darkgray} & \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{RoyalBluedark} &\cellcolor{darkgray} & \cellcolor{darkgray}& \cellcolor{RoyalBluedark} & \cellcolor{darkgray} \\	
+
+\noalign{\hrule height 1pt}
+
+\multirow{1}{*}{noise (\ref{sec:noise})} 
+    & \cellcolor{lightgray} gausspulse3d	       &\cellcolor{lightgray} & \cellcolor{lightgray}&\cellcolor{lightgray} & \cellcolor{lightgray}&\cellcolor{lightgray} &\cellcolor{lightgray} & \cellcolor{lightgray} & \cellcolor{RoyalBlue} &\cellcolor{lightgray} & \cellcolor{lightgray} &\cellcolor{RoyalBlue} & \cellcolor{lightgray}\\
+
+\noalign{\hrule height 1pt}
+
+\multirow{8}{*}{optimization (\ref{sec:ex_optimization})} 
+    & \cellcolor{darkgray} domainId3d	&\cellcolor{darkgray} & \cellcolor{darkgray}&\cellcolor{darkgray} & \cellcolor{darkgray}&\cellcolor{darkgray} &\cellcolor{RoyalBluedark} & \cellcolor{darkgray} & \cellcolor{RoyalBluedark} &\cellcolor{RoyalBluedark} & \cellcolor{darkgray} &\cellcolor{RoyalBluedark} & \cellcolor{darkgray}\\
+
+    & \cellcolor{lightgray} domainId3dSolver	&\cellcolor{lightgray} & \cellcolor{lightgray}&\cellcolor{lightgray} & \cellcolor{lightgray}&\cellcolor{lightgray} &\cellcolor{RoyalBlue} & \cellcolor{lightgray} & \cellcolor{RoyalBlue} &\cellcolor{RoyalBlue} & \cellcolor{lightgray} &\cellcolor{RoyalBlue} & \cellcolor{lightgray}\\
+
+    & \cellcolor{darkgray} parameterIdentificationPoiseuille2d &\cellcolor{darkgray} &\cellcolor{darkgray} & \cellcolor{darkgray}& \cellcolor{darkgray}&\cellcolor{darkgray} & \cellcolor{darkgray}& \cellcolor{darkgray} &\cellcolor{darkgray} & \cellcolor{RoyalBluedark} & \cellcolor{darkgray}&\cellcolor{RoyalBluedark} & \cellcolor{darkgray}\\
+   
+    & \cellcolor{lightgray} pipeBendSolver2d &\cellcolor{lightgray} &\cellcolor{lightgray} & \cellcolor{lightgray}& \cellcolor{lightgray}&\cellcolor{lightgray} & \cellcolor{RoyalBlue}& \cellcolor{lightgray} &\cellcolor{RoyalBlue} & \cellcolor{RoyalBlue} & \cellcolor{lightgray}&\cellcolor{RoyalBlue} & \cellcolor{lightgray}\\
+
+    & \cellcolor{darkgray} showcaseADf &\cellcolor{darkgray} &\cellcolor{darkgray} & \cellcolor{darkgray}& \cellcolor{darkgray}&\cellcolor{darkgray} & \cellcolor{darkgray}& \cellcolor{darkgray} &\cellcolor{darkgray} & \cellcolor{RoyalBluedark} & \cellcolor{darkgray}&\cellcolor{RoyalBluedark} & \cellcolor{darkgray}\\
+
+    & \cellcolor{lightgray} showcaseRosenbrock & \cellcolor{lightgray}& \cellcolor{lightgray}&\cellcolor{lightgray} & \cellcolor{lightgray}&\cellcolor{lightgray} & \cellcolor{lightgray}& \cellcolor{lightgray} & \cellcolor{lightgray}& \cellcolor{RoyalBlue} & \cellcolor{lightgray}&\cellcolor{RoyalBlue} & \cellcolor{lightgray}\\
+
+    & \cellcolor{darkgray} testFlowOpti3d &\cellcolor{darkgray} &\cellcolor{darkgray} & \cellcolor{darkgray}& \cellcolor{darkgray}&\cellcolor{darkgray} & \cellcolor{darkgray}& \cellcolor{darkgray} &\cellcolor{RoyalBluedark} & \cellcolor{RoyalBluedark} & \cellcolor{darkgray}&\cellcolor{RoyalBluedark} & \cellcolor{darkgray}\\
+
+    & \cellcolor{lightgray} testFlowOpti3dSolver &\cellcolor{lightgray} &\cellcolor{lightgray} & \cellcolor{lightgray}& \cellcolor{lightgray}&\cellcolor{lightgray} & \cellcolor{lightgray}& \cellcolor{lightgray} &\cellcolor{RoyalBlue} & \cellcolor{RoyalBlue} & \cellcolor{lightgray}&\cellcolor{RoyalBlue} & \cellcolor{lightgray}\\
+
+\noalign{\hrule height 1pt}
+
+\multirow{3}{*}{particles (\ref{sec:particles})} 
+    & \cellcolor{darkgray} bifurcation3d						&\cellcolor{darkgray} & \cellcolor{darkgray}&\cellcolor{darkgray} & \cellcolor{darkgray}&\cellcolor{RoyalBluedark} &\cellcolor{darkgray} & \cellcolor{RoyalBluedark} & \cellcolor{darkgray} &\cellcolor{RoyalBluedark} & \cellcolor{RoyalBluedark} &\cellcolor{RoyalBluedark} & \cellcolor{darkgray}\\
+
+    & \cellcolor{lightgray} dkt2d &\cellcolor{lightgray} &\cellcolor{lightgray} & \cellcolor{lightgray}& \cellcolor{lightgray}&\cellcolor{RoyalBlue} & \cellcolor{lightgray}& \cellcolor{RoyalBlue} &\cellcolor{RoyalBlue} & \cellcolor{RoyalBlue} & \cellcolor{lightgray}&\cellcolor{RoyalBlue} & \cellcolor{lightgray}\\
+    
+    & \cellcolor{darkgray} settlingCube3d								&\cellcolor{darkgray} &\cellcolor{darkgray} & \cellcolor{darkgray}& \cellcolor{darkgray}&\cellcolor{RoyalBluedark} & \cellcolor{darkgray}& \cellcolor{RoyalBluedark} &\cellcolor{RoyalBluedark} & \cellcolor{RoyalBluedark} & \cellcolor{darkgray}&\cellcolor{RoyalBluedark} & \cellcolor{darkgray}\\
+
+\noalign{\hrule height 1pt}
+
+\multirow{5}{*}{pdeSolverEoc (\ref{sec:pdeSolverEoc})} 
+    & \cellcolor{lightgray} cylinder2dEoc								&\cellcolor{lightgray} & \cellcolor{lightgray}& \cellcolor{lightgray}& \cellcolor{lightgray}& \cellcolor{lightgray}&\cellcolor{lightgray} & \cellcolor{lightgray}& \cellcolor{RoyalBlue} & \cellcolor{lightgray}& \cellcolor{lightgray}& \cellcolor{RoyalBlue} &\cellcolor{lightgray} \\
+
+    & \cellcolor{darkgray} cylinder3dEoc								&\cellcolor{darkgray} & \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{darkgray}&\cellcolor{darkgray} & \cellcolor{darkgray}& \cellcolor{RoyalBluedark} & \cellcolor{darkgray}& \cellcolor{RoyalBluedark}& \cellcolor{RoyalBluedark} &\cellcolor{darkgray} \\
+
+    & \cellcolor{lightgray} poiseuille2dEoc								&\cellcolor{lightgray} & \cellcolor{lightgray}& \cellcolor{lightgray}& \cellcolor{lightgray}& \cellcolor{lightgray}&\cellcolor{lightgray} & \cellcolor{lightgray}& \cellcolor{RoyalBlue} & \cellcolor{lightgray}& \cellcolor{lightgray}& \cellcolor{RoyalBlue} &\cellcolor{lightgray} \\
+
+    & \cellcolor{darkgray} poiseuille3dEoc								&\cellcolor{darkgray} & \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{darkgray}&\cellcolor{darkgray} & \cellcolor{darkgray}& \cellcolor{RoyalBluedark} & \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{RoyalBluedark} &\cellcolor{darkgray} \\
+
+    & \cellcolor{lightgray} poisson								&\cellcolor{lightgray} & \cellcolor{lightgray}& \cellcolor{lightgray}& \cellcolor{lightgray}& \cellcolor{lightgray}&\cellcolor{lightgray} & \cellcolor{lightgray}& \cellcolor{RoyalBlue} & \cellcolor{lightgray}& \cellcolor{lightgray}& \cellcolor{RoyalBlue} &\cellcolor{lightgray} \\
+
+\noalign{\hrule height 1pt}
+
+\end{tabular}
+
+%Legende für Tabelle Teil 2
+
+\begin{tabular}{ p{4cm} p{0,6cm} p{0,6cm} l p{2cm} p{1,2cm} l}
+& & & & & & \\
+&\cellcolor{RoyalBlue}&\cellcolor{RoyalBluedark}& example includes relevant subject& &\cellcolor{green}&example includes relevant subject and is recommended for beginning \\
+\end{tabular}
+
+%\pagebreak
+
+%Tabelle Teil 3
+\begin{tabular}{ |c|p{4.5cm}|c|c|c|c|c|c|c|c|c|c|c|c| }
+
+\noalign{\hrule height 1pt}
+
+\multirow{2}{*}{folder (section)} & \multirow{2}{*}{example} & \multirow{2}{*}{turbulent} & \multirow{2}{*}{thermal} & multi & multi & \multirow{2}{*}{particles} & porous & transient  & \multirow{2}{*}{benchmark} & \multirow{2}{*}{showcase} & STL  & geometry  & check-\\
+
+& & & & Component & Phase & & Media & flow & & & geometry & primitives & pointing \\
+
+\noalign{\hrule height 1pt}
+
+\multirow{4}{*}{porousMedia (\ref{sec:porousMedia})}
+    & \cellcolor{lightgray} gasStorage2d			&\cellcolor{lightgray} & \cellcolor{lightgray}& \cellcolor{RoyalBlue}& \cellcolor{RoyalBlue}& \cellcolor{lightgray}&\cellcolor{RoyalBlue} &\cellcolor{RoyalBlue} & \cellcolor{lightgray} &\cellcolor{RoyalBlue} & \cellcolor{RoyalBlue}& \cellcolor{RoyalBlue}& \cellcolor{lightgray}\\
+    
+    & \cellcolor{darkgray} porousPoiseuille2d				&\cellcolor{darkgray} & \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{darkgray}&\cellcolor{RoyalBluedark} &\cellcolor{darkgray} & \cellcolor{RoyalBluedark} &\cellcolor{darkgray} & \cellcolor{darkgray}& \cellcolor{RoyalBluedark}& \cellcolor{darkgray}\\
+
+    & \cellcolor{lightgray} porousPoiseuille3d								&\cellcolor{lightgray} & \cellcolor{lightgray}& \cellcolor{lightgray}& \cellcolor{lightgray}& \cellcolor{lightgray}&\cellcolor{RoyalBlue} & \cellcolor{lightgray}& \cellcolor{RoyalBlue} & \cellcolor{lightgray}& \cellcolor{lightgray}& \cellcolor{RoyalBlue} &\cellcolor{lightgray} \\
+
+    & \cellcolor{darkgray} resolvedRock3d								&\cellcolor{darkgray} & \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{darkgray}&\cellcolor{RoyalBluedark} & \cellcolor{RoyalBluedark}& \cellcolor{darkgray} & \cellcolor{RoyalBluedark}& \cellcolor{RoyalBluedark}& \cellcolor{RoyalBluedark} &\cellcolor{darkgray} \\
+\noalign{\hrule height 1pt}
+
+\multirow{1}{*}{radiativeTransport (\ref{sec:radiativeTransport})}
+    & \cellcolor{lightgray} sphere3d				& \cellcolor{lightgray} & \cellcolor{lightgray} & \cellcolor{lightgray} & \cellcolor{lightgray} & \cellcolor{lightgray} & \cellcolor{lightgray} & \cellcolor{lightgray} & \cellcolor{RoyalBlue} & \cellcolor{RoyalBlue} & \cellcolor{lightgray}& \cellcolor{RoyalBlue} & \cellcolor{lightgray}\\
+
+\noalign{\hrule height 1pt}
+
+\multirow{2}{*}{showCase (\ref{sec:showCase})} 
+    & \cellcolor{darkgray} centrifugalPump3d								&\cellcolor{RoyalBluedark} & \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{darkgray}&\cellcolor{darkgray} & \cellcolor{RoyalBluedark}& \cellcolor{darkgray} & \cellcolor{RoyalBluedark}& \cellcolor{RoyalBluedark}& \cellcolor{RoyalBluedark} &\cellcolor{darkgray} \\
+
+    & \cellcolor{lightgray} urbanDigitalTwin3d								&\cellcolor{RoyalBlue} & \cellcolor{lightgray}& \cellcolor{lightgray}& \cellcolor{lightgray}& \cellcolor{lightgray}&\cellcolor{RoyalBlue} & \cellcolor{RoyalBlue}& \cellcolor{lightgray} & \cellcolor{RoyalBlue}& \cellcolor{RoyalBlue}& \cellcolor{RoyalBlue} &\cellcolor{darkgray} \\
+
+\noalign{\hrule height 1pt}
+
+\multirow{9}{*}{thermal (\ref{sec:thermal})} 
+    & \cellcolor{darkgray} galliumMelting2d		& \cellcolor{darkgray}&\cellcolor{RoyalBluedark} & \cellcolor{darkgray}& \cellcolor{RoyalBluedark}& \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{RoyalBluedark}&\cellcolor{RoyalBluedark} &\cellcolor{RoyalBluedark} & \cellcolor{darkgray}& \cellcolor{RoyalBluedark} & \cellcolor{darkgray}\\
+
+    & \cellcolor{lightgray} porousPlate2d						& \cellcolor{lightgray}&\cellcolor{RoyalBlue} & \cellcolor{lightgray}& \cellcolor{lightgray}& \cellcolor{lightgray}& \cellcolor{lightgray}& \cellcolor{lightgray}&\cellcolor{RoyalBlue} &\cellcolor{lightgray} & \cellcolor{lightgray}& \cellcolor{RoyalBlue} & \cellcolor{lightgray}\\
+
+    & \cellcolor{darkgray}porousPlate3d									& \cellcolor{darkgray}&\cellcolor{RoyalBluedark}&\cellcolor{darkgray} & \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{darkgray}&\cellcolor{darkgray} &\cellcolor{RoyalBluedark} &\cellcolor{darkgray} & \cellcolor{darkgray}& \cellcolor{RoyalBluedark} & \cellcolor{darkgray}\\
+
+    & \cellcolor{lightgray} porousPlate3dSolver						& \cellcolor{lightgray}&\cellcolor{RoyalBlue} & \cellcolor{lightgray}& \cellcolor{lightgray}& \cellcolor{lightgray}& \cellcolor{lightgray}& \cellcolor{lightgray}&\cellcolor{RoyalBlue} &\cellcolor{lightgray} & \cellcolor{lightgray}& \cellcolor{RoyalBlue} & \cellcolor{lightgray}\\
+
+    & \cellcolor{darkgray} rayleighBernard2d              &\cellcolor{RoyalBluedark} & \cellcolor{RoyalBluedark} &\cellcolor{darkgray} &\cellcolor{darkgray} &\cellcolor{darkgray} & \cellcolor{darkgray}&\cellcolor{RoyalBluedark} &\cellcolor{RoyalBluedark} & \cellcolor{RoyalBluedark} & \cellcolor{darkgray}&\cellcolor{RoyalBluedark}& \cellcolor{darkgray}\\
+
+    & \cellcolor{lightgray} rayleighBernard3d          &\cellcolor{RoyalBlue}&\cellcolor{RoyalBlue} & \cellcolor{lightgray}&\cellcolor{lightgray} &\cellcolor{lightgray} & \cellcolor{lightgray}& \cellcolor{RoyalBlue}&\cellcolor{RoyalBlue} &\cellcolor{RoyalBlue} & \cellcolor{lightgray}& \cellcolor{RoyalBlue} & \cellcolor{lightgray}\\
+
+    & \cellcolor{darkgray} squareCavity2d									&\cellcolor{RoyalBluedark} & \cellcolor{RoyalBluedark} &\cellcolor{darkgray} &\cellcolor{darkgray} &\cellcolor{darkgray} & \cellcolor{darkgray}&\cellcolor{RoyalBluedark} &\cellcolor{RoyalBluedark} & \cellcolor{darkgray} & \cellcolor{darkgray}&\cellcolor{RoyalBluedark}& \cellcolor{darkgray}\\
+
+    & \cellcolor{lightgray} squareCavity3d									& \cellcolor{lightgray}&\cellcolor{RoyalBlue} &\cellcolor{lightgray} & \cellcolor{lightgray}& \cellcolor{lightgray}&\cellcolor{lightgray} & \cellcolor{lightgray}& \cellcolor{RoyalBlue} &\cellcolor{lightgray} & \cellcolor{lightgray}& \cellcolor{RoyalBlue}& \cellcolor{lightgray}\\
+
+    & \cellcolor{darkgray} stefanMelting2d									& \cellcolor{darkgray}&\cellcolor{RoyalBluedark} &\cellcolor{darkgray} & \cellcolor{RoyalBluedark}& \cellcolor{darkgray}&\cellcolor{darkgray} & \cellcolor{RoyalBluedark}& \cellcolor{RoyalBluedark} &\cellcolor{darkgray} & \cellcolor{darkgray}& \cellcolor{RoyalBluedark}& \cellcolor{darkgray}\\
+
+\noalign{\hrule height 1pt}
+%%%%
+\multirow{6}{*}{turbulence (\ref{sec:turbulent})} 
+    & \cellcolor{lightgray} airfoil2d									&\cellcolor{RoyalBlue}& \cellcolor{lightgray}& \cellcolor{lightgray}& \cellcolor{lightgray}&\cellcolor{lightgray} &\cellcolor{lightgray} &\cellcolor{RoyalBlue}&\cellcolor{RoyalBlue} &\cellcolor{RoyalBlue}& \cellcolor{lightgray}&\cellcolor{green}&\cellcolor{lightgray}\\
+
+    & \cellcolor{darkgray} aorta3d								&\cellcolor{RoyalBluedark} &\cellcolor{darkgray} & \cellcolor{darkgray}&\cellcolor{darkgray} & \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{RoyalBluedark}&\cellcolor{darkgray}&\cellcolor{RoyalBluedark}&\cellcolor{RoyalBluedark}&\cellcolor{RoyalBluedark} & \cellcolor{darkgray}\\
+
+    & \cellcolor{lightgray} channel3d										&\cellcolor{RoyalBlue}&\cellcolor{lightgray} & \cellcolor{lightgray}& \cellcolor{lightgray}&\cellcolor{lightgray} & \cellcolor{lightgray}&\cellcolor{RoyalBlue}&\cellcolor{RoyalBlue} &\cellcolor{RoyalBlue}& \cellcolor{lightgray}&\cellcolor{RoyalBlue}& \cellcolor{lightgray}\\
+
+    & \cellcolor{darkgray} nozzle3d										&\cellcolor{RoyalBluedark}&\cellcolor{darkgray} & \cellcolor{darkgray}& \cellcolor{darkgray}&\cellcolor{darkgray} & \cellcolor{darkgray}&\cellcolor{RoyalBluedark}&\cellcolor{darkgray} &\cellcolor{RoyalBluedark}& \cellcolor{darkgray}&\cellcolor{RoyalBluedark}& \cellcolor{darkgray}\\
+
+    & \cellcolor{lightgray}tgv3d											&\cellcolor{RoyalBlue}& \cellcolor{lightgray}&\cellcolor{lightgray} &\cellcolor{lightgray} & \cellcolor{lightgray}&\cellcolor{lightgray} &\cellcolor{RoyalBlue}&\cellcolor{RoyalBlue}& \cellcolor{lightgray}&\cellcolor{lightgray} &\cellcolor{RoyalBlue}& \cellcolor{lightgray}\\
+
+    & \cellcolor{darkgray}venturi3d										&\cellcolor{RoyalBluedark}& \cellcolor{darkgray}& \cellcolor{darkgray}& \cellcolor{darkgray}&\cellcolor{darkgray} &\cellcolor{darkgray} &\cellcolor{RoyalBluedark}&\cellcolor{darkgray} &\cellcolor{RoyalBluedark}& \cellcolor{darkgray}&\cellcolor{green}&\cellcolor{darkgray}\\
+
+\noalign{\hrule height 1pt}
+
+\multirow{5}{*}{\makecell{uncertainty \\ Quantification (\ref{sec:uncertaintyQuant})}} 
+    & \cellcolor{lightgray} cavity2d	&\cellcolor{lightgray} & \cellcolor{lightgray} &\cellcolor{lightgray} & \cellcolor{lightgray}&\cellcolor{lightgray} &\cellcolor{lightgray} & \cellcolor{lightgray} & \cellcolor{RoyalBlue} &\cellcolor{lightgray} & \cellcolor{lightgray} &\cellcolor{RoyalBlue} & \cellcolor{lightgray}\\
+
+    & \cellcolor{darkgray} cavity3d	&\cellcolor{darkgray} & \cellcolor{darkgray} &\cellcolor{darkgray} & \cellcolor{darkgray}&\cellcolor{darkgray} &\cellcolor{darkgray} & \cellcolor{darkgray} & \cellcolor{RoyalBluedark} &\cellcolor{darkgray} & \cellcolor{darkgray} &\cellcolor{RoyalBluedark} & \cellcolor{darkgray}\\
+
+    & \cellcolor{lightgray} cylinder2d	&\cellcolor{lightgray} & \cellcolor{lightgray} &\cellcolor{lightgray} & \cellcolor{lightgray}&\cellcolor{lightgray} &\cellcolor{lightgray} & \cellcolor{RoyalBlue} & \cellcolor{RoyalBlue} &\cellcolor{lightgray} & \cellcolor{lightgray} &\cellcolor{RoyalBlue} & \cellcolor{lightgray}\\
+
+    & \cellcolor{darkgray} cylinder3d	&\cellcolor{darkgray} & \cellcolor{darkgray} &\cellcolor{darkgray} & \cellcolor{darkgray}&\cellcolor{darkgray} &\cellcolor{darkgray} & \cellcolor{RoyalBluedark} & \cellcolor{RoyalBluedark} &\cellcolor{darkgray} & \cellcolor{RoyalBluedark} &\cellcolor{RoyalBluedark} & \cellcolor{darkgray}\\
+
+    & \cellcolor{lightgray} tgv2d	&\cellcolor{RoyalBlue} & \cellcolor{lightgray} &\cellcolor{lightgray} & \cellcolor{lightgray}&\cellcolor{lightgray} &\cellcolor{lightgray} & \cellcolor{RoyalBlue} & \cellcolor{RoyalBlue} &\cellcolor{lightgray} & \cellcolor{lightgray} &\cellcolor{RoyalBlue} & \cellcolor{lightgray}\\
+
+\noalign{\hrule height 1pt}
+
+\multirow{1}{*}{\makecell{web} (\ref{sec:web})} 
+    & \cellcolor{darkgray} cylinder2d	&\cellcolor{darkgray} & \cellcolor{darkgray} &\cellcolor{darkgray} & \cellcolor{darkgray}&\cellcolor{darkgray} &\cellcolor{darkgray} & \cellcolor{RoyalBluedark} & \cellcolor{RoyalBluedark} &\cellcolor{RoyalBluedark} & \cellcolor{darkgray} &\cellcolor{RoyalBluedark} & \cellcolor{darkgray}\\
+
+\noalign{\hrule height 1pt}
+
+\end{tabular}
+
+%Legende für Tabelle Teil 2
+\begin{tabular}{ p{4cm} p{0,6cm} p{0,6cm} l p{2cm} p{1,2cm} l}
+& & & & & & \\
+&\cellcolor{RoyalBlue}&\cellcolor{RoyalBluedark}& example includes relevant subject& &\cellcolor{green}&example includes relevant subject and is recommended for beginning \\
+
+\end{tabular}
+\renewcommand{\arraystretch}{1}
+\end{footnotesize}
+\end{landscape}

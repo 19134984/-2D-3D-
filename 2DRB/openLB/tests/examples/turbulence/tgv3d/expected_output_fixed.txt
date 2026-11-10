@@ -1,0 +1,78 @@
+[UnitConverter] ----------------- UnitConverter information -----------------
+[UnitConverter] -- Parameters:
+[UnitConverter] Resolution:                       N=              10
+[UnitConverter] Lattice velocity:                 latticeU=       0.203707
+[UnitConverter] Lattice relaxation frequency:     omega=          1.9699
+[UnitConverter] Lattice relaxation time:          tau=            0.507639
+[UnitConverter] Characteristical length(m):       charL=          1
+[UnitConverter] Characteristical speed(m/s):      charU=          1
+[UnitConverter] Phys. kinematic viscosity(m^2/s): charNu=         0.00125
+[UnitConverter] Phys. density(kg/m^d):            charRho=        1
+[UnitConverter] Characteristical pressure(N/m^2): charPressure=   0
+[UnitConverter] Mach number:                      machNumber=     0.35283
+[UnitConverter] Reynolds number:                  reynoldsNumber= 800
+[UnitConverter] Knudsen number:                   knudsenNumber=  0.000441038
+[UnitConverter] 
+[UnitConverter] -- Conversion factors:
+[UnitConverter] Voxel length(m):                  physDeltaX=     0.1
+[UnitConverter] Time step(s):                     physDeltaT=     0.0203707
+[UnitConverter] Velocity factor(m/s):             physVelocity=   4.90902
+[UnitConverter] Density factor(kg/m^3):           physDensity=    1
+[UnitConverter] Mass factor(kg):                  physMass=       0.001
+[UnitConverter] Viscosity factor(m^2/s):          physViscosity=  0.490902
+[UnitConverter] Force factor(N):                  physForce=      0.240985
+[UnitConverter] Pressure factor(N/m^2):           physPressure=   24.0985
+[UnitConverter] -------------------------------------------------------------
+[CuboidDecomposition] -- Cuboid Structure Statistics --
+[CuboidDecomposition]  Number of Cuboids: 	1
+[CuboidDecomposition]  Delta       : 		0.1
+[CuboidDecomposition]  Ratio  (min): 		1
+[CuboidDecomposition]         (max): 		1
+[CuboidDecomposition]  Nodes  (min): 		262144
+[CuboidDecomposition]         (max): 		262144
+[CuboidDecomposition]  Weight (min): 		262144
+[CuboidDecomposition]         (max): 		262144
+[CuboidDecomposition] --------------------------------
+[SuperGeometryStatistics3D] materialNumber=1; count=262144; minPhysR=(0,0,0); maxPhysR=(6.3,6.3,6.3)
+[SuperGeometryStatistics3D] countTotal[1e6]=0.262144
+[LatticeStatistics] step=0; physT=0; maxCFL=0; avgEnergy=0; avgRho=1
+[LatticeStatistics] step=12; physT=0.244448; maxCFL=0.203085; avgEnergy=0.00521327; avgRho=1
+[LatticeStatistics] step=24; physT=0.488896; maxCFL=0.205564; avgEnergy=0.00508018; avgRho=1
+[LatticeStatistics] step=36; physT=0.733344; maxCFL=0.212615; avgEnergy=0.00512379; avgRho=1
+[LatticeStatistics] step=48; physT=0.977792; maxCFL=0.203693; avgEnergy=0.00520807; avgRho=1
+[LatticeStatistics] step=60; physT=1.22224; maxCFL=0.196757; avgEnergy=0.00517353; avgRho=1
+[LatticeStatistics] step=72; physT=1.46669; maxCFL=0.198897; avgEnergy=0.00514119; avgRho=1
+[LatticeStatistics] step=84; physT=1.71114; maxCFL=0.191694; avgEnergy=0.00504182; avgRho=1
+[LatticeStatistics] step=96; physT=1.95558; maxCFL=0.190457; avgEnergy=0.00509723; avgRho=1
+[LatticeStatistics] step=108; physT=2.20003; maxCFL=0.191474; avgEnergy=0.00513369; avgRho=1
+[LatticeStatistics] step=120; physT=2.44448; maxCFL=0.196334; avgEnergy=0.00512841; avgRho=1
+[LatticeStatistics] step=132; physT=2.68893; maxCFL=0.196764; avgEnergy=0.00502177; avgRho=1
+[LatticeStatistics] step=144; physT=2.93338; maxCFL=0.188125; avgEnergy=0.00497569; avgRho=1
+[LatticeStatistics] step=156; physT=3.17782; maxCFL=0.184809; avgEnergy=0.00505403; avgRho=1
+[LatticeStatistics] step=168; physT=3.42227; maxCFL=0.189276; avgEnergy=0.00502323; avgRho=1
+[LatticeStatistics] step=180; physT=3.66672; maxCFL=0.185405; avgEnergy=0.00498387; avgRho=1
+[LatticeStatistics] step=192; physT=3.91117; maxCFL=0.186717; avgEnergy=0.00487593; avgRho=1
+[LatticeStatistics] step=204; physT=4.15562; maxCFL=0.199232; avgEnergy=0.0048849; avgRho=1
+[LatticeStatistics] step=216; physT=4.40006; maxCFL=0.196896; avgEnergy=0.0048677; avgRho=1
+[LatticeStatistics] step=228; physT=4.64451; maxCFL=0.202359; avgEnergy=0.00482642; avgRho=1
+[LatticeStatistics] step=240; physT=4.88896; maxCFL=0.224312; avgEnergy=0.00474065; avgRho=1
+[LatticeStatistics] step=252; physT=5.13341; maxCFL=0.228296; avgEnergy=0.00462175; avgRho=1
+[LatticeStatistics] step=264; physT=5.37786; maxCFL=0.228816; avgEnergy=0.00461788; avgRho=1
+[LatticeStatistics] step=276; physT=5.6223; maxCFL=0.213806; avgEnergy=0.00452029; avgRho=1
+[LatticeStatistics] step=288; physT=5.86675; maxCFL=0.19649; avgEnergy=0.0044556; avgRho=1
+[LatticeStatistics] step=300; physT=6.1112; maxCFL=0.195826; avgEnergy=0.00431134; avgRho=1
+[LatticeStatistics] step=312; physT=6.35565; maxCFL=0.200987; avgEnergy=0.00423191; avgRho=1
+[LatticeStatistics] step=324; physT=6.6001; maxCFL=0.201757; avgEnergy=0.00417243; avgRho=1
+[LatticeStatistics] step=336; physT=6.84454; maxCFL=0.188816; avgEnergy=0.00405149; avgRho=1
+[LatticeStatistics] step=348; physT=7.08899; maxCFL=0.183642; avgEnergy=0.00396814; avgRho=1
+[LatticeStatistics] step=360; physT=7.33344; maxCFL=0.180179; avgEnergy=0.00380632; avgRho=1
+[LatticeStatistics] step=372; physT=7.57789; maxCFL=0.179114; avgEnergy=0.00373822; avgRho=1
+[LatticeStatistics] step=384; physT=7.82234; maxCFL=0.184449; avgEnergy=0.00363787; avgRho=1
+[LatticeStatistics] step=396; physT=8.06678; maxCFL=0.199528; avgEnergy=0.00353293; avgRho=1
+[LatticeStatistics] step=408; physT=8.31123; maxCFL=0.200043; avgEnergy=0.00339723; avgRho=1
+[LatticeStatistics] step=420; physT=8.55568; maxCFL=0.188957; avgEnergy=0.00327182; avgRho=1
+[LatticeStatistics] step=432; physT=8.80013; maxCFL=0.189933; avgEnergy=0.00320445; avgRho=1
+[LatticeStatistics] step=444; physT=9.04458; maxCFL=0.178813; avgEnergy=0.00306504; avgRho=1
+[LatticeStatistics] step=456; physT=9.28902; maxCFL=0.1815; avgEnergy=0.00297265; avgRho=1
+[LatticeStatistics] step=468; physT=9.53347; maxCFL=0.184272; avgEnergy=0.00282633; avgRho=1
+[LatticeStatistics] step=480; physT=9.77792; maxCFL=0.170694; avgEnergy=0.00274424; avgRho=1

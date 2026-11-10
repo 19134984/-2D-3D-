@@ -1,0 +1,199 @@
+### periodicPlateOptiAD2d
+
+Identification of the two amplitudes of a body force field on a periodic plate,
+with the gradient computed by forward-mode automatic differentiation (f-AD).
+This is the first of three benchmarks for gradient-based optimization in linear
+elastic solid mechanics, in which the primal and the sensitivity problem are both
+solved by a lattice Boltzmann scheme. `periodicPlateOptiParam2d` solves the same
+inverse problem with the adjoint LBM, which makes the two cases a direct check of
+the generated adjoint collision kernel against f-AD.
+
+The benchmark and its results are described in
+[@grafenBenchmarkCasesGradientbased2026].
+
+#### Setup
+
+The domain is the unit square $\Omega = [0,1]^2$ with periodic boundaries,
+discretized by $N_x$ nodes per Cartesian direction. The primal problem is the
+quasistationary linear elasticity case of `structuralmechanics/linearElasticity/quasistationary/periodicPlate`,
+solved with the MRT scheme of [@boolakee:23a] on a `D2Q8` descriptor in its
+OpenLB implementation [@kaiser:25]. Following
+that reference a manufactured steady-state displacement is prescribed,
+
+$$
+\symbf{u}^*(\symbf{x}) = \begin{pmatrix}
+  \delta_1 \cos(2\pi x_1) \sin(2\pi x_2) \\
+  \delta_2 \sin(2\pi x_1) \cos(2\pi x_2)
+\end{pmatrix},
+\qquad \delta_1 = 9 \cdot 10^{-4}, \quad \delta_2 = 7 \cdot 10^{-4},
+$$
+
+with $E = 0.11$ and $\nu = 0.8$. Inserting $\symbf{u}^*$ into the steady
+Navier--Cauchy equation gives the body force that produces it,
+
+$$
+\symbf{F}^* = 4\pi^2 \begin{pmatrix}
+  \big[K(\delta_1+\delta_2) + 2\mu\delta_1\big]\cos(2\pi x_1)\sin(2\pi x_2) \\
+  \big[K(\delta_1+\delta_2) + 2\mu\delta_2\big]\sin(2\pi x_1)\cos(2\pi x_2)
+\end{pmatrix},
+$$
+
+where $K$ and $\mu$ are the two-dimensional bulk and shear modulus. This force has
+vanishing mean, so a steady state exists on the periodic domain, and the residual
+rigid translation is fixed by the zero initial condition $\symbf{u}(\symbf{x}, t=0) = \symbf{0}$
+imposed at the beginning of every optimization step.
+
+#### Inverse problem
+
+The control is the pair of scalars that scales the two components of $\symbf{F}^*$ at
+the lattice nodes,
+
+$$
+\symbf{F}(\symbf{x}_n, \symbf{\alpha}) = \symbf{\alpha} \circ \symbf{F}^*(\symbf{x}_n)
+  = \begin{pmatrix} \alpha_1 F^*_1(\symbf{x}_n) \\ \alpha_2 F^*_2(\symbf{x}_n) \end{pmatrix},
+$$
+
+so the reference control is $\symbf{\alpha}^* = (1, 1)^{\mathsf{T}}$ by construction.
+The objective measures the deviation from the sampled manufactured displacement
+over the whole lattice,
+
+$$
+J(\symbf{\alpha}) = \tfrac{1}{2} \big\| \symbf{u}(\symbf{\alpha}) - \symbf{u}^* \big\|^2_{L^2(\Omega_{\Delta x})} ,
+$$
+
+and is minimized with L-BFGS. The control space is two-dimensional and independent
+of the resolution, so the same problem is posed on every grid and only the discrete
+solution operator changes with $N_x$.
+
+#### Implementation
+
+`case.h` defines `MyCase` as a `Case<names::NavierCauchy, Lattice<double, D2Q8<...>>>`
+and derives the differentiated case by `MyCase::exchange_value_t<ADf>`. Both are
+handed to an `OptiCaseADf<Controlled, MyCase, Derivatives, MyADfCase, Reference, MyCase>`,
+which evaluates the objective on the `Controlled` case and obtains
+$\mathrm{d}J/\mathrm{d}\symbf{\alpha}$ from the `ADf`-typed copy. Because the control has
+only two entries, one tangent direction per entry is enough and f-AD is cheap here.
+The manufactured displacement, stress and force are implemented in
+`analyticalSolution.h`.
+
+#### Files
+
+```
+periodicPlateOptiAD2d/
+├── periodicPlateOptiAD2d.cpp  main(): default parameters, optimizer settings, run
+├── case.h                     Case and ADf-typed case, geometry, lattice, objective
+├── analyticalSolution.h       manufactured displacement, stress and body force
+└── Makefile
+```
+
+This example ships no case file: the whole study is driven from the command line.
+Every parameter set in the `.cpp` can be overridden there (`--RESOLUTION 20`), and
+a `--case-file` of the same shape as the ones in `periodicPlateOpti2d` would work
+if a study needs its settings pinned. The precedence is
+`set<>()` < case file < command line.
+
+Two defaults differ from the values the benchmark uses and are therefore passed on
+the command line: `PHYS_MAX_T` is `30` in the source against $T_{max} = 100$ in the
+study, and `ANALYTICAL_REFERENCE` is `false`, which compares against a simulated
+rather than the manufactured reference.
+
+#### Parameters
+
+All of the following are set in `periodicPlateOptiAD2d.cpp` and can be overridden
+from a case file or the command line. Vector-valued entries are passed in
+brackets, `--INITIAL_CONTROL "[-1 -1]"`.
+
+##### Geometry and discretization
+
+| Parameter | Type | Default | Meaning |
+|---|---|---|---|
+| `RESOLUTION` | int | `40` | nodes per Cartesian direction, $N_x$; the lattice holds $N_x^2$ nodes |
+| `DOMAIN_EXTENT` | double[2] | `{1.0, 1.0}` | physical size of the periodic square |
+| `ORIGIN` | double[2] | `{0.0, 0.0}` | lower-left corner of the domain |
+| `PHYS_CHAR_LENGTH` | double | `1.0` | characteristic length of the unit converter |
+| `PHYS_DELTA_X` | double | derived | $\Delta x =$ `DOMAIN_EXTENT[0] / RESOLUTION` |
+| `PHYS_DELTA_T` | double | derived | $\Delta t = \Delta x^2$, the diffusive scaling of the pseudo-time |
+| `PHYS_CHAR_DISPLACEMENT` | double | derived | displacement scale of the converter, set to $\Delta x$ |
+
+The three derived values are computed in `main()` from `DOMAIN_EXTENT` and
+`RESOLUTION` once the parameter block has been read, so overriding `RESOLUTION`
+on the command line updates them too.
+
+##### Material
+
+| Parameter | Type | Default | Meaning |
+|---|---|---|---|
+| `SOLID_CASE` | string | `"continua"` | dimensional reduction of the constitutive law; accepts `continua`, `planeStress`, `planeStrain` and `standard` |
+| `YOUNGS_MODULUS` | double | `0.11` | $E$ of the simulated material |
+| `POISSON_RATIO` | double | `0.8` | $\nu$; in 2D the admissible range is $-1 < \nu < 1$ |
+| `PHYS_DENSITY` | double | `1` | $\rho$ |
+| `DAMPING_FACTOR` | double | `1.0` | $\kappa$ of the damped pseudo-time scheme; also sets the stress conversion factor $\kappa \Delta x^2 / \Delta t$ |
+
+##### Pseudo-time stepping and convergence
+
+| Parameter | Type | Default | Meaning |
+|---|---|---|---|
+| `PHYS_MAX_T` | double | `30` | pseudo-time budget; the step cap is `PHYS_MAX_T`$/\Delta t = $ `PHYS_MAX_T`$\cdot N_x^2$. The benchmark uses `100` |
+| `CONVERGENCE_PRECISION` | double | `1e-7` | relative tolerance of the steady-state check; `0` disables the check and runs the full budget |
+| `CONV_ITER` | double | `10` | window length of the `ValueTracer` that watches the monitored value |
+| `CONV_VALUE` | double | `1` | slot the case writes the monitored value into (the mean squared displacement); not a user knob |
+
+There is no adjoint tolerance here: the sensitivity comes from the `ADf`-typed
+copy of the primal solve, which converges together with it rather than in a
+second solve.
+
+##### Inverse problem and control
+
+| Parameter | Type | Default | Meaning |
+|---|---|---|---|
+| `INITIAL_CONTROL` | double[2] | `{0, 0}` | $\symbf{\alpha}^{(0)}$, the two scalars scaling the components of $\symbf{F}^*$; the benchmark starts from `[-1 -1]` |
+| `ANALYTICAL_REFERENCE` | bool | `false` | `true` compares against the sampled manufactured displacement, `false` against a reference obtained from a simulation; the benchmark uses `1` |
+
+##### Output
+
+| Parameter | Type | Default | Meaning |
+|---|---|---|---|
+| `VTK_ENABLED` | bool | `true` | write the displacement, stress and control fields to VTK |
+| `LATTICE_VTK_ITER_T` | int | `1000` | pseudo-time steps between VTK writes |
+| `LATTICE_LOG_ITER_T` | int | `1000` | pseudo-time steps between console log lines; a very large value silences the log |
+
+##### Optimizer
+
+Held in a separate `OptimizerParametersD` in `main()` rather than in the case
+parameters, and namespaced by optimizer component.
+
+| Parameter | Type | Default | Meaning |
+|---|---|---|---|
+| `optimizer::EPS` | double | `1e-10` | termination tolerance on the gradient norm |
+| `optimizer::MAX_OPTIMIZATION_STEPS` | int | `50` | cap on the number of optimization steps |
+| `optimizer::VERBOSE` | bool | `true` | per-step optimizer log |
+| `linesearch::MAX_STEP_ATTEMPTS` | int | `100` | cap on line-search refinements within one step |
+
+Unlike `periodicPlateOptiParam2d`, this case leaves `LBFGS::HISTORY_SIZE` and
+`linesearch::STEP_CONDITION` at their library defaults.
+
+#### Running the case
+
+This example has a single mode: there is no `FORWARD_ONLY` switch and no gradient
+comparison, so every run solves the inverse problem.
+
+The defaults in `periodicPlateOptiAD2d.cpp` run $N_x = 40$ from
+$\symbf{\alpha}^{(0)} = (0,0)^{\mathsf{T}}$. Parameters can be overridden on the command
+line or through a case file. The resolution study of the benchmark uses
+
+```sh
+mpirun -np 2 ./periodicPlateOptiAD2d --RESOLUTION 20 --INITIAL_CONTROL "[-1 -1]" \
+  --ANALYTICAL_REFERENCE 1 --CONVERGENCE_PRECISION 1e-7 --PHYS_MAX_T 100 --VTK_ENABLED 0
+```
+
+repeated for $N_x \in \{10, 20, 40, 80\}$. The optimization history is written to
+`tmp/gnuplotData/data/optiLog.dat`, one row per step, holding the control, the
+objective, the gradient norm and the relative control error.
+
+#### Results
+
+The results of this benchmark are reported and discussed in
+[@grafenBenchmarkCasesGradientbased2026]: the evolution of the objective, of the
+gradient norm and of the relative control error over the resolutions and over
+four different initial controls, together with the agreement between the f-AD
+gradient computed here and the ALBM gradient of `periodicPlateOptiParam2d`.

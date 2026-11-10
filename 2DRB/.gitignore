@@ -1,5 +1,6 @@
 # Local build products and scratch outputs.
 *.mod
+*.smod
 *.o
 *.obj
 *.exe
@@ -46,3 +47,13 @@ reloadFile2DOpenaccMultiblock-*.bin
 /运行脚本/**/*.tar
 /运行脚本/**/*.tar.gz
 /PTRT/p100/**/*.tar
+
+# Generated data deliveries stay with local run evidence.
+/outputs/
+
+# Editor scratch files.
+*.tmp
+*.temp
+*.swp
+*.swo
+*~

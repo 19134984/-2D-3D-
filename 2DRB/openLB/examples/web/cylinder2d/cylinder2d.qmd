@@ -1,0 +1,7 @@
+---
+features: [transient, benchmark, showcase, primitives]
+---
+
+### cylinder2d
+
+<!-- TODO: describe this example. -->

@@ -1,0 +1,7 @@
+---
+features: [multiComponent, multiPhase, transient, primitives]
+---
+
+### basicRisingBubble3d
+
+<!-- TODO: describe this example. -->

@@ -1,0 +1,128 @@
+---
+features: [turbulent, transient, primitives]
+recommended-for-beginners: [transient, primitives]
+---
+
+### nozzle2d {#sec-example-forBeginners-nozzle2d}
+
+This example simulates a plane jet: fluid enters a rectangular box through a narrow slot in its left wall and spreads into the fluid at rest.
+At the Reynolds number $Re = 500$, the jet does not stay laminar, but becomes unstable and breaks up into vortices.
+It is a learning example with a compact code, meant for trying out other dynamics and boundary conditions, for instance a turbulence model in the bulk or no-slip walls.
+A three-dimensional nozzle with turbulence models is simulated in [[`turbulence/nozzle3d`](/examples/turbulence/nozzle3d/nozzle3d.qmd)]{.content-visible when-format="html"}[`turbulence/nozzle3d`]{.content-visible when-format="pdf"}.
+
+#### Governing equations
+
+The domain $\Omega \times \I = [0, 6] \times [0, 2] \times \R_{\geq 0}$ is considered with the following governing equations with the velocity field $\vel \in \R^2$ and the pressure $p \in \R$ for the incompressible flow of a Newtonian fluid with kinematic viscosity $\nu \in \R_{> 0}$ and constant density $\rho \in \R_{> 0}$,
+\begin{align}
+    \nabla \cdot \vel &= 0 \quad \text{in} \quad \Omega \times \I, \\
+    \partial_t \vel + (\vel \cdot \nabla) \vel &= -\frac{1}{\rho} \nabla p + \nu \Delta \vel \quad \text{in} \quad \Omega \times \I.
+\end{align}
+With the slot height $h = 0.2\,\mathrm{m}$, the peak inflow velocity $U$ and $\nu = 10^{-5}\,\mathrm{m^2/s}$, the Reynolds number $Re = U h / \nu = 500$ sets $U = 0.025\,\mathrm{m/s}$.
+
+#### Boundary conditions
+
+The boundary $\partial \Omega = \Gamma_D \cup \Gamma_\text{out} \cup \Gamma_\text{slip}$ consists of the inlet slot $\Gamma_D$ (MN 3) at $x = 0$, $0.9\,\mathrm{m} \le y \le 1.1\,\mathrm{m}$, the outlet $\Gamma_\text{out}$ (MN 4), the whole right side $x = 6\,\mathrm{m}$, and the walls $\Gamma_\text{slip}$ (MN 2), the bottom, the top and the rest of the left side,
+\begin{align}
+    \vel &= (u_\text{in}(y, t), 0)^\top \quad \text{on} \quad \Gamma_D \times \I, \\
+    p &= 0 \quad \text{on} \quad \Gamma_\text{out} \times \I, \\
+    \vel \cdot \mathbf{n} = 0, \quad \partial_\mathbf{n} (\vel \cdot \mathbf{t}) &= 0 \quad \text{on} \quad \Gamma_\text{slip} \times \I.
+\end{align}
+The walls are free-slip walls: the fluid cannot pass them, but slides along them without friction.
+The inflow profile is a parabola across the slot with superimposed random fluctuations,
+$$
+    u_\text{in}(y, t) = s(t)\, U \left( 1 - \left( \frac{y - 1\,\mathrm{m}}{h/2} \right)^2 \right) (1 + 0.03\, \xi), \qquad s(t) = \tau^3 \left( 10 - 15 \tau + 6 \tau^2 \right), \quad \tau = \min\left( \frac{t}{0.1\, T}, 1 \right),
+$$
+with a standard normally distributed random number $\xi$ for every cell of the inlet, which represents a turbulence intensity of $3\,\%$.
+`setTemporalValues()` sets it with `PowerLawTurbulent2D` (exponent $2$) every time step during the ramp-up over the first $10\,\%$ of the simulated time $T$, that is $50\,\mathrm{s}$; afterwards, the last profile stays in place, so the fluctuations are frozen.
+The fluid is initially at rest.
+
+#### Domain
+
+The box has the length $6\,\mathrm{m}$, $30$ slot heights, and the height $2\,\mathrm{m}$, $10$ slot heights.
+`prepareGeometry()` marks the outer layer of cells as wall (MN 2) and the inside as fluid (MN 1), and renames the wall cells in the slot to the inlet (MN 3) and those at the right side to the outlet (MN 4), as in @lst-nozzle2d-geometry.
+
+::: {#lst-nozzle2d-geometry}
+```{.cpp}
+geometry.rename(0, 2);
+geometry.rename(2, 1, {1, 1});
+
+// Set material number for inflow
+IndicatorCuboid2D<T> inlet({T(2)*deltaX, inletHeight}, {-deltaX, (lengthY-inletHeight)/T(2)});
+geometry.rename(2, 3, 1, inlet);
+
+// Set material number for outflow
+origin[0] = lengthX - deltaX;
+IndicatorCuboid2D<T> outflow(extend, origin);
+geometry.rename(2, 4, outflow);
+```
+Assignment of the material numbers in `prepareGeometry()`.
+:::
+
+#### Discretization \& Descriptor
+In this example, the domain is discretized with a uniform grid with the lattice spacing $\Delta x = h / N$, where $N = 30$ cells resolve the slot height, which gives $\Delta x = 6.7\,\mathrm{mm}$ and $271\,000$ cells.
+The unit converter `UnitConverterFromResolutionAndLatticeVelocity` sets the time step size from the lattice velocity $0.05$ of the peak inflow, $\Delta t = 0.05\, \Delta x / U = 0.0133\,\mathrm{s}$, so the simulated $500\,\mathrm{s}$ take $37\,500$ time steps, and the relaxation time is $\tau = 0.509$.
+
+The LBM collision operator is the BGK operator with a single relaxation time ([Collision Operators](/content/02_core.qmd#collision-operators)), used as `BGKdynamics`, together with the D2Q9 velocity set ([Lattice Structures](/content/01_introduction.qmd#sec-lattice-structures)). The lattice uses single precision.
+The walls (MN 2) are treated with `FullSlip`, the inlet (MN 3) with `LocalVelocity` and the outlet (MN 4) with `InterpolatedPressure` ([Define Boundary Method](/content/06_initial_boundary.qmd#sec-defineBoundaryMethod)).
+These are the lines to change for experiments with the example: `BounceBack` instead of `FullSlip` gives no-slip walls, and `SmagorinskyBGKdynamics` instead of `BGKdynamics`, together with the Smagorinsky constant `collision::LES::SMAGORINSKY` set in `setInitialValues()`, a large eddy simulation.
+
+The corresponding lattice is defined inside the case definition in `nozzle2d.cpp` as in @lst-nozzle2d-case.
+
+::: {#lst-nozzle2d-case}
+```{.cpp}
+using MyCase = Case<
+  NavierStokes, Lattice<float, descriptors::D2Q9<>>
+>;
+```
+Case definition for the `nozzle2d` example.
+:::
+
+The parameters are set in `main()` and given in @tbl-nozzle2d-params.
+
+| Parameter | Symbol | Value | Description |
+|---|---|---|---|
+| `RESOLUTION` | $N$ | $30$ | cells per slot height $h$ |
+| `REYNOLDS` | $Re$ | $500$ | Reynolds number $U h / \nu$, sets $U = 0.025\,\mathrm{m/s}$ |
+| `LATTICE_CHAR_VELOCITY` | | $0.05$ | lattice velocity of $U$, sets $\Delta t$ |
+| `PHYS_CHAR_VISCOSITY` | $\nu$ | $10^{-5}\,\mathrm{m^2/s}$ | kinematic viscosity |
+| `PHYS_CHAR_DENSITY` | $\rho$ | $1\,\mathrm{kg/m^3}$ | density |
+| `PHYS_MAX_T` | $T$ | $500\,\mathrm{s}$ | simulated time |
+| `DOMAIN_EXTENT` | | $6\,\mathrm{m} \times 2\,\mathrm{m}$ | length and height of the box |
+| `INLET_HEIGHT` | $h$ | $0.2\,\mathrm{m}$ | height of the inlet slot |
+| `START_FACTOR` | | $0.1$ | fraction of $T$ for the ramp-up of the inflow |
+| `UPDATE_NUMBER` | | $1$ | interval of the inflow updates during the ramp-up in time steps |
+| `PHYS_VTK_ITER_T` | | $1\,\mathrm{s}$ | interval of the VTK output |
+| `reporter` `PHYS_ITER_T` | | $1\,\mathrm{s}$ | interval of the console statistics and the timer |
+
+: Parameters of `nozzle2d`, as set in `main()`. {#tbl-nozzle2d-params}
+
+#### Results
+
+@fig-nozzle2d-velocity shows how the jet develops.
+During the ramp-up, the inflow pushes the fluid of the whole box towards the outlet, which shows as a uniform velocity of about $0.002\,\mathrm{m/s}$ away from the inlet.
+The jet then penetrates into the fluid at rest as a narrow laminar stream, led by a head with a pair of counter-rotating vortices, which advances only slowly: it is at $x \approx 1\,\mathrm{m}$ at $t = 150\,\mathrm{s}$ and at $x \approx 1.9\,\mathrm{m}$ at $t = 250\,\mathrm{s}$.
+At the end of the default simulation, the jet starts to meander about $2.5\,\mathrm{m}$, or $12$ slot heights, behind the inlet, and the meanders roll up into vortex pairs. The flow has not yet reached a statistically steady state.
+
+::: {.image-slider .image-slider-wide}
+::: {#fig-nozzle2d-velocity layout-ncol="2"}
+![$t = 50\,\mathrm{s}$, end of the ramp-up](/examples/forBeginners/nozzle2d/doc/fig/velocity_iT0003750.png)
+
+![$t = 100\,\mathrm{s}$](/examples/forBeginners/nozzle2d/doc/fig/velocity_iT0007500.png)
+
+![$t = 150\,\mathrm{s}$](/examples/forBeginners/nozzle2d/doc/fig/velocity_iT0011250.png)
+
+![$t = 250\,\mathrm{s}$](/examples/forBeginners/nozzle2d/doc/fig/velocity_iT0018750.png)
+
+![$t = 375\,\mathrm{s}$](/examples/forBeginners/nozzle2d/doc/fig/velocity_iT0028125.png)
+
+![$t = 499\,\mathrm{s}$](/examples/forBeginners/nozzle2d/doc/fig/velocity_iT0037425.png)
+
+Velocity magnitude $|\vel|$ of `nozzle2d`, visualized in ParaView. The colour range is fixed to $[0, 0.025]\,\mathrm{m/s}$ for all time steps.
+:::
+:::
+
+@fig-nozzle2d-umax shows the maximum velocity in the box over time.
+It follows the ramp-up of the inflow and then fluctuates between $0.025$ and $0.030\,\mathrm{m/s}$, up to $18\,\%$ above the peak inflow velocity, where the vortices roll up.
+
+![Maximum velocity magnitude of `nozzle2d` over time, compared with the peak velocity of the prescribed inflow profile.](/examples/forBeginners/nozzle2d/doc/fig/umax.svg){width="80%" #fig-nozzle2d-umax .lightbox}
+

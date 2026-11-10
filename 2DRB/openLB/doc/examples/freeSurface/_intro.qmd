@@ -1,0 +1,2 @@
+The free surface approach [@thurey:07] is a numerical simulation of two phases, where one of the phases does not have to be simulated thoroughly.
+In the provided examples of this category, these two phases are usually water and air, with the air phase being the one that is handled in a simplified manner.

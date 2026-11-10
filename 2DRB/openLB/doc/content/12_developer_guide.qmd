@@ -1,0 +1,266 @@
+---
+title: "For Developers"
+number-sections: true
+toc: true
+---
+
+## Coding Rules {#sec-codingRules}
+
+- Indentation: 2 whitespaces, no tabs.
+- Line length: 80 characters recommended, comments may be longer (might be exceeded in exceptional cases for a maintainable layout).
+- Naming conventions:
+    - When in doubt use lower camel case (e.g. a function performing a collision and a streaming step is called `collideAndStream()`).
+    - Template arguments in all caps, separated by underscores where required (e.g. `template <typename T, typename DESCRIPTOR>`).
+    - Descriptor field types in all caps, separated by underscores where required (e.g. `FORCE`).
+    - Meta type template members in lower case, separated by underscores (e.g. `include_fields`).
+    - Variable names are in lower camel case.
+    - Function names are in lower camel case.
+    - Class names are in upper camel case.
+    - Class instances begin with a small letter.
+    - Functions to set/access class internal variables are called `setVariableName()` and `getVariableName()` respectively.
+- Output with `OstreamManager` (instead of `printf()`; for usage details see [Section Console Output](07_input_output.qmd#sec-consoleOutput)):
+    - Status information in semi-CSV style: *variableName* + `=` + *value* + `;` + *space*, e.g.
+
+      ```
+      step=1700; avEnergy=5.55583e-05; avRho=1.00005; uMax=0.0321654
+      ```
+
+    - Error messages: `Error:` + space + short text, e.g.
+
+      ```
+      Error: file not found
+      ```
+
+- Documentation with `doxygen`:
+    - Functions are commented by a preceding doxygen comment in the corresponding header file: `///comment...`
+    - Classes have a descriptive text, containing at best an example usage (also doxygen style): `/** comment */`
+- Comments:
+    - Comments should be as descriptive as possible. As such, try to write complete sentences and mind proper capitalization, spelling and punctuation. This will greatly improve readability!
+- Files and names:
+    - Only one public class per file (exceptions apply).
+    - File names are class names beginning with a lower case character.
+
+The $\OpenLB$ source code is written as *generic high performance code* to benefit from user-defined precision or AD techniques like in [@griewank-ad:00].
+For genericity, it is based on the template parameter `T` instead of one fixed data type like `double`.
+For high performance, it is preferred to pass variables by reference, where appropriate, to avoid copy overhead (exceptions apply).
+Therefore, we use three different file extensions:
+
+| Extension | Purpose |
+|---|---|
+| `*.h` | A normal (often template-based) header file. |
+| `*.hh` | Contains the actual source code if templates have been used. |
+| `*.cpp` | Contains the actual source code if templates have not been used; otherwise the template parameters for the target *precompiled* are here explicitly instantiated (defined). |
+
+: $\OpenLB$ file extensions. {#tbl-file-extensions tbl-colwidths="[15,85]"}
+
+Further details concerning this template-based programming can be found in [@vand-template:03].
+
+Furthermore, there are some points we recommend considering for readable code:
+
+- The equal sign `=` should be surrounded by whitespaces.
+- Rule of *"multiplication and division before addition and subtraction"* using whitespaces: instead of `z = a * x + b * y` write `z = a*x + b*y`.
+- Order of parameters: `function(input_params, output_params)`.
+- Order of sections: public, protected, private.
+- Order of includes: `className.h`, C/C++ libraries, foreign `.h`, $\OpenLB$'s `.h`.
+- Don't use relative paths like `../src/core/units.h`. This is Unix specific and unnecessary.
+- `template<typename T>` is written in $\OpenLB$ one line above the actual function definition for readability.
+
+Finally, keep in mind that even $\OpenLB$'s programmers are not perfect.
+So the code might not follow these rules 100%.
+In case of doubt, look around and stick to the most important rule:
+
+::: callout-important
+## Be consistent with the surrounding code!
+:::
+
+To apply the above defined coding rules, $\OpenLB$ provides a `ClangFormat` configuration in `.clang-format`, which is disabled in some files due to bad results.
+Formatting a file `src/io/base64.h` is achieved by the following command:
+
+```{.bash}
+clang-format -i --style=file src/io/base64.h
+```
+
+The required package can be installed by:
+
+```{.bash}
+sudo apt-get install clang-format
+```
+
+## Compile Flags {#sec-compileflags}
+
+The GCC compiler from the GNU Compiler Collection provides additional compiler flags to warn developers.
+
+`-Wfloat-equal`
+: Warns if floating-point values are used in equality comparisons.
+
+`-Wfloat-conversion`
+: Warns for implicit conversions that reduce the precision of a real value.
+
+`-Wshadow`
+: Warns whenever a variable or type declaration shadows another variable.
+
+`-Wnon-virtual-dtor`
+: Warns when a class has virtual functions and an accessible non-virtual destructor itself or in an accessible polymorphic base class.
+
+## Git Repository {#sec-gitRepository}
+
+The source code of the $\OpenLB$ project is available in a private [Git](https://en.wikipedia.org/wiki/Git) repository.
+The repository enables a controlled way of writing code together.
+Any change is tracked and will be visible and available to the others, which avoids a lot of trouble by means of finding bugs very fast.
+There are a few very important rules you should follow.
+This will make life easier for every programmer, including yourself:
+
+- Write your name at the top of any file you create. This will make you the person who needs to be asked if someone wants to change an interface or if someone reports a bug.
+- Never change interfaces without contacting one of the programmers mentioned at the top of the file.
+- Before pushing your changes, make sure that you have respected all coding rules (cf. @sec-codingRules) and that all examples are compiling fine. You can use the command `make samples` from the root directory. Also check that the examples compile in both compile modes, `precompiled` and `generic`, and in sequential as well as in parallel mode.
+
+Access can be provided for every core developer.
+Please send an email to [contact@openlb.net](mailto:contact@openlb.net) with your full name and private address.
+
+Already an expert? Copy the URL `https://gitlab.com/openlb/olb.git` into your Git client and start cloning.
+Alternatively, navigate to the project page, or for beginners, keep reading.
+
+A detailed overview of Git can be found in [@haenel:11].
+A short, helpful overview can be downloaded at [git-cheat-sheet.pdf](http://www.cheat-sheets.org/saved-copy/git-cheat-sheet.pdf) and a complete introduction is given by [git-scm.com/book/en](http://git-scm.com/book/en).
+
+$\OpenLB$ automatically installs a Git hook that checks a number of common code style issues during `git commit`.
+If the script detects one of the following problems, `git commit` is aborted and a list with all detected problems is printed.
+Currently, the script detects:
+
+- **Trailing whitespaces:** spaces and tabs at the end of a line.
+- **DOS line endings:** please use Unix line endings and configure your editor or Git to use Unix line endings.
+- **Tabs:** the $\OpenLB$ style guide requires 2 spaces instead of tabs in the source code. Configure your editor to automatically replace tabs with 2 spaces.
+- **Git merge markers:** merge markers resulting from merge conflicts should be resolved before committing.
+
+### Getting Started in Four Steps
+
+1. **Install a Git client.** We recommend a Git client version of 1.7.x and above.
+    - MacOS: download the Git installer.
+    - Windows: download SmartGit.
+    - Linux: install from source or via your package management utility, e.g. `yum install git-core` or `apt-get install git-core`.
+2. **Clone your Git repository:**
+
+    ```{.bash}
+    cd ~
+    mkdir gitSources
+    cd gitSources
+    git clone git@gitlab.com:openlb/olb.git
+    ```
+
+    Now, the files are copied to a folder called `olb`.
+
+3. **Add some files and directories.** Now that you've referenced your on-line repository, it's time to add something. Create or edit a file, for example:
+
+    ```{.bash}
+    cd olb
+    echo "first line of my first file... yay!" > helloworld.txt
+    ```
+
+    Now that you have changed something you can add these changes to the index using:
+
+    ```{.bash}
+    git add helloworld.txt
+    ```
+
+    The next step is to commit the changes. Before you commit for the first time, configure your user email and user name. You will only have to do this once, not every time you commit. The string after `-m` is the commit message.
+
+    ```{.bash}
+    git config --global user.email "you@example.com"
+    git config --global user.name "Your Name"
+    git commit -m "test: first commit"
+    ```
+
+    At any time during this process, you can look up what you have already done using:
+
+    ```{.bash}
+    git status
+    ```
+
+4. **Push your changes to the master repository:**
+
+    ```{.bash}
+    git push
+    ```
+
+5. **Pulling changes from the remote repository.** Before pushing your new changes you always need to get the latest changes from the remote repository. This can be done through:
+
+    ```{.bash}
+    git pull -r
+    ```
+
+    The `-r` option is important to ensure a clean Git history. It can be enforced that each `git pull` automatically uses the correct option through:
+
+    ```{.bash}
+    git config --global pull.rebase true
+    ```
+
+The provider of the service GitLab also has a web interface, which is available at [gitlab.com](https://gitlab.com).
+
+### Useful Git Commands
+
+Sometimes there are a lot of irrelevant files in your Git folder, i.e. executables, temporary files, and all those things.
+It is boring to delete them one by one, and it can be done by a Git command.
+
+```{.bash}
+git clean -n    // lists all files which are placed in git folder,
+                // but are not added to the repository
+
+git clean -f    // delete all files in git folder that are not
+                // added to git repository
+```
+
+If you are lost and you only want the initial condition of the actual master branch:
+
+```{.bash}
+git reset --hard master   // reset the workspace to master by
+                          // rewinding added files, ...
+```
+
+Bothered by entering a password to push and pull to GitLab?
+Load your public SSH key to [gitlab.com](https://gitlab.com/) and clone the Git repository via SSH:
+
+```{.bash}
+git clone git@gitlab.com:openlb/olb.git
+```
+
+## Creating a Merge Request in GitLab
+
+To merge new developments into $\OpenLB$, we use merge requests in GitLab.
+This is mandatory and the only way to add changes.
+For a successful merge, follow these steps:
+
+1. Go to the GitLab merge request page by visiting [gitlab.com/openlb/olb/-/merge_requests](https://gitlab.com/openlb/olb/-/merge_requests).
+2. Click on the "New merge request" button.
+3. Set the source branch to the feature branch where the changes were made.
+4. Set the target branch to the master branch, where the changes should be added.
+5. It's advisable to merge the master branch into your feature branch first to ensure that your changes are compatible with the latest code in the master branch.
+6. Provide a descriptive title and, if necessary, a description for your merge request. Note that it is possible to add "Draft:" to the beginning of the title to indicate that work on the branch is still in progress and to avoid accidental merges.
+7. Assign the merge request to yourself. Optionally, you can add a reviewer to review the code.
+8. Several tests are automatically run to ensure correctness. The results of these tests are displayed in the merge request. All tests must pass for the merge to proceed.
+9. Once the merge request is approved and any feedback is addressed, you can merge it into the master branch through the GitLab web interface.
+
+By following these steps, you can ensure that code changes are reviewed and tested before being integrated into the master branch, maintaining code quality and collaboration within the development team.
+To promote continuous improvement, we recommend using the agile approach to merge small, incremental changes into $\OpenLB$, fostering a more adaptive and efficient development process.
+
+## Debugging
+
+1. **[Address sanitizer](https://en.wikipedia.org/wiki/Code_sanitizer).**
+   Compile with `-g -fsanitize=address`.
+   It finds memory corruption bugs such as buffer overflows or accesses to a dangling pointer.
+   Very comfortable.
+   Works with clang (starting with v3.1) and g++ (starting with v4.8).
+
+   ::: callout-warning
+   Never start the address sanitizer as superuser.
+   :::
+
+2. **[Valgrind](http://valgrind.org/).**
+   A framework for analysis tools.
+   Comes with (amongst others):
+    - **Memcheck** -- finds memory problems with `malloc`/`new`/`free`/`delete`.
+    - **Cachegrind** -- cache profiler.
+    - **massif** -- heap profiler.
+
+3. **scan-build.**
+   A [static analyser](https://en.wikipedia.org/wiki/Static_program_analysis) that comes with clang.
+   Executed by `scan-build make`.

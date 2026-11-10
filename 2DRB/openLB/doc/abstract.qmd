@@ -1,0 +1,15 @@
+# Abstract {.unnumbered}
+```{=latex}
+\centerline{Date: \today}
+\centerline{Copyright \copyright{} 2006-2008 Jonas Latt}
+\centerline{Copyright \copyright{} 2008-2025 Mathias J.\ Krause}
+\centerline{\href{mailto:info@openlb.net}{\nolinkurl{info@openlb.net}}}\vspace{1cm}
+```
+
+Permission is granted to copy, distribute and/or modify this document under the terms of the GNU Free Documentation License, Version 1.2 or any later version published by the Free Software Foundation; with no Invariant Sections, no Front-Cover Texts, and no Back-Cover Texts. A copy of the license is included in the Section entitled "GNU Free Documentation License" (Section [license](license.qmd)).
+
+**OpenLB** is a generic implementation of lattice Boltzmann methods (LBM) that is shared with the open source community under the terms of the GPLv2 license.  
+
+Since the first release in 2007 , the code continues to be improved and extended, resulting in sixteen major releases overall and counting. The $\OpenLB$ framework is written in C++ and covers the full scope of simulations—from pre-processing over parallel and efficient execution to post-processing of results. 
+
+It offers both the possibility of setting up new simulation cases using the existing rich collection of models and of implementing new custom models.$\OpenLB$ supports MPI, OpenMP, AVX(51)2 vectorization, and CUDA for parallel execution on systems ranging from low-end smartphones over multi-GPU workstations up to supercomputers.

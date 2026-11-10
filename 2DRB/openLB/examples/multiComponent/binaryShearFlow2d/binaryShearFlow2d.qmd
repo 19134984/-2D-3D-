@@ -1,0 +1,11 @@
+---
+features: [multiComponent, transient, benchmark, showcase, primitives]
+---
+
+### binaryShearFlow2d
+
+A circular domain of one fluid phase is immersed in a rectangle filled with another fluid phase.
+The top and bottom walls are moving in opposite directions, such that the droplet-shaped phase is exposed to shear flow and deforms accordingly.
+The default parameter setting is taken from [@komrakova:2014] and injected into the more general ternary free energy model from [@semprebon:16].
+Both scenarios, breakup and steady state of the initial droplet, are implemented and visualized as `.vtk` output.
+Reference simulations are provided in [@simonis:23a].

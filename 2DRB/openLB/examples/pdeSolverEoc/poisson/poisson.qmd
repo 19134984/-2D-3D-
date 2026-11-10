@@ -1,0 +1,43 @@
+---
+features: [benchmark, primitives]
+---
+
+### poisson
+
+The mathematical description of this example is given in [@bukreev2024electro1].
+The *PE* is solved with `SourcedAdvectionDiffusionBGKdynamics`.
+This example has periodic boundary conditions in Y and Z directions, whereby in X direction the `AdvectionDiffusionDirichlet` boundary condition is taken.
+The needed source term is computed using the struct `ComputeSourceTerm`:
+
+```{.cpp}
+// Updating of source term in each time step in each cell
+struct ComputeSourceTerm {
+  static constexpr OperatorScope scope = OperatorScope::PerCellWithParameters;
+
+  // time step unit conversion factor
+  struct C_T : public descriptors::FIELD_BASE<1> { };
+  // chosen k constant
+  struct CONSTK : public descriptors::FIELD_BASE<1> { };
+
+  using parameters = meta::list<C_T,CONSTK>;
+
+  int getPriority() const {
+    return 0;
+  }
+
+  template <typename CELL, typename PARAMETERS>
+  void apply(CELL& cell, PARAMETERS& parameters) any_platform {
+    using V = typename CELL::value_t;
+    V psi = cell.computeRho();
+    V k = parameters.template get<CONSTK>();
+    V source = -k*k*psi*parameters.template get<C_T>();
+    cell.template setField<descriptors::SOURCE>(source);
+  }
+};
+```
+
+The `VELOCITY` field is set to 0.
+The simulation runs until convergence of the average $\psi$ value in the calculation domain with a convergence criterion of $10^{-9}$.
+The convergence order is shown in @fig-poisson-convergence.
+
+![EOC study for Poisson simulations (`poisson`).](/examples/pdeSolverEoc/poisson/doc/fig/poisson_convergence.png){#fig-poisson-convergence width="60%"}

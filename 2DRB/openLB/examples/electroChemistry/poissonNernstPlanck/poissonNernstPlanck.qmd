@@ -1,0 +1,96 @@
+---
+features: [benchmark, primitives]
+---
+
+### poissonNernstPlanck
+
+The Poisson equation (*PE*) for the validation test, which is taken from [@CHAI20082050], is defined as
+
+$$
+\Delta \psi = h^2 \psi .
+$$
+
+The mathematical and physical description of this application is given in [@bukreev2024electro1].
+The app considers three lattices: one for the Poisson equation (*PE*), one for cation *NPE* and one for anion *NPE*, all of them are of `D3Q19`, which is more precise for the calculation of electric potential gradients.
+The ideal case for the *PNPE* system is the analytically solvable Poisson--Boltzmann equation, which describes the Gouy--Chapman model for ionic solutions close to a charged surface.
+The *PNPE* system can be written for monovalent cations and anions as
+
+$$
+\begin{aligned}
+   \Delta \psi + \frac{F}{\epsilon} (C_+ - C_-) &= 0, \\
+  \partial_t C_+ - \Bigl( \frac{D e}{k_B T} \nabla \psi \Bigr) \nabla C_+ &= D  \Delta C_+, \\
+  \partial_t C_- + \Bigl( \frac{D e}{k_B T} \nabla \psi \Bigr) \nabla C_- &= D  \Delta C_-,
+\end{aligned}
+$$
+
+whereas the boundary conditions are described as
+
+$$
+\begin{aligned}
+  \psi_{x=0} &= -0.02\,\mathrm{V}, & \psi_{x=L} &= 0\,\mathrm{V},\\
+  \nabla C_{\pm,x=0} &= 0\ (\text{bounce-back}), & C_{\pm,x=L}&=0.01\,\mathrm{mol\,m^{-3}}.
+\end{aligned}
+$$
+
+The ion dynamics is represented with `AdvectionDiffusionBGKdynamics`.
+In this application, variables change only in the Y direction, which is why X and Z directions are set to periodicity.
+In the Y direction, the *PE* lattice gets `AdvectionDiffsionDirichlet` boundary conditions at both edges.
+The ion lattices get the same boundary condition at the bulk side and `BounceBack` at the wall side.
+The *PE* can be simulated in the form of an internal loop until convergence in each Nernst--Planck time step, or it can do only one collision per global time step due to the steadiness of the given example.
+The calculation of potential gradients, ions' velocities, and Poisson equation source term happens in the `PNPCoupling`.
+
+```{.cpp}
+// Poisson-Nernst-Planck coupling
+template<typename T>
+struct PNPCoupling {
+  static constexpr OperatorScope scope = OperatorScope::PerCellWithParameters;
+
+  ...
+
+  template <typename CELLS, typename PARAMETERS>
+  void apply(CELLS& cells, PARAMETERS& parameters) any_platform
+   {
+    T dX = parameters.template get<DX>();
+    T velCoeff = parameters.template get<NPVELCOEFF>();
+    T poissonCoeff = parameters.template get<POISSONCOEFF>();
+    T omega = parameters.template get<OMEGA>();
+    using DESCRIPTOR = typename CELLS::template value_t<names::Concentration0>::descriptor_t;
+
+    auto& cellNP = cells.template get<names::Concentration0>();
+    auto& cellP = cells.template get<names::Concentration1>();
+    auto& cellNP2 = cells.template get<names::Concentration2>();
+
+    T dxPsi[3] = {0.};
+
+    for(int iPop = 0; iPop < DESCRIPTOR::q; iPop++){
+      dxPsi[0] += descriptors::c<DESCRIPTOR>(iPop, 0) * cellP[iPop];
+      dxPsi[1] += descriptors::c<DESCRIPTOR>(iPop, 1) * cellP[iPop];
+      dxPsi[2] += descriptors::c<DESCRIPTOR>(iPop, 2) * cellP[iPop];
+    }
+
+    dxPsi[0] *= (-1.*omega*descriptors::invCs2<T,DESCRIPTOR>()/dX);
+    ...
+
+    T vel[3] ={0.};
+    vel[0] -= velCoeff * dxPsi[0];
+    ...
+    cellNP.template setField<descriptors::VELOCITY>(vel);
+
+    T vel2[3] ={0.};
+    vel2[0] += velCoeff * dxPsi[0];
+    ...
+    cellNP2.template setField<descriptors::VELOCITY>(vel2);
+
+    T concentration = cellNP.computeRho();
+    if(util::abs(concentration) > 1.){ concentration = 0.; }
+    T concentration2 = cellNP2.computeRho();
+    if(util::abs(concentration2) > 1.){ concentration2 = 0.; }
+    T poissonSource = poissonCoeff * (concentration - concentration2);
+    cellP.template setField<descriptors::SOURCE>(poissonSource);
+  }
+};
+```
+
+The convergence order of the system is displayed in @fig-poissonnernstplanck-convergence.
+
+![EOC study for PNPE simulations (`poissonNernstPlanck`).](/examples/electroChemistry/poissonNernstPlanck/doc/fig/poissonnernstplanck_convergence.png){#fig-poissonnernstplanck-convergence width="60%"}

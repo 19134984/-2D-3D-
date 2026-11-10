@@ -1,0 +1,38 @@
+---
+features: [turbulent, thermal, transient, benchmark, primitives]
+---
+
+### squareCavity2d
+
+A common application for the validation of thermal models is the numerical simulation of the natural convection in a square cavity.
+For this configuration, there is an extensive database in a wide range of Rayleigh numbers, which allows verifying the accuracy of the thermal model.
+
+#### Setup
+
+The problem considered is shown schematically in @fig-sDiagOTSimDom-2d.
+The horizontal walls of the cavity are adiabatic, while the vertical walls are kept isothermal, with the left wall at high temperature ($T_{hot} = 1$) and the right wall at low temperature ($T_{cold} = 0$).
+
+![Schematic diagram of the simulation domain for the example `squareCavity2d`.](/examples/thermal/squareCavity2d/doc/fig/squareCavitySetup.png){#fig-sDiagOTSimDom-2d width="70%"}
+
+The dynamics chosen for the velocity field is `ForcedBGKdynamics`, and for the temperature field `AdvectionDiffusionBGKdynamics`.
+
+#### Simulation Parameters
+
+Taking air at $293\,\mathrm{K}$ as working fluid, the value of the Prandtl number is $Pr = 0.71$ and is kept constant.
+The Rayleigh number ranges from $10^3$ to $10^6$.
+Different spatial resolutions are tested for each Rayleigh number, in order to study the grid convergence.
+The time-step size is adjusted so that the lattice velocity stays at the value $0.02$.
+This ensures that the Mach number is kept at incompressible levels.
+The convergence criterion is set by a standard deviation of $10^{-6}$ in the kinetic energy.
+
+#### MRT
+
+The newly implemented MRT model for thermal applications is first examined on the two-dimensional cavity.
+The only setup differences to the BGK model are the lattice descriptors (`ForcedMRTD2Q9Descriptor` and `AdvectionDiffusionMRTD2Q5Descriptor`) and the dynamics objects selected, which are now specialized for the MRT dynamics (`ForcedMRTdynamics` and `AdvectionDiffusionMRTdynamics`).
+This simulation is used as a test for different important aspects of the implementation.
+First, the formulation of the MRT model, particularly the values of the transformation matrix, the relaxation times, and the sound speed of the lattice are based on [@li2013boundary].
+With this MRT model, variations over 10% with respect to the BGK model are observed.
+A second formulation [@liu2015double] is selected, which shows much closer results to the BGK model.
+No special treatment is required to make use of the available boundary conditions.
+The number of iterations required to achieve the desired precision, that is, the number of time steps until the steady-state solution is reached, is found to be usually higher for the MRT simulations.
+Furthermore, the execution time is between 4 and 8 times longer when compared to the BGK simulations.

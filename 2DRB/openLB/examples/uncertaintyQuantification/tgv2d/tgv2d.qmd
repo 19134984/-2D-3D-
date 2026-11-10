@@ -1,0 +1,52 @@
+---
+features: [turbulent, transient, benchmark, primitives]
+---
+
+### tgv2d
+
+The `tgv2d` example demonstrates UQ for a two-dimensional Taylor--Green vortex problem with an uncertain initial velocity field.
+Unlike the other examples of this category, this case features a multi-dimensional uncertain initial value problem, where the uncertainty is introduced through a four-dimensional random perturbation in the initial condition.
+Specifically, the velocity field is modified as $u_0^R = u_0 + \epsilon_d(x, y)$, where the perturbation $\epsilon_d$ is constructed from a truncated Fourier expansion with first-order harmonics.
+The perturbation takes the form
+
+$$
+\epsilon_d(x, y) = \frac{1}{4} \sum_{(i, j) \in \{0,1\}^2} \delta_{d,i,j} \, \alpha_i(4x) \, \alpha_j(4y),
+$$
+
+where $\delta_{d,i,j} \sim \mathcal{U}(-0.025, 0.025)$ are i.i.d. random amplitudes, and
+
+$$
+\alpha_i(x) =
+\begin{cases}
+\sin(x), & \text{if } i = 0, \\
+\cos(x), & \text{if } i = 1.
+\end{cases}
+$$
+
+These four random amplitudes are defined via separate uniform distributions and combined into a single joint distribution:
+
+```{.cpp}
+// Define uniform distributions for each harmonic amplitude
+auto perturb1 = uniform(-0.025, 0.025);
+auto perturb2 = uniform(-0.025, 0.025);
+auto perturb3 = uniform(-0.025, 0.025);
+auto perturb4 = uniform(-0.025, 0.025);
+
+// Create a 4D joint distribution
+auto jointPerturb = joint<T>({perturb1, perturb2, perturb3, perturb4});
+```
+
+This setup creates a four-dimensional uncertain parameter space.
+Both Monte Carlo sampling and the stochastic collocation method can be used to propagate the uncertainty through the simulation.
+As in the other examples, quantities of interest -- such as kinetic energy -- can be collected across samples and analyzed using built-in statistical tools.
+Postprocessing can be performed via $\OpenLB$'s built-in functions to compute and visualize the mean and standard deviation of the flow field, providing insights into how initial condition uncertainties evolve over time (see @fig-uqTgv).
+
+::: {#fig-uqTgv layout-ncol=2}
+
+![Mean $\bar{|\mathbf{u}|}$.](/examples/uncertaintyQuantification/tgv2d/doc/fig/uqTgvMean.png){#fig-uqTgvMean}
+
+![Standard deviation $\sigma(|\mathbf{u}|)$.](/examples/uncertaintyQuantification/tgv2d/doc/fig/uqTgvStd.png){#fig-uqTgvStd}
+
+Mean and standard deviation of the velocity magnitude, computed using the Monte Carlo method with 20 samples.
+
+:::

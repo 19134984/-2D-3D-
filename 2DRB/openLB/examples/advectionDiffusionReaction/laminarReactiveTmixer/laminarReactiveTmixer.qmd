@@ -1,0 +1,98 @@
+---
+features: [transient, benchmark, primitives]
+---
+
+### laminarReactiveTmixer
+
+![Product concentration distribution in a reactive T-micromixer.](/examples/advectionDiffusionReaction/laminarReactiveTmixer/doc/fig/Tmixer.png){#fig-t-mixer width="60%"}
+
+The geometry and physical setup with discretization parameters of the micromixer are described in [@bukreevMixer].
+Here, four lattices are considered:
+
+- `sLatticeNS` with `D3Q19` descriptor for *NSE*,
+- `CRADlattice 1` with `D3Q7` descriptor for *ADE* of specie *A*,
+- `CRADlattice 2` with `D3Q7` descriptor for *ADE* of specie *B*,
+- `CRADlattice 3` with `D3Q7` descriptor for *ADE* of specie *C*.
+
+By *NSE*, the fixed velocity `InterpolatedVelocity` boundary is set on the two inlets; at the outlet, the `InterpolatedPressure` boundary is defined.
+`BounceBack` for no-slip condition is used at the walls.
+The `RectanglePoiseuille3D` functor at the inlets in the `setBoundaryValues` section approximates the inflow Poiseuille velocity profile.
+Thereby, the sinusoidal ramp for velocity from zero to the needed value is used.
+As collision operator `BGKdynamics` is chosen for this lattice.
+
+By all *ADE*s, `AdvectionDiffusionDirichlet` boundaries are applied to the inlets and the `setZeroGradientBoundary` is set at the outlet.
+Depending on the species, different values are defined at the inlets.
+`BounceBack` is used at the walls as well.
+`SourcedLimitedAdvectionDiffusionBGKdynamics` with locally taken relaxation frequencies is used as a collision operator.
+This dynamics considers the reaction term per cell and ensures that the species concentrations do not become negative.
+
+For reaction terms calculation (`stochCoeff[0]*source`) and stabilization of *ADE*s -- computation of local "turbulent" relaxation times `tau_turb_AD0` -- the `LESReactionCoupling` is applied per cell in each time step.
+Thereby, the *Smagorinsky approach* is taken for calculation of "turbulent" relaxation times of the *NSE* lattice and then they are transformed to the stabilization *ADE* relaxation times using chosen *stabilization Schmidt numbers*.
+
+```{.cpp}
+template<typename T, int numComp>
+struct LESReactionCoupling {
+static constexpr OperatorScope scope = OperatorScope::PerCellWithParameters;
+
+struct LATTICE_REACTION_COEFF : public descriptors::FIELD_BASE<1> { };
+struct STOCH_COEFF : public descriptors::FIELD_BASE<numComp> { };
+struct REACTION_ORDER : public descriptors::FIELD_BASE<numComp> { };
+struct SMAGORINSKY_PREFACTOR : public descriptors::FIELD_BASE<1> { };
+struct SCHMIDT : descriptors::FIELD_BASE<numComp> { };
+struct OMEGA_NSE : public descriptors::FIELD_BASE<1> { };
+struct OMEGAS_ADE : public descriptors::FIELD_BASE<numComp> { };
+
+using parameters = meta::list<LATTICE_REACTION_COEFF, STOCH_COEFF, REACTION_ORDER, SMAGORINSKY_PREFACTOR, SCHMIDT, OMEGA_NSE, OMEGAS_ADE>;
+
+template <typename CELLS, typename PARAMETERS>
+void apply(CELLS& cells, PARAMETERS& parameters) any_platform
+ {
+  using DESCRIPTOR = typename CELLS::template value_t<names::NavierStokes>::descriptor_t;
+  using DESCRIPTOR_ADE = typename CELLS::template value_t<names::Concentration0>::descriptor_t;
+  // Velocity coupling
+  auto u = cells.template get<names::Concentration0>().template getField<descriptors::VELOCITY>();
+  T rho, pi[util::TensorVal<DESCRIPTOR>::n] { };
+  cells.template get<names::NavierStokes>().computeAllMomenta(rho, u.data(), pi);
+  cells.template get<names::Concentration0>().template setField<descriptors::VELOCITY>(u);
+  cells.template get<names::Concentration1>().template setField<descriptors::VELOCITY>(u);
+  cells.template get<names::Concentration2>().template setField<descriptors::VELOCITY>(u);
+  // Stress tensor
+  T PiNeqNormSqr = pi[0]*pi[0] + 2.0*pi[1]*pi[1] + pi[2]*pi[2];
+  if constexpr (util::TensorVal<DESCRIPTOR>::n == 6) {
+    PiNeqNormSqr += pi[2]*pi[2] + pi[3]*pi[3] + 2*pi[4]*pi[4] +pi[5]*pi[5];
+  }
+  T PiNeqNorm    = util::sqrt(PiNeqNormSqr);
+  // Molecular relaxation time
+  T tau_mol_NS = T{1} / parameters.template get<OMEGA_NSE>();
+  auto omegasAD = parameters.template get<OMEGAS_ADE>();
+  T tau_mol_AD0 = T{1} / omegasAD[0];
+  ...
+  // Turbulent relaxation time
+  T smagoPrefactor = parameters.template get<SMAGORINSKY_PREFACTOR>();
+  T tau_turb_NS = T{0.5}*(util::sqrt(tau_mol_NS*tau_mol_NS + smagoPrefactor/rho*PiNeqNorm) - tau_mol_NS);
+  // Schmidt number stabilization
+  auto Sc = parameters.template get<SCHMIDT>();
+  T tauTurbADPrefactor0 = descriptors::invCs2<T,DESCRIPTOR_ADE>() / descriptors::invCs2<T,DESCRIPTOR>() / Sc[0];
+  ...
+  T tau_turb_AD0 = tau_turb_NS * tauTurbADPrefactor0;
+  ...
+  cells.template get<names::Concentration0>().template setField<descriptors::OMEGA>(T{1} / (tau_mol_AD0 + tau_turb_AD0));
+  ...
+  // reaction terms calculation
+  auto stochCoeff = parameters.template get<STOCH_COEFF>();
+  auto reactionOrder = parameters.template get<REACTION_ORDER>();
+  T source = parameters.template get<LATTICE_REACTION_COEFF>();
+  {
+    T conc = cells.template get<names::Concentration0>().computeRho();
+    source *= util::pow(conc, reactionOrder[0]);
+  }
+  ...
+  {
+    cells.template get<names::Concentration0>().template setField<descriptors::SOURCE>(stochCoeff[0]*source);
+    ...
+  }
+}
+};
+```
+
+By evaluations of simulation results in the `getResultsNS` and `getResultsCRAD` sections, the carrier fluid velocity, pressure, instantaneous and time-averaged concentration, as well as local diffusion values are written out, including plots of concentrations and diffusivities along the T-mixer central axis.

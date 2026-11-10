@@ -1,0 +1,19 @@
+### testFlow3dEoc
+
+This app implements a Navier--Stokes flow with an analytical solution [@krause:10b].
+The *standard* simulation as well as an EOC computation for various error norms are shown.
+The implementation makes use of the Solver framework, while simulation parameters are read from the corresponding parameter XML file.
+Among others, the following options can be selected:
+
+- The flow domain can be either a cube or restricted to a sphere (node `[Application][Domain]`).
+- Different LBM boundary conditions, all of them implementing a Dirichlet fixed velocity (node `[Application][BoundaryCondition]`).
+
+Especially, the EOC computation can be used to benchmark various aspects of LBM implementation, e.g. the boundary conditions and the collision steps.
+The results of an example run are shown in @fig-tf-eoc.
+
+![EOC study for the example on a sphere, as it is returned via the `gnuplot` interface.](/examples/pdeSolverEoc/testFlow3dEoc/doc/fig/tf_eoc.png){#fig-tf-eoc width="80%"}
+
+The class structure is as follows: `TestFlowBase` implements the basic simulation details (geometry, boundary conditions etc.).
+Since it shall later be used for adjoint optimization, it inherits from `AdjointLbSolverBase`.
+The specification `TestFlowSolver` then implements the standard simulation.
+The distinction between `TestFlowBase` and `TestFlowSolver` is solely because `TestFlowBase` will also be used for optimization.

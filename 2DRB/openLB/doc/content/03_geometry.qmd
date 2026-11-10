@@ -1,0 +1,157 @@
+---
+title: Geometry Creation and Meshing
+number-sections: true
+toc: true
+---
+
+This chapter presents how geometry data can be loaded in or created by $\OpenLB$.
+Furthermore, the concept of material numbers is shown.
+
+## Creating a Geometry {#sec-geometry-creation}
+
+$\OpenLB$ provides an interface for STL based geometry data and generates a structured regular mesh fully automated.
+On the other hand, geometries can be built out of primitive shapes such as cuboids, spheres, and cylinders.
+By the implemented arithmetic that includes intersection, union, and complement, those primitives can be assembled very generally.
+A computational domain such as the `SuperLattice` is created in six simple steps (see also @fig-geometryCreation):
+
+1. **Create an `Indicator3D` instance** by either
+    - reading an STL file, see the `aorta3d` example and @sec-readstl, or
+    - pre-defined primitive shapes (cuboid, circle, cylinder, sphere) and their combinations $(+,-,\cdot,/)$, as described in the `venturi3d` example.
+2. **Construct `CuboidDecomposition3D`.**
+   During construction, the geometry from step 1 is divided into the predefined number of cuboids that are thereafter automatically removed, shrunk and weighted for a good load balance.
+   By weighting, the user can choose between *weight* and *volume* strategies.
+   For complex shapes the last option is preferable.
+   A larger cuboid number removes more unnecessary nodes, but implies higher communication costs.
+3. **Construct `LoadBalancer`** that assigns cuboids to threads.
+   The standard option is the `HeuristicLoadBalancer`, whereby there are also other variants.
+4. **Construct `SuperGeometry3D`** that links material numbers to voxels (see @sec-materialnumbers-setting).
+5. **Set *material numbers*** to different simulation space regions, where afterwards dynamics and boundaries are defined.
+6. **Construct `SuperLattice`** to perform the stream and collide algorithm.
+
+::: {#lst-geometry-steps}
+```{.cpp}
+// Step 1: Create Indicator
+STLreader<T> stlreader("filename.stl", voxelSize, stlSize, method);
+IndicatorCuboid3D<T> indicator( extend, origin );
+// Step 2: Construct cuboidDecomposition.
+CuboidDecomposition3D<T> cuboidDecomposition(stlReader / indicator, voxelSize, noOfCuboids, weightingStrategy);
+// Step 3: Construct LoadBalancer.
+HeuristicLoadBalancer<T> loadBalancer(cuboidDecomposition);
+// Step 4: Construct SuperGeometry.
+SuperGeometry<T,3> superGeometry(cuboidDecomposition, loadBalancer);
+// Step 5: Set material numbers.
+// set material number 2 for whole geometry
+superGeometry.rename(0,2);
+// change material number from 2 to 1 for inner (fluid) cells, so that only boundary cells have material number 2
+superGeometry.rename(2,1,{1,1,1});
+// or simply use an indicator that changes its lattices to one
+superGeometry.rename(2,1,fluidIndicator);
+// additional material numbers for other boundary conditions, the 3rd argument in the brackets is the material number which the boundary cells should face
+superGeometry.rename(2,3,1,cylinderInFLow);
+superGeometry.rename(2,4,1,outflowIndicator0);
+superGeometry.rename(2,5,1,outflowIndicator1);
+// Step 6: Construct SuperLattice.
+SuperLattice<T,DESCRIPTOR> sLattice(superGeometry);
+```
+Create geometry based on STL or primitive shapes. All six steps are presented briefly as source code.
+:::
+
+The powerful application of the geometry generation of $\OpenLB$ can be demonstrated on the `aorta3d` example.
+This example is based on a very complex geometry and illustrates the highly user-friendly and automated process from STL to the computation grid, the `SuperLattice`, see @fig-geometryCreation.
+
+![Six steps to create a geometry. It starts by reading an STL file with the help of an `STLreader` and ends with the creation of a `SuperLattice`.](../fig/geometryCreation.png){#fig-geometryCreation width=80% .lightbox}
+
+## Setting Material Numbers {#sec-materialnumbers-setting}
+
+$\OpenLB$ has a general concept for the representation of a geometry.
+A specific number called the *material number* is assigned to each cell, defining whether that cell belongs to the boundary or to the fluid domain or whether it is superfluous in the computations.
+@fig-materialNumbers illustrates this using the example of a channel flow with an obstacle.
+The different collision and streaming steps on the boundary and the fluid are defined with respect to the material number.
+
+![Lattice nodes of the geometry are associated with material numbers. Material number zero, one, two, three, four and five correspond to external region, fluid, bounce back boundary, inflow, outflow and obstacle cells (1 = fluid, 2 = no-slip boundary, 3 = velocity boundary, 4 = constant pressure boundary, 5 = curved boundary, 0 = do nothing).](../fig/cylinder2d-matNr.svg){#fig-materialNumbers width=80% .lightbox}
+
+The benefit of using material numbers in CFD simulations is the automatic determination of streaming directions on boundary nodes, as this is not always practical by hand, e.g. if material numbers of a complex geometry are obtained from an STL file.
+
+Besides creating the domain, `IndicatorFXD` functions can be used to set *material numbers* with the help of one of the `rename` functions in `SuperGeometryXD`.
+
+::: {#lst-rename}
+```{.cpp}
+/// replace one material with another
+void rename(int fromM, int toM);
+/// replace one material that fulfills an indicator functor condition with another
+void rename(int fromM, int toM, IndicatorF3D<bool,T>& condition);
+/// replace one material with another respecting an offset (overlap)
+void rename(int fromM, int toM, { unsigned offsetX, unsigned offsetY, unsigned offsetZ });
+/// renames all voxels of material fromM to toM if the number of voxels given by testDirection is of material testM
+void rename(int fromM, int toM, int testM, std::vector<int> testDirection);
+/// renames all voxels of material fromM to toM if two neighbour voxels in the direction of the discrete normal are voxels with material testM in the region where the indicator function is fulfilled
+void rename(int fromM, int toM, int testM, IndicatorF3D<bool,T>& condition);
+```
+Different `rename` functions to set material numbers.
+:::
+
+## Building Simulation Domains with Geometry Primitive Functors {#sec-indicators}
+
+For the purpose of setting up simulation domains (here called geometries), $\OpenLB$ provides several functors (see [Section Functors](02_core.qmd#sec-functors)) for the creation of basic geometric primitives such as cuboids, circles, spheres, cones, etc.
+These can be combined using the mathematical operators ($+$ union, $-$ set difference, $\cdot$ intersection) to create more complex domains.
+It can be done in the application setup (see below) or in the XML interface, as used in the `venturi3d` example.
+
+::: {#lst-geometry-operations}
+```{.cpp}
+Vector<T,3> C0(0,50,50);
+Vector<T,3> C1(5,50,50);
+Vector<T,3> C2(40,50,50);
+///...
+Vector<T,3> C13(115,7,50);
+
+T radius1 = 10 ;
+T radius2 = 20 ;
+T radius3 = 4 ;
+
+IndicatorCylinder3D<T> inflow(C0, C1, radius2);
+std::shared_ptr<IndicatorCylinder3D<T>> cyl1 (
+ new IndicatorCylinder3D<T> ( (C1, C2, radius2));
+std::shared_ptr<IndicatorCone3D<T>> co1 (
+ new IndicatorCone3D<T> ( (C2, C3, radius2, radius1));
+///...
+IndicatorCylinder3D<T> outflow1(C12, C13, radius1);
+/// IndicatorIdentity3D collects indicator functors in one object
+IndicatorIdentity3D<T> venturi(cyl1 + co1 + others );
+```
+Geometry operations.
+:::
+
+## Reading STL-files {#sec-readstl}
+
+For a correct STL representation, the STL reader should be properly set up.
+
+::: {#lst-stlreader}
+```{.cpp}
+STLreader<T> stlreader("filename.stl", voxelSize, stlSize, method, verbose);
+```
+STL reader.
+:::
+
+The STL file can be stored not only in the current application folder, but also somewhere else.
+The path there can be written in the first argument of the reader.
+The scaling factor *stlSize* should be set to the units of the STL part.
+If it is exported in meters, the scaling factor is $1$, if in millimeters then it is $0.001$.
+The reading methods can be chosen depending on the geometry complexity.
+For easy geometries the option $0$ can be chosen, for complex and possibly untight shapes the option $1$ is to be set, whereby it is slower.
+The *verbose* argument can be true or false.
+It prints the information about the STL file in the terminal.
+
+## Excursus: Creating STL-files {#sec-creating-stl}
+
+The general process chain assumes that the geometry is already given in the form of an STL file, if not created by the `IndicatorFXD` functions.
+More complex geometries can be created using a full CAD tool like [FreeCAD](https://www.freecad.org).
+An introduction to modeling with FreeCAD can be found, for example, in [this video tutorial](http://www.youtube.com/watch?v=geIrH1cOCzc).
+The general procedure is mostly similar to the following description.
+
+Firstly, a 2D sketch is created on a selected plane (e.g. the $xy$-plane) using different bi-dimensional shapes.
+In the next step, the sketch is extruded in the third dimension.
+Several such 3D objects can be combined using operations like union, cut, intersection, rotation, trace, etc. to obtain the target geometry.
+Creating a square and a circle for the [`cylinder3d`](../examples/forBeginners/cylinder2d/cylinder2d.qmd) example in @fig-freecad-cylinder3d is an easy task.
+Also, complex geometries such as that of a filter or a porous media can be set up easily with $\OpenLB$'s indicator approach.
+
+![The geometry of the `cylinder3d` example opened in FreeCAD.](../fig/freecad_cylinder3d.png){#fig-freecad-cylinder3d width=60% .lightbox}

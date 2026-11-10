@@ -1,0 +1,14 @@
+---
+features: [turbulent, transient, showcase, stl, primitives]
+---
+
+### centrifugalPump3d
+
+This example simulates the three-dimensional flow dynamics inside a centrifugal pump.
+It models both the fluid flow and the interaction with moving porous structures representing the rotating pump rotor, which is imported from a 3D STL geometry.
+The simulation incorporates Smagorinsky-based turbulence modeling, porous media handling, and dynamically rotating components embedded as porosity elements.
+A complex geometry consisting of a pump casing and a rotor is initialized, and appropriate boundary conditions (velocity inlet, pressure outlet, and bounce-back walls) are applied.
+The rotating rotor is embedded as a porous element, and its torque is evaluated over time.
+This simulation enables virtual testing of pump performance metrics like flow rates and pressure rise under specified operational parameters (e.g., 1450 rpm), offering insights into internal flow phenomena in rotating machinery.
+
+![Centrifugal pump.](/examples/showCase/centrifugalPump3d/doc/fig/pumpe.png){#fig-pump width="60%"}

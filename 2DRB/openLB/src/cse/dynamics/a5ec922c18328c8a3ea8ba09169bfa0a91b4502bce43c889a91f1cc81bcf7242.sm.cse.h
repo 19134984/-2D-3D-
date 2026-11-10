@@ -1,0 +1,106 @@
+/*  This file is part of the OpenLB library
+ *
+ *  Copyright (C) Adrian Kummerlaender, Shota Ito
+ *  E-mail contact: info@openlb.net
+ *  The most recent release of OpenLB can be downloaded at
+ *  <http://www.openlb.net/>
+ *
+ *  This program is free software; you can redistribute it and/or
+ *  modify it under the terms of the GNU General Public License
+ *  as published by the Free Software Foundation; either version 2
+ *  of the License, or (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public
+ *  License along with this program; if not, write to the Free
+ *  Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
+ *  Boston, MA  02110-1301, USA.
+*/
+
+/*  ========================================================
+ *  ==  WARNING: This is an automatically generated file, ==
+ *  ==                  do not modify.                    ==
+ *  ========================================================
+ */
+
+#pragma once
+
+
+namespace olb {
+
+namespace dynamics {
+
+template <typename T, typename... FIELDS>
+struct CSE<dynamics::Tuple<T, descriptors::D2Q9<FIELDS...>, momenta::Tuple<momenta::VelocityBoundaryDensity<0, -1>, momenta::FixedVelocityMomentumGeneric, momenta::BulkStress, momenta::DefineSeparately>, equilibria::SecondOrder, collision::ConstRhoBGK, dynamics::DefaultCombination>, olb::CodegenTarget::StoredMoments> {
+template <concepts::Cell CELL, concepts::Parameters PARAMETERS, concepts::BaseType V=typename CELL::value_t>
+CellStatistic<V> collide(CELL& cell, PARAMETERS& parameters) any_platform {
+auto x44 = cell.template getFieldComponent<olb::momenta::FixedVelocityMomentumGeneric::VELOCITY>(0);
+auto x45 = cell.template getFieldComponent<olb::momenta::FixedVelocityMomentumGeneric::VELOCITY>(1);
+auto x46 = parameters.template get<descriptors::OMEGA>();
+auto x47 = parameters.template get<statistics::AVERAGE_RHO>();
+auto x48 = ((x44)*(x44));
+auto x49 = ((x45)*(x45));
+auto x0 = V{3};
+auto x1 = x48 + x49;
+auto x2 = V{0.5}*x0*x1;
+auto x52 = V{1} - x2;
+auto x3 = V{0.444444444444444};
+auto x4 = -V{1}*x44;
+auto x5 = x4 + V{1};
+auto x50 = V{1} / (x5);
+auto x6 = x50*(cell[0] + V{2}*cell[1] + V{2}*cell[2] + V{2}*cell[3] + cell[4] + cell[8] + V{1});
+auto x7 = -x3*(x6*(x2 + V{-1}) + V{1});
+auto x8 = V{1} - x46;
+auto x9 = V{1} - x47;
+auto x10 = V{1} + x9/x6;
+auto x11 = x10*(x3 + x7) - x3 + x8*(cell[0] - x7);
+auto x12 = x4 + x45;
+auto x13 = V{0.5}*((x0)*(x0));
+auto x14 = V{0.0277777777777778};
+auto x51 = -x14;
+auto x15 = x14*x6;
+auto x16 = x15*(x0*x12 + x13*((x12)*(x12)) + x52) + x51;
+auto x17 = x10*(x14 + x16) + x51 + x8*(cell[1] - x16);
+auto x18 = V{0.111111111111111};
+auto x53 = -x18;
+auto x19 = x18*x6;
+auto x20 = x19*(x0*x4 + x13*((x4)*(x4)) + x52) + x53;
+auto x21 = x10*(x18 + x20) + x53 + x8*(cell[2] - x20);
+auto x22 = -V{1}*x45;
+auto x23 = x22 + x4;
+auto x24 = x15*(x0*x23 + x13*((x23)*(x23)) + x52) + x51;
+auto x25 = x10*(x14 + x24) + x51 + x8*(cell[3] - x24);
+auto x26 = x19*(x0*x22 + x13*((x22)*(x22)) + x52) + x53;
+auto x27 = x10*(x18 + x26) + x53 + x8*(cell[4] - x26);
+auto x28 = x22 + x44;
+auto x29 = x15*(x0*x28 + x13*((x28)*(x28)) + x52) + x51;
+auto x30 = x19*(x0*x44 + x13*x48 + x52) + x53;
+auto x31 = x44 + x45;
+auto x32 = x15*(x0*x31 + x13*((x31)*(x31)) + x52) + x51;
+auto x33 = x19*(x0*x45 + x13*x49 + x52) + x53;
+auto x34 = x10*(x18 + x33) + x53 + x8*(cell[8] - x33);
+cell[0] = x11;
+cell[1] = x17;
+cell[2] = x21;
+cell[3] = x25;
+cell[4] = x27;
+cell[5] = x10*(x14 + x29) + x51 + x8*(cell[5] - x29);
+cell[6] = x10*(x18 + x30) + x53 + x8*(cell[6] - x30);
+cell[7] = x10*(x14 + x32) + x51 + x8*(cell[7] - x32);
+cell[8] = x34;
+cell.template getFieldPointer<olb::fields::moments::RHO>()[0] = x50*(x11 + V{2}*x17 + V{2}*x21 + V{2}*x25 + x27 + x34 + V{1});
+cell.template getFieldPointer<olb::fields::moments::U>()[0] = x44;
+cell.template getFieldPointer<olb::fields::moments::U>()[1] = x45;
+return { x6 + x9, x1 };
+}
+};
+
+}
+
+}
+
+// Generation Info: commit=e62fb513c7fed8d9804dfb87eb8d98b331948423

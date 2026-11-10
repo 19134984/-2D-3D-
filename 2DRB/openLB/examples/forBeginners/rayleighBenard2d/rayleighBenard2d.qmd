@@ -1,0 +1,11 @@
+---
+features: [thermal, transient, primitives]
+recommended-for-beginners: [thermal, primitives]
+---
+
+### rayleighBenard2d {#sec-example-forBeginners-rayleighBenard2d}
+
+This app is the simplified version of [[`thermal/rayleighBenard2d`](/examples/thermal/rayleighBenard2d/rayleighBenard2d.qmd)]{.content-visible when-format="html"}[`thermal/rayleighBenard2d` (@sec-example-thermal-rayleighBenard2d)]{.content-visible when-format="pdf"}, where the setup, the parameters and the results are described.
+It sets up the same domain, the same two lattices for the fluid and the temperature and the same boundary and initial conditions, but computes the derived parameters, such as the time step size, the heat capacity and the thermal expansion coefficient, explicitly in `prepareLattice()` and passes them to a `ThermalUnitConverter`. This makes the conversion between the Rayleigh and Prandtl numbers and the physical parameters visible in the code.
+
+In contrast to `thermal/rayleighBenard2d`, this version does not set up the Boussinesq coupling between the two lattices, `NavierStokesAdvectionDiffusionCoupling`. Without it, the fluid feels no buoyancy and stays at rest, and the temperature of the plates only spreads by conduction. Adding the coupling in `prepareLattice()` and applying it with `myCase.getOperator("Boussinesq").apply()` after `collideAndStream()` in `simulate()`, as in `thermal/rayleighBenard2d`, makes the convection rolls appear.

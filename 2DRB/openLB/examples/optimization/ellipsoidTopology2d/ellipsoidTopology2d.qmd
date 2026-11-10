@@ -1,0 +1,162 @@
+### ellipsoidTopology2d
+
+Ellipsoid obstacle topology optimization with a volume constraint, using gradients computed by
+the adjoint HLBM and the OC optimizer based on the optimality criteria method. The primal flow is computed using HLBM, and porosity
+is used as the control variable.
+For given in- and outlets at the left and at the right side of a free space and periodic boundary
+on the lateral walls, the shape of a ellipsoid has to be found, s.t. either the pressure drop or
+dissipation is minimized.
+General PDEs-constrained gradient-based optimization problem:
+
+$$
+\min_{\boldsymbol{\alpha}} \mathcal{J}(f, \boldsymbol{\alpha}) \quad \text{s.t.} \quad \mathcal{G}(f, \boldsymbol{\alpha}) = 0
+$$
+
+where $f$ referres to the $state$ and $\boldsymbol{\alpha}$ to the $controls$.
+
+#### Primal flow simulation (physical constraint)
+
+---
+
+The primal flow is governed by homogenized Navier–Stokes equations (HNSE):
+
+$$
+\mathcal{G}(f,\boldsymbol{\alpha})=
+\begin{cases}
+\nabla \cdot \mathbf{u} \\
+\partial_t \mathbf{u} -\nu \Delta \mathbf{u} + (\mathbf{u} \cdot \nabla) \mathbf{u} + K(\alpha)^{-1} \cdot \mathbf{u} +\frac{1}{\rho} \nabla p - \boldsymbol{F} \\
+\end{cases}
+$$
+
+where $state$ consists of $\mathbf{u}$ and $p$ and $\mathbf{u} \colon \Omega \times I \rightarrow \mathbb{R}^2$ is velocity, $\nu \in \mathbb{R}^+$ is the kinematic viscosity
+, $K \colon \Omega \rightarrow \mathbb{R}_{>0}$ is the local isotropic permeability, $p \colon \Omega \times I \rightarrow \mathbb{R}_{>0}$
+is the pressure, $\boldsymbol{F} \in \mathbb{R}^2$ is external force, control variables is porosity $\alpha \colon = d$
+and porosity $d \colon \Omega_6 \rightarrow (0,1]$. The physical constraint should fulfill the equation $\mathcal{G}(f,\boldsymbol{\alpha}) = 0$.
+
+##### Geometry and boundary conditions
+
+---
+
+In this section, the free flow around an obstacle is simulated for the 2D cases in the steady laminar
+regime, as illustrated in @fig-ellipsoid-opti, is investigated.
+
+![The domain with material number](/examples/optimization/ellipsoidTopology2d/doc/fig/ellipsoidOpti.jpg){#fig-ellipsoid-opti width="60%"}
+
+| Parameter | Type | Default | Meaning |
+|---|---|---|---|
+| `RESOLUTION` | `int` | `50` | nodes per Cartesian direction, $N_x$; the elliptic domain is carved out of the square lattice |
+| `DOMAIN_X` | `double` | `1.2` | physical length of the entire domain $\Omega$ |
+| `DOMAIN_Y` | `double` | `0.4` | physical width of $\Omega$, which is equal to `PHYS_CHAR_LENGTH` |
+| `CENTER_X` | `double` | `0.6` | horizonal coordinate of the design domain $\Omega_6$ center |
+| `CENTER_Y` | `double` | `0.2` | vertical coordinate of the $\Omega_6$ center |
+| `DESIGN_DOMAIN_X` | `double` | `0.4` | physical length of $\Omega_6$ |
+| `DESIGN_DOMAIN_Y` | `double` | `0.2` | physical width of $\Omega_6$ |
+| `OBJECTIVE_DOMAIN_X` | `double` | `0.8` | physical length of the dissipation objective domain $\Omega_5$ |
+| `OBJECTIVE_DOMAIN_Y` | `double` | `0.4` | physical width of $\Omega_5$ |
+
+Besides that, $\Omega_7$ represents the pressure-in domain and $\Omega_8$ respresents the pressure-out domain.
+At the inflow, a Dirichlet velocity boundary condition and at the outlet a Dirichlet pressure boundary condition with $p_{\text{out}} = 0$ is applied. On 
+the lateral walls, periodic boundary conditions are applied.
+
+#### Optimization problem setup
+
+---
+
+This topology optimization problem is a classic gradient-based optimization problem constrained by PDEs.
+It consists of the following key components.
+
+| Components | Setting | Description |
+|---|---|---|
+| physical constraint | HLBM | The homogenized Navier–Stokes equations discretized by LBM |
+| control variables | porosity $\boldsymbol{d}$ | $\boldsymbol{d} \in (0,1]^n$, $n \in 	\mathbb{N}^+$ is the total number of lattices |
+| objective 1 | pressure drop $\Delta p$ | $$\mathcal{J}_1 = \sum_{\boldsymbol{x}_i \in \Omega_7} p_i \Delta x^2 - \sum_{\boldsymbol{x}_i \in \Omega_8} p_i \Delta x^2$$ |
+| objective 2 | dissipation $\varepsilon$ | $$\mathcal{J}_2 = \sum_{\boldsymbol{x}_i \in \Omega_5} (\varepsilon^{viscos}_i+\varepsilon^{porous}_i) \Delta x^2$$ |
+| gradient computation | AHLBM | The adjoint homogenized LBM, which is commonly used to compute objective gradients with respect to a large number of control variables. |
+| optimizer | optimizerOC | optimizer based on the optimality criteria (OC) method, which supports only a single linear constraint |
+| control constraint | volume constraint | $$\mathcal{G}_{\text{vol}} = \sum_{\boldsymbol{x}_i \in \Omega_6} (d_i-\bar{d}_{\text{target}}) \Delta x^2$$ |
+
+##### Gradient computation
+
+---
+
+The gradient of the original objective gradient $\frac{\mathrm{d} \mathcal{J}}{\mathrm{d} d_i}$ is 
+computed using the AHLBM. But pointwise sensitivities computed on a regular lattice are prone to numerical instabilities that manifest as
+checkerboard density patterns [@sigmund1998numerical]. To regularize the problem, we apply the porosity-weighted sensitivity
+filter of Sigmund and Bruns and Tortorelli [@sigmund200199line; @bruns2001topology].
+
+$$
+\widehat{\frac{\mathrm{d} \mathcal{J}}{\mathrm{d} d_i}} =
+\frac{1}{d_i \sum_{j \in \mathcal{N}_i} w_{ij}}
+\sum_{j \in \mathcal{N}_i} w_{ij}\, d_j \,
+\frac{\mathrm{d} \mathcal{J}}{\mathrm{d} d_j},
+\qquad
+w_{ij} = \max\!\left(0,\; r_{\min} - \lVert x_i - x_j\rVert\right)
+$$
+
+##### optimizer
+
+---
+
+Following the classical OC method of Bendsøe and Sigmund [@bendsoe2003topology], the Karush-Kuhn-Tucker (KKT) 
+stationarity condition for the
+volume constraint requires, at an optimum:
+
+$$
+  \widehat{\frac{\mathrm{d} \mathcal{J}_k}{\mathrm{d} \mathbf{d}}} = \lambda \cdot
+  \frac{\partial}{\partial \mathbf{d}}\left(\frac{1}{N}\sum_i d_i\right)
+  = \frac{\lambda}{N} \quad \text{with} \quad k = \{1,2 \},
+$$
+
+where $\lambda$ is the Lagrange multiplier associated with the volume constraint. 
+The optimum can be achieved using the iterative update scheme:
+
+$$
+  \mathbf{d}^{k+1} =
+  \operatorname{clip}\!\left(
+    \mathbf{d}^{k} \cdot
+    \left(\frac{-\widehat{\mathrm{d} \mathcal{J}}/\mathrm{d} \mathbf{d}}{\lambda}\right)^{\eta},
+    \; \mathbf{d}^{k} - m,\;\mathbf{d}^{k} + m
+  \right),
+$$
+
+Update scheme subsequently clipped to $(0, 1]$. Here $\eta \in (0,1]$ is a damping exponent 
+(commonly $\eta = 1/2$) and $m$ is a move limit bounding the per-iteration change in $d$, 
+both standard stabilization devices in the OC [@sigmund200199line; @andreassen201188line]. The $\lambda$ can be determined using the bisection
+method:
+
+$$
+  \overline{d}(\lambda) = \frac{1}{N}\sum_i d_i^{k+1}(\lambda).
+$$
+
+The resulting average porosity is monotonically decreasing in $\lambda$, the constraint
+$\overline{d}(\lambda) = \bar{d}_{\text{target}}$ admits a unique
+solution that is found by bisection [@sigmund200199line; @andreassen201188line]. Because $\lambda$ can span several
+orders of magnitude, the bisection is performed on a logarithmic
+scale using the geometric mean $\lambda_{\text{mid}} =
+\sqrt{\lambda_{\text{lo}}\lambda_{\text{hi}}}$ rather than the
+arithmetic mean.
+
+#### Results demonstration
+
+---
+
+##### Simulation setting
+
+| Parameter | Default | Unit | Meaning |
+|---|---|---|---|
+| `PHYS_CHAR_LENGTH` | `0.4` | $\text{m}$ |  |
+| `REYNOLDS` | `30` |  |  |
+| `RESOLUTION` | `50` |  | resolution over design domain width |
+| `LATTICE_RELAXATION_TIME` | `0.55` | $\text{s}$ |  |
+| `PHYS_CHAR_VELOCITY` | `(0.075, 0.0)` | $\text{m/s}$ | inflow velocity |
+| `PHYS_CHAR_DENSITY` | `1.0` | $\text{kg} / \text{m}^3$ |  |
+| `PHYS_CHAR_VISCOSITY` | `0.001` | $\text{m}^2 / \text{s}$ |  |
+| `TARGET_FLUID_FRACTION` | `0.85` |  | target volume fraction $\bar{d}_\text{target}$ |
+| `FILTER_RADIUS` | `0.01` | m | $r_\text{min}$ |
+| `OBJECTIVE_TYPE` | `PRESSURE_DROP` |  | pressure drop as the objective function |
+
+##### Simulation result
+
+::: {.content-visible when-format="html"}
+![The optimization result](/examples/optimization/ellipsoidTopology2d/doc/fig/ellipsoid.gif){#gif-ellipsoid width="80%"}
+:::

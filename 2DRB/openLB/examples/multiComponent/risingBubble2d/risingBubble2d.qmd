@@ -1,0 +1,142 @@
+---
+features: [multiComponent, multiPhase, transient, primitives]
+---
+
+### risingBubble2d {#sec-example-multiComponent-risingBubble2d}
+
+This example showcases a gas bubble rising in a liquid under gravity.
+The bubble Reynolds number and the Bond number determine its shape; with the current configuration, the bubble deforms into a cap.
+The two phases are described with the conservative phase field model, which is solved on a second lattice and coupled to an incompressible Navier--Stokes solver for variable density and viscosity ([Incompressible Phase-field Allen--Cahn Model](/content/05_simulation_models.qmd#sec-PhaseField)).
+
+#### Governing equations
+
+The domain $\Omega \times \I = [0, 4D] \times [0, 8D] \times \R_{\geq 0}$, with the bubble diameter $D = 40\,\mathrm{\mu m}$, is considered.
+The phase field $\phi \in [0, 1]$ is $1$ in the liquid and $0$ in the gas and varies smoothly across a diffuse interface of the width $W$. It is governed by the conservative Allen--Cahn equation with the mobility $M$ and the interface normal $\mathbf{n} = \nabla \phi / |\nabla \phi|$,
+\begin{align}
+    \partial_t \phi + \nabla \cdot (\phi \vel) &= \nabla \cdot \left( M \left( \nabla \phi - \frac{4 \phi (1 - \phi)}{W} \mathbf{n} \right) \right) \quad \text{in} \quad \Omega \times \I.
+\end{align}
+The density and the relaxation time, and with it the viscosity, are interpolated linearly between the phases, $\rho = \rho_g + (\rho_l - \rho_g) \phi$ and $\tau = \tau_g + (\tau_l - \tau_g) \phi$ (`LinearTauViscosity`).
+The velocity $\vel \in \R^2$ and the pressure $p \in \R$ obey the incompressible Navier--Stokes equations with variable density and viscosity, the surface tension force $\mathbf{F}_s$ of the interface with the surface tension $\sigma$ and gravity $\mathbf{g} = -g\, \mathbf{e}_y$,
+\begin{align}
+    \nabla \cdot \vel &= 0 \quad \text{in} \quad \Omega \times \I, \\
+    \rho \left( \partial_t \vel + (\vel \cdot \nabla) \vel \right) &= -\nabla p + \nabla \cdot \left( \rho \nu (\nabla \vel + \nabla \vel^\top) \right) + \mathbf{F}_s + \rho\, \mathbf{g} \quad \text{in} \quad \Omega \times \I.
+\end{align}
+The rise of the bubble is characterized by the Reynolds number and the Bond (or Eötvös) number, defined with the gravitational velocity $\sqrt{g D}$ as in the 2D bubble benchmark of Hysing *et al.* [@hysing:09],
+$$
+    Re = \frac{\sqrt{g D}\, D}{\nu_l} = 35, \qquad Bo = \frac{\rho_l\, g\, D^2}{\sigma} = 10 ,
+$$
+together with the density ratio $\rho_l / \rho_g = 1000$ and the ratio of the dynamic viscosities $\mu_l / \mu_g = 100$.
+
+#### Boundary conditions
+
+The domain is periodic in the $x$-direction and bounded by walls at the bottom and the top (MN 2), where the velocity vanishes and the interface meets the wall with the contact angle $\theta = 90^\circ$,
+\begin{align}
+    \vel &= \mathbf{0}, \quad \mathbf{n} \cdot \mathbf{n}_w = -\cos\theta \quad \text{on the walls}.
+\end{align}
+The walls are curved boundaries in the sense of the Bouzidi scheme: `setBouzidiBoundary()` for the fluid and `setBouzidiPhaseField<IsoPhaseFieldCurvedWall2D>()` for the phase field place them half a lattice spacing inside the outer rows of cells, at $y = 0.5\,\mathrm{\mu m}$ and $y = 318.5\,\mathrm{\mu m}$, as in the user guide ([Boundaries in the Incompressible Allen--Cahn Model](/content/05_simulation_models.qmd#sec-PhaseField)).
+Initially, the fluid is at rest, and a circular bubble of diameter $D$ sits at $(2D, D)$, one diameter above the bottom wall. Its interface has the equilibrium profile of the phase field model, `CircularInterface2D`, and the pressure inside the bubble is raised by the Laplace pressure $\sigma / (D/2)$ (`LaplacePressure2D`).
+
+#### Domain
+
+The domain has the width $4D = 160\,\mathrm{\mu m}$ and the height $8D = 320\,\mathrm{\mu m}$.
+`prepareGeometry()` marks the outer layer of cells as wall (MN 2) and all cells except the bottom and the top row as fluid (MN 1); the left and right rows stay fluid because of the periodicity.
+
+#### Discretization \& Descriptor
+In this example, the domain is discretized with a uniform grid with the lattice spacing $\Delta x = D / N$, where $N = 40$ cells resolve the bubble diameter, which gives $\Delta x = 1\,\mathrm{\mu m}$ and $161 \times 321 = 51\,700$ cells in one cuboid.
+`main()` describes `PHYS_CHAR_LENGTH` and `RESOLUTION` in the comments as the bubble radius, but they set the bubble diameter $D$, which is also the length in $Re$ and $Bo$.
+
+The parameters are chosen in lattice units from the expected rise velocity $u_r = 0.02$ (`RISING_VELOCITY`), which is identified with $\sqrt{g D}$:
+the gravitational acceleration is $g = u_r^2 / N = 10^{-5}$, the relaxation time of the liquid $\tau_l = 3 u_r N / Re + 0.5 = 0.5686$, that of the gas $\tau_g = 10 (\tau_l - 0.5) + 0.5 = 1.186$, so the kinematic viscosity of the gas is ten times that of the liquid, and the surface tension $\sigma = \rho_l g N^2 / Bo = 0.016$ with the lattice density $\rho_l = 10$ of the liquid.
+The unit converter `MultiPhaseUnitConverterFromRelaxationTime` takes the resolution, $\tau_l$, the lattice density of the liquid, $D$, $\nu_l$ and $\rho_l$, which gives the time step size $\Delta t = 2.29 \cdot 10^{-8}\,\mathrm{s}$, so the simulated $1.2\,\mathrm{ms}$ take $52\,500$ time steps.
+In physical units, this corresponds to $g = 1.9 \cdot 10^4\,\mathrm{m/s^2}$, $\sigma = 3.1\,\mathrm{mN/m}$ and $\sqrt{g D} = 0.875\,\mathrm{m/s}$: the parameters reproduce the dimensionless numbers, not the conditions of an air bubble in water.
+The interface width is $W = 5$ cells, and the relaxation time $0.8$ of the phase field lattice sets the mobility $M = c_s^2 (0.8 - 0.5) = 0.1$ in lattice units.
+
+The Navier--Stokes lattice uses `CorrectedMultiPhaseIncompressibleRLBdynamics`, the phase field lattice `ConservativePhaseFieldBGKdynamics`, both on the D2Q9 velocity set in single precision.
+The coupling operator `CorrectedLiangPostProcessor<LinearTauViscosity>` computes the density, the relaxation time and the forces from the phase field and passes the velocity back to the phase field lattice; `phasefield::init()` sets its parameters, and `PhiStatistics` collects the phase field before the coupling.
+The lattices are defined inside the case definition in `risingBubble2d.cpp` as in @lst-risingBubble2d-case.
+
+::: {#lst-risingBubble2d-case}
+```{.cpp}
+using MyCase = Case<
+  NavierStokes, Lattice<float, D2Q9<RHO,NABLARHO,LAPLACERHO,FORCE,TAU_EFF,SCALAR>>,
+  Component1,  Lattice<float, D2Q9<FORCE,VELOCITY,OLD_PHIU,STATISTIC>>
+>;
+
+using NSBulkDynamics = CorrectedMultiPhaseIncompressibleRLBdynamics<MyCase::value_t,MyCase::descriptor_t_of<NavierStokes>>;
+using PFBulkDynamics = ConservativePhaseFieldBGKdynamics<MyCase::value_t,MyCase::descriptor_t_of<Component1>>;
+using MixtureRules = LinearTauViscosity;
+using Coupling = CorrectedLiangPostProcessor<MixtureRules>;
+```
+Case definition, dynamics and coupling of the `risingBubble2d` example.
+:::
+
+| Parameter | Symbol | Value | Description |
+|---|---|---|---|
+| `PHYS_CHAR_LENGTH` | $D$ | $40\,\mathrm{\mu m}$ | bubble diameter |
+| `RESOLUTION` | $N$ | $40$ | cells per bubble diameter |
+| `DOMAIN_EXTENT` | | $4D \times 8D$ | width and height of the domain |
+| `C_RHO` | | $100\,\mathrm{kg/m^3}$ | conversion factor of the density |
+| `RHO_LIQUID` | $\rho_l$ | $1000\,\mathrm{kg/m^3}$ | density of the liquid |
+| `RHO_VAPOR` | $\rho_g$ | $1\,\mathrm{kg/m^3}$ | density of the gas |
+| `NU_LIQUID` | $\nu_l$ | $10^{-6}\,\mathrm{m^2/s}$ | kinematic viscosity of the liquid |
+| `REYNOLDS` | $Re$ | $35$ | Reynolds number $\sqrt{g D} D / \nu_l$ |
+| `BOND` | $Bo$ | $10$ | Bond number $\rho_l g D^2 / \sigma$ |
+| `RISING_VELOCITY` | $u_r$ | $0.02$ | velocity scale $\sqrt{g D}$ in lattice units |
+| `G_CONST` | $g$ | $u_r^2 / N = 10^{-5}$ | gravitational acceleration in lattice units |
+| `LATTICE_RELAXATION_TIME` | $\tau_l$ | $3 u_r N / Re + 0.5$ | relaxation time of the liquid |
+| `TAU_VAPOR` | $\tau_g$ | $10 (\tau_l - 0.5) + 0.5$ | relaxation time of the gas |
+| `SURFACE_TENSION` | $\sigma$ | $\rho_l g N^2 / Bo = 0.016$ | surface tension in lattice units |
+| `PF_LATTICE_RELAXATION_TIME` | | $0.8$ | relaxation time of the phase field, sets the mobility |
+| `INTERFACE_WIDTH` | $W$ | $5$ | interface width in cells |
+| `THETA` | $\theta$ | $90^\circ$ | contact angle at the walls |
+| `PHYS_MAX_T` | $T$ | $1.2\,\mathrm{ms}$ | simulated time |
+| `PHYS_VTK_ITER_T` | | $T / 30$ | interval of the VTK output |
+| `PHYS_STAT_ITER_T` | | $T / 30$ | interval of the console statistics |
+
+: Parameters of `risingBubble2d`, as set in `main()`. {#tbl-risingBubble2d-params}
+
+#### Results
+
+The results below come from a run on a single GPU (NVIDIA GeForce GTX 1070 Ti), which took $43\,\mathrm{s}$.
+Every $0.04\,\mathrm{ms}$, `getResults()` prints the statistics of both lattices and writes the total pressure `p_total`, the density `rho`, the velocity `u` and the phase field statistics `phi` to `tmp/vtkData/risingBubble2d.pvd`. The simulation stops early if the average energy becomes NaN.
+
+@fig-risingBubble2d-bubble shows the bubble.
+It accelerates within the first $0.1\,\mathrm{ms}$ and flattens into a cap whose width grows from $40$ to about $75\,\mathrm{\mu m}$ while its height shrinks to about $22\,\mathrm{\mu m}$.
+Inside the cap, the gas circulates in two vortices, and behind it, the liquid follows in a wake.
+At $t \approx 0.8\,\mathrm{ms}$, the bubble reaches the top wall, spreads along it and splits into two bubbles that sit on the wall with the contact angle of $90^\circ$.
+
+::: {.image-slider}
+::: {#fig-risingBubble2d-bubble layout-ncol="3"}
+![$t = 0$](/examples/multiComponent/risingBubble2d/doc/fig/bubble/bubble_iT0000000.png)
+
+![$t = 0.2\,\mathrm{ms}$](/examples/multiComponent/risingBubble2d/doc/fig/bubble/bubble_iT0008750.png)
+
+![$t = 0.4\,\mathrm{ms}$](/examples/multiComponent/risingBubble2d/doc/fig/bubble/bubble_iT0017500.png)
+
+![$t = 0.6\,\mathrm{ms}$](/examples/multiComponent/risingBubble2d/doc/fig/bubble/bubble_iT0026250.png)
+
+![$t = 0.8\,\mathrm{ms}$](/examples/multiComponent/risingBubble2d/doc/fig/bubble/bubble_iT0035000.png)
+
+![$t = 1.2\,\mathrm{ms}$](/examples/multiComponent/risingBubble2d/doc/fig/bubble/bubble_iT0052500.png)
+
+Velocity magnitude $|\vel|$ of `risingBubble2d` with the interface $\rho = (\rho_l + \rho_g)/2$ (white), visualized in ParaView. The colour range is fixed to $[0, 0.5]\,\mathrm{m/s}$.
+:::
+:::
+
+@fig-risingBubble2d-rise shows the height of the centroid of the gas, weighted with the gas fraction $(\rho_l - \rho) / (\rho_l - \rho_g)$, and the mean velocity of the gas.
+Between $t = 0.2$ and $0.64\,\mathrm{ms}$, the bubble rises with a nearly constant mean velocity of $0.36\,\mathrm{m/s}$, which oscillates by about $\pm 0.05\,\mathrm{m/s}$ with the shape of the cap.
+This is $0.41 \sqrt{g D}$, and the Reynolds number with the actual rise velocity is $0.36\,\mathrm{m/s} \cdot D / \nu_l = 14.5$.
+For comparison, in test case 1 of @hysing:09 with the same $Re$ and $Bo$, but the density and viscosity ratios $10$ and a domain of width $2D$ between walls, the bubble reaches a maximum rise velocity of $0.2417$, or $0.35 \sqrt{g D}$.
+The integral of the gas fraction is not exactly conserved: the mean phase field of the domain, `avgRho` of the phase field lattice in the statistics, decreases from $0.9752$ to $0.9724$ during the run, so the area of the gas grows by about $11\,\%$.
+
+![Height of the centroid of the gas and its mean vertical velocity of `risingBubble2d` over time, evaluated in ParaView.](/examples/multiComponent/risingBubble2d/doc/fig/bubble/rise.svg){width="80%" #fig-risingBubble2d-rise .lightbox}
+
+#### Files
+
+```
+risingBubble2d/
+├── risingBubble2d.cpp   main(): parameters; mesh, geometry, both lattices, phase field coupling, initial bubble, time loop and output
+└── Makefile
+```
+
+The results are written to `tmp/` in the directory the example is run from: `vtkData/risingBubble2d.pvd` opens all time steps in ParaView.

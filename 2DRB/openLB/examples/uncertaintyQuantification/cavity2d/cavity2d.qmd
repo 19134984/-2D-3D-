@@ -1,0 +1,68 @@
+---
+features: [benchmark, primitives]
+---
+
+### cavity2d
+
+In this setup, the lid-driven velocity is treated as a random variable, uniformly distributed over the interval $\mathcal{U}[0.9, 1.1]$, representing $\pm 10\%$ uncertainty around the nominal value.
+
+Uncertain input distributions can be defined using utility functions such as `uniform()` or `normal()`. For example:
+
+```{.cpp}
+// Define a uniform distribution in the range [0.8 * u0 ... 1.2 * u0]
+auto dist = uniform(0.8 * u0, 1.2 * u0);
+
+// Alternatively, define a normal distribution with mean u0 and standard deviation 0.1
+auto dist = normal(u0, 0.1);
+```
+
+Once the distribution is defined, the sampling method is selected through the `UncertaintyQuantification` interface.
+Two modes are supported.
+
+**(1) Monte Carlo sampling** draws random samples from the distribution and computes statistics such as the mean and variance:
+
+```{.cpp}
+UncertaintyQuantification<T> uq(UQMethod::MonteCarlo);
+unsigned int seed = 123456; // fixed seed for reproducibility
+uq.initializeMonteCarlo(nq, dist, seed);
+```
+
+The combination of Monte Carlo methods and LBM was further studied in [@zhong2024stochastic; @simonis:23b; @simonis2024computing] and used for large-scale production of training data for generative diffusion models in [@molinaro2025generative].
+
+**(2) The stochastic collocation method** employs generalized polynomial chaos (GPC) with deterministic quadrature sampling for spectral convergence in smooth problems:
+
+```{.cpp}
+// Generalized Polynomial Chaos (gPC) with order and quadrature
+UncertaintyQuantification<T> uq(UQMethod::GPC);
+uq.initializeGPC(orderGPC, nqPerDim, dist);
+```
+
+Here `orderGPC` denotes the order of the GPC expansion, `nqPerDim` denotes the number of quadrature points in each uncertain input dimension, and `dist` denotes a random distribution.
+
+After initialization, sampling points can be retrieved via:
+
+```{.cpp}
+auto samples = uq.getSamplingPoints();
+```
+
+Once the simulations for all generated samples are completed, statistical postprocessing can be applied to any quantity of interest.
+For example, to compute and export the mean and standard deviation of the velocity field:
+
+```{.cpp}
+computeMeanAndStdAndWriteVTI<T, DESCRIPTOR>(
+  uq, foldPath, "cavity2d", "physVelocity",
+  superGeometry, materials
+);
+```
+
+Simulation results -- such as the mean and standard deviation of the velocity -- can be visualized to assess the influence of parametric uncertainty on flow behavior (see @fig-uqCavity-2d).
+
+::: {#fig-uqCavity-2d layout-ncol=2}
+
+![Mean $\bar{|\mathbf{u}|}$.](/examples/uncertaintyQuantification/cavity2d/doc/fig/uqCavityMean.png){#fig-uqCavityMean-2d}
+
+![Standard deviation $\sigma(|\mathbf{u}|)$.](/examples/uncertaintyQuantification/cavity2d/doc/fig/uqCavityStd.png){#fig-uqCavityStd-2d}
+
+Mean and standard deviation of the velocity magnitude, computed using the stochastic collocation method with a second-order polynomial expansion and five quadrature points.
+
+:::

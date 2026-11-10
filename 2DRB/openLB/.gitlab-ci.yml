@@ -1,0 +1,781 @@
+stages:
+  - meta
+  - build
+  - test
+  - benchmark
+#  - examples
+  - release
+  - test_release
+
+before_script:
+  - export MAKEFLAGS="-j4"
+
+variables:
+  GIT_DEPTH: "1"
+  # Enable the nix flake CLI once, in-repo, so jobs can call `nix develop` without
+  # repeating --extra-experimental-features on every invocation (honoured via NIX_CONFIG).
+  NIX_CONFIG: "extra-experimental-features = nix-command flakes"
+  # Bump the trailing counter whenever .ci/docker/sycl-ci.Dockerfile changes.
+  SYCL_IMAGE: $CI_REGISTRY_IMAGE/sycl-ci:2025.3.1-1
+  # Bump the trailing counter whenever .ci/docker/nix-ci.Dockerfile changes.
+  NIX_IMAGE: $CI_REGISTRY_IMAGE/nix-ci:2.33.4-1
+
+# The public branch stages the next release, so it is a mainline like master.
+.default:
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH || $CI_COMMIT_BRANCH == "public"
+      when: always
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      when: always
+    - when: manual
+
+.dependents:
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH || $CI_COMMIT_BRANCH == "public"
+      when: always
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      when: always
+
+# Inputs live in trees that releases never ship; the public branch mirrors one.
+.development_only:
+  rules:
+    - if: $CI_PROJECT_PATH != "openlb/olb"
+      when: never
+    - if: $CI_COMMIT_BRANCH == "public"
+      when: never
+    - !reference [.default, rules]
+
+# Created on the same pipelines as .dependents, but started by hand and never blocking.
+.optional:
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH || $CI_COMMIT_BRANCH == "public" || $CI_PIPELINE_SOURCE == "merge_request_event"
+      when: manual
+      allow_failure: true
+
+#############################################################
+###################### JOB TEMPLATES ########################
+#############################################################
+
+# Every nix job shares the CI image and the nix runner tag.
+.nix:
+  image: $NIX_IMAGE
+  tags:
+    - nix
+
+# Build-stage nix job: runs on any branch (.default rules).
+.nix_build:
+  extends: .nix
+  stage: build
+  # Compile-checks only need to catch build errors, so drop optimization for speed
+  variables:
+    OLB_CXX_OPT_LEVEL: "0"
+  rules:
+    - !reference [.default, rules]
+
+# Independent nix test job: no build artifacts, runs on default branch + MRs.
+.nix_check:
+  extends: .nix
+  stage: test
+  dependencies: [ ]
+  needs:
+    - job: build_image_nix
+      optional: true
+  rules:
+    - !reference [.dependents, rules]
+
+# Independent test job on a GPU runner (nix available on the host, no image).
+.gpu_check:
+  stage: test
+  tags:
+    - has-gpu
+  dependencies: [ ]
+  needs: [ ]
+  rules:
+    - !reference [.dependents, rules]
+
+# Shared scaffolding for the SYCL comm jobs (run in the oneAPI docker image on
+# the OpenCL CPU runtime); the per-job script only picks the config + test.
+.sycl:
+  image: $SYCL_IMAGE
+  stage: test
+  rules:
+    - !reference [.dependents, rules]
+  tags:
+    - docker
+  dependencies: [ ]
+  needs:
+    - job: build_image_sycl
+      optional: true
+
+.sycl_direct:
+  extends: .sycl
+  variables:
+    COMM_TEST_DIRECT: "1"
+    ONEAPI_DEVICE_SELECTOR: "opencl:cpu"
+  before_script:
+    - export MAKEFLAGS="-j4"
+    - cp config/cpu_sycl_ci.mk config.mk
+
+.sycl_mpi:
+  extends: .sycl
+  variables:
+    ONEAPI_DEVICE_SELECTOR: "opencl:cpu"
+    OMPI_CXX: "icpx"
+    OMPI_CC: "icx"
+    OMPI_ALLOW_RUN_AS_ROOT: "1"
+    OMPI_ALLOW_RUN_AS_ROOT_CONFIRM: "1"
+    OMPI_MCA_rmaps_base_oversubscribe: "true"
+  before_script:
+    - export MAKEFLAGS="-j4"
+    # Put OpenMPI (whose mpicxx honours OMPI_CXX=icpx) ahead of the image's
+    # oneAPI Intel-MPI wrappers, so the binary links the same MPI mpirun launches.
+    - export PATH=/usr/bin:$PATH
+    - cp config/cpu_sycl_mpi_ci.mk config.mk
+
+# Common scaffolding for the GPU/SYCL performance benchmarks. On the default
+# branch they run unconditionally; on an MR they wait for their build jobs and
+# only run on_success; on other branches they are manual.
+.gpu_benchmark:
+  stage: benchmark
+  dependencies: [ ]
+  needs: [ ]
+
+
+#############################################################
+######################### META JOBS ########################
+#############################################################
+
+file_contents_and_paths:
+  extends: .nix
+  stage: meta
+  rules:
+    - !reference [.default, rules]
+  needs:
+    - job: build_image_nix
+      optional: true
+  script:
+    - ./.ci/pre-check_file_path.sh
+    - ./.ci/pre-check_file_content.sh
+
+cse_includes:
+  extends: .nix_check
+  stage: meta
+  script:
+    - nix develop .#codegen --command script/codegen/cse/check_includes.sh
+
+build_image_nix:
+  image:
+    name: gcr.io/kaniko-project/executor:debug
+    entrypoint: [""]
+  stage: meta
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes:
+        - .ci/docker/nix-ci.Dockerfile
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - .ci/docker/nix-ci.Dockerfile
+  script:
+    - mkdir -p /kaniko/.docker
+    - echo "{\"auths\":{\"$CI_REGISTRY\":{\"auth\":\"$(printf "%s:%s" "$CI_REGISTRY_USER" "$CI_REGISTRY_PASSWORD" | base64 | tr -d '\n')\"}}}" > /kaniko/.docker/config.json
+    - /kaniko/executor
+        --context "$CI_PROJECT_DIR/.ci/docker"
+        --dockerfile "$CI_PROJECT_DIR/.ci/docker/nix-ci.Dockerfile"
+        --destination "$NIX_IMAGE"
+        --cache=true
+  tags:
+    - docker
+
+build_image_sycl:
+  image:
+    name: gcr.io/kaniko-project/executor:debug
+    entrypoint: [""]
+  stage: meta
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes:
+        - .ci/docker/sycl-ci.Dockerfile
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - .ci/docker/sycl-ci.Dockerfile
+  script:
+    - mkdir -p /kaniko/.docker
+    - echo "{\"auths\":{\"$CI_REGISTRY\":{\"auth\":\"$(printf "%s:%s" "$CI_REGISTRY_USER" "$CI_REGISTRY_PASSWORD" | base64 | tr -d '\n')\"}}}" > /kaniko/.docker/config.json
+    - /kaniko/executor
+        --context "$CI_PROJECT_DIR/.ci/docker"
+        --dockerfile "$CI_PROJECT_DIR/.ci/docker/sycl-ci.Dockerfile"
+        --destination "$SYCL_IMAGE"
+        --cache=true
+  tags:
+    - docker
+
+
+#############################################################
+######################## BUILD JOBS #########################
+#############################################################
+
+build_gcc:
+  extends: .nix_build
+  script:
+    - nix develop .#gcc --command .ci/build_using_environment.sh
+
+build_gcc_mpi:
+  extends: .nix_build
+  script:
+    - nix develop .#gcc-mpi --command .ci/build_using_environment.sh
+
+build_gcc_omp:
+  extends: .nix_build
+  script:
+    - nix develop .#gcc-omp --command .ci/build_using_environment.sh
+
+build_gcc_hybrid:
+  extends: .nix_build
+  script:
+    - nix develop .#heterogeneity-cpu --command .ci/build_using_environment.sh
+
+build_clang:
+  extends: .nix_build
+  script:
+    - nix develop .#clang --command .ci/build_using_environment.sh
+
+build_cuda_only:
+  extends: .nix_build
+  script:
+    - .ci/build_cuda_only.sh
+
+build_cuda_mixed_mpi:
+  extends: .nix_build
+  script:
+    - .ci/build_cuda_mixed_mpi.sh
+
+build_hip:
+  extends: .nix_build
+  script:
+    - .ci/build_hip.sh
+
+build_hip_cuda_only:
+  extends: .nix_build
+  script:
+    - .ci/build_hip_cuda_only.sh
+
+build_sycl:
+  image: $SYCL_IMAGE
+  stage: build
+  rules:
+    - !reference [.default, rules]
+  script:
+    - .ci/build_sycl.sh
+  tags:
+    - docker
+  needs:
+    - job: build_image_sycl
+      optional: true
+
+build_intel:
+  image: intel/oneapi-hpckit:2025.3.1-0-devel-ubuntu24.04
+  stage: build
+  rules:
+    - !reference [.default, rules]
+  script:
+    - .ci/build_intel.sh
+  tags:
+    - docker
+
+build_intel_mpi:
+  image: intel/oneapi-hpckit:2025.3.1-0-devel-ubuntu24.04
+  stage: build
+  rules:
+    - !reference [.default, rules]
+  script:
+    - .ci/build_intel_mpi.sh
+  tags:
+    - docker
+
+build_voreen_backend_cuda_mixed_mpi:
+  extends: .nix_build
+  rules:
+    - !reference [.development_only, rules]
+  script:
+    - ./.ci/build_voreen_backend_cuda_mixed_mpi.sh
+
+build_voreen_frontend:
+  extends: .nix_build
+  script:
+    - ./.ci/build_voreen_frontend.sh
+  rules:
+    - if: $CI_PROJECT_PATH != "openlb/olb"
+      when: never
+    - if: $CI_COMMIT_BRANCH == "public"
+      when: never
+    - when: manual
+      allow_failure: true
+
+##############################################################
+######################### TEST JOBS #########################
+##############################################################
+
+test_comm_gcc:
+  extends: .nix_check
+  script:
+    - nix develop .#gcc --command .ci/test_comm_integrity.sh
+    - nix develop .#gcc --command .ci/test_sparse_comm.sh
+
+test_comm_gcc_mpi:
+  extends: .nix_check
+  script:
+    - nix develop .#gcc-mpi --command .ci/test_comm_integrity.sh
+    - nix develop .#gcc-mpi --command .ci/test_sparse_comm.sh
+
+test_comm_integrity_gcc_simd:
+  extends: .nix_check
+  script:
+    - nix develop .#gcc-simd --command .ci/test_comm_integrity.sh
+
+test_comm_cuda:
+  extends: .gpu_check
+  script:
+    - nix develop .#gcc-mpi-cuda --command .ci/test_comm_integrity.sh
+    - nix develop .#gcc-mpi-cuda --command .ci/test_sparse_comm.sh
+
+# Exercise the Branching cyclic ring (the HIP/SYCL default) on CUDA hardware.
+# CUDA otherwise defaults to the VMM ring, whose double-mapped deviceData bakes
+# in the streaming shift and so hides shift bugs in the population communication
+# kernels -- this job is what would have caught the unshifted-copy_field bug.
+test_comm_integrity_cuda_branching:
+  extends: .gpu_check
+  variables:
+    FEATURES: "GPU_CYCLIC_BRANCHING"
+  script:
+    - nix develop .#cuda --command .ci/test_comm_integrity.sh
+
+test_comm_hip:
+  extends: .nix_check
+  variables:
+    COMM_TEST_BUILD_ONLY: "1"
+  script:
+    - nix develop .#hip --command .ci/test_comm_integrity.sh
+    - nix develop .#hip --command .ci/test_sparse_comm.sh
+
+test_comm_hip_cuda:
+  extends: .gpu_check
+  image: $NIX_IMAGE
+  needs:
+    - job: build_image_nix
+      optional: true
+  script:
+    - nix develop .#hip-cuda --command .ci/test_comm_integrity.sh
+    - nix develop .#hip-cuda --command .ci/test_sparse_comm.sh
+
+test_comm_sycl:
+  extends: .sycl_direct
+  script:
+    - .ci/test_comm_integrity.sh
+    - .ci/test_sparse_comm.sh
+
+test_comm_sycl_mpi:
+  extends: .sycl_mpi
+  script:
+    - .ci/test_comm_integrity.sh
+    - .ci/test_sparse_comm.sh
+
+test_unit:
+  extends: .nix_check
+  script:
+    - nix develop .#gcc --command .ci/test.sh
+
+test_cse_dynamics:
+  extends: .nix_check
+  script:
+    - nix develop .#codegen --command script/codegen/cse/check_dynamics.sh
+
+test_cse_post_processors:
+  extends: .nix_check
+  script:
+    - nix develop .#codegen --command script/codegen/cse/check_post_processors.sh
+
+#############################################################
+###################### Benchmark JOBS #######################
+#############################################################
+
+meshing_tests:
+  extends: .nix_check
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH || $CI_COMMIT_BRANCH == "public"
+      exists: [ script/meshing/tests/** ]
+      when: always
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      exists: [ script/meshing/tests/** ]
+      when: always
+  script:
+    - nix develop .#gcc --command .ci/meshing_tests.sh
+
+benchmark_gcc:
+  extends: .nix
+  stage: benchmark
+  rules:
+    - !reference [.dependents, rules]
+  script:
+    - nix develop .#gcc --command .ci/benchmark.sh
+  dependencies: [ ]
+  needs: ["build_gcc"]
+
+benchmark_poiseuille_gcc_simd:
+  extends: .nix_check
+  stage: benchmark
+  script:
+    - nix develop .#gcc-simd --command .ci/benchmark_poiseuille.sh
+
+benchmark_poiseuille_cuda:
+  extends: .gpu_check
+  stage: benchmark
+  # nvcc sole-driver (.#cuda) compiles the whole TU with __CUDACC__, so the
+  # gtest benchmarks self-contain the GPU_CUDA instantiations (the mixed
+  # gcc-mpi-cuda model does not link the ConcreteCommunicatable serializers).
+  script:
+    - nix develop .#cuda --command .ci/benchmark_poiseuille.sh
+
+# Same poiseuille physics/serialization coverage on the Branching cyclic ring
+# (see test_comm_integrity_cuda_branching): the bouzidi+periodic case regressed
+# only under Branching, invisibly to the default VMM CUDA benchmark.
+benchmark_poiseuille_cuda_branching:
+  extends: .gpu_check
+  stage: benchmark
+  variables:
+    FEATURES: "GPU_CYCLIC_BRANCHING"
+  script:
+    - nix develop .#cuda --command .ci/benchmark_poiseuille.sh
+
+benchmark_gcc_mpi:
+  extends: .nix
+  stage: benchmark
+  variables:
+    OMPI_ALLOW_RUN_AS_ROOT: 1
+    OMPI_ALLOW_RUN_AS_ROOT_CONFIRM: 1
+  rules:
+    - !reference [.dependents, rules]
+  script:
+    - nix develop .#gcc-mpi --command .ci/benchmark.sh
+  dependencies: [ ]
+  needs: ["build_gcc_mpi"]
+
+benchmark_cuda:
+  extends: .gpu_benchmark
+  script:
+    - ./.ci/benchmark_cuda.sh
+  tags:
+    - has-gpu-for-benchmark
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: always
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      needs: ["benchmark_gcc", "build_cuda_only", "build_cuda_mixed_mpi"]
+      when: on_success
+    - if: $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH
+      when: manual
+  artifacts:
+    paths:
+      - examples/laminar/cavity3dBenchmark/raw_performance.csv
+    reports:
+      metrics: examples/laminar/cavity3dBenchmark/performance.txt
+
+benchmark_fsi_cuda:
+  extends: .gpu_benchmark
+  script:
+    - ./.ci/benchmark_fsi_cuda.sh
+  tags:
+    - has-gpu
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: always
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      needs: ["benchmark_gcc", "build_cuda_only", "build_cuda_mixed_mpi"]
+      when: on_success
+    - if: $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH
+      when: manual
+  artifacts:
+    when: always
+    paths:
+      - examples/fsi/rigidValve2d/valve_profile_n40.png
+
+benchmark_sycl:
+  extends: .gpu_benchmark
+  image: $SYCL_IMAGE
+  script:
+    - .ci/benchmark_sycl.sh
+  tags:
+    - docker
+  needs:
+    - job: build_image_sycl
+      optional: true
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: always
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      needs:
+        - "build_sycl"
+        - job: build_image_sycl
+          optional: true
+      when: on_success
+    - if: $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH
+      when: manual
+
+benchmark_sycl_fsi:
+  extends: .gpu_benchmark
+  image: $SYCL_IMAGE
+  script:
+    - .ci/benchmark_sycl_fsi.sh
+  tags:
+    - docker
+  needs:
+    - job: build_image_sycl
+      optional: true
+  artifacts:
+    when: always
+    paths:
+      - examples/fsi/rigidValve2d/valve_profile_n40.png
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: always
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      needs:
+        - "build_sycl"
+        - job: build_image_sycl
+          optional: true
+      when: on_success
+    - if: $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH
+      when: manual
+
+benchmark_hip_cuda:
+  extends: .gpu_benchmark
+  script:
+    - ./.ci/benchmark_hip_cuda.sh
+  tags:
+    - has-gpu-for-benchmark
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: always
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      needs: ["benchmark_gcc", "build_cuda_only", "build_hip"]
+      when: on_success
+    - if: $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH
+      when: manual
+  artifacts:
+    paths:
+      - examples/laminar/cavity3dBenchmark/raw_performance.csv
+    reports:
+      metrics: examples/laminar/cavity3dBenchmark/performance.txt
+
+benchmark_hip_fsi_cuda:
+  extends: .gpu_benchmark
+  script:
+    - ./.ci/benchmark_hip_fsi_cuda.sh
+  tags:
+    - has-gpu
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: always
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      needs: ["benchmark_gcc", "build_cuda_only", "build_hip"]
+      when: on_success
+    - if: $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH
+      when: manual
+  artifacts:
+    when: always
+    paths:
+      - examples/fsi/rigidValve2d/valve_profile_n40.png
+
+benchmark_particles_gcc:
+  extends: .nix
+  stage: benchmark
+  rules:
+    - !reference [.development_only, rules]
+  script:
+    - nix develop .#gcc --command .ci/dev_apps_particles.sh
+  dependencies: [ ]
+  needs: ["build_gcc"]
+
+benchmark_particles_gcc_mpi:
+  extends: .nix
+  stage: benchmark
+  variables:
+    OMPI_ALLOW_RUN_AS_ROOT: 1
+    OMPI_ALLOW_RUN_AS_ROOT_CONFIRM: 1
+  rules:
+    - !reference [.development_only, rules]
+  script:
+    - nix develop .#gcc-mpi --command .ci/dev_apps_particles.sh
+  dependencies: [ ]
+  needs: ["build_gcc_mpi"]
+
+benchmark_structuralmechanics_mpi:
+  image: $NIX_IMAGE
+  stage: benchmark
+  variables:
+    OMPI_ALLOW_RUN_AS_ROOT: 1
+    OMPI_ALLOW_RUN_AS_ROOT_CONFIRM: 1
+    OMPI_MCA_pml: "ob1"
+  rules:
+    - !reference [.dependents, rules]
+  script:
+    - ./.ci/benchmark_structuralmechanics_mpi.sh
+  tags:
+    - nix
+
+benchmark_structuralmechanics_cuda:
+  stage: benchmark
+  rules:
+    - !reference [.dependents, rules]
+  script:
+    - ./.ci/benchmark_structuralmechanics_cuda.sh
+  tags:
+    - has-gpu
+  dependencies: [ ]
+  needs: [ ]
+
+#############################################################
+###################### DOCUMENTATION ########################
+#############################################################
+
+# Rendering documentation is never a gate on a merge, so these jobs stay manual
+# on every branch and are only started when somebody wants the artifact.
+.docs_artifact:
+  extends: .nix
+  stage: test
+  dependencies: [ ]
+  needs:
+    - job: build_image_nix
+      optional: true
+  rules:
+    - when: manual
+      allow_failure: true
+
+userguide_quarto_html:
+  extends: .docs_artifact
+  # The navbar download button only appears once the PDF exists, so render both.
+  script:
+    - nix develop .#docs --command make -C doc
+  artifacts:
+    name: "openlb-userguide-html-$CI_COMMIT_SHORT_SHA"
+    expose_as: "User guide HTML"
+    paths:
+      - doc/ug/
+
+userguide_quarto_pdf:
+  extends: .docs_artifact
+  script:
+    - nix develop .#docs --command make -C doc pdf
+  artifacts:
+    name: "openlb-userguide-pdf-$CI_COMMIT_SHORT_SHA"
+    expose_as: "User guide PDF"
+    paths:
+      - doc/ug_pdf/OpenLB-User-Guide.pdf
+
+api_doxygen:
+  extends: .docs_artifact
+  script:
+    - nix build .#doxygen --no-link --print-out-paths > .doxygen-out
+    - cp -rL "$(cat .doxygen-out)/html" api
+    - chmod -R u+w api
+  artifacts:
+    name: "openlb-api-$CI_COMMIT_SHORT_SHA"
+    expose_as: "API reference"
+    paths:
+      - api/
+
+# Deploying the rendered site replaces the live GitLab Pages docs. In
+# openlb/release the default branch publishes them, everywhere else this is
+# started by hand, and a branch deploy takes over until the next default one.
+pages:
+  extends: .nix
+  stage: release
+  dependencies: [ ]
+  needs:
+    - job: build_image_nix
+      optional: true
+  rules:
+    - if: $CI_PROJECT_PATH != "openlb/olb" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: on_success
+    - when: manual
+  script:
+    # one pass: the guide, then the API reference carrying the guide's navbar
+    - nix develop .#docs --command make docs
+    - mv doc/ug public
+    - mv build/doxygen/html public/api
+  artifacts:
+    paths:
+      - public
+
+#############################################################
+#################### RELEASE GENERATION #####################
+#############################################################
+
+package_release:
+  extends: .nix
+  stage: release
+  dependencies: [ ]
+  needs:
+    - job: build_image_nix
+      optional: true
+  rules:
+    - !reference [.development_only, rules]
+  script:
+    - nix develop .#gcc --command .ci/package_release.sh
+  artifacts:
+    paths:
+      - olb-master.tgz
+      - olb-master.fileList.txt
+
+# What this commit would change in openlb/release, for review before a sync.
+summarize_difference_to_public:
+  extends: .nix
+  stage: test_release
+  dependencies: [ "package_release" ]
+  needs: [ "package_release" ]
+  rules:
+    - !reference [.development_only, rules]
+  script:
+    - nix develop .#release-summary --command ./.ci/summarize_difference_to_public.sh
+  artifacts:
+    expose_as: "Difference to public repository"
+    paths:
+      - summary.html
+      - update-release-to-master.patch
+
+# Release-build jobs consume the package_release tarball, so they must NOT set
+# dependencies: [] (that would disable the artifact download) -- extend .nix only.
+.release_build:
+  extends: .nix
+  stage: test_release
+  rules:
+    - if: $CI_PROJECT_PATH != "openlb/olb"
+      when: never
+    - if: $CI_COMMIT_BRANCH == "public"
+      when: never
+    - !reference [.optional, rules]
+  needs: [ "package_release" ]
+
+build_release_default_gcc:
+  extends: .release_build
+  script:
+    - nix develop .#gcc --command .ci/build_release_default.sh
+
+build_release_clang:
+  extends: .release_build
+  script:
+    - nix develop .#clang --command .ci/build_release_using_environment.sh
+
+build_release_gcc_mpi:
+  extends: .release_build
+  script:
+    - nix develop .#gcc-mpi --command .ci/build_release_using_environment.sh
+
+build_release_heterogeneity_cpu:
+  extends: .release_build
+  script:
+    - nix develop .#heterogeneity-cpu --command .ci/build_release_using_environment.sh
+
+build_release_cuda_mixed_mpi:
+  extends: .release_build
+  script:
+    - .ci/build_release_cuda_mixed_mpi.sh

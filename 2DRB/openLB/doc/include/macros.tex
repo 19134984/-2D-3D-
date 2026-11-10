@@ -1,0 +1,27 @@
+%% Math macros shared by the PDF and the website.
+%%
+%% The PDF book loads this file into the preamble after latex_includes.tex
+%% (_quarto-book.yml). The website pastes it into every page between
+%% macros_open.html and macros_close.html, a hidden inline math block that
+%% MathJax typesets once, which defines the macros for the rest of the page
+%% (_quarto.yml).
+%%
+%% MathJax only understands math, so only math-mode \newcommand definitions
+%% belong here: no \usepackage, \xspace, \ifx, \makeatletter or text-mode
+%% macros; those go into latex_includes.tex and only work in the PDF. Do not
+%% redefine a command that a LaTeX package already provides (e.g. \bm, \symbf),
+%% as \newcommand fails on it in the PDF. The file is pasted into HTML verbatim,
+%% so keep angle brackets and ampersands out of it; use \lt and \gt instead.
+
+\newcommand{\field}[1]{\mathbb{#1}}
+\newcommand{\NN}{\field{N}}
+\newcommand{\RR}{\field{R}}
+\newcommand{\Rplus}{\RR^+}
+\newcommand{\bigO}[1]{\mathbb{O}(#1)}
+\newcommand{\EOC}{\text{EOC}}
+\newcommand{\Err}{\text{Err}}
+\newcommand{\vel}{\mathbf{u}}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\I}{I}
+
+\newcommand{\J}{\mathcal{J}}

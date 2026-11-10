@@ -1,0 +1,7 @@
+---
+features: [benchmark, primitives]
+---
+
+### poiseuille2dEoc
+
+The examples `poiseuille2dEoc` and `poiseuille3dEoc` are extensions of the `poiseuille2d` and `poiseuille3d` examples, respectively, focusing on the experimental order of convergence (EOC) of the simulation.

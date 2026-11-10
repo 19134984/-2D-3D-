@@ -1,0 +1,14 @@
+### pipeTopology2d
+
+In this example, the pipe bend optimization benchmark case is implemented, cf. e.g. [@tian:2025].
+This is a classical benchmark case for topology optimization.
+The values of simulation- and optimization-related parameters are set in the corresponding file `parameters.xml`.
+For given in- and outlets at the left and at the bottom side of a cavity, the (curved) shape of a pipe has to be found such that either the overall pressure drop or the overall dissipation is minimized.
+
+Adjoint optimization is used for this application where the primal simulation case is based on the HLBM model to incorporate the solid/fluid cells for topology optimization.
+There are two objective class implementations in the app where one is based on the total dissipation (sum of viscous and porous dissipation) or simply the pressure drop between the inlet and outlet.
+Since, for low Reynolds numbers, leaving the complete design domain open leads to a low dissipation, the volume of the pipe is penalized in order to prevent this.
+This way, a geometrically meaningful geometry can be established.
+@fig-pipeBendOpti shows thresholded pipe topologies regarding the lattice porosity corresponding to fluid cells where the adaptation of the geometry over the optimization steps is visualized.
+
+![Pipe topology optimized regarding the energy dissipation inside the pipe. Starting from the left, the development of the geometry over the optimization steps is shown.](/examples/optimization/pipeTopology2d/doc/fig/pipeBendOpti.png){#fig-pipeBendOpti width="100%"}

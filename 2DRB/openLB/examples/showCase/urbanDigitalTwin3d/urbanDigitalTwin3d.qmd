@@ -1,0 +1,13 @@
+---
+features: [turbulent, porousMedia, transient, showcase, stl, primitives]
+---
+
+### urbanDigitalTwin3d
+
+This example uses HLBM to simulate a city or similar as porous media.
+An example geometry of the KIT campus can be downloaded with the script `download_large_geometry.sh`.
+To use this script, type `./download_large_geometry.sh` in your Linux terminal.
+It uses the `atmBoundaryLayer` as the inlet profile to change the initial velocity depending on the height.
+The example comes with an XML to change parameters of the `UnitConverter` and `atmBoundary` without the need to recompile.
+
+![Showcase of the `urbanDigitalTwin3d` example with the geometry of the Karlsruhe Institute of Technology Campus South.](/examples/showCase/urbanDigitalTwin3d/doc/fig/urbanDigitalTwin3d.png){#fig-urbanDigitalTwin3d width="80%"}

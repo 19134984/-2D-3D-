@@ -1,0 +1,21 @@
+{
+  "name": "openlb_widget",
+  "version": "1.2.1",
+  "description": "A web widget example showcasing a 2d cylinder fluid simulation using OpenLB. OpenLB is a C++ Library for lattice Boltzmann simulations. It is compiled with Emscripten to WebAssembly and now runs the simulation on the client.",
+  "license": "GNU General Public License v2.0",
+  "author": "Pascal Sitter",
+  "scripts": {
+    "start": "pnpm dlx serve"
+  },
+  "type": "module",
+  "dependencies": {
+    "@material/web": "^1.4.1",
+    "@rollup/plugin-node-resolve": "^15.2.3",
+    "@rollup/plugin-terser": "^0.4.4",
+    "@web/rollup-plugin-copy": "^0.5.1",
+    "@web/rollup-plugin-html": "^2.2.1",
+    "rollup": "^4.1.4",
+    "rollup-plugin-minify-html-literals": "^1.2.6",
+    "rollup-plugin-summary": "^2.0.0"
+  }
+}

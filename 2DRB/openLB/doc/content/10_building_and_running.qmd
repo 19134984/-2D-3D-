@@ -1,0 +1,141 @@
+---
+title: Building and Running OpenLB
+number-sections: true
+toc: true
+---
+
+## Install Dependencies
+
+### Linux
+
+1. Update && Upgrade
+
+for Ubuntu/Debian:
+```{.bash}  
+sudo update && Upgrade
+```
+
+for Archlinux:
+```{.bash}  
+sudo pacman -Syu 
+```
+
+for Rhel&Fedora:
+```{.bash}  
+sudo dnf upgrade --refresh
+```
+
+2. Install dependencies
+
+for Ubuntu/Debian:
+```{.bash}  
+sudo apt install build-essential openmpi-bin libopenmpi-dev
+```
+
+for Archlinux:
+```{.bash}  
+sudo pacman -S gcc openmpi make 
+```
+
+for Rhel&Fedora:
+```{.bash}  
+sudo dnf install openmpi openmpi-devel gcc make 
+```
+
+3. Check g++ and mpi implementation
+
+for Debian/Ubuntu, Archlinux:
+```{.bash}  
+which g++-15
+g++-15 -v
+mpicxx -v
+```
+
+for Fedora/Rhel:
+g++ is usually only called as g++. Also before you can call mpicxx the system module has to be loaded.
+```{.bash}
+module load mpi/openmpi-x86_64
+mpicxx -v
+```
+
+4. Get openLB
+
+Via GitLab (install git first): 
+```{.bash}
+git clone https://gitlab.com/openlb/release.git
+```
+
+Via wget (in this case 1.9) refer to the link to the newest version at https://www.openlb.net/download/.
+```{.bash}
+wget https://zenodo.org/records/17899765/files/olb-1.9r0.tgz
+tar xvfz olb-1.9r0.tgz
+```
+
+5. Use config files from OLB_ROOT/configs
+
+6. To run your first simulation navigate in your terminal to an example (for example OLB_ROOT/examples/forBeginners/cylinder2d) and run (in this example)
+```{.bash}
+make clean && make
+./cylinder2d
+```
+
+### MacOS 
+
+1. Install homebrew package manager (also possible to use any other package manager for Mac)
+```{.bash}
+curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh
+```
+
+for Intel: 
+```{.bash}  
+echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zprofile
+eval "$(/opt/homebrew/bin/brew shellenv)"
+```
+for Apple Silicon (M1,M2,M3 ...): 
+```{.bash}  
+echo 'eval "$(/usr/local/bin/brew shellenv)"' >> ~/.zprofile
+eval "$(/usr/local/bin/brew shellenv)"
+```
+
+2. Use brew to install gcc (if desired) and gnumake, open-mpi (TODO: maybe also tinyxml and zlib ?)
+```{.bash}
+brew install gcc make open-mpi
+```
+
+3. Check installation of g++ and version
+```{.bash}
+which g++-15
+g++-15 -v
+```
+
+4. Check mpi implementation
+```{.bash}
+mpicxx -v
+```
+Output should be TODO:
+
+6. Set environment variables
+```{.bash}
+export OMPI_CXX=${which g++-15}
+export OMPI_CC=${which gcc-15}
+```
+
+5. Use config.mk file in the directory OLB_ROOT/configs
+
+
+### Windows
+
+1. Open the powershell (Win+R and type in powershell + Enter)
+
+2. install WSL by running the following in the powershell
+```{.bash}
+wsl --install
+```
+
+3. Reboot your system
+
+4. After reboot you will might be greeted by a new console window. If not search in the start menu for Ubuntu
+
+5. The installation will take some time and afterwards you will be promted to set ure Unix username and password.
+
+6. Now follow the installation guide for Linux Ubuntu/Debian (1.1).
